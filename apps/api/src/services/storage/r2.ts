@@ -11,7 +11,10 @@ function isR2Configured(): boolean {
   return !!(id && id !== '...' && key && key !== '...')
 }
 
-const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads')
+// Use Railway Volume path if available (/data), else fall back to local uploads dir
+const UPLOADS_DIR = fs.existsSync('/data')
+  ? path.join('/data', 'uploads')
+  : path.resolve(process.cwd(), 'uploads')
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 
 const API_URL = process.env.API_URL || 'http://localhost:4000'

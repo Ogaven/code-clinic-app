@@ -153,16 +153,21 @@ router.post('/:id/avatar', requireAuth, uploadLimiter,
     const user = await prisma.user.findUnique({ where: { id } })
     if (!user) { res.status(404).json({ error: 'User not found' }); return }
 
-    // Delete old avatar if exists
-    if (user.avatarR2Key) {
-      await deleteFile(user.avatarR2Key).catch(console.error)
+    try {
+      // Delete old avatar if exists
+      if (user.avatarR2Key) {
+        await deleteFile(user.avatarR2Key).catch(console.error)
+      }
+
+      const r2Key = await uploadAvatar(req.file.buffer, req.file.mimetype, 'avatars', id)
+      await prisma.user.update({ where: { id }, data: { avatarR2Key: r2Key } })
+
+      const avatarUrl = await getSignedDownloadUrl(r2Key)
+      res.json({ avatarUrl, r2Key })
+    } catch (err: any) {
+      console.error('[avatar upload] error:', err)
+      res.status(500).json({ error: err.message || 'Upload failed' })
     }
-
-    const r2Key = await uploadAvatar(req.file.buffer, req.file.mimetype, 'avatars', id)
-    await prisma.user.update({ where: { id }, data: { avatarR2Key: r2Key } })
-
-    const avatarUrl = await getSignedDownloadUrl(r2Key)
-    res.json({ avatarUrl, r2Key })
   },
 )
 

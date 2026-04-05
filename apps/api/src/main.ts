@@ -27,8 +27,10 @@ import assistantRouter from './routes/assistant'
 const app = express()
 const PORT = process.env.PORT || 4000
 
-// ─── Ensure uploads directory exists ──────────────────────────
-const uploadsDir = path.resolve(process.cwd(), 'uploads')
+// ─── Ensure uploads directory exists (persist on Railway Volume at /data) ──
+const uploadsDir = fs.existsSync('/data')
+  ? path.join('/data', 'uploads')
+  : path.resolve(process.cwd(), 'uploads')
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
 
 // ─── Security middleware ───────────────────────────────────────

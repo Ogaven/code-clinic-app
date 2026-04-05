@@ -141,12 +141,6 @@ export default function ReceptionistLayout({ children }: { children: React.React
           )}
         </Link>
 
-        {/* Receptionist badge */}
-        {!collapsed && (
-          <div className="px-4 py-2 border-b border-white/8">
-            <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400/70">Receptionist Portal</span>
-          </div>
-        )}
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto py-3 space-y-0.5 px-2">

@@ -126,6 +126,55 @@ async function seed() {
   }
   console.log('[startup] Agent prompts created.')
 
+  // Demo appointments (for today)
+  const existingAppts = await prisma.appointment.count()
+  if (existingAppts === 0) {
+    const allDoctors  = await prisma.doctor.findMany({ include: { user: true }, take: 4 })
+    const allPatients = await prisma.patient.findMany({ take: 8 })
+    const allServices = await prisma.service.findMany({ take: 10 })
+    const adminUser   = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+
+    if (allDoctors.length && allPatients.length && allServices.length && adminUser) {
+      const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+      today.setHours(0, 0, 0, 0)
+
+      const apptSlots = [
+        { patientIdx: 0, doctorIdx: 0, serviceIdx: 0,  hourOffset: 8,  min: 0,  status: 'COMPLETED'  as const },
+        { patientIdx: 1, doctorIdx: 0, serviceIdx: 3,  hourOffset: 9,  min: 0,  status: 'IN_PROGRESS' as const },
+        { patientIdx: 2, doctorIdx: 1, serviceIdx: 10, hourOffset: 9,  min: 30, status: 'CONFIRMED'   as const },
+        { patientIdx: 3, doctorIdx: 1, serviceIdx: 13, hourOffset: 10, min: 0,  status: 'CONFIRMED'   as const },
+        { patientIdx: 4, doctorIdx: 2, serviceIdx: 6,  hourOffset: 10, min: 30, status: 'PENDING'     as const },
+        { patientIdx: 5, doctorIdx: 2, serviceIdx: 16, hourOffset: 11, min: 0,  status: 'PENDING'     as const },
+        { patientIdx: 6, doctorIdx: 3, serviceIdx: 1,  hourOffset: 14, min: 0,  status: 'CONFIRMED'   as const },
+        { patientIdx: 7, doctorIdx: 3, serviceIdx: 12, hourOffset: 15, min: 0,  status: 'CONFIRMED'   as const },
+      ]
+
+      for (const slot of apptSlots) {
+        const doctor  = allDoctors[slot.doctorIdx]
+        const patient = allPatients[slot.patientIdx]
+        const service = allServices[slot.serviceIdx]
+        if (!doctor || !patient || !service) continue
+
+        const startAt = new Date(today)
+        startAt.setHours(slot.hourOffset, slot.min, 0, 0)
+        const endAt   = new Date(startAt.getTime() + service.durationMins * 60000)
+
+        await prisma.appointment.create({
+          data: {
+            patientId:  patient.id,
+            doctorId:   doctor.id,
+            serviceId:  service.id,
+            startAt,
+            endAt,
+            status:     slot.status,
+            createdBy:  adminUser.id,
+          },
+        })
+      }
+      console.log('[startup] Demo appointments created.')
+    }
+  }
+
   // Demo patients
   const patientsData = [
     { firstName: 'Sarah',    lastName: 'Namukasa', phone: '+256701234567', gender: 'FEMALE', dob: new Date('1990-03-15') },

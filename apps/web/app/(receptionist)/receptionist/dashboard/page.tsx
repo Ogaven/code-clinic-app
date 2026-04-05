@@ -112,7 +112,7 @@ function MiniCalendar({ onDateSelect, selectedDate }: { onDateSelect: (d: Date) 
 }
 
 // ── Patient row ───────────────────────────────────────────────
-function PatientRow({ appt }: { appt: any }) {
+function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
   const isActive = appt.status === 'IN_PROGRESS'
   const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
   const statusColor: Record<string, string> = {
@@ -120,10 +120,23 @@ function PatientRow({ appt }: { appt: any }) {
     PENDING: 'bg-amber-100 text-amber-700',
     IN_PROGRESS: 'bg-emerald-100 text-emerald-700',
     COMPLETED: 'bg-gray-100 text-gray-500',
+    CANCELLED: 'bg-red-100 text-red-600',
+    NO_SHOW: 'bg-orange-100 text-orange-600',
   }
+
+  async function changeStatus(status: string) {
+    const token = localStorage.getItem('cc_token')
+    await fetch(`/api-proxy/scheduling/appointments/${appt.id}/status`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    onRefresh()
+  }
+
   return (
     <div className={cn(
-      'flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer border-b border-gray-50 last:border-0',
+      'group flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0',
       isActive && 'border-l-4 border-l-cyan-500 bg-cyan-50/40',
     )}>
       <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
@@ -132,13 +145,34 @@ function PatientRow({ appt }: { appt: any }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-gray-800 truncate">{appt.patient?.firstName} {appt.patient?.lastName}</p>
-        <p className="text-xs text-gray-400 truncate">{appt.service?.name}</p>
+        <p className="text-xs text-gray-400 truncate">{appt.service?.name} · Dr. {appt.doctor?.user?.firstName} {appt.doctor?.user?.lastName}</p>
       </div>
-      <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-2">
         <span className="text-[10px] font-bold bg-cyan-500 text-white px-2 py-0.5 rounded-full whitespace-nowrap">{time}</span>
         <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', statusColor[appt.status] || 'bg-gray-100 text-gray-500')}>
-          {appt.status}
+          {appt.status.replace('_', ' ')}
         </span>
+        {/* Quick actions - visible on hover */}
+        <div className="hidden group-hover:flex items-center gap-1 ml-1">
+          {appt.status === 'PENDING' && (
+            <button onClick={() => changeStatus('CONFIRMED')}
+              className="text-[10px] font-bold bg-blue-500 text-white px-2 py-0.5 rounded-lg hover:bg-blue-600 transition-colors">
+              Confirm
+            </button>
+          )}
+          {appt.status === 'CONFIRMED' && (
+            <button onClick={() => changeStatus('IN_PROGRESS')}
+              className="text-[10px] font-bold bg-emerald-500 text-white px-2 py-0.5 rounded-lg hover:bg-emerald-600 transition-colors">
+              Check In
+            </button>
+          )}
+          {(appt.status === 'PENDING' || appt.status === 'CONFIRMED') && (
+            <button onClick={() => changeStatus('CANCELLED')}
+              className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-lg hover:bg-red-200 transition-colors">
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -328,35 +362,33 @@ export default function ReceptionistDashboard() {
   return (
     <div className="p-5 space-y-5 max-w-[1600px] mx-auto">
 
-      {/* ── Hero Banner ───────────────────────────────────────── */}
-      <div className="relative rounded-3xl overflow-hidden h-44 flex items-center"
-        style={{ background: 'linear-gradient(135deg, #0c1e50 0%, #1a3a8f 50%, #0e8eb8 100%)' }}>
-        {/* Decorative circles */}
-        <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full opacity-10"
-          style={{ background: 'radial-gradient(circle, white, transparent)' }} />
-        <div className="absolute right-32 -bottom-10 w-48 h-48 rounded-full opacity-5"
-          style={{ background: 'radial-gradient(circle, #29ABE2, transparent)' }} />
-
-        {/* Dental image */}
-        <div className="absolute right-0 bottom-0 h-full w-56 flex items-end justify-end opacity-90">
-          <Image src="/dental40.png" alt="" fill className="object-contain object-right-bottom" sizes="224px" />
-        </div>
-
-        {/* Text content */}
-        <div className="relative px-8 flex-1">
-          <p className="text-blue-200/70 text-sm font-medium mb-1">Receptionist Dashboard</p>
-          <h1 className="text-2xl font-black text-white mb-1">
-            {greeting()},{' '}
-            <span style={{ color: '#29ABE2' }}>{user?.firstName}!</span>
+      {/* ── Hero — no card, floating elements ─────────────────── */}
+      <div className="relative flex items-start justify-between gap-4 px-1 pt-1 pb-2">
+        {/* Greeting text — independent, no card */}
+        <div className="flex-1">
+          <p className="text-gray-400 text-sm font-medium mb-1">
+            {new Date().toLocaleDateString('en-UG', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'Africa/Kampala' })}
+          </p>
+          <h1 className="text-3xl font-black text-gray-800 mb-1">
+            {greeting()}, <span style={{ color: '#0c1e50' }}>{user?.firstName}!</span> 👋
           </h1>
-          <p className="text-blue-100/60 text-sm">
-            {stats?.appointments?.total || 0} appointments today · {stats?.appointments?.confirmed || 0} confirmed
+          <p className="text-gray-500 text-sm">
+            <span className="font-bold text-cyan-600">{stats?.appointments?.total || 0}</span> appointments today ·{' '}
+            <span className="font-bold text-green-600">{stats?.appointments?.confirmed || 0}</span> confirmed ·{' '}
+            <span className="font-bold text-amber-600">{stats?.appointments?.pending || 0}</span> pending
           </p>
         </div>
 
-        {/* Clock */}
-        <div className="relative px-8 flex-shrink-0">
+        {/* Clock — independent floating card */}
+        <div className="rounded-2xl p-3 flex-shrink-0 shadow-md"
+          style={{ background: 'linear-gradient(135deg,#0c1e50,#1565C0)', border:'1px solid rgba(255,255,255,0.12)' }}>
           <AnalogClock />
+        </div>
+
+        {/* Dental image — independent, floating right */}
+        <div className="hidden lg:flex items-end flex-shrink-0" style={{ width:160, height:120 }}>
+          <Image src="/dental40.png" alt="" width={160} height={120}
+            style={{ objectFit:'contain', objectPosition:'bottom', filter:'drop-shadow(0 8px 24px rgba(41,171,226,0.35))' }}/>
         </div>
       </div>
 
@@ -481,7 +513,7 @@ export default function ReceptionistDashboard() {
                   <p className="text-sm text-gray-400">No appointments scheduled</p>
                 </div>
               ) : (
-                appointments.slice(0, 6).map(appt => <PatientRow key={appt.id} appt={appt} />)
+                appointments.slice(0, 6).map(appt => <PatientRow key={appt.id} appt={appt} onRefresh={fetchAll} />)
               )}
             </div>
 

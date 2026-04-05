@@ -68,7 +68,7 @@ export default function SettingsPage() {
       })
       if (res.ok) {
         const data = await res.json()
-        const updated = { ...user, avatarUrl: data.signedUrl }
+        const updated = { ...user, avatarUrl: data.avatarUrl }
         setUser(updated)
         localStorage.setItem('cc_user', JSON.stringify(updated))
         showToast('Profile photo updated!', 'success')
