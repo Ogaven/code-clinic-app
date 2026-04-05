@@ -10,7 +10,6 @@ RUN npm install -g pnpm@9
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/api/package.json ./apps/api/package.json
-COPY packages/database/package.json ./packages/database/package.json
 
 # Install all dependencies (frozen to match the committed lockfile)
 RUN pnpm install --frozen-lockfile
@@ -29,7 +28,6 @@ COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 # Copy the full monorepo source
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web ./apps/web
-COPY packages/database ./packages/database
 
 # Build the Next.js web app (output: standalone is set in next.config.mjs)
 RUN pnpm --filter web build
