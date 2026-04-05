@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, CalendarDays, Users, MessageSquare,
   Bot, BarChart2, Settings, HelpCircle, Bell, Search,
-  ChevronLeft, ChevronRight, LogOut, User, Lock,
+  ChevronLeft, ChevronRight, LogOut, User, Lock, Download,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -25,11 +25,6 @@ const navBottom = [
   { label: 'Help',     href: '/support',  icon: HelpCircle },
 ]
 
-function getGreeting(name: string) {
-  const h = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getHours()
-  const g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
-  return `${g}, ${name}`
-}
 
 export default function ReceptionistLayout({ children }: { children: React.ReactNode }) {
   const pathname  = usePathname()
@@ -41,6 +36,8 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const [search, setSearch]     = useState('')
   const [searchResults, setSR]  = useState<any[]>([])
   const [searching, setSearcing]= useState(false)
+  const [installPrompt, setInstallPrompt] = useState<any>(null)
+  const [installed, setInstalled] = useState(false)
 
   const API = process.env.NEXT_PUBLIC_API_URL
 
@@ -53,6 +50,22 @@ export default function ReceptionistLayout({ children }: { children: React.React
     const t = setInterval(() => fetchUnread(u), 15000)
     return () => clearInterval(t)
   }, [])
+
+  useEffect(() => {
+    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e) }
+    window.addEventListener('beforeinstallprompt', handler)
+    window.addEventListener('appinstalled', () => setInstalled(true))
+    if (window.matchMedia('(display-mode: standalone)').matches) setInstalled(true)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  async function handleInstall() {
+    if (!installPrompt) return
+    installPrompt.prompt()
+    const { outcome } = await installPrompt.userChoice
+    if (outcome === 'accepted') setInstalled(true)
+    setInstallPrompt(null)
+  }
 
   async function fetchUnread(u: any) {
     try {
@@ -87,7 +100,6 @@ export default function ReceptionistLayout({ children }: { children: React.React
   }
 
   const initials = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'R'
-  const greeting = user ? getGreeting(user.firstName) : ''
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
@@ -239,6 +251,16 @@ export default function ReceptionistLayout({ children }: { children: React.React
 
           {/* Right controls */}
           <div className="flex items-center gap-3">
+
+            {/* Install app button */}
+            {!installed && installPrompt && (
+              <button onClick={handleInstall}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:scale-105"
+                style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)', color: 'white', boxShadow: '0 2px 8px rgba(41,171,226,0.35)' }}>
+                <Download size={13} />
+                <span>Install App</span>
+              </button>
+            )}
 
             {/* Notification bell */}
             <Link href="/receptionist/communications" className="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">

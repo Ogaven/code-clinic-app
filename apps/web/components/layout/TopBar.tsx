@@ -1,7 +1,7 @@
 'use client'
 
-import { Search, Bell, ChevronDown, Sun, Moon } from 'lucide-react'
-import { useState } from 'react'
+import { Search, Bell, ChevronDown, Sun, Moon, Download } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { getInitials } from '@/lib/utils'
 
 interface TopBarProps {
@@ -42,6 +42,25 @@ const notifications = [
 export default function TopBar({ title, user, dark = false, onThemeToggle }: TopBarProps) {
   const [notifOpen, setNotifOpen] = useState(false)
   const [search, setSearch]       = useState('')
+  const [installPrompt, setInstallPrompt] = useState<any>(null)
+  const [installed, setInstalled] = useState(false)
+
+  useEffect(() => {
+    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e) }
+    window.addEventListener('beforeinstallprompt', handler)
+    window.addEventListener('appinstalled', () => setInstalled(true))
+    if (window.matchMedia('(display-mode: standalone)').matches) setInstalled(true)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  async function handleInstall() {
+    if (installPrompt) {
+      installPrompt.prompt()
+      const { outcome } = await installPrompt.userChoice
+      if (outcome === 'accepted') setInstalled(true)
+      setInstallPrompt(null)
+    }
+  }
 
   const initials  = user ? getInitials(user.firstName, user.lastName) : '??'
   const roleColor = user ? (roleColors[user.role] || '#1A237E') : '#1A237E'
@@ -94,6 +113,17 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
 
       {/* Right group */}
       <div className="flex items-center gap-2 flex-shrink-0">
+
+        {/* Install app button */}
+        {!installed && installPrompt && (
+          <button onClick={handleInstall}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:scale-105"
+            style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)', color: 'white', boxShadow: '0 2px 8px rgba(41,171,226,0.4)' }}
+            title="Install Code Clinic app on this device">
+            <Download size={13} />
+            <span>Install App</span>
+          </button>
+        )}
 
         {/* Theme toggle */}
         <button onClick={toggleTheme}
