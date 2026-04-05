@@ -12,6 +12,90 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+// ── Analog Clock ──────────────────────────────────────────────
+function AnalogClock() {
+  const [time, setTime] = useState(() =>
+    new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+  )
+  useEffect(() => {
+    const t = setInterval(() => {
+      setTime(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })))
+    }, 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  const s = time.getSeconds()
+  const m = time.getMinutes()
+  const h = time.getHours() % 12
+  const secDeg = s * 6
+  const minDeg = m * 6 + s * 0.1
+  const hrDeg  = h * 30 + m * 0.5
+
+  function hand(deg: number, len: number, width: number, color: string) {
+    const rad = (deg - 90) * (Math.PI / 180)
+    return (
+      <line
+        x1="50" y1="50"
+        x2={50 + len * Math.cos(rad)}
+        y2={50 + len * Math.sin(rad)}
+        stroke={color} strokeWidth={width} strokeLinecap="round"
+      />
+    )
+  }
+
+  const ticks = Array.from({ length: 60 }, (_, i) => {
+    const rad = (i * 6 - 90) * Math.PI / 180
+    const isHour = i % 5 === 0
+    const r1 = isHour ? 37 : 41
+    return (
+      <line key={i}
+        x1={50 + r1 * Math.cos(rad)}     y1={50 + r1 * Math.sin(rad)}
+        x2={50 + 44.5 * Math.cos(rad)}   y2={50 + 44.5 * Math.sin(rad)}
+        stroke={isHour ? '#29ABE2' : '#CBD5E1'}
+        strokeWidth={isHour ? 2.2 : 0.8} strokeLinecap="round"
+      />
+    )
+  })
+
+  const label = time.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+
+  return (
+    <div className="flex flex-col items-center gap-1 select-none">
+      <svg width="110" height="110" viewBox="0 0 100 100"
+        style={{ filter: 'drop-shadow(0 6px 20px rgba(41,171,226,0.35))' }}>
+        {/* Face */}
+        <circle cx="50" cy="50" r="48" className="clock-face" />
+        {/* Subtle inner ring */}
+        <circle cx="50" cy="50" r="43" fill="none" stroke="rgba(41,171,226,0.12)" strokeWidth="1" />
+        {/* Tick marks */}
+        {ticks}
+        {/* Hour numbers */}
+        {[12,1,2,3,4,5,6,7,8,9,10,11].map((n, i) => {
+          const rad = (i * 30 - 90) * Math.PI / 180
+          return (
+            <text key={n}
+              x={50 + 32 * Math.cos(rad)} y={50 + 32 * Math.sin(rad)}
+              textAnchor="middle" dominantBaseline="central"
+              fontSize="7" fontWeight="700" fill="#64748B"
+              style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+              {n}
+            </text>
+          )
+        })}
+        {/* Hands */}
+        {hand(hrDeg, 24, 3.5, '#1A237E')}
+        {hand(minDeg, 33, 2.5, '#29ABE2')}
+        {hand(secDeg, 39, 1.2, '#ef4444')}
+        {/* Center cap */}
+        <circle cx="50" cy="50" r="3" fill="#29ABE2" />
+        <circle cx="50" cy="50" r="1.5" fill="white" />
+      </svg>
+      <span className="text-[10px] font-bold tracking-wide text-gray-400 dark:text-white/40">{label}</span>
+      <span className="text-[9px] text-gray-300 dark:text-white/20 font-medium">Kampala · EAT</span>
+    </div>
+  )
+}
+
 // ── Mini Calendar ─────────────────────────────────────────────
 function MiniCalendar({ onDateSelect, selectedDate }: { onDateSelect: (d: Date) => void; selectedDate: Date }) {
   const [view, setView] = useState(new Date())
@@ -341,9 +425,10 @@ export default function ReceptionistDashboard() {
           </p>
         </div>
 
-        {/* Dental image — top right corner */}
-        <div className="hidden lg:flex items-center flex-shrink-0" style={{ width: 180, height: 130 }}>
-          <Image src="/dental30.png" alt="" width={180} height={130}
+        {/* Clock + dental image */}
+        <div className="hidden lg:flex items-center gap-6 flex-shrink-0">
+          <AnalogClock />
+          <Image src="/dental30.png" alt="" width={160} height={120}
             style={{ objectFit:'contain', filter:'drop-shadow(0 8px 28px rgba(41,171,226,0.4))' }}/>
         </div>
       </div>
@@ -351,7 +436,7 @@ export default function ReceptionistDashboard() {
       {/* ── Stats Row ──────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Today's Appointments */}
-        <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all">
+        <div className="dark-pop bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #0891b2, #06b6d4)' }}>
@@ -368,7 +453,7 @@ export default function ReceptionistDashboard() {
         </div>
 
         {/* New Patients */}
-        <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all">
+        <div className="dark-pop bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)' }}>
@@ -389,7 +474,7 @@ export default function ReceptionistDashboard() {
         </div>
 
         {/* Returning Patients */}
-        <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all">
+        <div className="dark-pop bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}>
@@ -411,7 +496,7 @@ export default function ReceptionistDashboard() {
 
         {/* AI Agent Status */}
         <div className={cn(
-          'rounded-2xl p-4 border shadow-sm hover:shadow-md transition-all',
+          'dark-pop rounded-2xl p-4 border shadow-sm hover:shadow-md',
           agentActive ? 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/8' : 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30',
         )}>
           <div className="flex items-start justify-between mb-3">

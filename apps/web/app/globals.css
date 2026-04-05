@@ -31,24 +31,24 @@
   /* ── Dark mode tokens ──────────────────────── */
   .dark {
     color-scheme: dark;
-    --background:  222 40% 10%;
-    --foreground:  210 50% 92%;
-    --card:        222 38% 14%;
-    --card-foreground: 210 50% 92%;
-    --popover:     222 38% 13%;
-    --popover-foreground: 210 50% 92%;
+    --background:  218 50% 16%;
+    --foreground:  210 60% 94%;
+    --card:        218 45% 19%;
+    --card-foreground: 210 60% 94%;
+    --popover:     218 45% 18%;
+    --popover-foreground: 210 60% 94%;
     --primary:     199 66% 58%;
-    --primary-foreground: 222 40% 10%;
-    --secondary:   222 32% 20%;
-    --secondary-foreground: 210 50% 92%;
-    --muted:       222 30% 18%;
-    --muted-foreground: 215 25% 60%;
-    --accent:      222 30% 20%;
-    --accent-foreground: 210 50% 92%;
+    --primary-foreground: 218 50% 16%;
+    --secondary:   218 38% 24%;
+    --secondary-foreground: 210 60% 94%;
+    --muted:       218 36% 22%;
+    --muted-foreground: 215 30% 65%;
+    --accent:      218 36% 24%;
+    --accent-foreground: 210 60% 94%;
     --destructive: 0 70% 55%;
     --destructive-foreground: 210 40% 98%;
-    --border:      222 28% 22%;
-    --input:       222 30% 18%;
+    --border:      218 32% 28%;
+    --input:       218 36% 22%;
     --ring:        199 66% 58%;
   }
 }
@@ -59,7 +59,11 @@
     @apply bg-clinic-bg text-foreground antialiased;
     font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
   }
-  .dark body { background: #0b1630; }
+  .dark body {
+    background: linear-gradient(160deg, #0f2d5e 0%, #091e45 60%, #071530 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
   h1, h2, h3, h4 { @apply text-clinic-navy; font-family: 'Plus Jakarta Sans', sans-serif; }
   .dark h1, .dark h2, .dark h3, .dark h4 { color: #E0F0FF; }
 
@@ -214,24 +218,81 @@
 }
 
 /* ══════════════════════════════════════════
+   SIDEBAR — light / dark
+   ══════════════════════════════════════════ */
+.rec-sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+}
+.dark .rec-sidebar {
+  background: linear-gradient(180deg, #0c2050 0%, #0a1a40 100%);
+  border-right: 1px solid rgba(255,255,255,0.07);
+}
+.rec-nav-item {
+  color: #4b5563;
+}
+.rec-nav-item:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+.rec-nav-item.active {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.dark .rec-nav-item {
+  color: rgba(147,197,253,0.6);
+}
+.dark .rec-nav-item:hover {
+  background: rgba(255,255,255,0.07);
+  color: #bfdbfe;
+}
+.dark .rec-nav-item.active {
+  background: rgba(255,255,255,0.13);
+  color: #ffffff;
+}
+
+/* ══════════════════════════════════════════
    DARK MODE — glass morphism everything
    ══════════════════════════════════════════ */
 
-/* Glass card — apply to any element that should be a translucent dark card */
+/* Glass card — translucent with pop-out hover */
 .dark .glass-card {
-  background: rgba(22, 45, 110, 0.58) !important;
+  background: rgba(255,255,255,0.06) !important;
   backdrop-filter: blur(28px);
   -webkit-backdrop-filter: blur(28px);
-  border-color: rgba(41, 171, 226, 0.18) !important;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.08);
+  border-color: rgba(41, 171, 226, 0.15) !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease !important;
+}
+.dark .glass-card:hover {
+  transform: translateY(-4px) scale(1.01) !important;
+  box-shadow: 0 16px 48px rgba(41,171,226,0.22), 0 0 0 1px rgba(41,171,226,0.2), inset 0 1px 0 rgba(255,255,255,0.12) !important;
+  background: rgba(255,255,255,0.10) !important;
 }
 
 /* KPI cards in dark mode */
 .dark .kpi-card {
-  background: rgba(22, 45, 110, 0.58) !important;
+  background: rgba(255,255,255,0.06) !important;
   backdrop-filter: blur(24px);
-  border-color: rgba(41,171,226,0.15) !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  -webkit-backdrop-filter: blur(24px);
+  border-color: rgba(41,171,226,0.13) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease !important;
+}
+.dark .kpi-card:hover {
+  transform: translateY(-4px) scale(1.01) !important;
+  box-shadow: 0 16px 48px rgba(41,171,226,0.22), 0 0 0 1px rgba(41,171,226,0.2) !important;
+  background: rgba(255,255,255,0.10) !important;
+}
+
+/* Generic dark card pop-out */
+.dark-pop {
+  transition: transform 0.22s ease, box-shadow 0.22s ease !important;
+}
+.dark .dark-pop:hover {
+  transform: translateY(-5px) scale(1.015);
+  box-shadow: 0 20px 56px rgba(41,171,226,0.22), 0 0 0 1px rgba(41,171,226,0.2) !important;
+  background: rgba(255,255,255,0.09) !important;
 }
 
 /* Scrollbar dark */
@@ -268,3 +329,22 @@
   color: #E0F0FF !important;
 }
 .dark .input-clinic:focus { background: rgba(255,255,255,0.08) !important; }
+
+/* ── Notification badge pulse ─────────────────────────── */
+@keyframes badge-pop {
+  0%   { transform: scale(0.8); opacity: 0; }
+  60%  { transform: scale(1.2); }
+  100% { transform: scale(1);   opacity: 1; }
+}
+.badge-pop { animation: badge-pop 0.3s ease; }
+
+/* ── Clock face ────────────────────────────────────────── */
+.clock-face {
+  fill: white;
+  stroke: #e5e7eb;
+  stroke-width: 2;
+}
+.dark .clock-face {
+  fill: rgba(15,45,94,0.9);
+  stroke: rgba(41,171,226,0.3);
+}
