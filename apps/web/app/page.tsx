@@ -34,8 +34,8 @@ export default function WelcomePage() {
         </div>
       </div>
 
-      {/* Glass card */}
-      <div className="relative z-10 w-full flex items-center justify-center lg:justify-start lg:pl-16 xl:pl-24 px-6">
+      {/* Glass card — centred on all screens */}
+      <div className="relative z-10 w-full flex items-center justify-center px-6">
         <div className="w-full max-w-[400px]"
           style={{ opacity:show?1:0, transform:show?'translateY(0)':'translateY(28px)', transition:'opacity 0.7s ease, transform 0.7s ease' }}>
 

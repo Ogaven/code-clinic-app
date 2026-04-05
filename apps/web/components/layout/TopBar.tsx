@@ -1,49 +1,40 @@
 'use client'
 
-import { Search, Bell, ChevronDown, Sun, Moon, Download } from 'lucide-react'
+import { Search, Bell, ChevronDown, Sun, Moon, Download, Smartphone, Monitor, X } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { getInitials } from '@/lib/utils'
 
 interface TopBarProps {
   title: string
   dark?: boolean
   onThemeToggle?: (dark: boolean) => void
-  user?: {
-    firstName: string
-    lastName: string
-    role: string
-    avatarUrl?: string | null
-  }
+  user?: { firstName: string; lastName: string; role: string; avatarUrl?: string | null }
 }
 
 const roleLabels: Record<string, string> = {
-  ADMIN:        'Administrator',
-  DOCTOR:       'Doctor',
-  RECEPTIONIST: 'Receptionist',
-  ACCOUNTS:     'Accounts',
-  DEVELOPER:    'Developer',
+  ADMIN: 'Administrator', DOCTOR: 'Doctor', RECEPTIONIST: 'Receptionist',
+  ACCOUNTS: 'Accounts', DEVELOPER: 'Developer',
 }
-
 const roleColors: Record<string, string> = {
-  ADMIN:        '#1A237E',
-  DOCTOR:       '#29ABE2',
-  RECEPTIONIST: '#10B981',
-  ACCOUNTS:     '#F59E0B',
-  DEVELOPER:    '#8B5CF6',
+  ADMIN: '#1A237E', DOCTOR: '#29ABE2', RECEPTIONIST: '#10B981',
+  ACCOUNTS: '#F59E0B', DEVELOPER: '#8B5CF6',
 }
-
 const notifications = [
   { id: 1, text: 'Sarah Namukasa checked in for Teeth Whitening', time: '2 min ago', dot: '#29ABE2' },
   { id: 2, text: 'Invoice #CC-2024-00042 is overdue — UGX 380,000', time: '1h ago',  dot: '#F59E0B' },
-  { id: 3, text: 'Maya AI: 3 new leads captured from website', time: '2h ago',  dot: '#10B981' },
-  { id: 4, text: 'Dr. Kutesa blocked time Fri 3–5pm', time: '4h ago',  dot: '#6B7280' },
+  { id: 3, text: 'Maya AI: 3 new leads captured from website',     time: '2h ago',  dot: '#10B981' },
+  { id: 4, text: 'Dr. Kutesa blocked time Fri 3–5pm',              time: '4h ago',  dot: '#6B7280' },
 ]
 
 export default function TopBar({ title, user, dark = false, onThemeToggle }: TopBarProps) {
-  const [notifOpen, setNotifOpen] = useState(false)
-  const [search, setSearch]       = useState('')
+  const router = useRouter()
+  const [notifOpen,    setNotifOpen]    = useState(false)
+  const [installOpen,  setInstallOpen]  = useState(false)
+  const [profileOpen,  setProfileOpen]  = useState(false)
+  const [search,       setSearch]       = useState('')
   const [installPrompt, setInstallPrompt] = useState<any>(null)
-  const [installed, setInstalled] = useState(false)
+  const [installed,    setInstalled]    = useState(false)
 
   useEffect(() => {
     const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e) }
@@ -62,9 +53,6 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
     }
   }
 
-  const initials  = user ? getInitials(user.firstName, user.lastName) : '??'
-  const roleColor = user ? (roleColors[user.role] || '#1A237E') : '#1A237E'
-
   function toggleTheme() {
     const next = !dark
     localStorage.setItem('cc_theme', next ? 'dark' : 'light')
@@ -73,88 +61,83 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
     window.dispatchEvent(new CustomEvent('cc-theme', { detail: next ? 'dark' : 'light' }))
   }
 
-  const bg       = dark ? 'rgba(10,18,60,0.85)' : 'rgba(255,255,255,0.85)'
-  const bdr      = dark ? 'rgba(255,255,255,0.08)' : 'rgba(229,231,235,0.9)'
-  const titleC   = dark ? '#E0E8FF' : '#1A237E'
-  const searchBg = dark ? 'rgba(255,255,255,0.06)' : '#F3F4F6'
-  const searchBdr= dark ? 'rgba(255,255,255,0.1)'  : '#E5E7EB'
-  const searchCl = dark ? '#C8D8F0' : '#374151'
-  const iconCl   = dark ? '#8BA0C0' : '#6B7280'
-  const nameCl   = dark ? '#E0E8FF' : '#111827'
-  const btnBg    = dark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)'
-  const btnBdr   = dark ? 'rgba(255,255,255,0.12)' : '#E5E7EB'
+  const initials  = user ? getInitials(user.firstName, user.lastName) : '??'
+  const roleColor = user ? (roleColors[user.role] || '#1A237E') : '#1A237E'
+  const bg        = dark ? 'rgba(10,18,60,0.85)'      : 'rgba(255,255,255,0.85)'
+  const bdr       = dark ? 'rgba(255,255,255,0.08)'   : 'rgba(229,231,235,0.9)'
+  const titleC    = dark ? '#E0E8FF'  : '#1A237E'
+  const searchBg  = dark ? 'rgba(255,255,255,0.06)'   : '#F3F4F6'
+  const searchBdr = dark ? 'rgba(255,255,255,0.1)'    : '#E5E7EB'
+  const searchCl  = dark ? '#C8D8F0'  : '#374151'
+  const iconCl    = dark ? '#8BA0C0'  : '#6B7280'
+  const nameCl    = dark ? '#E0E8FF'  : '#111827'
+  const btnBg     = dark ? 'rgba(255,255,255,0.08)'   : 'rgba(255,255,255,0.9)'
+  const btnBdr    = dark ? 'rgba(255,255,255,0.12)'   : '#E5E7EB'
+  const dropBg    = dark ? 'rgba(12,20,75,0.97)'      : '#fff'
 
   return (
     <header className="h-[60px] flex items-center justify-between px-5 sticky top-0 z-20 gap-4 flex-shrink-0"
-      style={{
-        background: bg,
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        borderBottom: `1px solid ${bdr}`,
-        transition: 'background 0.3s, border-color 0.3s',
-      }}>
+      style={{ background: bg, backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderBottom: `1px solid ${bdr}`, transition: 'background 0.3s' }}>
 
-      {/* Page title */}
       <h1 className="text-[17px] font-bold whitespace-nowrap flex-shrink-0"
-        style={{ fontFamily: 'Plus Jakarta Sans', color: titleC, transition: 'color 0.3s' }}>
-        {title}
-      </h1>
+        style={{ fontFamily: 'Plus Jakarta Sans', color: titleC }}>{title}</h1>
 
-      {/* Search */}
       <div className="flex-1 max-w-md">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: iconCl }} />
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+          <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search patients, appointments, invoices..."
             className="w-full pl-9 pr-4 py-2 rounded-xl text-xs outline-none transition-all"
             style={{ background: searchBg, border: `1px solid ${searchBdr}`, color: searchCl }} />
         </div>
       </div>
 
-      {/* Right group */}
       <div className="flex items-center gap-2 flex-shrink-0">
 
-        {/* Install app button */}
-        {!installed && installPrompt && (
-          <button onClick={handleInstall}
+        {/* Install / Download button — always visible */}
+        {!installed ? (
+          <button onClick={installPrompt ? handleInstall : () => setInstallOpen(true)}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:scale-105"
-            style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)', color: 'white', boxShadow: '0 2px 8px rgba(41,171,226,0.4)' }}
-            title="Install Code Clinic app on this device">
-            <Download size={13} />
-            <span>Install App</span>
+            style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)', color: 'white', boxShadow: '0 2px 8px rgba(41,171,226,0.4)' }}>
+            <Download size={13} /> Install App
+          </button>
+        ) : (
+          <button onClick={() => setInstallOpen(true)}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:scale-105"
+            style={{ background: btnBg, border: `1px solid ${btnBdr}`, color: iconCl }}>
+            <Download size={13} /> Get App
           </button>
         )}
 
-        {/* Theme toggle */}
+        {/* Theme */}
         <button onClick={toggleTheme}
           className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105"
           style={{ background: btnBg, border: `1px solid ${btnBdr}` }}>
           {dark ? <Sun size={15} color="#FCD34D" /> : <Moon size={15} color="#1A237E" />}
         </button>
 
-        {/* Notification bell */}
+        {/* Notifications */}
         <div className="relative">
-          <button onClick={() => setNotifOpen(!notifOpen)}
+          <button onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false) }}
             className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105"
             style={{ background: btnBg, border: `1px solid ${btnBdr}` }}>
             <Bell size={16} style={{ color: iconCl }} />
-            <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse-dot" />
+            <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full" />
           </button>
-
           {notifOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
-              <div className="absolute right-0 mt-2 w-80 rounded-2xl shadow-xl z-50 animate-fade-in-up overflow-hidden"
-                style={{ background: dark ? 'rgba(12,20,75,0.97)' : '#fff', border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
+              <div className="absolute right-0 mt-2 w-80 rounded-2xl shadow-xl z-50 overflow-hidden"
+                style={{ background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
                 <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
-                  <p className="font-bold text-sm" style={{ fontFamily: 'Plus Jakarta Sans', color: titleC }}>Notifications</p>
+                  <p className="font-bold text-sm" style={{ color: titleC }}>Notifications</p>
                   <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-1.5 py-0.5">{notifications.length}</span>
                 </div>
                 <div className="divide-y max-h-72 overflow-y-auto" style={{ borderColor: bdr }}>
                   {notifications.map(n => (
-                    <div key={n.id} className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-all hover:bg-white/5">
+                    <div key={n.id} className="flex items-start gap-3 px-4 py-3 hover:bg-white/5 cursor-pointer">
                       <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: n.dot }} />
-                      <div className="flex-1">
+                      <div>
                         <p className="text-xs font-medium leading-snug" style={{ color: dark ? '#C8D8F0' : '#374151' }}>{n.text}</p>
                         <p className="text-[10px] mt-0.5" style={{ color: iconCl }}>{n.time}</p>
                       </div>
@@ -162,7 +145,7 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
                   ))}
                 </div>
                 <div className="px-4 py-2.5" style={{ borderTop: `1px solid ${bdr}` }}>
-                  <button className="text-xs text-clinic-blue font-semibold hover:underline">Mark all as read</button>
+                  <button className="text-xs font-semibold hover:underline" style={{ color: '#29ABE2' }}>Mark all as read</button>
                 </div>
               </div>
             </>
@@ -171,31 +154,124 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
 
         <div className="w-px h-6" style={{ background: bdr }} />
 
-        {/* User */}
+        {/* Profile — clickable dropdown */}
         {user && (
-          <div className="flex items-center gap-2.5 cursor-pointer group">
-            {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt={`${user.firstName} ${user.lastName}`}
-                className="w-8 h-8 rounded-xl object-cover" style={{ border: `2px solid ${bdr}` }} />
-            ) : (
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
-                style={{ background: `linear-gradient(135deg, ${roleColor}, ${roleColor}99)` }}>
-                {initials}
+          <div className="relative">
+            <button onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false) }}
+              className="flex items-center gap-2.5 cursor-pointer group">
+              {user.avatarUrl ? (
+                <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-xl object-cover" style={{ border: `2px solid ${bdr}` }} />
+              ) : (
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
+                  style={{ background: `linear-gradient(135deg,${roleColor},${roleColor}99)` }}>
+                  {initials}
+                </div>
+              )}
+              <div className="hidden md:block">
+                <p className="text-[13px] font-semibold leading-tight" style={{ color: nameCl }}>
+                  {user.role === 'DOCTOR' ? 'Dr. ' : ''}{user.firstName} {user.lastName}
+                </p>
+                <p className="text-[10px] font-medium" style={{ color: roleColor }}>{roleLabels[user.role] || user.role}</p>
               </div>
+              <ChevronDown size={13} className="hidden md:block" style={{ color: iconCl }} />
+            </button>
+
+            {profileOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
+                <div className="absolute right-0 mt-2 w-52 rounded-2xl shadow-xl z-50 overflow-hidden py-1"
+                  style={{ background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
+                  <div className="px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
+                    <p className="font-bold text-sm" style={{ color: titleC }}>{user.firstName} {user.lastName}</p>
+                    <p className="text-[11px]" style={{ color: roleColor }}>{roleLabels[user.role]}</p>
+                  </div>
+                  <button onClick={() => { router.push('/settings'); setProfileOpen(false) }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
+                    style={{ color: dark ? '#C8D8F0' : '#374151' }}>
+                    <span className="text-base">👤</span> Edit Profile
+                  </button>
+                  <button onClick={() => { router.push('/settings'); setProfileOpen(false) }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
+                    style={{ color: dark ? '#C8D8F0' : '#374151' }}>
+                    <span className="text-base">🔑</span> Change Password
+                  </button>
+                  <div className="my-1" style={{ borderTop: `1px solid ${bdr}` }} />
+                  <button onClick={() => {
+                    localStorage.removeItem('cc_token')
+                    localStorage.removeItem('cc_user')
+                    window.location.href = '/login'
+                  }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-red-500/10 transition-colors text-red-400">
+                    <span className="text-base">🚪</span> Sign Out
+                  </button>
+                </div>
+              </>
             )}
-            <div className="hidden md:block">
-              <p className="text-[13px] font-semibold leading-tight group-hover:text-clinic-blue transition-colors"
-                style={{ color: nameCl }}>
-                {user.role === 'DOCTOR' ? 'Dr. ' : ''}{user.firstName} {user.lastName}
-              </p>
-              <p className="text-[10px] font-medium" style={{ color: roleColor }}>
-                {roleLabels[user.role] || user.role}
-              </p>
-            </div>
-            <ChevronDown size={13} className="hidden md:block" style={{ color: iconCl }} />
           </div>
         )}
       </div>
+
+      {/* Install guide modal */}
+      {installOpen && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={() => setInstallOpen(false)} />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[340px] rounded-3xl shadow-2xl p-6"
+            style={{ background: dropBg, border: `1px solid ${bdr}` }}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-bold text-base" style={{ color: titleC, fontFamily: 'Plus Jakarta Sans' }}>Install Code Clinic</h3>
+              <button onClick={() => setInstallOpen(false)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/10">
+                <X size={15} style={{ color: iconCl }} />
+              </button>
+            </div>
+
+            {/* Android / Chrome */}
+            <div className="rounded-2xl p-4 mb-3" style={{ background: dark ? 'rgba(255,255,255,0.05)' : '#F8FAFF', border: `1px solid ${bdr}` }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Smartphone size={16} style={{ color: '#29ABE2' }} />
+                <p className="font-bold text-sm" style={{ color: titleC }}>Android / Chrome</p>
+              </div>
+              <ol className="text-xs space-y-1" style={{ color: dark ? '#93C5FD' : '#4B5563' }}>
+                <li>1. Tap the <strong>⋮ menu</strong> in Chrome</li>
+                <li>2. Tap <strong>"Add to Home screen"</strong></li>
+                <li>3. Tap <strong>"Add"</strong> — done!</li>
+              </ol>
+            </div>
+
+            {/* iPhone / Safari */}
+            <div className="rounded-2xl p-4 mb-3" style={{ background: dark ? 'rgba(255,255,255,0.05)' : '#F8FAFF', border: `1px solid ${bdr}` }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Smartphone size={16} style={{ color: '#6B7280' }} />
+                <p className="font-bold text-sm" style={{ color: titleC }}>iPhone / Safari</p>
+              </div>
+              <ol className="text-xs space-y-1" style={{ color: dark ? '#93C5FD' : '#4B5563' }}>
+                <li>1. Tap the <strong>Share button</strong> (□↑)</li>
+                <li>2. Scroll down → <strong>"Add to Home Screen"</strong></li>
+                <li>3. Tap <strong>"Add"</strong> — done!</li>
+              </ol>
+            </div>
+
+            {/* Desktop */}
+            <div className="rounded-2xl p-4 mb-4" style={{ background: dark ? 'rgba(255,255,255,0.05)' : '#F8FAFF', border: `1px solid ${bdr}` }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Monitor size={16} style={{ color: '#1A237E' }} />
+                <p className="font-bold text-sm" style={{ color: titleC }}>Desktop (Chrome / Edge)</p>
+              </div>
+              <ol className="text-xs space-y-1" style={{ color: dark ? '#93C5FD' : '#4B5563' }}>
+                <li>1. Look for the <strong>install icon ⊕</strong> in the address bar</li>
+                <li>2. Click it → <strong>"Install"</strong></li>
+                <li>3. App opens in its own window!</li>
+              </ol>
+            </div>
+
+            {installPrompt && (
+              <button onClick={() => { handleInstall(); setInstallOpen(false) }}
+                className="w-full py-3 rounded-2xl font-bold text-white text-sm"
+                style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 6px 20px rgba(41,171,226,0.4)' }}>
+                Install Now on This Device
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </header>
   )
 }
