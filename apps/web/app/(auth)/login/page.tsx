@@ -171,9 +171,9 @@ export default function LoginPage() {
         {dark ? <Sun size={17} color="#FCD34D"/> : <Moon size={17} color="#1A237E"/>}
       </button>
 
-      {/* ── LEFT 50%: glass login card ── */}
-      <div className="flex items-center justify-center p-10 relative z-10" style={{ width:'50%' }}>
-        <div className="w-full max-w-[420px] rounded-3xl px-8 py-7"
+      {/* ── LEFT: glass login card (full width mobile, 50% desktop) ── */}
+      <div className="flex items-center justify-center w-full lg:w-1/2 px-5 py-8 sm:p-10 relative z-10">
+        <div className="w-full max-w-[420px] rounded-3xl px-6 py-6 sm:px-8 sm:py-7"
           style={{
             background: cardBg,
             backdropFilter: 'blur(36px)',

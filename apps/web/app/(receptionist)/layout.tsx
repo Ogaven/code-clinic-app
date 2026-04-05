@@ -104,11 +104,19 @@ export default function ReceptionistLayout({ children }: { children: React.React
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
 
+      {/* ── Mobile sidebar overlay ────────────────────────────── */}
+      {collapsed === false && (
+        <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setCol(true)}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        </div>
+      )}
+
       {/* ── Sidebar ──────────────────────────────────────────── */}
       <aside
         className={cn(
-          'flex flex-col h-screen flex-shrink-0 transition-all duration-300 z-30 sticky top-0',
-          collapsed ? 'w-[64px]' : 'w-[220px]',
+          'flex flex-col h-screen flex-shrink-0 transition-all duration-300 z-50',
+          'fixed lg:sticky top-0',
+          collapsed ? '-translate-x-full lg:translate-x-0 w-[220px] lg:w-[64px]' : 'translate-x-0 w-[220px]',
         )}
         style={{
           background: 'linear-gradient(180deg, #0c1e50 0%, #0e2866 100%)',
@@ -213,10 +221,19 @@ export default function ReceptionistLayout({ children }: { children: React.React
       </aside>
 
       {/* ── Main Area ────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ml-0">
 
         {/* Top bar */}
-        <header className="h-14 flex items-center gap-4 px-5 bg-white border-b border-gray-100 flex-shrink-0 z-20">
+        <header className="h-14 flex items-center gap-3 px-4 bg-white border-b border-gray-100 flex-shrink-0 z-20">
+
+          {/* Hamburger (mobile only) */}
+          <button onClick={() => setCol(false)}
+            className="lg:hidden w-9 h-9 rounded-xl flex items-center justify-center bg-gray-50 border border-gray-200 flex-shrink-0">
+            <Search size={0} className="hidden" />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A237E" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
 
           {/* Search */}
           <div className="flex-1 max-w-lg relative">
