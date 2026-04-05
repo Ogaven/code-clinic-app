@@ -1,0 +1,127 @@
+'use client'
+
+import { useRef, useState } from 'react'
+import { Camera, Loader2, X } from 'lucide-react'
+import { cn, getInitials } from '@/lib/utils'
+
+interface AvatarUploadProps {
+  userId: string
+  firstName: string
+  lastName: string
+  currentAvatarUrl?: string | null
+  colour?: string
+  size?: 'md' | 'lg' | 'xl'
+  onUploaded?: (avatarUrl: string) => void
+  token?: string
+}
+
+const sizes = {
+  md: { wrapper: 'w-12 h-12', text: 'text-sm', icon: 14 },
+  lg: { wrapper: 'w-20 h-20', text: 'text-lg', icon: 16 },
+  xl: { wrapper: 'w-28 h-28', text: 'text-2xl', icon: 20 },
+}
+
+export default function AvatarUpload({
+  userId, firstName, lastName, currentAvatarUrl, colour, size = 'lg', onUploaded, token,
+}: AvatarUploadProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [preview, setPreview] = useState<string | null>(currentAvatarUrl || null)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const s = sizes[size]
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Only JPEG, PNG or WebP images allowed')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be under 5MB')
+      return
+    }
+
+    setError(null)
+    setUploading(true)
+
+    // Local preview immediately
+    const reader = new FileReader()
+    reader.onload = (ev) => setPreview(ev.target?.result as string)
+    reader.readAsDataURL(file)
+
+    try {
+      const form = new FormData()
+      form.append('avatar', file)
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/employees/${userId}/avatar`,
+        {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: form,
+          credentials: 'include',
+        },
+      )
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Upload failed')
+      }
+
+      const { avatarUrl } = await res.json()
+      setPreview(avatarUrl)
+      onUploaded?.(avatarUrl)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="relative inline-block group">
+      {/* Avatar circle */}
+      <div
+        className={cn('rounded-full border-4 border-white shadow-md overflow-hidden flex items-center justify-center', s.wrapper)}
+        style={{ backgroundColor: !preview ? (colour || '#1A237E') : undefined }}
+      >
+        {preview ? (
+          <img src={preview} alt={`${firstName} ${lastName}`} className="w-full h-full object-cover" />
+        ) : (
+          <span className={cn('font-bold text-white', s.text)}>
+            {getInitials(firstName, lastName)}
+          </span>
+        )}
+
+        {/* Upload overlay */}
+        <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+          onClick={() => inputRef.current?.click()}
+        >
+          {uploading ? (
+            <Loader2 size={s.icon} className="text-white animate-spin" />
+          ) : (
+            <Camera size={s.icon} className="text-white" />
+          )}
+        </div>
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleFile}
+      />
+
+      {error && (
+        <div className="absolute top-full left-0 mt-1 w-48 bg-red-50 border border-red-200 text-red-600 text-xs rounded-lg p-2 flex items-start gap-1 z-10">
+          <X size={12} className="mt-0.5 flex-shrink-0" />
+          {error}
+        </div>
+      )}
+    </div>
+  )
+}

@@ -1,0 +1,469 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS (SQLite uses String — validated at app level)
+// ─────────────────────────────────────────────
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  role              String    // ADMIN | DOCTOR | RECEPTIONIST | ACCOUNTS | DEVELOPER
+  firstName         String
+  lastName          String
+  phone             String?
+  avatarR2Key       String?
+  twoFactorSecret   String?
+  twoFactorEnabled  Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  lastLogin         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  doctor            Doctor?
+  auditLogs         AuditLog[]
+  assistantMessages AssistantMessage[]
+  supportTickets    SupportTicket[]
+  expenses          Expense[]   @relation("RecordedBy")
+  payroll           StaffPayroll[]
+  appointments      Appointment[] @relation("CreatedBy")
+
+  @@map("users")
+}
+
+model Doctor {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialisation String?
+  colour         String   @default("#4A90D9")
+  photoR2Key     String?
+  workingDays    String   @default("[1,2,3,4,5]")
+  workingHours   String   @default("{\"start\":\"08:00\",\"end\":\"18:00\"}")
+  serviceIds     String   @default("[]")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  appointments   Appointment[]
+  blockedTimes   BlockedTime[]
+
+  @@map("doctors")
+}
+
+model BlockedTime {
+  id        String   @id @default(uuid())
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  startAt   DateTime
+  endAt     DateTime
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@map("blocked_times")
+}
+
+model Patient {
+  id                    String   @id @default(uuid())
+  firstName             String
+  lastName              String
+  phone                 String
+  email                 String?
+  dob                   DateTime?
+  gender                String?  // MALE | FEMALE | OTHER
+  address               String?
+  district              String?
+  medicalNotesEncrypted String?
+  avatarR2Key           String?
+  accountBalance        Int      @default(0)
+  isActive              Boolean  @default(true)
+  referredBy            String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  appointments  Appointment[]
+  invoices      Invoice[]
+  payments      Payment[]
+  feedback      PatientFeedback[]
+  nurtureLogs   NurtureLog[]
+  agentLogs     AgentLog[]
+
+  @@unique([phone])
+  @@map("patients")
+}
+
+model Service {
+  id             String  @id @default(uuid())
+  name           String
+  description    String?
+  category       String  @default("General")
+  durationMins   Int     @default(30)
+  priceUGX       Int
+  priceUSD       Float?
+  vatApplicable  Boolean @default(true)
+  colour         String  @default("#29ABE2")
+  isActive       Boolean @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  appointments   Appointment[]
+
+  @@unique([name])
+  @@map("services")
+}
+
+model Appointment {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  doctorId    String
+  doctor      Doctor   @relation(fields: [doctorId], references: [id])
+  serviceId   String
+  service     Service  @relation(fields: [serviceId], references: [id])
+  startAt     DateTime
+  endAt       DateTime
+  status      String   @default("PENDING")
+  notes       String?
+  createdById String?
+  createdBy   User?    @relation("CreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  invoice     Invoice?
+  feedback    PatientFeedback?
+
+  @@unique([doctorId, startAt])
+  @@map("appointments")
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  appointmentId String?  @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  lineItems     String   // JSON string
+  subtotalUGX   Int
+  vatUGX        Int      @default(0)
+  totalUGX      Int
+  paidUGX       Int      @default(0)
+  status        String   @default("DRAFT")
+  dueDate       DateTime?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payments      Payment[]
+
+  @@map("invoices")
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  amountUGX Int
+  method    String   // CASH | MTN_MOMO | AIRTEL_MONEY | VISA | MASTERCARD | etc
+  reference String?
+  paidAt    DateTime @default(now())
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@map("payments")
+}
+
+model Expense {
+  id           String   @id @default(uuid())
+  category     String
+  amountUGX    Int
+  description  String
+  receiptR2Key String?
+  recordedById String
+  recordedBy   User     @relation("RecordedBy", fields: [recordedById], references: [id])
+  date         DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@map("expenses")
+}
+
+model StaffPayroll {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  month           String
+  grossUGX        Int
+  nssfEmployee    Int
+  nssfEmployer    Int
+  paye            Int
+  otherDeductions Int      @default(0)
+  netUGX          Int
+  status          String   @default("PENDING")
+  paidAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, month])
+  @@map("staff_payroll")
+}
+
+model Lead {
+  id          String   @id @default(uuid())
+  name        String
+  phone       String?
+  email       String?
+  source      String   @default("WALK_IN")
+  stage       String   @default("NEW")
+  score       Int      @default(0)
+  assignedTo  String?
+  quizId      String?
+  quizAnswers String?  // JSON string
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  nurtureLogs NurtureLog[]
+
+  @@map("leads")
+}
+
+model Quiz {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  questions   String   // JSON string
+  resultText  String   // JSON string
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("quizzes")
+}
+
+model QRCapture {
+  id         String   @id @default(uuid())
+  name       String
+  formConfig String   // JSON string
+  destination String  @default("CRM")
+  qrCodeData String?
+  scanCount  Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@map("qr_captures")
+}
+
+model WebsiteVisitor {
+  id            String   @id @default(uuid())
+  sessionId     String   @unique
+  page          String?
+  ip            String?
+  userAgent     String?
+  capturedEmail String?
+  capturedName  String?
+  agentEngaged  Boolean  @default(false)
+  agentLogId    String?
+  createdAt     DateTime @default(now())
+
+  @@map("website_visitors")
+}
+
+model Campaign {
+  id              String   @id @default(uuid())
+  type            String
+  name            String
+  channel         String   @default("WHATSAPP")
+  messageTemplate String
+  targetSegment   String?  // JSON string
+  scheduledAt     DateTime?
+  status          String   @default("DRAFT")
+  sentCount       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  nurtureLogs NurtureLog[]
+
+  @@map("campaigns")
+}
+
+model NurtureLog {
+  id          String   @id @default(uuid())
+  patientId   String?
+  patient     Patient? @relation(fields: [patientId], references: [id])
+  leadId      String?
+  lead        Lead?    @relation(fields: [leadId], references: [id])
+  campaignId  String?
+  campaign    Campaign? @relation(fields: [campaignId], references: [id])
+  channel     String
+  message     String
+  status      String   @default("QUEUED")
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  externalId  String?
+  createdAt   DateTime @default(now())
+
+  @@map("nurture_logs")
+}
+
+model AgentLog {
+  id          String   @id @default(uuid())
+  patientId   String?
+  patient     Patient? @relation(fields: [patientId], references: [id])
+  visitorId   String?
+  callSid     String?
+  type        String
+  channel     String   @default("VOICE")
+  transcript  String?
+  outcome     String?
+  durationSec Int?
+  escalated   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  recording   CallRecording?
+
+  @@map("agent_logs")
+}
+
+model CallRecording {
+  id             String   @id @default(uuid())
+  agentLogId     String   @unique
+  agentLog       AgentLog @relation(fields: [agentLogId], references: [id])
+  r2Key          String
+  durationSec    Int?
+  transcriptText String?
+  qualityScore   Float?
+  adminNotes     String?
+  createdAt      DateTime @default(now())
+
+  @@map("call_recordings")
+}
+
+model AgentPrompt {
+  id           String   @id @default(uuid())
+  type         String   @unique
+  name         String
+  systemPrompt String
+  version      Int      @default(1)
+  isActive     Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@map("agent_prompts")
+}
+
+model VoiceProfile {
+  id                String   @id @default(uuid())
+  name              String
+  elevenLabsVoiceId String
+  isCloned          Boolean  @default(false)
+  previewR2Key      String?
+  isDefault         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  @@map("voice_profiles")
+}
+
+model KnowledgeBase {
+  id         String   @id @default(uuid())
+  title      String
+  type       String
+  r2Key      String?
+  sourceUrl  String?
+  rawText    String?
+  chunkIndex Int      @default(0)
+  parentId   String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@map("knowledge_base")
+}
+
+model PatientFeedback {
+  id            String   @id @default(uuid())
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  appointmentId String?  @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  rating        Int
+  comment       String?
+  channel       String   @default("APP")
+  submittedAt   DateTime @default(now())
+
+  @@map("patient_feedback")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  resource   String
+  resourceId String?
+  metadata   String?  // JSON string
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model AssistantMessage {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  role      String   // USER | ASSISTANT
+  content   String
+  context   String?  // JSON string
+  createdAt DateTime @default(now())
+
+  @@map("assistant_messages")
+}
+
+model SupportTicket {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  title       String
+  description String
+  status      String   @default("OPEN")
+  priority    String   @default("MEDIUM")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("support_tickets")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   // recipient user ID
+  type      String   // ESCALATION | APPOINTMENT | CONFIRMATION | MESSAGE | SYSTEM
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  href      String?
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model InternalMessage {
+  id          String   @id @default(uuid())
+  fromUserId  String
+  toRole      String?  // ADMIN | DOCTOR | RECEPTIONIST | ACCOUNTS
+  toUserId    String?
+  subject     String?
+  body        String
+  patientTag  String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@map("internal_messages")
+}

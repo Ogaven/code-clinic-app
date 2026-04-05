@@ -1,0 +1,17 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "openssl"]
+
+[phases.install]
+cmds = [
+  "npm install -g pnpm@9",
+  "pnpm install --frozen-lockfile"
+]
+
+[phases.build]
+cmds = [
+  "pnpm --filter database generate",
+  "pnpm --filter api build"
+]
+
+[start]
+cmd = "node apps/api/dist/main.js"

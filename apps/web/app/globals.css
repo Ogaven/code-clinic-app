@@ -1,0 +1,263 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221 83% 30%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 199 66% 53%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221 83% 30%;
+    --radius: 0.5rem;
+  }
+
+  /* ── Dark mode tokens ──────────────────────── */
+  .dark {
+    color-scheme: dark;
+    --background:  222 40% 10%;
+    --foreground:  210 50% 92%;
+    --card:        222 38% 14%;
+    --card-foreground: 210 50% 92%;
+    --popover:     222 38% 13%;
+    --popover-foreground: 210 50% 92%;
+    --primary:     199 66% 58%;
+    --primary-foreground: 222 40% 10%;
+    --secondary:   222 32% 20%;
+    --secondary-foreground: 210 50% 92%;
+    --muted:       222 30% 18%;
+    --muted-foreground: 215 25% 60%;
+    --accent:      222 30% 20%;
+    --accent-foreground: 210 50% 92%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 210 40% 98%;
+    --border:      222 28% 22%;
+    --input:       222 30% 18%;
+    --ring:        199 66% 58%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-clinic-bg text-foreground antialiased;
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  }
+  .dark body { background: #0e1f4d; }
+  h1, h2, h3, h4 { @apply text-clinic-navy; font-family: 'Plus Jakarta Sans', sans-serif; }
+  .dark h1, .dark h2, .dark h3, .dark h4 { color: #E0F0FF; }
+}
+
+/* ── Scrollbar ────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+
+.sidebar-nav::-webkit-scrollbar { width: 4px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+/* ── Calendar ─────────────────────────────── */
+.calendar-grid { display: grid; }
+.time-slot-row { height: 48px; border-bottom: 1px solid #F3F4F6; }
+.time-slot-row:hover { background: #F0F7FF; }
+
+/* ── Appointment blocks ───────────────────── */
+.appointment-block {
+  @apply rounded-lg px-2 py-1 text-xs font-medium text-white cursor-pointer;
+  @apply transition-all hover:opacity-90 hover:shadow-md;
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  overflow: hidden;
+}
+
+/* ── Blocked time hatched ─────────────────── */
+.blocked-slot {
+  background: repeating-linear-gradient(
+    45deg,
+    #F3F4F6,
+    #F3F4F6 4px,
+    #E5E7EB 4px,
+    #E5E7EB 8px
+  );
+}
+
+/* ── Status badges ────────────────────────── */
+.badge-confirmed   { @apply bg-blue-100 text-blue-700; }
+.badge-pending     { @apply bg-amber-100 text-amber-700; }
+.badge-completed   { @apply bg-emerald-100 text-emerald-700; }
+.badge-cancelled   { @apply bg-red-100 text-red-700; }
+.badge-no-show     { @apply bg-gray-100 text-gray-500; }
+.badge-in-progress { @apply bg-violet-100 text-violet-700; }
+
+/* ── KPI cards ────────────────────────────── */
+.kpi-card {
+  @apply bg-white rounded-2xl p-5 shadow-sm border border-gray-100;
+  @apply transition-all duration-200 hover:shadow-md hover:-translate-y-0.5;
+}
+
+/* ── UGX ──────────────────────────────────── */
+.ugx::before { content: 'UGX '; font-size: 0.8em; opacity: 0.7; }
+
+/* ── Animations ───────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33%       { transform: translateY(-12px) rotate(2deg); }
+  66%       { transform: translateY(-6px) rotate(-1deg); }
+}
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-18px); }
+}
+@keyframes blobPulse {
+  0%, 100% { transform: scale(1) translate(0,0); }
+  50%       { transform: scale(1.08) translate(8px, -8px); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(32px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.8); }
+}
+
+.animate-fade-in     { animation: fadeIn 0.4s ease both; }
+.animate-fade-in-up  { animation: fadeInUp 0.5s ease both; }
+.animate-float       { animation: float 6s ease-in-out infinite; }
+.animate-float-slow  { animation: floatSlow 8s ease-in-out infinite; }
+.animate-blob-pulse  { animation: blobPulse 7s ease-in-out infinite; }
+.animate-slide-right { animation: slideInRight 0.4s ease both; }
+.animate-pulse-dot   { animation: pulse-dot 2s ease-in-out infinite; }
+
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-400 { animation-delay: 0.4s; }
+.delay-500 { animation-delay: 0.5s; }
+.delay-1s  { animation-delay: 1s; }
+.delay-2s  { animation-delay: 2s; }
+.delay-3s  { animation-delay: 3s; }
+
+/* ── Glassmorphism ────────────────────────── */
+.glass {
+  background: rgba(255,255,255,0.12);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.2);
+}
+.glass-dark {
+  background: rgba(26,35,126,0.15);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(41,171,226,0.2);
+}
+
+/* ── Input focus ring ─────────────────────── */
+.input-clinic {
+  @apply w-full px-4 py-3 border border-gray-200 rounded-xl text-sm;
+  @apply focus:outline-none focus:ring-2 focus:ring-clinic-blue/30 focus:border-clinic-blue;
+  @apply transition-all duration-200 bg-gray-50/50;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.input-clinic:focus { background: white; }
+
+/* ── Gradient text ────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #1A237E 0%, #29ABE2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Dashboard stat card ──────────────────── */
+.stat-card {
+  @apply relative overflow-hidden rounded-2xl p-5;
+  @apply transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5;
+}
+
+/* ══════════════════════════════════════════
+   DARK MODE — glass morphism everything
+   ══════════════════════════════════════════ */
+
+/* Glass card — apply to any element that should be a translucent dark card */
+.dark .glass-card {
+  background: rgba(22, 45, 110, 0.58) !important;
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border-color: rgba(41, 171, 226, 0.18) !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+/* KPI cards in dark mode */
+.dark .kpi-card {
+  background: rgba(22, 45, 110, 0.58) !important;
+  backdrop-filter: blur(24px);
+  border-color: rgba(41,171,226,0.15) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+
+/* Scrollbar dark */
+.dark ::-webkit-scrollbar-thumb { background: rgba(41,171,226,0.2); }
+.dark ::-webkit-scrollbar-thumb:hover { background: rgba(41,171,226,0.4); }
+
+/* Status badges dark */
+.dark .badge-confirmed   { @apply bg-blue-900/50 text-blue-300; }
+.dark .badge-pending     { @apply bg-amber-900/50 text-amber-300; }
+.dark .badge-completed   { @apply bg-emerald-900/50 text-emerald-300; }
+.dark .badge-cancelled   { @apply bg-red-900/50 text-red-300; }
+.dark .badge-no-show     { @apply bg-gray-800/60 text-gray-400; }
+.dark .badge-in-progress { @apply bg-violet-900/50 text-violet-300; }
+
+/* Blocked slot dark */
+.dark .blocked-slot {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255,255,255,0.03),
+    rgba(255,255,255,0.03) 4px,
+    rgba(255,255,255,0.07) 4px,
+    rgba(255,255,255,0.07) 8px
+  ) !important;
+}
+
+/* Calendar grid dark */
+.dark .time-slot-row { border-bottom-color: rgba(255,255,255,0.04); }
+.dark .time-slot-row:hover { background: rgba(41,171,226,0.05); }
+
+/* Input dark */
+.dark .input-clinic {
+  background: rgba(255,255,255,0.05) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+  color: #E0F0FF !important;
+}
+.dark .input-clinic:focus { background: rgba(255,255,255,0.08) !important; }
