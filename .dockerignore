@@ -1,0 +1,39 @@
+# Version control
+.git
+.gitignore
+
+# Node modules (will be installed fresh in Docker)
+node_modules
+apps/*/node_modules
+packages/*/node_modules
+
+# Build outputs
+apps/*/dist
+apps/*/.next
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode
+.idea
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+coverage
+
+# Docker files (no need to copy into image)
+Dockerfile
+.dockerignore
