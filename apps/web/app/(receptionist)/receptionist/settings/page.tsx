@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import {
   User, Lock, Bell, Palette, Camera, Check, X, Eye, EyeOff,
@@ -37,11 +37,10 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'ok' | 'err'; onClos
 }
 
 export default function SettingsPage() {
-  const router      = useRouter()
-  const searchParams = useSearchParams()
-  const fileRef     = useRef<HTMLInputElement>(null)
+  const router  = useRouter()
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  const [tab, setTab]         = useState<Tab>((searchParams?.get('tab') as Tab) || 'profile')
+  const [tab, setTab] = useState<Tab>('profile')
   const [user, setUser]       = useState<any>(null)
   const [toast, setToast]     = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [saving, setSaving]   = useState(false)
@@ -78,6 +77,11 @@ export default function SettingsPage() {
   const API = '/api-proxy'
 
   useEffect(() => {
+    // Read tab from URL without useSearchParams (avoids Suspense requirement)
+    const params = new URLSearchParams(window.location.search)
+    const t = params.get('tab') as Tab
+    if (t && ['profile', 'security', 'notifications', 'appearance'].includes(t)) setTab(t)
+
     const stored = localStorage.getItem('cc_user')
     if (!stored) { router.push('/login'); return }
     const u = JSON.parse(stored)
