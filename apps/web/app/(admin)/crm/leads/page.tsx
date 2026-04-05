@@ -26,13 +26,13 @@ export default function LeadsPage() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/crm/leads`, {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/crm/leads`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()).then(d => setLeads(Array.isArray(d) ? d : d.data || [])).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
   async function moveStage(id: string, stage: string) {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/crm/leads/${id}`, {
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/crm/leads/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ stage }),
@@ -125,7 +125,7 @@ function AddLeadModal({ onClose, onAdded, token }: any) {
     e.preventDefault()
     setLoading(true)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/crm/leads`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/crm/leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(form),

@@ -21,7 +21,7 @@ export default function PatientProfilePage() {
   const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cc_user') || '{}') : {}
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/${id}`, {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/patients/${id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())

@@ -39,7 +39,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const [installPrompt, setInstallPrompt] = useState<any>(null)
   const [installed, setInstalled] = useState(false)
 
-  const API = process.env.NEXT_PUBLIC_API_URL
+  const API = process.env.NEXT_PUBLIC_API_URL || '/api-proxy'
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')

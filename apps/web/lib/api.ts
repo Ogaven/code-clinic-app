@@ -1,4 +1,10 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+// In production: calls go to /api-proxy/* which Next.js rewrites to the real API (server-side, no CORS).
+// In development: calls go to NEXT_PUBLIC_API_URL (localhost:4000).
+const API_URL = typeof window === 'undefined'
+  ? (process.env.NEXT_PUBLIC_API_URL || '/api-proxy')
+  : (process.env.NEXT_PUBLIC_API_URL || '/api-proxy')
+
+export const getApiUrl = () => API_URL
 
 export async function apiFetch<T = any>(
   path: string,

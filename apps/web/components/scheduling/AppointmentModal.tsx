@@ -45,7 +45,7 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
     setLoading(status)
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/scheduling/appointments/${appointment!.id}/status`,
+        `${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/scheduling/appointments/${appointment!.id}/status`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

@@ -409,7 +409,7 @@ type ViewMode = 'doctors' | 'week' | 'month'
 export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: Props) {
   const token   = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const headers = { Authorization: `Bearer ${token}` }
-  const API     = process.env.NEXT_PUBLIC_API_URL
+  const API     = process.env.NEXT_PUBLIC_API_URL || '/api-proxy'
 
   const [view,        setView]        = useState<ViewMode>('doctors')
   const [date,        setDate]        = useState(new Date())

@@ -18,7 +18,7 @@ function avatarColor(name: string) {
 }
 
 export default function PatientsPage() {
-  const API   = process.env.NEXT_PUBLIC_API_URL
+  const API   = process.env.NEXT_PUBLIC_API_URL || '/api-proxy'
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { Authorization: `Bearer ${token}` }
 
