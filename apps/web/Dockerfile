@@ -34,15 +34,15 @@ COPY --from=deps /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=deps /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
 # Copy the full apps/web source (build context root = apps/web)
-COPY . ./apps/web
+COPY . ./
 
 # Build the Next.js app — next.config.mjs sets output: 'standalone'
 RUN pnpm --filter web build
 
 # Copy public assets and static files into the standalone bundle so the
 # Node.js server can serve them without a separate CDN step.
-RUN cp -r apps/web/public apps/web/.next/standalone/apps/web/public && \
-    cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
+RUN cp -r public .next/standalone/public && \
+    cp -r .next/static .next/standalone/.next/static
 
 # ── Stage 3: runner ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
@@ -54,13 +54,12 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 # Copy only the self-contained standalone bundle produced by Next.js.
-# The monorepo path (apps/web) is preserved inside the standalone output.
-COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/standalone/apps/web/public ./apps/web/public
-COPY --from=builder /app/apps/web/.next/standalone/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/standalone/public ./public
+COPY --from=builder /app/.next/standalone/.next/static ./.next/static
 
 EXPOSE 3000
 
 # next.config.mjs output: 'standalone' places the server entry point at
-# apps/web/server.js inside the standalone directory.
-CMD ["node", "apps/web/server.js"]
+# server.js inside the standalone directory.
+CMD ["node", "server.js"]
