@@ -43,6 +43,34 @@ function setRefreshCookie(res: any, token: string) {
   })
 }
 
+// GET /auth/needs-setup — check if DB has any users
+router.get('/needs-setup', async (_req, res) => {
+  const count = await prisma.user.count()
+  res.json({ needsSetup: count === 0 })
+})
+
+// POST /auth/setup — first-run admin account creation (only when 0 users exist)
+router.post('/setup', async (req, res) => {
+  const count = await prisma.user.count()
+  if (count > 0) {
+    res.status(403).json({ error: 'Setup already complete. Contact your administrator for access.' })
+    return
+  }
+  const { firstName, lastName, email, password } = req.body
+  if (!firstName || !lastName || !email || !password || password.length < 6) {
+    res.status(400).json({ error: 'All fields required. Password must be at least 6 characters.' })
+    return
+  }
+  const hash = await bcrypt.hash(password, 12)
+  const user = await prisma.user.create({
+    data: { email, passwordHash: hash, role: 'ADMIN', firstName, lastName, phone: '+256700000000' },
+  })
+  const accessToken  = signAccess(user)
+  const refreshToken = signRefresh(user.id)
+  setRefreshCookie(res, refreshToken)
+  res.json({ accessToken, user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName } })
+})
+
 // POST /auth/login
 router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   const { email, password } = req.body

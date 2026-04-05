@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Image from 'next/image'
 import { Eye, EyeOff, Loader2, Mail, Lock, Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -99,6 +100,11 @@ export default function LoginPage() {
     setDark(isDark)
     document.documentElement.classList.toggle('dark', isDark)
     setTimeout(() => setReady(true), 60)
+    // Redirect to setup if no users exist
+    fetch('/api-proxy/auth/needs-setup')
+      .then(r => r.json())
+      .then(d => { if (d.needsSetup) router.replace('/setup') })
+      .catch(() => {})
   }, [])
 
   function toggleTheme() {
@@ -172,7 +178,7 @@ export default function LoginPage() {
       </button>
 
       {/* ── LEFT: glass login card (full width mobile, 50% desktop) ── */}
-      <div className="flex items-center justify-center w-full lg:w-1/2 px-5 py-8 sm:p-10 relative z-10">
+      <div className="flex items-start lg:items-center justify-center w-full lg:w-1/2 px-5 pt-10 pb-6 sm:px-10 sm:pt-12 lg:p-10 overflow-y-auto relative z-10">
         <div className="w-full max-w-[420px] rounded-3xl px-6 py-6 sm:px-8 sm:py-7"
           style={{
             background: cardBg,
@@ -263,7 +269,11 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <p className="text-center text-[11px] mt-4" style={{ color:subClr }}>©2026 elyrac Ai</p>
+          <p className="text-center text-[12px] mt-5" style={{ color:subClr }}>
+            Don&apos;t have an account?{' '}
+            <Link href="/setup" className="font-bold hover:underline" style={{ color:'#29ABE2' }}>Register</Link>
+          </p>
+          <p className="text-center text-[11px] mt-2" style={{ color:subClr }}>©2026 elyrac Ai</p>
         </div>
       </div>
 
