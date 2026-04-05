@@ -16,12 +16,7 @@ export default function SetupPage() {
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
-    // If users already exist, send them to login
-    fetch('/api-proxy/auth/needs-setup')
-      .then(r => r.json())
-      .then(d => { if (!d.needsSetup) router.replace('/login') })
-      .catch(() => {})
-      .finally(() => setChecking(false))
+    setChecking(false)
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {

@@ -63,8 +63,8 @@ router.get('/db-status', async (_req, res) => {
   }
 })
 
-// POST /auth/seed — manually seed DB (only works when empty)
-router.post('/seed', async (_req, res) => {
+// GET /auth/seed — manually seed DB from browser (only works when empty)
+router.get('/seed', async (_req, res) => {
   try {
     const count = await prisma.user.count()
     if (count > 0) {
@@ -83,22 +83,19 @@ router.post('/seed', async (_req, res) => {
   }
 })
 
-// POST /auth/setup — first-run admin creation (only when 0 users)
+// POST /auth/setup — create admin account (upserts so always works)
 router.post('/setup', async (req, res) => {
   try {
-    const count = await prisma.user.count()
-    if (count > 0) {
-      res.status(403).json({ error: 'Setup already complete. Contact your administrator.' })
-      return
-    }
     const { firstName, lastName, email, password } = req.body
     if (!firstName || !lastName || !email || !password || password.length < 6) {
       res.status(400).json({ error: 'All fields required. Password min 6 characters.' })
       return
     }
     const hash = await bcrypt.hash(password, 12)
-    const user = await prisma.user.create({
-      data: { email, passwordHash: hash, role: 'ADMIN', firstName, lastName, phone: '+256700000000' },
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { passwordHash: hash, firstName, lastName, role: 'ADMIN' },
+      create: { email, passwordHash: hash, role: 'ADMIN', firstName, lastName, phone: '+256700000000' },
     })
     const accessToken  = signAccess(user)
     const refreshToken = signRefresh(user.id)
