@@ -11,7 +11,7 @@ COPY ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml ./
 
 # Copy package manifests for every workspace member the API depends on
 COPY package.json ./apps/api/package.json
-COPY ../packages/database/package.json ./packages/database/package.json
+COPY ../../packages/database/package.json ./packages/database/package.json
 
 # Install all workspace dependencies (respects the lockfile exactly)
 RUN pnpm install --frozen-lockfile
@@ -30,7 +30,7 @@ COPY --from=deps /app/packages/database/node_modules ./packages/database/node_mo
 
 # Copy workspace config and the packages the API depends on
 COPY ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml ./
-COPY ../packages/database ./packages/database
+COPY ../../packages/database ./packages/database
 COPY . ./apps/api
 
 # Generate the Prisma client, then compile the API TypeScript source
