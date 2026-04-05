@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser'
 import path from 'path'
 import fs from 'fs'
 import { generalLimiter } from './middleware/rateLimit'
+import { runStartup } from './startup'
 
 // Routes
 import authRouter from './routes/auth'
@@ -96,10 +97,12 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ error: 'Internal server error' })
 })
 
-app.listen(PORT, () => {
-  console.log(`\n🦷 CodeClinic API running on http://localhost:${PORT}`)
-  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`)
-  console.log(`   Timezone:    Africa/Kampala\n`)
+runStartup().then(() => {
+  app.listen(PORT, () => {
+    console.log(`\n🦷 CodeClinic API running on http://localhost:${PORT}`)
+    console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`)
+    console.log(`   Timezone:    Africa/Kampala\n`)
+  })
 })
 
 export default app
