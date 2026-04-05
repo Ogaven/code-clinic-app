@@ -5,13 +5,12 @@ WORKDIR /app
 
 RUN npm install -g pnpm@9
 
-# Copy workspace manifests from the repo root (one level up from apps/api).
-# Railway sets the build context to apps/api, so these files are at ../
-COPY ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml ./
+# Copy workspace manifests from the repo root (build context is the repo root).
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Copy package manifests for every workspace member the API depends on
-COPY package.json ./apps/api/package.json
-COPY ../../packages/database/package.json ./packages/database/package.json
+COPY apps/api/package.json ./apps/api/package.json
+COPY packages/database/package.json ./packages/database/package.json
 
 # Install all workspace dependencies (respects the lockfile exactly)
 RUN pnpm install --frozen-lockfile
@@ -29,9 +28,9 @@ COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
 
 # Copy workspace config and the packages the API depends on
-COPY ../package.json ../pnpm-lock.yaml ../pnpm-workspace.yaml ./
-COPY ../../packages/database ./packages/database
-COPY . ./apps/api
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/database ./packages/database
+COPY apps/api ./apps/api
 
 # Generate the Prisma client, then compile the API TypeScript source
 RUN pnpm --filter database generate
