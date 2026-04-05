@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import multer from 'multer'
-import { PrismaClient, Role } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
@@ -35,7 +35,7 @@ const createEmployeeSchema = z.object({
 // GET /employees
 router.get('/', requireAuth, adminOnly, async (_req, res) => {
   const employees = await prisma.user.findMany({
-    where: { role: { not: Role.ADMIN } },
+    where: { role: { not: 'ADMIN' } },
     select: {
       id: true, email: true, role: true, firstName: true, lastName: true,
       phone: true, isActive: true, lastLogin: true, avatarR2Key: true, createdAt: true,
@@ -104,7 +104,8 @@ router.post('/', requireAuth, adminOnly, validate(createEmployeeSchema), auditLo
 // PATCH /employees/:id/role
 router.patch('/:id/role', requireAuth, adminOnly, auditLog('employees'), async (req, res) => {
   const { role } = req.body
-  if (!Object.values(Role).includes(role)) {
+  const VALID_ROLES = ['ADMIN', 'DOCTOR', 'RECEPTIONIST', 'ACCOUNTS', 'DEVELOPER']
+  if (!VALID_ROLES.includes(role)) {
     res.status(400).json({ error: 'Invalid role' })
     return
   }

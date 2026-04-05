@@ -124,7 +124,7 @@ router.post('/quizzes/:id/submit', async (req: Request, res: Response) => {
     })
 
     // Find result text based on score
-    const resultText = quiz.resultText as Record<string, string>
+    const resultText = (quiz.resultText as unknown) as Record<string, string>
     const resultKeys = Object.keys(resultText).map(Number).sort((a, b) => b - a)
     const matchedKey = resultKeys.find(k => score >= k)
     const result = matchedKey !== undefined ? resultText[String(matchedKey)] : 'Thank you for completing the quiz!'

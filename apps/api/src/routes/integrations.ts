@@ -155,7 +155,7 @@ router.post('/google-calendar/sync', requireAuth, adminOnly, async (req, res) =>
 
       try {
         // Look for an existing event we created before
-        const existing = await calendar.events.list({
+        const existing = await (calendar.events.list as any)({
           calendarId,
           privateExtendedProperty: `codeclinicId=${appt.id}`,
           maxResults: 1,

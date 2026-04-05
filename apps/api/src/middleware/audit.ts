@@ -26,11 +26,11 @@ export function auditLog(resource: string) {
             action: req.method,
             resource,
             resourceId,
-            metadata: {
+            metadata: JSON.stringify({
               path: req.path,
               query: req.query,
               statusCode: res.statusCode,
-            },
+            }),
             ip: req.ip,
             userAgent: req.headers['user-agent'],
           },

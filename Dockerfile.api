@@ -1,8 +1,10 @@
 FROM node:20-alpine AS base
+# OpenSSL is required by Prisma on Alpine Linux
+RUN apk add --no-cache openssl
 RUN npm install -g pnpm@9
 WORKDIR /app
 
-# ── Install all dependencies ──────────────────────────────────
+# ── Install dependencies ───────────────────────────────────────
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/package.json
@@ -15,26 +17,21 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
 COPY . .
-# Generate Prisma client (prisma binary is in packages/database/node_modules)
 RUN cd packages/database && ./node_modules/.bin/prisma generate
-# Compile TypeScript API
 RUN pnpm --filter api build
 
 # ── Runtime ───────────────────────────────────────────────────
 FROM node:20-alpine AS runner
+RUN apk add --no-cache openssl
 WORKDIR /app
+ENV NODE_ENV=production
 
-# Copy only production node_modules
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-# Copy the generated Prisma client (already built — no need to re-generate)
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-# Copy compiled API
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
-# Copy prisma schema (needed at runtime for migrations/queries)
 COPY packages/database/prisma ./packages/database/prisma
 
 EXPOSE 4000
-ENV NODE_ENV=production
 CMD ["node", "apps/api/dist/main.js"]
