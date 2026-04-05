@@ -7,13 +7,13 @@ RUN npm install -g pnpm@9
 
 # Copy workspace manifests and lockfile from the monorepo root so pnpm can
 # resolve the full dependency graph across all packages.
-COPY ../package.json ./
-COPY ../pnpm-lock.yaml ./
-COPY ../pnpm-workspace.yaml ./
+COPY package.json ./
+COPY pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
 
 # Copy only the web package manifest first to leverage layer caching —
 # dependencies are reinstalled only when these files change.
-COPY package.json ./apps/web/package.json
+COPY apps/web/package.json ./apps/web/package.json
 
 RUN pnpm install --frozen-lockfile
 
@@ -29,12 +29,12 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 
 # Copy workspace manifests so pnpm/Next.js can resolve the workspace layout
-COPY --from=deps /app/package.json ./package.json
-COPY --from=deps /app/pnpm-lock.yaml ./pnpm-lock.yaml
-COPY --from=deps /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY package.json ./package.json
+COPY pnpm-lock.yaml ./pnpm-lock.yaml
+COPY pnpm-workspace.yaml ./pnpm-workspace.yaml
 
-# Copy the full apps/web source (build context root = apps/web)
-COPY . ./
+# Copy the apps/web source (build context root = repo root)
+COPY apps/web ./apps/web
 
 # Build the Next.js app — next.config.mjs sets output: 'standalone'
 RUN pnpm --filter web build
