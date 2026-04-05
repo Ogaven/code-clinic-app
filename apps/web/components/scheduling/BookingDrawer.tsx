@@ -5,7 +5,7 @@ import { X, Search, Loader2, Plus, User, Phone } from 'lucide-react'
 import { cn, formatPhone } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
 
-interface Service  { id: string; name: string; durationMins: number; priceUGX: number; colour: string; category?: string }
+interface Service  { id: string; name: string; durationMins: number; priceUGX: number; colour: string; category?: string; isActive?: boolean }
 interface Doctor   { id: string; firstName: string; lastName: string; colour: string; specialisation?: string }
 interface Patient  { id: string; firstName: string; lastName: string; phone: string }
 
