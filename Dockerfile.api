@@ -11,29 +11,30 @@ RUN pnpm install --frozen-lockfile
 
 # ── Build ─────────────────────────────────────────────────────
 FROM base AS builder
-# Copy ALL node_modules including database (contains prisma binary)
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
-# Copy source
 COPY . .
-# Generate Prisma client then compile TypeScript
+# Generate Prisma client (prisma binary is in packages/database/node_modules)
 RUN cd packages/database && ./node_modules/.bin/prisma generate
+# Compile TypeScript API
 RUN pnpm --filter api build
 
 # ── Runtime ───────────────────────────────────────────────────
 FROM node:20-alpine AS runner
-RUN npm install -g pnpm@9
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/api/package.json ./apps/api/package.json
-COPY packages/database/package.json ./packages/database/package.json
-COPY packages/database/prisma ./packages/database/prisma
-RUN pnpm install --frozen-lockfile --prod
-RUN cd packages/database && ./node_modules/.bin/prisma generate
-
+# Copy only production node_modules
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+# Copy the generated Prisma client (already built — no need to re-generate)
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# Copy compiled API
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
+# Copy prisma schema (needed at runtime for migrations/queries)
+COPY packages/database/prisma ./packages/database/prisma
 
 EXPOSE 4000
+ENV NODE_ENV=production
 CMD ["node", "apps/api/dist/main.js"]
