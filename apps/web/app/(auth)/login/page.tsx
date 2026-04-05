@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Eye, EyeOff, Loader2, Mail, Lock, Sun, Moon } from 'lucide-react'
@@ -33,7 +33,6 @@ const ROLE_REDIRECTS: Record<string, string> = {
 
 export default function LoginPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [email, setEmail]   = useState('')
   const [pwd, setPwd]       = useState('')
   const [showPwd, setShow]  = useState(false)
@@ -49,7 +48,7 @@ export default function LoginPage() {
     setTimeout(() => setReady(true), 60)
 
     // Show OAuth error if redirected back from Google with error
-    const oauthError = searchParams.get('error')
+    const oauthError = new URLSearchParams(window.location.search).get('error')
     if (oauthError) setError('Google sign-in failed. Please try again or use email.')
 
     // Redirect to setup if no users exist

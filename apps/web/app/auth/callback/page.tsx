@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 
 const ROLE_REDIRECTS: Record<string, string> = {
@@ -11,12 +11,12 @@ const ROLE_REDIRECTS: Record<string, string> = {
 
 export default function AuthCallback() {
   const router = useRouter()
-  const params = useSearchParams()
 
   useEffect(() => {
-    const token = params.get('token')
+    const params = new URLSearchParams(window.location.search)
+    const token   = params.get('token')
     const userRaw = params.get('user')
-    const error = params.get('error')
+    const error   = params.get('error')
 
     if (error) { router.replace('/login?error=' + error); return }
     if (!token || !userRaw) { router.replace('/login'); return }
