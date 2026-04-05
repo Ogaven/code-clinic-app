@@ -6,49 +6,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Calendar, Users, UserCheck, Bot, TrendingUp, TrendingDown,
-  ChevronRight, Clock, AlertTriangle, CheckCircle2, Zap,
-  MessageSquare, Phone, StickyNote, Plus, X, Send, Mic, MicOff,
+  ChevronRight, Clock, AlertTriangle, CheckCircle2,
+  MessageSquare, Plus, X, Send, Mic, MicOff, StickyNote,
   Minimize2, Maximize2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-// ── Analog Clock ──────────────────────────────────────────────
-function AnalogClock() {
-  const [time, setTime] = useState(new Date())
-  useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t) }, [])
-  const kla  = new Date(time.toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
-  const h = kla.getHours() % 12, m = kla.getMinutes(), s = kla.getSeconds()
-  const hDeg = h / 12 * 360 + m / 60 * 30
-  const mDeg = m / 60 * 360 + s / 60 * 6
-  const sDeg = s / 60 * 360
-  const cx = 44, cy = 44, r = 40
-  const hand = (deg: number, len: number) => ({
-    x2: cx + Math.cos((deg - 90) * Math.PI / 180) * len,
-    y2: cy + Math.sin((deg - 90) * Math.PI / 180) * len,
-  })
-  const timeStr = kla.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
-  const dateStr = kla.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'long' })
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <svg width="88" height="88" viewBox="0 0 88 88">
-        <circle cx={cx} cy={cy} r={r} fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
-        <circle cx={cx} cy={cy} r={r-4} fill="rgba(255,255,255,0.05)"/>
-        {Array.from({ length: 12 }).map((_, i) => {
-          const a = (i / 12) * 360 - 90
-          return <line key={i} x1={cx + Math.cos(a * Math.PI/180) * (r-6)} y1={cy + Math.sin(a * Math.PI/180) * (r-6)}
-            x2={cx + Math.cos(a * Math.PI/180) * (r-2)} y2={cy + Math.sin(a * Math.PI/180) * (r-2)}
-            stroke="rgba(255,255,255,0.5)" strokeWidth={i % 3 === 0 ? 2 : 1} strokeLinecap="round"/>
-        })}
-        <line x1={cx} y1={cy} {...hand(hDeg,22)} stroke="white" strokeWidth="3" strokeLinecap="round"/>
-        <line x1={cx} y1={cy} {...hand(mDeg,30)} stroke="#29ABE2" strokeWidth="2" strokeLinecap="round"/>
-        <line x1={cx} y1={cy} {...hand(sDeg,34)} stroke="#EC4899" strokeWidth="1.2" strokeLinecap="round"/>
-        <circle cx={cx} cy={cy} r="3.5" fill="white"/><circle cx={cx} cy={cy} r="1.5" fill="#29ABE2"/>
-      </svg>
-      <p className="text-white/90 text-[11px] font-bold tracking-wide">{timeStr} EAT</p>
-      <p className="text-blue-200 text-[9px] font-semibold tracking-wider uppercase">{dateStr}</p>
-    </div>
-  )
-}
 
 // ── Mini Calendar ─────────────────────────────────────────────
 function MiniCalendar({ onDateSelect, selectedDate }: { onDateSelect: (d: Date) => void; selectedDate: Date }) {
@@ -362,40 +324,34 @@ export default function ReceptionistDashboard() {
   return (
     <div className="p-5 space-y-5 max-w-[1600px] mx-auto">
 
-      {/* ── Hero — no card, floating elements ─────────────────── */}
-      <div className="relative flex items-start justify-between gap-4 px-1 pt-1 pb-2">
-        {/* Greeting text — independent, no card */}
+      {/* ── Hero ────────────────────────────────────────────────── */}
+      <div className="relative flex items-center justify-between gap-4 px-1 pt-1 pb-2">
+        {/* Greeting text */}
         <div className="flex-1">
-          <p className="text-gray-400 text-sm font-medium mb-1">
+          <p className="text-gray-400 dark:text-white/40 text-sm font-medium mb-1">
             {new Date().toLocaleDateString('en-UG', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'Africa/Kampala' })}
           </p>
-          <h1 className="text-3xl font-black text-gray-800 mb-1">
-            {greeting()}, <span style={{ color: '#0c1e50' }}>{user?.firstName}!</span> 👋
+          <h1 className="text-3xl font-black text-gray-800 dark:text-white mb-1">
+            {greeting()}, <span style={{ color: '#29ABE2' }}>{user?.firstName}!</span> 👋
           </h1>
-          <p className="text-gray-500 text-sm">
+          <p className="text-gray-500 dark:text-white/50 text-sm">
             <span className="font-bold text-cyan-600">{stats?.appointments?.total || 0}</span> appointments today ·{' '}
-            <span className="font-bold text-green-600">{stats?.appointments?.confirmed || 0}</span> confirmed ·{' '}
-            <span className="font-bold text-amber-600">{stats?.appointments?.pending || 0}</span> pending
+            <span className="font-bold text-green-500">{stats?.appointments?.confirmed || 0}</span> confirmed ·{' '}
+            <span className="font-bold text-amber-500">{stats?.appointments?.pending || 0}</span> pending
           </p>
         </div>
 
-        {/* Clock — independent floating card */}
-        <div className="rounded-2xl p-3 flex-shrink-0 shadow-md"
-          style={{ background: 'linear-gradient(135deg,#0c1e50,#1565C0)', border:'1px solid rgba(255,255,255,0.12)' }}>
-          <AnalogClock />
-        </div>
-
-        {/* Dental image — independent, floating right */}
-        <div className="hidden lg:flex items-end flex-shrink-0" style={{ width:160, height:120 }}>
-          <Image src="/dental40.png" alt="" width={160} height={120}
-            style={{ objectFit:'contain', objectPosition:'bottom', filter:'drop-shadow(0 8px 24px rgba(41,171,226,0.35))' }}/>
+        {/* Dental image — top right corner */}
+        <div className="hidden lg:flex items-center flex-shrink-0" style={{ width: 180, height: 130 }}>
+          <Image src="/dental30.png" alt="" width={180} height={130}
+            style={{ objectFit:'contain', filter:'drop-shadow(0 8px 28px rgba(41,171,226,0.4))' }}/>
         </div>
       </div>
 
       {/* ── Stats Row ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Today's Appointments */}
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-all">
+        <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #0891b2, #06b6d4)' }}>
@@ -403,60 +359,60 @@ export default function ReceptionistDashboard() {
             </div>
             <span className="text-xs font-bold bg-cyan-50 text-cyan-600 px-2 py-0.5 rounded-full">Today</span>
           </div>
-          <p className="text-3xl font-black text-gray-800">{stats?.appointments?.total || 0}</p>
-          <p className="text-xs text-gray-500 mt-1">
-            <span className="text-blue-600 font-bold">{stats?.appointments?.confirmed || 0} confirmed</span>
+          <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.appointments?.total || 0}</p>
+          <p className="text-xs text-gray-500 dark:text-white/40 mt-1">
+            <span className="text-blue-500 font-bold">{stats?.appointments?.confirmed || 0} confirmed</span>
             {' · '}
-            <span className="text-amber-600 font-bold">{stats?.appointments?.pending || 0} pending</span>
+            <span className="text-amber-500 font-bold">{stats?.appointments?.pending || 0} pending</span>
           </p>
         </div>
 
         {/* New Patients */}
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-all">
+        <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)' }}>
               <Users size={18} className="text-white" />
             </div>
             {(stats?.newPatients?.pctChange ?? 0) >= 0 ? (
-              <span className="text-xs font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+              <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
                 <TrendingUp size={10} /> {stats?.newPatients?.pctChange || 0}%
               </span>
             ) : (
-              <span className="text-xs font-bold bg-red-50 text-red-500 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+              <span className="text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 px-2 py-0.5 rounded-full flex items-center gap-0.5">
                 <TrendingDown size={10} /> {Math.abs(stats?.newPatients?.pctChange || 0)}%
               </span>
             )}
           </div>
-          <p className="text-3xl font-black text-gray-800">{stats?.newPatients?.count || 0}</p>
-          <p className="text-xs text-gray-400 mt-1">New patients today</p>
+          <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.newPatients?.count || 0}</p>
+          <p className="text-xs text-gray-400 dark:text-white/40 mt-1">New patients today</p>
         </div>
 
         {/* Returning Patients */}
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-all">
+        <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}>
               <UserCheck size={18} className="text-white" />
             </div>
             {(stats?.returningPatients?.pctChange ?? 0) >= 0 ? (
-              <span className="text-xs font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+              <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
                 <TrendingUp size={10} /> {stats?.returningPatients?.pctChange || 0}%
               </span>
             ) : (
-              <span className="text-xs font-bold bg-red-50 text-red-500 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+              <span className="text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 px-2 py-0.5 rounded-full flex items-center gap-0.5">
                 <TrendingDown size={10} /> {Math.abs(stats?.returningPatients?.pctChange || 0)}%
               </span>
             )}
           </div>
-          <p className="text-3xl font-black text-gray-800">{stats?.returningPatients?.count || 0}</p>
-          <p className="text-xs text-gray-400 mt-1">Returning patients today</p>
+          <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.returningPatients?.count || 0}</p>
+          <p className="text-xs text-gray-400 dark:text-white/40 mt-1">Returning patients today</p>
         </div>
 
         {/* AI Agent Status */}
         <div className={cn(
           'rounded-2xl p-4 border shadow-sm hover:shadow-md transition-all',
-          agentActive ? 'bg-white border-gray-100' : 'bg-red-50 border-red-100',
+          agentActive ? 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/8' : 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30',
         )}>
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -465,13 +421,13 @@ export default function ReceptionistDashboard() {
             </div>
             <div className="flex items-center gap-1">
               <span className={cn('w-2 h-2 rounded-full animate-pulse', agentActive ? 'bg-emerald-500' : 'bg-red-500')} />
-              <span className={cn('text-xs font-bold', agentActive ? 'text-emerald-600' : 'text-red-500')}>
+              <span className={cn('text-xs font-bold', agentActive ? 'text-emerald-500' : 'text-red-500')}>
                 {agentActive ? 'Active' : 'Paused'}
               </span>
             </div>
           </div>
-          <p className="text-3xl font-black text-gray-800">{stats?.aiAgents?.count || 0}</p>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.aiAgents?.count || 0}</p>
+          <p className="text-xs text-gray-400 dark:text-white/40 mt-1">
             {stats?.aiAgents?.escalationsToday || 0} escalations today
           </p>
         </div>
@@ -484,11 +440,11 @@ export default function ReceptionistDashboard() {
         <div className="space-y-4">
 
           {/* Today's Patient List */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/8">
               <div>
-                <h3 className="text-sm font-bold text-gray-800">Today's Patients</h3>
-                <p className="text-xs text-gray-400">{appointments.length} scheduled</p>
+                <h3 className="text-sm font-bold text-gray-800 dark:text-white">Today's Patients</h3>
+                <p className="text-xs text-gray-400 dark:text-white/40">{appointments.length} scheduled</p>
               </div>
               <div className="flex items-center gap-2">
                 <select
@@ -519,7 +475,7 @@ export default function ReceptionistDashboard() {
 
             {appointments.length > 6 && (
               <div className="px-4 py-2 border-t border-gray-50">
-                <Link href="/receptionist/scheduling"
+                <Link href="/receptionist/appointments"
                   className="text-xs font-semibold text-cyan-600 hover:text-cyan-700 flex items-center gap-1">
                   View all {appointments.length} appointments <ChevronRight size={12} />
                 </Link>
@@ -664,7 +620,7 @@ export default function ReceptionistDashboard() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
               <h3 className="text-sm font-bold text-gray-800">Upcoming</h3>
-              <Link href="/receptionist/scheduling" className="text-xs text-cyan-600 font-semibold hover:underline">All</Link>
+              <Link href="/receptionist/appointments" className="text-xs text-cyan-600 font-semibold hover:underline">All</Link>
             </div>
             <div className="divide-y divide-gray-50">
               {upcoming.length === 0 ? (

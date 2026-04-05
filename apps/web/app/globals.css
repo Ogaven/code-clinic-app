@@ -59,9 +59,16 @@
     @apply bg-clinic-bg text-foreground antialiased;
     font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
   }
-  .dark body { background: #0e1f4d; }
+  .dark body { background: #0b1630; }
   h1, h2, h3, h4 { @apply text-clinic-navy; font-family: 'Plus Jakarta Sans', sans-serif; }
   .dark h1, .dark h2, .dark h3, .dark h4 { color: #E0F0FF; }
+
+  /* Smooth dark mode transitions */
+  *, *::before, *::after {
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+  }
+  /* Except animations — don't transition them */
+  .animate-spin, .animate-pulse, .animate-fade-in { transition: none !important; }
 }
 
 /* ── Scrollbar ────────────────────────────── */

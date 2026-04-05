@@ -1,17 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Search, Plus, Phone, Mail, Calendar, ChevronRight, X, User } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import {
+  Search, Plus, Phone, Mail, Calendar, ChevronRight, X, User,
+  Upload, Download, FileText,
+  CheckCircle2, AlertCircle,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Patient {
   id: string; firstName: string; lastName: string; phone: string
   email?: string; gender?: string; dob?: string; isActive: boolean
   createdAt: string; _count?: { appointments: number }
+  avatarUrl?: string
 }
 
 const COLORS = ['#29ABE2','#9B59B6','#2ECC71','#E8A838','#E74C3C','#1ABC9C','#F39C12','#3498DB']
-
 function avatarColor(name: string) {
   let h = 0; for (const c of name) h = c.charCodeAt(0) + ((h << 5) - h)
   return COLORS[Math.abs(h) % COLORS.length]
@@ -30,6 +34,10 @@ export default function PatientsPage() {
   const [appts, setAppts]         = useState<any[]>([])
   const [showAdd, setShowAdd]     = useState(false)
   const [filter, setFilter]       = useState<'all' | 'new' | 'active'>('all')
+  const [toast, setToast]         = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const csvInputRef               = useRef<HTMLInputElement>(null)
 
   // Add patient form
   const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', email: '', gender: 'FEMALE', dob: '' })
@@ -56,7 +64,7 @@ export default function PatientsPage() {
   async function fetchPatients() {
     setLoading(true)
     try {
-      const res = await fetch(`${API}/patients?limit=200`, { headers: authH })
+      const res = await fetch(`${API}/patients?limit=500`, { headers: authH })
       if (res.ok) { const json = await res.json(); setPatients(Array.isArray(json) ? json : json.data || json.patients || []) }
     } catch {} finally { setLoading(false) }
   }
@@ -77,88 +85,279 @@ export default function PatientsPage() {
         method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       })
-      if (res.ok) { fetchPatients(); setShowAdd(false); setForm({ firstName: '', lastName: '', phone: '', email: '', gender: 'FEMALE', dob: '' }) }
-      else { const d = await res.json(); setError(d.error || 'Failed to add patient') }
+      if (res.ok) {
+        fetchPatients(); setShowAdd(false)
+        setForm({ firstName: '', lastName: '', phone: '', email: '', gender: 'FEMALE', dob: '' })
+        showToast('Patient added successfully', 'ok')
+      } else { const d = await res.json(); setError(d.error || 'Failed to add patient') }
     } catch { setError('Network error') } finally { setSaving(false) }
   }
 
-  const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
+  // ── CSV Import ───────────────────────────────────────────────
+  function handleCSVImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      try {
+        const text = ev.target?.result as string
+        const lines = text.trim().split('\n')
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
+        const rows = lines.slice(1)
+
+        let imported = 0; let failed = 0
+        for (const row of rows) {
+          const vals = row.split(',').map(v => v.trim().replace(/"/g, ''))
+          const obj: Record<string, string> = {}
+          headers.forEach((h, i) => { obj[h] = vals[i] || '' })
+
+          const payload = {
+            firstName: obj.firstname || obj['first name'] || obj.name?.split(' ')[0] || '',
+            lastName:  obj.lastname  || obj['last name']  || obj.name?.split(' ')[1] || '',
+            phone:     obj.phone     || obj.telephone     || obj.mobile || '',
+            email:     obj.email     || '',
+            gender:    (obj.gender   || 'FEMALE').toUpperCase(),
+            dob:       obj.dob       || obj['date of birth'] || '',
+          }
+          if (!payload.firstName || !payload.phone) { failed++; continue }
+          try {
+            const res = await fetch(`${API}/patients`, {
+              method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            })
+            if (res.ok) imported++; else failed++
+          } catch { failed++ }
+        }
+        fetchPatients()
+        showToast(`Imported ${imported} patients${failed > 0 ? `, ${failed} skipped` : ''}`, imported > 0 ? 'ok' : 'err')
+      } catch { showToast('Invalid CSV format', 'err') }
+      finally { setImporting(false); if (csvInputRef.current) csvInputRef.current.value = '' }
+    }
+    reader.readAsText(file)
+  }
+
+  // ── CSV / Excel Export ───────────────────────────────────────
+  function exportCSV() {
+    setExporting(true)
+    const headers = ['First Name', 'Last Name', 'Phone', 'Email', 'Gender', 'Date of Birth', 'Appointments', 'Registered']
+    const rows = filtered.map(p => [
+      p.firstName, p.lastName, p.phone, p.email || '', p.gender || '',
+      p.dob ? new Date(p.dob).toLocaleDateString() : '',
+      p._count?.appointments || 0,
+      new Date(p.createdAt).toLocaleDateString(),
+    ])
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url  = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url
+    a.download = `patients_${new Date().toISOString().slice(0,10)}.csv`
+    a.click(); URL.revokeObjectURL(url)
+    setExporting(false)
+    showToast(`Exported ${filtered.length} patients`, 'ok')
+  }
+
+  function exportExcel() {
+    setExporting(true)
+    // Tab-separated export that Excel opens natively
+    const headers = ['First Name', 'Last Name', 'Phone', 'Email', 'Gender', 'Date of Birth', 'Appointments', 'Registered']
+    const rows = filtered.map(p => [
+      p.firstName, p.lastName, p.phone, p.email || '', p.gender || '',
+      p.dob ? new Date(p.dob).toLocaleDateString() : '',
+      p._count?.appointments || 0,
+      new Date(p.createdAt).toLocaleDateString(),
+    ])
+    const tsv = [headers, ...rows].map(r => r.join('\t')).join('\n')
+    const blob = new Blob([tsv], { type: 'application/vnd.ms-excel' })
+    const url  = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url
+    a.download = `patients_${new Date().toISOString().slice(0,10)}.xls`
+    a.click(); URL.revokeObjectURL(url)
+    setExporting(false)
+    showToast(`Exported ${filtered.length} patients to Excel`, 'ok')
+  }
+
+  function showToast(msg: string, type: 'ok' | 'err') {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
 
   return (
-    <div className="flex h-full">
-      {/* Patient list */}
-      <div className={cn('flex flex-col border-r border-gray-100 bg-white transition-all', selected ? 'w-96' : 'flex-1')}>
+    <div className="flex h-full bg-slate-50 dark:bg-transparent">
+      {/* ── Toast ────────────────────────────────────────────── */}
+      {toast && (
+        <div className={cn(
+          'fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-xl text-sm font-bold animate-fade-in',
+          toast.type === 'ok' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white',
+        )}>
+          {toast.type === 'ok' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+          {toast.msg}
+        </div>
+      )}
+
+      {/* ── Patient list ─────────────────────────────────────── */}
+      <div className={cn('flex flex-col border-r border-gray-100 dark:border-white/8 bg-white dark:bg-white/[0.03] transition-all', selected ? 'w-[420px] flex-shrink-0' : 'flex-1')}>
+
         {/* Header */}
-        <div className="px-5 py-4 border-b border-gray-100">
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-white/8">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h1 className="text-lg font-black text-gray-800">Patients</h1>
-              <p className="text-xs text-gray-400">{patients.length} total</p>
+              <h1 className="text-lg font-black text-gray-800 dark:text-white">Patients</h1>
+              <p className="text-xs text-gray-400 dark:text-white/40">{filtered.length} of {patients.length} shown</p>
             </div>
-            <button onClick={() => setShowAdd(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
-              style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-              <Plus size={13} /> Add Patient
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Import CSV */}
+              <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
+              <button
+                onClick={() => csvInputRef.current?.click()}
+                disabled={importing}
+                title="Import from CSV"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50">
+                <Upload size={13} />
+                {importing ? 'Importing...' : 'Import CSV'}
+              </button>
+
+              {/* Export dropdown */}
+              <div className="relative group">
+                <button
+                  disabled={exporting}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50">
+                  <Download size={13} />
+                  Export
+                  <span className="text-gray-400">▾</span>
+                </button>
+                <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-[#152040] rounded-xl shadow-xl border border-gray-100 dark:border-white/10 py-1.5 z-20 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all">
+                  <button onClick={exportCSV} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5">
+                    <FileText size={13} className="text-emerald-500" /> Export CSV
+                  </button>
+                  <button onClick={exportExcel} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5">
+                    <FileText size={13} className="text-blue-500" /> Export Excel
+                  </button>
+                </div>
+              </div>
+
+              {/* Add patient */}
+              <button onClick={() => setShowAdd(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+                <Plus size={13} /> Add Patient
+              </button>
+            </div>
           </div>
+
           {/* Search */}
           <div className="relative mb-3">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search patients..." className="w-full pl-8 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all" />
+              placeholder="Search by name, phone, or email..."
+              className="w-full pl-8 pr-4 py-2 text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl dark:text-white dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all" />
           </div>
+
           {/* Filters */}
           <div className="flex gap-2">
             {(['all', 'new', 'active'] as const).map(f => (
               <button key={f} onClick={() => setFilter(f)}
                 className={cn('px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all',
-                  filter === f ? 'bg-cyan-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}>
+                  filter === f ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/12')}>
                 {f === 'all' ? 'All' : f === 'new' ? 'New (7d)' : 'Returning'}
               </button>
             ))}
           </div>
         </div>
 
-        {/* List */}
-        <div className="flex-1 overflow-y-auto">
+        {/* ── Table ──────────────────────────────────────────── */}
+        <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-gray-400">
-              <User size={28} className="mb-2 text-gray-200" />
+              <User size={28} className="mb-2 text-gray-200 dark:text-white/10" />
               <p className="text-sm">No patients found</p>
             </div>
-          ) : filtered.map(p => (
-            <button key={p.id} onClick={() => selectPatient(p)}
-              className={cn('w-full flex items-center gap-3 px-5 py-3 border-b border-gray-50 text-left hover:bg-gray-50 transition-colors',
-                selected?.id === p.id && 'bg-cyan-50 border-l-4 border-l-cyan-500')}>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
-                style={{ background: avatarColor(`${p.firstName}${p.lastName}`) }}>
-                {p.firstName?.[0]}{p.lastName?.[0]}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 truncate">{p.firstName} {p.lastName}</p>
-                <p className="text-xs text-gray-400 truncate">{p.phone}</p>
-              </div>
-              <div className="flex-shrink-0">
-                {(p._count?.appointments || 0) > 1 && (
-                  <span className="text-[9px] font-bold bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">Returning</span>
-                )}
-                <ChevronRight size={14} className="text-gray-300 mt-1" />
-              </div>
-            </button>
-          ))}
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-gray-50 dark:bg-[#0e1f4d] z-10 border-b border-gray-100 dark:border-white/8">
+                <tr>
+                  <th className="text-left px-5 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Patient</th>
+                  <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Phone</th>
+                  <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden md:table-cell">Email</th>
+                  <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden lg:table-cell">Gender</th>
+                  <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden lg:table-cell">Visits</th>
+                  <th className="text-right px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+                {filtered.map(p => (
+                  <tr key={p.id}
+                    onClick={() => selectPatient(p)}
+                    className={cn(
+                      'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/3 transition-colors',
+                      selected?.id === p.id && 'bg-cyan-50 dark:bg-cyan-900/20 border-l-4 border-l-cyan-500',
+                    )}>
+                    {/* Name + avatar */}
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                          style={{ background: avatarColor(`${p.firstName}${p.lastName}`) }}>
+                          {p.firstName?.[0]}{p.lastName?.[0]}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-800 dark:text-white">{p.firstName} {p.lastName}</p>
+                          <p className="text-[11px] text-gray-400 dark:text-white/40">
+                            {p.dob ? `${new Date().getFullYear() - new Date(p.dob).getFullYear()} yrs` : 'Age N/A'}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    {/* Phone */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 text-gray-700 dark:text-white/70">
+                        <Phone size={11} className="text-cyan-500 flex-shrink-0" />
+                        <span className="text-xs">{p.phone}</span>
+                      </div>
+                    </td>
+                    {/* Email */}
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      <div className="flex items-center gap-1.5 text-gray-600 dark:text-white/60">
+                        <Mail size={11} className="text-cyan-500 flex-shrink-0" />
+                        <span className="text-xs truncate max-w-[160px]">{p.email || '—'}</span>
+                      </div>
+                    </td>
+                    {/* Gender */}
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <span className="text-xs text-gray-500 dark:text-white/50 capitalize">{p.gender?.toLowerCase() || '—'}</span>
+                    </td>
+                    {/* Visits */}
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <span className="text-xs font-bold text-gray-700 dark:text-white/70">{p._count?.appointments || 0}</span>
+                    </td>
+                    {/* Status */}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {(p._count?.appointments || 0) > 1 && (
+                          <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded-full">Returning</span>
+                        )}
+                        <ChevronRight size={14} className="text-gray-300 dark:text-white/20" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
-      {/* Patient detail panel */}
+      {/* ── Patient detail panel ─────────────────────────────── */}
       {selected && (
-        <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+        <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-transparent p-6">
           <div className="max-w-lg space-y-4">
             {/* Profile card */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm p-5">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white text-xl font-black"
@@ -166,53 +365,57 @@ export default function PatientsPage() {
                     {selected.firstName?.[0]}{selected.lastName?.[0]}
                   </div>
                   <div>
-                    <h2 className="text-lg font-black text-gray-800">{selected.firstName} {selected.lastName}</h2>
-                    <p className="text-sm text-gray-400">{selected.gender || 'N/A'} · {selected.dob ? new Date().getFullYear() - new Date(selected.dob).getFullYear() + ' yrs' : 'Age N/A'}</p>
+                    <h2 className="text-lg font-black text-gray-800 dark:text-white">{selected.firstName} {selected.lastName}</h2>
+                    <p className="text-sm text-gray-400 dark:text-white/40">
+                      {selected.gender || 'N/A'} · {selected.dob ? new Date().getFullYear() - new Date(selected.dob).getFullYear() + ' yrs' : 'Age N/A'}
+                    </p>
                   </div>
                 </div>
-                <button onClick={() => setSelected(null)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
+                <button onClick={() => setSelected(null)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
                   <X size={16} className="text-gray-400" />
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+                <div className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2">
                   <Phone size={13} className="text-cyan-500 flex-shrink-0" />
-                  <span className="text-sm text-gray-700 truncate">{selected.phone}</span>
+                  <span className="text-sm text-gray-700 dark:text-white/70 truncate">{selected.phone}</span>
                 </div>
-                <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+                <div className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2">
                   <Mail size={13} className="text-cyan-500 flex-shrink-0" />
-                  <span className="text-sm text-gray-700 truncate">{selected.email || 'No email'}</span>
+                  <span className="text-sm text-gray-700 dark:text-white/70 truncate">{selected.email || 'No email'}</span>
                 </div>
               </div>
             </div>
 
             {/* Appointment history */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-50">
-                <h3 className="text-sm font-bold text-gray-800">Appointment History</h3>
+            <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-50 dark:border-white/8">
+                <h3 className="text-sm font-bold text-gray-800 dark:text-white">Appointment History</h3>
               </div>
               {appts.length === 0 ? (
                 <div className="px-4 py-6 text-center">
-                  <Calendar size={24} className="mx-auto mb-2 text-gray-200" />
-                  <p className="text-sm text-gray-400">No appointments found</p>
+                  <Calendar size={24} className="mx-auto mb-2 text-gray-200 dark:text-white/10" />
+                  <p className="text-sm text-gray-400 dark:text-white/40">No appointments found</p>
                 </div>
               ) : appts.map((a: any) => {
                 const d = new Date(a.startAt)
                 const statusColor: Record<string, string> = {
-                  CONFIRMED: 'text-blue-600 bg-blue-50',
-                  COMPLETED: 'text-emerald-600 bg-emerald-50',
-                  CANCELLED: 'text-red-500 bg-red-50',
-                  PENDING: 'text-amber-600 bg-amber-50',
+                  CONFIRMED: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20',
+                  COMPLETED: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20',
+                  CANCELLED: 'text-red-500 bg-red-50 dark:bg-red-900/20',
+                  PENDING:   'text-amber-600 bg-amber-50 dark:bg-amber-900/20',
                 }
                 return (
-                  <div key={a.id} className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-0">
+                  <div key={a.id} className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 dark:border-white/5 last:border-0">
                     <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[10px] font-black flex-shrink-0"
                       style={{ background: a.service?.colour || '#29ABE2' }}>
                       {d.getDate()}<br />{d.toLocaleDateString('en-UG', { month: 'short' })}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 truncate">{a.service?.name}</p>
-                      <p className="text-xs text-gray-400">Dr. {a.doctor?.user?.firstName} · {d.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })}</p>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{a.service?.name}</p>
+                      <p className="text-xs text-gray-400 dark:text-white/40">
+                        Dr. {a.doctor?.user?.firstName} · {d.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </p>
                     </div>
                     <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', statusColor[a.status] || 'bg-gray-50 text-gray-500')}>{a.status}</span>
                   </div>
@@ -223,38 +426,38 @@ export default function PatientsPage() {
         </div>
       )}
 
-      {/* Add patient modal */}
+      {/* ── Add patient modal ─────────────────────────────────── */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 animate-fade-in">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-md p-6 animate-fade-in">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-black text-gray-800">New Patient</h2>
-              <button onClick={() => setShowAdd(false)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
+              <h2 className="text-lg font-black text-gray-800 dark:text-white">New Patient</h2>
+              <button onClick={() => setShowAdd(false)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
                 <X size={16} className="text-gray-400" />
               </button>
             </div>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">First Name *</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">First Name *</label>
                   <input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} className={inputCls} placeholder="John" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Last Name *</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Last Name *</label>
                   <input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} className={inputCls} placeholder="Doe" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Phone *</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Phone *</label>
                 <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} placeholder="+256 700 000 000" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Email</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Email</label>
                 <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="email@example.com" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Gender</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Gender</label>
                   <select value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))} className={inputCls}>
                     <option value="FEMALE">Female</option>
                     <option value="MALE">Male</option>
@@ -262,13 +465,22 @@ export default function PatientsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Date of Birth</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Date of Birth</label>
                   <input type="date" value={form.dob} onChange={e => setForm(f => ({ ...f, dob: e.target.value }))} className={inputCls} />
                 </div>
               </div>
               {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
+
+              {/* CSV import hint */}
+              <div className="flex items-center gap-2 p-3 bg-cyan-50 dark:bg-cyan-900/20 rounded-xl">
+                <Upload size={14} className="text-cyan-500 flex-shrink-0" />
+                <p className="text-xs text-cyan-700 dark:text-cyan-300">
+                  Adding multiple patients? Use <button onClick={() => { setShowAdd(false); csvInputRef.current?.click() }} className="font-bold underline">Import CSV</button> instead.
+                </p>
+              </div>
+
               <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAdd(false)} className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
+                <button onClick={() => setShowAdd(false)} className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">Cancel</button>
                 <button onClick={addPatient} disabled={saving}
                   className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60"
                   style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>

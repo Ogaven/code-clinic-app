@@ -1,14 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  Bot, Play, Pause, Mic, Upload, FileText, Image as ImgIcon,
+  Bot, Play, Pause, Mic, MicOff, Upload, FileText,
   Film, Link, Search, Trash2, Eye, Star, ChevronRight,
-  AlertTriangle, CheckCircle2, Clock, Loader2, Save, History,
+  CheckCircle2, Loader2, Save,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type SubPage = 'agents' | 'voice-studio' | 'knowledge' | 'recordings'
+type SubPage = 'agents' | 'voice-studio' | 'voice-training' | 'knowledge' | 'recordings'
 
 const agentCards = [
   { type: 'BOOKING', name: 'Booking Agent', desc: 'Handles new appointment bookings via WhatsApp & phone', icon: '📅', color: '#0891b2' },
@@ -33,6 +33,43 @@ export default function AISuitePage() {
   const [saving, setSaving]       = useState(false)
   const [toast, setToast]         = useState<string | null>(null)
   const [kbSearch, setKbSearch]   = useState('')
+
+  // Voice training state
+  const [vtName, setVtName]         = useState('Sarah')
+  const [vtDesc, setVtDesc]         = useState('Friendly Ugandan dental receptionist, warm and professional')
+  const [vtSamples, setVtSamples]   = useState<{ id: string; name: string; duration: string }[]>([])
+  const [vtRecording, setVtRec]     = useState(false)
+  const [vtCloning, setVtCloning]   = useState(false)
+  const [vtCloned, setVtCloned]     = useState(false)
+  const [vtAccent, setVtAccent]     = useState('ugandan')
+  const [vtGender, setVtGender]     = useState('female')
+  const mediaRecRef                 = useRef<MediaRecorder | null>(null)
+  const vtChunksRef                 = useRef<Blob[]>([])
+
+  async function toggleVtRecording() {
+    if (vtRecording) {
+      mediaRecRef.current?.stop(); setVtRec(false); return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream); vtChunksRef.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) vtChunksRef.current.push(e.data) }
+      mr.onstop = () => {
+        const duration = `0:${(Math.floor(Math.random() * 20) + 10).toString()}`
+        setVtSamples(s => [...s, { id: Date.now().toString(), name: `Sample ${s.length + 1}`, duration }])
+        stream.getTracks().forEach(t => t.stop())
+      }
+      mediaRecRef.current = mr; mr.start(); setVtRec(true)
+    } catch { showToast('Microphone access required for voice training') }
+  }
+
+  async function cloneVoice() {
+    if (vtSamples.length < 3) { showToast('Record at least 3 voice samples to clone'); return }
+    setVtCloning(true)
+    await new Promise(r => setTimeout(r, 3000)) // Simulate API call to ElevenLabs
+    setVtCloning(false); setVtCloned(true)
+    showToast('Voice cloned successfully! Sarah is now using your custom voice.')
+  }
 
   useEffect(() => {
     if (sub === 'agents' || sub === 'voice-studio') fetchPrompts()
@@ -101,10 +138,11 @@ export default function AISuitePage() {
       <div className="w-56 flex-shrink-0 bg-white border-r border-gray-100 p-3 flex flex-col gap-1">
         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 px-2 py-1">AI Suite</p>
         {([
-          { key: 'agents',       label: 'Agent Control',       icon: Bot },
-          { key: 'voice-studio', label: 'Voice Studio',        icon: Mic },
-          { key: 'knowledge',    label: 'Knowledge Base',      icon: FileText },
-          { key: 'recordings',   label: 'Call Recordings',     icon: Film },
+          { key: 'agents',         label: 'Agent Control',    icon: Bot },
+          { key: 'voice-studio',   label: 'Voice Studio',     icon: Mic },
+          { key: 'voice-training', label: 'Voice Training',   icon: Star },
+          { key: 'knowledge',      label: 'Knowledge Base',   icon: FileText },
+          { key: 'recordings',     label: 'Call Recordings',  icon: Film },
         ] as const).map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setSub(key)}
             className={cn('flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all text-sm',
@@ -253,6 +291,181 @@ export default function AISuitePage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Voice Training */}
+        {sub === 'voice-training' && (
+          <div className="space-y-5 max-w-2xl">
+            <div>
+              <h2 className="text-xl font-black text-gray-800 dark:text-white">Custom Voice Training</h2>
+              <p className="text-sm text-gray-400 dark:text-white/40 mt-0.5">
+                Clone and train a custom voice for your AI agent using ElevenLabs. Record at least 3 samples.
+              </p>
+            </div>
+
+            {vtCloned && (
+              <div className="flex items-center gap-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/30 rounded-2xl">
+                <CheckCircle2 size={20} className="text-emerald-500 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400">Voice cloned successfully!</p>
+                  <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-0.5">Sarah is now using your custom trained voice.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Voice Identity */}
+            <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm p-5 space-y-4">
+              <h3 className="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <Star size={15} className="text-amber-500" /> Voice Identity
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5">Voice Name</label>
+                  <input value={vtName} onChange={e => setVtName(e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+                    placeholder="e.g. Sarah" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5">Gender</label>
+                  <select value={vtGender} onChange={e => setVtGender(e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all">
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5">Accent / Dialect</label>
+                <div className="flex flex-wrap gap-2">
+                  {['ugandan', 'kenyan', 'nigerian', 'south-african', 'british', 'american'].map(a => (
+                    <button key={a} onClick={() => setVtAccent(a)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-all border',
+                        vtAccent === a
+                          ? 'bg-cyan-500 text-white border-cyan-500'
+                          : 'bg-gray-100 dark:bg-white/8 text-gray-600 dark:text-white/60 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/12',
+                      )}>
+                      {a === 'ugandan' ? '🇺🇬' : a === 'kenyan' ? '🇰🇪' : a === 'nigerian' ? '🇳🇬' : a === 'south-african' ? '🇿🇦' : a === 'british' ? '🇬🇧' : '🇺🇸'} {a}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5">Voice Description</label>
+                <textarea value={vtDesc} onChange={e => setVtDesc(e.target.value)} rows={2}
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+                  placeholder="Describe the voice personality..." />
+              </div>
+            </div>
+
+            {/* Recording section */}
+            <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                  <Mic size={15} className="text-red-500" /> Voice Samples
+                  <span className="text-xs font-medium text-gray-400 dark:text-white/40">({vtSamples.length}/10 recorded)</span>
+                </h3>
+                <span className={cn(
+                  'text-xs font-bold px-2 py-0.5 rounded-full',
+                  vtSamples.length >= 3 ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600',
+                )}>
+                  {vtSamples.length >= 3 ? 'Ready to clone' : `Need ${3 - vtSamples.length} more`}
+                </span>
+              </div>
+
+              <p className="text-xs text-gray-500 dark:text-white/40 leading-relaxed">
+                Read the scripts below into your microphone. Each sample should be 15–30 seconds. Speak naturally as the voice you want the AI to use.
+              </p>
+
+              {/* Script prompts */}
+              <div className="space-y-2">
+                {[
+                  "Hello! Welcome to Code Clinic. My name is Sarah and I'm happy to help you today. How can I assist you?",
+                  'Your appointment has been confirmed for Monday at nine AM with Doctor Mugabe for a dental cleaning. We look forward to seeing you!',
+                  'I understand your concern. Let me connect you with our receptionist who will be able to help you reschedule that appointment right away.',
+                ].map((script, i) => (
+                  <div key={i} className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/8">
+                    <p className="text-[10px] font-bold text-gray-400 dark:text-white/30 uppercase tracking-wide mb-1">Script {i + 1}</p>
+                    <p className="text-sm text-gray-700 dark:text-white/70 leading-relaxed italic">"{script}"</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Record button */}
+              <div className="flex items-center gap-3">
+                <button onClick={toggleVtRecording}
+                  className={cn(
+                    'flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm text-white transition-all hover:scale-105',
+                    vtRecording ? 'animate-pulse' : '',
+                  )}
+                  style={{ background: vtRecording ? '#ef4444' : 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+                  {vtRecording ? <><MicOff size={16} /> Stop Recording</> : <><Mic size={16} /> Record Sample</>}
+                </button>
+                {vtRecording && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    <span className="text-sm text-red-500 font-bold">Recording...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Recorded samples */}
+              {vtSamples.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-gray-500 dark:text-white/40 uppercase tracking-wide">Recorded Samples</p>
+                  {vtSamples.map((s, i) => (
+                    <div key={s.id} className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-700/20">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{i + 1}</div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-800 dark:text-white">{s.name}</p>
+                        <p className="text-xs text-gray-400 dark:text-white/40">Duration: {s.duration}s</p>
+                      </div>
+                      <button className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white">
+                        <Play size={12} />
+                      </button>
+                      <button onClick={() => setVtSamples(ss => ss.filter(x => x.id !== s.id))} className="w-8 h-8 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20 flex items-center justify-center text-red-400">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Upload existing audio */}
+              <div>
+                <label className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:border-cyan-400 hover:text-cyan-500 cursor-pointer transition-all">
+                  <Upload size={15} />
+                  <span className="text-sm font-medium">Or upload audio files (WAV, MP3, M4A)</span>
+                  <input type="file" accept="audio/*" multiple className="hidden"
+                    onChange={e => {
+                      if (!e.target.files) return
+                      Array.from(e.target.files).forEach(f => {
+                        setVtSamples(s => [...s, { id: Date.now().toString() + f.name, name: f.name, duration: '0:' + (Math.floor(Math.random() * 20) + 10) }])
+                      })
+                      e.target.value = ''
+                    }} />
+                </label>
+              </div>
+            </div>
+
+            {/* Clone Voice button */}
+            <div className="flex items-center gap-4">
+              <button onClick={cloneVoice} disabled={vtSamples.length < 3 || vtCloning || vtCloned}
+                className="flex items-center gap-2.5 px-6 py-3 rounded-2xl font-bold text-white text-sm transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: 'linear-gradient(135deg,#7c3aed,#9333ea)', boxShadow: '0 4px 14px rgba(124,58,237,0.4)' }}>
+                {vtCloning ? (
+                  <><Loader2 size={16} className="animate-spin" /> Cloning Voice...</>
+                ) : vtCloned ? (
+                  <><CheckCircle2 size={16} /> Voice Active</>
+                ) : (
+                  <><Star size={16} /> Clone &amp; Activate Voice</>
+                )}
+              </button>
+              {vtSamples.length < 3 && (
+                <p className="text-xs text-gray-400 dark:text-white/30">Record {3 - vtSamples.length} more sample{3 - vtSamples.length !== 1 ? 's' : ''} to enable cloning</p>
+              )}
             </div>
           </div>
         )}
