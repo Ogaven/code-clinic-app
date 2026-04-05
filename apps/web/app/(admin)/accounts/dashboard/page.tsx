@@ -30,7 +30,7 @@ export default function AccountsDashboardPage() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/dashboard`, {
+    fetch(`/api-proxy/accounts/dashboard`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()).then(setData).catch(console.error).finally(() => setLoading(false))
   }, [])

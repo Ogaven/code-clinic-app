@@ -35,7 +35,7 @@ export default function TreatmentsPage() {
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0]
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/scheduling/calendar?date=${today}`, {
+    fetch(`/api-proxy/scheduling/calendar?date=${today}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
@@ -67,7 +67,7 @@ export default function TreatmentsPage() {
   })
 
   async function updateStatus(id: string, status: string) {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/scheduling/appointments/${id}/status`, {
+    await fetch(`/api-proxy/scheduling/appointments/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ status }),

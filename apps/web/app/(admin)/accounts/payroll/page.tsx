@@ -38,13 +38,13 @@ export default function PayrollPage() {
 
   function fetchPayroll(m = month) {
     setLoading(true)
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/payroll?month=${m}`, {
+    fetch(`/api-proxy/accounts/payroll?month=${m}`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()).then(d => setPayroll(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLoading(false))
   }
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/employees`, {
+    fetch(`/api-proxy/employees`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()).then(d => {
       const emps = Array.isArray(d) ? d : []
@@ -65,7 +65,7 @@ export default function PayrollPage() {
     if (!staffSalaries.length) return alert('Enter at least one salary')
     setRunning(true)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/payroll/${month}/run`, {
+      const res = await fetch(`/api-proxy/accounts/payroll/${month}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ staffSalaries }),
@@ -76,7 +76,7 @@ export default function PayrollPage() {
   }
 
   async function markPaid(id: string) {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/payroll/${id}/mark-paid`, {
+    await fetch(`/api-proxy/accounts/payroll/${id}/mark-paid`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
     })

@@ -57,7 +57,7 @@ export default function AvatarUpload({
       form.append('avatar', file)
 
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/employees/${userId}/avatar`,
+        `/api-proxy/employees/${userId}/avatar`,
         {
           method: 'POST',
           headers: token ? { Authorization: `Bearer ${token}` } : {},

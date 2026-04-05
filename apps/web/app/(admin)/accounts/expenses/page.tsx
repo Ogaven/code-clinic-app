@@ -45,7 +45,7 @@ export default function ExpensesPage() {
       end.setMonth(end.getMonth() + 1)
       params.set('to', end.toISOString().split('T')[0])
     }
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/expenses?${params}`, {
+    fetch(`/api-proxy/accounts/expenses?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()).then(d => setExpenses(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLoading(false))
   }
@@ -61,7 +61,7 @@ export default function ExpensesPage() {
   })).filter(c => c.total > 0).sort((a, b) => b.total - a.total)
 
   async function deleteExpense(id: string) {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/expenses/${id}`, {
+    await fetch(`/api-proxy/accounts/expenses/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -203,7 +203,7 @@ function AddExpenseModal({ onClose, onAdded, token }: any) {
     e.preventDefault()
     setLoading(true); setError(null)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/expenses`, {
+      const res = await fetch(`/api-proxy/accounts/expenses`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ ...form, amountUGX: parseInt(form.amountUGX) }),

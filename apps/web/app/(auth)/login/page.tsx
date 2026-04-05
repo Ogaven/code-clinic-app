@@ -113,7 +113,7 @@ export default function LoginPage() {
     setError(null)
     setLoad(true)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/auth/login`, {
+      const res = await fetch(`/api-proxy/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password: pwd }),

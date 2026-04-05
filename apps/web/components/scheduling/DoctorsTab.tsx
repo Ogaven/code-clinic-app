@@ -56,7 +56,7 @@ export default function DoctorsTab() {
   const token   = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH   = { Authorization: `Bearer ${token}` }
   const jsonH   = { ...authH, 'Content-Type': 'application/json' }
-  const API     = process.env.NEXT_PUBLIC_API_URL || '/api-proxy'
+  const API     = '/api-proxy'
 
   const [doctors,   setDoctors]   = useState<Doctor[]>([])
   const [services,  setServices]  = useState<Service[]>([])

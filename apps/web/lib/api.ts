@@ -1,8 +1,6 @@
-// In production: calls go to /api-proxy/* which Next.js rewrites to the real API (server-side, no CORS).
-// In development: calls go to NEXT_PUBLIC_API_URL (localhost:4000).
-const API_URL = typeof window === 'undefined'
-  ? (process.env.NEXT_PUBLIC_API_URL || '/api-proxy')
-  : (process.env.NEXT_PUBLIC_API_URL || '/api-proxy')
+// All API calls go to /api-proxy/* — Next.js rewrites this server-side to the real API.
+// Set API_URL env var in Railway (Web service) to point to the API service URL.
+const API_URL = '/api-proxy'
 
 export const getApiUrl = () => API_URL
 

@@ -4,7 +4,7 @@ const nextConfig = {
 
   // Proxy all /api-proxy/* calls to the real API — works at runtime, no rebuild needed
   async rewrites() {
-    const apiUrl = process.env.API_URL || 'https://api-production-4c43.up.railway.app'
+    const apiUrl = process.env.API_URL || 'http://localhost:4000'
     return [
       {
         source: '/api-proxy/:path*',

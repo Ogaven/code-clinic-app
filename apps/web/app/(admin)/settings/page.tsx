@@ -61,7 +61,7 @@ export default function SettingsPage() {
     try {
       const form = new FormData()
       form.append('avatar', file)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/employees/${user.id}/avatar`, {
+      const res = await fetch(`/api-proxy/employees/${user.id}/avatar`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: form,
@@ -84,7 +84,7 @@ export default function SettingsPage() {
     e.preventDefault()
     setSaving(true)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/employees/${user.id}`, {
+      const res = await fetch(`/api-proxy/employees/${user.id}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ firstName, lastName, email }),
@@ -108,7 +108,7 @@ export default function SettingsPage() {
     if (newPwd.length < 8)  { showToast('Password must be at least 8 characters', 'error'); return }
     setSaving(true)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/auth/change-password`, {
+      const res = await fetch(`/api-proxy/auth/change-password`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword: oldPwd, newPassword: newPwd }),

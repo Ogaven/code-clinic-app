@@ -26,7 +26,7 @@ const QUICK_REPLIES = [
   'View invoices',
 ]
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api-proxy'
+const API_URL = '/api-proxy'
 
 export default function SarahChatbot() {
   const [open, setOpen]         = useState(false)

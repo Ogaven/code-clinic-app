@@ -43,7 +43,7 @@ export default function TwoFAPage() {
     setLoading(true)
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/auth/2fa/validate`, {
+      const res = await fetch(`/api-proxy/auth/2fa/validate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

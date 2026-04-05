@@ -25,7 +25,7 @@ export default function EmployeesPage() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/employees`, {
+    fetch(`/api-proxy/employees`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()).then(d => setEmployees(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLoading(false))
   }, [])
@@ -130,7 +130,7 @@ function AddEmployeeModal({ onClose, onAdded, token }: any) {
     e.preventDefault()
     setLoading(true); setError(null)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/employees`, {
+      const res = await fetch(`/api-proxy/employees`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(form),

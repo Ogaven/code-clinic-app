@@ -38,7 +38,7 @@ export default function PatientsPage() {
     try {
       const params = new URLSearchParams({ limit: String(limit), offset: String((p - 1) * limit) })
       if (q) params.set('q', q)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/patients?${params}`, {
+      const res = await fetch(`/api-proxy/patients?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
@@ -237,7 +237,7 @@ function AddPatientModal({ onClose, onAdded, token }: { onClose: () => void; onA
     setError(null)
     setLoading(true)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/patients`, {
+      const res = await fetch(`/api-proxy/patients`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(form),

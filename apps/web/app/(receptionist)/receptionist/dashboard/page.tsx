@@ -54,7 +54,7 @@ function AnalogClock() {
 function MiniCalendar({ onDateSelect, selectedDate }: { onDateSelect: (d: Date) => void; selectedDate: Date }) {
   const [view, setView] = useState(new Date())
   const [dates, setDates] = useState<Record<string, number>>({})
-  const API = process.env.NEXT_PUBLIC_API_URL || '/api-proxy'
+  const API = '/api-proxy'
 
   useEffect(() => {
     const token = localStorage.getItem('cc_token')
@@ -147,7 +147,7 @@ function PatientRow({ appt }: { appt: any }) {
 // ── Main Page ─────────────────────────────────────────────────
 export default function ReceptionistDashboard() {
   const router  = useRouter()
-  const API     = process.env.NEXT_PUBLIC_API_URL || '/api-proxy'
+  const API     = '/api-proxy'
   const [user, setUser]             = useState<any>(null)
   const [stats, setStats]           = useState<any>(null)
   const [appointments, setAppts]    = useState<any[]>([])

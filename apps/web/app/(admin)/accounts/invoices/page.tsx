@@ -65,7 +65,7 @@ export default function InvoicesPage() {
     try {
       const params = new URLSearchParams({ limit: String(limit), offset: String((p - 1) * limit) })
       if (status) params.set('status', status)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/invoices?${params}`, {
+      const res = await fetch(`/api-proxy/accounts/invoices?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()
@@ -80,7 +80,7 @@ export default function InvoicesPage() {
   const totalPages = Math.ceil(total / limit)
 
   const openInvoice = async (inv: Invoice) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/invoices/${inv.id}`, {
+    const res = await fetch(`/api-proxy/accounts/invoices/${inv.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     const full = await res.json()
@@ -325,7 +325,7 @@ function PaymentModal({ invoice, onClose, onPaid, token }: any) {
   async function pay() {
     setLoading(true); setError(null)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/payments`, {
+      const res = await fetch(`/api-proxy/accounts/payments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ invoiceId: invoice.id, amountUGX: parseInt(amount), method, reference }),
@@ -409,7 +409,7 @@ function CreateInvoiceModal({ onClose, onCreated, token }: any) {
   useEffect(() => {
     if (!patientSearch || patientSearch.length < 2) return
     const t = setTimeout(() => {
-      fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/patients?q=${patientSearch}&limit=5`, {
+      fetch(`/api-proxy/patients?q=${patientSearch}&limit=5`, {
         headers: { Authorization: `Bearer ${token}` },
       }).then(r => r.json()).then(d => setPatients(Array.isArray(d) ? d : d.data || []))
     }, 300)
@@ -425,7 +425,7 @@ function CreateInvoiceModal({ onClose, onCreated, token }: any) {
     if (!lineItems.some(i => i.description && i.unitPrice > 0)) return setError('Add at least one line item')
     setLoading(true); setError(null)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api-proxy'}/accounts/invoices`, {
+      const res = await fetch(`/api-proxy/accounts/invoices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ patientId: selectedPatient.id, lineItems, applyVAT }),
