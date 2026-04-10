@@ -36,8 +36,10 @@ const inputCls = [
 ].join(' ')
 
 function parseSchedule(workingDays: string, workingHours: string): DaySchedule[] {
-  const days: number[]  = JSON.parse(workingDays)
-  const hours           = JSON.parse(workingHours)
+  let days: number[] = [1,2,3,4,5]
+  let hours: any = { start: '08:00', end: '18:00' }
+  try { days  = JSON.parse(workingDays) } catch {}
+  try { hours = JSON.parse(workingHours) } catch {}
   // Determine if it's per-day format (keys are "0"-"6") or legacy global {start, end}
   const isPerDay = hours['1'] !== undefined || hours['0'] !== undefined
 
@@ -226,8 +228,10 @@ export default function DoctorsTab() {
                 <p className="text-xs text-gray-400 truncate">{d.specialisation || 'General Dentistry'}</p>
                 <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-0.5">
                   {(() => {
-                    const days = JSON.parse(d.workingDays) as number[]
-                    return days.map(n => ['Su','Mo','Tu','We','Th','Fr','Sa'][n]).join(' · ')
+                    try {
+                      const days = JSON.parse(d.workingDays) as number[]
+                      return days.map(n => ['Su','Mo','Tu','We','Th','Fr','Sa'][n]).join(' · ')
+                    } catch { return 'Mon–Fri' }
                   })()}
                 </p>
               </div>

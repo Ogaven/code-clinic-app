@@ -10,12 +10,21 @@ import { cn } from '@/lib/utils'
 
 type SubPage = 'agents' | 'voice-studio' | 'voice-training' | 'knowledge' | 'recordings'
 
+// Map frontend card type → backend responsibility key
+const TYPE_TO_RESPONSIBILITY: Record<string, string> = {
+  BOOKING:  'INBOUND',
+  REMINDER: 'REMINDER',
+  FOLLOWUP: 'FOLLOWUP',
+  DEBT:     'DEBT',
+  VISITOR:  'INBOUND', // no separate visitor config; reuse INBOUND
+}
+
 const agentCards = [
-  { type: 'BOOKING', name: 'Booking Agent', desc: 'Handles new appointment bookings via WhatsApp & phone', icon: '📅', color: '#0891b2' },
-  { type: 'REMINDER', name: 'Reminder Agent', desc: 'Sends appointment reminders 24h and 1h before', icon: '🔔', color: '#7c3aed' },
-  { type: 'FOLLOWUP', name: 'Follow-up Agent', desc: 'Checks in with patients post-appointment', icon: '💬', color: '#059669' },
-  { type: 'DEBT', name: 'Debt Recovery Agent', desc: 'Sends payment reminders for outstanding balances', icon: '💰', color: '#d97706' },
-  { type: 'VISITOR', name: 'Website Visitor Agent', desc: 'Engages website visitors and captures leads', icon: '🌐', color: '#e11d48' },
+  { type: 'BOOKING',  name: 'Booking Agent',         desc: 'Handles new appointment bookings via WhatsApp & phone', icon: '📅', color: '#0891b2' },
+  { type: 'REMINDER', name: 'Reminder Agent',         desc: 'Sends appointment reminders 24h and 1h before',          icon: '🔔', color: '#7c3aed' },
+  { type: 'FOLLOWUP', name: 'Follow-up Agent',        desc: 'Checks in with patients post-appointment',               icon: '💬', color: '#059669' },
+  { type: 'DEBT',     name: 'Debt Recovery Agent',    desc: 'Sends payment reminders for outstanding balances',       icon: '💰', color: '#d97706' },
+  { type: 'VISITOR',  name: 'Website Visitor Agent',  desc: 'Engages website visitors and captures leads',            icon: '🌐', color: '#e11d48' },
 ]
 
 export default function AISuitePage() {
@@ -45,6 +54,10 @@ export default function AISuitePage() {
   const [vtGender, setVtGender]     = useState('female')
   const mediaRecRef                 = useRef<MediaRecorder | null>(null)
   const vtChunksRef                 = useRef<Blob[]>([])
+  const kbFileRef                   = useRef<HTMLInputElement>(null)
+  const [kbUploading, setKbUploading] = useState(false)
+  const [kbUrlInput, setKbUrlInput] = useState('')
+  const [kbUrlLoading, setKbUrlLoading] = useState(false)
 
   async function toggleVtRecording() {
     if (vtRecording) {
@@ -78,50 +91,109 @@ export default function AISuitePage() {
   }, [sub])
 
   async function fetchPrompts() {
-    const res = await fetch(`${API}/receptionist/agent-prompts`, { headers: authH })
-    if (res.ok) setPrompts(await res.json())
+    try {
+      const res = await fetch(`${API}/agent/config`, { headers: authH })
+      if (res.ok) {
+        const data = await res.json()
+        // Normalize: backend returns { configs: [...] } with responsibility field
+        const configs = Array.isArray(data) ? data : (data.configs || [])
+        setPrompts(configs)
+      }
+    } catch {}
   }
   async function fetchRecordings() {
     setLoading(true)
-    const res = await fetch(`${API}/receptionist/call-recordings`, { headers: authH })
-    if (res.ok) setRec(await res.json())
-    setLoading(false)
+    try {
+      const res = await fetch(`${API}/agent/queue`, { headers: authH })
+      if (res.ok) setRec(await res.json())
+    } catch {} finally { setLoading(false) }
   }
   async function fetchKB() {
     setLoading(true)
-    const res = await fetch(`${API}/receptionist/knowledge-base`, { headers: authH })
-    if (res.ok) setKBItems(await res.json())
-    setLoading(false)
+    try {
+      const res = await fetch(`${API}/knowledge`, { headers: authH })
+      if (res.ok) setKBItems(await res.json())
+    } catch {} finally { setLoading(false) }
   }
 
   async function toggleAgent(type: string) {
-    const prompt = prompts.find(p => p.type === type)
-    if (!prompt) {
-      showToast(`${type} agent not yet configured in the system`)
-      return
-    }
-    await fetch(`${API}/receptionist/agent-prompts/${prompt.id}`, {
-      method: 'PATCH', headers: { ...authH, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: !prompt.isActive }),
+    const responsibility = TYPE_TO_RESPONSIBILITY[type] || type
+    const current = prompts.find(p => p.responsibility === responsibility)
+    const newActive = !(current?.isActive ?? false)
+    const res = await fetch(`${API}/agent/config/${responsibility}`, {
+      method: 'PUT', headers: { ...authH, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: newActive }),
     })
+    if (res.ok) {
+      showToast(newActive ? `${type} agent activated` : `${type} agent paused`)
+      fetchPrompts()
+    } else {
+      const err = await res.json().catch(() => ({}))
+      showToast(err.error || 'Failed to update agent')
+    }
+  }
+
+  async function pauseAllAgents() {
+    const responsibilities = ['INBOUND', 'REMINDER', 'FOLLOWUP', 'DEBT']
+    for (const r of responsibilities) {
+      await fetch(`${API}/agent/config/${r}`, {
+        method: 'PUT', headers: { ...authH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: false }),
+      })
+    }
     fetchPrompts()
+    showToast('All agents paused')
   }
 
   async function savePrompt() {
     if (!editPrompt) return
     setSaving(true)
-    await fetch(`${API}/receptionist/agent-prompts/${editPrompt.id}`, {
-      method: 'PATCH', headers: { ...authH, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ systemPrompt: editText }),
+    const responsibility = editPrompt.responsibility || TYPE_TO_RESPONSIBILITY[editPrompt.type] || editPrompt.type
+    const res = await fetch(`${API}/agent/config/${responsibility}`, {
+      method: 'PUT', headers: { ...authH, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system_prompt: editText }),
     })
     setSaving(false)
-    fetchPrompts()
-    showToast('Prompt saved and activated!')
+    if (res.ok) {
+      fetchPrompts()
+      showToast('Prompt saved!')
+    } else {
+      const err = await res.json().catch(() => ({}))
+      showToast(err.error || 'Failed to save prompt')
+    }
+  }
+
+  async function uploadKBFile(file: File) {
+    setKbUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`${API}/knowledge/upload`, { method: 'POST', headers: authH, body: form })
+      if (res.ok) { showToast('Document ingested into knowledge base!'); fetchKB() }
+      else { const e = await res.json().catch(() => ({})); showToast(e.error || 'Upload failed') }
+    } catch { showToast('Upload failed') } finally { setKbUploading(false) }
+  }
+
+  async function ingestURL() {
+    if (!kbUrlInput.trim()) return
+    setKbUrlLoading(true)
+    try {
+      const res = await fetch(`${API}/knowledge/url`, {
+        method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: kbUrlInput }),
+      })
+      if (res.ok) { showToast('URL ingested!'); setKbUrlInput(''); fetchKB() }
+      else { const e = await res.json().catch(() => ({})); showToast(e.error || 'Failed to ingest URL') }
+    } catch { showToast('Failed to ingest URL') } finally { setKbUrlLoading(false) }
   }
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
-  const promptForType = (type: string) => prompts.find(p => p.type === type)
+  // Look up config by responsibility (mapping card type → DB responsibility)
+  const promptForType = (type: string) => {
+    const responsibility = TYPE_TO_RESPONSIBILITY[type] || type
+    return prompts.find(p => p.responsibility === responsibility)
+  }
 
   const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
 
@@ -156,14 +228,7 @@ export default function AISuitePage() {
           <button
             onClick={async () => {
               if (!confirm('Pause ALL AI agents? The clinic will need to handle calls manually.')) return
-              await Promise.all(prompts.filter(p => p.isActive).map(p =>
-                fetch(`${API}/receptionist/agent-prompts/${p.id}`, {
-                  method: 'PATCH', headers: { ...authH, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ isActive: false }),
-                })
-              ))
-              fetchPrompts()
-              showToast('All agents paused')
+              await pauseAllAgents()
             }}
             className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 transition-colors">
             <Pause size={13} /> Pause All Agents
@@ -237,15 +302,16 @@ export default function AISuitePage() {
                   <div className="px-4 py-8 text-center">
                     <Bot size={24} className="mx-auto mb-2 text-gray-200" />
                     <p className="text-xs text-gray-400">No agents configured yet</p>
+                    <p className="text-[10px] text-gray-300 mt-1">Run /setup/seed-production to initialize</p>
                   </div>
                 ) : prompts.map(p => (
-                  <button key={p.id} onClick={() => { setEdit(p); setEditText(p.systemPrompt) }}
+                  <button key={p.id} onClick={() => { setEdit(p); setEditText(p.systemPrompt || '') }}
                     className={cn('w-full flex items-center gap-3 px-4 py-3 text-left border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors',
                       editPrompt?.id === p.id && 'bg-cyan-50 border-l-4 border-l-cyan-500')}>
                     <div className={cn('w-2 h-2 rounded-full flex-shrink-0', p.isActive ? 'bg-emerald-500' : 'bg-gray-300')} />
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 truncate">{p.name}</p>
-                      <p className="text-xs text-gray-400">v{p.version}</p>
+                      <p className="text-sm font-semibold text-gray-800 truncate capitalize">{(p.responsibility || '').toLowerCase()}</p>
+                      <p className="text-xs text-gray-400">v{p.promptVersion || 1}</p>
                     </div>
                   </button>
                 ))}
@@ -258,8 +324,8 @@ export default function AISuitePage() {
                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                       <div className="flex items-center justify-between mb-4">
                         <div>
-                          <h3 className="font-bold text-gray-800">{editPrompt.name}</h3>
-                          <p className="text-xs text-gray-400">Version {editPrompt.version}</p>
+                          <h3 className="font-bold text-gray-800 capitalize">{(editPrompt.responsibility || editPrompt.name || '').toLowerCase()} Agent</h3>
+                          <p className="text-xs text-gray-400">Version {editPrompt.promptVersion || 1}</p>
                         </div>
                         <div className="flex gap-2">
                           <button onClick={savePrompt} disabled={saving}
@@ -479,16 +545,27 @@ export default function AISuitePage() {
             </div>
 
             {/* Upload zone */}
-            <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-10 text-center hover:border-cyan-400 hover:bg-cyan-50/30 transition-all cursor-pointer">
-              <Upload size={32} className="mx-auto mb-3 text-gray-300" />
-              <p className="font-bold text-gray-700 mb-1">Drop any file here</p>
-              <p className="text-sm text-gray-400 mb-4">PDF, Image, Audio, Video, Link, Screenshot</p>
+            <div
+              className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-10 text-center hover:border-cyan-400 hover:bg-cyan-50/30 transition-all cursor-pointer"
+              onClick={() => kbFileRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) uploadKBFile(f) }}>
+              <input ref={kbFileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.mp3,.mp4,.wav,.webp" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadKBFile(f); e.target.value = '' }} />
+              {kbUploading ? (
+                <Loader2 size={32} className="mx-auto mb-3 animate-spin text-cyan-500" />
+              ) : (
+                <Upload size={32} className="mx-auto mb-3 text-gray-300" />
+              )}
+              <p className="font-bold text-gray-700 mb-1">{kbUploading ? 'Uploading & ingesting...' : 'Drop any file here or click to browse'}</p>
+              <p className="text-sm text-gray-400 mb-4">PDF, Image, Audio, Video — ingested into the AI knowledge base</p>
               <div className="flex items-center justify-center gap-3 mb-4">
-                {['PDF', 'PNG', 'JPG', 'MP3', 'MP4', 'URL'].map(t => (
+                {['PDF', 'PNG', 'JPG', 'MP3', 'MP4', 'WAV'].map(t => (
                   <span key={t} className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-1 rounded-lg">{t}</span>
                 ))}
               </div>
-              <button className="px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              <button disabled={kbUploading}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60"
                 style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
                 Browse Files
               </button>
@@ -501,9 +578,16 @@ export default function AISuitePage() {
                 <h3 className="text-sm font-bold text-gray-800">Add URL</h3>
               </div>
               <div className="flex gap-2">
-                <input placeholder="https://example.com/page-to-ingest..." className={cn(inputCls, 'flex-1')} />
-                <button className="px-4 py-2.5 rounded-xl text-sm font-bold text-white whitespace-nowrap"
+                <input
+                  value={kbUrlInput}
+                  onChange={e => setKbUrlInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') ingestURL() }}
+                  placeholder="https://example.com/page-to-ingest..."
+                  className={cn(inputCls, 'flex-1')} />
+                <button onClick={ingestURL} disabled={kbUrlLoading || !kbUrlInput.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold text-white whitespace-nowrap disabled:opacity-60"
                   style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+                  {kbUrlLoading ? <Loader2 size={14} className="animate-spin" /> : null}
                   Crawl & Ingest
                 </button>
               </div>

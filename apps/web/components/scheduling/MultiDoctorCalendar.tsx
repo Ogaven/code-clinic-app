@@ -233,9 +233,13 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
       <div className="flex" style={{ height: `${timeSlots.length * SLOT_HEIGHT}px` }}>
         <TimeCol width={TIME_W} />
         {columns.map(({ doctor, appointments, blockedTimes }) => {
-          const wh       = doctor.workingHours ? JSON.parse(doctor.workingHours) : { start: '08:00', end: '18:00' }
-          const [sH, sM] = wh.start.split(':').map(Number)
-          const [eH, eM] = wh.end.split(':').map(Number)
+          // Parse workingHours — supports both legacy {start,end} and per-day {"1":{start,end},...}
+          let rawWh: any = { start: '08:00', end: '18:00' }
+          try { if (doctor.workingHours) rawWh = JSON.parse(doctor.workingHours) } catch {}
+          const startStr = rawWh.start ?? rawWh['1']?.start ?? rawWh['2']?.start ?? rawWh['0']?.start ?? '08:00'
+          const endStr   = rawWh.end   ?? rawWh['1']?.end   ?? rawWh['2']?.end   ?? rawWh['0']?.end   ?? '18:00'
+          const [sH, sM] = startStr.split(':').map(Number)
+          const [eH, eM] = endStr.split(':').map(Number)
           const wTop     = ((sH * 60 + sM - HOUR_START * 60) / 30) * SLOT_HEIGHT
           const wBot     = ((eH * 60 + eM - HOUR_START * 60) / 30) * SLOT_HEIGHT
           const total    = timeSlots.length * SLOT_HEIGHT

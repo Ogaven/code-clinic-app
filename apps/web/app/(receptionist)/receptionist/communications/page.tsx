@@ -207,6 +207,33 @@ export default function CommunicationsPage() {
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [internalChan, setInternalChan] = useState<'general' | 'appointments' | 'alerts'>('general')
   const [internalMsgs, setInternalMsgs] = useState(internalMessages)
+  // Human control state: when true the human handles the conversation, agent stops
+  const [humanControl, setHumanControl] = useState<Record<string, boolean>>({})
+
+  function takeOver(id: string) {
+    setHumanControl(p => ({ ...p, [id]: true }))
+    // Show system message in thread
+    const sysMsg: Message = {
+      id: 'sys_' + Date.now(),
+      from: 'me',
+      text: '🟡 You have taken over this conversation. The AI agent has been paused.',
+      time: nowTime(),
+      status: 'sent',
+    }
+    setWaMsgs(p => ({ ...p, [id]: [...(p[id] || []), sysMsg] }))
+  }
+
+  function handBackToAI(id: string) {
+    setHumanControl(p => ({ ...p, [id]: false }))
+    const sysMsg: Message = {
+      id: 'sys_' + Date.now(),
+      from: 'me',
+      text: '🤖 AI agent resumed. Sarah will continue handling this conversation.',
+      time: nowTime(),
+      status: 'sent',
+    }
+    setWaMsgs(p => ({ ...p, [id]: [...(p[id] || []), sysMsg] }))
+  }
   const bottomRef   = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -397,9 +424,25 @@ export default function CommunicationsPage() {
                     </div>
                     <div className="flex-1">
                       <p className="text-white font-bold text-sm">{convWa.contact}</p>
-                      <p className="text-[11px]" style={{ color: '#90cbb7' }}>{convWa.online ? 'online' : convWa.phone}</p>
+                      <p className="text-[11px]" style={{ color: '#90cbb7' }}>
+                        {humanControl[activeWa!] ? '🟡 Human control' : '🤖 AI handling'}
+                      </p>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 items-center">
+                      {/* Take Over / Hand Back button */}
+                      {humanControl[activeWa!] ? (
+                        <button onClick={() => handBackToAI(activeWa!)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:opacity-90"
+                          style={{ background: '#00BCD4', color: '#fff' }}>
+                          🤖 Hand Back to AI
+                        </button>
+                      ) : (
+                        <button onClick={() => takeOver(activeWa!)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:opacity-90"
+                          style={{ background: '#F59E0B', color: '#fff' }}>
+                          Take Over
+                        </button>
+                      )}
                       <button className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/10 text-white"><Phone size={17} /></button>
                       <button className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/10 text-white"><Video size={17} /></button>
                       <button className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/10 text-white"><MoreVertical size={17} /></button>
@@ -456,39 +499,47 @@ export default function CommunicationsPage() {
                     </div>
                   )}
 
-                  {/* Input */}
-                  <div className="flex items-center gap-2 px-3 py-2.5 flex-shrink-0" style={{ background: '#f0f2f5' }}>
-                    <button onClick={() => setShowAttachMenu(s => !s)}
-                      className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-black/5 text-gray-500 transition-colors">
-                      <Paperclip size={20} className={showAttachMenu ? 'text-cyan-500' : ''} />
-                    </button>
-                    <button className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-black/5 text-gray-500">
-                      <Smile size={20} />
-                    </button>
-                    <input
-                      value={reply}
-                      onChange={e => setReply(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendWa() } }}
-                      placeholder="Type a message"
-                      className="flex-1 px-4 py-2.5 rounded-2xl bg-white text-sm outline-none shadow-sm text-gray-800"
-                    />
-                    {reply.trim() ? (
-                      <button onClick={sendWa}
-                        className="w-11 h-11 rounded-full flex items-center justify-center transition-all hover:scale-105"
-                        style={{ background: WA_GREEN }}>
-                        <Send size={17} className="text-white" style={{ transform: 'translateX(1px)' }} />
+                  {/* Input — disabled when AI is in control */}
+                  {humanControl[activeWa!] ? (
+                    <div className="flex items-center gap-2 px-3 py-2.5 flex-shrink-0" style={{ background: '#f0f2f5' }}>
+                      <button onClick={() => setShowAttachMenu(s => !s)}
+                        className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-black/5 text-gray-500 transition-colors">
+                        <Paperclip size={20} className={showAttachMenu ? 'text-cyan-500' : ''} />
                       </button>
-                    ) : (
-                      <button onClick={toggleVoiceNote}
-                        className={cn(
-                          'w-11 h-11 rounded-full flex items-center justify-center transition-all hover:scale-105',
-                          recording ? 'animate-pulse' : '',
-                        )}
-                        style={{ background: recording ? '#ef4444' : WA_GREEN }}>
-                        {recording ? <MicOff size={17} className="text-white" /> : <Mic size={17} className="text-white" />}
+                      <button className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-black/5 text-gray-500">
+                        <Smile size={20} />
                       </button>
-                    )}
-                  </div>
+                      <input
+                        value={reply}
+                        onChange={e => setReply(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendWa() } }}
+                        placeholder="Type a message..."
+                        className="flex-1 px-4 py-2.5 rounded-2xl bg-white text-sm outline-none shadow-sm text-gray-800"
+                      />
+                      {reply.trim() ? (
+                        <button onClick={sendWa}
+                          className="w-11 h-11 rounded-full flex items-center justify-center transition-all hover:scale-105"
+                          style={{ background: WA_GREEN }}>
+                          <Send size={17} className="text-white" style={{ transform: 'translateX(1px)' }} />
+                        </button>
+                      ) : (
+                        <button onClick={toggleVoiceNote}
+                          className={cn(
+                            'w-11 h-11 rounded-full flex items-center justify-center transition-all hover:scale-105',
+                            recording ? 'animate-pulse' : '',
+                          )}
+                          style={{ background: recording ? '#ef4444' : WA_GREEN }}>
+                          {recording ? <MicOff size={17} className="text-white" /> : <Mic size={17} className="text-white" />}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0 border-t" style={{ background: '#f9f9f9' }}>
+                      <span className="text-xs text-gray-400 italic flex items-center gap-1.5 flex-1">
+                        🤖 AI agent is handling this conversation — click <strong className="text-amber-500 not-italic">Take Over</strong> to respond manually
+                      </span>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8">

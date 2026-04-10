@@ -436,7 +436,7 @@ export default function ReceptionistDashboard() {
       {/* ── Stats Row ──────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Today's Appointments */}
-        <div className="dark-pop bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
+        <div className="dark-pop stat-card-cyan bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #0891b2, #06b6d4)' }}>
@@ -453,7 +453,7 @@ export default function ReceptionistDashboard() {
         </div>
 
         {/* New Patients */}
-        <div className="dark-pop bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
+        <div className="dark-pop stat-card-purple bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)' }}>
@@ -474,7 +474,7 @@ export default function ReceptionistDashboard() {
         </div>
 
         {/* Returning Patients */}
-        <div className="dark-pop bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
+        <div className="dark-pop stat-card-green bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}>
@@ -496,8 +496,8 @@ export default function ReceptionistDashboard() {
 
         {/* AI Agent Status */}
         <div className={cn(
-          'dark-pop rounded-2xl p-4 border shadow-sm hover:shadow-md',
-          agentActive ? 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/8' : 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30',
+          'dark-pop stat-card-orange rounded-2xl p-4 border shadow-sm hover:shadow-md',
+          agentActive ? 'bg-white border-gray-100' : 'bg-red-50 border-red-100',
         )}>
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"

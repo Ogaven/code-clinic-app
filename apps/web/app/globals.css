@@ -60,7 +60,7 @@
     font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
   }
   .dark body {
-    background: #0A0F1E;
+    background: linear-gradient(135deg, #0A0F1E 0%, #0D1B2A 50%, #0A1628 100%);
     background-attachment: fixed;
     min-height: 100vh;
   }
@@ -347,4 +347,38 @@
 .dark .clock-face {
   fill: rgba(15,45,94,0.9);
   stroke: rgba(41,171,226,0.3);
+}
+
+/* ── Dark sidebar gradient ──────────────────────────────── */
+.dark .rec-sidebar {
+  background: linear-gradient(180deg, #060B14 0%, #0A1628 100%) !important;
+  border-right: 1px solid rgba(0,188,212,0.1) !important;
+}
+
+/* ── Dark sidebar active item ───────────────────────────── */
+.dark .rec-nav-item.active {
+  background: linear-gradient(90deg, rgba(0,188,212,0.25) 0%, rgba(0,188,212,0.05) 100%) !important;
+  border-left: 3px solid #00BCD4 !important;
+  color: #ffffff !important;
+}
+
+/* ── Stat card gradient variants (dark mode only) ───────── */
+.dark .stat-card-cyan   { background: linear-gradient(135deg, rgba(0,188,212,0.15) 0%, rgba(0,188,212,0.04) 100%) !important; border-color: rgba(0,188,212,0.25) !important; backdrop-filter: blur(12px); }
+.dark .stat-card-purple { background: linear-gradient(135deg, rgba(124,58,237,0.15) 0%, rgba(124,58,237,0.04) 100%) !important; border-color: rgba(124,58,237,0.25) !important; backdrop-filter: blur(12px); }
+.dark .stat-card-green  { background: linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.04) 100%) !important; border-color: rgba(16,185,129,0.25) !important; backdrop-filter: blur(12px); }
+.dark .stat-card-orange { background: linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.04) 100%) !important; border-color: rgba(245,158,11,0.25) !important; backdrop-filter: blur(12px); }
+
+/* ── Dark main background ───────────────────────────────── */
+.dark .main-bg {
+  background: linear-gradient(135deg, #0A0F1E 0%, #0D1B2A 50%, #0A1628 100%);
+  background-attachment: fixed;
+}
+
+/* ── Dark glassmorphism card ────────────────────────────── */
+.dark .glass-card-dark {
+  background: rgba(255,255,255,0.05) !important;
+  border: 1px solid rgba(0,188,212,0.15) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important;
 }

@@ -215,8 +215,13 @@ router.get('/config', requireAuth, async (req, res) => {
 // PUT /agent/config/:responsibility
 router.put('/config/:responsibility', requireAuth, async (req, res) => {
   try {
-    if (!['ADMIN'].includes(req.user!.role)) {
-      return res.status(403).json({ error: 'Admin access required' })
+    const role = req.user!.role
+    // Receptionists can only toggle isActive — full edit requires ADMIN
+    if (!['ADMIN', 'RECEPTIONIST'].includes(role)) {
+      return res.status(403).json({ error: 'Access denied' })
+    }
+    if (role === 'RECEPTIONIST' && (req.body.system_prompt || req.body.schedule_cron || req.body.max_attempts)) {
+      return res.status(403).json({ error: 'Receptionists can only toggle agent active status' })
     }
     const { is_active, system_prompt, schedule_cron, max_attempts } = req.body
     const user = req.user!

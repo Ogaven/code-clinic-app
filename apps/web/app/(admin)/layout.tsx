@@ -2,7 +2,7 @@
 
 import Sidebar from '@/components/layout/Sidebar'
 import TopBar from '@/components/layout/TopBar'
-import ZoeAssistant from '@/components/ZoeAssistant'
+import SarahChatbot from '@/components/SarahChatbot'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Menu, X } from 'lucide-react'
@@ -64,7 +64,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const title = pageTitles[pathname] || 'Dashboard'
 
   return (
-    <div className={`flex h-screen overflow-hidden transition-colors duration-300 ${dark ? 'bg-gray-950' : 'bg-clinic-bg'}`}>
+    <div className={`flex h-screen overflow-hidden transition-colors duration-300 ${dark ? 'bg-transparent' : 'bg-clinic-bg'}`}>
 
       {/* Mobile sidebar overlay */}
       {mobileOpen && (
@@ -108,11 +108,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <TopBar title={title} user={user} dark={dark} onThemeToggle={(d) => setDark(d)} />
         </div>
 
-        <main className={`flex-1 overflow-y-auto p-4 lg:p-6 transition-colors duration-300 ${dark ? 'bg-gray-950' : ''}`}>
+        <main className={`flex-1 overflow-y-auto p-4 lg:p-6 transition-colors duration-300 ${dark ? 'bg-transparent' : ''}`}>
           {children}
         </main>
       </div>
-      <ZoeAssistant role={user?.role} />
+      <SarahChatbot />
     </div>
   )
 }

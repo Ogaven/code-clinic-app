@@ -117,6 +117,39 @@ const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
   CANCELLED: { label: 'Cancelled', bg: '#FEE2E2', text: '#DC2626' },
 }
 
+// ── Weather Widget ──────────────────────────────────────────────────────────
+function WeatherWidget() {
+  const [time] = useState(new Date())
+  const hour = new Date(time.toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getHours()
+  const isNight = hour < 6 || hour >= 20
+  const icon = isNight ? '🌙' : hour < 10 ? '🌤️' : '⛅'
+  return (
+    <div className="rounded-2xl p-3 text-white overflow-hidden relative"
+      style={{ background: 'linear-gradient(135deg,#0d47a1 0%,#1976D2 60%,#29ABE2 100%)', boxShadow:'0 8px 24px rgba(13,71,161,0.35)' }}>
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-blue-200">Kampala Weather</p>
+        <span className="text-[9px] text-blue-300 font-semibold">Live</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="text-3xl leading-none">{icon}</div>
+        <div>
+          <p className="text-2xl font-black leading-none">28°C</p>
+          <p className="text-[10px] text-blue-200 font-semibold mt-0.5">Partly Cloudy</p>
+        </div>
+        <div className="ml-auto text-right">
+          <p className="text-[9px] text-blue-200">High 31° / Low 21°</p>
+          <p className="text-[9px] text-blue-300 mt-0.5">Kampala, UG</p>
+        </div>
+      </div>
+      <div className="flex gap-3 mt-2 text-[9px] text-blue-300 font-semibold border-t border-blue-400/30 pt-2">
+        <span>💧 72% humidity</span>
+        <span>💨 12 km/h NE</span>
+        <span>🌅 06:28 rise</span>
+      </div>
+    </div>
+  )
+}
+
 // ── Mini Calendar ───────────────────────────────────────────────────────────
 function MiniCalendar() {
   const today = new Date()
@@ -130,7 +163,7 @@ function MiniCalendar() {
   const monthName = today.toLocaleDateString('en-UG', { month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
   return (
     <div>
-      <p className="text-xs font-bold text-clinic-navy mb-3 text-center">{monthName}</p>
+      <p className="text-xs font-bold text-clinic-navy dark:text-white mb-3 text-center">{monthName}</p>
       <div className="grid grid-cols-7 gap-0.5 mb-1">
         {['S','M','T','W','T','F','S'].map((d, i) => (
           <div key={i} className="text-center text-[10px] font-semibold text-gray-400 py-1">{d}</div>
@@ -144,7 +177,7 @@ function MiniCalendar() {
           return (
             <div key={d} className={cn(
               'relative h-7 flex items-center justify-center rounded-lg text-xs font-medium cursor-pointer transition-all',
-              isToday ? 'text-white font-bold shadow-md' : hasAppt ? 'text-clinic-blue hover:bg-blue-50' : 'text-gray-400 hover:bg-gray-50',
+              isToday ? 'text-white font-bold shadow-md' : hasAppt ? 'text-clinic-blue hover:bg-blue-50 dark:text-cyan-400 dark:hover:bg-white/10' : 'text-gray-400 dark:text-white/30 hover:bg-gray-50 dark:hover:bg-white/5',
             )} style={isToday ? { background: 'linear-gradient(135deg, #1A237E, #29ABE2)' } : {}}>
               {d}
               {hasAppt && !isToday && (
@@ -216,10 +249,10 @@ export default function DashboardPage() {
       {/* ── TOP ROW: greeting + clock centred + dental40 right ── */}
       <div className="relative flex items-end gap-4" style={{ marginBottom: -50 }}>
         <div className="flex-1 pb-3">
-          <h2 className="text-clinic-navy text-xl font-bold leading-tight" style={{ fontFamily: 'Plus Jakarta Sans' }}>
+          <h2 className="text-clinic-navy dark:text-white text-xl font-bold leading-tight" style={{ fontFamily: 'Plus Jakarta Sans' }}>
             {greeting}, {displayName} 👋
           </h2>
-          <p className="text-gray-400 text-xs mt-0.5">Here&apos;s what&apos;s happening at Code Clinic today.</p>
+          <p className="text-gray-400 dark:text-blue-300 text-xs mt-0.5">Here&apos;s what&apos;s happening at Code Clinic today.</p>
         </div>
         <div className="flex-shrink-0 rounded-2xl px-5 py-4 shadow-2xl"
           style={{
@@ -238,19 +271,19 @@ export default function DashboardPage() {
       {/* ── KPI CARDS ── */}
       <div className="grid grid-cols-3 gap-3" style={{ paddingTop: 58 }}>
         {[
-          { title: "Today's Appointments", value: '24',        sub: '5 pending', trend: { v: 12, up: true },  icon: Calendar,    color: '#29ABE2', bg: 'linear-gradient(135deg,#E0F7FF,#BDEFFF)' },
-          { title: 'Monthly Revenue',       value: 'UGX 31.2M', sub: '+8% vs last month', trend: { v: 8, up: true }, icon: DollarSign, color: '#059669', bg: 'linear-gradient(135deg,#D1FAE5,#A7F3D0)' },
-          { title: 'Active Patients',       value: '790',       sub: '62 new this month', trend: { v: 5, up: true }, icon: Users,      color: '#7C3AED', bg: 'linear-gradient(135deg,#EDE9FE,#DDD6FE)' },
+          { title: "Today's Appointments", value: '24',        sub: '5 pending', trend: { v: 12, up: true },  icon: Calendar,    color: '#29ABE2', bg: 'linear-gradient(135deg,#E0F7FF,#BDEFFF)', cardClass: 'stat-card-cyan' },
+          { title: 'Monthly Revenue',       value: 'UGX 31.2M', sub: '+8% vs last month', trend: { v: 8, up: true }, icon: DollarSign, color: '#059669', bg: 'linear-gradient(135deg,#D1FAE5,#A7F3D0)', cardClass: 'stat-card-green' },
+          { title: 'Active Patients',       value: '790',       sub: '62 new this month', trend: { v: 5, up: true }, icon: Users,      color: '#7C3AED', bg: 'linear-gradient(135deg,#EDE9FE,#DDD6FE)', cardClass: 'stat-card-purple' },
         ].map((k, i) => (
-          <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-all">
+          <div key={i} className={cn('bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-all', k.cardClass)}>
             <div className="flex items-start justify-between mb-2">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-tight">{k.title}</p>
+              <p className="text-[10px] font-semibold text-gray-400 dark:text-white/60 uppercase tracking-wide leading-tight">{k.title}</p>
               <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: k.bg }}>
                 <k.icon size={15} style={{ color: k.color }} />
               </div>
             </div>
-            <p className="text-xl font-bold text-clinic-navy">{k.value}</p>
-            <div className={cn('flex items-center gap-1 text-[10px] font-semibold mt-1', k.trend.up ? 'text-emerald-600' : 'text-red-500')}>
+            <p className="text-xl font-bold text-clinic-navy dark:text-white">{k.value}</p>
+            <div className={cn('flex items-center gap-1 text-[10px] font-semibold mt-1', k.trend.up ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500')}>
               {k.trend.up ? <TrendingUp size={10}/> : <TrendingDown size={10}/>} {k.sub}
             </div>
           </div>
@@ -267,11 +300,11 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-3">
 
             {/* Revenue area */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 p-4 backdrop-blur-sm">
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Revenue</p>
-                  <p className="text-base font-bold text-clinic-navy">UGX 31.2M <span className="text-xs text-emerald-500">↑ +8%</span></p>
+                  <p className="text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-wide">Revenue</p>
+                  <p className="text-base font-bold text-clinic-navy dark:text-white">UGX 31.2M <span className="text-xs text-emerald-500">↑ +8%</span></p>
                 </div>
                 <div className="flex gap-2 text-[9px] text-gray-400">
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-clinic-blue inline-block"/>Rev</span>
@@ -297,8 +330,8 @@ export default function DashboardPage() {
             </div>
 
             {/* Service pie + workload */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Service Mix & Workload</p>
+            <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 p-4 backdrop-blur-sm">
+              <p className="text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-wide mb-1">Service Mix & Workload</p>
               <div className="flex gap-2">
                 <ResponsiveContainer width="55%" height={100}>
                   <PieChart>
@@ -330,36 +363,36 @@ export default function DashboardPage() {
           </div>
 
           {/* Patient list — 4 rows only */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
-              <p className="font-bold text-clinic-navy text-sm" style={{ fontFamily:'Plus Jakarta Sans' }}>Today&apos;s Patients</p>
+          <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 overflow-hidden backdrop-blur-sm">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/8">
+              <p className="font-bold text-clinic-navy dark:text-white text-sm" style={{ fontFamily:'Plus Jakarta Sans' }}>Today&apos;s Patients</p>
               <a href="/patients" className="text-[10px] font-semibold text-clinic-blue hover:underline flex items-center gap-1">
                 All {patientList.length} <ChevronRight size={11}/>
               </a>
             </div>
             <table className="w-full">
               <thead>
-                <tr style={{ background:'#F9FAFB' }}>
-                  <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-4 py-2">Patient</th>
-                  <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-3 py-2 hidden md:table-cell">Service</th>
-                  <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-3 py-2">Status</th>
-                  <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-3 py-2 hidden sm:table-cell">Time</th>
+                <tr className="bg-gray-50 dark:bg-white/5">
+                  <th className="text-left text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-wide px-4 py-2">Patient</th>
+                  <th className="text-left text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-wide px-3 py-2 hidden md:table-cell">Service</th>
+                  <th className="text-left text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-wide px-3 py-2">Status</th>
+                  <th className="text-left text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-wide px-3 py-2 hidden sm:table-cell">Time</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-gray-50 dark:divide-white/5">
                 {patientList.slice(0, 4).map(p => {
                   const s = statusCfg[p.status]
                   return (
-                    <tr key={p.id} className="hover:bg-blue-50/30 transition-colors cursor-pointer group">
+                    <tr key={p.id} className="hover:bg-blue-50/30 dark:hover:bg-white/5 transition-colors cursor-pointer group">
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                           <Avatar firstName={p.firstName} lastName={p.lastName} colour={p.colour} size="sm"/>
-                          <p className="text-xs font-semibold text-gray-800 group-hover:text-clinic-blue transition-colors">{p.firstName} {p.lastName}</p>
+                          <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 group-hover:text-clinic-blue dark:group-hover:text-cyan-400 transition-colors">{p.firstName} {p.lastName}</p>
                         </div>
                       </td>
-                      <td className="px-3 py-2 hidden md:table-cell"><span className="text-[11px] text-gray-500">{p.service}</span></td>
+                      <td className="px-3 py-2 hidden md:table-cell"><span className="text-[11px] text-gray-500 dark:text-gray-400">{p.service}</span></td>
                       <td className="px-3 py-2"><span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background:s.bg, color:s.text }}>{s.label}</span></td>
-                      <td className="px-3 py-2 hidden sm:table-cell"><span className="text-[11px] text-gray-400 flex items-center gap-1"><Clock size={10}/>{p.time}</span></td>
+                      <td className="px-3 py-2 hidden sm:table-cell"><span className="text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1"><Clock size={10}/>{p.time}</span></td>
                     </tr>
                   )
                 })}
@@ -368,22 +401,22 @@ export default function DashboardPage() {
           </div>
 
           {/* Debt — compact inline list */}
-          <div className="bg-white rounded-2xl shadow-sm border border-red-100 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-red-50">
+          <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-red-100 dark:border-red-500/20 overflow-hidden backdrop-blur-sm">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-red-50 dark:border-red-500/20">
               <div className="flex items-center gap-2">
                 <AlertCircle size={15} color="#DC2626"/>
-                <p className="font-bold text-gray-800 text-sm" style={{ fontFamily:'Plus Jakarta Sans' }}>Outstanding Debt</p>
+                <p className="font-bold text-gray-800 dark:text-white text-sm" style={{ fontFamily:'Plus Jakarta Sans' }}>Outstanding Debt</p>
               </div>
               <p className="text-base font-bold text-red-600">UGX 3.64M</p>
             </div>
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-gray-50 dark:divide-white/5">
               {debtors.slice(0,3).map((d,i) => (
-                <div key={i} className="flex items-center justify-between px-4 py-2 hover:bg-red-50/30 transition-colors cursor-pointer">
+                <div key={i} className="flex items-center justify-between px-4 py-2 hover:bg-red-50/30 dark:hover:bg-white/5 transition-colors cursor-pointer">
                   <div className="flex items-center gap-2">
                     <Avatar firstName={d.name.split(' ')[0]} lastName={d.name.split(' ')[1]} colour={d.color} size="sm"/>
                     <div>
-                      <p className="text-xs font-semibold text-gray-800">{d.name}</p>
-                      <p className="text-[9px] text-gray-400">{d.days}d overdue</p>
+                      <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{d.name}</p>
+                      <p className="text-[9px] text-gray-400 dark:text-gray-500">{d.days}d overdue</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -402,10 +435,13 @@ export default function DashboardPage() {
         {/* RIGHT 1/3 */}
         <div className="space-y-3">
 
+          {/* Weather widget */}
+          <WeatherWidget />
+
           {/* Mini calendar */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 p-4 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-3">
-              <p className="font-bold text-clinic-navy text-sm" style={{ fontFamily:'Plus Jakarta Sans' }}>Schedule</p>
+              <p className="font-bold text-clinic-navy dark:text-white text-sm" style={{ fontFamily:'Plus Jakarta Sans' }}>Schedule</p>
               <a href="/scheduling" className="text-[10px] font-semibold text-clinic-blue hover:underline flex items-center gap-0.5">
                 Full view <ChevronRight size={10}/>
               </a>
@@ -414,18 +450,18 @@ export default function DashboardPage() {
           </div>
 
           {/* Upcoming — 3 items */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
-              <p className="font-bold text-clinic-navy text-sm" style={{ fontFamily:'Plus Jakarta Sans' }}>Upcoming</p>
+          <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 overflow-hidden backdrop-blur-sm">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/8">
+              <p className="font-bold text-clinic-navy dark:text-white text-sm" style={{ fontFamily:'Plus Jakarta Sans' }}>Upcoming</p>
               <span className="text-[10px] font-semibold text-clinic-blue bg-blue-50 px-2 py-0.5 rounded-full">{upcoming.length} left</span>
             </div>
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-gray-50 dark:divide-white/5">
               {upcoming.slice(0,3).map((a,i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50/30 transition-colors cursor-pointer group">
+                <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50/30 dark:hover:bg-white/5 transition-colors cursor-pointer group">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0" style={{ background:a.colour }}>{a.time}</div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 truncate group-hover:text-clinic-blue transition-colors">{a.patient}</p>
-                    <p className="text-[10px] text-gray-400 truncate">{a.service}</p>
+                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate group-hover:text-clinic-blue dark:group-hover:text-cyan-400 transition-colors">{a.patient}</p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">{a.service}</p>
                   </div>
                 </div>
               ))}

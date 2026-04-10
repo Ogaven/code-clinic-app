@@ -11,7 +11,7 @@ import {
   Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import ZoeAssistant from '@/components/ZoeAssistant'
+import SarahChatbot from '@/components/SarahChatbot'
 
 const nav = [
   { label: 'Dashboard',      href: '/receptionist/dashboard',      icon: LayoutDashboard },
@@ -144,7 +144,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
             </div>
 
             <p className="text-xs text-gray-400 dark:text-white/30 text-center">
-              Or open <strong className="text-cyan-500">Zoe AI</strong> on the dashboard — she can also create support tickets for you.
+              Or open <strong className="text-cyan-500">Sarah AI</strong> on the dashboard — she can also create support tickets for you.
             </p>
           </form>
         )}
@@ -547,7 +547,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
         </main>
       </div>
 
-      <ZoeAssistant role="RECEPTIONIST" />
+      <SarahChatbot />
     </div>
   )
 }
