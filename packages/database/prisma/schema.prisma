@@ -94,6 +94,8 @@ model Patient {
   feedback      PatientFeedback[]
   nurtureLogs   NurtureLog[]
   agentLogs     AgentLog[]
+  agentMemory   AgentMemory[]
+  outboundQueue OutboundQueue[]
 
   @@unique([phone])
   @@map("patients")
@@ -381,6 +383,8 @@ model KnowledgeBase {
   chunkIndex Int      @default(0)
   parentId   String?
   isActive   Boolean  @default(true)
+  embedding  String?  // JSON array of floats (OpenAI text-embedding-ada-002)
+  tokenCount Int      @default(0)
   createdAt  DateTime @default(now())
 
   @@map("knowledge_base")
@@ -466,4 +470,80 @@ model InternalMessage {
   createdAt   DateTime @default(now())
 
   @@map("internal_messages")
+}
+
+// ─────────────────────────────────────────────
+// UNIFIED AI AGENT
+// ─────────────────────────────────────────────
+
+model AgentMemory {
+  id               String   @id @default(cuid())
+  patientId        String?
+  patient          Patient? @relation(fields: [patientId], references: [id])
+  channel          String   // VOICE | WHATSAPP
+  phoneNumber      String
+  interactionType  String   // INBOUND | REMINDER | FOLLOWUP | DEBT
+  summary          String
+  outcome          String   // BOOKED | RESCHEDULED | CANCELLED | CONFIRMED | ESCALATED | NO_ANSWER | CALLBACK_REQUESTED
+  callRecordingUrl String?
+  transcript       String?
+  agentMode        String
+  createdAt        DateTime @default(now())
+
+  @@index([patientId])
+  @@index([phoneNumber])
+  @@map("agent_memory")
+}
+
+model AgentConfig {
+  id                 String   @id @default(cuid())
+  responsibility     String   @unique // INBOUND | REMINDER | FOLLOWUP | DEBT
+  isActive           Boolean  @default(false)
+  systemPrompt       String
+  promptVersion      Int      @default(1)
+  promptHistory      String   @default("[]") // JSON [{version, prompt, activatedAt, activatedBy}]
+  scheduleCron       String?  // e.g. "0 6 * * *" (UTC for 09:00 EAT)
+  maxAttempts        Int      @default(3)
+  retryIntervalHours Int      @default(4)
+  updatedBy          String?
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  @@map("agent_config")
+}
+
+model OutboundQueue {
+  id            String    @id @default(cuid())
+  patientId     String
+  patient       Patient   @relation(fields: [patientId], references: [id])
+  phoneNumber   String
+  agentMode     String    // REMINDER | FOLLOWUP | DEBT
+  reason        String
+  appointmentId String?
+  scheduledFor  DateTime
+  attempts      Int       @default(0)
+  lastAttempted DateTime?
+  status        String    @default("PENDING") // PENDING | CALLING | COMPLETED | FAILED | ESCALATED
+  outcome       String?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, scheduledFor])
+  @@map("outbound_queue")
+}
+
+model Escalation {
+  id             String    @id @default(cuid())
+  patientId      String?
+  phoneNumber    String
+  channel        String    // VOICE | WHATSAPP
+  reason         String
+  transcript     String?
+  whatsappThread String?   // JSON array — full conversation
+  status         String    @default("PENDING") // PENDING | HANDLED | RESOLVED
+  handledBy      String?
+  handledAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([status])
+  @@map("escalations")
 }

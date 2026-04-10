@@ -60,7 +60,7 @@
     font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
   }
   .dark body {
-    background: linear-gradient(160deg, #0f2d5e 0%, #091e45 60%, #071530 100%);
+    background: #0A0F1E;
     background-attachment: fixed;
     min-height: 100vh;
   }
@@ -225,8 +225,8 @@
   border-right: 1px solid #e5e7eb;
 }
 .dark .rec-sidebar {
-  background: linear-gradient(180deg, #0c2050 0%, #0a1a40 100%);
-  border-right: 1px solid rgba(255,255,255,0.07);
+  background: #060B14;
+  border-right: 1px solid rgba(0,188,212,0.1);
 }
 .rec-nav-item {
   color: #4b5563;
@@ -257,17 +257,17 @@
 
 /* Glass card — translucent with pop-out hover */
 .dark .glass-card {
-  background: rgba(255,255,255,0.06) !important;
+  background: rgba(0,188,212,0.04) !important;
   backdrop-filter: blur(28px);
   -webkit-backdrop-filter: blur(28px);
-  border-color: rgba(41, 171, 226, 0.15) !important;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.08);
+  border-color: rgba(0, 188, 212, 0.15) !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(0,188,212,0.08);
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease !important;
 }
 .dark .glass-card:hover {
   transform: translateY(-4px) scale(1.01) !important;
-  box-shadow: 0 16px 48px rgba(41,171,226,0.22), 0 0 0 1px rgba(41,171,226,0.2), inset 0 1px 0 rgba(255,255,255,0.12) !important;
-  background: rgba(255,255,255,0.10) !important;
+  box-shadow: 0 16px 48px rgba(0,188,212,0.2), 0 0 0 1px rgba(0,188,212,0.2), inset 0 1px 0 rgba(0,188,212,0.12) !important;
+  background: rgba(0,188,212,0.08) !important;
 }
 
 /* KPI cards in dark mode */

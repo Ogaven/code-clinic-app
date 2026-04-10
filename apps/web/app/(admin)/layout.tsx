@@ -2,7 +2,7 @@
 
 import Sidebar from '@/components/layout/Sidebar'
 import TopBar from '@/components/layout/TopBar'
-import SarahChatbot from '@/components/SarahChatbot'
+import ZoeAssistant from '@/components/ZoeAssistant'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Menu, X } from 'lucide-react'
@@ -112,7 +112,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {children}
         </main>
       </div>
-      <SarahChatbot />
+      <ZoeAssistant role={user?.role} />
     </div>
   )
 }

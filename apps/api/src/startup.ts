@@ -167,7 +167,7 @@ async function seed() {
             startAt,
             endAt,
             status:     slot.status,
-            createdBy:  adminUser.id,
+            createdById:  adminUser.id,
           },
         })
       }

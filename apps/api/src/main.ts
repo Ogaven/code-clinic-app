@@ -23,6 +23,10 @@ import developerRouter from './routes/developer'
 import integrationsRouter from './routes/integrations'
 import receptionistRouter from './routes/receptionist'
 import assistantRouter from './routes/assistant'
+import agentRouter from './routes/agent'
+import knowledgeRouter from './routes/knowledge'
+import setupRouter from './routes/setup'
+import { startScheduler } from './services/agent/scheduler'
 
 const app = express()
 const PORT = process.env.PORT || 4000
@@ -87,6 +91,9 @@ app.use('/developer', developerRouter)
 app.use('/integrations', integrationsRouter)
 app.use('/receptionist', receptionistRouter)
 app.use('/assistant', assistantRouter)
+app.use('/agent', agentRouter)
+app.use('/knowledge', knowledgeRouter)
+app.use('/setup', setupRouter)
 
 // ─── 404 ──────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -100,6 +107,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 })
 
 runStartup().then(() => {
+  startScheduler()
   app.listen(PORT, () => {
     console.log(`\n🦷 CodeClinic API running on http://localhost:${PORT}`)
     console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`)

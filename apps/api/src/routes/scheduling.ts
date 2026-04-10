@@ -137,6 +137,24 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
     },
   })
 
+  // SMS confirmation to patient
+  try {
+    const atApiKey   = process.env.AT_API_KEY
+    const atUsername = process.env.AT_USERNAME
+    if (atApiKey && atUsername && atApiKey !== 'your-key') {
+      const p = appointment.patient
+      const d = appointment.doctor.user
+      const dateStr = start.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
+      const timeStr = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' })
+      const smsText = `Hi ${p.firstName}, your appt at Code Clinic is confirmed: ${dateStr} at ${timeStr} with Dr. ${d.firstName} ${d.lastName}. Location: Kiira Rd, Kamwokya. Call: 0205477000`
+      const AfricasTalking = require('africastalking')
+      const at = AfricasTalking({ apiKey: atApiKey, username: atUsername })
+      await at.SMS.send({ to: [p.phone], message: smsText, from: process.env.AT_SENDER_ID || 'CodeClinic' })
+    }
+  } catch (smsErr: any) {
+    console.warn('[SMS] Booking confirmation failed:', smsErr.message)
+  }
+
   res.status(201).json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })
 
