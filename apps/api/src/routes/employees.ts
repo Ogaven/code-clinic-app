@@ -8,7 +8,7 @@ import { adminOnly } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
 import { uploadLimiter } from '../middleware/rateLimit'
-import { uploadAvatar, deleteFile, getSignedDownloadUrl } from '../services/storage/r2'
+import { uploadAvatar, deleteFile, getPublicUrl } from '../services/storage/r2'
 import { sendCredentialsEmail } from '../services/communications/email'
 
 const router = Router()
@@ -44,15 +44,15 @@ router.get('/', requireAuth, adminOnly, async (_req, res) => {
     orderBy: { createdAt: 'asc' },
   })
 
-  // Generate signed URLs for avatars
-  const withAvatars = await Promise.all(employees.map(async (e) => ({
+  // Use permanent public URLs for avatars (signed URLs expire after 1h)
+  const withAvatars = employees.map((e) => ({
     ...e,
-    avatarUrl: e.avatarR2Key ? await getSignedDownloadUrl(e.avatarR2Key) : null,
+    avatarUrl: e.avatarR2Key ? getPublicUrl(e.avatarR2Key) : null,
     doctor: e.doctor ? {
       ...e.doctor,
-      photoUrl: e.doctor.photoR2Key ? await getSignedDownloadUrl(e.doctor.photoR2Key) : null,
+      photoUrl: e.doctor.photoR2Key ? getPublicUrl(e.doctor.photoR2Key) : null,
     } : null,
-  })))
+  }))
 
   res.json(withAvatars)
 })
@@ -163,7 +163,7 @@ router.post('/:id/avatar', requireAuth, uploadLimiter,
       const r2Key = await uploadAvatar(req.file.buffer, req.file.mimetype, 'avatars', id)
       await prisma.user.update({ where: { id }, data: { avatarR2Key: r2Key } })
 
-      const avatarUrl = await getSignedDownloadUrl(r2Key)
+      const avatarUrl = getPublicUrl(r2Key)
       res.json({ avatarUrl, r2Key })
     } catch (err: any) {
       console.error('[avatar upload] error:', err)

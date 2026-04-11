@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '../middleware/auth'
 import { auditLog } from '../middleware/audit'
-import { getSignedDownloadUrl } from '../services/storage/r2'
+import { getSignedDownloadUrl, getPublicUrl } from '../services/storage/r2'
 import multer from 'multer'
 import { uploadAvatar, deleteFile } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
@@ -35,11 +35,11 @@ router.get('/', requireAuth, async (req, res) => {
       }),
       prisma.patient.count({ where }),
     ])
-    const withUrls = await Promise.all(patients.map(async (p) => ({
+    const withUrls = patients.map((p) => ({
       ...p,
       accountBalance: Number(p.accountBalance),
-      avatarUrl: p.avatarR2Key ? await getSignedDownloadUrl(p.avatarR2Key).catch(() => null) : null,
-    })))
+      avatarUrl: p.avatarR2Key ? getPublicUrl(p.avatarR2Key) : null,
+    }))
     res.json({ data: withUrls, total, limit, offset })
   } catch (e) { res.status(500).json({ error: 'Failed to fetch patients' }) }
 })
@@ -78,7 +78,7 @@ router.get('/:id', requireAuth, async (req, res) => {
       },
     })
     if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
-    const avatarUrl = patient.avatarR2Key ? await getSignedDownloadUrl(patient.avatarR2Key).catch(() => null) : null
+    const avatarUrl = patient.avatarR2Key ? getPublicUrl(patient.avatarR2Key) : null
     res.json({
       ...patient,
       accountBalance: Number(patient.accountBalance),
@@ -112,7 +112,7 @@ router.post('/:id/avatar', requireAuth, uploadLimiter, upload.single('avatar'), 
     if (patient.avatarR2Key) await deleteFile(patient.avatarR2Key).catch(() => {})
     const r2Key = await uploadAvatar(req.file.buffer, req.file.mimetype, 'patients', req.params.id)
     await prisma.patient.update({ where: { id: req.params.id }, data: { avatarR2Key: r2Key } })
-    const avatarUrl = await getSignedDownloadUrl(r2Key)
+    const avatarUrl = getPublicUrl(r2Key)
     res.json({ avatarUrl, r2Key })
   } catch { res.status(500).json({ error: 'Upload failed' }) }
 })
