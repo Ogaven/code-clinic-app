@@ -171,7 +171,7 @@ function BlockedBlock({ block }: { block: BlockedTime }) {
 // ─── Time column ──────────────────────────────────────────────────────────────
 function TimeCol({ width }: { width: number }) {
   return (
-    <div className="flex-shrink-0 border-r border-gray-100 relative"
+    <div className="flex-shrink-0 border-r border-gray-100 dark:border-white/10 relative"
       style={{ width, minWidth: width, height: `${timeSlots.length * SLOT_HEIGHT}px` }}>
       {timeSlots.map((slot, i) => (
         <div key={slot} className="absolute flex items-start pt-1 pr-2 justify-end w-full"
@@ -205,19 +205,19 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
   return (
     <div className="flex-1 overflow-auto">
       {/* Doctor headers */}
-      <div className="flex sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm">
-        <div className="flex-shrink-0 border-r border-gray-100" style={{ width: TIME_W }} />
+      <div className="flex sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-white/10 shadow-sm">
+        <div className="flex-shrink-0 border-r border-gray-100 dark:border-white/10" style={{ width: TIME_W }} />
         {columns.map(({ doctor, appointments }) => {
           const count = appointments.filter((a) => a.status !== 'CANCELLED').length
           const init  = doctor.firstName[0] + doctor.lastName[0]
           return (
-            <div key={doctor.id} className="flex-1 min-w-[130px] px-2 py-2.5 border-r border-gray-100 flex items-center gap-2">
+            <div key={doctor.id} className="flex-1 min-w-[130px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 flex items-center gap-2">
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                 style={{ background: `linear-gradient(135deg,${doctor.colour},${doctor.colour}aa)` }}>
                 {init}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-bold text-clinic-navy truncate">Dr. {doctor.firstName}</div>
+                <div className="text-xs font-bold text-clinic-navy dark:text-white truncate">Dr. {doctor.firstName}</div>
                 <div className="text-[10px] text-gray-400 truncate">{doctor.specialisation || 'General'}</div>
               </div>
               {count > 0 && (
@@ -246,11 +246,11 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
 
           return (
             <div key={doctor.id}
-              className="flex-1 min-w-[130px] border-r border-gray-100 relative"
+              className="flex-1 min-w-[130px] border-r border-gray-100 dark:border-white/10 relative"
               style={{ height: `${total}px` }}>
               {/* Out-of-hours shading */}
-              {wTop > 0    && <div className="absolute left-0 right-0 bg-gray-50/80" style={{ top: 0, height: wTop }} />}
-              {wBot < total && <div className="absolute left-0 right-0 bg-gray-50/80" style={{ top: wBot, height: total - wBot }} />}
+              {wTop > 0    && <div className="absolute left-0 right-0 bg-gray-50/80 dark:bg-white/3" style={{ top: 0, height: wTop }} />}
+              {wBot < total && <div className="absolute left-0 right-0 bg-gray-50/80 dark:bg-white/3" style={{ top: wBot, height: total - wBot }} />}
               {/* Slot rows */}
               {timeSlots.map((slot, i) => (
                 <div key={slot}
@@ -298,19 +298,19 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment }: {
   return (
     <div className="flex-1 overflow-auto">
       {/* Day headers */}
-      <div className="flex sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm">
-        <div className="flex-shrink-0 border-r border-gray-100" style={{ width: TIME_W }} />
+      <div className="flex sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-white/10 shadow-sm">
+        <div className="flex-shrink-0 border-r border-gray-100 dark:border-white/10" style={{ width: TIME_W }} />
         {weekDates.map((date) => {
           const isToday  = sameDay(date, today)
           const dayCount = appointments.filter((a) => sameDay(new Date(a.startAt), date) && a.status !== 'CANCELLED').length
           return (
-            <div key={date.toISOString()} className="flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-100 text-center">
+            <div key={date.toISOString()} className="flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 text-center">
               <div className={cn('text-[11px] font-semibold uppercase', isToday ? 'text-clinic-blue' : 'text-gray-400')}>
                 {date.toLocaleDateString('en-UG', { weekday: 'short' })}
               </div>
               <div className={cn(
                 'text-lg font-bold mx-auto w-9 h-9 flex items-center justify-center rounded-full mt-0.5',
-                isToday ? 'bg-clinic-navy text-white' : 'text-clinic-navy',
+                isToday ? 'bg-clinic-navy text-white' : 'text-clinic-navy dark:text-white',
               )}>
                 {date.getDate()}
               </div>
@@ -330,7 +330,7 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment }: {
           const dayAppts = appointments.filter((a) => sameDay(new Date(a.startAt), date) && a.status !== 'CANCELLED')
           return (
             <div key={date.toISOString()}
-              className={cn('flex-1 min-w-[100px] border-r border-gray-100 relative', isToday && 'bg-blue-50/15')}
+              className={cn('flex-1 min-w-[100px] border-r border-gray-100 dark:border-white/10 relative', isToday && 'bg-blue-50/15 dark:bg-blue-900/10')}
               style={{ height: `${timeSlots.length * SLOT_HEIGHT}px` }}>
               {timeSlots.map((slot, i) => (
                 <div key={slot}
@@ -371,7 +371,7 @@ function MonthView({ year, month, appointments, onDateClick }: {
       </div>
       <div className="grid grid-cols-6 gap-1">
         {grid.flat().map((date, i) => {
-          if (!date) return <div key={`e${i}`} className="rounded-xl bg-gray-50/50 min-h-[90px]" />
+          if (!date) return <div key={`e${i}`} className="rounded-xl bg-gray-50/50 dark:bg-white/3 min-h-[90px]" />
           const isToday   = sameDay(date, today)
           const inMonth   = date.getMonth() === month
           const dayAppts  = appointments.filter((a) => sameDay(new Date(a.startAt), date))
@@ -380,13 +380,13 @@ function MonthView({ year, month, appointments, onDateClick }: {
               onClick={() => onDateClick(date)}
               className={cn(
                 'rounded-xl p-2 min-h-[90px] cursor-pointer transition-all border',
-                isToday   ? 'bg-blue-50 border-clinic-blue/30 shadow-sm' :
-                !inMonth  ? 'bg-gray-50/50 border-gray-100 opacity-40' :
-                'bg-white border-gray-100 hover:border-clinic-blue/30 hover:shadow-sm',
+                isToday   ? 'bg-blue-50 dark:bg-blue-900/20 border-clinic-blue/30 shadow-sm' :
+                !inMonth  ? 'bg-gray-50/50 dark:bg-white/3 border-gray-100 dark:border-white/5 opacity-40' :
+                'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 hover:border-clinic-blue/30 hover:shadow-sm',
               )}>
               <div className={cn(
                 'text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full mb-1.5',
-                isToday ? 'bg-clinic-navy text-white' : 'text-gray-700',
+                isToday ? 'bg-clinic-navy text-white' : 'text-gray-700 dark:text-gray-300',
               )}>
                 {date.getDate()}
               </div>
@@ -508,25 +508,25 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 bg-white border-b border-gray-100">
+      <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-white/10">
         {/* Nav */}
         <div className="flex items-center gap-1">
           <button onClick={navPrev}
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
             <ChevronLeft size={15} />
           </button>
           <button onClick={() => setDate(new Date())}
-            className="px-3 h-8 rounded-xl text-xs font-semibold text-clinic-navy bg-gray-100 hover:bg-gray-200 transition-colors">
+            className="px-3 h-8 rounded-xl text-xs font-semibold text-clinic-navy dark:text-white bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 transition-colors">
             Today
           </button>
           <button onClick={navNext}
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
             <ChevronRight size={15} />
           </button>
         </div>
 
         {/* Title */}
-        <span className="text-sm font-bold text-clinic-navy flex-1 truncate">{title}</span>
+        <span className="text-sm font-bold text-clinic-navy dark:text-white flex-1 truncate">{title}</span>
 
         {/* Refresh */}
         {lastFetched && (
@@ -539,14 +539,14 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
         )}
 
         {/* View toggle */}
-        <div className="flex items-center gap-0.5 bg-gray-100 rounded-xl p-0.5">
+        <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-white/10 rounded-xl p-0.5">
           {(['doctors','week','month'] as ViewMode[]).map((v) => (
             <button key={v} onClick={() => setView(v)}
               className={cn(
                 'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
                 view === v
-                  ? 'bg-white text-clinic-navy shadow-sm'
-                  : 'text-gray-400 hover:text-gray-700',
+                  ? 'bg-white dark:bg-white/15 text-clinic-navy dark:text-white shadow-sm'
+                  : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
               )}>
               {v === 'doctors' ? 'Doctors' : v[0].toUpperCase() + v.slice(1)}
             </button>

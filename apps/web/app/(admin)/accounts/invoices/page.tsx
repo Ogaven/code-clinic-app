@@ -338,9 +338,9 @@ function PaymentModal({ invoice, onClose, onPaid, token }: any) {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-[60] p-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl animate-fade-in">
-        <div className="px-6 py-5 border-b border-gray-100">
-          <h3 className="font-bold text-clinic-navy">Record Payment</h3>
+      <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl animate-fade-in">
+        <div className="px-6 py-5 border-b border-gray-100 dark:border-white/10">
+          <h3 className="font-bold text-clinic-navy dark:text-white">Record Payment</h3>
           <p className="text-xs text-gray-400 mt-0.5">{invoice.invoiceNumber}</p>
         </div>
         <div className="px-6 py-5 space-y-4">
@@ -440,10 +440,10 @@ function CreateInvoiceModal({ onClose, onCreated, token }: any) {
     <>
       <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-        <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl animate-fade-in max-h-[90vh] flex flex-col">
-          <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 flex-shrink-0">
-            <h2 className="text-lg font-bold text-clinic-navy">New Invoice</h2>
-            <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">✕</button>
+        <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-2xl animate-fade-in max-h-[90vh] flex flex-col">
+          <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-white/10 flex-shrink-0">
+            <h2 className="text-lg font-bold text-clinic-navy dark:text-white">New Invoice</h2>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400">✕</button>
           </div>
 
           <div className="overflow-y-auto px-6 py-5 space-y-4 flex-1">

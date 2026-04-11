@@ -146,10 +146,10 @@ function AddEmployeeModal({ onClose, onAdded, token }: any) {
     <>
       <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl animate-fade-in">
-          <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-            <h2 className="text-lg font-bold text-clinic-navy">Add Team Member</h2>
-            <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">✕</button>
+        <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl animate-fade-in">
+          <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-white/10">
+            <h2 className="text-lg font-bold text-clinic-navy dark:text-white">Add Team Member</h2>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400">✕</button>
           </div>
 
           {success ? (

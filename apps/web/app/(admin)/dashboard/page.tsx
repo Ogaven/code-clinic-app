@@ -195,13 +195,13 @@ function MiniCalendar() {
 function RevenueTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-3 text-xs animate-fade-in-up">
-      <p className="font-bold text-clinic-navy mb-2">{label}</p>
+    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 p-3 text-xs animate-fade-in-up">
+      <p className="font-bold text-clinic-navy dark:text-white mb-2">{label}</p>
       {payload.map((p: any) => (
         <div key={p.name} className="flex items-center gap-2 mb-1">
           <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
-          <span className="text-gray-500">{p.name}:</span>
-          <span className="font-bold text-gray-800">{formatUGX(p.value)}</span>
+          <span className="text-gray-500 dark:text-gray-400">{p.name}:</span>
+          <span className="font-bold text-gray-800 dark:text-white">{formatUGX(p.value)}</span>
         </div>
       ))}
     </div>
@@ -212,12 +212,12 @@ function PieTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null
   const p = payload[0]
   return (
-    <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-3 text-xs animate-fade-in-up">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 p-3 text-xs animate-fade-in-up">
       <div className="flex items-center gap-2">
         <span className="w-3 h-3 rounded-full" style={{ background: p.payload.color }} />
-        <span className="font-bold text-clinic-navy">{p.name}</span>
+        <span className="font-bold text-clinic-navy dark:text-white">{p.name}</span>
       </div>
-      <p className="text-gray-500 mt-1">{p.value}% of appointments</p>
+      <p className="text-gray-500 dark:text-gray-400 mt-1">{p.value}% of appointments</p>
     </div>
   )
 }
