@@ -15,7 +15,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 router.get('/', requireAuth, async (req, res) => {
   try {
     const q = req.query.q as string | undefined
-    const limit = Math.min(Number(req.query.limit) || 50, 100)
+    const limit = Math.min(Number(req.query.limit) || 50, 500)
     const offset = Number(req.query.offset) || 0
     const where = q ? {
       OR: [
@@ -26,7 +26,13 @@ router.get('/', requireAuth, async (req, res) => {
       ],
     } : undefined
     const [patients, total] = await Promise.all([
-      prisma.patient.findMany({ where, take: limit, skip: offset, orderBy: { createdAt: 'desc' } }),
+      prisma.patient.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        include: { _count: { select: { appointments: true } } },
+      }),
       prisma.patient.count({ where }),
     ])
     const withUrls = await Promise.all(patients.map(async (p) => ({

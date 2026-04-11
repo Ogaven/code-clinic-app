@@ -47,7 +47,7 @@ export default function ServicesTab() {
   async function fetchServices() {
     setLoading(true)
     try {
-      const res  = await fetch(`${API}/services/all`, { headers })
+      const res  = await fetch(`${API}/services`, { headers })
       const data = await res.json()
       setServices(Array.isArray(data) ? data : [])
     } catch { } finally { setLoading(false) }

@@ -98,7 +98,7 @@ export default function DoctorsTab() {
 
   async function fetchServices() {
     try {
-      const res  = await fetch(`${API}/services/all`, { headers: jsonH })
+      const res  = await fetch(`${API}/services`, { headers: jsonH })
       const data = await res.json()
       setServices(Array.isArray(data) ? data : [])
     } catch { }
@@ -144,11 +144,15 @@ export default function DoctorsTab() {
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !selected) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      showToast('Only JPG, PNG or WebP files allowed', false)
+      return
+    }
     setUploading(true)
     try {
       const form = new FormData()
       form.append('avatar', file)
-      const res = await fetch(`${API}/employees/${selected.userId}/avatar`, {
+      const res = await fetch(`${API}/doctors/${selected.id}/avatar`, {
         method: 'POST', headers: authH, body: form,
       })
       if (res.ok) {
@@ -156,7 +160,10 @@ export default function DoctorsTab() {
         setLocalAvatar(avatarUrl)
         showToast('Photo uploaded', true)
         fetchDoctors()
-      } else { showToast('Upload failed', false) }
+      } else {
+        const d = await res.json().catch(() => ({}))
+        showToast(d.error || 'Upload failed', false)
+      }
     } catch { showToast('Upload failed', false) } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''

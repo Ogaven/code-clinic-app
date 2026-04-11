@@ -1,11 +1,15 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
+import multer from 'multer'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly } from '../middleware/rbac'
-import { getSignedDownloadUrl } from '../services/storage/r2'
+import { uploadAvatar, getSignedDownloadUrl } from '../services/storage/r2'
+import { uploadLimiter } from '../middleware/rateLimit'
 
 const router = Router()
 const prisma = new PrismaClient()
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } })
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp']
 
 async function formatDoctor(d: any) {
   return {
@@ -21,7 +25,9 @@ async function formatDoctor(d: any) {
     workingHours: d.workingHours,
     serviceIds: d.serviceIds ?? '[]',
     avatarUrl: d.user.avatarR2Key
-      ? await getSignedDownloadUrl(d.user.avatarR2Key).catch(() => null)
+      ? (d.user.avatarR2Key.startsWith('data:')
+          ? d.user.avatarR2Key                                                // base64 data URL stored directly
+          : await getSignedDownloadUrl(d.user.avatarR2Key).catch(() => null)) // R2 or local file
       : null,
     isActive: d.isActive,
   }
@@ -99,6 +105,42 @@ router.patch('/:id', requireAuth, adminOnly, async (req, res) => {
   } catch (e: any) {
     if (e.code === 'P2025') { res.status(404).json({ error: 'Doctor not found' }); return }
     res.status(500).json({ error: 'Failed to update doctor' })
+  }
+})
+
+// POST /doctors/:id/avatar — upload doctor profile photo (jpg/png → R2 or base64 fallback)
+router.post('/:id/avatar', requireAuth, adminOnly, uploadLimiter, upload.single('avatar'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+    if (!ALLOWED_MIME.includes(req.file.mimetype)) {
+      return res.status(400).json({ error: 'Only JPEG, PNG or WebP allowed' })
+    }
+
+    const doctor = await prisma.doctor.findUnique({
+      where: { id: req.params.id },
+      include: { user: true },
+    })
+    if (!doctor) return res.status(404).json({ error: 'Doctor not found' })
+
+    let avatarUrl: string
+
+    try {
+      // Primary path: upload to R2 (or local file fallback when R2 not configured)
+      const r2Key = await uploadAvatar(req.file.buffer, req.file.mimetype, 'doctors', doctor.userId)
+      await prisma.user.update({ where: { id: doctor.userId }, data: { avatarR2Key: r2Key } })
+      avatarUrl = await getSignedDownloadUrl(r2Key)
+    } catch {
+      // Fallback: store raw base64 data URL directly in DB so it always works
+      const base64 = req.file.buffer.toString('base64')
+      const dataUrl = `data:${req.file.mimetype};base64,${base64}`
+      await prisma.user.update({ where: { id: doctor.userId }, data: { avatarR2Key: dataUrl } })
+      avatarUrl = dataUrl
+    }
+
+    res.json({ avatarUrl })
+  } catch (err: any) {
+    console.error('[doctor avatar] error:', err.message)
+    res.status(500).json({ error: err.message || 'Upload failed' })
   }
 })
 

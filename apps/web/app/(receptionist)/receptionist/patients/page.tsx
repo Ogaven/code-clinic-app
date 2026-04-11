@@ -71,9 +71,17 @@ export default function PatientsPage() {
 
   async function selectPatient(p: Patient) {
     setSelected(p)
+    setAppts([])
     try {
-      const res = await fetch(`${API}/scheduling/appointments?patientId=${p.id}&limit=10`, { headers: authH })
-      if (res.ok) setAppts(await res.json())
+      // Fetch all appointments for this patient over a 3-year window
+      const start = new Date(); start.setFullYear(start.getFullYear() - 2)
+      const end   = new Date(); end.setFullYear(end.getFullYear() + 1)
+      const qs = `patientId=${p.id}&startDate=${start.toISOString().slice(0,10)}&endDate=${end.toISOString().slice(0,10)}`
+      const res = await fetch(`${API}/scheduling/appointments?${qs}`, { headers: authH })
+      if (res.ok) {
+        const json = await res.json()
+        setAppts(Array.isArray(json) ? json : json.appointments || json.data || [])
+      }
     } catch { setAppts([]) }
   }
 
@@ -302,11 +310,11 @@ export default function PatientsPage() {
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                          style={{ background: avatarColor(`${p.firstName}${p.lastName}`) }}>
-                          {p.firstName?.[0]}{p.lastName?.[0]}
+                          style={{ background: avatarColor(`${p.firstName || ''}${p.lastName || ''}`) }}>
+                          {(p.firstName || '?')[0]}{(p.lastName || '')[0]}
                         </div>
                         <div>
-                          <p className="font-semibold text-gray-800 dark:text-white">{p.firstName} {p.lastName}</p>
+                          <p className="font-semibold text-gray-800 dark:text-white">{p.firstName || ''} {p.lastName || ''}</p>
                           <p className="text-[11px] text-gray-400 dark:text-white/40">
                             {p.dob ? `${new Date().getFullYear() - new Date(p.dob).getFullYear()} yrs` : 'Age N/A'}
                           </p>
@@ -397,8 +405,9 @@ export default function PatientsPage() {
                   <Calendar size={24} className="mx-auto mb-2 text-gray-200 dark:text-white/10" />
                   <p className="text-sm text-gray-400 dark:text-white/40">No appointments found</p>
                 </div>
-              ) : appts.map((a: any) => {
-                const d = new Date(a.startAt)
+              ) : (Array.isArray(appts) ? appts : []).map((a: any) => {
+                if (!a || !a.id) return null
+                const d = a.startAt ? new Date(a.startAt) : new Date()
                 const statusColor: Record<string, string> = {
                   CONFIRMED: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20',
                   COMPLETED: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20',
@@ -412,12 +421,12 @@ export default function PatientsPage() {
                       {d.getDate()}<br />{d.toLocaleDateString('en-UG', { month: 'short' })}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{a.service?.name}</p>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{a.service?.name || 'Appointment'}</p>
                       <p className="text-xs text-gray-400 dark:text-white/40">
-                        Dr. {a.doctor?.user?.firstName} · {d.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {a.doctor?.user?.firstName ? `Dr. ${a.doctor.user.firstName}` : 'Doctor'} · {d.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })}
                       </p>
                     </div>
-                    <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', statusColor[a.status] || 'bg-gray-50 text-gray-500')}>{a.status}</span>
+                    <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', statusColor[a.status] || 'bg-gray-50 text-gray-500')}>{a.status || '—'}</span>
                   </div>
                 )
               })}

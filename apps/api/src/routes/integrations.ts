@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client'
 import fs from 'fs'
 import path from 'path'
 import { requireAuth } from '../middleware/auth'
-import { adminOnly } from '../middleware/rbac'
+import { adminOnly, clinicalStaff } from '../middleware/rbac'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -61,7 +61,7 @@ router.get('/google-calendar/status', requireAuth, (_req, res) => {
 // ─── GET /integrations/google-calendar/auth ──────────────────
 // Browser navigates here → redirected to Google consent screen
 router.get('/google-calendar/auth',
-  acceptTokenFromQuery, requireAuth, adminOnly,
+  acceptTokenFromQuery, requireAuth, clinicalStaff,
   (_req, res) => {
     const auth = makeOAuth2Client()
     const url  = auth.generateAuthUrl({
@@ -101,13 +101,13 @@ router.get('/google-calendar/callback', async (req, res) => {
 })
 
 // ─── DELETE /integrations/google-calendar/disconnect ─────────
-router.delete('/google-calendar/disconnect', requireAuth, adminOnly, (_req, res) => {
+router.delete('/google-calendar/disconnect', requireAuth, clinicalStaff, (_req, res) => {
   deleteTokens()
   res.json({ message: 'Disconnected' })
 })
 
 // ─── POST /integrations/google-calendar/sync ─────────────────
-router.post('/google-calendar/sync', requireAuth, adminOnly, async (req, res) => {
+router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res) => {
   const auth = getAuthedClient()
   if (!auth) {
     return res.status(401).json({ error: 'Google Calendar not connected. Please connect first.' })
