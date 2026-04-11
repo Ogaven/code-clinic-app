@@ -55,7 +55,7 @@ export default function PatientProfilePage() {
       </button>
 
       {/* ── Hero card ─────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
         {/* Colour banner */}
         <div className="h-24 bg-gradient-to-r from-clinic-navy to-clinic-blue" />
         <div className="px-6 pb-6 -mt-12">
@@ -71,7 +71,7 @@ export default function PatientProfilePage() {
                 onUploaded={(url) => setPatient((p: any) => ({ ...p, avatarUrl: url }))}
               />
               <div className="mb-2">
-                <h1 className="text-2xl font-bold text-clinic-navy">{patient.firstName} {patient.lastName}</h1>
+                <h1 className="text-2xl font-bold text-clinic-navy dark:text-white">{patient.firstName} {patient.lastName}</h1>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
                   <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full',
                     patient.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
@@ -97,7 +97,7 @@ export default function PatientProfilePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* Patient info card */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
+        <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
           <h3 className="font-semibold text-clinic-navy text-sm">Personal Details</h3>
           {[
             { icon: Phone, label: 'Phone', value: formatPhone(patient.phone) },
@@ -126,7 +126,7 @@ export default function PatientProfilePage() {
         </div>
 
         {/* Tabs: appointments / invoices / feedback */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="lg:col-span-2 bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
           {/* Tab bar */}
           <div className="flex border-b border-gray-100">
             {([
@@ -162,7 +162,7 @@ export default function PatientProfilePage() {
                 {(!patient.appointments || patient.appointments.length === 0) ? (
                   <p className="text-sm text-gray-400 text-center py-8">No appointments yet</p>
                 ) : patient.appointments.map((a: any) => (
-                  <div key={a.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 hover:bg-blue-50/30 transition-colors">
+                  <div key={a.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-white/10 hover:bg-blue-50/30 dark:hover:bg-white/5 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: a.service?.colour + '20' }}>
                         <Stethoscope size={14} style={{ color: a.service?.colour }} />

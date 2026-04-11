@@ -243,7 +243,7 @@ export default function AISuitePage() {
         {sub === 'agents' && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-xl font-black text-gray-800">Agent Control</h2>
+              <h2 className="text-xl font-black text-gray-800 dark:text-white">Agent Control</h2>
               <p className="text-sm text-gray-400 mt-0.5">Manage your AI agents and their activity</p>
             </div>
             <div className="grid grid-cols-2 gap-4 xl:grid-cols-3">
@@ -251,7 +251,7 @@ export default function AISuitePage() {
                 const prompt = promptForType(agent.type)
                 const isActive = prompt?.isActive ?? false
                 return (
-                  <div key={agent.type} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-all">
+                  <div key={agent.type} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 hover:shadow-md transition-all">
                     <div className="flex items-start justify-between mb-4">
                       <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl"
                         style={{ background: agent.color + '15' }}>
@@ -264,7 +264,7 @@ export default function AISuitePage() {
                           isActive ? 'left-[23px]' : 'left-[3px]')} />
                       </button>
                     </div>
-                    <h3 className="font-bold text-gray-800 mb-1">{agent.name}</h3>
+                    <h3 className="font-bold text-gray-800 dark:text-white mb-1">{agent.name}</h3>
                     <p className="text-xs text-gray-400 leading-relaxed mb-3">{agent.desc}</p>
                     <div className="flex items-center gap-2">
                       <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full',
@@ -289,14 +289,14 @@ export default function AISuitePage() {
         {sub === 'voice-studio' && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-xl font-black text-gray-800">Voice Studio</h2>
+              <h2 className="text-xl font-black text-gray-800 dark:text-white">Voice Studio</h2>
               <p className="text-sm text-gray-400 mt-0.5">Edit and manage agent prompts</p>
             </div>
             <div className="grid grid-cols-[240px_1fr] gap-5">
               {/* Prompt list */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-50">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Agents</p>
+              <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-50 dark:border-white/5">
+                  <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Agents</p>
                 </div>
                 {prompts.length === 0 ? (
                   <div className="px-4 py-8 text-center">
@@ -306,11 +306,11 @@ export default function AISuitePage() {
                   </div>
                 ) : prompts.map(p => (
                   <button key={p.id} onClick={() => { setEdit(p); setEditText(p.systemPrompt || '') }}
-                    className={cn('w-full flex items-center gap-3 px-4 py-3 text-left border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors',
-                      editPrompt?.id === p.id && 'bg-cyan-50 border-l-4 border-l-cyan-500')}>
+                    className={cn('w-full flex items-center gap-3 px-4 py-3 text-left border-b border-gray-50 dark:border-white/5 last:border-0 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors',
+                      editPrompt?.id === p.id && 'bg-cyan-50 dark:bg-cyan-900/10 border-l-4 border-l-cyan-500')}>
                     <div className={cn('w-2 h-2 rounded-full flex-shrink-0', p.isActive ? 'bg-emerald-500' : 'bg-gray-300')} />
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 truncate capitalize">{(p.responsibility || '').toLowerCase()}</p>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate capitalize">{(p.responsibility || '').toLowerCase()}</p>
                       <p className="text-xs text-gray-400">v{p.promptVersion || 1}</p>
                     </div>
                   </button>
@@ -321,10 +321,10 @@ export default function AISuitePage() {
               <div className="space-y-4">
                 {editPrompt ? (
                   <>
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                    <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
                       <div className="flex items-center justify-between mb-4">
                         <div>
-                          <h3 className="font-bold text-gray-800 capitalize">{(editPrompt.responsibility || editPrompt.name || '').toLowerCase()} Agent</h3>
+                          <h3 className="font-bold text-gray-800 dark:text-white capitalize">{(editPrompt.responsibility || editPrompt.name || '').toLowerCase()} Agent</h3>
                           <p className="text-xs text-gray-400">Version {editPrompt.promptVersion || 1}</p>
                         </div>
                         <div className="flex gap-2">
@@ -345,13 +345,13 @@ export default function AISuitePage() {
                       <textarea
                         value={editText} onChange={e => setEditText(e.target.value)}
                         rows={16}
-                        className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all font-mono resize-none"
+                        className="w-full px-4 py-3 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all font-mono resize-none"
                         placeholder="Write the system prompt for this agent..."
                       />
                     </div>
                   </>
                 ) : (
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
+                  <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-12 text-center">
                     <Mic size={32} className="mx-auto mb-3 text-gray-200" />
                     <p className="text-gray-400 font-medium">Select an agent to edit its prompt</p>
                   </div>
@@ -546,7 +546,7 @@ export default function AISuitePage() {
 
             {/* Upload zone */}
             <div
-              className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-10 text-center hover:border-cyan-400 hover:bg-cyan-50/30 transition-all cursor-pointer"
+              className="bg-white dark:bg-white/5 rounded-2xl border-2 border-dashed border-gray-200 dark:border-white/10 p-10 text-center hover:border-cyan-400 hover:bg-cyan-50/30 dark:hover:bg-cyan-900/10 transition-all cursor-pointer"
               onClick={() => kbFileRef.current?.click()}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) uploadKBFile(f) }}>
@@ -572,7 +572,7 @@ export default function AISuitePage() {
             </div>
 
             {/* Add URL */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Link size={15} className="text-cyan-500" />
                 <h3 className="text-sm font-bold text-gray-800">Add URL</h3>
@@ -594,7 +594,7 @@ export default function AISuitePage() {
             </div>
 
             {/* Search + list */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
               <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-50">
                 <Search size={14} className="text-gray-400" />
                 <input value={kbSearch} onChange={e => setKbSearch(e.target.value)}
@@ -656,7 +656,7 @@ export default function AISuitePage() {
                 <p className="text-sm text-gray-300 mt-1">Recordings will appear here once the AI agents are active</p>
               </div>
             ) : recordings.map((r: any) => (
-              <div key={r.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div key={r.id} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white flex-shrink-0">
                     <Film size={20} />

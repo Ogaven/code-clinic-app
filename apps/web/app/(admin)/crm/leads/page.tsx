@@ -46,7 +46,7 @@ export default function LeadsPage() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-clinic-navy">CRM — Leads</h2>
+          <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">CRM — Leads</h2>
           <p className="text-sm text-gray-400 mt-0.5">{leads.length} leads total</p>
         </div>
         <button onClick={() => setShowAdd(true)}
@@ -61,8 +61,8 @@ export default function LeadsPage() {
           <div key={stage} className="flex-shrink-0 w-72">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-2.5 h-2.5 rounded-full" style={{ background: STAGE_COLOURS[stage] }} />
-              <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">{stage}</span>
-              <span className="ml-auto text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+              <span className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wide">{stage}</span>
+              <span className="ml-auto text-xs text-gray-400 bg-gray-100 dark:bg-white/10 px-1.5 py-0.5 rounded-full">
                 {byStage(stage).length}
               </span>
             </div>
@@ -70,12 +70,12 @@ export default function LeadsPage() {
             <div className="space-y-2 min-h-[200px]">
               {loading ? (
                 Array.from({ length: 2 }).map((_, i) => (
-                  <div key={i} className="h-28 bg-gray-100 rounded-xl animate-pulse" />
+                  <div key={i} className="h-28 bg-gray-100 dark:bg-white/5 rounded-xl animate-pulse" />
                 ))
               ) : byStage(stage).map(lead => (
-                <div key={lead.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow">
+                <div key={lead.id} className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-4 hover:shadow-md dark:hover:bg-white/8 transition-shadow">
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <p className="text-sm font-semibold text-clinic-navy leading-tight">{lead.name}</p>
+                    <p className="text-sm font-semibold text-clinic-navy dark:text-white leading-tight">{lead.name}</p>
                     <div className="flex items-center gap-0.5">
                       {Array.from({ length: Math.min(Math.round(lead.score / 2), 5) }).map((_, i) => (
                         <div key={i} className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
@@ -83,23 +83,23 @@ export default function LeadsPage() {
                     </div>
                   </div>
                   {lead.phone && (
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mb-1">
                       <Phone size={10} /> {formatPhone(lead.phone)}
                     </div>
                   )}
                   {lead.email && (
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mb-2">
                       <Mail size={10} /> {lead.email}
                     </div>
                   )}
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] bg-blue-50 text-clinic-blue px-2 py-0.5 rounded-full font-medium">
+                    <span className="text-[10px] bg-blue-50 dark:bg-blue-900/20 text-clinic-blue px-2 py-0.5 rounded-full font-medium">
                       {SOURCE_LABELS[lead.source] || lead.source}
                     </span>
                     <select
                       value={lead.stage}
                       onChange={e => moveStage(lead.id, e.target.value)}
-                      className="text-[10px] border border-gray-200 rounded-lg px-1.5 py-1 text-gray-600 focus:outline-none focus:ring-1 focus:ring-clinic-blue bg-white"
+                      className="text-[10px] border border-gray-200 dark:border-white/10 rounded-lg px-1.5 py-1 text-gray-600 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-clinic-blue bg-white dark:bg-white/5"
                     >
                       {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>

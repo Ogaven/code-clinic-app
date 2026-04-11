@@ -64,7 +64,7 @@ export default function StocksPage() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-clinic-navy">Stocks & Inventory</h2>
+          <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">Stocks & Inventory</h2>
           <p className="text-sm text-gray-400 mt-0.5">{items.length} products · Total value: {formatUGX(totalValue)}</p>
         </div>
         <button onClick={() => setShowAdd(true)}
@@ -84,10 +84,10 @@ export default function StocksPage() {
         </div>
       )}
 
-      {/* Category colour bar (clone Zendeta 085128) */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+      {/* Category colour bar */}
+      <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-clinic-navy">Category Breakdown</h3>
+          <h3 className="text-sm font-semibold text-clinic-navy dark:text-white">Category Breakdown</h3>
           <span className="text-xs text-gray-400">{formatUGX(totalValue)} total asset value</span>
         </div>
         {/* Segmented bar */}
@@ -117,11 +117,11 @@ export default function StocksPage() {
       </div>
 
       {/* Stock table */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
+              <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                 {['Product', 'Category', 'SKU', 'Unit Price', 'In Stock', 'Reorder Point', 'Status'].map(h => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-5 py-3.5 whitespace-nowrap">
                     {h}
@@ -129,7 +129,7 @@ export default function StocksPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center text-gray-400">
@@ -141,14 +141,14 @@ export default function StocksPage() {
                 const isLow = item.inStock <= item.reorderPoint
                 const isCritical = item.inStock <= Math.floor(item.reorderPoint * 0.5)
                 return (
-                  <tr key={item.id} className="hover:bg-blue-50/20 transition-colors">
+                  <tr key={item.id} className="hover:bg-blue-50/20 dark:hover:bg-white/5 transition-colors">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-lg flex items-center justify-center"
                           style={{ backgroundColor: (CATEGORY_COLOURS[item.category] || '#9CA3AF') + '20' }}>
                           <Package size={14} style={{ color: CATEGORY_COLOURS[item.category] || '#9CA3AF' }} />
                         </div>
-                        <span className="text-sm font-medium text-gray-800">{item.name}</span>
+                        <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{item.name}</span>
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
@@ -157,8 +157,8 @@ export default function StocksPage() {
                         {item.category}
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-400 font-mono">{item.sku}</td>
-                    <td className="px-5 py-3.5 text-sm font-semibold text-clinic-navy font-mono">
+                    <td className="px-5 py-3.5 text-sm text-gray-400 dark:text-gray-500 font-mono">{item.sku}</td>
+                    <td className="px-5 py-3.5 text-sm font-semibold text-clinic-navy dark:text-white font-mono">
                       {formatUGX(item.unitPriceUGX)}
                     </td>
                     <td className="px-5 py-3.5">

@@ -128,7 +128,7 @@ export default function SettingsPage() {
 
   const initials   = getInitials(user.firstName, user.lastName)
   const roleColor  = roleColors[user.role] || '#1A237E'
-  const inputCls   = "w-full px-4 py-3 rounded-xl text-sm border border-gray-200 bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue focus:bg-white transition-all"
+  const inputCls   = "w-full px-4 py-3 rounded-xl text-sm border border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue focus:bg-white dark:focus:bg-white/10 transition-all"
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
@@ -146,13 +146,13 @@ export default function SettingsPage() {
 
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-clinic-navy" style={{ fontFamily: 'Plus Jakarta Sans' }}>Account Settings</h2>
+        <h2 className="text-xl font-bold text-clinic-navy dark:text-white" style={{ fontFamily: 'Plus Jakarta Sans' }}>Account Settings</h2>
         <p className="text-sm text-gray-400 mt-0.5">Manage your profile, photo and security</p>
       </div>
 
       {/* ── Profile Photo ── */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h3 className="font-bold text-clinic-navy mb-4 flex items-center gap-2">
+      <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 p-6">
+        <h3 className="font-bold text-clinic-navy dark:text-white mb-4 flex items-center gap-2">
           <User size={16} className="text-clinic-blue" /> Profile Photo
         </h3>
         <div className="flex items-center gap-6">
@@ -180,7 +180,7 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <p className="text-sm font-semibold text-gray-800">
+            <p className="text-sm font-semibold text-gray-800 dark:text-white">
               {user.role === 'DOCTOR' ? 'Dr. ' : ''}{user.firstName} {user.lastName}
             </p>
             <p className="text-xs font-medium mt-0.5" style={{ color: roleColor }}>{user.role}</p>
@@ -193,26 +193,26 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Profile Info ── */}
-      <form onSubmit={handleProfileSave} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
-        <h3 className="font-bold text-clinic-navy flex items-center gap-2">
+      <form onSubmit={handleProfileSave} className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 p-6 space-y-4">
+        <h3 className="font-bold text-clinic-navy dark:text-white flex items-center gap-2">
           <Mail size={16} className="text-clinic-blue" /> Personal Information
         </h3>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1.5">First Name</label>
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">First Name</label>
             <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)}
               placeholder="First name" required className={inputCls} />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1.5">Last Name</label>
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Last Name</label>
             <input type="text" value={lastName} onChange={e => setLastName(e.target.value)}
               placeholder="Last name" required className={inputCls} />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 mb-1.5">Email Address</label>
+          <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Email Address</label>
           <div className="relative">
             <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input type="email" value={email} onChange={e => setEmail(e.target.value)}
@@ -232,13 +232,13 @@ export default function SettingsPage() {
       </form>
 
       {/* ── Change Password ── */}
-      <form onSubmit={handlePasswordChange} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
-        <h3 className="font-bold text-clinic-navy flex items-center gap-2">
+      <form onSubmit={handlePasswordChange} className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 p-6 space-y-4">
+        <h3 className="font-bold text-clinic-navy dark:text-white flex items-center gap-2">
           <Lock size={16} className="text-clinic-blue" /> Change Password
         </h3>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 mb-1.5">Current Password</label>
+          <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Current Password</label>
           <div className="relative">
             <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input type={showOld ? 'text' : 'password'} value={oldPwd} onChange={e => setOldPwd(e.target.value)}
@@ -250,9 +250,9 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1.5">New Password</label>
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">New Password</label>
             <div className="relative">
               <input type={showNew ? 'text' : 'password'} value={newPwd} onChange={e => setNewPwd(e.target.value)}
                 placeholder="Min. 8 characters" required className={cn(inputCls, 'pr-11')} />
@@ -263,7 +263,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1.5">Confirm New Password</label>
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Confirm New Password</label>
             <input type="password" value={confPwd} onChange={e => setConfPwd(e.target.value)}
               placeholder="Repeat new password" required className={inputCls}
               style={{ borderColor: confPwd && confPwd !== newPwd ? '#EF4444' : '' }} />

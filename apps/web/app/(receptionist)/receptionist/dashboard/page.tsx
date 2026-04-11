@@ -119,12 +119,12 @@ function MiniCalendar({ onDateSelect, selectedDate }: { onDateSelect: (d: Date) 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-bold text-gray-800">{monthName}</span>
+        <span className="text-sm font-bold text-gray-800 dark:text-white">{monthName}</span>
         <div className="flex gap-1">
           <button onClick={() => setView(new Date(year, month - 1, 1))}
-            className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 text-xs font-bold">‹</button>
+            className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 text-xs font-bold">‹</button>
           <button onClick={() => setView(new Date(year, month + 1, 1))}
-            className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 text-xs font-bold">›</button>
+            className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 text-xs font-bold">›</button>
         </div>
       </div>
       <div className="grid grid-cols-7 gap-0.5">
@@ -142,8 +142,8 @@ function MiniCalendar({ onDateSelect, selectedDate }: { onDateSelect: (d: Date) 
               className={cn(
                 'relative aspect-square flex items-center justify-center text-xs rounded-lg transition-all',
                 isSel ? 'bg-cyan-500 text-white font-bold' :
-                isToday ? 'bg-blue-50 text-blue-700 font-bold' :
-                'text-gray-700 hover:bg-gray-100',
+                isToday ? 'bg-blue-50 dark:bg-cyan-900/20 text-blue-700 dark:text-cyan-400 font-bold' :
+                'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10',
               )}>
               {day}
               {count > 0 && !isSel && (
@@ -182,15 +182,15 @@ function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
 
   return (
     <div className={cn(
-      'group flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0',
-      isActive && 'border-l-4 border-l-cyan-500 bg-cyan-50/40',
+      'group flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-50 dark:border-white/5 last:border-0',
+      isActive && 'border-l-4 border-l-cyan-500 bg-cyan-50/40 dark:bg-cyan-900/10',
     )}>
       <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
         style={{ background: appt.service?.colour || '#29ABE2' }}>
         {appt.patient?.firstName?.[0]}{appt.patient?.lastName?.[0]}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-800 truncate">{appt.patient?.firstName} {appt.patient?.lastName}</p>
+        <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{appt.patient?.firstName} {appt.patient?.lastName}</p>
         <p className="text-xs text-gray-400 truncate">{appt.service?.name} · Dr. {appt.doctor?.user?.firstName} {appt.doctor?.user?.lastName}</p>
       </div>
       <div className="flex items-center gap-2">
@@ -519,7 +519,7 @@ export default function ReceptionistDashboard() {
       </div>
 
       {/* ── Main 3-column grid ─────────────────────────────────── */}
-      <div className="grid gap-4" style={{ gridTemplateColumns: '40fr 35fr 25fr' }}>
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[40fr_35fr_25fr]">
 
         {/* ── LEFT COLUMN ─────────────────────────────────────── */}
         <div className="space-y-4">
@@ -614,11 +614,11 @@ export default function ReceptionistDashboard() {
         <div className="space-y-4">
 
           {/* Active Consultation */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
               <div className="flex items-center gap-2">
                 <span className={cn('w-2 h-2 rounded-full', active ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300')} />
-                <h3 className="text-sm font-bold text-gray-800">Active Consultation</h3>
+                <h3 className="text-sm font-bold text-gray-800 dark:text-white">Active Consultation</h3>
               </div>
             </div>
 
@@ -630,14 +630,14 @@ export default function ReceptionistDashboard() {
                     {active.patient?.firstName?.[0]}{active.patient?.lastName?.[0]}
                   </div>
                   <div>
-                    <p className="font-bold text-gray-800">{active.patient?.firstName} {active.patient?.lastName}</p>
+                    <p className="font-bold text-gray-800 dark:text-white">{active.patient?.firstName} {active.patient?.lastName}</p>
                     <p className="text-xs text-gray-400">{active.patient?.gender} · {active.patient?.dob ? new Date().getFullYear() - new Date(active.patient.dob).getFullYear() + ' yrs' : ''}</p>
                     <p className="text-xs text-cyan-600 font-semibold">{active.service?.name}</p>
                   </div>
                 </div>
-                <div className="bg-gray-50 rounded-xl p-3">
+                <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-3">
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Doctor</p>
-                  <p className="text-sm font-semibold text-gray-700">Dr. {active.doctor?.user?.firstName} {active.doctor?.user?.lastName}</p>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Dr. {active.doctor?.user?.firstName} {active.doctor?.user?.lastName}</p>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -676,11 +676,11 @@ export default function ReceptionistDashboard() {
           </div>
 
           {/* WhatsApp Live Feed */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
               <div className="flex items-center gap-2">
                 <MessageSquare size={15} className="text-emerald-500" />
-                <h3 className="text-sm font-bold text-gray-800">WhatsApp Live Feed</h3>
+                <h3 className="text-sm font-bold text-gray-800 dark:text-white">WhatsApp Live Feed</h3>
               </div>
               <Link href="/receptionist/communications"
                 className="text-xs text-cyan-600 font-semibold hover:underline">View all</Link>
@@ -697,17 +697,17 @@ export default function ReceptionistDashboard() {
         <div className="space-y-4">
 
           {/* Mini Calendar */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4">
             <MiniCalendar onDateSelect={fetchForDate} selectedDate={selectedDate} />
           </div>
 
           {/* Upcoming Appointments */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
-              <h3 className="text-sm font-bold text-gray-800">Upcoming</h3>
+          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
+              <h3 className="text-sm font-bold text-gray-800 dark:text-white">Upcoming</h3>
               <Link href="/receptionist/appointments" className="text-xs text-cyan-600 font-semibold hover:underline">All</Link>
             </div>
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-gray-50 dark:divide-white/5">
               {upcoming.length === 0 ? (
                 <div className="px-4 py-4 text-center">
                   <p className="text-xs text-gray-400">No upcoming appointments</p>
@@ -720,7 +720,7 @@ export default function ReceptionistDashboard() {
                     <div className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.service?.colour || '#29ABE2' }} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-700 truncate">{a.patient?.firstName} {a.patient?.lastName}</p>
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{a.patient?.firstName} {a.patient?.lastName}</p>
                         <p className="text-[10px] text-gray-400 truncate">Dr. {a.doctor?.user?.firstName} · {a.service?.name}</p>
                       </div>
                       <div className="text-right flex-shrink-0">
@@ -735,11 +735,11 @@ export default function ReceptionistDashboard() {
           </div>
 
           {/* Quick Notes */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
               <div className="flex items-center gap-2">
                 <StickyNote size={14} className="text-amber-500" />
-                <h3 className="text-sm font-bold text-gray-800">Quick Notes</h3>
+                <h3 className="text-sm font-bold text-gray-800 dark:text-white">Quick Notes</h3>
               </div>
             </div>
             <div className="p-3 space-y-2">

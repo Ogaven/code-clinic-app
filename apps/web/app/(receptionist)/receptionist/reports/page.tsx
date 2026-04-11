@@ -6,12 +6,12 @@ import { cn } from '@/lib/utils'
 
 function StatBox({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-all">
+    <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 hover:shadow-md transition-all">
       <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: color + '20' }}>
         <BarChart2 size={18} style={{ color }} />
       </div>
-      <p className="text-3xl font-black text-gray-800">{value}</p>
-      <p className="text-sm font-semibold text-gray-600 mt-0.5">{label}</p>
+      <p className="text-3xl font-black text-gray-800 dark:text-white">{value}</p>
+      <p className="text-sm font-semibold text-gray-600 dark:text-gray-300 mt-0.5">{label}</p>
       {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
     </div>
   )
@@ -51,12 +51,12 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-gray-800">Reports</h1>
+          <h1 className="text-2xl font-black text-gray-800 dark:text-white">Reports</h1>
           <p className="text-sm text-gray-400 mt-0.5">Receptionist summary — today's activity</p>
         </div>
         <div className="flex items-center gap-3">
           <select value={dateRange} onChange={e => setDate(e.target.value)}
-            className="text-sm border border-gray-200 rounded-xl px-3 py-2 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
+            className="text-sm border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-gray-600 dark:text-gray-300 bg-white dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
             <option value="today">Today</option>
             <option value="week">This week</option>
             <option value="month">This month</option>

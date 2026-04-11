@@ -72,7 +72,7 @@ export default function ExpensesPage() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-clinic-navy">Expenses</h2>
+          <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">Expenses</h2>
           <p className="text-sm text-gray-400 mt-0.5">Total this month: {formatUGX(total)}</p>
         </div>
         <button onClick={() => setShowAdd(true)}
@@ -82,11 +82,11 @@ export default function ExpensesPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-3 flex-wrap">
+      <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-4 flex items-center gap-3 flex-wrap">
         <input type="month" value={monthFilter} onChange={e => { setMonthFilter(e.target.value); fetchExpenses(filterCategory, e.target.value) }}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-blue" />
+          className="px-3 py-2 border border-gray-200 dark:border-white/10 rounded-lg text-sm dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-clinic-blue" />
         <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); fetchExpenses(e.target.value, monthFilter) }}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-clinic-blue">
+          className="px-3 py-2 border border-gray-200 dark:border-white/10 rounded-lg text-sm bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-clinic-blue">
           <option value="">All Categories</option>
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -94,12 +94,12 @@ export default function ExpensesPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Category breakdown */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h3 className="font-semibold text-clinic-navy mb-4 text-sm">By Category</h3>
+        <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
+          <h3 className="font-semibold text-clinic-navy dark:text-white mb-4 text-sm">By Category</h3>
           {loading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-8 bg-gray-100 rounded-lg animate-pulse" />
+                <div key={i} className="h-8 bg-gray-100 dark:bg-white/10 rounded-lg animate-pulse" />
               ))}
             </div>
           ) : byCategory.length === 0 ? (
@@ -109,10 +109,10 @@ export default function ExpensesPage() {
               {byCategory.map(({ cat, total: catTotal }) => (
                 <div key={cat}>
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-medium text-gray-600">{cat}</span>
-                    <span className="text-xs font-bold text-gray-800">{formatUGX(catTotal)}</span>
+                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{cat}</span>
+                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{formatUGX(catTotal)}</span>
                   </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all"
                       style={{
                         width: `${Math.round((catTotal / total) * 100)}%`,
@@ -126,11 +126,11 @@ export default function ExpensesPage() {
         </div>
 
         {/* Expenses table */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="lg:col-span-2 bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
+                <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                   {['Date', 'Category', 'Description', 'Amount', ''].map(h => (
                     <th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-5 py-3.5">
                       {h}
@@ -138,11 +138,11 @@ export default function ExpensesPage() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-gray-50 dark:divide-white/5">
                 {loading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <tr key={i}>{Array.from({ length: 5 }).map((_, j) => (
-                      <td key={j} className="px-5 py-4"><div className="h-4 bg-gray-100 rounded animate-pulse w-20" /></td>
+                      <td key={j} className="px-5 py-4"><div className="h-4 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-20" /></td>
                     ))}</tr>
                   ))
                 ) : expenses.length === 0 ? (
@@ -153,7 +153,7 @@ export default function ExpensesPage() {
                     </td>
                   </tr>
                 ) : expenses.map(exp => (
-                  <tr key={exp.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={exp.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
                     <td className="px-5 py-3.5 text-sm text-gray-400">
                       {new Date(exp.date).toLocaleDateString('en-UG')}
                     </td>
@@ -163,10 +163,10 @@ export default function ExpensesPage() {
                         {exp.category}
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-600 max-w-[180px] truncate">
+                    <td className="px-5 py-3.5 text-sm text-gray-600 dark:text-gray-400 max-w-[180px] truncate">
                       {exp.description || '—'}
                     </td>
-                    <td className="px-5 py-3.5 text-sm font-bold text-clinic-navy">
+                    <td className="px-5 py-3.5 text-sm font-bold text-clinic-navy dark:text-white">
                       {formatUGX(exp.amountUGX)}
                     </td>
                     <td className="px-5 py-3.5">

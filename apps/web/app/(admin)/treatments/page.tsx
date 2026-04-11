@@ -83,22 +83,22 @@ export default function TreatmentsPage() {
   return (
     <div className="space-y-4 animate-fade-in">
       <div>
-        <h2 className="text-2xl font-bold text-clinic-navy">Treatments</h2>
+        <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">Treatments</h2>
         <p className="text-sm text-gray-400 mt-0.5">Today's appointments & treatment status</p>
       </div>
 
-      {/* Status tabs (clone Zendeta 085000) */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
-        <div className="flex border-b border-gray-100 overflow-x-auto">
+      {/* Status tabs */}
+      <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm">
+        <div className="flex border-b border-gray-100 dark:border-white/10 overflow-x-auto">
           {STATUS_TABS.map(s => (
             <button key={s} onClick={() => setTab(s)}
               className={cn(
                 'flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors',
-                tab === s ? 'border-clinic-blue text-clinic-navy' : 'border-transparent text-gray-400 hover:text-gray-600',
+                tab === s ? 'border-clinic-blue text-clinic-navy dark:text-white' : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300',
               )}>
               {s === 'ALL' ? 'All Treatments' : STATUS_BADGE[s]?.label || s}
               <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full',
-                tab === s ? 'bg-clinic-blue text-white' : 'bg-gray-100 text-gray-400')}>
+                tab === s ? 'bg-clinic-blue text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-400')}>
                 {counts[s] || 0}
               </span>
             </button>
@@ -106,12 +106,12 @@ export default function TreatmentsPage() {
         </div>
 
         {/* Search */}
-        <div className="p-4 border-b border-gray-50">
+        <div className="p-4 border-b border-gray-50 dark:border-white/5">
           <div className="relative max-w-sm">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search patient or treatment..."
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-blue" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-sm dark:text-white dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-clinic-blue" />
           </div>
         </div>
 
@@ -119,7 +119,7 @@ export default function TreatmentsPage() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
+              <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/10">
                 {['Patient', 'Treatment', 'Doctor', 'Price (UGX)', 'Duration', 'Time', 'Status', 'Actions'].map(h => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-5 py-3.5 whitespace-nowrap">
                     {h}
@@ -127,11 +127,11 @@ export default function TreatmentsPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>{Array.from({ length: 8 }).map((_, j) => (
-                    <td key={j} className="px-5 py-4"><div className="h-4 bg-gray-100 rounded animate-pulse w-20" /></td>
+                    <td key={j} className="px-5 py-4"><div className="h-4 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-20" /></td>
                   ))}</tr>
                 ))
               ) : filtered.length === 0 ? (
@@ -145,7 +145,7 @@ export default function TreatmentsPage() {
                 const badge = STATUS_BADGE[appt.status] || { label: appt.status, cls: 'bg-gray-100 text-gray-500' }
                 const startTime = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit' })
                 return (
-                  <tr key={appt.id} className="hover:bg-blue-50/20 transition-colors">
+                  <tr key={appt.id} className="hover:bg-blue-50/20 dark:hover:bg-white/5 transition-colors">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <Avatar
@@ -154,7 +154,7 @@ export default function TreatmentsPage() {
                           avatarUrl={appt.patient?.avatarUrl}
                           size="sm"
                         />
-                        <span className="text-sm font-medium text-gray-800">
+                        <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
                           {appt.patient?.firstName} {appt.patient?.lastName}
                         </span>
                       </div>
@@ -163,19 +163,19 @@ export default function TreatmentsPage() {
                       <div className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                           style={{ backgroundColor: appt.service?.colour || '#29ABE2' }} />
-                        <span className="text-sm text-gray-700">{appt.service?.name}</span>
+                        <span className="text-sm text-gray-700 dark:text-gray-300">{appt.service?.name}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-500">
+                    <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400">
                       Dr. {appt.doctor?.user?.firstName} {appt.doctor?.user?.lastName}
                     </td>
-                    <td className="px-5 py-3.5 text-sm font-semibold text-clinic-navy font-mono">
+                    <td className="px-5 py-3.5 text-sm font-semibold text-clinic-navy dark:text-white font-mono">
                       {appt.service?.priceUGX ? formatUGX(appt.service.priceUGX) : '—'}
                     </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-500">
+                    <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400">
                       {appt.service?.durationMins}min
                     </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-500 font-mono">{startTime}</td>
+                    <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 font-mono">{startTime}</td>
                     <td className="px-5 py-3.5">
                       <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full', badge.cls)}>
                         {badge.label}

@@ -91,7 +91,7 @@ export default function InvoicesPage() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-clinic-navy">Invoices</h2>
+          <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">Invoices</h2>
           <p className="text-sm text-gray-400 mt-0.5">{total} total invoices</p>
         </div>
         <button onClick={() => setShowCreateModal(true)}
@@ -101,22 +101,22 @@ export default function InvoicesPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex gap-3 flex-wrap items-center">
+      <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-4 flex gap-3 flex-wrap items-center">
         {['', 'DRAFT', 'SENT', 'PAID', 'OVERDUE'].map(s => (
           <button key={s} onClick={() => setStatusFilter(s)}
             className={cn('text-xs font-semibold px-3 py-1.5 rounded-full border transition-all',
-              statusFilter === s ? 'bg-clinic-blue text-white border-clinic-blue' : 'border-gray-200 text-gray-500 hover:bg-gray-50')}>
+              statusFilter === s ? 'bg-clinic-blue text-white border-clinic-blue' : 'border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5')}>
             {s || 'All'}
           </button>
         ))}
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
+              <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                 {['Invoice #', 'Patient', 'Amount (UGX)', 'Date', 'Due Date', 'Status', 'Actions'].map(h => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-5 py-3.5 whitespace-nowrap">
                     {h}
@@ -124,7 +124,7 @@ export default function InvoicesPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>{Array.from({ length: 7 }).map((_, j) => (
@@ -137,14 +137,14 @@ export default function InvoicesPage() {
                 </tr>
               ) : invoices.map(inv => (
                 <tr key={inv.id} onClick={() => openInvoice(inv)}
-                  className="hover:bg-blue-50/20 transition-colors cursor-pointer">
+                  className="hover:bg-blue-50/20 dark:hover:bg-white/5 transition-colors cursor-pointer">
                   <td className="px-5 py-3.5">
                     <span className="text-sm font-mono font-medium text-clinic-blue">{inv.invoiceNumber}</span>
                   </td>
-                  <td className="px-5 py-3.5 text-sm text-gray-700">
+                  <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300">
                     {inv.patient?.firstName} {inv.patient?.lastName}
                   </td>
-                  <td className="px-5 py-3.5 text-sm font-bold text-clinic-navy">
+                  <td className="px-5 py-3.5 text-sm font-bold text-clinic-navy dark:text-white">
                     {formatUGX(inv.totalUGX)}
                   </td>
                   <td className="px-5 py-3.5 text-sm text-gray-400">
@@ -174,17 +174,17 @@ export default function InvoicesPage() {
         </div>
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 bg-gray-50">
+          <div className="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 dark:border-white/10 bg-gray-50 dark:bg-white/5">
             <p className="text-sm text-gray-400">
               Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
             </p>
             <div className="flex items-center gap-1">
               <button onClick={() => { setPage(p => p - 1); fetch_(page - 1) }} disabled={page === 1}
-                className="p-1.5 rounded-lg hover:bg-white border border-gray-200 text-gray-500 disabled:opacity-40">
+                className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-white/10 border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 disabled:opacity-40">
                 <ChevronLeft size={14} />
               </button>
               <button onClick={() => { setPage(p => p + 1); fetch_(page + 1) }} disabled={page === totalPages}
-                className="p-1.5 rounded-lg hover:bg-white border border-gray-200 text-gray-500 disabled:opacity-40">
+                className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-white/10 border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 disabled:opacity-40">
                 <ChevronRight size={14} />
               </button>
             </div>

@@ -64,7 +64,7 @@ export default function PatientsPage() {
       {/* ── Header ────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-clinic-navy">Patients</h2>
+          <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">Patients</h2>
           <p className="text-sm text-gray-400 mt-0.5">
             {loading ? '...' : `${total || patients.length} patients`}
           </p>
@@ -79,7 +79,7 @@ export default function PatientsPage() {
       </div>
 
       {/* ── Search + Filter ──────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-3 flex-wrap">
+      <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-4 flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -87,21 +87,21 @@ export default function PatientsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or phone..."
-            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-blue focus:bg-white transition-all"
+            className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-sm dark:text-white dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-clinic-blue focus:bg-white dark:focus:bg-white/10 transition-all"
           />
         </div>
-        <button className="flex items-center gap-2 px-3 py-2 border border-gray-200 text-gray-500 text-sm rounded-lg hover:bg-gray-50 transition-colors">
+        <button className="flex items-center gap-2 px-3 py-2 border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
           <Filter size={14} />
           Filter
         </button>
       </div>
 
       {/* ── Table ────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
+              <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                 {['Patient', 'Phone', 'Email', 'Gender', 'Balance', 'Status', 'Actions'].map((h) => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-5 py-3.5 whitespace-nowrap">
                     {h}
@@ -109,13 +109,13 @@ export default function PatientsPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: 7 }).map((_, j) => (
                       <td key={j} className="px-5 py-4">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
+                        <div className="h-4 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-24" />
                       </td>
                     ))}
                   </tr>
@@ -128,24 +128,24 @@ export default function PatientsPage() {
                   </td>
                 </tr>
               ) : patients.map((p) => (
-                <tr key={p.id} className="hover:bg-blue-50/30 transition-colors cursor-pointer group">
+                <tr key={p.id} className="hover:bg-blue-50/30 dark:hover:bg-white/5 transition-colors cursor-pointer group">
                   <td className="px-5 py-3.5">
                     <Link href={`/patients/${p.id}`} className="flex items-center gap-3">
                       <Avatar firstName={p.firstName} lastName={p.lastName} avatarUrl={p.avatarUrl} size="sm" />
-                      <span className="text-sm font-medium text-gray-800 group-hover:text-clinic-navy transition-colors">
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200 group-hover:text-clinic-navy dark:group-hover:text-white transition-colors">
                         {p.firstName} {p.lastName}
                       </span>
                     </Link>
                   </td>
                   <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1.5 text-sm text-gray-500">
+                    <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
                       <Phone size={12} className="text-gray-300 flex-shrink-0" />
                       {formatPhone(p.phone)}
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
                     {p.email ? (
-                      <div className="flex items-center gap-1.5 text-sm text-gray-500">
+                      <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
                         <Mail size={12} className="text-gray-300 flex-shrink-0" />
                         <span className="truncate max-w-[160px]">{p.email}</span>
                       </div>
@@ -153,7 +153,7 @@ export default function PatientsPage() {
                       <span className="text-gray-300 text-sm">—</span>
                     )}
                   </td>
-                  <td className="px-5 py-3.5 text-sm text-gray-500">
+                  <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400">
                     {p.gender ? GENDER_LABELS[p.gender] : '—'}
                   </td>
                   <td className="px-5 py-3.5">
@@ -164,7 +164,7 @@ export default function PatientsPage() {
                   </td>
                   <td className="px-5 py-3.5">
                     <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full',
-                      p.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500',
+                      p.isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400',
                     )}>
                       {p.isActive ? 'Active' : 'Inactive'}
                     </span>
@@ -185,7 +185,7 @@ export default function PatientsPage() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 bg-gray-50">
+          <div className="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 dark:border-white/10 bg-gray-50 dark:bg-white/5">
             <p className="text-sm text-gray-400">
               Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
             </p>
@@ -193,7 +193,7 @@ export default function PatientsPage() {
               <button
                 onClick={() => { setPage(p => p - 1); fetchPatients(search, page - 1) }}
                 disabled={page === 1}
-                className="p-1.5 rounded-lg hover:bg-white border border-gray-200 text-gray-500 disabled:opacity-40 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-white/10 border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 disabled:opacity-40 transition-colors"
               >
                 <ChevronLeft size={14} />
               </button>
@@ -202,7 +202,7 @@ export default function PatientsPage() {
                   key={n}
                   onClick={() => { setPage(n); fetchPatients(search, n) }}
                   className={cn('w-8 h-8 rounded-lg text-xs font-semibold transition-colors',
-                    page === n ? 'bg-clinic-blue text-white' : 'hover:bg-white border border-gray-200 text-gray-500',
+                    page === n ? 'bg-clinic-blue text-white' : 'hover:bg-white dark:hover:bg-white/10 border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400',
                   )}
                 >
                   {n}
@@ -211,7 +211,7 @@ export default function PatientsPage() {
               <button
                 onClick={() => { setPage(p => p + 1); fetchPatients(search, page + 1) }}
                 disabled={page === totalPages}
-                className="p-1.5 rounded-lg hover:bg-white border border-gray-200 text-gray-500 disabled:opacity-40 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-white/10 border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 disabled:opacity-40 transition-colors"
               >
                 <ChevronRight size={14} />
               </button>

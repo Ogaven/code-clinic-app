@@ -34,7 +34,7 @@ export default function EmployeesPage() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-clinic-navy">Staff List</h2>
+          <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">Staff List</h2>
           <p className="text-sm text-gray-400 mt-0.5">{employees.length} team members</p>
         </div>
         <button onClick={() => setShowAdd(true)}
@@ -43,18 +43,18 @@ export default function EmployeesPage() {
         </button>
       </div>
 
-      {/* Grid of staff cards — clone Zendeta Screenshot 085016 */}
+      {/* Grid of staff cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {loading ? (
           Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-100 p-5 animate-pulse space-y-3">
-              <div className="w-16 h-16 rounded-full bg-gray-200 mx-auto" />
-              <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto" />
-              <div className="h-3 bg-gray-100 rounded w-1/2 mx-auto" />
+            <div key={i} className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 p-5 animate-pulse space-y-3">
+              <div className="w-16 h-16 rounded-full bg-gray-200 dark:bg-white/10 mx-auto" />
+              <div className="h-4 bg-gray-200 dark:bg-white/10 rounded w-3/4 mx-auto" />
+              <div className="h-3 bg-gray-100 dark:bg-white/5 rounded w-1/2 mx-auto" />
             </div>
           ))
         ) : employees.map(emp => (
-          <div key={emp.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-col items-center text-center hover:shadow-md transition-shadow group">
+          <div key={emp.id} className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-5 flex flex-col items-center text-center hover:shadow-md dark:hover:bg-white/8 transition-shadow group">
             {/* Avatar with upload on hover */}
             <AvatarUpload
               userId={emp.id}
@@ -67,7 +67,7 @@ export default function EmployeesPage() {
               onUploaded={(url) => setEmployees(es => es.map(e => e.id === emp.id ? { ...e, avatarUrl: url } : e))}
             />
 
-            <h3 className="mt-3 font-bold text-clinic-navy text-sm">
+            <h3 className="mt-3 font-bold text-clinic-navy dark:text-white text-sm">
               {emp.role === 'DOCTOR' ? 'Dr. ' : ''}{emp.firstName} {emp.lastName}
             </h3>
 
@@ -80,7 +80,7 @@ export default function EmployeesPage() {
               <p className="text-xs text-gray-400 mt-1 leading-tight">{emp.doctor.specialisation}</p>
             )}
 
-            <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
+            <div className="flex items-center gap-1 mt-2 text-xs text-gray-400 dark:text-gray-500">
               <Mail size={11} />
               <span className="truncate max-w-[140px]">{emp.email}</span>
             </div>

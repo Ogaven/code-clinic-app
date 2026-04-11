@@ -92,7 +92,7 @@ export default function PayrollPage() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-clinic-navy">Payroll</h2>
+          <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">Payroll</h2>
           <p className="text-sm text-gray-400 mt-0.5">Uganda NSSF + PAYE auto-calculated</p>
         </div>
         <input type="month" value={month} onChange={e => { setMonth(e.target.value); fetchPayroll(e.target.value) }}
@@ -108,7 +108,7 @@ export default function PayrollPage() {
             { label: 'Total PAYE', value: totalPAYE, colour: 'text-red-500' },
             { label: 'Total NSSF', value: totalNSSF, colour: 'text-yellow-600' },
           ].map(({ label, value, colour }) => (
-            <div key={label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            <div key={label} className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-4">
               <p className="text-xs text-gray-400 mb-1">{label}</p>
               <p className={cn('text-lg font-bold', colour)}>{formatUGX(value)}</p>
             </div>
@@ -118,15 +118,15 @@ export default function PayrollPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Run Payroll panel */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h3 className="font-semibold text-clinic-navy mb-4 flex items-center gap-2">
+        <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
+          <h3 className="font-semibold text-clinic-navy dark:text-white mb-4 flex items-center gap-2">
             <Calculator size={16} /> Run Payroll — {month}
           </h3>
           <div className="space-y-3 max-h-80 overflow-y-auto">
             {employees.map(emp => (
               <div key={emp.id} className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{emp.firstName} {emp.lastName}</p>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{emp.firstName} {emp.lastName}</p>
                   <p className="text-xs text-gray-400">{emp.role}</p>
                 </div>
                 <input
@@ -134,7 +134,7 @@ export default function PayrollPage() {
                   value={salaries[emp.id] || ''}
                   onChange={e => setSalaries(s => ({ ...s, [emp.id]: e.target.value }))}
                   placeholder="Gross UGX"
-                  className="w-28 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-clinic-blue font-mono"
+                  className="w-28 px-2 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg text-sm text-right dark:bg-white/5 dark:text-white focus:outline-none focus:ring-1 focus:ring-clinic-blue font-mono"
                 />
               </div>
             ))}
@@ -150,11 +150,11 @@ export default function PayrollPage() {
         </div>
 
         {/* Payroll table */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="lg:col-span-2 bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
+                <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                   {['Employee', 'Gross', 'NSSF (5%)', 'PAYE', 'Net Pay', 'Status', ''].map(h => (
                     <th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3.5 whitespace-nowrap">
                       {h}
@@ -162,7 +162,7 @@ export default function PayrollPage() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-gray-50 dark:divide-white/5">
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>{Array.from({ length: 7 }).map((_, j) => (
@@ -177,12 +177,12 @@ export default function PayrollPage() {
                     </td>
                   </tr>
                 ) : payroll.map(p => (
-                  <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={p.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
                     <td className="px-4 py-3.5">
-                      <p className="text-sm font-medium text-gray-800">{p.user.firstName} {p.user.lastName}</p>
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{p.user.firstName} {p.user.lastName}</p>
                       <p className="text-xs text-gray-400">{p.user.role}</p>
                     </td>
-                    <td className="px-4 py-3.5 text-sm font-mono text-gray-700">{formatUGX(p.grossUGX)}</td>
+                    <td className="px-4 py-3.5 text-sm font-mono text-gray-700 dark:text-gray-300">{formatUGX(p.grossUGX)}</td>
                     <td className="px-4 py-3.5 text-sm font-mono text-yellow-600">{formatUGX(p.nssfEmployee)}</td>
                     <td className="px-4 py-3.5 text-sm font-mono text-red-500">{formatUGX(p.paye)}</td>
                     <td className="px-4 py-3.5 text-sm font-bold font-mono text-green-600">{formatUGX(p.netUGX)}</td>

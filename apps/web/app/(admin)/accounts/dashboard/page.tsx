@@ -75,9 +75,9 @@ export default function AccountsDashboardPage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-clinic-navy">Accounts Overview</h2>
+          <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">Accounts Overview</h2>
           <p className="text-sm text-gray-400 mt-0.5">
             {new Date().toLocaleDateString('en-UG', { month: 'long', year: 'numeric' })}
           </p>
@@ -94,7 +94,7 @@ export default function AccountsDashboardPage() {
         {kpis.map((kpi) => {
           const Icon = kpi.icon
           return (
-            <div key={kpi.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div key={kpi.label} className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
               <div className="flex items-start justify-between mb-3">
                 <p className="text-xs text-gray-400 font-medium">{kpi.label}</p>
                 <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center', kpi.bg)}>
@@ -102,9 +102,9 @@ export default function AccountsDashboardPage() {
                 </div>
               </div>
               {loading ? (
-                <div className="h-7 bg-gray-200 rounded animate-pulse w-3/4" />
+                <div className="h-7 bg-gray-200 dark:bg-white/10 rounded animate-pulse w-3/4" />
               ) : (
-                <p className="text-xl font-bold text-clinic-navy leading-tight">{kpi.value}</p>
+                <p className="text-xl font-bold text-clinic-navy dark:text-white leading-tight">{kpi.value}</p>
               )}
               {kpi.sub && <p className="text-xs text-gray-400 mt-1">{kpi.sub}</p>}
             </div>
@@ -114,13 +114,13 @@ export default function AccountsDashboardPage() {
 
       {/* Revenue vs Expenses Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+        <div className="lg:col-span-2 bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-clinic-navy">Revenue vs Expenses</h3>
+            <h3 className="font-semibold text-clinic-navy dark:text-white">Revenue vs Expenses</h3>
             <span className="text-xs text-gray-400">Last 6 months</span>
           </div>
           {loading ? (
-            <div className="h-56 bg-gray-50 rounded-xl animate-pulse" />
+            <div className="h-56 bg-gray-50 dark:bg-white/5 rounded-xl animate-pulse" />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={data?.trend || []} barGap={4}>
@@ -141,18 +141,18 @@ export default function AccountsDashboardPage() {
         </div>
 
         {/* Quick stats */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
-          <h3 className="font-semibold text-clinic-navy">Year to Date</h3>
+        <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
+          <h3 className="font-semibold text-clinic-navy dark:text-white">Year to Date</h3>
           <div className="space-y-3">
             {[
-              { label: 'Total Revenue', value: data?.yearRevenue, colour: 'text-green-600' },
+              { label: 'Total Revenue', value: data?.yearRevenue, colour: 'text-green-600 dark:text-green-400' },
               { label: 'Total Expenses', value: undefined, colour: 'text-red-500' },
-              { label: 'Net Profit', value: undefined, colour: 'text-clinic-navy' },
+              { label: 'Net Profit', value: undefined, colour: 'text-clinic-navy dark:text-white' },
             ].map(({ label, value, colour }) => (
-              <div key={label} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
-                <span className="text-sm text-gray-500">{label}</span>
+              <div key={label} className="flex justify-between items-center py-2 border-b border-gray-50 dark:border-white/5 last:border-0">
+                <span className="text-sm text-gray-500 dark:text-gray-400">{label}</span>
                 {loading ? (
-                  <div className="h-4 bg-gray-100 rounded animate-pulse w-20" />
+                  <div className="h-4 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-20" />
                 ) : (
                   <span className={cn('text-sm font-bold', colour)}>
                     {formatUGX(value || 0)}
@@ -171,9 +171,9 @@ export default function AccountsDashboardPage() {
       </div>
 
       {/* Recent Invoices */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 className="font-semibold text-clinic-navy flex items-center gap-2">
+      <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/10">
+          <h3 className="font-semibold text-clinic-navy dark:text-white flex items-center gap-2">
             <FileText size={16} /> Recent Invoices
           </h3>
           <Link href="/accounts/invoices" className="text-xs text-clinic-blue font-medium hover:underline">
@@ -183,7 +183,7 @@ export default function AccountsDashboardPage() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
+              <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/10">
                 {['Invoice #', 'Patient', 'Amount', 'Date', 'Status'].map(h => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-5 py-3">
                     {h}
@@ -191,13 +191,13 @@ export default function AccountsDashboardPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: 5 }).map((_, j) => (
                       <td key={j} className="px-5 py-3.5">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse w-20" />
+                        <div className="h-4 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-20" />
                       </td>
                     ))}
                   </tr>
@@ -209,14 +209,14 @@ export default function AccountsDashboardPage() {
                   </td>
                 </tr>
               ) : data.recentInvoices.map((inv: any) => (
-                <tr key={inv.id} className="hover:bg-blue-50/20 transition-colors">
+                <tr key={inv.id} className="hover:bg-blue-50/20 dark:hover:bg-white/5 transition-colors">
                   <td className="px-5 py-3.5">
                     <span className="text-sm font-mono font-medium text-clinic-blue">{inv.invoiceNumber}</span>
                   </td>
-                  <td className="px-5 py-3.5 text-sm text-gray-700">
+                  <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300">
                     {inv.patient ? `${inv.patient.firstName} ${inv.patient.lastName}` : '—'}
                   </td>
-                  <td className="px-5 py-3.5 text-sm font-semibold text-clinic-navy">
+                  <td className="px-5 py-3.5 text-sm font-semibold text-clinic-navy dark:text-white">
                     {formatUGX(inv.totalUGX)}
                   </td>
                   <td className="px-5 py-3.5 text-sm text-gray-400">
