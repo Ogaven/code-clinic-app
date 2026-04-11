@@ -1,12 +1,27 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Component, useEffect, useRef, useState } from 'react'
 import {
   Search, Plus, Phone, Mail, Calendar, ChevronRight, X, User,
   Upload, Download, FileText,
   CheckCircle2, AlertCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: any) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  render() {
+    if (this.state.hasError) return (
+      <div className="flex flex-col items-center justify-center h-full py-20 text-gray-400">
+        <User size={40} className="mb-3 opacity-30" />
+        <p className="font-semibold">Something went wrong loading patients.</p>
+        <button onClick={() => this.setState({ hasError: false })} className="mt-3 text-sm text-cyan-600 hover:underline">Try again</button>
+      </div>
+    )
+    return this.props.children
+  }
+}
 
 interface Patient {
   id: string; firstName: string; lastName: string; phone: string
@@ -47,14 +62,15 @@ export default function PatientsPage() {
   useEffect(() => { fetchPatients() }, [])
 
   useEffect(() => {
+    if (!Array.isArray(patients)) { setFiltered([]); return }
     let list = patients
     if (search) list = list.filter(p =>
-      `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase()) ||
-      p.phone.includes(search) || (p.email || '').toLowerCase().includes(search.toLowerCase())
+      `${p.firstName ?? ''} ${p.lastName ?? ''}`.toLowerCase().includes(search.toLowerCase()) ||
+      (p.phone ?? '').includes(search) || (p.email || '').toLowerCase().includes(search.toLowerCase())
     )
     if (filter === 'new') {
       const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
-      list = list.filter(p => new Date(p.createdAt) > weekAgo)
+      list = list.filter(p => { try { return new Date(p.createdAt) > weekAgo } catch { return false } })
     } else if (filter === 'active') {
       list = list.filter(p => (p._count?.appointments || 0) > 1)
     }
@@ -65,8 +81,16 @@ export default function PatientsPage() {
     setLoading(true)
     try {
       const res = await fetch(`${API}/patients?limit=500`, { headers: authH })
-      if (res.ok) { const json = await res.json(); setPatients(Array.isArray(json) ? json : json.data || json.patients || []) }
-    } catch {} finally { setLoading(false) }
+      if (res.ok) {
+        const json = await res.json().catch(() => null)
+        if (!json) { setLoading(false); return }
+        const list = Array.isArray(json) ? json
+          : Array.isArray(json?.data) ? json.data
+          : Array.isArray(json?.patients) ? json.patients
+          : []
+        setPatients(list)
+      }
+    } catch { setPatients([]) } finally { setLoading(false) }
   }
 
   async function selectPatient(p: Patient) {
@@ -193,6 +217,7 @@ export default function PatientsPage() {
   const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
 
   return (
+    <ErrorBoundary>
     <div className="flex h-full bg-slate-50 dark:bg-transparent">
       {/* ── Toast ────────────────────────────────────────────── */}
       {toast && (
@@ -501,5 +526,6 @@ export default function PatientsPage() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   )
 }

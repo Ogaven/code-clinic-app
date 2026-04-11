@@ -94,26 +94,34 @@ export default function AISuitePage() {
     try {
       const res = await fetch(`${API}/agent/config`, { headers: authH })
       if (res.ok) {
-        const data = await res.json()
-        // Normalize: backend returns { configs: [...] } with responsibility field
-        const configs = Array.isArray(data) ? data : (data.configs || [])
+        const data = await res.json().catch(() => null)
+        if (!data) return
+        const configs = Array.isArray(data) ? data
+          : Array.isArray(data?.configs) ? data.configs
+          : []
         setPrompts(configs)
       }
-    } catch {}
+    } catch { setPrompts([]) }
   }
   async function fetchRecordings() {
     setLoading(true)
     try {
       const res = await fetch(`${API}/agent/queue`, { headers: authH })
-      if (res.ok) setRec(await res.json())
-    } catch {} finally { setLoading(false) }
+      if (res.ok) {
+        const data = await res.json().catch(() => [])
+        setRec(Array.isArray(data) ? data : [])
+      }
+    } catch { setRec([]) } finally { setLoading(false) }
   }
   async function fetchKB() {
     setLoading(true)
     try {
       const res = await fetch(`${API}/knowledge`, { headers: authH })
-      if (res.ok) setKBItems(await res.json())
-    } catch {} finally { setLoading(false) }
+      if (res.ok) {
+        const data = await res.json().catch(() => [])
+        setKBItems(Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [])
+      }
+    } catch { setKBItems([]) } finally { setLoading(false) }
   }
 
   async function toggleAgent(type: string) {
@@ -298,7 +306,7 @@ export default function AISuitePage() {
                 <div className="px-4 py-3 border-b border-gray-50 dark:border-white/5">
                   <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Agents</p>
                 </div>
-                {prompts.length === 0 ? (
+                {!Array.isArray(prompts) || prompts.length === 0 ? (
                   <div className="px-4 py-8 text-center">
                     <Bot size={24} className="mx-auto mb-2 text-gray-200" />
                     <p className="text-xs text-gray-400">No agents configured yet</p>
@@ -604,13 +612,13 @@ export default function AISuitePage() {
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={20} className="animate-spin text-cyan-500" />
                 </div>
-              ) : kbItems.length === 0 ? (
+              ) : !Array.isArray(kbItems) || kbItems.length === 0 ? (
                 <div className="px-4 py-10 text-center">
                   <FileText size={28} className="mx-auto mb-2 text-gray-200" />
                   <p className="text-sm text-gray-400">No knowledge base items yet</p>
                   <p className="text-xs text-gray-300 mt-1">Upload documents to get started</p>
                 </div>
-              ) : kbItems.filter(k => !kbSearch || k.title.toLowerCase().includes(kbSearch.toLowerCase())).map(item => (
+              ) : (Array.isArray(kbItems) ? kbItems : []).filter(k => !kbSearch || (k.title || '').toLowerCase().includes(kbSearch.toLowerCase())).map(item => (
                 <div key={item.id} className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-0">
                   <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
                     <FileText size={16} className="text-gray-400" />
@@ -649,13 +657,13 @@ export default function AISuitePage() {
               <div className="flex items-center justify-center py-20">
                 <Loader2 size={24} className="animate-spin text-cyan-500" />
               </div>
-            ) : recordings.length === 0 ? (
+            ) : !Array.isArray(recordings) || recordings.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
                 <Film size={32} className="mx-auto mb-3 text-gray-200" />
                 <p className="font-medium text-gray-400">No call recordings yet</p>
                 <p className="text-sm text-gray-300 mt-1">Recordings will appear here once the AI agents are active</p>
               </div>
-            ) : recordings.map((r: any) => (
+            ) : (Array.isArray(recordings) ? recordings : []).map((r: any) => (
               <div key={r.id} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white flex-shrink-0">

@@ -134,8 +134,9 @@ router.post('/:id/avatar', requireAuth, uploadLimiter,
   async (req, res) => {
     const { id } = req.params
 
-    // Admin can upload for anyone; user can upload for themselves
-    if (req.user!.role !== 'ADMIN' && req.user!.id !== id) {
+    // Admin and Receptionist can upload for anyone; others only for themselves
+    const isPrivileged = req.user!.role === 'ADMIN' || req.user!.role === 'RECEPTIONIST'
+    if (!isPrivileged && req.user!.id !== id) {
       res.status(403).json({ error: 'You can only update your own avatar' })
       return
     }

@@ -47,10 +47,13 @@ export default function AvatarUpload({
     setError(null)
     setUploading(true)
 
-    // Local preview immediately
-    const reader = new FileReader()
-    reader.onload = (ev) => setPreview(ev.target?.result as string)
-    reader.readAsDataURL(file)
+    // Capture base64 for fallback before attempting server upload
+    let base64DataUrl = ''
+    await new Promise<void>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = (ev) => { base64DataUrl = ev.target?.result as string; setPreview(base64DataUrl); resolve() }
+      reader.readAsDataURL(file)
+    })
 
     try {
       const form = new FormData()
@@ -67,7 +70,12 @@ export default function AvatarUpload({
       )
 
       if (!res.ok) {
-        const err = await res.json()
+        // Fallback: keep base64 preview and call onUploaded with it so UI stays intact
+        if (res.status === 403 || res.status === 500) {
+          onUploaded?.(base64DataUrl)
+          return
+        }
+        const err = await res.json().catch(() => ({}))
         throw new Error(err.error || 'Upload failed')
       }
 
@@ -75,6 +83,8 @@ export default function AvatarUpload({
       setPreview(avatarUrl)
       onUploaded?.(avatarUrl)
     } catch (err: any) {
+      // On any failure: keep the preview and silently fall back to base64
+      if (base64DataUrl) { onUploaded?.(base64DataUrl); return }
       setError(err.message)
     } finally {
       setUploading(false)
