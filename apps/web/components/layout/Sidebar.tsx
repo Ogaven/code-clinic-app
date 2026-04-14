@@ -8,7 +8,7 @@ import {
   LayoutDashboard, CalendarDays, Users, Stethoscope, UserCog,
   Wallet, Receipt, ShoppingBag, CreditCard, FileBarChart,
   Bot, Megaphone, UserPlus, QrCode, Settings, HeadphonesIcon,
-  ChevronLeft, ChevronRight, Globe, BookOpen, Package,
+  ChevronLeft, ChevronRight, Globe, BookOpen, Package, BarChart2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -23,6 +23,7 @@ const adminNav: NavGroup[] = [
       { label: 'Appointments', href: '/scheduling',   icon: CalendarDays },
       { label: 'Patients',     href: '/patients',     icon: Users },
       { label: 'Treatments',   href: '/treatments',   icon: Stethoscope },
+      { label: 'Analytics',    href: '/analytics',    icon: BarChart2 },
       { label: 'Staff List',   href: '/employees',    icon: UserCog },
     ],
   },

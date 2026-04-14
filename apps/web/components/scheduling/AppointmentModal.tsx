@@ -24,11 +24,25 @@ interface Props {
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  PENDING:   { label: 'Pending',   className: 'badge-pending' },
-  CONFIRMED: { label: 'Confirmed', className: 'badge-confirmed' },
-  COMPLETED: { label: 'Completed', className: 'badge-completed' },
-  CANCELLED: { label: 'Cancelled', className: 'badge-cancelled' },
-  NO_SHOW:   { label: 'No Show',   className: 'badge-no-show' },
+  PENDING:        { label: 'Scheduled',           className: 'bg-slate-100 text-slate-700' },
+  CONFIRMED:      { label: 'Confirmed',            className: 'bg-blue-100 text-blue-700' },
+  CHECKED_IN:     { label: 'Checked In',           className: 'bg-yellow-100 text-yellow-700' },
+  IN_CHAIR:       { label: 'In Chair',             className: 'bg-orange-100 text-orange-700' },
+  WITH_PROVIDER:  { label: 'With Provider',        className: 'bg-teal-100 text-teal-700' },
+  READY_CHECKOUT: { label: 'Ready for Checkout',   className: 'bg-purple-100 text-purple-700' },
+  COMPLETED:      { label: 'Checkout Complete',    className: 'bg-green-100 text-green-700' },
+  NO_SHOW:        { label: 'Missed / No-Show',     className: 'bg-red-100 text-red-700' },
+  CANCELLED:      { label: 'Cancelled',            className: 'bg-slate-100 text-slate-400' },
+}
+
+// Sequential status flow
+const STATUS_NEXT: Record<string, { status: string; label: string; colour: string }> = {
+  PENDING:        { status: 'CONFIRMED',      label: 'Confirm',              colour: 'bg-blue-600' },
+  CONFIRMED:      { status: 'CHECKED_IN',     label: 'Check In',             colour: 'bg-yellow-500' },
+  CHECKED_IN:     { status: 'IN_CHAIR',       label: 'Seat in Chair',        colour: 'bg-orange-500' },
+  IN_CHAIR:       { status: 'WITH_PROVIDER',  label: 'With Provider',        colour: 'bg-teal-600' },
+  WITH_PROVIDER:  { status: 'READY_CHECKOUT', label: 'Ready for Checkout',   colour: 'bg-purple-600' },
+  READY_CHECKOUT: { status: 'COMPLETED',      label: 'Complete Checkout',    colour: 'bg-green-600' },
 }
 
 export default function AppointmentModal({ appointment, onClose, onStatusChange, userRole = 'ADMIN' }: Props) {
@@ -129,36 +143,34 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
             )}
 
             {/* Action buttons */}
-            {appointment.status !== 'CANCELLED' && appointment.status !== 'COMPLETED' && (
+            {appointment.status !== 'CANCELLED' && appointment.status !== 'COMPLETED' && appointment.status !== 'NO_SHOW' && (
               <div className="flex flex-wrap gap-2 pt-2">
-                {appointment.status === 'PENDING' && (
-                  <button
-                    onClick={() => changeStatus('CONFIRMED')}
-                    disabled={!!loading}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-60"
-                  >
-                    {loading === 'CONFIRMED' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                    Confirm
-                  </button>
-                )}
-                {appointment.status === 'CONFIRMED' && (
-                  <button
-                    onClick={() => changeStatus('COMPLETED')}
-                    disabled={!!loading}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-60"
-                  >
-                    {loading === 'COMPLETED' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                    Complete
-                  </button>
-                )}
+                {/* Primary: advance to next status */}
+                {STATUS_NEXT[appointment.status] && (() => {
+                  const next = STATUS_NEXT[appointment.status]
+                  return (
+                    <button
+                      onClick={() => changeStatus(next.status)}
+                      disabled={!!loading}
+                      className={cn('flex items-center gap-1.5 px-3 py-2 text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-60', next.colour)}
+                    >
+                      {loading === next.status ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                      {next.label}
+                    </button>
+                  )
+                })()}
+
+                {/* Secondary: no-show */}
                 <button
                   onClick={() => changeStatus('NO_SHOW')}
                   disabled={!!loading}
                   className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-60"
                 >
                   {loading === 'NO_SHOW' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}
-                  No-show
+                  No-Show
                 </button>
+
+                {/* Danger: cancel */}
                 <button
                   onClick={() => changeStatus('CANCELLED')}
                   disabled={!!loading}

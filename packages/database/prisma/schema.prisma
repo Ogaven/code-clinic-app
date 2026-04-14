@@ -88,14 +88,19 @@ model Patient {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  appointments  Appointment[]
-  invoices      Invoice[]
-  payments      Payment[]
-  feedback      PatientFeedback[]
-  nurtureLogs   NurtureLog[]
-  agentLogs     AgentLog[]
-  agentMemory   AgentMemory[]
-  outboundQueue OutboundQueue[]
+  appointments     Appointment[]
+  invoices         Invoice[]
+  payments         Payment[]
+  feedback         PatientFeedback[]
+  nurtureLogs      NurtureLog[]
+  agentLogs        AgentLog[]
+  agentMemory      AgentMemory[]
+  outboundQueue    OutboundQueue[]
+  treatmentPlans   TreatmentPlan[]
+  treatmentNotes   TreatmentNote[]
+  dentalChart      DentalChart?
+  documents        PatientDocument[]
+  activities       PatientActivity[]
 
   @@unique([phone])
   @@map("patients")
@@ -546,4 +551,82 @@ model Escalation {
 
   @@index([status])
   @@map("escalations")
+}
+
+// ─────────────────────────────────────────────
+// CLINICAL FEATURES
+// ─────────────────────────────────────────────
+
+model TreatmentPlan {
+  id          String   @id @default(cuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  serviceId   String?
+  status      String   @default("Planned")
+  toothNumber String?
+  quantity    Int      @default(1)
+  costPerUnit Int      @default(0)
+  discount    Int      @default(0)
+  notes       String?
+  dateAdded   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([patientId])
+  @@map("treatment_plans")
+}
+
+model TreatmentNote {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  content   String
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@map("treatment_notes")
+}
+
+model DentalChart {
+  id             String   @id @default(cuid())
+  patientId      String   @unique
+  patient        Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  teeth          String   @default("{}")
+  periodontal    String   @default("{}")
+  aiSummary      String?
+  aiPerioSummary String?
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  @@map("dental_charts")
+}
+
+model PatientDocument {
+  id         String   @id @default(cuid())
+  patientId  String
+  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  fileName   String
+  fileType   String
+  fileUrl    String
+  uploadedBy String
+  createdAt  DateTime @default(now())
+
+  @@index([patientId])
+  @@map("patient_documents")
+}
+
+model PatientActivity {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  userId    String
+  userName  String
+  action    String
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  @@index([patientId])
+  @@map("patient_activities")
 }

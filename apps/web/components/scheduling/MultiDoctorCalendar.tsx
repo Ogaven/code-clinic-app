@@ -80,12 +80,19 @@ const timeSlots = Array.from({ length: (HOUR_END - HOUR_START) * 2 }, (_, i) => 
 })
 
 const STATUS_RING: Record<string, string> = {
-  PENDING:   '#F59E0B',
-  CONFIRMED: '#3B82F6',
-  COMPLETED: '#10B981',
-  CANCELLED: '#EF4444',
-  NO_SHOW:   '#6B7280',
+  PENDING:        '#94A3B8', // slate
+  CONFIRMED:      '#3B82F6', // blue
+  CHECKED_IN:     '#EAB308', // yellow
+  IN_CHAIR:       '#F97316', // orange
+  WITH_PROVIDER:  '#14B8A6', // teal
+  READY_CHECKOUT: '#A855F7', // purple
+  COMPLETED:      '#10B981', // green
+  NO_SHOW:        '#EF4444', // red
+  CANCELLED:      '#9CA3AF', // gray
 }
+
+// Pulse animation statuses (patient is actively in clinic)
+const STATUS_PULSE = new Set(['CHECKED_IN', 'IN_CHAIR', 'WITH_PROVIDER'])
 
 // ─── NowLine ──────────────────────────────────────────────────────────────────
 function NowLine() {
@@ -118,6 +125,8 @@ function ApptBlock({ appt, onClick }: { appt: Appointment; onClick: () => void }
   const ring   = STATUS_RING[appt.status] || '#9CA3AF'
   const short  = height < SLOT_HEIGHT
 
+  const isPulsing = STATUS_PULSE.has(appt.status)
+
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick() }}
@@ -125,14 +134,16 @@ function ApptBlock({ appt, onClick }: { appt: Appointment; onClick: () => void }
       style={{
         top: `${top}px`, height: `${height}px`,
         background: colour + '22',
-        borderLeft: `3px solid ${colour}`,
         border: `1px solid ${colour}30`,
-        borderLeftWidth: 3,
+        borderLeft: `3px solid ${colour}`,
       }}
     >
       <div className="px-1.5 py-1 h-full flex flex-col">
         <div className="flex items-center gap-1 min-w-0">
-          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: ring }} />
+          <div
+            className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', isPulsing && 'animate-pulse')}
+            style={{ background: ring }}
+          />
           <span className="text-[11px] font-bold truncate" style={{ color: colour }}>
             {appt.patient.firstName} {appt.patient.lastName}
           </span>
@@ -140,7 +151,14 @@ function ApptBlock({ appt, onClick }: { appt: Appointment; onClick: () => void }
         {!short && (
           <>
             <span className="text-[10px] text-gray-500 truncate mt-0.5">{appt.service.name}</span>
-            <span className="text-[10px] text-gray-400 mt-auto">{fmtTime(appt.startAt)}</span>
+            <div className="flex items-center gap-1 mt-auto">
+              <span className="text-[10px] text-gray-400">{fmtTime(appt.startAt)}</span>
+              {appt.status !== 'PENDING' && appt.status !== 'CONFIRMED' && (
+                <span className="text-[9px] font-bold px-1 rounded" style={{ background: ring + '30', color: ring }}>
+                  {appt.status.replace('_', ' ')}
+                </span>
+              )}
+            </div>
           </>
         )}
       </div>

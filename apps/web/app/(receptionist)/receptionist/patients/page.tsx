@@ -3,9 +3,10 @@
 import { Component, useEffect, useRef, useState } from 'react'
 import {
   Search, Plus, Phone, Mail, Calendar, ChevronRight, X, User,
-  Upload, Download, FileText,
+  Upload, Download, FileText, ExternalLink,
   CheckCircle2, AlertCircle,
 } from 'lucide-react'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -404,9 +405,19 @@ export default function PatientsPage() {
                     </p>
                   </div>
                 </div>
-                <button onClick={() => setSelected(null)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
-                  <X size={16} className="text-gray-400" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/patients/${selected.id}`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
+                    style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}
+                  >
+                    <ExternalLink size={12} />
+                    Full Profile
+                  </Link>
+                  <button onClick={() => setSelected(null)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
+                    <X size={16} className="text-gray-400" />
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2">
@@ -434,10 +445,15 @@ export default function PatientsPage() {
                 if (!a || !a.id) return null
                 const d = a.startAt ? new Date(a.startAt) : new Date()
                 const statusColor: Record<string, string> = {
-                  CONFIRMED: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20',
-                  COMPLETED: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20',
-                  CANCELLED: 'text-red-500 bg-red-50 dark:bg-red-900/20',
-                  PENDING:   'text-amber-600 bg-amber-50 dark:bg-amber-900/20',
+                  PENDING:        'text-slate-600 bg-slate-50 dark:bg-slate-900/20',
+                  CONFIRMED:      'text-blue-600 bg-blue-50 dark:bg-blue-900/20',
+                  CHECKED_IN:     'text-yellow-700 bg-yellow-50 dark:bg-yellow-900/20',
+                  IN_CHAIR:       'text-orange-600 bg-orange-50 dark:bg-orange-900/20',
+                  WITH_PROVIDER:  'text-teal-600 bg-teal-50 dark:bg-teal-900/20',
+                  READY_CHECKOUT: 'text-purple-600 bg-purple-50 dark:bg-purple-900/20',
+                  COMPLETED:      'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20',
+                  NO_SHOW:        'text-red-500 bg-red-50 dark:bg-red-900/20',
+                  CANCELLED:      'text-gray-400 bg-gray-50 dark:bg-gray-900/20',
                 }
                 return (
                   <div key={a.id} className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 dark:border-white/5 last:border-0">

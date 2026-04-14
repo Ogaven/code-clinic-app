@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Search, Plus, Filter, Phone, Mail, ChevronLeft, ChevronRight, User } from 'lucide-react'
+import { Search, Plus, Phone, Mail, ChevronLeft, ChevronRight, User } from 'lucide-react'
 import { cn, formatPhone, formatUGX } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
 
@@ -19,6 +19,7 @@ interface Patient {
   accountBalance: number
   avatarUrl?: string | null
   createdAt: string
+  _count?: { treatmentPlans?: number; appointments?: number }
 }
 
 const GENDER_LABELS: Record<string, string> = { MALE: 'Male', FEMALE: 'Female', OTHER: 'Other' }
@@ -30,6 +31,7 @@ export default function PatientsPage() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [activeFilter, setActiveFilter] = useState<'all' | 'new_today' | 'has_balance' | 'has_plan'>('all')
   const limit = 20
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
@@ -48,6 +50,16 @@ export default function PatientsPage() {
       }
     } finally { setLoading(false) }
   }, [token])
+
+  const filteredPatients = patients.filter((p) => {
+    if (activeFilter === 'new_today') {
+      const today = new Date(); today.setHours(0,0,0,0)
+      return new Date(p.createdAt) >= today
+    }
+    if (activeFilter === 'has_balance') return (p.accountBalance || 0) > 0
+    if (activeFilter === 'has_plan') return (p._count?.treatmentPlans || 0) > 0
+    return true
+  })
 
   useEffect(() => { fetchPatients() }, [])
 
@@ -90,10 +102,25 @@ export default function PatientsPage() {
             className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-sm dark:text-white dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-clinic-blue focus:bg-white dark:focus:bg-white/10 transition-all"
           />
         </div>
-        <button className="flex items-center gap-2 px-3 py-2 border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-          <Filter size={14} />
-          Filter
-        </button>
+        {([
+          { key: 'all',         label: 'All' },
+          { key: 'new_today',   label: 'New Today' },
+          { key: 'has_balance', label: 'Has Balance' },
+          { key: 'has_plan',    label: 'Active Plan' },
+        ] as { key: typeof activeFilter; label: string }[]).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setActiveFilter(key)}
+            className={cn(
+              'px-3 py-2 text-sm rounded-lg font-medium transition-colors',
+              activeFilter === key
+                ? 'bg-clinic-blue text-white'
+                : 'border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5',
+            )}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* ── Table ────────────────────────────────────────────── */}
@@ -127,7 +154,7 @@ export default function PatientsPage() {
                     <p>{search ? `No patients found for "${search}"` : 'No patients yet'}</p>
                   </td>
                 </tr>
-              ) : patients.map((p) => (
+              ) : filteredPatients.map((p) => (
                 <tr key={p.id} className="hover:bg-blue-50/30 dark:hover:bg-white/5 transition-colors cursor-pointer group">
                   <td className="px-5 py-3.5">
                     <Link href={`/patients/${p.id}`} className="flex items-center gap-3">

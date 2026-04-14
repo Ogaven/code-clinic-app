@@ -26,6 +26,7 @@ import assistantRouter from './routes/assistant'
 import agentRouter from './routes/agent'
 import knowledgeRouter from './routes/knowledge'
 import setupRouter from './routes/setup'
+import clinicalRouter from './routes/clinical'
 import { startScheduler } from './services/agent/scheduler'
 
 const app = express()
@@ -94,6 +95,7 @@ app.use('/assistant', assistantRouter)
 app.use('/agent', agentRouter)
 app.use('/knowledge', knowledgeRouter)
 app.use('/setup', setupRouter)
+app.use('/clinical', clinicalRouter)
 
 // ─── 404 ──────────────────────────────────────────────────────
 app.use((_req, res) => {

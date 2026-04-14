@@ -222,15 +222,61 @@ function PieTooltip({ active, payload }: any) {
   )
 }
 
+// ── Patient Flow Mini Funnel ─────────────────────────────────────────────────
+const STAGE_COLORS: Record<string, string> = {
+  PENDING:'#94A3B8', CONFIRMED:'#3B82F6', CHECKED_IN:'#EAB308',
+  IN_CHAIR:'#F97316', WITH_PROVIDER:'#14B8A6', READY_CHECKOUT:'#A855F7', COMPLETED:'#10B981',
+}
+const STAGE_SHORT: Record<string, string> = {
+  PENDING:'Scheduled', CONFIRMED:'Confirmed', CHECKED_IN:'Checked In',
+  IN_CHAIR:'In Chair', WITH_PROVIDER:'With Provider', READY_CHECKOUT:'Ready Checkout', COMPLETED:'Done',
+}
+
+function PatientFlowMini({ data }: { data: { stage: string; count: number; pct: number }[] }) {
+  const max = Math.max(...data.map((d) => d.count), 1)
+  return (
+    <div className="space-y-1.5">
+      {data.map((s) => {
+        const color = STAGE_COLORS[s.stage] || '#94A3B8'
+        const label = STAGE_SHORT[s.stage] || s.stage
+        const w = Math.max((s.count / max) * 100, 5)
+        return (
+          <div key={s.stage} className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-400 w-24 text-right flex-shrink-0">{label}</span>
+            <div className="flex-1 bg-gray-100 dark:bg-white/10 rounded-full h-4 overflow-hidden">
+              <div className="h-4 rounded-full flex items-center justify-end pr-1.5 transition-all duration-500"
+                style={{ width: `${w}%`, background: color }}>
+                <span className="text-[9px] text-white font-bold">{s.count}</span>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Main Dashboard ──────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const [user, setUser] = useState<any>(null)
-  const [now,  setNow]  = useState(new Date())
+  const [user, setUser]             = useState<any>(null)
+  const [now,  setNow]              = useState(new Date())
+  const [flowData, setFlowData]     = useState<{ stage: string; count: number; pct: number }[]>([])
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
     if (stored) setUser(JSON.parse(stored))
     const tick = setInterval(() => setNow(new Date()), 60000)
+
+    // Fetch patient flow
+    const token = localStorage.getItem('cc_token')
+    if (token) {
+      fetch('/api-proxy/clinical/analytics/patient-journey', {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((r) => r.json()).then((d) => {
+        if (Array.isArray(d)) setFlowData(d)
+      }).catch(() => {})
+    }
+
     return () => clearInterval(tick)
   }, [])
 
@@ -399,6 +445,22 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Patient Flow Funnel */}
+          {flowData.length > 0 && (
+            <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 p-4 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="font-bold text-clinic-navy dark:text-white text-sm" style={{ fontFamily:'Plus Jakarta Sans' }}>Patient Flow Today</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Journey through appointment stages</p>
+                </div>
+                <a href="/analytics" className="text-[10px] font-semibold text-clinic-blue hover:underline flex items-center gap-0.5">
+                  Full analytics <ChevronRight size={10}/>
+                </a>
+              </div>
+              <PatientFlowMini data={flowData} />
+            </div>
+          )}
 
           {/* Debt — compact inline list */}
           <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-red-100 dark:border-red-500/20 overflow-hidden backdrop-blur-sm">

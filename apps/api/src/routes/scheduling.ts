@@ -212,7 +212,7 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
 
 // ─── Status change ────────────────────────────────────────────────────────────
 router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('appointments'), async (req, res) => {
-  const validStatuses = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']
+  const validStatuses = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'IN_CHAIR', 'WITH_PROVIDER', 'READY_CHECKOUT', 'COMPLETED', 'CANCELLED', 'NO_SHOW']
   const { status } = req.body
   if (!validStatuses.includes(status)) { res.status(400).json({ error: 'Invalid status' }); return }
 
@@ -220,10 +220,69 @@ router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('a
     where: { id: req.params.id },
     data: { status },
     include: {
-      patient: { select: { firstName: true, lastName: true } },
+      patient: { select: { id: true, firstName: true, lastName: true } },
+      doctor:  { include: { user: { select: { id: true } } } },
       service: true,
     },
   })
+
+  // ─── Status transition side-effects ───────────────────────────────────────
+  try {
+    if (status === 'CHECKED_IN') {
+      await prisma.notification.create({
+        data: {
+          userId: appointment.doctor.user.id,
+          type: 'APPOINTMENT',
+          title: 'Patient Checked In',
+          body: `${appointment.patient.firstName} ${appointment.patient.lastName} has arrived and is ready for you.`,
+          href: '/scheduling',
+        },
+      })
+    }
+
+    if (status === 'READY_CHECKOUT') {
+      const receptionists = await prisma.user.findMany({ where: { role: 'RECEPTIONIST', isActive: true } })
+      await Promise.all(receptionists.map((r) =>
+        prisma.notification.create({
+          data: {
+            userId: r.id,
+            type: 'APPOINTMENT',
+            title: 'Patient Ready for Checkout',
+            body: `${appointment.patient.firstName} ${appointment.patient.lastName} is ready for checkout.`,
+            href: '/receptionist/appointments',
+          },
+        }),
+      ))
+    }
+
+    if (status === 'COMPLETED') {
+      const existing = await prisma.invoice.findUnique({ where: { appointmentId: appointment.id } })
+      if (!existing) {
+        const count = await prisma.invoice.count()
+        const invoiceNumber = `INV-${String(count + 1).padStart(5, '0')}`
+        const priceUGX = Number(appointment.service.priceUGX) || 0
+        await prisma.invoice.create({
+          data: {
+            invoiceNumber,
+            patientId: appointment.patient.id,
+            appointmentId: appointment.id,
+            lineItems: JSON.stringify([{
+              description: appointment.service.name,
+              quantity: 1,
+              unitPrice: priceUGX,
+              total: priceUGX,
+            }]),
+            subtotalUGX: priceUGX,
+            vatUGX: 0,
+            totalUGX: priceUGX,
+            status: 'UNPAID',
+          },
+        })
+      }
+    }
+  } catch (e) {
+    console.error('[STATUS SIDE-EFFECTS]', e)
+  }
 
   res.json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })
