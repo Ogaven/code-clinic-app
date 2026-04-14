@@ -290,7 +290,7 @@ router.post('/patients/:id/documents', requireAuth, upload.single('file'), async
 
     if (req.file) {
       try {
-        const r2Key = await uploadAvatar(req.file.buffer, req.file.mimetype, 'patient-docs', req.params.id + '-' + Date.now())
+        const r2Key = await uploadAvatar(req.file.buffer, req.file.mimetype, 'patients', req.params.id + '-doc-' + Date.now())
         fileUrl = getPublicUrl(r2Key)
       } catch {
         // Fallback: store as base64 data URL

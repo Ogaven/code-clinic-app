@@ -15,7 +15,7 @@ import AvatarUpload from '@/components/ui/AvatarUpload'
 
 type Surface = 'buccal' | 'lingual' | 'occlusal' | 'mesial' | 'distal'
 type SurfaceStatus = 'Healthy' | 'Caries' | 'Planned Treatment' | 'Amalgam' | 'Composite' | 'Gold' | 'Sealant'
-type ToothCondition = 'Missing' | 'Implant' | 'Root Canal' | 'Crown' | 'Fracture' | 'To be Extracted' | 'Impacted' | 'Mobile' | 'Supraerupted' | 'Bridge Abutment' | 'Pontic' | 'Denture'
+type ToothCondition = 'Missing' | 'Implant' | 'Root Canal' | 'Crown' | 'Fracture' | 'To be Extracted' | 'Impacted' | 'Mobile' | 'Supraerupted' | 'Bridge Abutment' | 'Pontic' | 'Denture' | 'Caries'
 type PerioSite = 'db' | 'b' | 'mb' | 'dl' | 'l' | 'ml'
 
 interface TrackedCondition { id: string; condition: ToothCondition }
