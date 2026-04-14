@@ -12,25 +12,46 @@ import path from 'path'
 const router = Router()
 const prisma = new PrismaClient()
 
-// Resolve prisma binary + schema from monorepo root (works in Railway)
+// Resolve monorepo root and schema path
 // __dirname in compiled output: <root>/apps/api/dist/routes
-const ROOT     = path.resolve(__dirname, '..', '..', '..', '..')
-const SCHEMA   = path.join(ROOT, 'packages', 'database', 'prisma', 'schema.prisma')
-// Try local api node_modules first, then root node_modules
-const PRISMA_BIN = (() => {
-  for (const p of [
-    path.join(ROOT, 'apps', 'api', 'node_modules', '.bin', 'prisma'),
-    path.join(ROOT, 'node_modules', '.bin', 'prisma'),
-  ]) {
-    try { execSync(`"${p}" --version`, { stdio: 'pipe' }); return `"${p}"` } catch {}
-  }
-  return 'prisma' // fall back to global
-})()
+const ROOT   = path.resolve(__dirname, '..', '..', '..', '..')
+const SCHEMA = path.join(ROOT, 'packages', 'database', 'prisma', 'schema.prisma')
+const DB_PKG = path.join(ROOT, 'packages', 'database')
 
 function runPrismaDbPush() {
-  execSync(`${PRISMA_BIN} db push --accept-data-loss --schema="${SCHEMA}"`, {
-    cwd: ROOT, stdio: 'pipe', timeout: 120000,
-  })
+  // Strategy: find prisma's JS entry via require.resolve (works with pnpm virtual store)
+  // Falls back to known binary paths if that fails
+  const attempts: Array<() => void> = [
+    // 1. Resolve prisma package from the database package directory (pnpm-aware)
+    () => {
+      const pkgPath = require.resolve('prisma', { paths: [DB_PKG] })
+      const pkgDir  = pkgPath.replace(/[/\\]package\.json$/, '')
+      const entry   = path.join(pkgDir, 'build', 'index.js')
+      execSync(`node "${entry}" db push --accept-data-loss --schema="${SCHEMA}"`, { cwd: ROOT, stdio: 'pipe', timeout: 120000 })
+    },
+    // 2. Resolve from root (if hoisted by pnpm)
+    () => {
+      const pkgPath = require.resolve('prisma', { paths: [ROOT] })
+      const entry   = path.join(path.dirname(pkgPath), 'build', 'index.js')
+      execSync(`node "${entry}" db push --accept-data-loss --schema="${SCHEMA}"`, { cwd: ROOT, stdio: 'pipe', timeout: 120000 })
+    },
+    // 3. database package .bin symlink
+    () => {
+      const bin = path.join(DB_PKG, 'node_modules', '.bin', 'prisma')
+      execSync(`"${bin}" db push --accept-data-loss --schema="${SCHEMA}"`, { cwd: ROOT, stdio: 'pipe', timeout: 120000 })
+    },
+    // 4. root .bin symlink
+    () => {
+      const bin = path.join(ROOT, 'node_modules', '.bin', 'prisma')
+      execSync(`"${bin}" db push --accept-data-loss --schema="${SCHEMA}"`, { cwd: ROOT, stdio: 'pipe', timeout: 120000 })
+    },
+  ]
+
+  const errors: string[] = []
+  for (const attempt of attempts) {
+    try { attempt(); return } catch (e: any) { errors.push(e.message?.slice(0, 80)) }
+  }
+  throw new Error(`All prisma binary attempts failed:\n${errors.join('\n')}`)
 }
 
 // POST /setup/migrate — sync schema without full seed
@@ -40,9 +61,9 @@ router.post('/migrate', async (req, res) => {
   if (secret !== expected) return res.status(403).json({ error: 'Invalid seed secret' })
   try {
     runPrismaDbPush()
-    res.json({ success: true, message: 'Schema pushed to database', schema: SCHEMA, bin: PRISMA_BIN })
+    res.json({ success: true, message: 'Schema pushed to database', root: ROOT, schema: SCHEMA })
   } catch (e: any) {
-    res.status(500).json({ error: 'Migration failed', detail: e.message, root: ROOT, schema: SCHEMA, bin: PRISMA_BIN })
+    res.status(500).json({ error: 'Migration failed', detail: e.message, root: ROOT, schema: SCHEMA })
   }
 })
 
