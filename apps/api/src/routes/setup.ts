@@ -6,9 +6,25 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { execSync } from 'child_process'
 
 const router = Router()
 const prisma = new PrismaClient()
+
+// POST /setup/migrate — sync schema without full seed
+router.post('/migrate', async (req, res) => {
+  const secret = req.headers['x-seed-secret'] || req.body?.secret
+  const expected = process.env.SEED_SECRET || 'codeclinic-demo-2026'
+  if (secret !== expected) return res.status(403).json({ error: 'Invalid seed secret' })
+  try {
+    execSync('npx prisma db push --skip-generate --accept-data-loss', {
+      cwd: process.cwd(), stdio: 'pipe', timeout: 120000,
+    })
+    res.json({ success: true, message: 'Schema pushed to database' })
+  } catch (e: any) {
+    res.status(500).json({ error: 'Migration failed', detail: e.message })
+  }
+})
 
 router.post('/seed-production', async (req, res) => {
   // ── Auth: secret key check ──────────────────────────────────
@@ -22,6 +38,15 @@ router.post('/seed-production', async (req, res) => {
   const log = (msg: string) => { console.log('[SEED]', msg); results.push(msg) }
 
   try {
+    // ── 0. Schema sync ─────────────────────────────────────────
+    try {
+      execSync('npx prisma db push --skip-generate --accept-data-loss', {
+        cwd: process.cwd(), stdio: 'pipe', timeout: 120000,
+      })
+      log('Schema synced via prisma db push')
+    } catch (e: any) {
+      log(`Schema sync warning (non-fatal): ${e.message?.slice(0, 100)}`)
+    }
     // ── 1. Staff users ────────────────────────────────────────
     const adminPw  = await bcrypt.hash('Admin@2024!', 12)
     const staffPw  = await bcrypt.hash('Staff@2024!', 12)

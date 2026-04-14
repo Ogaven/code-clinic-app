@@ -314,8 +314,16 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* ── Analytics link ── */}
+      <div className="flex justify-end" style={{ paddingTop: 58 }}>
+        <a href="/analytics" className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
+          style={{ background: 'linear-gradient(135deg,#7C3AED,#A855F7)', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
+          📊 View Full Analytics
+        </a>
+      </div>
+
       {/* ── KPI CARDS ── */}
-      <div className="grid grid-cols-3 gap-3" style={{ paddingTop: 58 }}>
+      <div className="grid grid-cols-3 gap-3">
         {[
           { title: "Today's Appointments", value: '24',        sub: '5 pending', trend: { v: 12, up: true },  icon: Calendar,    color: '#29ABE2', bg: 'linear-gradient(135deg,#E0F7FF,#BDEFFF)', cardClass: 'stat-card-cyan' },
           { title: 'Monthly Revenue',       value: 'UGX 31.2M', sub: '+8% vs last month', trend: { v: 8, up: true }, icon: DollarSign, color: '#059669', bg: 'linear-gradient(135deg,#D1FAE5,#A7F3D0)', cardClass: 'stat-card-green' },

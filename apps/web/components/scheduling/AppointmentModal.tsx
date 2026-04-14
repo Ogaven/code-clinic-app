@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Phone, Clock, Stethoscope, User, Check, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
+import Link from 'next/link'
+import { X, Phone, Clock, Stethoscope, User, Check, XCircle, AlertTriangle, Loader2, ExternalLink } from 'lucide-react'
 import { cn, formatPhone, formatUGX } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
 
@@ -94,8 +95,18 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
             {/* Patient */}
             <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
               <Avatar firstName={appointment.patient.firstName} lastName={appointment.patient.lastName} colour={appointment.service.colour} size="md" />
-              <div>
-                <p className="font-semibold text-clinic-navy dark:text-white">{appointment.patient.firstName} {appointment.patient.lastName}</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-clinic-navy dark:text-white">{appointment.patient.firstName} {appointment.patient.lastName}</p>
+                  <Link href={`/patients/${appointment.patient.id}?tab=dental`} onClick={onClose}
+                    className="flex items-center gap-1 text-[10px] font-bold text-clinic-blue hover:underline">
+                    <ExternalLink size={10} /> View Chart
+                  </Link>
+                  <Link href={`/patients/${appointment.patient.id}`} onClick={onClose}
+                    className="flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:underline">
+                    Full Profile
+                  </Link>
+                </div>
                 <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
                   <Phone size={11} />
                   {formatPhone(appointment.patient.phone)}

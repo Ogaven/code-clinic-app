@@ -47,6 +47,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!stored) { router.push('/login'); return }
     const u = JSON.parse(stored)
     if (u.role === 'RECEPTIONIST') { router.replace('/receptionist/dashboard'); return }
+    if (u.role === 'DOCTOR') { router.replace('/doctor/dashboard'); return }
     setUser(u)
     const isDark = localStorage.getItem('cc_theme') === 'dark'
     setDark(isDark)
@@ -62,7 +63,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // Close mobile sidebar when route changes
   useEffect(() => { setMob(false) }, [pathname])
 
-  const title = pageTitles[pathname] || 'Dashboard'
+  // Exact match first, then prefix match for dynamic routes (e.g. /patients/[id])
+  const title = pageTitles[pathname]
+    || (pathname.startsWith('/patients/') ? 'Patient Profile' : null)
+    || Object.entries(pageTitles).find(([k]) => pathname.startsWith(k + '/'))?.[1]
+    || 'Dashboard'
 
   return (
     <div className={`flex h-screen overflow-hidden transition-colors duration-300 ${dark ? 'bg-transparent' : 'bg-clinic-bg'}`}>

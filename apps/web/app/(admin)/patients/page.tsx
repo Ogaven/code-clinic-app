@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Search, Plus, Phone, Mail, ChevronLeft, ChevronRight, User } from 'lucide-react'
 import { cn, formatPhone, formatUGX } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
@@ -25,6 +26,7 @@ interface Patient {
 const GENDER_LABELS: Record<string, string> = { MALE: 'Male', FEMALE: 'Female', OTHER: 'Other' }
 
 export default function PatientsPage() {
+  const router = useRouter()
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -155,7 +157,8 @@ export default function PatientsPage() {
                   </td>
                 </tr>
               ) : filteredPatients.map((p) => (
-                <tr key={p.id} className="hover:bg-blue-50/30 dark:hover:bg-white/5 transition-colors cursor-pointer group">
+                <tr key={p.id} onClick={() => router.push(`/patients/${p.id}`)}
+                  className="hover:bg-blue-50/30 dark:hover:bg-white/5 transition-colors cursor-pointer group">
                   <td className="px-5 py-3.5">
                     <Link href={`/patients/${p.id}`} className="flex items-center gap-3">
                       <Avatar firstName={p.firstName} lastName={p.lastName} avatarUrl={p.avatarUrl} size="sm" />
@@ -197,12 +200,17 @@ export default function PatientsPage() {
                     </span>
                   </td>
                   <td className="px-5 py-3.5">
-                    <Link
-                      href={`/patients/${p.id}`}
-                      className="text-xs text-clinic-blue hover:underline font-medium"
-                    >
-                      View →
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link href={`/patients/${p.id}?tab=dental`}
+                        className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors whitespace-nowrap"
+                        title="Open dental chart">
+                        🦷 Chart
+                      </Link>
+                      <Link href={`/patients/${p.id}`}
+                        className="text-xs text-clinic-blue hover:underline font-medium">
+                        Profile →
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

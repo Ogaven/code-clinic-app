@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, User, Calendar, FileText, Activity, DollarSign, Folder,
   Phone, Mail, MapPin, Edit, AlertTriangle, Clock, Plus, Trash2, Mic,
@@ -1140,14 +1140,47 @@ function ActivityTab({ patientId, token }: { patientId: string; token: string | 
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────
 
-function OverviewTab({ patient }: { patient: any }) {
+function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab: ActiveTab) => void }) {
   const age = patient.dob ? Math.floor((Date.now() - new Date(patient.dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)) : null
   const totalSpent = (patient.invoices || []).reduce((s: number, inv: any) => s + inv.paidUGX, 0)
   const outstanding = (patient.invoices || []).reduce((s: number, inv: any) => s + (inv.totalUGX - inv.paidUGX), 0)
   const lastVisit = patient.appointments?.slice().sort((a: any, b: any) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())[0]
+  const activePlans = (patient.treatmentPlans || []).filter((p: any) => p.status === 'Planned')
+  const planTotal = activePlans.reduce((s: number, p: any) => s + (p.costPerUnit * p.quantity - p.discount), 0)
 
   return (
     <div className="space-y-5">
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {[
+          { label: '🦷 Dental Chart', tab: 'dental' as ActiveTab, color: 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200' },
+          { label: '📋 Treatment Plan', tab: 'treatment' as ActiveTab, color: 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200' },
+          { label: '📝 Notes', tab: 'notes' as ActiveTab, color: 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200' },
+          { label: '🦪 Perio Chart', tab: 'perio' as ActiveTab, color: 'bg-teal-50 text-teal-700 hover:bg-teal-100 border-teal-200' },
+        ].map(({ label, tab, color }) => (
+          <button key={tab} onClick={() => onSwitchTab(tab)}
+            className={cn('text-xs font-semibold px-3 py-2 rounded-xl border transition-colors text-left', color)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Treatment plan banner */}
+      {activePlans.length > 0 && (
+        <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl">
+          <div>
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              Active Treatment Plan: {activePlans.length} item{activePlans.length !== 1 ? 's' : ''}
+            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">Total: {formatUGX(planTotal)}</p>
+          </div>
+          <button onClick={() => onSwitchTab('treatment')}
+            className="text-xs font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1">
+            View Plan <ChevronRight size={12} />
+          </button>
+        </div>
+      )}
       {/* Medical alerts */}
       {patient.medicalNotesEncrypted && (
         <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 rounded-r-xl">
@@ -1220,11 +1253,22 @@ function OverviewTab({ patient }: { patient: any }) {
 export default function PatientProfilePage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [patient, setPatient] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<ActiveTab>('overview')
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    const tp = searchParams.get('tab') as ActiveTab | null
+    const valid: ActiveTab[] = ['overview','appointments','dental','perio','treatment','notes','billing','documents','activity']
+    return tp && valid.includes(tp) ? tp : 'overview'
+  })
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cc_user') || '{}') : {}
+
+  // Keep URL in sync with active tab (shallow)
+  function switchTab(tab: ActiveTab) {
+    setActiveTab(tab)
+    router.replace(`/patients/${id}?tab=${tab}`, { scroll: false })
+  }
 
   useEffect(() => {
     fetch(`/api-proxy/patients/${id}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -1259,7 +1303,7 @@ export default function PatientProfilePage() {
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'overview': return <OverviewTab patient={patient} />
+      case 'overview': return <OverviewTab patient={patient} onSwitchTab={switchTab} />
       case 'appointments': return <AppointmentsTab patient={patient} token={token} />
       case 'dental': return <DentalChartTab patientId={id!} token={token} />
       case 'perio': return <PerioChartTab patientId={id!} token={token} />
@@ -1276,7 +1320,7 @@ export default function PatientProfilePage() {
   return (
     <div className="space-y-4 animate-fade-in max-w-7xl">
       {/* Back */}
-      <button onClick={() => router.back()} className="flex items-center gap-2 text-sm text-gray-500 hover:text-clinic-navy dark:hover:text-white transition-colors">
+      <button onClick={() => router.push('/patients')} className="flex items-center gap-2 text-sm text-gray-500 hover:text-clinic-navy dark:hover:text-white transition-colors">
         <ArrowLeft size={16} /> Back to Patients
       </button>
 
@@ -1320,7 +1364,7 @@ export default function PatientProfilePage() {
         <div className="w-48 flex-shrink-0">
           <nav className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 p-2 space-y-0.5 sticky top-4">
             {tabs.map(({ key, label, icon: Icon }) => (
-              <button key={key} onClick={() => setActiveTab(key)}
+              <button key={key} onClick={() => switchTab(key)}
                 className={cn(
                   'w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium rounded-lg text-left transition-colors',
                   activeTab === key

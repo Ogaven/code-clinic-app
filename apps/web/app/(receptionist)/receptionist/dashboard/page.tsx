@@ -157,18 +157,36 @@ function MiniCalendar({ onDateSelect, selectedDate }: { onDateSelect: (d: Date) 
   )
 }
 
+// ── Status config ─────────────────────────────────────────────
+const STATUS_COLOR: Record<string, string> = {
+  PENDING:        'bg-slate-100 text-slate-600',
+  CONFIRMED:      'bg-blue-100 text-blue-700',
+  CHECKED_IN:     'bg-yellow-100 text-yellow-700',
+  IN_CHAIR:       'bg-orange-100 text-orange-700',
+  WITH_PROVIDER:  'bg-teal-100 text-teal-700',
+  READY_CHECKOUT: 'bg-purple-100 text-purple-700',
+  COMPLETED:      'bg-green-100 text-green-700',
+  CANCELLED:      'bg-red-100 text-red-600',
+  NO_SHOW:        'bg-gray-100 text-gray-500',
+}
+const STATUS_LABEL: Record<string, string> = {
+  PENDING:'Scheduled', CONFIRMED:'Confirmed', CHECKED_IN:'Checked In',
+  IN_CHAIR:'In Chair', WITH_PROVIDER:'With Provider', READY_CHECKOUT:'Ready Checkout',
+  COMPLETED:'Done', CANCELLED:'Cancelled', NO_SHOW:'No Show',
+}
+const STATUS_NEXT: Record<string, { status: string; label: string }> = {
+  PENDING:        { status: 'CONFIRMED',      label: 'Confirm' },
+  CONFIRMED:      { status: 'CHECKED_IN',     label: 'Check In' },
+  CHECKED_IN:     { status: 'IN_CHAIR',       label: 'Seat' },
+  IN_CHAIR:       { status: 'WITH_PROVIDER',  label: 'To Provider' },
+  WITH_PROVIDER:  { status: 'READY_CHECKOUT', label: 'Ready ✓' },
+  READY_CHECKOUT: { status: 'COMPLETED',      label: 'Checkout' },
+}
+
 // ── Patient row ───────────────────────────────────────────────
 function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
-  const isActive = appt.status === 'IN_PROGRESS'
+  const isActive = ['CHECKED_IN','IN_CHAIR','WITH_PROVIDER'].includes(appt.status)
   const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
-  const statusColor: Record<string, string> = {
-    CONFIRMED: 'bg-blue-100 text-blue-700',
-    PENDING: 'bg-amber-100 text-amber-700',
-    IN_PROGRESS: 'bg-emerald-100 text-emerald-700',
-    COMPLETED: 'bg-gray-100 text-gray-500',
-    CANCELLED: 'bg-red-100 text-red-600',
-    NO_SHOW: 'bg-orange-100 text-orange-600',
-  }
 
   async function changeStatus(status: string) {
     const token = localStorage.getItem('cc_token')
@@ -179,6 +197,8 @@ function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
     })
     onRefresh()
   }
+
+  const next = STATUS_NEXT[appt.status]
 
   return (
     <div className={cn(
@@ -195,21 +215,15 @@ function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
       </div>
       <div className="flex items-center gap-2">
         <span className="text-[10px] font-bold bg-cyan-500 text-white px-2 py-0.5 rounded-full whitespace-nowrap">{time}</span>
-        <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', statusColor[appt.status] || 'bg-gray-100 text-gray-500')}>
-          {appt.status.replace('_', ' ')}
+        <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', STATUS_COLOR[appt.status] || 'bg-gray-100 text-gray-500')}>
+          {STATUS_LABEL[appt.status] || appt.status}
         </span>
-        {/* Quick actions - visible on hover */}
+        {/* Quick advance — visible on hover */}
         <div className="hidden group-hover:flex items-center gap-1 ml-1">
-          {appt.status === 'PENDING' && (
-            <button onClick={() => changeStatus('CONFIRMED')}
-              className="text-[10px] font-bold bg-blue-500 text-white px-2 py-0.5 rounded-lg hover:bg-blue-600 transition-colors">
-              Confirm
-            </button>
-          )}
-          {appt.status === 'CONFIRMED' && (
-            <button onClick={() => changeStatus('IN_PROGRESS')}
-              className="text-[10px] font-bold bg-emerald-500 text-white px-2 py-0.5 rounded-lg hover:bg-emerald-600 transition-colors">
-              Check In
+          {next && (
+            <button onClick={() => changeStatus(next.status)}
+              className="text-[10px] font-bold bg-cyan-500 text-white px-2 py-0.5 rounded-lg hover:bg-cyan-600 transition-colors">
+              {next.label}
             </button>
           )}
           {(appt.status === 'PENDING' || appt.status === 'CONFIRMED') && (
@@ -220,6 +234,84 @@ function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Patient Flow Panel ─────────────────────────────────────────
+function PatientFlowPanel({ appointments, onRefresh }: { appointments: any[]; onRefresh: () => void }) {
+  const groups: Record<string, { label: string; color: string; statuses: string[] }> = {
+    waiting:  { label: 'Waiting', color: '#3B82F6', statuses: ['CONFIRMED', 'CHECKED_IN'] },
+    active:   { label: 'In Clinic', color: '#F97316', statuses: ['IN_CHAIR', 'WITH_PROVIDER'] },
+    checkout: { label: 'Ready Checkout', color: '#A855F7', statuses: ['READY_CHECKOUT'] },
+  }
+
+  async function advanceStatus(apptId: string, status: string) {
+    const token = localStorage.getItem('cc_token')
+    await fetch(`/api-proxy/scheduling/appointments/${apptId}/status`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    onRefresh()
+  }
+
+  const hasAny = Object.values(groups).some(g =>
+    appointments.some(a => g.statuses.includes(a.status))
+  )
+
+  return (
+    <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-50 dark:border-white/5">
+        <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+        <h3 className="text-sm font-bold text-gray-800 dark:text-white">Patient Flow</h3>
+        <span className="ml-auto text-xs text-gray-400">{appointments.filter(a => !['COMPLETED','CANCELLED','NO_SHOW'].includes(a.status)).length} active</span>
+      </div>
+      {!hasAny ? (
+        <div className="px-4 py-6 text-center">
+          <p className="text-xs text-gray-400">No patients in clinic right now</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-50 dark:divide-white/5">
+          {Object.entries(groups).map(([key, g]) => {
+            const patients = appointments.filter(a => g.statuses.includes(a.status))
+            if (patients.length === 0) return null
+            return (
+              <div key={key}>
+                <div className="flex items-center gap-2 px-4 py-1.5" style={{ background: g.color + '10' }}>
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: g.color }} />
+                  <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: g.color }}>{g.label}</span>
+                  <span className="text-[10px] font-bold text-gray-400 ml-auto">{patients.length}</span>
+                </div>
+                {patients.map(appt => {
+                  const next = STATUS_NEXT[appt.status]
+                  return (
+                    <div key={appt.id} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
+                        style={{ background: appt.service?.colour || g.color }}>
+                        {appt.patient?.firstName?.[0]}{appt.patient?.lastName?.[0]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                          {appt.patient?.firstName} {appt.patient?.lastName}
+                        </p>
+                        <p className="text-[10px] text-gray-400 truncate">{appt.service?.name}</p>
+                      </div>
+                      {next && (
+                        <button onClick={() => advanceStatus(appt.id, next.status)}
+                          className="text-[10px] font-bold px-2 py-1 rounded-lg text-white transition-colors hover:opacity-90"
+                          style={{ background: g.color }}>
+                          {next.label}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -674,6 +766,9 @@ export default function ReceptionistDashboard() {
               </div>
             )}
           </div>
+
+          {/* Patient Flow */}
+          <PatientFlowPanel appointments={appointments} onRefresh={fetchAll} />
 
           {/* WhatsApp Live Feed */}
           <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">

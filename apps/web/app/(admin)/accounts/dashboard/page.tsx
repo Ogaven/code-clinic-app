@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { TrendingUp, TrendingDown, DollarSign, AlertCircle, FileText, ArrowUpRight } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, AlertCircle, FileText, ArrowUpRight, Stethoscope } from 'lucide-react'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { cn, formatUGX } from '@/lib/utils'
 import Link from 'next/link'
@@ -27,12 +27,27 @@ const STATUS_BADGE: Record<string, string> = {
 export default function AccountsDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [planRevenue, setPlanRevenue] = useState<{ planned: number; accepted: number; count: number } | null>(null)
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   useEffect(() => {
     fetch(`/api-proxy/accounts/dashboard`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()).then(setData).catch(console.error).finally(() => setLoading(false))
+
+    // Fetch treatment plan revenue
+    fetch('/api-proxy/clinical/analytics/treatment-acceptance', {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.json()).then((d: any[]) => {
+      if (!Array.isArray(d)) return
+      const accepted = d.find(x => x.status === 'ACCEPTED')
+      const planned  = d.find(x => x.status === 'PENDING')
+      setPlanRevenue({
+        accepted: accepted?.totalValue || 0,
+        planned:  (accepted?.totalValue || 0) + (planned?.totalValue || 0),
+        count:    (accepted?.count || 0) + (planned?.count || 0),
+      })
+    }).catch(() => {})
   }, [])
 
   const profit = (data?.monthRevenue || 0) - (data?.monthExpenses || 0)
@@ -111,6 +126,54 @@ export default function AccountsDashboardPage() {
           )
         })}
       </div>
+
+      {/* Treatment Plan Revenue Widget */}
+      {(planRevenue || loading) && (
+        <div className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Stethoscope size={16} className="text-purple-500" />
+              <h3 className="font-semibold text-clinic-navy dark:text-white">Planned Treatment Revenue</h3>
+            </div>
+            <Link href="/treatments" className="text-xs text-clinic-blue font-medium hover:underline flex items-center gap-1">
+              View Plans <ArrowUpRight size={11} />
+            </Link>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Total Pipeline</p>
+              {loading ? (
+                <div className="h-7 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-28" />
+              ) : (
+                <p className="text-xl font-bold text-clinic-navy dark:text-white">{formatUGX(planRevenue?.planned || 0)}</p>
+              )}
+              <p className="text-xs text-gray-400 mt-0.5">{planRevenue?.count || 0} active plans</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Accepted (Confirmed)</p>
+              {loading ? (
+                <div className="h-7 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-24" />
+              ) : (
+                <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatUGX(planRevenue?.accepted || 0)}</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Acceptance Rate</p>
+              {loading ? (
+                <div className="h-7 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-16" />
+              ) : (
+                <p className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                  {planRevenue?.planned ? Math.round((planRevenue.accepted / planRevenue.planned) * 100) : 0}%
+                </p>
+              )}
+              <div className="mt-2 h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
+                <div className="h-1.5 rounded-full bg-purple-500 transition-all duration-500"
+                  style={{ width: `${planRevenue?.planned ? Math.round((planRevenue.accepted / planRevenue.planned) * 100) : 0}%` }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Revenue vs Expenses Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
