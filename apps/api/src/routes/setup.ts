@@ -17,7 +17,7 @@ router.post('/migrate', async (req, res) => {
   const expected = process.env.SEED_SECRET || 'codeclinic-demo-2026'
   if (secret !== expected) return res.status(403).json({ error: 'Invalid seed secret' })
   try {
-    execSync('npx prisma db push --skip-generate --accept-data-loss', {
+    execSync('node_modules/.bin/prisma db push --accept-data-loss', {
       cwd: process.cwd(), stdio: 'pipe', timeout: 120000,
     })
     res.json({ success: true, message: 'Schema pushed to database' })
@@ -40,7 +40,7 @@ router.post('/seed-production', async (req, res) => {
   try {
     // ── 0. Schema sync ─────────────────────────────────────────
     try {
-      execSync('npx prisma db push --skip-generate --accept-data-loss', {
+      execSync('node_modules/.bin/prisma db push --accept-data-loss', {
         cwd: process.cwd(), stdio: 'pipe', timeout: 120000,
       })
       log('Schema synced via prisma db push')
