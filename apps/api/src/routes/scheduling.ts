@@ -212,7 +212,14 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
 
 // ─── Status change ────────────────────────────────────────────────────────────
 router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('appointments'), async (req, res) => {
-  const validStatuses = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'IN_CHAIR', 'WITH_PROVIDER', 'READY_CHECKOUT', 'COMPLETED', 'CANCELLED', 'NO_SHOW']
+  // New clinical flow stages + legacy statuses for backward compat
+  const validStatuses = [
+    'PENDING', 'CONFIRMED',
+    'ARRIVED', 'WAITING', 'IN_OPERATORY', 'WITH_PROVIDER', 'SESSION_COMPLETE', 'CHECKOUT', 'DEPARTED',
+    // Legacy (kept for backward compat)
+    'CHECKED_IN', 'IN_CHAIR', 'READY_CHECKOUT', 'COMPLETED',
+    'CANCELLED', 'NO_SHOW',
+  ]
   const { status } = req.body
   if (!validStatuses.includes(status)) { res.status(400).json({ error: 'Invalid status' }); return }
 
@@ -221,26 +228,51 @@ router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('a
     data: { status },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true } },
-      doctor:  { include: { user: { select: { id: true } } } },
+      doctor:  { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
       service: true,
     },
   })
 
+  // ─── Log to PatientActivity ─────────────────────────────────────────────
+  const statusLabels: Record<string, string> = {
+    ARRIVED: 'Patient Arrived', WAITING: 'Moved to Waiting Room',
+    IN_OPERATORY: 'Moved to Operatory', WITH_PROVIDER: 'With Provider',
+    SESSION_COMPLETE: 'Session Complete', CHECKOUT: 'At Checkout',
+    DEPARTED: 'Patient Departed',
+    CONFIRMED: 'Appointment Confirmed', CHECKED_IN: 'Checked In',
+    IN_CHAIR: 'In Chair', READY_CHECKOUT: 'Ready for Checkout',
+    COMPLETED: 'Completed', CANCELLED: 'Cancelled', NO_SHOW: 'No Show',
+  }
+  const actorName = `${req.user!.role} ${req.user!.firstName || ''} ${req.user!.lastName || ''}`.trim()
+  try {
+    await prisma.patientActivity.create({
+      data: {
+        patientId: appointment.patient.id,
+        userId: req.user!.id,
+        userName: actorName,
+        action: statusLabels[status] || status,
+        metadata: JSON.stringify({ appointmentId: appointment.id, status }),
+      },
+    })
+  } catch { /* non-critical */ }
+
   // ─── Status transition side-effects ───────────────────────────────────────
   try {
-    if (status === 'CHECKED_IN') {
+    // Notify doctor when patient arrives
+    if (status === 'ARRIVED' || status === 'CHECKED_IN') {
       await prisma.notification.create({
         data: {
           userId: appointment.doctor.user.id,
           type: 'APPOINTMENT',
-          title: 'Patient Checked In',
+          title: 'Patient Arrived',
           body: `${appointment.patient.firstName} ${appointment.patient.lastName} has arrived and is ready for you.`,
           href: '/scheduling',
         },
       })
     }
 
-    if (status === 'READY_CHECKOUT') {
+    // Notify receptionists when session is complete / ready for checkout
+    if (status === 'SESSION_COMPLETE' || status === 'CHECKOUT' || status === 'READY_CHECKOUT') {
       const receptionists = await prisma.user.findMany({ where: { role: 'RECEPTIONIST', isActive: true } })
       await Promise.all(receptionists.map((r) =>
         prisma.notification.create({
@@ -255,7 +287,8 @@ router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('a
       ))
     }
 
-    if (status === 'COMPLETED') {
+    // Create invoice when patient departs / session completes
+    if (status === 'DEPARTED' || status === 'COMPLETED') {
       const existing = await prisma.invoice.findUnique({ where: { appointmentId: appointment.id } })
       if (!existing) {
         const count = await prisma.invoice.count()

@@ -137,6 +137,21 @@ function ToothSVG({ toothNumber, state, isSelected, onSelect, isPatientLeft, isU
   )
 }
 
+// ─── Markdown renderer ────────────────────────────────────────────────────
+
+function renderMarkdown(text: string) {
+  return text.split('\n').map((line, i) => {
+    if (line.startsWith('### ')) return <h4 key={i} className="font-bold text-slate-800 dark:text-white mt-2 mb-0.5 text-sm">{line.slice(4)}</h4>
+    if (line.startsWith('## '))  return <h3 key={i} className="font-bold text-slate-800 dark:text-white mt-3 mb-1">{line.slice(3)}</h3>
+    if (line.startsWith('# '))   return <h2 key={i} className="font-semibold text-slate-900 dark:text-white mt-3 mb-1 text-base">{line.slice(2)}</h2>
+    if (line === '---')           return <hr key={i} className="border-slate-200 dark:border-white/10 my-2" />
+    const html = line
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g,     '<em>$1</em>')
+    return <p key={i} className="text-sm text-slate-700 dark:text-slate-300" dangerouslySetInnerHTML={{ __html: html || '&nbsp;' }} />
+  })
+}
+
 // ─── Dental Chart Tab ─────────────────────────────────────────────────────
 
 function DentalChartTab({ patientId, token }: { patientId: string; token: string | null }) {
@@ -394,7 +409,7 @@ function DentalChartTab({ patientId, token }: { patientId: string; token: string
             </button>
           </div>
           {isSummarizing && <p className="text-sm text-slate-500 animate-pulse">Analyzing chart...</p>}
-          {!isSummarizing && savedAiSummary && <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{savedAiSummary}</p>}
+          {!isSummarizing && savedAiSummary && <div>{renderMarkdown(savedAiSummary)}</div>}
           {!isSummarizing && !savedAiSummary && <p className="text-sm text-slate-500">Click Generate for an AI summary of this chart.</p>}
         </div>
         {/* Smart Entry */}
@@ -543,7 +558,7 @@ function PerioChartTab({ patientId, token }: { patientId: string; token: string 
         </button>
       </div>
       {aiSummary && (
-        <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 p-3 rounded-lg text-sm text-indigo-900 dark:text-indigo-200 whitespace-pre-wrap">{aiSummary}</div>
+        <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 p-3 rounded-lg">{renderMarkdown(aiSummary)}</div>
       )}
 
       {/* Legend */}
@@ -1225,6 +1240,28 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
         ))}
       </div>
 
+      {/* Next of Kin */}
+      {(patient.nextOfKinName || patient.nextOfKinPhone) && (
+        <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-700/30 rounded-xl p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-blue-500 mb-2">Next of Kin</p>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Name',         value: patient.nextOfKinName || '—' },
+              { label: 'Phone',        value: patient.nextOfKinPhone || '—' },
+              { label: 'Relationship', value: patient.nextOfKinRelation || '—' },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <p className="text-[10px] text-blue-400 mb-0.5">{label}</p>
+                <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {!patient.nextOfKinName && (
+        <p className="text-xs text-slate-400 italic">No next of kin recorded. Edit patient to add.</p>
+      )}
+
       {/* Recent appointments */}
       {patient.appointments?.length > 0 && (
         <div>
@@ -1263,6 +1300,46 @@ export default function PatientProfilePage() {
   })
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cc_user') || '{}') : {}
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState<any>({})
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+
+  function openEdit() {
+    setEditForm({
+      firstName: patient.firstName || '',
+      lastName: patient.lastName || '',
+      phone: patient.phone || '',
+      email: patient.email || '',
+      gender: patient.gender || '',
+      dob: patient.dob ? patient.dob.slice(0, 10) : '',
+      address: patient.address || '',
+      district: patient.district || '',
+      nextOfKinName: patient.nextOfKinName || '',
+      nextOfKinPhone: patient.nextOfKinPhone || '',
+      nextOfKinRelation: patient.nextOfKinRelation || '',
+    })
+    setEditOpen(true)
+  }
+
+  async function saveEdit() {
+    if (!editForm.firstName || !editForm.lastName || !editForm.phone) return
+    setIsSavingEdit(true)
+    try {
+      const res = await fetch(`/api-proxy/patients/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(editForm),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setPatient((p: any) => ({ ...p, ...updated }))
+        setEditOpen(false)
+      }
+    } finally {
+      setIsSavingEdit(false)
+    }
+  }
 
   // Keep URL in sync with active tab (shallow)
   function switchTab(tab: ActiveTab) {
@@ -1334,7 +1411,12 @@ export default function PatientProfilePage() {
                 currentAvatarUrl={patient.avatarUrl} size="xl" token={token || undefined}
                 onUploaded={(url) => setPatient((p: any) => ({ ...p, avatarUrl: url }))} />
               <div className="mb-2">
-                <h1 className="text-2xl font-bold text-clinic-navy dark:text-white">{patient.firstName} {patient.lastName}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold text-clinic-navy dark:text-white">{patient.firstName} {patient.lastName}</h1>
+                  <button onClick={openEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-clinic-blue hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Edit patient">
+                    <Edit size={15} />
+                  </button>
+                </div>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {patient.dob && <span className="text-sm text-slate-500">{new Date(patient.dob).toLocaleDateString('en-UG')}</span>}
                   <span className="text-slate-300">·</span>
@@ -1384,6 +1466,109 @@ export default function PatientProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* Edit Patient Modal */}
+      {editOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b dark:border-white/10">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white">Edit Patient</h2>
+              <button onClick={() => setEditOpen(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">First Name *</label>
+                  <input value={editForm.firstName} onChange={e => setEditForm((f: any) => ({ ...f, firstName: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Last Name *</label>
+                  <input value={editForm.lastName} onChange={e => setEditForm((f: any) => ({ ...f, lastName: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Phone *</label>
+                  <input value={editForm.phone} onChange={e => setEditForm((f: any) => ({ ...f, phone: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Email</label>
+                  <input type="email" value={editForm.email} onChange={e => setEditForm((f: any) => ({ ...f, email: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Gender</label>
+                  <select value={editForm.gender} onChange={e => setEditForm((f: any) => ({ ...f, gender: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="">Not specified</option>
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Date of Birth</label>
+                  <input type="date" value={editForm.dob} onChange={e => setEditForm((f: any) => ({ ...f, dob: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Address</label>
+                  <input value={editForm.address} onChange={e => setEditForm((f: any) => ({ ...f, address: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">District</label>
+                  <input value={editForm.district} onChange={e => setEditForm((f: any) => ({ ...f, district: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+              </div>
+              <div className="border-t dark:border-white/10 pt-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-blue-500 mb-3">Next of Kin</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Name</label>
+                    <input value={editForm.nextOfKinName} onChange={e => setEditForm((f: any) => ({ ...f, nextOfKinName: e.target.value }))}
+                      placeholder="e.g. John Doe"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1">Phone</label>
+                      <input value={editForm.nextOfKinPhone} onChange={e => setEditForm((f: any) => ({ ...f, nextOfKinPhone: e.target.value }))}
+                        placeholder="+256..."
+                        className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1">Relationship</label>
+                      <input value={editForm.nextOfKinRelation} onChange={e => setEditForm((f: any) => ({ ...f, nextOfKinRelation: e.target.value }))}
+                        placeholder="e.g. Spouse, Parent"
+                        className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t dark:border-white/10 bg-slate-50 dark:bg-white/5 rounded-b-2xl">
+              <button onClick={() => setEditOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-800 transition-colors">
+                Cancel
+              </button>
+              <button onClick={saveEdit} disabled={isSavingEdit || !editForm.firstName || !editForm.lastName || !editForm.phone}
+                className="px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2">
+                {isSavingEdit ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : <><Save size={14} /> Save Changes</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

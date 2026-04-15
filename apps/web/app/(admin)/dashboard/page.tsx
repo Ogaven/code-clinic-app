@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { cn, formatUGX, getGreeting } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
+import LivePatientFlow from '@/components/scheduling/LivePatientFlow'
 
 // ── Analog Clock ────────────────────────────────────────────────────────────
 function AnalogClock() {
@@ -261,19 +262,32 @@ export default function DashboardPage() {
   const [user, setUser]             = useState<any>(null)
   const [now,  setNow]              = useState(new Date())
   const [flowData, setFlowData]     = useState<{ stage: string; count: number; pct: number }[]>([])
+  const [dentalData, setDentalData] = useState<{
+    recentActivity: any[]
+    pipeline: Record<string, { count: number; totalUGX: number }>
+    chartsToday: number
+    treatmentsCompleted: number
+  } | null>(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
     if (stored) setUser(JSON.parse(stored))
     const tick = setInterval(() => setNow(new Date()), 60000)
 
-    // Fetch patient flow
     const token = localStorage.getItem('cc_token')
     if (token) {
+      // Fetch patient flow
       fetch('/api-proxy/clinical/analytics/patient-journey', {
         headers: { Authorization: `Bearer ${token}` },
       }).then((r) => r.json()).then((d) => {
         if (Array.isArray(d)) setFlowData(d)
+      }).catch(() => {})
+
+      // Fetch dental dashboard data
+      fetch('/api-proxy/clinical/analytics/dental-dashboard', {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((r) => r.json()).then((d) => {
+        if (d && !d.error) setDentalData(d)
       }).catch(() => {})
     }
 
@@ -343,6 +357,9 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* ── LIVE PATIENT FLOW ── */}
+      <LivePatientFlow />
 
       {/* ── MAIN 2-COL ── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
@@ -562,6 +579,87 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
+
+          {/* Dental Quick Stats */}
+          {dentalData && (
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: 'Charts Today', value: dentalData.chartsToday, color: '#29ABE2', icon: '🦷' },
+                { label: 'Tx Completed', value: dentalData.treatmentsCompleted, color: '#10B981', icon: '✅' },
+              ].map(s => (
+                <div key={s.label} className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 p-3 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">{s.icon} {s.label}</p>
+                  <p className="text-2xl font-black" style={{ color: s.color }}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Treatment Pipeline */}
+          {dentalData && Object.keys(dentalData.pipeline).length > 0 && (
+            <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 p-4 backdrop-blur-sm">
+              <p className="text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-wide mb-3">Treatment Pipeline</p>
+              <div className="flex gap-2 items-center justify-center mb-3">
+                <ResponsiveContainer width="50%" height={90}>
+                  <PieChart>
+                    <Pie
+                      data={Object.entries(dentalData.pipeline).map(([status, v]) => ({
+                        name: status, value: v.count,
+                        color: status === 'Completed' ? '#10B981' : status === 'In Progress' ? '#F59E0B' : '#29ABE2',
+                      }))}
+                      cx="50%" cy="50%" innerRadius={24} outerRadius={40} dataKey="value" paddingAngle={2}>
+                      {Object.keys(dentalData.pipeline).map((s, i) => (
+                        <Cell key={i} fill={s === 'Completed' ? '#10B981' : s === 'In Progress' ? '#F59E0B' : '#29ABE2'} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<PieTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex-1 space-y-1.5">
+                  {Object.entries(dentalData.pipeline).map(([status, v]) => {
+                    const color = status === 'Completed' ? '#10B981' : status === 'In Progress' ? '#F59E0B' : '#29ABE2'
+                    return (
+                      <div key={status}>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] font-semibold" style={{ color }}>{status}</span>
+                          <span className="text-[10px] text-gray-400">{v.count}</span>
+                        </div>
+                        <p className="text-[9px] text-gray-400">{formatUGX(v.totalUGX)}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Recent Dental Activity */}
+          {dentalData && dentalData.recentActivity.length > 0 && (
+            <div className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 overflow-hidden backdrop-blur-sm">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/8">
+                <p className="font-bold text-clinic-navy dark:text-white text-sm" style={{ fontFamily: 'Plus Jakarta Sans' }}>🦷 Recent Dental Activity</p>
+                <a href="/patients" className="text-[10px] font-semibold text-clinic-blue hover:underline flex items-center gap-0.5">
+                  All <ChevronRight size={10} />
+                </a>
+              </div>
+              <div className="divide-y divide-gray-50 dark:divide-white/5">
+                {dentalData.recentActivity.slice(0, 5).map((a: any, i: number) => (
+                  <a key={i} href={`/patients/${a.patientId}?tab=dental`}
+                    className="flex items-center justify-between px-4 py-2.5 hover:bg-blue-50/30 dark:hover:bg-white/5 transition-colors">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                        {a.patient?.firstName} {a.patient?.lastName}
+                      </p>
+                      <p className="text-[10px] text-gray-400">{a.userName}</p>
+                    </div>
+                    <span className="text-[9px] text-gray-400">
+                      {new Date(a.createdAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* dental30 */}
           <div className="flex justify-center">

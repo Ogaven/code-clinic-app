@@ -14,24 +14,56 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 // GET /patients
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const q = req.query.q as string | undefined
-    const limit = Math.min(Number(req.query.limit) || 50, 500)
-    const offset = Number(req.query.offset) || 0
-    const where = q ? {
+    const q        = req.query.q        as string | undefined
+    const filter   = req.query.filter   as string | undefined
+    const sortBy   = req.query.sortBy   as string | undefined
+    const limit    = Math.min(Number(req.query.limit) || 50, 500)
+    const offset   = Number(req.query.offset) || 0
+
+    // Build search where clause
+    const searchWhere: any = q ? {
       OR: [
-        { firstName: { contains: q, mode: 'insensitive' as const } },
-        { lastName: { contains: q, mode: 'insensitive' as const } },
-        { phone: { contains: q } },
-        { email: { contains: q, mode: 'insensitive' as const } },
+        { firstName: { contains: q } },
+        { lastName:  { contains: q } },
+        { phone:     { contains: q } },
+        { email:     { contains: q } },
       ],
-    } : undefined
+    } : {}
+
+    // Build filter clause
+    const filterWhere: any = {}
+    if (filter === 'new_today') {
+      const today = new Date(); today.setHours(0,0,0,0)
+      filterWhere.createdAt = { gte: today }
+    } else if (filter === 'has_balance') {
+      filterWhere.accountBalance = { gt: 0 }
+    } else if (filter === 'has_plan') {
+      filterWhere.treatmentPlans = { some: {} }
+    } else if (filter === 'male') {
+      filterWhere.gender = 'MALE'
+    } else if (filter === 'female') {
+      filterWhere.gender = 'FEMALE'
+    } else if (filter === 'this_month') {
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+      const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      filterWhere.createdAt = { gte: start, lte: end }
+    }
+
+    const where = { ...searchWhere, ...filterWhere }
+
+    // Build order
+    let orderBy: any = { createdAt: 'desc' }
+    if (sortBy === 'name')      orderBy = [{ firstName: 'asc' }, { lastName: 'asc' }]
+    if (sortBy === 'balance')   orderBy = { accountBalance: 'desc' }
+
     const [patients, total] = await Promise.all([
       prisma.patient.findMany({
         where,
         take: limit,
         skip: offset,
-        orderBy: { createdAt: 'desc' },
-        include: { _count: { select: { appointments: true } } },
+        orderBy,
+        include: { _count: { select: { appointments: true, treatmentPlans: true } } },
       }),
       prisma.patient.count({ where }),
     ])
@@ -41,7 +73,7 @@ router.get('/', requireAuth, async (req, res) => {
       avatarUrl: p.avatarR2Key ? getPublicUrl(p.avatarR2Key) : null,
     }))
     res.json({ data: withUrls, total, limit, offset })
-  } catch (e) { res.status(500).json({ error: 'Failed to fetch patients' }) }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch patients' }) }
 })
 
 // POST /patients
@@ -88,13 +120,33 @@ router.get('/:id', requireAuth, async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to fetch patient' }) }
 })
 
+// GET /patients/:id/activity
+router.get('/:id/activity', requireAuth, async (req, res) => {
+  try {
+    const activities = await prisma.patientActivity.findMany({
+      where: { patientId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    })
+    res.json(activities)
+  } catch { res.status(500).json({ error: 'Failed to fetch activities' }) }
+})
+
 // PATCH /patients/:id
 router.patch('/:id', requireAuth, auditLog('patients'), async (req, res) => {
   try {
-    const { firstName, lastName, phone, email, gender, dob, address, district, isActive } = req.body
+    const {
+      firstName, lastName, phone, email, gender, dob, address, district, isActive,
+      nextOfKinName, nextOfKinPhone, nextOfKinRelation,
+    } = req.body
     const patient = await prisma.patient.update({
       where: { id: req.params.id },
-      data: { firstName, lastName, phone, email, gender, dob: dob ? new Date(dob) : undefined, address, district, isActive },
+      data: {
+        firstName, lastName, phone, email, gender,
+        dob: dob ? new Date(dob) : undefined,
+        address, district, isActive,
+        nextOfKinName, nextOfKinPhone, nextOfKinRelation,
+      },
     })
     res.json({ ...patient, accountBalance: Number(patient.accountBalance) })
   } catch { res.status(500).json({ error: 'Failed to update patient' }) }

@@ -33,15 +33,16 @@ export default function PatientsPage() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [activeFilter, setActiveFilter] = useState<'all' | 'new_today' | 'has_balance' | 'has_plan'>('all')
+  const [activeFilter, setActiveFilter] = useState<'all' | 'new_today' | 'has_balance' | 'has_plan' | 'male' | 'female' | 'this_month'>('all')
   const limit = 20
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
-  const fetchPatients = useCallback(async (q = search, p = page) => {
+  const fetchPatients = useCallback(async (q = search, p = page, filter = activeFilter) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ limit: String(limit), offset: String((p - 1) * limit) })
       if (q) params.set('q', q)
+      if (filter && filter !== 'all') params.set('filter', filter)
       const res = await fetch(`/api-proxy/patients?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -53,22 +54,15 @@ export default function PatientsPage() {
     } finally { setLoading(false) }
   }, [token])
 
-  const filteredPatients = patients.filter((p) => {
-    if (activeFilter === 'new_today') {
-      const today = new Date(); today.setHours(0,0,0,0)
-      return new Date(p.createdAt) >= today
-    }
-    if (activeFilter === 'has_balance') return (p.accountBalance || 0) > 0
-    if (activeFilter === 'has_plan') return (p._count?.treatmentPlans || 0) > 0
-    return true
-  })
+  // Filters are now server-side, so filteredPatients = patients
+  const filteredPatients = patients
 
   useEffect(() => { fetchPatients() }, [])
 
   useEffect(() => {
-    const t = setTimeout(() => { setPage(1); fetchPatients(search, 1) }, 350)
+    const t = setTimeout(() => { setPage(1); fetchPatients(search, 1, activeFilter) }, 300)
     return () => clearTimeout(t)
-  }, [search])
+  }, [search, activeFilter])
 
   const totalPages = Math.ceil(total / limit)
 
@@ -107,8 +101,11 @@ export default function PatientsPage() {
         {([
           { key: 'all',         label: 'All' },
           { key: 'new_today',   label: 'New Today' },
+          { key: 'this_month',  label: 'This Month' },
           { key: 'has_balance', label: 'Has Balance' },
           { key: 'has_plan',    label: 'Active Plan' },
+          { key: 'male',        label: 'Male' },
+          { key: 'female',      label: 'Female' },
         ] as { key: typeof activeFilter; label: string }[]).map(({ key, label }) => (
           <button
             key={key}

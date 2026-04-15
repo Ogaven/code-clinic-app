@@ -85,6 +85,9 @@ model Patient {
   accountBalance        Int      @default(0)
   isActive              Boolean  @default(true)
   referredBy            String?
+  nextOfKinName         String?
+  nextOfKinPhone        String?
+  nextOfKinRelation     String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -116,6 +119,7 @@ model Service {
   priceUSD       Float?
   vatApplicable  Boolean @default(true)
   colour         String  @default("#29ABE2")
+  photoR2Key     String?
   isActive       Boolean @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Plus, Loader2, Save, X, Check, Pencil, Power } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Plus, Loader2, Save, X, Check, Pencil, Trash2, Upload, Image as ImageIcon } from 'lucide-react'
 import { cn, formatUGX } from '@/lib/utils'
 
 interface Service {
@@ -9,6 +9,7 @@ interface Service {
   description?: string; durationMins: number
   priceUGX: number; colour: string
   vatApplicable: boolean; isActive: boolean
+  photoUrl?: string | null
 }
 
 const CATEGORIES = ['Consultation','Preventive','Restorative','Periodontal','Endodontics','Oral Surgery','Cosmetic','Orthodontics','Prosthodontics','Paediatric','General']
@@ -41,23 +42,33 @@ export default function ServicesTab() {
   const [filterCat,   setFilterCat]   = useState('All')
   const [searchQ,     setSearchQ]     = useState('')
   const [form,        setForm]        = useState(emptyForm())
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null)
+  const [deleting,    setDeleting]    = useState(false)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoFile,   setPhotoFile]   = useState<File | null>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const photoRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { fetchServices() }, [])
 
   async function fetchServices() {
     setLoading(true)
     try {
-      const res  = await fetch(`${API}/services`, { headers })
+      const res  = await fetch(`${API}/services/all`, { headers })
       const data = await res.json()
       setServices(Array.isArray(data) ? data : [])
     } catch { } finally { setLoading(false) }
   }
 
-  function openNew() { setEditId(null); setForm(emptyForm()); setPanelOpen(true) }
+  function openNew() {
+    setEditId(null); setForm(emptyForm()); setPhotoPreview(null); setPhotoFile(null); setPanelOpen(true)
+  }
 
   function openEdit(s: Service) {
     setEditId(s.id)
     setForm({ name: s.name, category: s.category, description: s.description || '', durationMins: s.durationMins, priceUGX: s.priceUGX, colour: s.colour, vatApplicable: s.vatApplicable })
+    setPhotoPreview(s.photoUrl || null)
+    setPhotoFile(null)
     setPanelOpen(true)
   }
 
@@ -68,18 +79,59 @@ export default function ServicesTab() {
       const url    = editId ? `${API}/services/${editId}` : `${API}/services`
       const method = editId ? 'PATCH' : 'POST'
       const res    = await fetch(url, { method, headers, body: JSON.stringify({ ...form, priceUGX: Number(form.priceUGX), durationMins: Number(form.durationMins) }) })
-      if (res.ok) { showToast(editId ? 'Service updated' : 'Service created', true); setPanelOpen(false); fetchServices() }
-      else { const d = await res.json(); showToast(d.error || 'Failed', false) }
+      if (!res.ok) { const d = await res.json(); showToast(d.error || 'Failed', false); return }
+      const saved = await res.json()
+
+      // Upload photo if selected
+      if (photoFile) {
+        setUploadingPhoto(true)
+        try {
+          const fd = new FormData(); fd.append('photo', photoFile)
+          await fetch(`${API}/services/${saved.id}/photo`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: fd,
+          })
+        } catch { } finally { setUploadingPhoto(false) }
+      }
+
+      showToast(editId ? 'Service updated' : 'Service created', true)
+      setPanelOpen(false)
+      fetchServices()
     } catch { showToast('Network error', false) } finally { setSaving(false) }
   }
 
-  async function toggleActive(s: Service) {
-    await fetch(`${API}/services/${s.id}`, { method: 'PATCH', headers, body: JSON.stringify({ isActive: !s.isActive }) })
-    fetchServices()
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`${API}/services/${deleteTarget.id}?hard=1`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        showToast(data.error || 'Delete failed', false)
+      } else {
+        showToast('Service deleted', true)
+        fetchServices()
+      }
+    } catch { showToast('Network error', false) } finally {
+      setDeleting(false); setDeleteTarget(null)
+    }
   }
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok }); setTimeout(() => setToast(null), 3000)
+  }
+
+  function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoFile(file)
+    const reader = new FileReader()
+    reader.onload = (ev) => setPhotoPreview(ev.target?.result as string)
+    reader.readAsDataURL(file)
   }
 
   const categories = ['All', ...CATEGORIES.filter(c => services.some(s => s.category === c))]
@@ -109,6 +161,35 @@ export default function ServicesTab() {
         )}>
           {toast.ok ? <Check size={16} /> : <X size={16} />}
           {toast.msg}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 border border-gray-100 dark:border-white/10">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+                <Trash2 size={18} className="text-red-600" />
+              </div>
+              <h3 className="font-bold text-gray-900 dark:text-white">Delete Service?</h3>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+              <strong className="text-gray-800 dark:text-white">{deleteTarget.name}</strong> will be permanently deleted.
+              If it has existing appointments, it will be deactivated instead.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl transition-colors">
+                Cancel
+              </button>
+              <button onClick={confirmDelete} disabled={deleting}
+                className="flex-1 py-2.5 text-sm font-bold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -166,24 +247,24 @@ export default function ServicesTab() {
                         : 'border-gray-100 dark:border-white/5 opacity-40',
                     )}>
                     <div className="flex items-start justify-between mb-2">
-                      {/* Colour swatch with service initial */}
-                      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-sm"
-                        style={{ background: s.colour }}>
-                        {s.name[0]}
+                      {/* Photo or colour swatch */}
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-sm overflow-hidden flex-shrink-0"
+                        style={{ background: s.photoUrl ? undefined : s.colour }}>
+                        {s.photoUrl
+                          ? <img src={s.photoUrl} alt={s.name} className="w-full h-full object-cover" />
+                          : s.name[0]
+                        }
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => openEdit(s)}
-                          className="p-1 rounded-lg text-gray-400 hover:text-clinic-blue hover:bg-blue-50 dark:hover:bg-clinic-blue/10 transition-colors">
+                          className="p-1 rounded-lg text-gray-400 hover:text-clinic-blue hover:bg-blue-50 dark:hover:bg-clinic-blue/10 transition-colors"
+                          title="Edit">
                           <Pencil size={12} />
                         </button>
-                        <button onClick={() => toggleActive(s)}
-                          className={cn(
-                            'p-1 rounded-lg transition-colors',
-                            s.isActive
-                              ? 'text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10'
-                              : 'text-gray-300 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10',
-                          )}>
-                          <Power size={12} />
+                        <button onClick={() => setDeleteTarget(s)}
+                          className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                          title="Delete">
+                          <Trash2 size={12} />
                         </button>
                       </div>
                     </div>
@@ -220,6 +301,36 @@ export default function ServicesTab() {
 
           {/* Form */}
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
+            {/* Photo upload */}
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Service Photo / Icon</label>
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-14 rounded-xl overflow-hidden flex items-center justify-center text-white text-xl font-bold shadow-sm flex-shrink-0"
+                  style={{ background: photoPreview ? undefined : form.colour }}>
+                  {photoPreview
+                    ? <img src={photoPreview} alt="preview" className="w-full h-full object-cover" />
+                    : (form.name[0] || <ImageIcon size={20} className="opacity-70" />)
+                  }
+                </div>
+                <div className="flex-1">
+                  <button onClick={() => photoRef.current?.click()}
+                    className="flex items-center gap-2 px-3 py-2 text-xs font-semibold border border-gray-200 dark:border-white/10 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300 transition-colors w-full justify-center">
+                    <Upload size={12} />
+                    {photoPreview ? 'Change Photo' : 'Upload Photo'}
+                  </button>
+                  {photoPreview && (
+                    <button onClick={() => { setPhotoPreview(null); setPhotoFile(null) }}
+                      className="text-[11px] text-red-400 hover:text-red-600 mt-1 w-full text-center transition-colors">
+                      Remove photo
+                    </button>
+                  )}
+                  <p className="text-[10px] text-gray-400 mt-1 text-center">JPEG, PNG or WebP · max 5MB</p>
+                </div>
+              </div>
+              <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePhotoSelect} />
+            </div>
+
             <div>
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Service Name *</label>
               <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
@@ -263,13 +374,6 @@ export default function ServicesTab() {
                     }} />
                 ))}
               </div>
-              <div className="flex items-center gap-2 mt-2">
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-xs font-bold"
-                  style={{ background: form.colour }}>
-                  {form.name[0] || '?'}
-                </div>
-                <span className="text-xs text-gray-400">{form.colour}</span>
-              </div>
             </div>
 
             <div className="flex items-center gap-3">
@@ -282,13 +386,11 @@ export default function ServicesTab() {
             {form.priceUGX > 0 && (
               <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-3 text-sm border border-gray-100 dark:border-white/8">
                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                  <span>Subtotal</span>
-                  <span>{formatUGX(form.priceUGX)}</span>
+                  <span>Subtotal</span><span>{formatUGX(form.priceUGX)}</span>
                 </div>
                 {form.vatApplicable && (
                   <div className="flex justify-between text-gray-500 dark:text-gray-400 mt-1">
-                    <span>VAT 18%</span>
-                    <span>{formatUGX(Math.round(form.priceUGX * 0.18))}</span>
+                    <span>VAT 18%</span><span>{formatUGX(Math.round(form.priceUGX * 0.18))}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-bold text-clinic-navy dark:text-clinic-blue mt-2 pt-2 border-t border-gray-200 dark:border-white/10">
@@ -305,10 +407,10 @@ export default function ServicesTab() {
               className="px-4 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl transition-colors">
               Cancel
             </button>
-            <button onClick={handleSave} disabled={saving}
+            <button onClick={handleSave} disabled={saving || uploadingPhoto}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-white text-sm transition-all hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60"
               style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {(saving || uploadingPhoto) ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               {editId ? 'Update Service' : 'Create Service'}
             </button>
           </div>

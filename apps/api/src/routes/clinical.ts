@@ -470,4 +470,52 @@ router.get('/analytics/provider-workload', requireAuth, async (req, res) => {
   }
 })
 
+// GET /clinical/analytics/dental-dashboard
+// Returns: recent dental activity, treatment pipeline stats, today's chart count
+router.get('/analytics/dental-dashboard', requireAuth, async (req, res) => {
+  try {
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+
+    const [recentActivity, treatmentPlans, chartsToday, treatmentsCompleted] = await Promise.all([
+      // Last 10 dental chart update activities
+      prisma.patientActivity.findMany({
+        where: { action: 'Dental chart updated' },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: { patient: { select: { id: true, firstName: true, lastName: true } } },
+      }),
+      // All treatment plans for pipeline
+      prisma.treatmentPlan.findMany({
+        select: { status: true, costPerUnit: true, quantity: true, discount: true },
+      }),
+      // Charts updated today
+      prisma.patientActivity.count({
+        where: { action: 'Dental chart updated', createdAt: { gte: today } },
+      }),
+      // Treatments completed today
+      prisma.patientActivity.count({
+        where: { action: { startsWith: 'Treatment completed' }, createdAt: { gte: today } },
+      }),
+    ])
+
+    // Pipeline: group by status, sum UGX
+    const pipeline: Record<string, { count: number; totalUGX: number }> = {}
+    treatmentPlans.forEach(p => {
+      if (!pipeline[p.status]) pipeline[p.status] = { count: 0, totalUGX: 0 }
+      pipeline[p.status].count++
+      pipeline[p.status].totalUGX += (Number(p.costPerUnit) * p.quantity - Number(p.discount))
+    })
+
+    res.json({
+      recentActivity,
+      pipeline,
+      chartsToday,
+      treatmentsCompleted,
+    })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: 'Failed to fetch dental dashboard data' })
+  }
+})
+
 export default router

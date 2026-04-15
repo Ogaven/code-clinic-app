@@ -11,6 +11,7 @@ import {
   Minimize2, Maximize2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import LivePatientFlow from '@/components/scheduling/LivePatientFlow'
 
 // ── Analog Clock ──────────────────────────────────────────────
 function AnalogClock() {
@@ -768,7 +769,7 @@ export default function ReceptionistDashboard() {
           </div>
 
           {/* Patient Flow */}
-          <PatientFlowPanel appointments={appointments} onRefresh={fetchAll} />
+          <LivePatientFlow />
 
           {/* WhatsApp Live Feed */}
           <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">

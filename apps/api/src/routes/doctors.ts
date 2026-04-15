@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import multer from 'multer'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly } from '../middleware/rbac'
-import { uploadAvatar, getSignedDownloadUrl } from '../services/storage/r2'
+import { uploadAvatar, getPublicUrl } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
 
 const router = Router()
@@ -11,7 +11,13 @@ const prisma = new PrismaClient()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } })
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp']
 
-async function formatDoctor(d: any) {
+function formatDoctor(d: any) {
+  const key = d.user.avatarR2Key
+  let avatarUrl: string | null = null
+  if (key) {
+    // base64 data URL stored directly (legacy fallback)
+    avatarUrl = key.startsWith('data:') ? key : getPublicUrl(key)
+  }
   return {
     id: d.id,
     userId: d.userId,
@@ -24,11 +30,7 @@ async function formatDoctor(d: any) {
     workingDays: d.workingDays,
     workingHours: d.workingHours,
     serviceIds: d.serviceIds ?? '[]',
-    avatarUrl: d.user.avatarR2Key
-      ? (d.user.avatarR2Key.startsWith('data:')
-          ? d.user.avatarR2Key                                                // base64 data URL stored directly
-          : await getSignedDownloadUrl(d.user.avatarR2Key).catch(() => null)) // R2 or local file
-      : null,
+    avatarUrl,
     isActive: d.isActive,
   }
 }
@@ -45,7 +47,7 @@ router.get('/', requireAuth, async (_req, res) => {
       include: INCLUDE,
       orderBy: { user: { firstName: 'asc' } },
     })
-    res.json(await Promise.all(doctors.map(formatDoctor)))
+    res.json(doctors.map(formatDoctor))
   } catch { res.status(500).json({ error: 'Failed to fetch doctors' }) }
 })
 
@@ -56,7 +58,7 @@ router.get('/all', requireAuth, adminOnly, async (_req, res) => {
       include: INCLUDE,
       orderBy: { user: { firstName: 'asc' } },
     })
-    res.json(await Promise.all(doctors.map(formatDoctor)))
+    res.json(doctors.map(formatDoctor))
   } catch { res.status(500).json({ error: 'Failed to fetch doctors' }) }
 })
 
@@ -128,7 +130,7 @@ router.post('/:id/avatar', requireAuth, adminOnly, uploadLimiter, upload.single(
       // Primary path: upload to R2 (or local file fallback when R2 not configured)
       const r2Key = await uploadAvatar(req.file.buffer, req.file.mimetype, 'doctors', doctor.userId)
       await prisma.user.update({ where: { id: doctor.userId }, data: { avatarR2Key: r2Key } })
-      avatarUrl = await getSignedDownloadUrl(r2Key)
+      avatarUrl = getPublicUrl(r2Key)
     } catch {
       // Fallback: store raw base64 data URL directly in DB so it always works
       const base64 = req.file.buffer.toString('base64')
