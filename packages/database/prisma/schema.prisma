@@ -634,3 +634,17 @@ model PatientActivity {
   @@index([patientId])
   @@map("patient_activities")
 }
+
+model DoctorCheckIn {
+  id        String   @id @default(cuid())
+  doctorId  String
+  userId    String
+  type      String   @default("CHECK_IN")
+  note      String?
+  lat       Float?
+  lng       Float?
+  createdAt DateTime @default(now())
+
+  @@index([doctorId])
+  @@map("doctor_check_ins")
+}

@@ -146,4 +146,92 @@ router.post('/:id/avatar', requireAuth, adminOnly, uploadLimiter, upload.single(
   }
 })
 
+// ─── Check In / Check Out ────────────────────────────────────────────────────
+
+// POST /doctors/check-in
+router.post('/check-in', requireAuth, async (req, res) => {
+  try {
+    const { type = 'CHECK_IN', note, lat, lng } = req.body
+    const userId = req.user!.id
+
+    // Find the doctor record for this user
+    const doctor = await prisma.doctor.findFirst({
+      where: { userId },
+      include: { user: { select: { firstName: true, lastName: true } } },
+    })
+    if (!doctor) { res.status(404).json({ error: 'Doctor record not found' }); return }
+
+    const record = await prisma.doctorCheckIn.create({
+      data: { doctorId: doctor.id, userId, type, note, lat, lng },
+    })
+
+    const timeStr = new Date().toLocaleTimeString('en-UG', {
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+    })
+    const doctorName = `Dr. ${doctor.user.firstName} ${doctor.user.lastName}`
+    const isCheckIn = type === 'CHECK_IN'
+    const msgAdmin = isCheckIn
+      ? `${doctorName} has checked in at ${timeStr}`
+      : `${doctorName} has checked out at ${timeStr}`
+    const msgReception = isCheckIn
+      ? `${doctorName} is now available`
+      : `${doctorName} is no longer available`
+
+    // Notify all ADMIN and RECEPTIONIST users
+    const targets = await prisma.user.findMany({
+      where: { role: { in: ['ADMIN', 'RECEPTIONIST'] }, isActive: true },
+      select: { id: true, role: true },
+    })
+    for (const t of targets) {
+      await prisma.notification.create({
+        data: {
+          userId: t.id,
+          type: 'SYSTEM',
+          title: isCheckIn ? 'Doctor Check-In' : 'Doctor Check-Out',
+          body: t.role === 'ADMIN' ? msgAdmin : msgReception,
+          href: '/scheduling',
+        },
+      }).catch(() => {})
+    }
+
+    res.json({ success: true, type, time: timeStr, id: record.id })
+  } catch (e) {
+    console.error('[check-in]', e)
+    res.status(500).json({ error: 'Check-in failed' })
+  }
+})
+
+// GET /doctors/check-in/today
+router.get('/check-in/today', requireAuth, async (req, res) => {
+  try {
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const record = await prisma.doctorCheckIn.findFirst({
+      where: { userId: req.user!.id, type: 'CHECK_IN', createdAt: { gte: today } },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!record) { res.json({ checkedIn: false }); return }
+    const timeStr = new Date(record.createdAt).toLocaleTimeString('en-UG', {
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+    })
+    res.json({ checkedIn: true, time: timeStr, id: record.id })
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch check-in status' })
+  }
+})
+
+// GET /doctors/check-in/history
+router.get('/check-in/history', requireAuth, async (req, res) => {
+  try {
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    const records = await prisma.doctorCheckIn.findMany({
+      where: { userId: req.user!.id, createdAt: { gte: sevenDaysAgo } },
+      orderBy: { createdAt: 'desc' },
+    })
+    res.json(records)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch check-in history' })
+  }
+})
+
 export default router
