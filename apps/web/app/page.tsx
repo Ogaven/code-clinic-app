@@ -4,10 +4,29 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
 
+const ROLE_REDIRECTS: Record<string, string> = {
+  ADMIN: '/dashboard', DEVELOPER: '/dashboard',
+  RECEPTIONIST: '/receptionist/dashboard',
+  DOCTOR: '/doctor/dashboard',
+  ACCOUNTS: '/accounts/dashboard',
+}
+
 export default function WelcomePage() {
   const router = useRouter()
   const [show, setShow] = useState(false)
-  useEffect(() => { setTimeout(() => setShow(true), 60) }, [])
+  useEffect(() => {
+    // If already logged in, skip the welcome screen
+    try {
+      const stored = localStorage.getItem('cc_user')
+      const token  = localStorage.getItem('cc_token')
+      if (stored && token) {
+        const u = JSON.parse(stored)
+        const dest = ROLE_REDIRECTS[u.role]
+        if (dest) { router.replace(dest); return }
+      }
+    } catch {}
+    setTimeout(() => setShow(true), 60)
+  }, [router])
 
   return (
     <div className="h-screen w-screen overflow-hidden relative flex items-center justify-center"

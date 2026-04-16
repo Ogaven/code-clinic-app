@@ -24,8 +24,9 @@ export default function DoctorSarahChatbot() {
   const [recording, setRec]     = useState(false)
   const [chatHistory, setHistory] = useState<{ role: string; content: string }[]>([])
   const [user, setUser]         = useState<any>(null)
+  const [isMobile, setIsMobile] = useState(false)
 
-  // Drag state
+  // Drag state (desktop only)
   const [pos, setPos]           = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
   const [hasMoved, setHasMoved] = useState(false)
@@ -40,11 +41,19 @@ export default function DoctorSarahChatbot() {
   }, [])
 
   useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  useEffect(() => {
     if (messagesEl.current) messagesEl.current.scrollTop = messagesEl.current.scrollHeight
   }, [msgs, typing])
 
-  // Mouse drag
+  // Mouse drag (desktop)
   function onMouseDown(e: React.MouseEvent) {
+    if (isMobile) return
     if ((e.target as HTMLElement).closest('button,input,textarea,a')) return
     e.preventDefault()
     setDragging(true)
@@ -64,15 +73,16 @@ export default function DoctorSarahChatbot() {
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
   }, [dragging])
 
-  // Touch drag
+  // Touch drag (desktop only — mobile uses full-screen)
   function onTouchStart(e: React.TouchEvent) {
+    if (isMobile) return
     const t = e.touches[0]
     setDragging(true)
     dragStart.current = { mx: t.clientX, my: t.clientY, bx: pos.x, by: pos.y }
   }
   useEffect(() => {
     function onMove(e: TouchEvent) {
-      if (!dragging) return
+      if (!dragging || isMobile) return
       const t = e.touches[0]
       setPos({ x: dragStart.current.bx + t.clientX - dragStart.current.mx, y: dragStart.current.by + t.clientY - dragStart.current.my })
       setHasMoved(true)
@@ -81,7 +91,7 @@ export default function DoctorSarahChatbot() {
     document.addEventListener('touchmove', onMove, { passive: false })
     document.addEventListener('touchend', onEnd)
     return () => { document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd) }
-  }, [dragging])
+  }, [dragging, isMobile])
 
   function handleBubbleClick() { if (!hasMoved) setOpen(o => !o) }
 
@@ -127,6 +137,7 @@ export default function DoctorSarahChatbot() {
     } finally { setTyping(false) }
   }
 
+  // Desktop wrapper style (fixed, draggable)
   const wrapStyle: React.CSSProperties = {
     position: 'fixed',
     right: `${-pos.x + 24}px`,
@@ -137,6 +148,87 @@ export default function DoctorSarahChatbot() {
     transition: dragging ? 'none' : 'right 0.2s, bottom 0.2s',
   }
 
+  // ── Mobile full-screen overlay ─────────────────────────────────────────────
+  if (isMobile && open && !minimised) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex flex-col"
+        style={{ background: 'linear-gradient(145deg,#0d1b6e,#1A237E)' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
+          <div className="flex items-center gap-3">
+            <div className="relative w-9 h-9 rounded-full overflow-hidden border-2 border-white/30">
+              <Image src="/sarah.jpg" alt="Sarah" fill style={{ objectFit: 'cover', objectPosition: 'center top' }} />
+            </div>
+            <div>
+              <p className="text-white text-sm font-bold">Sarah</p>
+              <div className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <p className="text-[10px] text-emerald-300">Doctor Assistant · Online</p>
+              </div>
+            </div>
+          </div>
+          <button onClick={() => setOpen(false)}
+            className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10 text-white/70 transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Messages */}
+        <div ref={messagesEl} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {msgs.map((m, i) => (
+            <div key={i} className={`flex gap-2 ${m.from === 'user' ? 'justify-end' : 'items-start'}`}>
+              {m.from === 'sarah' && (
+                <div className="relative w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-white/20">
+                  <Image src="/sarah.jpg" alt="Sarah" fill style={{ objectFit: 'cover', objectPosition: 'center top' }} />
+                </div>
+              )}
+              <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-relaxed ${
+                m.from === 'user'
+                  ? 'bg-white/20 text-white rounded-tr-sm'
+                  : 'bg-white/10 text-white/90 rounded-tl-sm'
+              }`}>
+                {m.text}
+                <p className="text-[9px] text-white/40 mt-1 text-right">{m.time}</p>
+              </div>
+            </div>
+          ))}
+          {typing && (
+            <div className="flex items-center gap-2">
+              <div className="relative w-7 h-7 rounded-full overflow-hidden border border-white/20">
+                <Image src="/sarah.jpg" alt="Sarah" fill style={{ objectFit: 'cover', objectPosition: 'center top' }} />
+              </div>
+              <div className="bg-white/10 rounded-2xl rounded-tl-sm px-3 py-2 flex gap-1">
+                {[0,1,2].map(i => <span key={i} className="w-1.5 h-1.5 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Input */}
+        <div className="px-4 py-3 border-t border-white/10"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+          <form onSubmit={e => { e.preventDefault(); sendMessage() }} className="flex gap-2 items-center">
+            <button type="button" onClick={toggleRecording}
+              className={`w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0 transition-colors ${recording ? 'bg-red-500 animate-pulse' : 'bg-white/10 hover:bg-white/20'}`}>
+              {recording ? <MicOff size={16} className="text-white" /> : <Mic size={16} className="text-white/60" />}
+            </button>
+            <input value={input} onChange={e => setInput(e.target.value)}
+              placeholder="Ask Sarah anything…"
+              className="flex-1 bg-white/10 text-white placeholder-white/40 text-base rounded-2xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-white/30"
+              style={{ fontSize: 16 }}
+            />
+            <button type="submit" disabled={!input.trim()}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 disabled:opacity-40 transition-colors flex-shrink-0">
+              <Send size={16} className="text-white" />
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Desktop floating chatbot ───────────────────────────────────────────────
   return (
     <div ref={bubbleRef} style={wrapStyle} onMouseDown={onMouseDown} onTouchStart={onTouchStart}>
 
@@ -251,9 +343,9 @@ export default function DoctorSarahChatbot() {
         </div>
       )}
 
-      {/* Bubble */}
+      {/* Bubble — bounces when chat is closed */}
       <div onClick={handleBubbleClick}
-        className="relative w-14 h-14 rounded-full shadow-2xl overflow-hidden border-2 border-white/40 hover:scale-105 transition-transform"
+        className={`relative w-14 h-14 rounded-full shadow-2xl overflow-hidden border-2 border-white/40 hover:scale-110 transition-transform ${!open ? 'animate-bounce' : ''}`}
         style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
         <Image src="/sarah.jpg" alt="Sarah" fill style={{ objectFit: 'cover', objectPosition: 'center top' }} />
         {/* Online dot */}

@@ -138,30 +138,7 @@ export default function LoginPage() {
             <h2 className="text-xl font-bold mb-0.5" style={{ color:titleClr, fontFamily:'Plus Jakarta Sans' }}>
               We brighten your smile 😁
             </h2>
-            <p className="text-xs mb-4" style={{ color:subClr }}>Sign in to continue to Code Clinic</p>
-
-            {/* Google Sign-in */}
-            <button onClick={handleGoogle}
-              className="w-full flex items-center justify-center gap-3 py-2.5 rounded-xl font-semibold text-sm transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] mb-3"
-              style={{ background:socialBg, border:`1.5px solid ${socialBdr}`, color:dark?'#fff':'#374151' }}>
-              <GoogleIcon/>
-              Continue with Google
-            </button>
-
-            {/* Apple Sign-in */}
-            <button onClick={() => setError('Apple sign-in coming soon — use Google or email.')}
-              className="w-full flex items-center justify-center gap-3 py-2.5 rounded-xl font-semibold text-sm transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] mb-4"
-              style={{ background:dark?'#000':'#1A237E', color:'#fff', border:'none' }}>
-              <AppleIcon color="#fff"/>
-              Continue with Apple
-            </button>
-
-            {/* Divider */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex-1 h-px" style={{ background:dark?'rgba(255,255,255,0.1)':'#E2E8F0' }}/>
-              <span className="text-[11px] font-medium" style={{ color:subClr }}>or sign in with email</span>
-              <div className="flex-1 h-px" style={{ background:dark?'rgba(255,255,255,0.1)':'#E2E8F0' }}/>
-            </div>
+            <p className="text-xs mb-4" style={{ color:subClr }}>Sign in with your clinic credentials</p>
 
             <form onSubmit={handleLogin} className="space-y-3">
               <div>
