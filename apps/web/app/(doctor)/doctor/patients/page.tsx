@@ -47,7 +47,8 @@ export default function DoctorPatientsPage() {
       const apptRes = await fetch(`/api-proxy/scheduling/appointments?limit=500`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      const appts: any[] = Array.isArray(await apptRes.json()) ? await (await fetch(`/api-proxy/scheduling/appointments?limit=500`, { headers: { Authorization: `Bearer ${token}` } })).json() : []
+      const apptData = await apptRes.json()
+      const appts: any[] = Array.isArray(apptData) ? apptData : []
 
       const myAppts = appts.filter((a: any) => a.doctorId === me.id)
       const now = Date.now()
