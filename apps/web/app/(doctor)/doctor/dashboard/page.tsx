@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import {
   Calendar, Users, CheckCircle, Clock, Activity,
@@ -27,11 +26,13 @@ function KampalaClock() {
     x2: cx + Math.cos((deg - 90) * Math.PI / 180) * len,
     y2: cy + Math.sin((deg - 90) * Math.PI / 180) * len,
   })
-  const timeStr = kla.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
-  const dateStr = kla.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
+  const timeStr    = kla.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
+  const secondsStr = String(kla.getSeconds()).padStart(2, '0')
+  const dateStr    = kla.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Kampala' })
   return (
-    <div className="flex items-center gap-3">
-      <svg width="72" height="72" viewBox="0 0 72 72">
+    <div className="flex items-center gap-4">
+      {/* Analog clock */}
+      <svg width="56" height="56" viewBox="0 0 72 72" className="flex-shrink-0">
         <circle cx={cx} cy={cy} r={r} fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
         {Array.from({ length: 12 }).map((_, i) => {
           const a = (i / 12) * 360 - 90
@@ -47,10 +48,14 @@ function KampalaClock() {
         <circle cx={cx} cy={cy} r="2.5" fill="white" />
         <circle cx={cx} cy={cy} r="1" fill="#29ABE2" />
       </svg>
+      {/* Digital time */}
       <div>
-        <p className="text-white font-bold text-lg leading-none">{timeStr}</p>
-        <p className="text-white/60 text-xs mt-0.5">{dateStr}</p>
-        <p className="text-emerald-300 text-[10px] font-semibold tracking-wide mt-0.5">EAT · Kampala</p>
+        <div className="flex items-baseline gap-1">
+          <span className="text-white font-black text-3xl leading-none tabular-nums">{timeStr}</span>
+          <span className="text-white/40 font-mono text-sm tabular-nums">{secondsStr}</span>
+        </div>
+        <p className="text-white/50 text-[11px] mt-0.5">{dateStr}</p>
+        <p className="text-emerald-300 text-[10px] font-semibold tracking-widest mt-0.5">EAT · KAMPALA, UG</p>
       </div>
     </div>
   )
@@ -171,10 +176,11 @@ export default function DoctorDashboardPage() {
         style={{ background: 'linear-gradient(135deg,#0A1628 0%,#0d2151 55%,#1A237E 100%)', minHeight: 256 }}>
 
         {/* Right: dental hero image */}
-        <div className="absolute right-0 top-0 bottom-0 w-1/2 pointer-events-none select-none">
-          <div className="absolute inset-0 z-10" style={{ background: 'linear-gradient(to right,#0A1628 0%,transparent 35%)' }} />
-          <Image src="/images/dental-hero.png" alt="Dental" fill
-            style={{ objectFit: 'cover', objectPosition: 'center', opacity: 0.9 }} priority />
+        <div className="absolute right-0 top-0 bottom-0 w-1/2 pointer-events-none select-none overflow-hidden">
+          <div className="absolute inset-0 z-10" style={{ background: 'linear-gradient(to right,#0A1628 0%,transparent 40%)' }} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/images/dental-hero.png" alt="Dental"
+            className="h-full w-full object-contain object-right opacity-90" />
           {/* Floating stat cards */}
           <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
             <div className="backdrop-blur-sm bg-white/10 border border-white/20 rounded-2xl px-3 py-2 text-right">

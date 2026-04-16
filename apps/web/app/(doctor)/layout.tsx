@@ -140,8 +140,8 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
       {/* ── Sidebar ── */}
       <aside className={cn(
-        'flex flex-col h-screen flex-shrink-0 transition-all duration-300 z-50',
-        'fixed lg:sticky top-0 border-r border-gray-100 dark:border-white/[0.06]',
+        'hidden md:flex flex-col h-screen flex-shrink-0 transition-all duration-300',
+        'border-r border-gray-100 dark:border-white/[0.06]',
         'bg-white dark:bg-[#0d1526]',
         collapsed ? 'w-[60px]' : 'w-[220px]',
       )}>
@@ -284,8 +284,10 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto relative">
           {children}
+          {/* Draggable Sarah chatbot */}
+          <DoctorSarahChatbot />
         </main>
       </div>
 
@@ -313,8 +315,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         })}
       </nav>
 
-      {/* Draggable Sarah chatbot */}
-      <DoctorSarahChatbot />
     </div>
   )
 }
