@@ -255,7 +255,7 @@ export default function DoctorPatientsPage() {
                   <div className="flex items-center gap-3 mt-2">
                     <Link href={`/patients/${p.id}`}
                       className="text-[11px] font-semibold text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:underline min-h-[32px] flex items-center">
-                      Profile
+                      View Full Profile
                     </Link>
                     <Link href={`/patients/${p.id}?tab=dental`}
                       className="text-[11px] font-semibold text-blue-500 hover:underline min-h-[32px] flex items-center">

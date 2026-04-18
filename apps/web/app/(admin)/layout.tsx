@@ -48,6 +48,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const u = JSON.parse(stored)
     if (u.role === 'RECEPTIONIST') { router.replace('/receptionist/dashboard'); return }
     if (u.role === 'DOCTOR') { router.replace('/doctor/dashboard'); return }
+    if (u.role === 'ACCOUNTS') { router.replace('/accounts/dashboard'); return }
     setUser(u)
     const isDark = localStorage.getItem('cc_theme') === 'dark'
     setDark(isDark)

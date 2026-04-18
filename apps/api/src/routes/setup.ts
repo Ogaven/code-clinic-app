@@ -228,11 +228,11 @@ router.post('/seed-production', async (req, res) => {
       today.setHours(0, 0, 0, 0)
 
       const slots = [
-        { pIdx: 0, dIdx: 0, sIdx: 0,  h: 9,  m: 0,  status: 'IN_PROGRESS' as const },
-        { pIdx: 1, dIdx: 0, sIdx: 3,  h: 10, m: 0,  status: 'CONFIRMED'   as const },
-        { pIdx: 2, dIdx: 1, sIdx: 1,  h: 11, m: 0,  status: 'CONFIRMED'   as const },
-        { pIdx: 3, dIdx: 1, sIdx: 7,  h: 14, m: 0,  status: 'SCHEDULED'   as const },
-        { pIdx: 4, dIdx: 2, sIdx: 2,  h: 15, m: 30, status: 'SCHEDULED'   as const },
+        { pIdx: 0, dIdx: 0, sIdx: 0,  h: 9,  m: 0,  status: 'WITH_PROVIDER' as const },
+        { pIdx: 1, dIdx: 0, sIdx: 3,  h: 10, m: 0,  status: 'CONFIRMED'     as const },
+        { pIdx: 2, dIdx: 1, sIdx: 1,  h: 11, m: 0,  status: 'CONFIRMED'     as const },
+        { pIdx: 3, dIdx: 1, sIdx: 7,  h: 14, m: 0,  status: 'CONFIRMED'     as const },
+        { pIdx: 4, dIdx: 2, sIdx: 2,  h: 15, m: 30, status: 'CONFIRMED'     as const },
       ]
 
       let apptCount = 0
@@ -266,6 +266,44 @@ router.post('/seed-production', async (req, res) => {
         }
       }
       log(`${apptCount} today's appointments created`)
+    }
+
+    // ── 5b. Dr. Steven Mugabe's specific appointments for today ──
+    const stevenUser = await prisma.user.findFirst({ where: { email: 'steven.mugabe@codeclinic.ug' } })
+    const stevenDoc  = stevenUser ? await prisma.doctor.findFirst({ where: { userId: stevenUser.id } }) : null
+    if (stevenDoc && adminUser) {
+      // Ensure Grace Atuhaire exists
+      await prisma.patient.upsert({
+        where:  { phone: '+256700100009' },
+        update: {},
+        create: { firstName: 'Grace', lastName: 'Atuhaire', phone: '+256700100009', gender: 'FEMALE', dateOfBirth: new Date('1992-06-20') },
+      })
+
+      const stevenSlots = [
+        { phone: '+256700100009', h: 8,  m: 0,  status: 'ARRIVED'       as const }, // Grace Atuhaire
+        { phone: '+256700100008', h: 9,  m: 0,  status: 'WAITING'       as const }, // Joseph Tumwine
+        { phone: '+256700100007', h: 9,  m: 30, status: 'IN_OPERATORY'  as const }, // Esther Nalwanga
+        { phone: '+256700100006', h: 10, m: 0,  status: 'WITH_PROVIDER' as const }, // Daniel Kiggundu
+        { phone: '+256700100005', h: 11, m: 0,  status: 'CONFIRMED'     as const }, // Peace Nakato
+        { phone: '+256700100004', h: 14, m: 0,  status: 'CONFIRMED'     as const }, // David Okello
+      ]
+      const consultService = await prisma.service.findFirst({ where: { name: 'Check and Treat' } })
+      let stevenApptCount = 0
+      for (const slot of stevenSlots) {
+        const patient = await prisma.patient.findFirst({ where: { phone: slot.phone } })
+        if (!patient || !consultService) continue
+        const startAt = new Date(today)
+        startAt.setHours(slot.h, slot.m, 0, 0)
+        const endAt = new Date(startAt.getTime() + consultService.durationMins * 60000)
+        const existing = await prisma.appointment.findFirst({ where: { patientId: patient.id, doctorId: stevenDoc.id, startAt } })
+        if (!existing) {
+          await prisma.appointment.create({
+            data: { patientId: patient.id, doctorId: stevenDoc.id, serviceId: consultService.id, startAt, endAt, status: slot.status, createdById: adminUser.id },
+          })
+          stevenApptCount++
+        }
+      }
+      log(`${stevenApptCount} Dr. Steven appointments created`)
     }
 
     // ── 6. AgentConfig (Zoe modes) ────────────────────────────

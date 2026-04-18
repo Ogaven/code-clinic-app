@@ -97,20 +97,27 @@ export default function DoctorDashboardPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  async function handleCheckIn() {
-    if (checkedIn || checkingIn || !token) return
+  // Issue 1: toggle between check-in and check-out
+  async function toggleCheckIn() {
+    if (checkingIn || !token) return
     setCheckingIn(true)
     try {
       const r = await fetch('/api-proxy/doctors/check-in', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ type: 'CHECK_IN' }),
+        body: JSON.stringify({ type: checkedIn ? 'CHECK_OUT' : 'CHECK_IN' }),
       })
       const d = await r.json()
       if (d.success) {
-        setCheckedIn(true)
-        setCheckInTime(d.time)
-        setToast(`Checked in at ${d.time} 👋`)
+        if (checkedIn) {
+          setCheckedIn(false)
+          setCheckInTime('')
+          setToast('Checked out. See you tomorrow! 👋')
+        } else {
+          setCheckedIn(true)
+          setCheckInTime(d.time)
+          setToast(`Checked in at ${d.time} 👋`)
+        }
         setTimeout(() => setToast(''), 4000)
       }
     } catch {} finally { setCheckingIn(false) }
@@ -171,17 +178,22 @@ export default function DoctorDashboardPage() {
             <CompactClock />
           </div>
 
-          {/* Right: Check In button */}
-          <button onClick={handleCheckIn} disabled={checkedIn || checkingIn}
-            className={cn(
-              'flex-shrink-0 flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all shadow-lg min-h-[44px] min-w-[130px] justify-center',
-              checkedIn
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 cursor-default'
-                : 'bg-emerald-500 hover:bg-emerald-400 text-white hover:-translate-y-0.5',
-            )}>
-            <CheckCircle size={15} />
-            {checkedIn ? 'Checked In' : checkingIn ? 'Checking…' : 'Check In'}
-          </button>
+          {/* Right: Check In / Check Out toggle */}
+          <div className="flex-shrink-0 flex flex-col items-end gap-1">
+            <button onClick={toggleCheckIn} disabled={checkingIn}
+              className={cn(
+                'flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all shadow-lg min-h-[44px] min-w-[130px] justify-center',
+                checkedIn
+                  ? 'bg-red-500 hover:bg-red-600 text-white hover:-translate-y-0.5'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-white hover:-translate-y-0.5',
+              )}>
+              <CheckCircle size={15} />
+              {checkingIn ? (checkedIn ? 'Checking out…' : 'Checking in…') : checkedIn ? 'Check Out' : 'Check In'}
+            </button>
+            {checkedIn && checkInTime && (
+              <p className="text-emerald-300 text-[10px] font-semibold">✓ In since {checkInTime}</p>
+            )}
+          </div>
         </div>
       </div>
 
