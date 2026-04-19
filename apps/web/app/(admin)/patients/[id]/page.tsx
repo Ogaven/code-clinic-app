@@ -788,30 +788,42 @@ function NotesTab({ patientId, token }: { patientId: string; token: string | nul
   const startRecording = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) { alert('Voice recording requires Chrome or Edge'); return }
-    const rec = new SR()
-    rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US'
-    accumulatedRef.current = content // preserve any already-typed text
-    rec.onresult = (e: any) => {
-      let interim = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) {
-          accumulatedRef.current += e.results[i][0].transcript + ' '
-        } else {
-          interim += e.results[i][0].transcript
+    accumulatedRef.current = content
+    isRecordingRef.current = true
+    setIsRecording(true)
+
+    function createAndStart() {
+      if (!isRecordingRef.current) return
+      const rec = new SR()
+      rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US'
+      rec.onresult = (e: any) => {
+        let interim = ''
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) {
+            accumulatedRef.current += e.results[i][0].transcript + ' '
+          } else {
+            interim += e.results[i][0].transcript
+          }
         }
+        setContent(accumulatedRef.current + interim)
       }
-      setContent(accumulatedRef.current + interim)
-    }
-    rec.onend = () => {
-      if (isRecordingRef.current) {
-        try { rec.start() } catch {} // auto-restart on silence
-      } else {
+      rec.onerror = (e: any) => {
+        if (e.error === 'no-speech' || e.error === 'aborted') return
+        isRecordingRef.current = false
         setIsRecording(false)
       }
+      rec.onend = () => {
+        if (isRecordingRef.current) {
+          setTimeout(createAndStart, 150) // fresh instance — avoids Chrome restart errors
+        } else {
+          setIsRecording(false)
+        }
+      }
+      recognitionRef.current = rec
+      try { rec.start() } catch {}
     }
-    recognitionRef.current = rec
-    isRecordingRef.current = true
-    rec.start(); setIsRecording(true)
+
+    createAndStart()
   }
 
   const stopRecording = () => {

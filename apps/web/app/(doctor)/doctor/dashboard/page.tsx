@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import {
-  Calendar, Users, CheckCircle, Clock, Activity,
+  Calendar, Users, Clock, Activity,
   ChevronRight, CalendarDays, Ban,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -85,9 +85,6 @@ export default function DoctorDashboardPage() {
   const [doctor, setDoctor]           = useState<any>(null)
   const [appointments, setAppts]      = useState<any[]>([])
   const [loading, setLoading]         = useState(true)
-  const [checkedIn, setCheckedIn]     = useState(false)
-  const [checkInTime, setCheckInTime] = useState('')
-  const [checkingIn, setCheckingIn]   = useState(false)
   const [toast, setToast]             = useState('')
   const [blockOpen, setBlockOpen]     = useState(false)
   const [blockDate, setBlockDate]     = useState(() => new Date().toISOString().slice(0, 10))
@@ -113,40 +110,10 @@ export default function DoctorDashboardPage() {
       })
       const all = await apptRes.json()
       setAppts(Array.isArray(all) && me ? all.filter((a: any) => a.doctorId === me.id) : [])
-      const ciRes = await fetch('/api-proxy/doctors/check-in/today', { headers: { Authorization: `Bearer ${token}` } })
-      const ci = await ciRes.json()
-      setCheckedIn(ci.checkedIn)
-      setCheckInTime(ci.time || '')
     } catch (e) { console.error(e) } finally { setLoading(false) }
   }, [token])
 
   useEffect(() => { fetchData() }, [fetchData])
-
-  // Issue 1: toggle between check-in and check-out
-  async function toggleCheckIn() {
-    if (checkingIn || !token) return
-    setCheckingIn(true)
-    try {
-      const r = await fetch('/api-proxy/doctors/check-in', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ type: checkedIn ? 'CHECK_OUT' : 'CHECK_IN' }),
-      })
-      const d = await r.json()
-      if (d.success) {
-        if (checkedIn) {
-          setCheckedIn(false)
-          setCheckInTime('')
-          setToast('Checked out. See you tomorrow! 👋')
-        } else {
-          setCheckedIn(true)
-          setCheckInTime(d.time)
-          setToast(`Checked in at ${d.time} 👋`)
-        }
-        setTimeout(() => setToast(''), 4000)
-      }
-    } catch {} finally { setCheckingIn(false) }
-  }
 
   async function handleBlockTime() {
     if (!doctor || !token) return
@@ -191,17 +158,6 @@ export default function DoctorDashboardPage() {
             Dr. {user?.firstName || '…'} {user?.lastName} 👋
           </h1>
           <p className="text-gray-400 dark:text-gray-400 text-sm mt-0.5">{doctor?.specialisation || 'General Dentistry'}</p>
-          {checkedIn && <p className="text-emerald-500 text-xs font-semibold mt-1">✓ In since {checkInTime}</p>}
-          <button onClick={toggleCheckIn} disabled={checkingIn}
-            className={cn(
-              'mt-3 flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg transition-all hover:-translate-y-0.5 min-h-[44px]',
-              checkedIn
-                ? 'bg-red-500 hover:bg-red-600 text-white'
-                : 'bg-emerald-500 hover:bg-emerald-400 text-white',
-            )}>
-            <CheckCircle size={15} />
-            {checkingIn ? (checkedIn ? 'Checking out…' : 'Checking in…') : checkedIn ? `Check Out · ${checkInTime}` : 'Check In'}
-          </button>
         </div>
 
         {/* Centre: Analog clock — hidden on mobile */}

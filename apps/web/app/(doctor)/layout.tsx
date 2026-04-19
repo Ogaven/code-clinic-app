@@ -7,7 +7,7 @@ import { useEffect, useState, useCallback } from 'react'
 import {
   LayoutDashboard, CalendarDays, Users, Activity,
   MessageSquare, Settings, HelpCircle, Download,
-  Bell, UserCircle, LogOut, Sun, Moon, Monitor,
+  Bell, UserCircle, LogOut,
   ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -154,14 +154,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     router.push('/login')
   }
 
-  // Issue 6: system → light → dark → system
-  function cycleTheme() {
-    const next: Theme = theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system'
-    setTheme(next)
-    localStorage.setItem('cc_theme', next)
-    applyTheme(next)
-  }
-
   const initials = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'D'
 
   return (
@@ -251,13 +243,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           </button>
 
           <div className="flex-1" />
-
-          {/* Issue 6: Theme cycle button */}
-          <button onClick={cycleTheme}
-            className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors text-gray-500 dark:text-white/60"
-            title={`${theme} mode`}>
-            {theme === 'dark' ? <Moon size={16} /> : theme === 'light' ? <Sun size={16} /> : <Monitor size={16} />}
-          </button>
 
           {/* Notifications bell */}
           <Link href="/doctor/notifications"
