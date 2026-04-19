@@ -276,7 +276,7 @@ router.post('/seed-production', async (req, res) => {
       await prisma.patient.upsert({
         where:  { phone: '+256700100009' },
         update: {},
-        create: { firstName: 'Grace', lastName: 'Atuhaire', phone: '+256700100009', gender: 'FEMALE', dateOfBirth: new Date('1992-06-20') },
+        create: { firstName: 'Grace', lastName: 'Atuhaire', phone: '+256700100009', gender: 'FEMALE', dob: new Date('1992-06-20') },
       })
 
       const stevenSlots = [
