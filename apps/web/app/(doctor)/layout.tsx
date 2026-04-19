@@ -38,10 +38,10 @@ const NAV_BOTTOM = [
 ]
 
 function NavLink({
-  href, label, icon: Icon, badge, unread, collapsed, onNavigate,
+  href, label, icon: Icon, badge, unread, collapsed, muted, onNavigate,
 }: {
   href: string; label: string; icon: any; badge?: boolean; unread: number
-  collapsed: boolean; onNavigate?: () => void
+  collapsed: boolean; muted?: boolean; onNavigate?: () => void
 }) {
   const pathname = usePathname()
   const active   = pathname === href || pathname.startsWith(href + '/')
@@ -50,14 +50,17 @@ function NavLink({
   return (
     <Link href={href} title={collapsed ? label : undefined} onClick={onNavigate}
       className={cn(
-        'relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-[13px] font-medium group min-h-[44px]',
+        'relative flex items-center gap-3 px-3 rounded-xl transition-all font-medium group min-h-[44px]',
+        muted ? 'py-2 text-[12px]' : 'py-2.5 text-[13px]',
         collapsed && 'justify-center px-2',
         active
           ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold'
-          : 'text-gray-600 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/[0.05]',
+          : muted
+            ? 'text-gray-400 dark:text-white/30 hover:bg-gray-100 dark:hover:bg-white/[0.05]'
+            : 'text-gray-600 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/[0.05]',
       )}>
       {active && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-blue-500" />}
-      <Icon size={16} className="flex-shrink-0" />
+      <Icon size={muted ? 14 : 16} className="flex-shrink-0" />
       {!collapsed && <span className="truncate flex-1">{label}</span>}
       {showBadge && !collapsed && (
         <span className="ml-auto text-[9px] font-bold bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0">
@@ -277,9 +280,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           <div className="my-3 border-t border-gray-100 dark:border-white/[0.06]" />
           {/* Bottom nav items */}
           {NAV_BOTTOM.map(item => (
-            <NavLink key={item.href} {...item} unread={0} collapsed={collapsed}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              {...{ className: 'text-gray-500 dark:text-white/40' } as any} />
+            <NavLink key={item.href} {...item} unread={0} collapsed={collapsed} muted />
           ))}
         </nav>
 
@@ -306,7 +307,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               ))}
               <div className="my-3 border-t border-gray-100 dark:border-white/[0.06]" />
               {NAV_BOTTOM.map(item => (
-                <NavLink key={item.href} {...item} unread={0} collapsed={false} onNavigate={() => setDrawer(false)} />
+                <NavLink key={item.href} {...item} unread={0} collapsed={false} muted onNavigate={() => setDrawer(false)} />
               ))}
             </nav>
             <SidebarBottom inDrawer />

@@ -70,6 +70,7 @@ export default function DoctorDashboardPage() {
   const [blockEnd, setBlockEnd]       = useState('13:00')
   const [blockReason, setBlockReason] = useState('Lunch Break')
   const [blockSaving, setBlockSaving] = useState(false)
+  const [isDark, setIsDark]           = useState(true)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
@@ -96,6 +97,14 @@ export default function DoctorDashboardPage() {
   }, [token])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  useEffect(() => {
+    const check = () => setIsDark(document.documentElement.classList.contains('dark'))
+    check()
+    const obs = new MutationObserver(check)
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => obs.disconnect()
+  }, [])
 
   // Issue 1: toggle between check-in and check-out
   async function toggleCheckIn() {
@@ -158,7 +167,9 @@ export default function DoctorDashboardPage() {
 
       {/* ── COMPACT WELCOME BAR ─────────────────────────────────────────────── */}
       <div className="rounded-2xl px-5 py-4 shadow-lg"
-        style={{ background: 'linear-gradient(135deg,#0A1628 0%,#0d2151 55%,#1A237E 100%)' }}>
+        style={{ background: isDark
+          ? 'linear-gradient(135deg,#0A1628 0%,#0d2151 55%,#1A237E 100%)'
+          : 'linear-gradient(135deg,#1565C0 0%,#1976D2 55%,#42A5F5 100%)' }}>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
 
           {/* Left: Greeting */}
@@ -188,7 +199,7 @@ export default function DoctorDashboardPage() {
                   : 'bg-emerald-500 hover:bg-emerald-400 text-white hover:-translate-y-0.5',
               )}>
               <CheckCircle size={15} />
-              {checkingIn ? (checkedIn ? 'Checking out…' : 'Checking in…') : checkedIn ? 'Check Out' : 'Check In'}
+              {checkingIn ? (checkedIn ? 'Checking out…' : 'Checking in…') : checkedIn ? `Check Out · ${checkInTime}` : 'Check In'}
             </button>
             {checkedIn && checkInTime && (
               <p className="text-emerald-300 text-[10px] font-semibold">✓ In since {checkInTime}</p>
