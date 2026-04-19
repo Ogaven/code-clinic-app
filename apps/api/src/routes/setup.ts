@@ -288,11 +288,13 @@ router.post('/seed-production', async (req, res) => {
         { phone: '+256700100004', h: 14, m: 0,  status: 'CONFIRMED'     as const }, // David Okello
       ]
       const consultService = await prisma.service.findFirst({ where: { name: 'Check and Treat' } })
+      const todayKampala = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+      todayKampala.setHours(0, 0, 0, 0)
       let stevenApptCount = 0
       for (const slot of stevenSlots) {
         const patient = await prisma.patient.findFirst({ where: { phone: slot.phone } })
         if (!patient || !consultService) continue
-        const startAt = new Date(today)
+        const startAt = new Date(todayKampala)
         startAt.setHours(slot.h, slot.m, 0, 0)
         const endAt = new Date(startAt.getTime() + consultService.durationMins * 60000)
         const existing = await prisma.appointment.findFirst({ where: { patientId: patient.id, doctorId: stevenDoc.id, startAt } })
