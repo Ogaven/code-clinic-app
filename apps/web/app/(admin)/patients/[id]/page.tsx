@@ -775,7 +775,9 @@ function NotesTab({ patientId, token }: { patientId: string; token: string | nul
   const [isSaving, setIsSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
-  const recognitionRef = useRef<any>(null)
+  const recognitionRef  = useRef<any>(null)
+  const isRecordingRef  = useRef(false)
+  const accumulatedRef  = useRef('')
   const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cc_user') || '{}') : {}
 
   useEffect(() => {
@@ -788,16 +790,35 @@ function NotesTab({ patientId, token }: { patientId: string; token: string | nul
     if (!SR) { alert('Voice recording requires Chrome or Edge'); return }
     const rec = new SR()
     rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US'
+    accumulatedRef.current = content // preserve any already-typed text
     rec.onresult = (e: any) => {
-      const t = Array.from(e.results).map((r: any) => r[0].transcript).join(' ')
-      setContent(t)
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          accumulatedRef.current += e.results[i][0].transcript + ' '
+        } else {
+          interim += e.results[i][0].transcript
+        }
+      }
+      setContent(accumulatedRef.current + interim)
     }
-    rec.onend = () => setIsRecording(false)
+    rec.onend = () => {
+      if (isRecordingRef.current) {
+        try { rec.start() } catch {} // auto-restart on silence
+      } else {
+        setIsRecording(false)
+      }
+    }
     recognitionRef.current = rec
+    isRecordingRef.current = true
     rec.start(); setIsRecording(true)
   }
 
-  const stopRecording = () => { recognitionRef.current?.stop(); setIsRecording(false) }
+  const stopRecording = () => {
+    isRecordingRef.current = false
+    recognitionRef.current?.stop()
+    setIsRecording(false)
+  }
 
   const handleSave = async () => {
     if (!content.trim()) return

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import {
   Calendar, Users, CheckCircle, Clock, Activity,
@@ -9,24 +10,48 @@ import {
 import { cn } from '@/lib/utils'
 import LivePatientFlow from '@/components/scheduling/LivePatientFlow'
 
-// Compact digital clock for welcome bar
-function CompactClock() {
+function AnalogClock() {
   const [time, setTime] = useState(new Date())
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
-  const kla     = new Date(time.toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+  const kla  = new Date(time.toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+  const h    = kla.getHours() % 12
+  const m    = kla.getMinutes()
+  const s    = kla.getSeconds()
+  const hDeg = h / 12 * 360 + m / 60 * 30
+  const mDeg = m / 60 * 360 + s / 60 * 6
+  const sDeg = s / 60 * 360
+  const cx = 44, cy = 44, r = 40
+  const hand = (deg: number, len: number) => ({
+    x2: cx + Math.cos((deg - 90) * Math.PI / 180) * len,
+    y2: cy + Math.sin((deg - 90) * Math.PI / 180) * len,
+  })
   const timeStr = kla.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
-  const secStr  = String(kla.getSeconds()).padStart(2, '0')
-  const dateStr = kla.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short' })
+  const dateStr = kla.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'long', year: '2-digit' })
+    .replace(',', '').replace(/(\d+) (\w+) (\d+)/, '$1 $2 \'$3')
   return (
-    <div className="text-center">
-      <div className="flex items-baseline gap-1 justify-center">
-        <span className="text-white font-black text-2xl tabular-nums leading-none">{timeStr}</span>
-        <span className="text-white/40 text-sm tabular-nums font-mono">{secStr}</span>
-      </div>
-      <p className="text-white/40 text-[10px] mt-0.5 uppercase tracking-wider">{dateStr} · EAT</p>
+    <div className="flex flex-col items-center gap-1.5">
+      <svg width="88" height="88" viewBox="0 0 88 88">
+        <circle cx={cx} cy={cy} r={r} fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5"/>
+        <circle cx={cx} cy={cy} r={r-4} fill="rgba(255,255,255,0.04)"/>
+        {Array.from({ length: 12 }).map((_, i) => {
+          const a  = (i / 12) * 360 - 90
+          const x1 = cx + Math.cos(a * Math.PI/180) * (r - 6)
+          const y1 = cy + Math.sin(a * Math.PI/180) * (r - 6)
+          const x2 = cx + Math.cos(a * Math.PI/180) * (r - 2)
+          const y2 = cy + Math.sin(a * Math.PI/180) * (r - 2)
+          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.45)" strokeWidth={i % 3 === 0 ? 2 : 1} strokeLinecap="round"/>
+        })}
+        <line x1={cx} y1={cy} x2={hand(hDeg,22).x2} y2={hand(hDeg,22).y2} stroke="white" strokeWidth="3" strokeLinecap="round"/>
+        <line x1={cx} y1={cy} x2={hand(mDeg,30).x2} y2={hand(mDeg,30).y2} stroke="#29ABE2" strokeWidth="2" strokeLinecap="round"/>
+        <line x1={cx} y1={cy} x2={hand(sDeg,34).x2} y2={hand(sDeg,34).y2} stroke="#EC4899" strokeWidth="1.2" strokeLinecap="round"/>
+        <circle cx={cx} cy={cy} r="3.5" fill="white"/>
+        <circle cx={cx} cy={cy} r="1.5" fill="#29ABE2"/>
+      </svg>
+      <p className="text-white/90 text-[11px] font-bold tracking-wide">{timeStr} EAT</p>
+      <p className="text-blue-200 text-[9px] font-semibold tracking-wider uppercase">{dateStr}</p>
     </div>
   )
 }
@@ -70,7 +95,6 @@ export default function DoctorDashboardPage() {
   const [blockEnd, setBlockEnd]       = useState('13:00')
   const [blockReason, setBlockReason] = useState('Lunch Break')
   const [blockSaving, setBlockSaving] = useState(false)
-  const [isDark, setIsDark]           = useState(true)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
@@ -97,14 +121,6 @@ export default function DoctorDashboardPage() {
   }, [token])
 
   useEffect(() => { fetchData() }, [fetchData])
-
-  useEffect(() => {
-    const check = () => setIsDark(document.documentElement.classList.contains('dark'))
-    check()
-    const obs = new MutationObserver(check)
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-    return () => obs.disconnect()
-  }, [])
 
   // Issue 1: toggle between check-in and check-out
   async function toggleCheckIn() {
@@ -165,48 +181,48 @@ export default function DoctorDashboardPage() {
         </div>
       )}
 
-      {/* ── COMPACT WELCOME BAR ─────────────────────────────────────────────── */}
-      <div className="rounded-2xl px-5 py-4 shadow-lg"
-        style={{ background: isDark
-          ? 'linear-gradient(135deg,#0A1628 0%,#0d2151 55%,#1A237E 100%)'
-          : 'linear-gradient(135deg,#1565C0 0%,#1976D2 55%,#42A5F5 100%)' }}>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      {/* ── HERO: greeting left · clock centre · dental right ──────────────── */}
+      <div className="relative flex items-end gap-4" style={{ marginBottom: -44 }}>
 
-          {/* Left: Greeting */}
-          <div className="flex-1 min-w-0">
-            <p className="text-white/55 text-xs font-medium">{getGreeting()},</p>
-            <h1 className="text-xl font-black text-white truncate" style={{ fontFamily: 'Plus Jakarta Sans' }}>
-              Dr. {user?.firstName || '…'} {user?.lastName} 👋
-            </h1>
-            <p className="text-white/40 text-xs mt-0.5">{doctor?.specialisation || 'General Dentistry'}</p>
-            {checkedIn && (
-              <p className="text-emerald-400 text-[11px] font-semibold mt-1">✓ Checked in at {checkInTime}</p>
-            )}
-          </div>
+        {/* Left: Greeting + Check In */}
+        <div className="flex-1 pb-3 relative z-10">
+          <p className="text-gray-500 dark:text-blue-300/60 text-sm font-medium">{getGreeting()},</p>
+          <h1 className="text-2xl font-black text-gray-900 dark:text-white" style={{ fontFamily: 'Plus Jakarta Sans' }}>
+            Dr. {user?.firstName || '…'} {user?.lastName} 👋
+          </h1>
+          <p className="text-gray-400 dark:text-gray-400 text-sm mt-0.5">{doctor?.specialisation || 'General Dentistry'}</p>
+          {checkedIn && <p className="text-emerald-500 text-xs font-semibold mt-1">✓ In since {checkInTime}</p>}
+          <button onClick={toggleCheckIn} disabled={checkingIn}
+            className={cn(
+              'mt-3 flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg transition-all hover:-translate-y-0.5 min-h-[44px]',
+              checkedIn
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-emerald-500 hover:bg-emerald-400 text-white',
+            )}>
+            <CheckCircle size={15} />
+            {checkingIn ? (checkedIn ? 'Checking out…' : 'Checking in…') : checkedIn ? `Check Out · ${checkInTime}` : 'Check In'}
+          </button>
+        </div>
 
-          {/* Center: Live clock (hidden on mobile) */}
-          <div className="hidden sm:block flex-shrink-0 border-l border-r border-white/10 px-6">
-            <CompactClock />
-          </div>
+        {/* Centre: Analog clock — hidden on mobile */}
+        <div className="hidden sm:block flex-shrink-0 rounded-2xl px-5 py-4 shadow-2xl"
+          style={{
+            background: 'linear-gradient(135deg,#1A237E,#0d47a1)',
+            boxShadow: '0 12px 40px rgba(26,35,126,0.4)',
+            position: 'absolute', left: '50%', bottom: 0, transform: 'translateX(-50%)', zIndex: 5,
+          }}>
+          <AnalogClock />
+        </div>
 
-          {/* Right: Check In / Check Out toggle */}
-          <div className="flex-shrink-0 flex flex-col items-end gap-1">
-            <button onClick={toggleCheckIn} disabled={checkingIn}
-              className={cn(
-                'flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all shadow-lg min-h-[44px] min-w-[130px] justify-center',
-                checkedIn
-                  ? 'bg-red-500 hover:bg-red-600 text-white hover:-translate-y-0.5'
-                  : 'bg-emerald-500 hover:bg-emerald-400 text-white hover:-translate-y-0.5',
-              )}>
-              <CheckCircle size={15} />
-              {checkingIn ? (checkedIn ? 'Checking out…' : 'Checking in…') : checkedIn ? `Check Out · ${checkInTime}` : 'Check In'}
-            </button>
-            {checkedIn && checkInTime && (
-              <p className="text-emerald-300 text-[10px] font-semibold">✓ In since {checkInTime}</p>
-            )}
-          </div>
+        {/* Right: Dental image — hidden on mobile */}
+        <div className="hidden sm:block flex-shrink-0 pointer-events-none select-none" style={{ width: 170 }}>
+          <Image src="/dental40.png" alt="Dental" width={170} height={150} priority
+            style={{ objectFit: 'contain', objectPosition: 'bottom', filter: 'drop-shadow(0 10px 32px rgba(41,171,226,0.35))', display: 'block', width: '100%', height: 'auto' }} />
         </div>
       </div>
+
+      {/* Spacer to clear the overlapping clock widget — desktop only */}
+      <div className="hidden sm:block" style={{ height: 52 }} />
 
       {/* ── KPI ROW ─────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

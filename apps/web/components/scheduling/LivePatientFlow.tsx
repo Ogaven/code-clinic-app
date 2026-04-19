@@ -194,8 +194,10 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000 }: L
                     const { text: elText, color: elColor } = elapsed(appt.updatedAt)
                     return (
                       <div key={appt.id}
-                        className="bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-white/10 p-2.5 shadow-sm">
-                        <div className="flex items-start gap-2">
+                        className="bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+                        {/* Entire patient info area is clickable */}
+                        <Link href={`/patients/${appt.patient.id}`}
+                          className="flex items-start gap-2 p-2.5 hover:bg-blue-50/40 dark:hover:bg-blue-900/10 transition-colors">
                           <Avatar
                             firstName={appt.patient.firstName}
                             lastName={appt.patient.lastName}
@@ -207,7 +209,6 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000 }: L
                               {appt.patient.firstName} {appt.patient.lastName}
                             </p>
                             <p className="text-[10px] text-gray-400 truncate">{appt.service.name}</p>
-                            {/* Elapsed timer with color coding */}
                             <div className="flex items-center gap-1 mt-0.5">
                               <Clock size={9} style={{ color: elColor }} />
                               <span className="text-[9px] font-bold tabular-nums" style={{ color: elColor }}>
@@ -215,26 +216,22 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000 }: L
                               </span>
                             </div>
                           </div>
-                        </div>
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-1.5 mt-2">
-                          <Link href={`/patients/${appt.patient.id}`}
-                            className="text-[9px] text-blue-500 hover:underline font-semibold flex-shrink-0">
-                            Profile
-                          </Link>
-                          {stage.next && (
+                        </Link>
+                        {/* Advance button */}
+                        {stage.next && (
+                          <div className="px-2.5 pb-2.5">
                             <button
                               onClick={() => advance(appt.id, stage.next)}
                               disabled={advancing === appt.id}
-                              className="flex-1 flex items-center justify-center gap-0.5 py-1 rounded-lg text-[9px] font-bold text-white transition-all hover:opacity-90 disabled:opacity-50"
+                              className="w-full flex items-center justify-center gap-0.5 py-1 rounded-lg text-[9px] font-bold text-white transition-all hover:opacity-90 disabled:opacity-50"
                               style={{ background: stage.color }}>
                               {advancing === appt.id
                                 ? '…'
                                 : <><ChevronRight size={9} />{stage.nextLabel}</>
                               }
                             </button>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}

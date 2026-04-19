@@ -8,7 +8,7 @@ import {
   LayoutDashboard, CalendarDays, Users, Activity,
   MessageSquare, Settings, HelpCircle, Download,
   Bell, UserCircle, LogOut, Sun, Moon, Monitor,
-  ChevronLeft, ChevronRight, Clock, LogIn, Menu, X,
+  ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import DoctorSarahChatbot from '@/components/DoctorSarahChatbot'
@@ -83,29 +83,14 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const router   = useRouter()
 
   const [user, setUser]           = useState<any>(null)
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)  // Issue 5
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [collapsed, setCol]       = useState(false)
   const [theme, setTheme]         = useState<Theme>('dark')
   const [showProfile, setProf]    = useState(false)
   const [unread, setUnread]       = useState(0)
-  const [checkedIn, setCheckedIn] = useState(false)
-  const [checkInTime, setTime]    = useState('')
-  const [checkingIn, setCheckingIn] = useState(false)
   const [drawerOpen, setDrawer]   = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-
-  const fetchCheckIn = useCallback(async () => {
-    if (!token) return
-    try {
-      const r = await fetch('/api-proxy/doctors/check-in/today', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const d = await r.json()
-      setCheckedIn(d.checkedIn)
-      setTime(d.time || '')
-    } catch {}
-  }, [token])
 
   const fetchUnread = useCallback(async () => {
     if (!token) return
@@ -154,33 +139,14 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     setTheme(t)
     applyTheme(t)
 
-    fetchCheckIn()
     fetchUnread()
     fetchDoctorAvatar(u.id)
 
     const interval = setInterval(fetchUnread, 30000)
     return () => clearInterval(interval)
-  }, [router, fetchCheckIn, fetchUnread, fetchDoctorAvatar])
+  }, [router, fetchUnread, fetchDoctorAvatar])
 
   useEffect(() => { setDrawer(false) }, [pathname])
-
-  // Issue 1: Combined check-in/check-out toggle
-  async function toggleCheckIn() {
-    if (checkingIn || !token) return
-    setCheckingIn(true)
-    try {
-      const r = await fetch('/api-proxy/doctors/check-in', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ type: checkedIn ? 'CHECK_OUT' : 'CHECK_IN' }),
-      })
-      const d = await r.json()
-      if (d.success) {
-        setCheckedIn(!checkedIn)
-        setTime(checkedIn ? '' : (d.time || ''))
-      }
-    } catch {} finally { setCheckingIn(false) }
-  }
 
   function logout() {
     localStorage.removeItem('cc_token')
@@ -197,57 +163,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   }
 
   const initials = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'D'
-
-  // Shared sidebar bottom section (check-in + theme + collapse)
-  function SidebarBottom({ inDrawer = false }: { inDrawer?: boolean }) {
-    return (
-      <div className={cn(
-        'border-t border-gray-100 dark:border-white/[0.06] pt-3 space-y-1.5',
-        inDrawer ? 'px-3 pb-6' : 'px-2 pb-3',
-      )}>
-        {/* Issue 1: Check In / Check Out toggle */}
-        <button onClick={toggleCheckIn} disabled={checkingIn}
-          className={cn(
-            'w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all min-h-[44px]',
-            !inDrawer && collapsed && 'justify-center px-2',
-            inDrawer && 'text-sm px-4',
-            checkedIn
-              ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30'
-              : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm',
-          )}>
-          {checkedIn
-            ? <><LogIn size={inDrawer ? 15 : 14} className="flex-shrink-0 rotate-180" />{(!collapsed || inDrawer) && <span className="truncate">{checkingIn ? 'Checking out…' : `Check Out · ${checkInTime}`}</span>}</>
-            : <><Clock size={inDrawer ? 15 : 14} className="flex-shrink-0" />{(!collapsed || inDrawer) && <span>{checkingIn ? 'Checking in…' : 'Check In'}</span>}</>
-          }
-        </button>
-
-        {/* Theme toggle */}
-        <button onClick={cycleTheme}
-          className={cn(
-            'w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-400 dark:text-white/40 hover:bg-gray-100 dark:hover:bg-white/5 transition-all min-h-[44px]',
-            !inDrawer && collapsed && 'justify-center px-2',
-            inDrawer && 'text-sm px-4',
-          )}>
-          {theme === 'dark' ? <Moon size={inDrawer ? 15 : 14} /> : theme === 'light' ? <Sun size={inDrawer ? 15 : 14} /> : <Monitor size={inDrawer ? 15 : 14} />}
-          {(!collapsed || inDrawer) && <span className="capitalize">{theme} mode</span>}
-        </button>
-
-        {!inDrawer && (
-          <button onClick={() => setCol(c => !c)}
-            className="w-full flex items-center justify-center px-3 py-2 rounded-xl text-gray-400 dark:text-white/30 hover:bg-gray-100 dark:hover:bg-white/5 transition-all text-xs font-medium gap-1 min-h-[44px]">
-            {collapsed ? <ChevronRight size={15} /> : <><ChevronLeft size={15} /><span>Collapse</span></>}
-          </button>
-        )}
-
-        {inDrawer && (
-          <button onClick={logout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors min-h-[44px]">
-            <LogOut size={15} /> Logout
-          </button>
-        )}
-      </div>
-    )
-  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[#0A0F1E]">
@@ -271,20 +186,24 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                 className="object-contain dark:brightness-0 dark:invert" priority />}
         </Link>
 
-        {/* Main nav */}
+        {/* Main nav + bottom nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
           {NAV_MAIN.map(item => (
             <NavLink key={item.href} {...item} unread={unread} collapsed={collapsed} />
           ))}
-          {/* Divider */}
           <div className="my-3 border-t border-gray-100 dark:border-white/[0.06]" />
-          {/* Bottom nav items */}
           {NAV_BOTTOM.map(item => (
-            <NavLink key={item.href} {...item} unread={0} collapsed={collapsed} muted />
+            <NavLink key={item.href} {...item} unread={0} collapsed={collapsed} />
           ))}
         </nav>
 
-        <SidebarBottom />
+        {/* Collapse button only */}
+        <div className="border-t border-gray-100 dark:border-white/[0.06] px-2 py-3">
+          <button onClick={() => setCol(c => !c)}
+            className="w-full flex items-center justify-center px-3 py-2 rounded-xl text-gray-400 dark:text-white/30 hover:bg-gray-100 dark:hover:bg-white/5 transition-all text-xs font-medium gap-1 min-h-[44px]">
+            {collapsed ? <ChevronRight size={15} /> : <><ChevronLeft size={15} /><span>Collapse</span></>}
+          </button>
+        </div>
       </aside>
 
       {/* ── Mobile Drawer ────────────────────────────────────────────────────── */}
@@ -307,10 +226,15 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               ))}
               <div className="my-3 border-t border-gray-100 dark:border-white/[0.06]" />
               {NAV_BOTTOM.map(item => (
-                <NavLink key={item.href} {...item} unread={0} collapsed={false} muted onNavigate={() => setDrawer(false)} />
+                <NavLink key={item.href} {...item} unread={0} collapsed={false} onNavigate={() => setDrawer(false)} />
               ))}
             </nav>
-            <SidebarBottom inDrawer />
+            <div className="border-t border-gray-100 dark:border-white/[0.06] px-3 py-4 pb-6">
+              <button onClick={logout}
+                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors min-h-[44px]">
+                <LogOut size={15} /> Logout
+              </button>
+            </div>
           </aside>
         </div>
       )}
