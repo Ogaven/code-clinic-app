@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import {
-  Calendar, Users, Clock, Activity,
+  Calendar, Users, CheckCircle, Clock, Activity,
   ChevronRight, CalendarDays, Ban,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
