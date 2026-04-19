@@ -428,6 +428,260 @@ router.post('/seed-production', async (req, res) => {
     }
     log('5 AgentPrompt records upserted')
 
+    // ── 10. Extended demo patients (25 more) ─────────────────────
+    const extraPatients = [
+      { firstName: 'Aisha',     lastName: 'Nakigozi',  phone: '+256701200001', email: 'aisha.nakigozi@gmail.com',  gender: 'FEMALE', dob: new Date('1994-02-14'), address: 'Ntinda, Kampala',       district: 'Kampala' },
+      { firstName: 'Brian',     lastName: 'Wasswa',    phone: '+256701200002', email: 'brian.wasswa@yahoo.com',    gender: 'MALE',   dob: new Date('1988-08-30'), address: 'Bukoto, Kampala',       district: 'Kampala' },
+      { firstName: 'Christine', lastName: 'Akello',    phone: '+256701200003', email: 'c.akello@gmail.com',        gender: 'FEMALE', dob: new Date('1997-05-21'), address: 'Mulago, Kampala',       district: 'Kampala' },
+      { firstName: 'Denis',     lastName: 'Muwonge',   phone: '+256701200004', email: 'denis.muwonge@gmail.com',   gender: 'MALE',   dob: new Date('1983-11-07'), address: 'Bweyogerere, Wakiso',   district: 'Wakiso'  },
+      { firstName: 'Evelyn',    lastName: 'Atuhaire',  phone: '+256701200005', email: null,                        gender: 'FEMALE', dob: new Date('2001-09-03'), address: 'Najjera, Wakiso',       district: 'Wakiso'  },
+      { firstName: 'Francis',   lastName: 'Ssebunya',  phone: '+256701200006', email: 'f.ssebunya@hotmail.com',    gender: 'MALE',   dob: new Date('1976-04-19'), address: 'Kololo, Kampala',       district: 'Kampala' },
+      { firstName: 'Gloria',    lastName: 'Namanya',   phone: '+256701200007', email: null,                        gender: 'FEMALE', dob: new Date('1999-12-01'), address: 'Kira, Wakiso',          district: 'Wakiso'  },
+      { firstName: 'Hassan',    lastName: 'Sserunkuma',phone: '+256701200008', email: 'hassan.s@gmail.com',        gender: 'MALE',   dob: new Date('1991-03-28'), address: 'Wandegeya, Kampala',    district: 'Kampala' },
+      { firstName: 'Irene',     lastName: 'Kyomuhendo',phone: '+256701200009', email: null,                        gender: 'FEMALE', dob: new Date('1986-07-15'), address: 'Rubaga, Kampala',       district: 'Kampala' },
+      { firstName: 'James',     lastName: 'Byaruhanga', phone: '+256701200010',email: 'james.bya@gmail.com',       gender: 'MALE',   dob: new Date('1979-10-22'), address: 'Muyenga, Kampala',      district: 'Kampala' },
+      { firstName: 'Kasozi',    lastName: 'Raymond',   phone: '+256701200011', email: null,                        gender: 'MALE',   dob: new Date('2003-01-09'), address: 'Mengo, Kampala',        district: 'Kampala' },
+      { firstName: 'Lydia',     lastName: 'Nabirye',   phone: '+256701200012', email: 'lydia.nabirye@gmail.com',   gender: 'FEMALE', dob: new Date('1992-06-30'), address: 'Bugolobi, Kampala',     district: 'Kampala' },
+      { firstName: 'Michael',   lastName: 'Ochen',     phone: '+256701200013', email: null,                        gender: 'MALE',   dob: new Date('1987-08-11'), address: 'Gulu',                  district: 'Gulu'    },
+      { firstName: 'Norah',     lastName: 'Nantongo',  phone: '+256701200014', email: 'norah.nantongo@gmail.com',  gender: 'FEMALE', dob: new Date('2000-04-25'), address: 'Entebbe, Wakiso',       district: 'Wakiso'  },
+      { firstName: 'Oliver',    lastName: 'Tumusiime', phone: '+256701200015', email: null,                        gender: 'MALE',   dob: new Date('1995-02-18'), address: 'Nansana, Wakiso',       district: 'Wakiso'  },
+      { firstName: 'Patience',  lastName: 'Alupo',     phone: '+256701200016', email: 'p.alupo@gmail.com',         gender: 'FEMALE', dob: new Date('1972-09-08'), address: 'Kololo, Kampala',       district: 'Kampala' },
+      { firstName: 'Qalam',     lastName: 'Kisekka',   phone: '+256701200017', email: null,                        gender: 'MALE',   dob: new Date('1998-07-14'), address: 'Makindye, Kampala',     district: 'Kampala' },
+      { firstName: 'Ruth',      lastName: 'Achan',     phone: '+256701200018', email: 'ruth.achan@gmail.com',      gender: 'FEMALE', dob: new Date('1990-11-20'), address: 'Lira',                  district: 'Lira'    },
+      { firstName: 'Samuel',    lastName: 'Mugisha',   phone: '+256701200019', email: null,                        gender: 'MALE',   dob: new Date('1984-05-03'), address: 'Nakasero, Kampala',     district: 'Kampala' },
+      { firstName: 'Teddy',     lastName: 'Nassali',   phone: '+256701200020', email: 'teddy.nassali@gmail.com',   gender: 'FEMALE', dob: new Date('1996-08-27'), address: 'Kawempe, Kampala',      district: 'Kampala' },
+      { firstName: 'Ugaaso',    lastName: 'Awich',     phone: '+256701200021', email: null,                        gender: 'FEMALE', dob: new Date('2005-03-12'), address: 'Mbarara',               district: 'Mbarara' },
+      { firstName: 'Vincent',   lastName: 'Lubega',    phone: '+256701200022', email: 'v.lubega@gmail.com',        gender: 'MALE',   dob: new Date('1981-12-04'), address: 'Kampala Road, Kampala', district: 'Kampala' },
+      { firstName: 'Winnie',    lastName: 'Nalubega',  phone: '+256701200023', email: null,                        gender: 'FEMALE', dob: new Date('1993-10-16'), address: 'Portbell, Kampala',     district: 'Kampala' },
+      { firstName: 'Xavier',    lastName: 'Katende',   phone: '+256701200024', email: 'x.katende@gmail.com',       gender: 'MALE',   dob: new Date('1977-06-09'), address: 'Sseguku, Wakiso',       district: 'Wakiso'  },
+      { firstName: 'Yvonne',    lastName: 'Naluwooza', phone: '+256701200025', email: 'y.naluwooza@gmail.com',     gender: 'FEMALE', dob: new Date('2002-01-23'), address: 'Kireka, Wakiso',        district: 'Wakiso'  },
+    ]
+    for (const p of extraPatients) {
+      await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: p })
+    }
+    log(`${extraPatients.length} extended demo patients upserted`)
+
+    // ── 11. Historical & future appointments (all doctors) ───────
+    const adminU   = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+    const allDocs  = await prisma.doctor.findMany({ include: { user: true } })
+    const allPats  = await prisma.patient.findMany()
+    const allSvcs  = await prisma.service.findMany()
+    if (adminU && allDocs.length && allPats.length && allSvcs.length) {
+      const svcByName = (name: string) => allSvcs.find(s => s.name === name) || allSvcs[0]
+      const doc = (i: number) => allDocs[i % allDocs.length]
+      const pat = (i: number) => allPats[i % allPats.length]
+
+      const kampalaBase = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+      kampalaBase.setHours(0, 0, 0, 0)
+
+      const dayOffset = (d: number, h: number, m = 0) => {
+        const dt = new Date(kampalaBase)
+        dt.setDate(dt.getDate() + d)
+        dt.setHours(h, m, 0, 0)
+        return dt
+      }
+
+      const histSlots = [
+        // Past 14 days — completed visits
+        { d: -14, h: 8,  m: 0,  pI: 2,  docI: 1, svc: 'Braces Adjustment',           status: 'COMPLETED' as const, paid: true,  amount: 80000  },
+        { d: -14, h: 9,  m: 0,  pI: 5,  docI: 2, svc: 'Periodontal Therapy',          status: 'COMPLETED' as const, paid: true,  amount: 120000 },
+        { d: -14, h: 10, m: 30, pI: 8,  docI: 3, svc: 'Child Dental Check-Up',        status: 'COMPLETED' as const, paid: true,  amount: 40000  },
+        { d: -14, h: 14, m: 0,  pI: 11, docI: 4, svc: 'Root Canal Treatment',         status: 'COMPLETED' as const, paid: false, amount: 350000 },
+        { d: -13, h: 8,  m: 30, pI: 3,  docI: 0, svc: 'Dental Cleaning (Scaling)',    status: 'COMPLETED' as const, paid: true,  amount: 80000  },
+        { d: -13, h: 10, m: 0,  pI: 6,  docI: 5, svc: 'Tooth Extraction (Simple)',    status: 'COMPLETED' as const, paid: true,  amount: 60000  },
+        { d: -13, h: 11, m: 0,  pI: 9,  docI: 1, svc: 'Braces Fitting (Metal)',       status: 'COMPLETED' as const, paid: true,  amount: 1200000},
+        { d: -13, h: 14, m: 30, pI: 14, docI: 6, svc: 'Dental Filling (Composite)',   status: 'NO_SHOW'   as const, paid: false, amount: 90000  },
+        { d: -12, h: 9,  m: 0,  pI: 1,  docI: 3, svc: 'Fissure Sealant',             status: 'COMPLETED' as const, paid: true,  amount: 35000  },
+        { d: -12, h: 10, m: 0,  pI: 4,  docI: 7, svc: 'Dental Crown (Porcelain)',     status: 'COMPLETED' as const, paid: false, amount: 700000 },
+        { d: -12, h: 11, m: 30, pI: 7,  docI: 2, svc: 'Deep Scaling & Root Planing',  status: 'COMPLETED' as const, paid: true,  amount: 180000 },
+        { d: -12, h: 15, m: 0,  pI: 12, docI: 0, svc: 'Teeth Whitening (In-Chair)',   status: 'COMPLETED' as const, paid: true,  amount: 250000 },
+        { d: -11, h: 8,  m: 0,  pI: 15, docI: 4, svc: 'Root Canal Treatment',         status: 'COMPLETED' as const, paid: true,  amount: 350000 },
+        { d: -11, h: 9,  m: 30, pI: 0,  docI: 5, svc: 'Wisdom Tooth Extraction',      status: 'COMPLETED' as const, paid: true,  amount: 200000 },
+        { d: -11, h: 11, m: 0,  pI: 10, docI: 1, svc: 'Clear Aligner (Invisalign)',   status: 'COMPLETED' as const, paid: false, amount: 3500000},
+        { d: -11, h: 14, m: 0,  pI: 13, docI: 6, svc: 'Dental X-Ray (Panoramic)',     status: 'CANCELLED' as const, paid: false, amount: 80000  },
+        { d: -10, h: 8,  m: 30, pI: 16, docI: 0, svc: 'Check and Treat',              status: 'COMPLETED' as const, paid: true,  amount: 50000  },
+        { d: -10, h: 10, m: 0,  pI: 19, docI: 3, svc: 'Space Maintainer',             status: 'COMPLETED' as const, paid: true,  amount: 120000 },
+        { d: -10, h: 11, m: 0,  pI: 22, docI: 2, svc: 'Periodontal Therapy',          status: 'COMPLETED' as const, paid: true,  amount: 120000 },
+        { d: -10, h: 14, m: 30, pI: 25, docI: 7, svc: 'Dental Implant',               status: 'COMPLETED' as const, paid: false, amount: 3000000},
+        { d: -9,  h: 8,  m: 0,  pI: 17, docI: 1, svc: 'Braces Adjustment',           status: 'COMPLETED' as const, paid: true,  amount: 80000  },
+        { d: -9,  h: 9,  m: 0,  pI: 20, docI: 5, svc: 'Biopsy / Lesion Removal',     status: 'COMPLETED' as const, paid: true,  amount: 120000 },
+        { d: -9,  h: 10, m: 30, pI: 23, docI: 6, svc: 'Dental Veneers (Composite)',   status: 'COMPLETED' as const, paid: true,  amount: 300000 },
+        { d: -9,  h: 14, m: 0,  pI: 26, docI: 4, svc: 'Root Canal Retreatment',       status: 'NO_SHOW'   as const, paid: false, amount: 450000 },
+        { d: -7,  h: 8,  m: 0,  pI: 18, docI: 0, svc: 'Review Check Up',              status: 'COMPLETED' as const, paid: true,  amount: 30000  },
+        { d: -7,  h: 9,  m: 30, pI: 21, docI: 3, svc: 'Child Tooth Extraction',       status: 'COMPLETED' as const, paid: true,  amount: 50000  },
+        { d: -7,  h: 11, m: 0,  pI: 24, docI: 1, svc: 'Braces Fitting (Ceramic)',     status: 'COMPLETED' as const, paid: false, amount: 1800000},
+        { d: -7,  h: 14, m: 0,  pI: 27, docI: 7, svc: 'Denture (Partial)',            status: 'COMPLETED' as const, paid: true,  amount: 500000 },
+        { d: -6,  h: 9,  m: 0,  pI: 0,  docI: 2, svc: 'Fluoride Treatment',           status: 'COMPLETED' as const, paid: true,  amount: 40000  },
+        { d: -6,  h: 10, m: 0,  pI: 3,  docI: 5, svc: 'Tooth Extraction (Surgical)',  status: 'COMPLETED' as const, paid: true,  amount: 150000 },
+        { d: -6,  h: 11, m: 30, pI: 6,  docI: 6, svc: 'Dental Filling (Amalgam)',     status: 'CANCELLED' as const, paid: false, amount: 70000  },
+        { d: -5,  h: 8,  m: 0,  pI: 9,  docI: 0, svc: 'Emergency Dental Consult',    status: 'COMPLETED' as const, paid: true,  amount: 60000  },
+        { d: -5,  h: 9,  m: 30, pI: 12, docI: 4, svc: 'Root Canal Treatment',         status: 'COMPLETED' as const, paid: true,  amount: 350000 },
+        { d: -5,  h: 11, m: 0,  pI: 15, docI: 1, svc: 'Braces Adjustment',           status: 'COMPLETED' as const, paid: true,  amount: 80000  },
+        { d: -5,  h: 14, m: 30, pI: 18, docI: 3, svc: 'Full Mouth X-Ray (OPG)',       status: 'COMPLETED' as const, paid: true,  amount: 120000 },
+        { d: -4,  h: 8,  m: 30, pI: 21, docI: 7, svc: 'Denture (Full)',               status: 'COMPLETED' as const, paid: false, amount: 800000 },
+        { d: -4,  h: 10, m: 0,  pI: 24, docI: 2, svc: 'Oral Cancer Screening',        status: 'COMPLETED' as const, paid: true,  amount: 60000  },
+        { d: -3,  h: 8,  m: 0,  pI: 4,  docI: 6, svc: 'Dental Veneers (Porcelain)',   status: 'COMPLETED' as const, paid: true,  amount: 800000 },
+        { d: -3,  h: 9,  m: 30, pI: 7,  docI: 0, svc: 'Check and Treat',              status: 'COMPLETED' as const, paid: true,  amount: 50000  },
+        { d: -3,  h: 11, m: 0,  pI: 10, docI: 5, svc: 'Tooth Extraction (Simple)',    status: 'COMPLETED' as const, paid: true,  amount: 60000  },
+        { d: -3,  h: 15, m: 0,  pI: 13, docI: 1, svc: 'Clear Aligner (Invisalign)',   status: 'COMPLETED' as const, paid: false, amount: 3500000},
+        { d: -2,  h: 8,  m: 0,  pI: 16, docI: 4, svc: 'Root Canal Treatment',         status: 'COMPLETED' as const, paid: true,  amount: 350000 },
+        { d: -2,  h: 9,  m: 0,  pI: 19, docI: 3, svc: 'Child Dental Check-Up',        status: 'COMPLETED' as const, paid: true,  amount: 40000  },
+        { d: -2,  h: 10, m: 30, pI: 22, docI: 7, svc: 'Dental CT Scan (CBCT)',        status: 'COMPLETED' as const, paid: true,  amount: 250000 },
+        { d: -1,  h: 8,  m: 30, pI: 25, docI: 0, svc: 'Dental Cleaning (Scaling)',    status: 'COMPLETED' as const, paid: true,  amount: 80000  },
+        { d: -1,  h: 10, m: 0,  pI: 27, docI: 2, svc: 'Deep Scaling & Root Planing',  status: 'COMPLETED' as const, paid: true,  amount: 180000 },
+        { d: -1,  h: 11, m: 30, pI: 1,  docI: 5, svc: 'Wisdom Tooth Extraction',      status: 'COMPLETED' as const, paid: false, amount: 200000 },
+        // Future appointments (next 7 days)
+        { d: 1,  h: 8,  m: 0,  pI: 5,  docI: 1, svc: 'Braces Adjustment',            status: 'CONFIRMED' as const, paid: false, amount: 80000  },
+        { d: 1,  h: 9,  m: 0,  pI: 8,  docI: 3, svc: 'Fissure Sealant',              status: 'CONFIRMED' as const, paid: false, amount: 35000  },
+        { d: 1,  h: 10, m: 0,  pI: 11, docI: 0, svc: 'Review Check Up',              status: 'CONFIRMED' as const, paid: false, amount: 30000  },
+        { d: 1,  h: 14, m: 0,  pI: 14, docI: 6, svc: 'Dental Filling (Composite)',   status: 'CONFIRMED' as const, paid: false, amount: 90000  },
+        { d: 2,  h: 9,  m: 0,  pI: 17, docI: 2, svc: 'Periodontal Therapy',          status: 'CONFIRMED' as const, paid: false, amount: 120000 },
+        { d: 2,  h: 10, m: 30, pI: 20, docI: 5, svc: 'Tooth Extraction (Surgical)',  status: 'CONFIRMED' as const, paid: false, amount: 150000 },
+        { d: 2,  h: 14, m: 0,  pI: 23, docI: 7, svc: 'Dental Crown (Porcelain)',     status: 'CONFIRMED' as const, paid: false, amount: 700000 },
+        { d: 3,  h: 8,  m: 0,  pI: 2,  docI: 1, svc: 'Braces Fitting (Metal)',       status: 'CONFIRMED' as const, paid: false, amount: 1200000},
+        { d: 3,  h: 9,  m: 30, pI: 6,  docI: 4, svc: 'Root Canal Treatment',         status: 'CONFIRMED' as const, paid: false, amount: 350000 },
+        { d: 3,  h: 11, m: 0,  pI: 9,  docI: 0, svc: 'Check and Treat',              status: 'CONFIRMED' as const, paid: false, amount: 50000  },
+        { d: 4,  h: 8,  m: 30, pI: 12, docI: 6, svc: 'Teeth Whitening (In-Chair)',   status: 'CONFIRMED' as const, paid: false, amount: 250000 },
+        { d: 4,  h: 10, m: 0,  pI: 15, docI: 3, svc: 'Space Maintainer',             status: 'CONFIRMED' as const, paid: false, amount: 120000 },
+        { d: 5,  h: 9,  m: 0,  pI: 18, docI: 7, svc: 'Denture (Partial)',            status: 'CONFIRMED' as const, paid: false, amount: 500000 },
+        { d: 5,  h: 11, m: 0,  pI: 21, docI: 2, svc: 'Oral Cancer Screening',        status: 'CONFIRMED' as const, paid: false, amount: 60000  },
+        { d: 6,  h: 8,  m: 0,  pI: 24, docI: 5, svc: 'Emergency Dental Consult',    status: 'CONFIRMED' as const, paid: false, amount: 60000  },
+        { d: 7,  h: 9,  m: 0,  pI: 0,  docI: 1, svc: 'Braces Adjustment',           status: 'PENDING'   as const, paid: false, amount: 80000  },
+        { d: 7,  h: 10, m: 30, pI: 3,  docI: 4, svc: 'Root Canal Retreatment',       status: 'PENDING'   as const, paid: false, amount: 450000 },
+        { d: 7,  h: 14, m: 0,  pI: 6,  docI: 0, svc: 'Dental Cleaning (Scaling)',    status: 'PENDING'   as const, paid: false, amount: 80000  },
+      ]
+
+      let histCount = 0
+      const createdAppts: Array<{ id: string; amount: number; paid: boolean; status: string }> = []
+      for (const slot of histSlots) {
+        const doctor  = allDocs[slot.docI % allDocs.length]
+        const patient = allPats[slot.pI  % allPats.length]
+        const service = allSvcs.find(s => s.name === slot.svc) || allSvcs[0]
+        if (!doctor || !patient || !service || !adminU) continue
+        const startAt = dayOffset(slot.d, slot.h, slot.m)
+        const endAt   = new Date(startAt.getTime() + service.durationMins * 60000)
+        try {
+          const appt = await prisma.appointment.upsert({
+            where: { doctorId_startAt: { doctorId: doctor.id, startAt } },
+            update: { status: slot.status },
+            create: { patientId: patient.id, doctorId: doctor.id, serviceId: service.id, startAt, endAt, status: slot.status, createdById: adminU.id },
+          })
+          createdAppts.push({ id: appt.id, amount: slot.amount, paid: slot.paid, status: slot.status })
+          histCount++
+        } catch { /* skip conflicts */ }
+      }
+      log(`${histCount} historical/future appointments upserted`)
+
+      // ── 12. Invoices + payments for completed appointments ────
+      let invoiceCount = 0
+      for (const a of createdAppts) {
+        if (!['COMPLETED', 'DEPARTED', 'SESSION_COMPLETE'].includes(a.status)) continue
+        const patient = await prisma.appointment.findUnique({ where: { id: a.id }, select: { patientId: true } })
+        if (!patient) continue
+        try {
+          const invoice = await (prisma.invoice as any).upsert({
+            where: { appointmentId: a.id },
+            update: {},
+            create: {
+              patientId:     patient.patientId,
+              appointmentId: a.id,
+              subtotal:      a.amount,
+              vatAmount:     Math.round(a.amount * 0.18),
+              totalAmount:   Math.round(a.amount * 1.18),
+              amountPaid:    a.paid ? Math.round(a.amount * 1.18) : 0,
+              status:        a.paid ? 'PAID' : 'PENDING',
+              dueDate:       new Date(Date.now() + 14 * 86400000),
+              notes:         'Dental treatment at Code Clinic',
+            },
+          })
+          if (a.paid) {
+            const existingPayment = await (prisma.payment as any).findFirst({ where: { invoiceId: invoice.id } })
+            if (!existingPayment) {
+              await (prisma.payment as any).create({
+                data: {
+                  patientId:    patient.patientId,
+                  invoiceId:    invoice.id,
+                  amountPaid:   Math.round(a.amount * 1.18),
+                  method:       ['CASH', 'MOBILE_MONEY', 'CARD'][Math.floor(Math.random() * 3)],
+                  reference:    `CC${Date.now().toString().slice(-6)}`,
+                  paidAt:       new Date(),
+                },
+              })
+            }
+          }
+          invoiceCount++
+        } catch { /* skip */ }
+      }
+      log(`${invoiceCount} invoices created`)
+    }
+
+    // ── 13. Treatment notes for demo patients ─────────────────
+    const notePatients = await prisma.patient.findMany({ take: 10 })
+    const adminForNotes = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+    const noteTemplates = [
+      'Patient presented with mild sensitivity on upper left molar. Scaling and root planing performed. Advised to use sensitivity toothpaste and return in 6 weeks.',
+      'Routine check-up completed. Slight calculus buildup noted on lower anteriors. Professional cleaning done. Patient educated on flossing technique.',
+      'Patient complains of intermittent pain on lower right quadrant. Periapical X-ray taken. Caries detected on tooth 46 — composite filling placed. Review in 3 months.',
+      'Orthodontic adjustment visit. Arch wire adjusted, elastics replaced. Oral hygiene reinforced. Patient progressing well with treatment.',
+      'Root canal treatment initiated on tooth 36. Access cavity prepared, canals cleaned and shaped. Temporary dressing placed. Return in 2 weeks for obturation.',
+      'Post-extraction review. Socket healing well, no signs of dry socket. Patient advised to continue salt-water rinses and soft diet for another week.',
+      'Teeth whitening session completed. 3 rounds of 15-minute whitening gel application. Patient achieved 4 shades lighter. Post-care instructions given.',
+      'Paediatric dental check-up. All primary teeth present and healthy. Fluoride varnish applied. Dietary counselling given to parent regarding sugar intake.',
+      'Patient attended for partial denture fitting. Denture seated well with good retention. Patient instructed on removal, cleaning, and storage.',
+      'Emergency visit — patient presented with severe toothache. Tooth 14 assessed, abscess confirmed. Antibiotics prescribed: Amoxicillin 500mg TDS × 5 days. Extraction scheduled for next visit.',
+    ]
+    if (adminForNotes) {
+      for (let i = 0; i < Math.min(notePatients.length, noteTemplates.length); i++) {
+        const existing = await prisma.treatmentNote.findFirst({ where: { patientId: notePatients[i].id } })
+        if (!existing) {
+          await prisma.treatmentNote.create({
+            data: {
+              patientId: notePatients[i].id,
+              content:   noteTemplates[i],
+              authorId:  adminForNotes.id,
+            },
+          })
+        }
+      }
+      log(`${Math.min(notePatients.length, noteTemplates.length)} treatment notes created`)
+    }
+
+    // ── 14. Demo expenses (current month) ─────────────────────
+    const expenseDefs = [
+      { category: 'Rent',          description: 'Monthly clinic rent — Kiira Road premises',      amount: 3500000, date: -28 },
+      { category: 'Utilities',     description: 'Electricity bill — UMEME',                        amount: 450000,  date: -25 },
+      { category: 'Utilities',     description: 'Water bill — NWSC',                               amount: 120000,  date: -25 },
+      { category: 'Supplies',      description: 'Dental consumables — gloves, masks, bibs',        amount: 680000,  date: -20 },
+      { category: 'Supplies',      description: 'Dental materials — composite, bonding agents',    amount: 920000,  date: -18 },
+      { category: 'Supplies',      description: 'Sterilisation pouches and autoclave solution',    amount: 280000,  date: -15 },
+      { category: 'Equipment',     description: 'Dental handpiece repair and servicing',           amount: 350000,  date: -12 },
+      { category: 'Marketing',     description: 'Social media advertising — Facebook & Instagram', amount: 200000,  date: -10 },
+      { category: 'Salaries',      description: 'Support staff salaries — receptionist & cleaner', amount: 1800000, date: -5  },
+      { category: 'Miscellaneous', description: 'Printing — appointment cards and brochures',      amount: 95000,   date: -3  },
+    ]
+    const adminForExp = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+    if (adminForExp) {
+      for (const exp of expenseDefs) {
+        const expDate = new Date()
+        expDate.setDate(expDate.getDate() + exp.date)
+        const existing = await (prisma.expense as any).findFirst({ where: { description: exp.description } })
+        if (!existing) {
+          try {
+            await (prisma.expense as any).create({
+              data: {
+                category:    exp.category,
+                description: exp.description,
+                amount:      exp.amount,
+                date:        expDate,
+                createdById: adminForExp.id,
+              },
+            })
+          } catch { /* model may not exist */ }
+        }
+      }
+      log(`${expenseDefs.length} expenses seeded`)
+    }
+
     return res.json({
       success: true,
       message: 'Production database seeded successfully',
