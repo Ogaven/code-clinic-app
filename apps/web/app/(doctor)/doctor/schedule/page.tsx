@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Plus, Trash2, CalendarDays, Ban, List, ChevronLeft, ChevronRight, RefreshCw, Clock } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, CalendarDays, Ban, List, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
 
@@ -60,7 +60,6 @@ export default function DoctorSchedulePage() {
   const [loading, setLoading]     = useState(true)
   const [viewDate, setViewDate]   = useState(isoToday)
   const [nowTop, setNowTop]       = useState(nowLineTop)
-  const [tick, setTick]           = useState(0)
   const gridRef                   = useRef<HTMLDivElement>(null)
 
   const [blockDate, setBlockDate]     = useState(isoToday)
@@ -103,7 +102,7 @@ export default function DoctorSchedulePage() {
 
   // Update now-line every minute
   useEffect(() => {
-    const t = setInterval(() => { setNowTop(nowLineTop()); setTick(x => x + 1) }, 60000)
+    const t = setInterval(() => setNowTop(nowLineTop()), 60000)
     return () => clearInterval(t)
   }, [])
 
