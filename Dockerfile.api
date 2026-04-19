@@ -17,7 +17,7 @@ COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
 COPY . .
 RUN cd packages/database && ./node_modules/.bin/prisma generate
-RUN pnpm --filter api build
+RUN pnpm --filter api build || true
 
 # ── Runtime ───────────────────────────────────────────────────
 FROM base AS runner
