@@ -14,3 +14,5 @@ dev.db
 *.db
 apps/api/uploads/
 packages/database/prisma/migrations/
+reference/
+*.tsbuildinfo

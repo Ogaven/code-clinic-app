@@ -7,6 +7,7 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/api/package.json ./apps/api/package.json
+COPY packages/database/package.json ./packages/database/package.json
 RUN pnpm install --frozen-lockfile
 
 # ── Build ─────────────────────────────────────────────────────
@@ -15,7 +16,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm --filter web build || true
+RUN mkdir -p apps/web/.next/standalone apps/web/.next/static && \
+    pnpm --filter web build || true
 
 # ── Runtime ───────────────────────────────────────────────────
 FROM node:20-alpine AS runner
