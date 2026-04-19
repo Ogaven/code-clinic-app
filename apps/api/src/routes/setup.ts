@@ -297,13 +297,14 @@ router.post('/seed-production', async (req, res) => {
         const startAt = new Date(todayKampala)
         startAt.setHours(slot.h, slot.m, 0, 0)
         const endAt = new Date(startAt.getTime() + consultService.durationMins * 60000)
-        const existing = await prisma.appointment.findFirst({ where: { patientId: patient.id, doctorId: stevenDoc.id, startAt } })
-        if (!existing) {
-          await prisma.appointment.create({
-            data: { patientId: patient.id, doctorId: stevenDoc.id, serviceId: consultService.id, startAt, endAt, status: slot.status, createdById: adminUser.id },
+        try {
+          await prisma.appointment.upsert({
+            where: { doctorId_startAt: { doctorId: stevenDoc.id, startAt } },
+            update: { status: slot.status },
+            create: { patientId: patient.id, doctorId: stevenDoc.id, serviceId: consultService.id, startAt, endAt, status: slot.status, createdById: adminUser.id },
           })
           stevenApptCount++
-        }
+        } catch { /* skip if unique conflict */ }
       }
       log(`${stevenApptCount} Dr. Steven appointments created`)
     }
