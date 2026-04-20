@@ -125,25 +125,6 @@ export default function DoctorDashboardPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  async function toggleCheckIn() {
-    if (!token) return
-    setCheckingIn(true)
-    try {
-      const type = checkedIn ? 'CHECK_OUT' : 'CHECK_IN'
-      const r = await fetch('/api-proxy/doctors/check-in', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ type }),
-      })
-      if (r.ok) {
-        const d = await r.json()
-        setCheckedIn(type === 'CHECK_IN')
-        setCheckInTime(d.time || '')
-        setToast(type === 'CHECK_IN' ? `Checked in at ${d.time}` : 'Checked out successfully')
-        setTimeout(() => setToast(''), 3500)
-      }
-    } catch {} finally { setCheckingIn(false) }
-  }
 
   async function handleBlockTime() {
     if (!doctor || !token) return
@@ -211,28 +192,33 @@ export default function DoctorDashboardPage() {
       <div className="hidden sm:block" style={{ height: 52 }} />
 
       {/* ── CHECK IN / OUT ──────────────────────────────────────────────────── */}
-      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4 flex items-center gap-4">
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4 flex items-center gap-4 flex-wrap">
         <div className={cn('w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
           checkedIn ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-gray-100 dark:bg-white/10')}>
           <Activity size={22} className={checkedIn ? 'text-emerald-600' : 'text-gray-400'} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-gray-800 dark:text-white">
-            {checkedIn ? 'You are checked in' : 'Not checked in'}
+            {checkedIn ? '✓ Currently checked in' : 'Not checked in today'}
           </p>
           <p className="text-xs text-gray-400">
-            {checkedIn && checkInTime ? `Checked in at ${checkInTime}` : 'Tap to check in and notify reception'}
+            {checkedIn && checkInTime ? `Checked in at ${checkInTime}` : 'Check in to notify reception you are available'}
           </p>
         </div>
-        <button onClick={toggleCheckIn} disabled={checkingIn}
-          className={cn('flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-60 min-h-[44px] flex-shrink-0',
-            checkedIn
-              ? 'bg-red-500 hover:bg-red-600'
-              : 'bg-emerald-600 hover:bg-emerald-700')}>
-          {checkingIn
-            ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            : checkedIn ? '← Check Out' : '✓ Check In'}
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={async () => { if (checkingIn || checkedIn) return; setCheckingIn(true); try { const r = await fetch('/api-proxy/doctors/check-in', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ type: 'CHECK_IN' }) }); if (r.ok) { const d = await r.json(); setCheckedIn(true); setCheckInTime(d.time || ''); setToast(`Checked in at ${d.time}`); setTimeout(() => setToast(''), 3500) } } catch {} finally { setCheckingIn(false) } }}
+            disabled={checkingIn || checkedIn}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40 min-h-[44px] bg-emerald-600 hover:bg-emerald-700">
+            {checkingIn ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '✓ Check In'}
+          </button>
+          <button
+            onClick={async () => { if (checkingIn || !checkedIn) return; setCheckingIn(true); try { const r = await fetch('/api-proxy/doctors/check-in', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ type: 'CHECK_OUT' }) }); if (r.ok) { const d = await r.json(); setCheckedIn(false); setCheckInTime(''); setToast('Checked out successfully'); setTimeout(() => setToast(''), 3500) } } catch {} finally { setCheckingIn(false) } }}
+            disabled={checkingIn || !checkedIn}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40 min-h-[44px] bg-red-500 hover:bg-red-600">
+            {checkingIn ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '← Check Out'}
+          </button>
+        </div>
       </div>
 
       {/* ── KPI ROW ─────────────────────────────────────────────────────────── */}
@@ -275,7 +261,7 @@ export default function DoctorDashboardPage() {
       </div>
 
       {/* ── LIVE PATIENT FLOW ───────────────────────────────────────────────── */}
-      {doctor && <LivePatientFlow doctorId={doctor.id} refreshInterval={20000} />}
+      {doctor && <LivePatientFlow doctorId={doctor.id} refreshInterval={20000} patientBasePath="/doctor/patients" />}
 
       {/* ── TODAY'S SCHEDULE ────────────────────────────────────────────────── */}
       <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
@@ -319,7 +305,7 @@ export default function DoctorDashboardPage() {
                     </div>
                     <span className="text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0"
                       style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
-                    <Link href={`/patients/${a.patient?.id}`}
+                    <Link href={`/doctor/patients/${a.patient?.id}`}
                       className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex-shrink-0 min-w-[32px]">
                       <Users size={13} />
                     </Link>

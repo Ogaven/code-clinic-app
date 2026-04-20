@@ -255,7 +255,7 @@ export default function MySchedulePage() {
                   const height = durationToHeight(a.startAt, a.endAt || new Date(new Date(a.startAt).getTime() + 3600000).toISOString())
                   const cfg = STATUS_CFG[a.status] || { label: a.status, color: '#6B7280', bg: '#F3F4F6' }
                   return (
-                    <Link href={`/patients/${a.patient?.id}`} key={a.id}
+                    <Link href={`/doctor/patients/${a.patient?.id}`} key={a.id}
                       className="absolute left-0 right-0 rounded-xl overflow-hidden border-l-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                       style={{ top, height: height - 3, borderLeftColor: a.service?.colour || '#29ABE2', background: (a.service?.colour || '#29ABE2') + '18' }}>
                       <div className="px-2.5 py-1.5 h-full flex flex-col justify-center">
@@ -331,7 +331,7 @@ export default function MySchedulePage() {
                         const top = timeToTop(a.startAt)
                         const height = durationToHeight(a.startAt, a.endAt || new Date(new Date(a.startAt).getTime() + 3600000).toISOString())
                         return (
-                          <Link href={`/patients/${a.patient?.id}`} key={a.id}
+                          <Link href={`/doctor/patients/${a.patient?.id}`} key={a.id}
                             className="absolute left-0.5 right-0.5 rounded-lg overflow-hidden border-l-2 shadow-sm hover:shadow-md transition-shadow"
                             style={{ top, height: height - 2, borderLeftColor: a.service?.colour || '#29ABE2', background: (a.service?.colour || '#29ABE2') + '20' }}>
                             <div className="px-1.5 py-1">

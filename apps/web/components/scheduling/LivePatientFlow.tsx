@@ -89,9 +89,10 @@ interface Appointment {
 interface LivePatientFlowProps {
   doctorId?: string
   refreshInterval?: number
+  patientBasePath?: string
 }
 
-export default function LivePatientFlow({ doctorId, refreshInterval = 30000 }: LivePatientFlowProps) {
+export default function LivePatientFlow({ doctorId, refreshInterval = 30000, patientBasePath = '/patients' }: LivePatientFlowProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading]           = useState(true)
   const [advancing, setAdvancing]       = useState<string | null>(null)
@@ -196,7 +197,7 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000 }: L
                       <div key={appt.id}
                         className="bg-white dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
                         {/* Entire patient info area is clickable */}
-                        <Link href={`/patients/${appt.patient.id}`}
+                        <Link href={`${patientBasePath}/${appt.patient.id}`}
                           className="flex items-start gap-2 p-2.5 hover:bg-blue-50/40 dark:hover:bg-blue-900/10 transition-colors">
                           <Avatar
                             firstName={appt.patient.firstName}
