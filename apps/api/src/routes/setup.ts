@@ -702,7 +702,7 @@ router.post('/seed-production', async (req, res) => {
       log(`${ciCount} doctor check-in/out records seeded`)
     } catch (e: any) { log(`Section 15 error: ${e.message?.slice(0, 100)}`) }
 
-    // ── 16. Dental charts for patients ────────────────────────────
+    // ── 16. Dental charts for patients ─── always upsert to ensure demo data ───
     try {
       const patientsForChart = await prisma.patient.findMany({ take: 15 })
       let chartCount = 0
@@ -710,17 +710,18 @@ router.post('/seed-production', async (req, res) => {
       const toothStatuses = ['Caries','Planned Treatment','Amalgam','Composite','Crown','Missing','Healthy']
       for (const pat of patientsForChart) {
         const existing = await prisma.dentalChart.findUnique({ where: { patientId: pat.id } })
-        // Skip only if chart already has teeth data
-        if (existing && existing.teeth && existing.teeth !== '{}') continue
+        let teethStr = existing?.teeth || '{}'
+        let hasRealData = false
+        try { const t = JSON.parse(teethStr); hasRealData = Object.keys(t).length >= 5 } catch { hasRealData = false }
+        if (hasRealData) continue
         const teeth: Record<string, any> = {}
-        for (const t of toothNums) {
-          if (Math.random() > 0.55) {
-            teeth[String(t)] = { conditions: [{ id: `${t}-1`, condition: toothStatuses[Math.floor(Math.random() * toothStatuses.length)] }], surfaces: {}, notes: '' }
-          }
+        // Deterministic seed: always add at least these teeth so data is guaranteed
+        const mustHave = [11,12,13,14,16,21,22,23,26,36,37,46,47]
+        for (const t of mustHave) {
+          teeth[String(t)] = { conditions: [{ id: `${t}-1`, condition: toothStatuses[Math.floor(Math.random() * toothStatuses.length)] }], surfaces: {}, notes: '' }
         }
-        // Ensure at least 5 teeth have conditions
-        if (Object.keys(teeth).length < 5) {
-          for (const t of [11,16,21,26,36]) {
+        for (const t of toothNums) {
+          if (!teeth[String(t)] && Math.random() > 0.6) {
             teeth[String(t)] = { conditions: [{ id: `${t}-1`, condition: toothStatuses[Math.floor(Math.random() * toothStatuses.length)] }], surfaces: {}, notes: '' }
           }
         }
