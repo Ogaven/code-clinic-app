@@ -8,20 +8,23 @@ import {
   LayoutDashboard, CalendarDays, Users, MessageSquare,
   Bot, BarChart2, Settings, HelpCircle, Bell, Search,
   ChevronLeft, ChevronRight, LogOut, User, Lock, Download,
-  Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Stethoscope,
+  Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Stethoscope, UserCog,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const nav = [
-  { label: 'Dashboard',      href: '/receptionist/dashboard',      icon: LayoutDashboard },
-  { label: 'Appointments',   href: '/receptionist/appointments',   icon: CalendarDays },
-  { label: 'Live Flow',      href: '/receptionist/flow',           icon: Zap },
-  { label: 'Patients',       href: '/receptionist/patients',       icon: Users },
+const navTop = [
+  { label: 'Dashboard',    href: '/receptionist/dashboard',    icon: LayoutDashboard },
+  { label: 'Appointments', href: '/receptionist/appointments', icon: CalendarDays },
+  { label: 'Doctors',      href: '/receptionist/doctors',      icon: UserCog },
+  { label: 'Services',     href: '/receptionist/services',     icon: Stethoscope },
+  { label: 'Patients',     href: '/receptionist/patients',     icon: Users },
+  { label: 'Live Flow',    href: '/receptionist/flow',         icon: Zap },
+  { label: 'AI Suite',     href: '/receptionist/ai-suite',     icon: Bot },
+  { label: 'Reports',      href: '/receptionist/reports',      icon: BarChart2 },
+]
+
+const navBottom = [
   { label: 'Communications', href: '/receptionist/communications', icon: MessageSquare, badge: true },
-  { label: 'AI Suite',       href: '/receptionist/ai-suite',       icon: Bot },
-  { label: 'Services',       href: '/receptionist/services',       icon: Stethoscope },
-  { label: 'Reports',        href: '/receptionist/reports',        icon: BarChart2 },
-  { label: 'Download App',   href: '/receptionist/download',       icon: Download },
 ]
 
 type Theme = 'light' | 'dark' | 'system'
@@ -320,37 +323,72 @@ export default function ReceptionistLayout({ children }: { children: React.React
         </Link>
 
         {/* Nav items */}
-        <nav className="flex-1 overflow-y-auto sidebar-nav py-3 space-y-0.5 px-2">
-          {nav.map((item) => {
-            const Icon   = item.icon
-            const active = pathname === item.href || pathname.startsWith(item.href + '/')
-            return (
-              <Link key={item.href} href={item.href}
-                title={collapsed ? item.label : undefined}
-                className={cn(
-                  'rec-nav-item relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group text-[13px] font-medium',
-                  collapsed && 'justify-center px-2',
-                  active && 'active',
-                )}>
-                {active && (
-                  <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-cyan-500" />
-                )}
-                <Icon size={17} className="flex-shrink-0" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-                {!collapsed && item.badge && unread > 0 && (
-                  <span className="ml-auto text-[9px] font-black bg-red-500 text-white rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 badge-pop">
-                    {unread > 99 ? '99+' : unread}
-                  </span>
-                )}
-                {collapsed && (
-                  <div className="absolute left-full ml-3 px-2.5 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 shadow-xl text-xs text-white bg-gray-900">
-                    {item.label}
-                    <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
-                  </div>
-                )}
-              </Link>
-            )
-          })}
+        <nav className="flex-1 overflow-y-auto sidebar-nav py-3 px-2 flex flex-col">
+          {/* Top section */}
+          <div className="space-y-0.5">
+            {navTop.map((item) => {
+              const Icon   = item.icon
+              const active = pathname === item.href || pathname.startsWith(item.href + '/')
+              return (
+                <Link key={item.href} href={item.href}
+                  title={collapsed ? item.label : undefined}
+                  className={cn(
+                    'rec-nav-item relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group text-[13px] font-medium',
+                    collapsed && 'justify-center px-2',
+                    active && 'active',
+                  )}>
+                  {active && (
+                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-cyan-500" />
+                  )}
+                  <Icon size={17} className="flex-shrink-0" />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                  {collapsed && (
+                    <div className="absolute left-full ml-3 px-2.5 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 shadow-xl text-xs text-white bg-gray-900">
+                      {item.label}
+                      <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                    </div>
+                  )}
+                </Link>
+              )
+            })}
+          </div>
+
+          {/* Divider */}
+          <div className={cn('my-2 border-t border-gray-100 dark:border-white/[0.06]', collapsed && 'mx-1')} />
+
+          {/* Communications */}
+          <div className="space-y-0.5">
+            {navBottom.map((item) => {
+              const Icon   = item.icon
+              const active = pathname === item.href || pathname.startsWith(item.href + '/')
+              return (
+                <Link key={item.href} href={item.href}
+                  title={collapsed ? item.label : undefined}
+                  className={cn(
+                    'rec-nav-item relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group text-[13px] font-medium',
+                    collapsed && 'justify-center px-2',
+                    active && 'active',
+                  )}>
+                  {active && (
+                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-cyan-500" />
+                  )}
+                  <Icon size={17} className="flex-shrink-0" />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                  {!collapsed && item.badge && unread > 0 && (
+                    <span className="ml-auto text-[9px] font-black bg-red-500 text-white rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 badge-pop">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
+                  {collapsed && (
+                    <div className="absolute left-full ml-3 px-2.5 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 shadow-xl text-xs text-white bg-gray-900">
+                      {item.label}
+                      <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                    </div>
+                  )}
+                </Link>
+              )
+            })}
+          </div>
         </nav>
 
         {/* Bottom nav — Settings + Help */}

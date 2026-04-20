@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useRef } from 'react'
 import {
   ArrowLeft, User, Calendar, FileText, Activity, DollarSign, Folder,
   Phone, Mail, Edit2, Save, X, Plus, Trash2, CheckCircle2, AlertCircle,
-  Clock, ChevronRight, Receipt, Download, Upload, Star, Brain,
+  Clock, ChevronRight, Receipt, Download, Upload, Star, Brain, Camera, Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -792,10 +793,13 @@ export default function PatientDetailPage() {
   const router  = useRouter()
   const id      = params.id as string
 
-  const [patient, setPatient] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [tab, setTab]         = useState<Tab>('overview')
-  const [toast, setToast]     = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
+  const [patient, setPatient]       = useState<any>(null)
+  const [loading, setLoading]       = useState(true)
+  const [tab, setTab]               = useState<Tab>('overview')
+  const [toast, setToast]           = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
+  const [localAvatar, setLocalAvatar] = useState<string | null>(null)
+  const [uploading, setUploading]   = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
   const API = '/api-proxy'
 
   const fetchPatient = useCallback(async () => {
@@ -807,6 +811,40 @@ export default function PatientDetailPage() {
   }, [id])
 
   useEffect(() => { fetchPatient() }, [fetchPatient])
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      showToast('Only JPG, PNG or WebP allowed', 'err'); return
+    }
+    setUploading(true)
+    try {
+      const token = localStorage.getItem('cc_token')
+      const form  = new FormData()
+      form.append('avatar', file)
+      const res = await fetch(`${API}/patients/${id}/avatar`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setLocalAvatar(data.avatarUrl)
+        showToast('Photo updated', 'ok')
+        fetchPatient()
+      } else {
+        // Fallback: show local preview
+        const reader = new FileReader()
+        reader.onload = ev => setLocalAvatar(ev.target?.result as string)
+        reader.readAsDataURL(file)
+        showToast('Saved locally (API not available)', 'ok')
+      }
+    } catch {
+      showToast('Upload failed', 'err')
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
 
   function showToast(msg: string, type: 'ok' | 'err') {
     setToast({ msg, type })
@@ -851,10 +889,21 @@ export default function PatientDetailPage() {
             <ArrowLeft size={18} className="text-gray-600 dark:text-white/70" />
           </button>
 
-          {/* Avatar */}
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-base flex-shrink-0"
-            style={{ background: avatarBg }}>
-            {initials}
+          {/* Avatar — clickable to upload */}
+          <div className="relative group flex-shrink-0 cursor-pointer" onClick={() => fileRef.current?.click()} title="Click to change photo">
+            {(localAvatar || patient.avatarUrl) ? (
+              <img src={localAvatar || patient.avatarUrl} alt=""
+                className="w-12 h-12 rounded-2xl object-cover ring-2 ring-white dark:ring-white/10 shadow-sm" />
+            ) : (
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-base shadow-sm"
+                style={{ background: avatarBg }}>
+                {initials}
+              </div>
+            )}
+            <div className="absolute inset-0 rounded-2xl bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              {uploading ? <Loader2 size={16} className="animate-spin text-white" /> : <Camera size={16} className="text-white" />}
+            </div>
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleAvatarUpload} />
           </div>
 
           <div className="flex-1 min-w-0">

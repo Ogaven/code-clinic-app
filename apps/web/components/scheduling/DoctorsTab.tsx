@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Loader2, Save, Camera, Check, X } from 'lucide-react'
+import { Loader2, Save, Camera, Check, X, Plus, Ban } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Doctor {
@@ -20,6 +20,8 @@ interface Doctor {
 interface Service {
   id: string; name: string; category: string; colour: string; isActive: boolean
 }
+
+interface BlockedTime { id: string; startAt: string; endAt: string; reason?: string }
 
 interface DaySchedule { active: boolean; start: string; end: string }
 
@@ -82,6 +84,14 @@ export default function DoctorsTab() {
   const [selectedServices, setSelectedServices] = useState<string[]>([])
   const [localAvatar,      setLocalAvatar]      = useState<string | null>(null)
 
+  // Block-time state
+  const [blockedTimes, setBlockedTimes] = useState<BlockedTime[]>([])
+  const [blkDate,      setBlkDate]      = useState('')
+  const [blkStart,     setBlkStart]     = useState('09:00')
+  const [blkEnd,       setBlkEnd]       = useState('10:00')
+  const [blkReason,    setBlkReason]    = useState('')
+  const [blkSaving,    setBlkSaving]    = useState(false)
+
   useEffect(() => {
     fetchDoctors()
     fetchServices()
@@ -115,6 +125,7 @@ export default function DoctorsTab() {
     setSchedule(parseSchedule(d.workingDays, d.workingHours))
     setSelectedServices(d.serviceIds ? JSON.parse(d.serviceIds) : [])
     setLocalAvatar(d.avatarUrl || null)
+    fetchBlockedTimes(d.id)
   }
 
   async function handleSave() {
@@ -180,6 +191,40 @@ export default function DoctorsTab() {
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok }); setTimeout(() => setToast(null), 3000)
+  }
+
+  async function fetchBlockedTimes(doctorId: string) {
+    try {
+      const res = await fetch(`${API}/scheduling/doctors/${doctorId}/block-time`, { headers: authH })
+      if (res.ok) setBlockedTimes(await res.json())
+      else setBlockedTimes([])
+    } catch { setBlockedTimes([]) }
+  }
+
+  async function addBlock() {
+    if (!selected || !blkDate || !blkStart || !blkEnd) return
+    setBlkSaving(true)
+    try {
+      const startAt = new Date(`${blkDate}T${blkStart}`).toISOString()
+      const endAt   = new Date(`${blkDate}T${blkEnd}`).toISOString()
+      const res = await fetch(`${API}/scheduling/doctors/${selected.id}/block-time`, {
+        method: 'POST', headers: jsonH,
+        body: JSON.stringify({ startAt, endAt, reason: blkReason || undefined }),
+      })
+      if (res.ok) { showToast('Time blocked', true); fetchBlockedTimes(selected.id); setBlkReason('') }
+      else showToast('Failed to block time', false)
+    } catch { showToast('Network error', false) } finally { setBlkSaving(false) }
+  }
+
+  async function deleteBlock(blockId: string) {
+    if (!selected) return
+    try {
+      const res = await fetch(`${API}/scheduling/doctors/${selected.id}/block-time/${blockId}`, {
+        method: 'DELETE', headers: authH,
+      })
+      if (res.ok) { showToast('Block removed', true); fetchBlockedTimes(selected.id) }
+      else showToast('Failed to remove block', false)
+    } catch { showToast('Network error', false) }
   }
 
   if (loading) return (
@@ -432,6 +477,67 @@ export default function DoctorsTab() {
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Save Changes
               </button>
+            </div>
+
+            {/* ─── Block Time Slots ─── */}
+            <div className="pt-2">
+              <div className="flex items-center gap-2 mb-1">
+                <Ban size={14} className="text-red-400" />
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Block Time Slots</label>
+              </div>
+              <p className="text-xs text-gray-400 mb-3">Mark off times when this doctor is unavailable</p>
+
+              <div className="bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 p-4 mb-3 space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Date</label>
+                    <input type="date" value={blkDate} onChange={e => setBlkDate(e.target.value)} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">From</label>
+                    <input type="time" value={blkStart} onChange={e => setBlkStart(e.target.value)} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">To</label>
+                    <input type="time" value={blkEnd} onChange={e => setBlkEnd(e.target.value)} className={inputCls} />
+                  </div>
+                </div>
+                <input value={blkReason} onChange={e => setBlkReason(e.target.value)}
+                  placeholder="Reason (optional — e.g. Lunch break, Training)" className={inputCls} />
+                <button onClick={addBlock} disabled={blkSaving || !blkDate}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white disabled:opacity-50 transition-all hover:-translate-y-0.5"
+                  style={{ background: 'linear-gradient(135deg,#dc2626,#ef4444)', boxShadow: '0 4px 12px rgba(239,68,68,0.25)' }}>
+                  {blkSaving ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                  Block This Time
+                </button>
+              </div>
+
+              {blockedTimes.length > 0 ? (
+                <div className="space-y-2">
+                  {blockedTimes.map(b => {
+                    const start = new Date(b.startAt)
+                    const end   = new Date(b.endAt)
+                    const date  = start.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short' })
+                    const s     = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
+                    const e     = end.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
+                    return (
+                      <div key={b.id} className="flex items-center gap-3 p-3 rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20">
+                        <Ban size={13} className="text-red-400 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-red-700 dark:text-red-400">{date}</p>
+                          <p className="text-[10px] text-red-500">{s} – {e}{b.reason ? ` · ${b.reason}` : ''}</p>
+                        </div>
+                        <button onClick={() => deleteBlock(b.id)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/20 text-red-500 hover:bg-red-200 dark:hover:bg-red-900/30 transition-colors">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-300 dark:text-gray-600 pl-1">No blocked slots — doctor available during all working hours</p>
+              )}
             </div>
           </div>
         </div>
