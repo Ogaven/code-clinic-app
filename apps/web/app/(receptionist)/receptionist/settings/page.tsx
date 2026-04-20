@@ -216,21 +216,51 @@ export default function SettingsPage() {
   ]
 
   return (
-    <div className="p-5 max-w-4xl mx-auto space-y-5">
+    <div className="max-w-4xl mx-auto">
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-          <User size={18} className="text-white" />
+      {/* ── Hero Banner ─────────────────────────────────────────── */}
+      <div className="relative overflow-hidden px-6 py-8 md:px-8"
+        style={{ background: 'linear-gradient(135deg,#0c1e50 0%,#1a3a8f 50%,#0c3060 100%)' }}>
+        {/* Background blobs */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-64 h-64 rounded-full opacity-20"
+            style={{ background: 'radial-gradient(circle,#29ABE2,transparent)' }} />
+          <div className="absolute -bottom-12 -left-12 w-48 h-48 rounded-full opacity-15"
+            style={{ background: 'radial-gradient(circle,#9B59B6,transparent)' }} />
         </div>
-        <div>
-          <h1 className="text-xl font-black text-gray-800 dark:text-white">Account Settings</h1>
-          <p className="text-xs text-gray-400 dark:text-white/40">Manage your profile, security and preferences</p>
+
+        <div className="relative flex items-center gap-5">
+          {/* Avatar */}
+          <div className="relative flex-shrink-0">
+            {avatar ? (
+              <img src={avatar} alt="Avatar" className="w-20 h-20 rounded-3xl object-cover ring-4 ring-white/20" />
+            ) : (
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-2xl font-black text-white ring-4 ring-white/20"
+                style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.2),rgba(255,255,255,0.05))' }}>
+                {initials}
+              </div>
+            )}
+            <button type="button" onClick={() => fileRef.current?.click()}
+              className="absolute -bottom-1.5 -right-1.5 w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-lg border-2 border-white/20"
+              style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)' }}>
+              <Camera size={13} />
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarFile} />
+          </div>
+
+          <div>
+            <p className="text-[10px] font-black text-cyan-300/60 uppercase tracking-widest mb-0.5">Account Settings</p>
+            <h1 className="text-2xl font-black text-white">{user?.firstName} {user?.lastName}</h1>
+            <p className="text-sm text-blue-200/60 mt-0.5">{user?.email}</p>
+            <span className="inline-block mt-1.5 text-[10px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">
+              Receptionist
+            </span>
+          </div>
         </div>
       </div>
 
+      <div className="p-5 space-y-5">
       <div className="flex flex-col md:flex-row gap-5">
 
         {/* Sidebar tabs */}
@@ -241,7 +271,7 @@ export default function SettingsPage() {
                 className={cn(
                   'w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all border-b border-gray-50 dark:border-white/5 last:border-0',
                   tab === key
-                    ? 'bg-blue-50 dark:bg-cyan-500/10 text-blue-700 dark:text-cyan-400 font-bold'
+                    ? 'bg-cyan-50 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 font-bold border-l-2 border-l-cyan-500'
                     : 'text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5',
                 )}>
                 <Icon size={15} className="flex-shrink-0" />
@@ -601,6 +631,7 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   )
