@@ -689,9 +689,9 @@ router.post('/seed-production', async (req, res) => {
           const startOfDay = new Date(d); startOfDay.setHours(0, 0, 0, 0)
           const endOfDay   = new Date(d); endOfDay.setHours(23, 59, 59, 999)
           const alreadyIn = await prisma.doctorCheckIn.count({
-            where: { doctorId: doc.id, type: 'CHECK_IN', createdAt: { gte: startOfDay, lte: endOfDay } },
+            where: { doctorId: doc.id, createdAt: { gte: startOfDay, lte: endOfDay } },
           })
-          if (alreadyIn > 0) continue
+          if (alreadyIn >= 2) continue
           const ciTime = new Date(d); ciTime.setHours(7 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 30), 0, 0)
           const coTime = new Date(d); coTime.setHours(17 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 30), 0, 0)
           await prisma.doctorCheckIn.create({ data: { doctorId: doc.id, userId: doc.user.id, type: 'CHECK_IN',  createdAt: ciTime } })
@@ -710,10 +710,17 @@ router.post('/seed-production', async (req, res) => {
       const toothStatuses = ['Caries','Planned Treatment','Amalgam','Composite','Crown','Missing','Healthy']
       for (const pat of patientsForChart) {
         const existing = await prisma.dentalChart.findUnique({ where: { patientId: pat.id } })
-        if (existing) continue
+        // Skip only if chart already has teeth data
+        if (existing && existing.teeth && existing.teeth !== '{}') continue
         const teeth: Record<string, any> = {}
         for (const t of toothNums) {
-          if (Math.random() > 0.65) {
+          if (Math.random() > 0.55) {
+            teeth[String(t)] = { conditions: [{ id: `${t}-1`, condition: toothStatuses[Math.floor(Math.random() * toothStatuses.length)] }], surfaces: {}, notes: '' }
+          }
+        }
+        // Ensure at least 5 teeth have conditions
+        if (Object.keys(teeth).length < 5) {
+          for (const t of [11,16,21,26,36]) {
             teeth[String(t)] = { conditions: [{ id: `${t}-1`, condition: toothStatuses[Math.floor(Math.random() * toothStatuses.length)] }], surfaces: {}, notes: '' }
           }
         }
@@ -721,7 +728,11 @@ router.post('/seed-production', async (req, res) => {
         for (const t of [16,17,26,27,36,37,46,47]) {
           perio[String(t)] = { buccal: { pocketDepth: Math.floor(Math.random()*4)+1, bleeding: Math.random()>0.7 }, lingual: { pocketDepth: Math.floor(Math.random()*4)+1, bleeding: Math.random()>0.7 } }
         }
-        await prisma.dentalChart.create({ data: { patientId: pat.id, teeth: JSON.stringify(teeth), periodontal: JSON.stringify(perio) } })
+        await prisma.dentalChart.upsert({
+          where: { patientId: pat.id },
+          update: { teeth: JSON.stringify(teeth), periodontal: JSON.stringify(perio) },
+          create: { patientId: pat.id, teeth: JSON.stringify(teeth), periodontal: JSON.stringify(perio) },
+        })
         chartCount++
       }
       log(`${chartCount} dental charts seeded`)
@@ -743,7 +754,7 @@ router.post('/seed-production', async (req, res) => {
       ]
       for (const pat of patientsForPlan) {
         const existingCount = await prisma.treatmentPlan.count({ where: { patientId: pat.id } })
-        if (existingCount > 0 || servicesForPlan.length === 0) continue
+        if (existingCount >= 3 || servicesForPlan.length === 0) continue
         const numPlans = Math.floor(Math.random() * 3) + 1
         for (let i = 0; i < numPlans; i++) {
           const svc = servicesForPlan[Math.floor(Math.random() * servicesForPlan.length)]
@@ -773,7 +784,7 @@ router.post('/seed-production', async (req, res) => {
       if (adminForAct) {
         for (const pat of patientsForAct) {
           const existingCount = await prisma.patientActivity.count({ where: { patientId: pat.id } })
-          if (existingCount > 0) continue
+          if (existingCount >= 5) continue
           const numActs = Math.floor(Math.random() * 4) + 2
           for (let i = 0; i < numActs; i++) {
             const actDate = new Date(); actDate.setDate(actDate.getDate() - Math.floor(Math.random() * 30))
