@@ -54,6 +54,27 @@ function runPrismaDbPush() {
   throw new Error(`All prisma binary attempts failed:\n${errors.join('\n')}`)
 }
 
+// POST /setup/reseed-demo — force re-seed all demo data (patients, appts, charts, treatments)
+// Call this any time data disappears: curl -X POST https://api.../setup/reseed-demo -H "x-seed-secret: codeclinic-demo-2026"
+router.post('/reseed-demo', async (req, res) => {
+  const secret   = req.headers['x-seed-secret'] || req.body?.secret
+  const expected = process.env.SEED_SECRET || 'codeclinic-demo-2026'
+  if (secret !== expected) return res.status(403).json({ error: 'Invalid seed secret' })
+  try {
+    const { seedDemoData } = await import('../startup')
+    await (seedDemoData as any)()
+    const counts = await Promise.all([
+      prisma.patient.count(),
+      prisma.appointment.count(),
+      prisma.dentalChart.count(),
+      prisma.treatmentPlan.count(),
+    ])
+    res.json({ success: true, patients: counts[0], appointments: counts[1], dentalCharts: counts[2], treatmentPlans: counts[3] })
+  } catch (e: any) {
+    res.status(500).json({ error: 'Reseed failed', detail: e.message })
+  }
+})
+
 // POST /setup/migrate — sync schema without full seed
 router.post('/migrate', async (req, res) => {
   const secret = req.headers['x-seed-secret'] || req.body?.secret

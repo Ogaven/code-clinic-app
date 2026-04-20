@@ -208,7 +208,7 @@ async function seed() {
   await seedDemoData()
 }
 
-async function seedDemoData() {
+export async function seedDemoData() {
   const allDoctors  = await prisma.doctor.findMany({ include: { user: true } })
   const allServices = await prisma.service.findMany()
   const adminUser   = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
