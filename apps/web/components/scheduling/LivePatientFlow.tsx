@@ -224,11 +224,11 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000, pat
                             <button
                               onClick={() => advance(appt.id, stage.next)}
                               disabled={advancing === appt.id}
-                              className="w-full flex items-center justify-center gap-0.5 py-1 rounded-lg text-[9px] font-bold text-white transition-all hover:opacity-90 disabled:opacity-50"
+                              className="w-full flex items-center justify-center gap-0.5 py-1.5 rounded-lg text-[10px] font-bold text-white transition-all hover:opacity-90 disabled:opacity-50 min-h-[32px]"
                               style={{ background: stage.color }}>
                               {advancing === appt.id
                                 ? '…'
-                                : <><ChevronRight size={9} />{stage.nextLabel}</>
+                                : <><ChevronRight size={10} />{stage.nextLabel}</>
                               }
                             </button>
                           </div>

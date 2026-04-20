@@ -242,7 +242,7 @@ export default function DoctorDashboardPage() {
       </div>
 
       {/* ── QUICK ACTIONS ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Link href="/doctor/schedule"
           className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all hover:-translate-y-0.5 shadow-sm min-h-[76px] justify-center">
           <CalendarDays size={22} className="text-blue-500" />

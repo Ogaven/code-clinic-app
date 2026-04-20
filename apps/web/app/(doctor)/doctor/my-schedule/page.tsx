@@ -185,12 +185,12 @@ export default function MySchedulePage() {
       )}
 
       {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-4 py-3 bg-white dark:bg-white/5 border-b border-gray-100 dark:border-white/8">
+      <div className="flex-shrink-0 flex flex-wrap items-center gap-2 px-3 py-2.5 bg-white dark:bg-white/5 border-b border-gray-100 dark:border-white/8">
         {/* View tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-white/10 rounded-xl p-1">
           {(['day', 'week', 'month'] as ViewMode[]).map(v => (
             <button key={v} onClick={() => setView(v)}
-              className={cn('px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all',
+              className={cn('px-2.5 py-1.5 rounded-lg text-xs font-bold capitalize transition-all min-h-[36px]',
                 view === v ? 'bg-white dark:bg-blue-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700')}>
               {v}
             </button>
@@ -198,24 +198,24 @@ export default function MySchedulePage() {
         </div>
 
         {/* Navigation */}
-        <button onClick={() => navigate(-1)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+        <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
           <ChevronLeft size={16} />
         </button>
         <button onClick={() => { const d = new Date(); d.setHours(0,0,0,0); setAnchor(d) }}
-          className="px-3 py-1.5 rounded-lg text-xs font-bold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+          className="px-3 py-2 rounded-lg text-xs font-bold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors min-h-[36px]">
           Today
         </button>
-        <button onClick={() => navigate(1)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+        <button onClick={() => navigate(1)} className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
           <ChevronRight size={16} />
         </button>
 
-        <h2 className="flex-1 text-sm font-bold text-gray-800 dark:text-white truncate text-center px-2">{headerLabel}</h2>
+        <h2 className="flex-1 text-sm font-bold text-gray-800 dark:text-white truncate text-center px-1 min-w-0">{headerLabel}</h2>
 
         {/* Block time */}
         <button onClick={() => setBlockOpen(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5"
-          style={{ background: 'linear-gradient(135deg,#F97316,#EA580C)', boxShadow: '0 4px 12px rgba(249,115,22,0.3)' }}>
-          <Ban size={13} /> Block Time
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all"
+          style={{ background: 'linear-gradient(135deg,#F97316,#EA580C)' }}>
+          <Ban size={13} /> <span className="hidden sm:inline">Block Time</span><span className="sm:hidden">Block</span>
         </button>
       </div>
 
@@ -358,33 +358,41 @@ export default function MySchedulePage() {
                 <div key={d} className="text-center text-[10px] font-bold text-gray-400 uppercase py-1">{d}</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
               {monthDays.map((d, i) => {
-                if (!d) return <div key={`empty-${i}`} className="h-24 rounded-xl" />
+                if (!d) return <div key={`empty-${i}`} className="h-16 sm:h-24 rounded-xl" />
                 const ds = d.toISOString().slice(0, 10)
                 const dayA = appts.filter(a => a.startAt.slice(0, 10) === ds)
                 const isToday = ds === todayStr
                 return (
                   <div key={ds}
-                    className={cn('h-24 rounded-xl p-1.5 border transition-colors cursor-pointer hover:border-blue-300 dark:hover:border-blue-700',
+                    className={cn('h-16 sm:h-24 rounded-xl p-1 sm:p-1.5 border transition-colors cursor-pointer hover:border-blue-300 dark:hover:border-blue-700',
                       isToday
                         ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20'
                         : 'border-gray-100 dark:border-white/8 bg-white dark:bg-white/5')}
                     onClick={() => { setAnchor(d); setView('day') }}>
-                    <span className={cn('text-[11px] font-bold', isToday ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400')}>
+                    <span className={cn('text-[10px] sm:text-[11px] font-bold', isToday ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400')}>
                       {d.getDate()}
                     </span>
-                    <div className="space-y-0.5 mt-0.5">
-                      {dayA.slice(0, 3).map(a => (
+                    <div className="space-y-0.5 mt-0.5 hidden sm:block">
+                      {dayA.slice(0, 2).map(a => (
                         <div key={a.id} className="text-[8px] truncate font-medium rounded px-1 py-0.5 text-white"
                           style={{ background: a.service?.colour || '#29ABE2' }}>
                           {fmt(a.startAt)} {a.patient?.firstName}
                         </div>
                       ))}
-                      {dayA.length > 3 && (
-                        <div className="text-[8px] font-bold text-blue-500 px-1">+{dayA.length - 3} more</div>
+                      {dayA.length > 2 && (
+                        <div className="text-[8px] font-bold text-blue-500 px-1">+{dayA.length - 2}</div>
                       )}
                     </div>
+                    {/* Mobile: just a dot if has appointments */}
+                    {dayA.length > 0 && (
+                      <div className="sm:hidden flex gap-0.5 mt-0.5 flex-wrap">
+                        {dayA.slice(0,3).map(a => (
+                          <div key={a.id} className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.service?.colour || '#29ABE2' }} />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )
               })}
