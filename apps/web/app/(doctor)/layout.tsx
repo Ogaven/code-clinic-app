@@ -146,17 +146,15 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     const cached = localStorage.getItem('cc_avatar')
     if (cached) setAvatarUrl(cached)
 
-    // Refresh token immediately on load — fixes expired 15-min tokens without needing re-login
-    const refreshSilently = async () => {
-      try {
-        const r = await fetch('/api-proxy/auth/refresh', { method: 'POST', credentials: 'include' })
-        if (r.ok) {
-          const d = await r.json()
-          if (d.accessToken) { localStorage.setItem('cc_token', d.accessToken); setToken(d.accessToken) }
-        }
-      } catch {}
+    const refreshSilently = () => {
+      fetch('/api-proxy/auth/refresh', { method: 'POST', credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.accessToken) { localStorage.setItem('cc_token', d.accessToken); setToken(d.accessToken) } })
+        .catch(() => {})
     }
-    await refreshSilently()
+
+    // Refresh immediately so expired tokens are replaced before any API call
+    refreshSilently()
 
     fetchUnread()
     fetchDoctorAvatar(u.id)
