@@ -17,7 +17,8 @@ const UPLOADS_DIR = fs.existsSync('/data')
   : path.resolve(process.cwd(), 'uploads')
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 
-const API_URL = process.env.API_URL || 'http://localhost:4000'
+const API_URL = process.env.API_URL ||
+  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'http://localhost:4000')
 
 // ── R2 client (only used when configured) ─────────────────────────────────
 const s3 = new S3Client({

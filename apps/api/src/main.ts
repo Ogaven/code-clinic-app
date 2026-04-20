@@ -90,6 +90,7 @@ app.use('/crm', crmRouter)
 app.use('/campaigns', campaignsRouter)
 app.use('/developer', developerRouter)
 app.use('/integrations', integrationsRouter)
+app.use('/api/integrations', integrationsRouter)  // alias for OAuth callbacks configured with /api/ prefix
 app.use('/receptionist', receptionistRouter)
 app.use('/assistant', assistantRouter)
 app.use('/agent', agentRouter)

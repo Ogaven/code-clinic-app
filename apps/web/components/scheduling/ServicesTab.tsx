@@ -54,9 +54,10 @@ export default function ServicesTab() {
   async function fetchServices() {
     setLoading(true)
     try {
-      const res  = await fetch(`${API}/services/all`, { headers })
+      const res  = await fetch(`${API}/services?limit=200`, { headers })
       const data = await res.json()
-      setServices(Array.isArray(data) ? data : [])
+      const list = Array.isArray(data) ? data : (data.services ?? [])
+      setServices(list)
     } catch { } finally { setLoading(false) }
   }
 
