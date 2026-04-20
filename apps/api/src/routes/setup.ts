@@ -251,18 +251,14 @@ router.post('/seed-production', async (req, res) => {
           where: { patientId: patient.id, doctorId: doctor.id, startAt },
         })
         if (!existing) {
-          await prisma.appointment.create({
-            data: {
-              patientId:   patient.id,
-              doctorId:    doctor.id,
-              serviceId:   service.id,
-              startAt,
-              endAt,
-              status:      slot.status,
-              createdById: adminUser.id,
-            },
-          })
-          apptCount++
+          try {
+            await prisma.appointment.upsert({
+              where: { doctorId_startAt: { doctorId: doctor.id, startAt } },
+              update: { status: slot.status },
+              create: { patientId: patient.id, doctorId: doctor.id, serviceId: service.id, startAt, endAt, status: slot.status, createdById: adminUser.id },
+            })
+            apptCount++
+          } catch { /* skip conflict */ }
         }
       }
       log(`${apptCount} today's appointments created`)
