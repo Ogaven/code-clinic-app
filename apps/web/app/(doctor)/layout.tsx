@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import DoctorSarahChatbot from '@/components/DoctorSarahChatbot'
+import SarahChatbot from '@/components/SarahChatbot'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -290,7 +290,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
         <main className="flex-1 overflow-y-auto relative">
           {children}
-          <DoctorSarahChatbot />
+          <SarahChatbot />
         </main>
       </div>
 

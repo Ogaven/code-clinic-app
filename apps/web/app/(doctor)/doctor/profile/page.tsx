@@ -129,19 +129,28 @@ export default function DoctorProfilePage() {
   }
 
   async function handleAvatarFile(file: File) {
-    if (!file || !token) return
+    if (!file || !token || !user) return
     if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { showToast('Only JPEG, PNG, WebP allowed'); return }
     setAvatarUploading(true)
+    const reader = new FileReader()
+    reader.onload = e => { if (e.target?.result) setAvatarUrl(e.target.result as string) }
+    reader.readAsDataURL(file)
     try {
-      const reader = new FileReader()
-      reader.onload = e => { if (e.target?.result) setAvatarUrl(e.target.result as string) }
-      reader.readAsDataURL(file)
       const form = new FormData(); form.append('avatar', file)
       const r = await fetch(`/api-proxy/employees/${user.id}/avatar`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
       })
-      if (r.ok) { const d = await r.json(); setAvatarUrl(d.avatarUrl) }
-    } catch {} finally { setAvatarUploading(false) }
+      if (r.ok) {
+        const d = await r.json()
+        setAvatarUrl(d.avatarUrl)
+        showToast('Photo updated!')
+      } else {
+        const d = await r.json().catch(() => ({}))
+        showToast(d.error || `Upload failed (${r.status})`)
+      }
+    } catch (e: any) {
+      showToast('Upload failed — check connection')
+    } finally { setAvatarUploading(false) }
   }
 
   function applyTheme(t: Theme) {
