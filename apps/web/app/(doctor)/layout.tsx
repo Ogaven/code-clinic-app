@@ -80,6 +80,49 @@ function NavLink({
   )
 }
 
+// ── Animated Splash Screen ───────────────────────────────────────────────────
+function SplashScreen() {
+  return (
+    <div className="fixed inset-0 flex flex-col items-center justify-center z-[9999]"
+      style={{ background: 'linear-gradient(160deg,#0a1628 0%,#0d2150 50%,#0a1628 100%)' }}>
+
+      {/* Animated rings */}
+      <div className="relative flex items-center justify-center mb-8">
+        <div className="absolute w-40 h-40 rounded-full border border-blue-400/10 animate-ping" style={{ animationDuration: '2.5s' }} />
+        <div className="absolute w-28 h-28 rounded-full border border-blue-400/20 animate-ping" style={{ animationDuration: '2s', animationDelay: '0.3s' }} />
+        <div className="absolute w-20 h-20 rounded-full border border-blue-400/30 animate-ping" style={{ animationDuration: '1.5s', animationDelay: '0.6s' }} />
+
+        {/* Logo circle */}
+        <div className="relative w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl"
+          style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 0 60px rgba(41,171,226,0.5)' }}>
+          {/* Tooth SVG */}
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <path d="M24 6C18.5 6 13 10 13 16.5c0 3.5 1.5 6 2.5 9 1 3 1.5 8 3.5 8 1.5 0 2-3 2.5-5.5.5-2.5 1-4 2.5-4s2 1.5 2.5 4c.5 2.5 1 5.5 2.5 5.5 2 0 2.5-5 3.5-8 1-3 2.5-5.5 2.5-9C35 10 29.5 6 24 6z"
+              fill="white" opacity="0.95"/>
+          </svg>
+          {/* Cross overlay */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-5 h-0.5 bg-white/30 absolute" />
+            <div className="w-0.5 h-5 bg-white/30 absolute" />
+          </div>
+        </div>
+      </div>
+
+      {/* App name */}
+      <h1 className="text-2xl font-black text-white tracking-wide mb-1"
+        style={{ fontFamily: 'Plus Jakarta Sans', textShadow: '0 0 30px rgba(41,171,226,0.5)' }}>
+        Code Clinic
+      </h1>
+      <p className="text-blue-300/70 text-sm font-medium mb-10">Painless Dentistry, Lifesaving Smiles</p>
+
+      {/* Loading bar */}
+      <div className="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
+        <div className="h-full bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full animate-loading-bar" />
+      </div>
+    </div>
+  )
+}
+
 export default function DoctorLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router   = useRouter()
@@ -177,6 +220,8 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   }
 
   const initials = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'D'
+
+  if (!user) return <SplashScreen />
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[#0A0F1E]">

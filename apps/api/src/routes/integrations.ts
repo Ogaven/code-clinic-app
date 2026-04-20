@@ -69,8 +69,25 @@ router.get('/google-calendar/status', requireAuth, (_req, res) => {
   })
 })
 
+// ─── GET /integrations/google-calendar/auth-url ──────────────
+// Returns JSON { url } — frontend fetches this then navigates; avoids token-in-URL issues
+router.get('/google-calendar/auth-url', requireAuth, clinicalStaff, (req, res) => {
+  const auth     = makeOAuth2Client()
+  const returnTo = (req.query.returnTo as string) || '/scheduling'
+  const url = auth.generateAuthUrl({
+    access_type: 'offline',
+    prompt:      'consent',
+    scope: [
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/calendar.events',
+    ],
+    state: encodeURIComponent(returnTo),
+  })
+  res.json({ url })
+})
+
 // ─── GET /integrations/google-calendar/auth ──────────────────
-// Browser navigates here → redirected to Google consent screen
+// Legacy: browser navigates here → redirected to Google consent screen
 router.get('/google-calendar/auth',
   acceptTokenFromQuery, requireAuth, clinicalStaff,
   (req, res) => {

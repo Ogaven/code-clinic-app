@@ -163,6 +163,14 @@
   50%       { opacity: 0.5; transform: scale(0.8); }
 }
 
+@keyframes loadingBar {
+  0%   { width: 0%; opacity: 1; }
+  70%  { width: 85%; opacity: 1; }
+  90%  { width: 95%; opacity: 0.8; }
+  100% { width: 100%; opacity: 0; }
+}
+.animate-loading-bar { animation: loadingBar 2s ease-in-out forwards; }
+
 .animate-fade-in     { animation: fadeIn 0.4s ease both; }
 .animate-fade-in-up  { animation: fadeInUp 0.5s ease both; }
 .animate-float       { animation: float 6s ease-in-out infinite; }

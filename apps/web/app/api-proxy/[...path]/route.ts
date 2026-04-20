@@ -28,6 +28,7 @@ async function handler(
       method: request.method,
       headers,
       body: body ? Buffer.from(body) : undefined,
+      redirect: 'manual',
     })
 
     // Forward response headers, strip problematic ones

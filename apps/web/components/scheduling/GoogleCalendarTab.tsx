@@ -54,9 +54,19 @@ export default function GoogleCalendarTab() {
     } catch { setConnected(false) } finally { setChecking(false) }
   }
 
-  function handleConnect() {
-    const returnTo = encodeURIComponent(window.location.pathname)
-    window.location.href = `${API}/integrations/google-calendar/auth?token=${token}&returnTo=${returnTo}`
+  async function handleConnect() {
+    try {
+      const returnTo = encodeURIComponent(window.location.pathname)
+      const res  = await fetch(`${API}/integrations/google-calendar/auth-url?returnTo=${returnTo}`, { headers })
+      const data = await res.json()
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        showToast(data.error || 'Could not generate auth URL', false)
+      }
+    } catch {
+      showToast('Network error — please try again', false)
+    }
   }
 
   async function handleDisconnect() {
