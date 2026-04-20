@@ -12,6 +12,7 @@ import {
   Sun, Moon, CalendarCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { fetchWithAuth } from '@/lib/api'
 import DoctorChatbot from '@/components/DoctorChatbot'
 
 type Theme = 'light' | 'dark' | 'system'
@@ -182,8 +183,17 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     fetchUnread()
     fetchDoctorAvatar(u.id)
 
-    const interval = setInterval(fetchUnread, 30000)
-    return () => clearInterval(interval)
+    // Silently refresh the access token every 6 minutes so it never expires mid-session
+    const refreshSilently = async () => {
+      try {
+        const r = await fetch('/api-proxy/auth/refresh', { method: 'POST', credentials: 'include' })
+        if (r.ok) { const d = await r.json(); if (d.accessToken) localStorage.setItem('cc_token', d.accessToken) }
+      } catch {}
+    }
+    refreshSilently()
+    const refreshInterval = setInterval(refreshSilently, 6 * 60 * 1000)
+    const unreadInterval  = setInterval(fetchUnread, 30000)
+    return () => { clearInterval(refreshInterval); clearInterval(unreadInterval) }
   }, [router, fetchUnread, fetchDoctorAvatar])
 
   // Re-fetch avatar when returning to layout (e.g. after profile pic upload)

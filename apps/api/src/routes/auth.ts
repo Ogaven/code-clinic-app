@@ -25,7 +25,7 @@ function signAccess(user: { id: string; email: string; role: string; firstName: 
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName },
     process.env.JWT_SECRET!,
-    { expiresIn: '15m' },
+    { expiresIn: '7d' },
   )
 }
 

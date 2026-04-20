@@ -4,6 +4,43 @@ const API_URL = '/api-proxy'
 
 export const getApiUrl = () => API_URL
 
+// ── Auto-refresh logic ────────────────────────────────────────
+let _refreshing: Promise<string | null> | null = null
+
+async function refreshToken(): Promise<string | null> {
+  if (_refreshing) return _refreshing
+  _refreshing = (async () => {
+    try {
+      const r = await fetch(`${API_URL}/auth/refresh`, { method: 'POST', credentials: 'include' })
+      if (!r.ok) return null
+      const d = await r.json()
+      if (d.accessToken) { localStorage.setItem('cc_token', d.accessToken); return d.accessToken }
+    } catch {}
+    return null
+  })().finally(() => { _refreshing = null })
+  return _refreshing
+}
+
+// fetchWithAuth — auto-refreshes expired access tokens, redirects to /login if refresh fails
+export async function fetchWithAuth(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  const hdrs  = new Headers(init.headers)
+  if (token) hdrs.set('Authorization', `Bearer ${token}`)
+
+  let res = await fetch(input, { ...init, headers: hdrs, credentials: 'include' })
+
+  if (res.status === 401) {
+    const fresh = await refreshToken()
+    if (fresh) {
+      hdrs.set('Authorization', `Bearer ${fresh}`)
+      res = await fetch(input, { ...init, headers: hdrs, credentials: 'include' })
+    } else if (typeof window !== 'undefined') {
+      window.location.replace('/login')
+    }
+  }
+  return res
+}
+
 export async function apiFetch<T = any>(
   path: string,
   options: RequestInit & { token?: string } = {},
