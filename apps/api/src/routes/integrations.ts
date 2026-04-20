@@ -112,6 +112,7 @@ router.get('/google-calendar/callback', async (req, res) => {
   const { code, error, state } = req.query as Record<string, string>
   const front    = process.env.APP_URL || 'http://localhost:3000'
   const returnTo = state ? decodeURIComponent(state) : '/scheduling'
+  console.log('[GCal] Callback hit — code:', !!code, 'error:', error || 'none', 'redirectUri:', getRedirectUri())
 
   if (error || !code) {
     const reason = error || 'no_code'

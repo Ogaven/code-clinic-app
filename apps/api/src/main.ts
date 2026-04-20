@@ -32,6 +32,10 @@ import { startScheduler } from './services/agent/scheduler'
 const app = express()
 const PORT = process.env.PORT || 4000
 
+// Railway (and most PaaS) run behind a reverse proxy — trust it so that
+// express-rate-limit can read the real client IP from X-Forwarded-For
+app.set('trust proxy', 1)
+
 // ─── Ensure uploads directory exists (persist on Railway Volume at /data) ──
 const uploadsDir = fs.existsSync('/data')
   ? path.join('/data', 'uploads')
