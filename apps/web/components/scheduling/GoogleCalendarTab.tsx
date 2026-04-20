@@ -55,8 +55,8 @@ export default function GoogleCalendarTab() {
   }
 
   function handleConnect() {
-    // Redirect browser to API OAuth start endpoint (no CORS — it's a server redirect)
-    window.location.href = `${API}/integrations/google-calendar/auth?token=${token}`
+    const returnTo = encodeURIComponent(window.location.pathname)
+    window.location.href = `${API}/integrations/google-calendar/auth?token=${token}&returnTo=${returnTo}`
   }
 
   async function handleDisconnect() {

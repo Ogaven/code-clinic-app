@@ -18,14 +18,16 @@ function makeOAuth2Client() {
   )
 }
 
-// Token file lives next to the SQLite DB in the repo root
-const TOKEN_FILE = path.resolve(process.cwd(), '../../gcal-tokens.json')
+// Token file: prefer Railway Volume (/data) for persistence across restarts
+const TOKEN_FILE = fs.existsSync('/data')
+  ? '/data/gcal-tokens.json'
+  : path.resolve(process.cwd(), '../../gcal-tokens.json')
 
 function loadTokens(): any | null {
   try { return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf-8')) } catch { return null }
 }
 function saveTokens(tokens: any) {
-  fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2))
+  try { fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2)) } catch (e) { console.error('[GCal] saveTokens error:', e) }
 }
 function deleteTokens() {
   try { fs.unlinkSync(TOKEN_FILE) } catch { }
@@ -62,15 +64,17 @@ router.get('/google-calendar/status', requireAuth, (_req, res) => {
 // Browser navigates here → redirected to Google consent screen
 router.get('/google-calendar/auth',
   acceptTokenFromQuery, requireAuth, clinicalStaff,
-  (_req, res) => {
-    const auth = makeOAuth2Client()
+  (req, res) => {
+    const auth     = makeOAuth2Client()
+    const returnTo = (req.query.returnTo as string) || '/scheduling'
     const url  = auth.generateAuthUrl({
       access_type: 'offline',
-      prompt:      'consent',   // Always return refresh_token
+      prompt:      'consent',
       scope: [
         'https://www.googleapis.com/auth/calendar',
         'https://www.googleapis.com/auth/calendar.events',
       ],
+      state: encodeURIComponent(returnTo),
     })
     res.redirect(url)
   },
@@ -79,24 +83,25 @@ router.get('/google-calendar/auth',
 // ─── GET /integrations/google-calendar/callback ──────────────
 // Google sends user back here with ?code=
 router.get('/google-calendar/callback', async (req, res) => {
-  const { code, error } = req.query as Record<string, string>
-  const front = process.env.APP_URL || 'http://localhost:3000'
+  const { code, error, state } = req.query as Record<string, string>
+  const front    = process.env.APP_URL || 'http://localhost:3000'
+  const returnTo = state ? decodeURIComponent(state) : '/scheduling'
 
   if (error || !code) {
     const reason = error || 'no_code'
     console.error('[GCal] OAuth error:', reason)
-    return res.redirect(`${front}/scheduling?gcal=error&reason=${encodeURIComponent(reason)}`)
+    return res.redirect(`${front}${returnTo}?gcal=error&reason=${encodeURIComponent(reason)}`)
   }
 
   try {
     const auth       = makeOAuth2Client()
     const { tokens } = await auth.getToken(code)
     saveTokens(tokens)
-    console.log('[GCal] ✅ Connected — tokens saved')
-    res.redirect(`${front}/scheduling?gcal=connected`)
+    console.log('[GCal] Connected — tokens saved to', TOKEN_FILE)
+    res.redirect(`${front}${returnTo}?gcal=connected`)
   } catch (e: any) {
     console.error('[GCal] Token exchange error:', e.message)
-    res.redirect(`${front}/scheduling?gcal=error&reason=${encodeURIComponent(e.message)}`)
+    res.redirect(`${front}${returnTo}?gcal=error&reason=${encodeURIComponent(e.message)}`)
   }
 })
 
