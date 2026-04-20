@@ -8,7 +8,7 @@ import {
   Calendar, Users, UserCheck, Bot, TrendingUp, TrendingDown,
   ChevronRight, Clock, AlertTriangle, CheckCircle2,
   MessageSquare, Plus, X, Send, Mic, MicOff, StickyNote,
-  Minimize2, Maximize2,
+  Minimize2, Maximize2, LogIn, LogOut, Search, UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import LivePatientFlow from '@/components/scheduling/LivePatientFlow'
@@ -335,6 +335,11 @@ export default function ReceptionistDashboard() {
   const [newNote, setNewNote]       = useState('')
   const [agentActive, setAgentActive] = useState(true)
   const [loading, setLoading]       = useState(true)
+  const [showCheckin, setShowCheckin]   = useState(false)
+  const [checkinSearch, setCheckinSearch] = useState('')
+  const [checkinResults, setCheckinResults] = useState<any[]>([])
+  const [checkinSearching, setCheckinSearching] = useState(false)
+  const [checkinMode, setCheckinMode] = useState<'in' | 'out'>('in')
 
   // Sarah chatbot state
   type Msg = { from: 'sarah' | 'user'; text: string; time: string }
@@ -480,6 +485,32 @@ export default function ReceptionistDashboard() {
     localStorage.setItem('rec_notes', JSON.stringify(updated))
   }
 
+  async function handleCheckinSearch(q: string) {
+    setCheckinSearch(q)
+    if (q.length < 2) { setCheckinResults([]); return }
+    setCheckinSearching(true)
+    try {
+      const res = await fetch(`${API}/receptionist/today-appointments?q=${encodeURIComponent(q)}`, { headers: authH })
+      if (res.ok) {
+        const data = await res.json()
+        setCheckinResults(Array.isArray(data) ? data : [])
+      }
+    } catch {} finally { setCheckinSearching(false) }
+  }
+
+  async function doCheckInOut(apptId: string) {
+    const status = checkinMode === 'in' ? 'CHECKED_IN' : 'COMPLETED'
+    await fetch(`${API}/scheduling/appointments/${apptId}/status`, {
+      method: 'PATCH',
+      headers: { ...authH, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    setShowCheckin(false)
+    setCheckinSearch('')
+    setCheckinResults([])
+    fetchAll()
+  }
+
   const greeting = () => {
     const h = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getHours()
     return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
@@ -500,6 +531,121 @@ export default function ReceptionistDashboard() {
 
   return (
     <div className="p-5 space-y-5 max-w-[1600px] mx-auto">
+
+      {/* ── Check In/Out Modal ───────────────────────────────────── */}
+      {showCheckin && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-[#0e2045] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-md overflow-hidden animate-fade-in-up">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-white/8">
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1 bg-gray-100 dark:bg-white/8 rounded-xl p-1">
+                  <button onClick={() => setCheckinMode('in')}
+                    className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all',
+                      checkinMode === 'in' ? 'bg-cyan-500 text-white shadow-sm' : 'text-gray-500 dark:text-white/50 hover:text-gray-700')}>
+                    <LogIn size={13} /> Check In
+                  </button>
+                  <button onClick={() => setCheckinMode('out')}
+                    className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all',
+                      checkinMode === 'out' ? 'bg-emerald-500 text-white shadow-sm' : 'text-gray-500 dark:text-white/50 hover:text-gray-700')}>
+                    <LogOut size={13} /> Check Out
+                  </button>
+                </div>
+              </div>
+              <button onClick={() => { setShowCheckin(false); setCheckinSearch(''); setCheckinResults([]) }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
+                <X size={16} className="text-gray-400" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-gray-500 dark:text-white/50">
+                {checkinMode === 'in' ? "Search today's appointment to check in a patient" : "Search today's appointment to check out a patient"}
+              </p>
+
+              {/* Search */}
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  autoFocus
+                  value={checkinSearch}
+                  onChange={e => handleCheckinSearch(e.target.value)}
+                  placeholder="Search by patient name..."
+                  className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+                />
+              </div>
+
+              {/* Results */}
+              {checkinSearching && <p className="text-xs text-gray-400 text-center py-3">Searching...</p>}
+              {!checkinSearching && checkinSearch.length >= 2 && checkinResults.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-3">No appointments found for today</p>
+              )}
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {checkinResults.map((appt: any) => {
+                  const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Africa/Kampala' })
+                  const canCheckin  = checkinMode === 'in'  && ['PENDING','CONFIRMED'].includes(appt.status)
+                  const canCheckout = checkinMode === 'out' && ['IN_CHAIR','WITH_PROVIDER','READY_CHECKOUT'].includes(appt.status)
+                  const canAct = canCheckin || canCheckout
+                  return (
+                    <div key={appt.id} className={cn(
+                      'flex items-center gap-3 p-3 rounded-2xl border transition-all',
+                      canAct ? 'border-cyan-200 dark:border-cyan-500/30 bg-cyan-50/50 dark:bg-cyan-900/10 cursor-pointer hover:border-cyan-400' : 'border-gray-100 dark:border-white/8 opacity-60',
+                    )} onClick={() => canAct && doCheckInOut(appt.id)}>
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                        style={{ background: appt.service?.colour || '#29ABE2' }}>
+                        {appt.patient?.firstName?.[0]}{appt.patient?.lastName?.[0]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-gray-800 dark:text-white">{appt.patient?.firstName} {appt.patient?.lastName}</p>
+                        <p className="text-xs text-gray-400">{appt.service?.name} · {time}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-white/50">{appt.status}</span>
+                        {canAct && (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-lg text-white" style={{ background: checkinMode === 'in' ? '#29ABE2' : '#10B981' }}>
+                            {checkinMode === 'in' ? 'Check In' : 'Check Out'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Today's list shortcut */}
+              {checkinSearch.length < 2 && appointments.length > 0 && (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  <p className="text-xs font-bold text-gray-400 dark:text-white/40 uppercase tracking-wider">Today's Appointments</p>
+                  {appointments.slice(0, 8).map((appt: any) => {
+                    const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Africa/Kampala' })
+                    const canCheckin  = checkinMode === 'in'  && ['PENDING','CONFIRMED'].includes(appt.status)
+                    const canCheckout = checkinMode === 'out' && ['IN_CHAIR','WITH_PROVIDER','READY_CHECKOUT'].includes(appt.status)
+                    const canAct = canCheckin || canCheckout
+                    if (!canAct) return null
+                    return (
+                      <div key={appt.id}
+                        className="flex items-center gap-3 p-3 rounded-2xl border border-cyan-200 dark:border-cyan-500/30 bg-cyan-50/50 dark:bg-cyan-900/10 cursor-pointer hover:border-cyan-400 transition-all"
+                        onClick={() => doCheckInOut(appt.id)}>
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                          style={{ background: appt.service?.colour || '#29ABE2' }}>
+                          {appt.patient?.firstName?.[0]}{appt.patient?.lastName?.[0]}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-gray-800 dark:text-white">{appt.patient?.firstName} {appt.patient?.lastName}</p>
+                          <p className="text-xs text-gray-400">{time} · {appt.service?.name}</p>
+                        </div>
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-lg text-white" style={{ background: checkinMode === 'in' ? '#29ABE2' : '#10B981' }}>
+                          {checkinMode === 'in' ? 'Check In' : 'Check Out'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Hero ────────────────────────────────────────────────── */}
       <div className="relative flex items-center justify-between gap-4 px-1 pt-1 pb-2">
@@ -524,6 +670,30 @@ export default function ReceptionistDashboard() {
           <Image src="/dental30.png" alt="" width={160} height={120}
             style={{ objectFit:'contain', filter:'drop-shadow(0 8px 28px rgba(41,171,226,0.4))' }}/>
         </div>
+      </div>
+
+      {/* ── Quick Actions ──────────────────────────────────────── */}
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={() => { setCheckinMode('in'); setShowCheckin(true) }}
+          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black text-white hover:-translate-y-0.5 transition-all shadow-lg"
+          style={{ background: 'linear-gradient(135deg,#0891b2,#06b6d4)', boxShadow: '0 4px 20px rgba(6,182,212,0.4)' }}>
+          <LogIn size={16} /> Check In Patient
+        </button>
+        <button
+          onClick={() => { setCheckinMode('out'); setShowCheckin(true) }}
+          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black text-white hover:-translate-y-0.5 transition-all shadow-lg"
+          style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: '0 4px 20px rgba(16,185,129,0.4)' }}>
+          <LogOut size={16} /> Check Out Patient
+        </button>
+        <Link href="/receptionist/appointments"
+          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white/80">
+          <Plus size={16} className="text-cyan-500" /> Book Appointment
+        </Link>
+        <Link href="/receptionist/patients"
+          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white/80">
+          <UserPlus size={16} className="text-purple-500" /> Add Patient
+        </Link>
       </div>
 
       {/* ── Stats Row ──────────────────────────────────────────── */}

@@ -7,6 +7,7 @@ import {
   CheckCircle2, AlertCircle,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -38,9 +39,10 @@ function avatarColor(name: string) {
 }
 
 export default function PatientsPage() {
-  const API   = '/api-proxy'
-  const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-  const authH = { Authorization: `Bearer ${token}` }
+  const API    = '/api-proxy'
+  const router = useRouter()
+  const token  = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  const authH  = { Authorization: `Bearer ${token}` }
 
   const [patients, setPatients]   = useState<Patient[]>([])
   const [filtered, setFiltered]   = useState<Patient[]>([])
@@ -327,7 +329,7 @@ export default function PatientsPage() {
               <tbody className="divide-y divide-gray-50 dark:divide-white/5">
                 {filtered.map(p => (
                   <tr key={p.id}
-                    onClick={() => selectPatient(p)}
+                    onClick={() => router.push(`/receptionist/patients/${p.id}`)}
                     className={cn(
                       'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/3 transition-colors',
                       selected?.id === p.id && 'bg-cyan-50 dark:bg-cyan-900/20 border-l-4 border-l-cyan-500',
@@ -406,14 +408,14 @@ export default function PatientsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Link
-                    href={`/patients/${selected.id}`}
+                  <button
+                    onClick={() => router.push(`/receptionist/patients/${selected.id}`)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
                     style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}
                   >
                     <ExternalLink size={12} />
                     Full Profile
-                  </Link>
+                  </button>
                   <button onClick={() => setSelected(null)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
                     <X size={16} className="text-gray-400" />
                   </button>

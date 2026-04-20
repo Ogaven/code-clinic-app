@@ -8,19 +8,20 @@ import {
   LayoutDashboard, CalendarDays, Users, MessageSquare,
   Bot, BarChart2, Settings, HelpCircle, Bell, Search,
   ChevronLeft, ChevronRight, LogOut, User, Lock, Download,
-  Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2,
+  Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Stethoscope,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import SarahChatbot from '@/components/SarahChatbot'
 
 const nav = [
   { label: 'Dashboard',      href: '/receptionist/dashboard',      icon: LayoutDashboard },
   { label: 'Appointments',   href: '/receptionist/appointments',   icon: CalendarDays },
-  { label: 'Patients',       href: '/receptionist/patients',        icon: Users },
-  { label: 'Communications', href: '/receptionist/communications',  icon: MessageSquare, badge: true },
-  { label: 'AI Suite',       href: '/receptionist/ai-suite',        icon: Bot },
-  { label: 'Reports',        href: '/receptionist/reports',         icon: BarChart2 },
-  { label: 'Download App',   href: '/receptionist/download',        icon: Download },
+  { label: 'Live Flow',      href: '/receptionist/flow',           icon: Zap },
+  { label: 'Patients',       href: '/receptionist/patients',       icon: Users },
+  { label: 'Communications', href: '/receptionist/communications', icon: MessageSquare, badge: true },
+  { label: 'AI Suite',       href: '/receptionist/ai-suite',       icon: Bot },
+  { label: 'Services',       href: '/receptionist/services',       icon: Stethoscope },
+  { label: 'Reports',        href: '/receptionist/reports',        icon: BarChart2 },
+  { label: 'Download App',   href: '/receptionist/download',       icon: Download },
 ]
 
 type Theme = 'light' | 'dark' | 'system'
@@ -373,7 +374,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
               collapsed && 'justify-center px-2',
             )}>
             <HelpCircle size={16} className="flex-shrink-0" />
-            {!collapsed && <span>Help</span>}
+            {!collapsed && <span>Support</span>}
           </button>
 
           {/* Notifications enable (if not granted) */}
@@ -547,7 +548,6 @@ export default function ReceptionistLayout({ children }: { children: React.React
         </main>
       </div>
 
-      <SarahChatbot />
     </div>
   )
 }
