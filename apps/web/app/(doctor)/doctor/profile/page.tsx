@@ -143,6 +143,7 @@ export default function DoctorProfilePage() {
       if (r.ok) {
         const d = await r.json()
         setAvatarUrl(d.avatarUrl)
+        localStorage.setItem('cc_avatar', d.avatarUrl)
         showToast('Photo updated!')
       } else {
         const d = await r.json().catch(() => ({}))

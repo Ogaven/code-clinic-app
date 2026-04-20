@@ -92,6 +92,9 @@ export default function DoctorDashboardPage() {
   const [blockEnd, setBlockEnd]       = useState('13:00')
   const [blockReason, setBlockReason] = useState('Lunch Break')
   const [blockSaving, setBlockSaving] = useState(false)
+  const [checkedIn, setCheckedIn]     = useState(false)
+  const [checkInTime, setCheckInTime] = useState('')
+  const [checkingIn, setCheckingIn]   = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
@@ -110,10 +113,37 @@ export default function DoctorDashboardPage() {
       })
       const all = await apptRes.json()
       setAppts(Array.isArray(all) && me ? all.filter((a: any) => a.doctorId === me.id) : [])
+      // Fetch check-in status
+      const ciRes = await fetch('/api-proxy/doctors/check-in/today', { headers: { Authorization: `Bearer ${token}` } })
+      if (ciRes.ok) {
+        const ci = await ciRes.json()
+        setCheckedIn(ci.checkedIn || false)
+        if (ci.time) setCheckInTime(ci.time)
+      }
     } catch (e) { console.error(e) } finally { setLoading(false) }
   }, [token])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  async function toggleCheckIn() {
+    if (!token) return
+    setCheckingIn(true)
+    try {
+      const type = checkedIn ? 'CHECK_OUT' : 'CHECK_IN'
+      const r = await fetch('/api-proxy/doctors/check-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type }),
+      })
+      if (r.ok) {
+        const d = await r.json()
+        setCheckedIn(type === 'CHECK_IN')
+        setCheckInTime(d.time || '')
+        setToast(type === 'CHECK_IN' ? `Checked in at ${d.time}` : 'Checked out successfully')
+        setTimeout(() => setToast(''), 3500)
+      }
+    } catch {} finally { setCheckingIn(false) }
+  }
 
   async function handleBlockTime() {
     if (!doctor || !token) return
@@ -179,6 +209,31 @@ export default function DoctorDashboardPage() {
 
       {/* Spacer to clear the overlapping clock widget — desktop only */}
       <div className="hidden sm:block" style={{ height: 52 }} />
+
+      {/* ── CHECK IN / OUT ──────────────────────────────────────────────────── */}
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4 flex items-center gap-4">
+        <div className={cn('w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
+          checkedIn ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-gray-100 dark:bg-white/10')}>
+          <Activity size={22} className={checkedIn ? 'text-emerald-600' : 'text-gray-400'} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-gray-800 dark:text-white">
+            {checkedIn ? 'You are checked in' : 'Not checked in'}
+          </p>
+          <p className="text-xs text-gray-400">
+            {checkedIn && checkInTime ? `Checked in at ${checkInTime}` : 'Tap to check in and notify reception'}
+          </p>
+        </div>
+        <button onClick={toggleCheckIn} disabled={checkingIn}
+          className={cn('flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-60 min-h-[44px] flex-shrink-0',
+            checkedIn
+              ? 'bg-red-500 hover:bg-red-600'
+              : 'bg-emerald-600 hover:bg-emerald-700')}>
+          {checkingIn
+            ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            : checkedIn ? '← Check Out' : '✓ Check In'}
+        </button>
+      </div>
 
       {/* ── KPI ROW ─────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

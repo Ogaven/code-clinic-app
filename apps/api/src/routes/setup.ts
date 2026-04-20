@@ -682,6 +682,178 @@ router.post('/seed-production', async (req, res) => {
       log(`${expenseDefs.length} expenses seeded`)
     }
 
+    // ── 15. Doctor check-in records (past 7 days) ─────────────────
+    const allDoctorsForCI = await prisma.doctor.findMany({
+      include: { user: { select: { id: true } } },
+    })
+    let ciCount = 0
+    for (const doc of allDoctorsForCI) {
+      for (let daysAgo = 6; daysAgo >= 0; daysAgo--) {
+        const checkInDate = new Date()
+        checkInDate.setDate(checkInDate.getDate() - daysAgo)
+        const dayOfWeek = checkInDate.getDay()
+        if (dayOfWeek === 0 || dayOfWeek === 6) continue // skip weekends
+        const ciTime = new Date(checkInDate)
+        ciTime.setHours(7 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 30), 0, 0)
+        const coTime = new Date(checkInDate)
+        coTime.setHours(17 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 30), 0, 0)
+        const existing = await prisma.doctorCheckIn.findFirst({
+          where: { doctorId: doc.id, type: 'CHECK_IN', createdAt: { gte: new Date(checkInDate.setHours(0,0,0,0)), lt: new Date(checkInDate.setHours(23,59,59,999)) } },
+        })
+        if (!existing) {
+          try {
+            await prisma.doctorCheckIn.create({ data: { doctorId: doc.id, userId: doc.user.id, type: 'CHECK_IN', createdAt: ciTime } })
+            await prisma.doctorCheckIn.create({ data: { doctorId: doc.id, userId: doc.user.id, type: 'CHECK_OUT', createdAt: coTime } })
+            ciCount += 2
+          } catch {}
+        }
+      }
+    }
+    log(`${ciCount} doctor check-in/out records seeded`)
+
+    // ── 16. Dental charts for patients ────────────────────────────
+    const patientsForChart = await prisma.patient.findMany({ take: 15 })
+    let chartCount = 0
+    const toothStatuses = ['healthy', 'decay', 'filled', 'crown', 'missing', 'root_canal', 'bridge', 'implant']
+    for (const pat of patientsForChart) {
+      const existing = await prisma.dentalChart.findUnique({ where: { patientId: pat.id } })
+      if (!existing) {
+        const teeth: Record<string, any> = {}
+        // Upper teeth 11-28, lower teeth 31-48
+        const toothNums = [11,12,13,14,15,16,17,18,21,22,23,24,25,26,27,28,31,32,33,34,35,36,37,38,41,42,43,44,45,46,47,48]
+        for (const t of toothNums) {
+          if (Math.random() > 0.7) {
+            teeth[t] = { status: toothStatuses[Math.floor(Math.random() * toothStatuses.length)], notes: '' }
+          }
+        }
+        const perio: Record<string, any> = {}
+        for (const t of [16,17,26,27,36,37,46,47]) {
+          perio[t] = { pocketDepths: [Math.floor(Math.random()*4)+1, Math.floor(Math.random()*4)+1, Math.floor(Math.random()*4)+1, Math.floor(Math.random()*4)+1, Math.floor(Math.random()*4)+1, Math.floor(Math.random()*4)+1], bleeding: Math.random() > 0.7 }
+        }
+        try {
+          await prisma.dentalChart.create({
+            data: { patientId: pat.id, teeth: JSON.stringify(teeth), periodontal: JSON.stringify(perio) },
+          })
+          chartCount++
+        } catch {}
+      }
+    }
+    log(`${chartCount} dental charts seeded`)
+
+    // ── 17. Treatment plans for patients ──────────────────────────
+    const servicesForPlan = await prisma.service.findMany({ take: 8 })
+    const patientsForPlan = await prisma.patient.findMany({ take: 20 })
+    let planCount = 0
+    const planStatuses = ['Planned', 'In Progress', 'Completed', 'On Hold']
+    const planNotes = [
+      'Patient has been informed of the procedure and has given consent.',
+      'Awaiting insurance pre-authorisation before proceeding.',
+      'Sensitivity noted — use topical anaesthetic prior to procedure.',
+      'Parent/guardian consent obtained for minor patient.',
+      'Schedule follow-up 2 weeks after completion.',
+      'Consider referral to specialist if symptoms persist.',
+    ]
+    for (const pat of patientsForPlan) {
+      const existingPlans = await prisma.treatmentPlan.findMany({ where: { patientId: pat.id } })
+      if (existingPlans.length === 0 && servicesForPlan.length > 0) {
+        const numPlans = Math.floor(Math.random() * 3) + 1
+        for (let i = 0; i < numPlans; i++) {
+          const svc = servicesForPlan[Math.floor(Math.random() * servicesForPlan.length)]
+          const tooth = Math.random() > 0.5 ? String([11,12,13,21,22,23,31,32,33,41,42,43,16,26,36,46][Math.floor(Math.random()*16)]) : undefined
+          try {
+            await prisma.treatmentPlan.create({
+              data: {
+                patientId: pat.id,
+                serviceId: svc.id,
+                status: planStatuses[Math.floor(Math.random() * planStatuses.length)],
+                toothNumber: tooth,
+                quantity: 1,
+                costPerUnit: svc.price || 50000,
+                discount: Math.random() > 0.8 ? Math.floor(Math.random() * 20) * 5000 : 0,
+                notes: planNotes[Math.floor(Math.random() * planNotes.length)],
+              },
+            })
+            planCount++
+          } catch {}
+        }
+      }
+    }
+    log(`${planCount} treatment plan items seeded`)
+
+    // ── 18. Patient activities ─────────────────────────────────────
+    const adminForAct = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+    const patientsForAct = await prisma.patient.findMany({ take: 15 })
+    let actCount = 0
+    const actions = [
+      'Appointment booked',
+      'Patient profile updated',
+      'Dental chart updated',
+      'Invoice generated',
+      'Treatment note added',
+      'X-ray uploaded',
+      'Treatment plan created',
+      'Appointment completed',
+      'Patient checked in',
+      'Follow-up reminder sent',
+    ]
+    if (adminForAct) {
+      for (const pat of patientsForAct) {
+        const existingActs = await prisma.patientActivity.findMany({ where: { patientId: pat.id } })
+        if (existingActs.length === 0) {
+          const numActs = Math.floor(Math.random() * 4) + 2
+          for (let i = 0; i < numActs; i++) {
+            const daysAgo = Math.floor(Math.random() * 30)
+            const actDate = new Date()
+            actDate.setDate(actDate.getDate() - daysAgo)
+            try {
+              await prisma.patientActivity.create({
+                data: {
+                  patientId: pat.id,
+                  userId: adminForAct.id,
+                  userName: `${adminForAct.firstName} ${adminForAct.lastName}`,
+                  action: actions[Math.floor(Math.random() * actions.length)],
+                  createdAt: actDate,
+                },
+              })
+              actCount++
+            } catch {}
+          }
+        }
+      }
+    }
+    log(`${actCount} patient activities seeded`)
+
+    // ── 19. Additional treatment notes ────────────────────────────
+    const moreNoteTemplates = [
+      'Patient presented with mild sensitivity in upper right quadrant. Examination revealed early-stage caries on tooth 16. Fluoride treatment applied and dietary advice given.',
+      'Orthodontic review: arch wires adjusted. Patient tolerating treatment well. Next appointment in 6 weeks.',
+      'Periodontal scaling and root planing completed on lower left quadrant. Oral hygiene instructions reinforced.',
+      'Composite restoration placed on tooth 24. Patient comfortable throughout. Post-operative instructions given.',
+      'Extraction of tooth 38 (lower left wisdom tooth) performed under local anaesthesia. No complications noted.',
+      'Root canal treatment — working length confirmed at 21mm for tooth 36. Calcium hydroxide dressing placed. Review in 2 weeks.',
+      'Patient reported post-operative sensitivity following last visit. Reviewed tooth 14 — sensitivity resolving normally. No intervention required.',
+      'Paediatric check-up: all primary teeth present and healthy. Fissure sealants applied to first permanent molars. Parent advised on brushing technique.',
+      'Denture adjustment carried out. Patient satisfied with fit and function. Minor occlusal modification made to lower left region.',
+      'Full-mouth X-rays taken. No new carious lesions detected. Periodontal status stable. Next recall in 6 months.',
+    ]
+    const patientsForMoreNotes = await prisma.patient.findMany({ skip: 10, take: 10 })
+    const adminForMoreNotes = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+    let moreNoteCount = 0
+    if (adminForMoreNotes) {
+      for (let i = 0; i < Math.min(patientsForMoreNotes.length, moreNoteTemplates.length); i++) {
+        const daysAgo = Math.floor(Math.random() * 21)
+        const noteDate = new Date()
+        noteDate.setDate(noteDate.getDate() - daysAgo)
+        try {
+          await prisma.treatmentNote.create({
+            data: { patientId: patientsForMoreNotes[i].id, content: moreNoteTemplates[i], authorId: adminForMoreNotes.id, createdAt: noteDate },
+          })
+          moreNoteCount++
+        } catch {}
+      }
+    }
+    log(`${moreNoteCount} additional treatment notes seeded`)
+
     return res.json({
       success: true,
       message: 'Production database seeded successfully',

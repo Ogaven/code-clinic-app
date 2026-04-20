@@ -9,9 +9,10 @@ import {
   MessageSquare, Settings, HelpCircle, Download,
   Bell, UserCircle, LogOut,
   ChevronLeft, ChevronRight, Menu, X,
+  Sun, Moon, CalendarCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import SarahChatbot from '@/components/SarahChatbot'
+import DoctorChatbot from '@/components/DoctorChatbot'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -23,14 +24,15 @@ function applyTheme(t: Theme) {
     ? root.classList.add('dark') : root.classList.remove('dark')
 }
 
-// Issue 4: Simplified nav structure
 const NAV_MAIN = [
-  { label: 'Dashboard',      href: '/doctor/dashboard', icon: LayoutDashboard },
-  { label: 'Appointments',   href: '/doctor/schedule',  icon: CalendarDays },
-  { label: 'My Patients',    href: '/doctor/patients',  icon: Users },
-  { label: 'Patient Flow',   href: '/doctor/flow',      icon: Activity },
-  { label: 'Communications', href: '/doctor/messages',  icon: MessageSquare, badge: true },
+  { label: 'Dashboard',      href: '/doctor/dashboard',    icon: LayoutDashboard },
+  { label: 'My Schedule',    href: '/doctor/my-schedule',  icon: CalendarCheck },
+  { label: 'Appointments',   href: '/doctor/schedule',     icon: CalendarDays },
+  { label: 'My Patients',    href: '/doctor/patients',     icon: Users },
+  { label: 'Patient Flow',   href: '/doctor/flow',         icon: Activity },
+  { label: 'Communications', href: '/doctor/messages',     icon: MessageSquare, badge: true },
 ]
+
 const NAV_BOTTOM = [
   { label: 'Settings',     href: '/doctor/settings',  icon: Settings },
   { label: 'Support',      href: '/doctor/support',   icon: HelpCircle },
@@ -103,7 +105,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     } catch {}
   }, [token])
 
-  // Issue 5: Fetch doctor record for avatar
   const fetchDoctorAvatar = useCallback(async (userId: string) => {
     if (!token) return
     try {
@@ -114,7 +115,10 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       const docs = await r.json()
       if (!Array.isArray(docs)) return
       const me = docs.find((d: any) => d.userId === userId)
-      if (me?.avatarUrl) setAvatarUrl(me.avatarUrl)
+      if (me?.avatarUrl) {
+        setAvatarUrl(me.avatarUrl)
+        localStorage.setItem('cc_avatar', me.avatarUrl)
+      }
     } catch {}
   }, [token])
 
@@ -123,7 +127,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     if (!raw) { router.replace('/login'); return }
     const u = JSON.parse(raw)
 
-    // Issue 2: Route to correct app based on role
     if (u.role !== 'DOCTOR') {
       const roleMap: Record<string, string> = {
         ADMIN: '/dashboard', DEVELOPER: '/dashboard',
@@ -139,6 +142,10 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     setTheme(t)
     applyTheme(t)
 
+    // Load cached avatar immediately, then refresh from API
+    const cached = localStorage.getItem('cc_avatar')
+    if (cached) setAvatarUrl(cached)
+
     fetchUnread()
     fetchDoctorAvatar(u.id)
 
@@ -146,12 +153,27 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     return () => clearInterval(interval)
   }, [router, fetchUnread, fetchDoctorAvatar])
 
+  // Re-fetch avatar when returning to layout (e.g. after profile pic upload)
+  useEffect(() => {
+    const cached = localStorage.getItem('cc_avatar')
+    if (cached) setAvatarUrl(cached)
+  }, [pathname])
+
   useEffect(() => { setDrawer(false) }, [pathname])
 
   function logout() {
     localStorage.removeItem('cc_token')
     localStorage.removeItem('cc_user')
+    localStorage.removeItem('cc_avatar')
     router.push('/login')
+  }
+
+  function cycleTheme() {
+    const next: Record<Theme, Theme> = { light: 'dark', dark: 'system', system: 'light' }
+    const t = next[theme]
+    setTheme(t)
+    localStorage.setItem('cc_theme', t)
+    applyTheme(t)
   }
 
   const initials = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'D'
@@ -178,21 +200,20 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                 className="object-contain dark:brightness-0 dark:invert" priority />}
         </Link>
 
-        {/* Main nav + bottom nav */}
+        {/* Main nav — scrollable */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
           {NAV_MAIN.map(item => (
             <NavLink key={item.href} {...item} unread={unread} collapsed={collapsed} />
           ))}
-          <div className="my-3 border-t border-gray-100 dark:border-white/[0.06]" />
-          {NAV_BOTTOM.map(item => (
-            <NavLink key={item.href} {...item} unread={0} collapsed={collapsed} />
-          ))}
         </nav>
 
-        {/* Collapse button only */}
-        <div className="border-t border-gray-100 dark:border-white/[0.06] px-2 py-3">
+        {/* Bottom nav — pinned */}
+        <div className="border-t border-gray-100 dark:border-white/[0.06] px-2 py-2 space-y-0.5">
+          {NAV_BOTTOM.map(item => (
+            <NavLink key={item.href} {...item} unread={0} collapsed={collapsed} muted />
+          ))}
           <button onClick={() => setCol(c => !c)}
-            className="w-full flex items-center justify-center px-3 py-2 rounded-xl text-gray-400 dark:text-white/30 hover:bg-gray-100 dark:hover:bg-white/5 transition-all text-xs font-medium gap-1 min-h-[44px]">
+            className="w-full flex items-center justify-center px-3 py-2 mt-1 rounded-xl text-gray-400 dark:text-white/30 hover:bg-gray-100 dark:hover:bg-white/5 transition-all text-xs font-medium gap-1 min-h-[44px]">
             {collapsed ? <ChevronRight size={15} /> : <><ChevronLeft size={15} /><span>Collapse</span></>}
           </button>
         </div>
@@ -216,12 +237,11 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               {NAV_MAIN.map(item => (
                 <NavLink key={item.href} {...item} unread={unread} collapsed={false} onNavigate={() => setDrawer(false)} />
               ))}
-              <div className="my-3 border-t border-gray-100 dark:border-white/[0.06]" />
-              {NAV_BOTTOM.map(item => (
-                <NavLink key={item.href} {...item} unread={0} collapsed={false} onNavigate={() => setDrawer(false)} />
-              ))}
             </nav>
-            <div className="border-t border-gray-100 dark:border-white/[0.06] px-3 py-4 pb-6">
+            <div className="border-t border-gray-100 dark:border-white/[0.06] px-2 py-2 pb-4 space-y-0.5">
+              {NAV_BOTTOM.map(item => (
+                <NavLink key={item.href} {...item} unread={0} collapsed={false} muted onNavigate={() => setDrawer(false)} />
+              ))}
               <button onClick={logout}
                 className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors min-h-[44px]">
                 <LogOut size={15} /> Logout
@@ -236,13 +256,22 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         {/* Topbar */}
         <header className="h-14 flex items-center gap-2 px-4 bg-white dark:bg-[#0d1526]/80 dark:backdrop-blur-md border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0 z-20">
 
-          {/* Hamburger — mobile only */}
           <button onClick={() => setDrawer(true)}
             className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors text-gray-500 dark:text-white/60">
             <Menu size={20} />
           </button>
 
           <div className="flex-1" />
+
+          {/* Dark / light mode toggle */}
+          <button onClick={cycleTheme} title={`Theme: ${theme}`}
+            className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
+            {theme === 'dark'
+              ? <Moon size={17} className="text-blue-400" />
+              : theme === 'light'
+                ? <Sun size={17} className="text-yellow-500" />
+                : <Sun size={17} className="text-gray-400" />}
+          </button>
 
           {/* Notifications bell */}
           <Link href="/doctor/notifications"
@@ -251,7 +280,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             {unread > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />}
           </Link>
 
-          {/* Issue 5: Avatar — real photo or initials */}
+          {/* Avatar — real photo or initials */}
           <div className="relative">
             <button onClick={() => setProf(p => !p)}>
               {avatarUrl ? (
@@ -267,10 +296,11 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             {showProfile && (
               <div className="absolute right-0 top-full mt-2 w-52 bg-white dark:bg-[#0e2045] rounded-2xl shadow-xl border border-gray-100 dark:border-white/10 py-2 z-50">
                 <div className="px-4 py-3 border-b border-gray-100 dark:border-white/8 text-center">
-                  {avatarUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt="Dr." className="w-14 h-14 rounded-full object-cover mx-auto mb-2 ring-2 ring-blue-200 dark:ring-blue-900" />
-                  )}
+                  {avatarUrl
+                    ? <img src={avatarUrl} alt="Dr." className="w-14 h-14 rounded-full object-cover mx-auto mb-2 ring-2 ring-blue-200 dark:ring-blue-900" />
+                    : <div className="w-14 h-14 rounded-full flex items-center justify-center font-bold text-lg text-white mx-auto mb-2 ring-2 ring-blue-200 dark:ring-blue-900"
+                        style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>{initials}</div>
+                  }
                   <p className="text-sm font-bold text-gray-800 dark:text-white">Dr. {user?.firstName} {user?.lastName}</p>
                   <p className="text-xs text-gray-400 truncate">{user?.email}</p>
                   <p className="text-[10px] font-bold text-blue-500 mt-0.5 uppercase">Doctor</p>
@@ -290,7 +320,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
         <main className="flex-1 overflow-y-auto relative">
           {children}
-          <SarahChatbot />
+          <DoctorChatbot />
         </main>
       </div>
 
@@ -298,11 +328,11 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#0d1526] border-t border-gray-100 dark:border-white/[0.06] flex z-40"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {[
-          { label: 'Home',         href: '/doctor/dashboard',  emoji: '🏠' },
-          { label: 'Appointments', href: '/doctor/schedule',   emoji: '📅' },
-          { label: 'Patients',     href: '/doctor/patients',   emoji: '👥' },
-          { label: 'Messages',     href: '/doctor/messages',   emoji: '💬' },
-          { label: 'More',         href: '#',                  emoji: '☰', isMenu: true },
+          { label: 'Home',      href: '/doctor/dashboard',   emoji: '🏠' },
+          { label: 'Schedule',  href: '/doctor/my-schedule', emoji: '📅' },
+          { label: 'Calendar',  href: '/doctor/schedule',    emoji: '🗓' },
+          { label: 'Patients',  href: '/doctor/patients',    emoji: '👥' },
+          { label: 'More',      href: '#',                   emoji: '☰', isMenu: true },
         ].map(({ label, href, emoji, isMenu }) => {
           const active = !isMenu && (pathname === href || pathname.startsWith(href + '/'))
           return isMenu ? (
