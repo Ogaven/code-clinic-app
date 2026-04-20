@@ -10,11 +10,20 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // ─── OAuth2 client factory ────────────────────────────────────
+function getRedirectUri() {
+  if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI
+  if (process.env.RAILWAY_PUBLIC_DOMAIN)
+    return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/integrations/google-calendar/callback`
+  return 'http://localhost:4000/api/integrations/google-calendar/callback'
+}
+
 function makeOAuth2Client() {
+  const redirectUri = getRedirectUri()
+  console.log('[GCal] Using redirect URI:', redirectUri)
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4000/integrations/google-calendar/callback',
+    redirectUri,
   )
 }
 

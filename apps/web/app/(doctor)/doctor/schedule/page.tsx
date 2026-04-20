@@ -29,32 +29,36 @@ export default function DoctorSchedulePage() {
   return (
     <div className="h-[calc(100vh-4.5rem)] flex flex-col">
       {/* Tab bar */}
-      <div className="flex-shrink-0 flex items-center gap-1 px-4 pt-3 pb-0 bg-white dark:bg-white/5 dark:backdrop-blur-sm border-b border-gray-100 dark:border-white/8">
-        {([
-          { key: 'calendar', label: 'Calendar',        Icon: CalendarDays  },
-          { key: 'doctors',  label: 'Doctors',         Icon: Users         },
-          { key: 'services', label: 'Services',        Icon: Stethoscope   },
-          { key: 'gcal',     label: 'Google Calendar', Icon: CalendarCheck },
-        ] as { key: Tab; label: string; Icon: any }[]).map(({ key, label, Icon }) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all -mb-px',
-              tab === key
-                ? 'border-clinic-blue text-clinic-blue'
-                : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300',
-            )}>
-            <Icon size={15} />
-            {label}
-          </button>
-        ))}
+      <div className="flex-shrink-0 flex items-stretch bg-white dark:bg-white/5 dark:backdrop-blur-sm border-b border-gray-100 dark:border-white/8">
+        <div className="flex-1 overflow-x-auto flex items-center gap-1 px-4 pt-3 pb-0 scrollbar-none">
+          {([
+            { key: 'calendar', label: 'Calendar',        Icon: CalendarDays  },
+            { key: 'doctors',  label: 'Doctors',         Icon: Users         },
+            { key: 'services', label: 'Services',        Icon: Stethoscope   },
+            { key: 'gcal',     label: 'Google Calendar', Icon: CalendarCheck },
+          ] as { key: Tab; label: string; Icon: any }[]).map(({ key, label, Icon }) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-all -mb-px whitespace-nowrap flex-shrink-0',
+                tab === key
+                  ? 'border-clinic-blue text-clinic-blue'
+                  : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300',
+              )}>
+              <Icon size={14} />
+              {label}
+            </button>
+          ))}
+        </div>
 
         {tab === 'calendar' && (
-          <button
-            onClick={() => { setPrefillDoctorId(undefined); setPrefillStartAt(undefined); setDrawerOpen(true) }}
-            className="ml-auto mb-1 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
-            style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 12px rgba(41,171,226,0.3)' }}>
-            + Book Appointment
-          </button>
+          <div className="flex-shrink-0 flex items-center px-3 pt-1 pb-1">
+            <button
+              onClick={() => { setPrefillDoctorId(undefined); setPrefillStartAt(undefined); setDrawerOpen(true) }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md whitespace-nowrap"
+              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 12px rgba(41,171,226,0.3)' }}>
+              + <span className="hidden sm:inline">Book Appointment</span><span className="sm:hidden">Book</span>
+            </button>
+          </div>
         )}
       </div>
 

@@ -181,7 +181,11 @@ export default function DoctorDashboardPage() {
           <AnalogClock />
         </div>
 
-        {/* Right: Dental image — hidden on mobile */}
+        {/* Right: Dental image — small on mobile, larger on desktop */}
+        <div className="flex-shrink-0 pointer-events-none select-none sm:hidden" style={{ width: 90, marginBottom: -8 }}>
+          <Image src="/dental40.png" alt="Dental" width={90} height={80} priority
+            style={{ objectFit: 'contain', objectPosition: 'bottom', filter: 'drop-shadow(0 6px 16px rgba(41,171,226,0.4))', display: 'block', width: '100%', height: 'auto' }} />
+        </div>
         <div className="hidden sm:block flex-shrink-0 pointer-events-none select-none" style={{ width: 170 }}>
           <Image src="/dental40.png" alt="Dental" width={170} height={150} priority
             style={{ objectFit: 'contain', objectPosition: 'bottom', filter: 'drop-shadow(0 10px 32px rgba(41,171,226,0.35))', display: 'block', width: '100%', height: 'auto' }} />
@@ -190,6 +194,8 @@ export default function DoctorDashboardPage() {
 
       {/* Spacer to clear the overlapping clock widget — desktop only */}
       <div className="hidden sm:block" style={{ height: 52 }} />
+      {/* Mobile spacer */}
+      <div className="sm:hidden" style={{ height: 16 }} />
 
       {/* ── CHECK IN / OUT ──────────────────────────────────────────────────── */}
       <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4 flex items-center gap-4 flex-wrap">

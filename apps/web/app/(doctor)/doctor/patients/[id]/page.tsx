@@ -284,24 +284,26 @@ function DentalChartTab({ patientId, token }: { patientId: string; token: string
   return (
     <div className="flex flex-col h-full">
       {/* Chart + Inspector */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Chart */}
-        <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-white/3 overflow-auto">
-          <div className="flex items-center justify-center w-full">
-            {renderQuadrant(quadrant1, false, true)}
-            <div className="w-px h-14 bg-slate-300 mx-1" />
-            {renderQuadrant(quadrant2, true, true)}
-          </div>
-          <div className="w-full border-t my-2 border-slate-300" />
-          <div className="flex items-center justify-center w-full">
-            {renderQuadrant(quadrant4, false, false)}
-            <div className="w-px h-14 bg-slate-300 mx-1" />
-            {renderQuadrant(quadrant3, true, false)}
+        <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-white/3 overflow-auto min-h-[200px]">
+          <div className="overflow-x-auto w-full">
+            <div className="flex items-center justify-center min-w-max mx-auto">
+              {renderQuadrant(quadrant1, false, true)}
+              <div className="w-px h-14 bg-slate-300 mx-1" />
+              {renderQuadrant(quadrant2, true, true)}
+            </div>
+            <div className="border-t my-2 border-slate-300 min-w-max" />
+            <div className="flex items-center justify-center min-w-max mx-auto">
+              {renderQuadrant(quadrant4, false, false)}
+              <div className="w-px h-14 bg-slate-300 mx-1" />
+              {renderQuadrant(quadrant3, true, false)}
+            </div>
           </div>
         </div>
 
         {/* Inspector */}
-        <div className="w-72 border-l border-slate-200 dark:border-white/10 flex flex-col overflow-y-auto bg-white dark:bg-gray-900">
+        <div className="w-full md:w-72 border-t md:border-t-0 md:border-l border-slate-200 dark:border-white/10 flex flex-col overflow-y-auto bg-white dark:bg-gray-900 max-h-[40vh] md:max-h-none">
           {!selectedTooth ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-slate-400">
               <Eye size={40} className="mb-2 opacity-30" />
