@@ -12,7 +12,6 @@ import {
   Sun, Moon, CalendarCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { fetchWithAuth } from '@/lib/api'
 import DoctorChatbot from '@/components/DoctorChatbot'
 
 type Theme = 'light' | 'dark' | 'system'
@@ -81,39 +80,6 @@ function NavLink({
   )
 }
 
-// ── Animated Splash Screen ───────────────────────────────────────────────────
-function SplashScreen() {
-  return (
-    <div className="fixed inset-0 flex flex-col items-center justify-center z-[9999]"
-      style={{ background: 'linear-gradient(160deg,#0a1628 0%,#0d2150 50%,#0a1628 100%)' }}>
-
-      {/* Pulse rings */}
-      <div className="relative flex items-center justify-center mb-10">
-        <div className="absolute w-52 h-52 rounded-full border border-blue-400/8 animate-ping" style={{ animationDuration: '3s' }} />
-        <div className="absolute w-40 h-40 rounded-full border border-blue-400/12 animate-ping" style={{ animationDuration: '2.2s', animationDelay: '0.4s' }} />
-        <div className="absolute w-28 h-28 rounded-full border border-blue-400/20 animate-ping" style={{ animationDuration: '1.6s', animationDelay: '0.8s' }} />
-
-        {/* Logo on white pill — matches the actual logo background */}
-        <div className="relative rounded-2xl px-8 py-5 flex items-center justify-center shadow-2xl"
-          style={{ background: 'white', boxShadow: '0 0 80px rgba(41,171,226,0.45)' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="Code Clinic" style={{ width: 180, height: 'auto', display: 'block' }} />
-        </div>
-      </div>
-
-      {/* Tagline */}
-      <p className="text-blue-300/60 text-sm font-medium tracking-wide mb-10">
-        Painless Dentistry, Lifesaving Smiles
-      </p>
-
-      {/* Loading bar */}
-      <div className="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
-        <div className="h-full bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full animate-loading-bar" />
-      </div>
-    </div>
-  )
-}
-
 export default function DoctorLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router   = useRouter()
@@ -125,8 +91,9 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [showProfile, setProf]    = useState(false)
   const [unread, setUnread]       = useState(0)
   const [drawerOpen, setDrawer]   = useState(false)
-
-  const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  const [token, setToken]         = useState<string | null>(
+    typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  )
 
   const fetchUnread = useCallback(async () => {
     if (!token) return
@@ -176,21 +143,24 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     setTheme(t)
     applyTheme(t)
 
-    // Load cached avatar immediately, then refresh from API
     const cached = localStorage.getItem('cc_avatar')
     if (cached) setAvatarUrl(cached)
+
+    // Refresh token immediately on load — fixes expired 15-min tokens without needing re-login
+    const refreshSilently = async () => {
+      try {
+        const r = await fetch('/api-proxy/auth/refresh', { method: 'POST', credentials: 'include' })
+        if (r.ok) {
+          const d = await r.json()
+          if (d.accessToken) { localStorage.setItem('cc_token', d.accessToken); setToken(d.accessToken) }
+        }
+      } catch {}
+    }
+    await refreshSilently()
 
     fetchUnread()
     fetchDoctorAvatar(u.id)
 
-    // Silently refresh the access token every 6 minutes so it never expires mid-session
-    const refreshSilently = async () => {
-      try {
-        const r = await fetch('/api-proxy/auth/refresh', { method: 'POST', credentials: 'include' })
-        if (r.ok) { const d = await r.json(); if (d.accessToken) localStorage.setItem('cc_token', d.accessToken) }
-      } catch {}
-    }
-    refreshSilently()
     const refreshInterval = setInterval(refreshSilently, 6 * 60 * 1000)
     const unreadInterval  = setInterval(fetchUnread, 30000)
     return () => { clearInterval(refreshInterval); clearInterval(unreadInterval) }
@@ -220,8 +190,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   }
 
   const initials = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'D'
-
-  if (!user) return <SplashScreen />
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[#0A0F1E]">
