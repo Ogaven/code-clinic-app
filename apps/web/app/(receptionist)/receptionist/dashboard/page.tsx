@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import {
   Calendar, Users, UserCheck, Bot, TrendingUp, TrendingDown,
   ChevronRight, Clock, AlertTriangle, CheckCircle2,
-  MessageSquare, Plus, X, Send, Mic, MicOff, StickyNote,
+  MessageSquare, Plus, X, Send, Mic, MicOff,
   Minimize2, Maximize2, LogIn, LogOut, Search, UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -327,12 +327,6 @@ export default function ReceptionistDashboard() {
   const [upcoming, setUpcoming]     = useState<any[]>([])
   const [active, setActive]         = useState<any>(null)
   const [escalations, setEscalations] = useState<any[]>([])
-  const [selectedDate, setSelDate]  = useState(new Date())
-  const [notes, setNotes]           = useState<string[]>(() => {
-    if (typeof window === 'undefined') return []
-    return JSON.parse(localStorage.getItem('rec_notes') || '[]')
-  })
-  const [newNote, setNewNote]       = useState('')
   const [agentActive, setAgentActive] = useState(true)
   const [loading, setLoading]       = useState(true)
   const [showCheckin, setShowCheckin]   = useState(false)
@@ -418,13 +412,6 @@ export default function ReceptionistDashboard() {
     } catch {} finally { setLoading(false) }
   }
 
-  async function fetchForDate(d: Date) {
-    setSelDate(d)
-    const iso = d.toISOString().slice(0, 10)
-    const res = await fetch(`${API}/receptionist/today-appointments?date=${iso}`, { headers: authH })
-    if (res.ok) setAppts(await res.json())
-  }
-
   function nowTime() {
     return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' })
   }
@@ -470,19 +457,6 @@ export default function ReceptionistDashboard() {
     rec.onresult = (e: any) => { const t = e.results[0][0].transcript; setChatInput(t); sendChat(t) }
     rec.onend = () => setRec(false); rec.onerror = () => setRec(false)
     recRef.current = rec; rec.start(); setRec(true)
-  }
-
-  function addNote() {
-    if (!newNote.trim()) return
-    const updated = [newNote.trim(), ...notes].slice(0, 10)
-    setNotes(updated)
-    localStorage.setItem('rec_notes', JSON.stringify(updated))
-    setNewNote('')
-  }
-  function removeNote(i: number) {
-    const updated = notes.filter((_, idx) => idx !== i)
-    setNotes(updated)
-    localStorage.setItem('rec_notes', JSON.stringify(updated))
   }
 
   async function handleCheckinSearch(q: string) {
@@ -796,11 +770,13 @@ export default function ReceptionistDashboard() {
               </div>
               <div className="flex items-center gap-2">
                 <select
-                  onChange={e => {
+                  onChange={async e => {
                     const d = new Date()
                     if (e.target.value === 'tomorrow') d.setDate(d.getDate() + 1)
                     else if (e.target.value === 'week') d.setDate(d.getDate() + 7)
-                    fetchForDate(d)
+                    const iso = d.toISOString().slice(0, 10)
+                    const res = await fetch(`${API}/receptionist/today-appointments?date=${iso}`, { headers: authH })
+                    if (res.ok) setAppts(await res.json())
                   }}
                   className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 focus:outline-none">
                   <option value="today">Today</option>
@@ -938,9 +914,6 @@ export default function ReceptionistDashboard() {
             )}
           </div>
 
-          {/* Patient Flow */}
-          <LivePatientFlow />
-
           {/* WhatsApp Live Feed */}
           <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
@@ -962,11 +935,6 @@ export default function ReceptionistDashboard() {
         {/* ── RIGHT COLUMN ────────────────────────────────────── */}
         <div className="space-y-4 min-w-0">
 
-          {/* Mini Calendar */}
-          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4">
-            <MiniCalendar onDateSelect={fetchForDate} selectedDate={selectedDate} />
-          </div>
-
           {/* Upcoming Appointments */}
           <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
@@ -978,7 +946,7 @@ export default function ReceptionistDashboard() {
                 <div className="px-4 py-4 text-center">
                   <p className="text-xs text-gray-400">No upcoming appointments</p>
                 </div>
-              ) : upcoming.slice(0, 4).map(a => {
+              ) : upcoming.slice(0, 6).map(a => {
                 const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
                 const date = new Date(a.startAt).toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
                 return (
@@ -999,39 +967,12 @@ export default function ReceptionistDashboard() {
               })}
             </div>
           </div>
-
-          {/* Quick Notes */}
-          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
-              <div className="flex items-center gap-2">
-                <StickyNote size={14} className="text-amber-500" />
-                <h3 className="text-sm font-bold text-gray-800 dark:text-white">Quick Notes</h3>
-              </div>
-            </div>
-            <div className="p-3 space-y-2">
-              <div className="flex gap-2">
-                <input value={newNote} onChange={e => setNewNote(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addNote()}
-                  placeholder="Add a note..."
-                  className="flex-1 text-xs px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-cyan-400 transition-colors" />
-                <button onClick={addNote}
-                  className="w-8 h-8 flex items-center justify-center bg-cyan-500 text-white rounded-xl hover:bg-cyan-600 transition-colors">
-                  <Plus size={14} />
-                </button>
-              </div>
-              <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                {notes.map((n, i) => (
-                  <div key={i} className="flex items-start gap-2 bg-amber-50 rounded-xl px-3 py-2 border border-amber-100">
-                    <p className="flex-1 text-xs text-gray-700 leading-relaxed">{n}</p>
-                    <button onClick={() => removeNote(i)} className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0">
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
+      </div>
+
+      {/* ── Live Patient Flow — full width ────────────────────── */}
+      <div className="rounded-2xl overflow-hidden border border-gray-100 dark:border-white/10 shadow-sm">
+        <LivePatientFlow />
       </div>
 
       {/* ── Sarah Chatbot ─────────────────────────────────────── */}

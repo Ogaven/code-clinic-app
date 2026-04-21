@@ -83,26 +83,26 @@ export default function ReportsPage() {
           </div>
 
           {/* Appointment breakdown */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h2 className="text-sm font-bold text-gray-700 mb-4">Appointment Breakdown</h2>
+          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
+            <h2 className="text-sm font-bold text-gray-700 dark:text-white mb-4">Appointment Breakdown</h2>
             <div className="space-y-3">
               {[
-                { label: 'Completed', count: completed, color: '#059669', bg: '#f0fdf4' },
-                { label: 'Confirmed', count: stats?.appointments?.confirmed || 0, color: '#0891b2', bg: '#ecfeff' },
-                { label: 'Pending', count: pending, color: '#d97706', bg: '#fffbeb' },
-                { label: 'No Show', count: noShow, color: '#9ca3af', bg: '#f9fafb' },
-                { label: 'Cancelled', count: cancelled, color: '#ef4444', bg: '#fef2f2' },
-              ].map(({ label, count, color, bg }) => {
+                { label: 'Completed', count: completed, color: '#059669' },
+                { label: 'Confirmed', count: stats?.appointments?.confirmed || 0, color: '#0891b2' },
+                { label: 'Pending', count: pending, color: '#d97706' },
+                { label: 'No Show', count: noShow, color: '#9ca3af' },
+                { label: 'Cancelled', count: cancelled, color: '#ef4444' },
+              ].map(({ label, count, color }) => {
                 const total = appts.length || 1
                 const pct   = Math.round((count / total) * 100)
                 return (
                   <div key={label} className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600 w-24 flex-shrink-0">{label}</span>
-                    <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                    <span className="text-sm text-gray-600 dark:text-white/70 w-24 flex-shrink-0">{label}</span>
+                    <div className="flex-1 h-2.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
                       <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: color }} />
                     </div>
-                    <span className="text-sm font-bold text-gray-700 w-8 text-right flex-shrink-0">{count}</span>
-                    <span className="text-xs text-gray-400 w-10 text-right flex-shrink-0">{pct}%</span>
+                    <span className="text-sm font-bold text-gray-700 dark:text-white/80 w-8 text-right flex-shrink-0">{count}</span>
+                    <span className="text-xs text-gray-400 dark:text-white/40 w-10 text-right flex-shrink-0">{pct}%</span>
                   </div>
                 )
               })}
@@ -110,38 +110,38 @@ export default function ReportsPage() {
           </div>
 
           {/* Appointment table */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-50">
-              <h2 className="text-sm font-bold text-gray-700">Appointment Log</h2>
+          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-50 dark:border-white/8">
+              <h2 className="text-sm font-bold text-gray-700 dark:text-white">Appointment Log</h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50">
+                  <tr className="bg-gray-50 dark:bg-white/5">
                     {['Time', 'Patient', 'Doctor', 'Service', 'Status'].map(h => (
-                      <th key={h} className="text-left px-4 py-2.5 text-xs font-black text-gray-400 uppercase tracking-wide">{h}</th>
+                      <th key={h} className="text-left px-4 py-2.5 text-xs font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-gray-50 dark:divide-white/5">
                   {appts.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center py-8 text-gray-400 text-sm">No appointments today</td></tr>
+                    <tr><td colSpan={5} className="text-center py-8 text-gray-400 dark:text-white/40 text-sm">No appointments today</td></tr>
                   ) : appts.map(a => {
                     const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
                     const statusColor: Record<string, string> = {
-                      CONFIRMED: 'bg-blue-50 text-blue-600',
-                      COMPLETED: 'bg-emerald-50 text-emerald-600',
-                      PENDING: 'bg-amber-50 text-amber-600',
-                      CANCELLED: 'bg-red-50 text-red-500',
-                      NO_SHOW: 'bg-gray-50 text-gray-500',
-                      IN_PROGRESS: 'bg-violet-50 text-violet-600',
+                      CONFIRMED: 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+                      COMPLETED: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400',
+                      PENDING: 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+                      CANCELLED: 'bg-red-50 text-red-500 dark:bg-red-900/30 dark:text-red-400',
+                      NO_SHOW: 'bg-gray-50 text-gray-500 dark:bg-white/5 dark:text-white/50',
+                      IN_PROGRESS: 'bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400',
                     }
                     return (
-                      <tr key={a.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-mono text-xs font-semibold text-gray-700">{t}</td>
-                        <td className="px-4 py-3 font-medium text-gray-800">{a.patient?.firstName} {a.patient?.lastName}</td>
-                        <td className="px-4 py-3 text-gray-500">Dr. {a.doctor?.user?.firstName} {a.doctor?.user?.lastName}</td>
-                        <td className="px-4 py-3 text-gray-500">{a.service?.name}</td>
+                      <tr key={a.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                        <td className="px-4 py-3 font-mono text-xs font-semibold text-gray-700 dark:text-white/70">{t}</td>
+                        <td className="px-4 py-3 font-medium text-gray-800 dark:text-white/90">{a.patient?.firstName} {a.patient?.lastName}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-white/60">Dr. {a.doctor?.user?.firstName} {a.doctor?.user?.lastName}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-white/60">{a.service?.name}</td>
                         <td className="px-4 py-3">
                           <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', statusColor[a.status] || 'bg-gray-50 text-gray-500')}>
                             {a.status}

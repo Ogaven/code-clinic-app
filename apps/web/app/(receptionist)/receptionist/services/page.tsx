@@ -2,13 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import {
-  Stethoscope, Users, Plus, Edit2, Trash2, Save, X,
-  CheckCircle2, AlertCircle, Clock, DollarSign, Palette,
-  Phone, Mail, User,
+  Stethoscope, Plus, Edit2, Trash2, Save, X,
+  CheckCircle2, AlertCircle, Clock, DollarSign,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-type STab = 'services' | 'doctors'
 
 function Toast({ msg, type, onClose }: { msg: string; type: 'ok' | 'err'; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [onClose])
@@ -96,91 +93,13 @@ function ServiceForm({ svc, onSave, onCancel }: { svc?: any; onSave: (d: any) =>
   )
 }
 
-// ── Doctor Form ──────────────────────────────────────────────
-function DoctorCard({ doctor, onEdit }: { doctor: any; onEdit: () => void }) {
-  const initials = `${doctor.user?.firstName?.[0] || ''}${doctor.user?.lastName?.[0] || ''}`
-  return (
-    <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-all group">
-      <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-base flex-shrink-0"
-        style={{ background: doctor.colour || 'linear-gradient(135deg,#29ABE2,#1A237E)' }}>
-        {initials}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-bold text-gray-800 dark:text-white">Dr. {doctor.user?.firstName} {doctor.user?.lastName}</p>
-        <p className="text-xs text-cyan-600 dark:text-cyan-400 font-semibold">{doctor.specialisation || 'General Dentist'}</p>
-        {doctor.user?.email && (
-          <p className="text-xs text-gray-400 dark:text-white/40 flex items-center gap-1 mt-0.5">
-            <Mail size={10} /> {doctor.user.email}
-          </p>
-        )}
-        {doctor.user?.phone && (
-          <p className="text-xs text-gray-400 dark:text-white/40 flex items-center gap-1">
-            <Phone size={10} /> {doctor.user.phone}
-          </p>
-        )}
-      </div>
-      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button onClick={onEdit}
-          className="w-8 h-8 rounded-xl flex items-center justify-center bg-gray-100 dark:bg-white/10 hover:bg-cyan-100 dark:hover:bg-cyan-900/30 transition-colors">
-          <Edit2 size={13} className="text-gray-500 dark:text-white/50" />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function DoctorEditForm({ doctor, onSave, onCancel }: { doctor: any; onSave: (d: any) => void; onCancel: () => void }) {
-  const [spec,    setSpec]    = useState(doctor.specialisation || '')
-  const [colour,  setColour]  = useState(doctor.colour        || '#29ABE2')
-  const [saving,  setSaving]  = useState(false)
-
-  async function save() {
-    setSaving(true)
-    await onSave({ specialisation: spec.trim(), colour })
-    setSaving(false)
-  }
-
-  const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
-
-  return (
-    <div className="bg-white dark:bg-white/5 rounded-2xl border border-cyan-200 dark:border-cyan-500/30 shadow-sm p-4 space-y-3">
-      <p className="text-sm font-bold text-gray-800 dark:text-white">Edit Dr. {doctor.user?.firstName} {doctor.user?.lastName}</p>
-      <div>
-        <label className="text-xs font-bold text-gray-500 dark:text-white/50 mb-1 block">Specialisation</label>
-        <input value={spec} onChange={e => setSpec(e.target.value)} className={inputCls} placeholder="e.g. Orthodontist" />
-      </div>
-      <div>
-        <label className="text-xs font-bold text-gray-500 dark:text-white/50 mb-2 block">Calendar Colour</label>
-        <div className="flex flex-wrap gap-2">
-          {SERVICE_COLORS.map(c => (
-            <button key={c} onClick={() => setColour(c)} type="button"
-              className={cn('w-6 h-6 rounded-lg transition-all hover:scale-110', colour === c && 'ring-2 ring-offset-1 ring-gray-400 scale-110')}
-              style={{ background: c }} />
-          ))}
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <button onClick={onCancel} className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-white/10 text-xs font-bold text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/5">Cancel</button>
-        <button onClick={save} disabled={saving}
-          className="flex-1 py-2 rounded-xl text-xs font-black text-white disabled:opacity-50"
-          style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // ── Main Page ────────────────────────────────────────────────
 export default function ServicesPage() {
   const API = '/api-proxy'
-  const [tab, setTab]           = useState<STab>('services')
   const [services, setServices] = useState<any[]>([])
-  const [doctors,  setDoctors]  = useState<any[]>([])
   const [loading,  setLoading]  = useState(true)
   const [showAdd,  setShowAdd]  = useState(false)
   const [editSvc,  setEditSvc]  = useState<any>(null)
-  const [editDoc,  setEditDoc]  = useState<string | null>(null)
   const [toast,    setToast]    = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
@@ -188,12 +107,8 @@ export default function ServicesPage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [s, d] = await Promise.all([
-        fetch(`${API}/services`, { headers: authH }).then(r => r.json()),
-        fetch(`${API}/doctors`,  { headers: authH }).then(r => r.json()),
-      ])
+      const s = await fetch(`${API}/services`, { headers: authH }).then(r => r.json())
       setServices(Array.isArray(s) ? s : s.data || [])
-      setDoctors(Array.isArray(d) ? d : d.data || [])
     } catch {} finally { setLoading(false) }
   }, [])
 
@@ -226,14 +141,6 @@ export default function ServicesPage() {
     } catch { showToast('Network error', 'err') }
   }
 
-  async function updateDoctor(id: string, data: any) {
-    try {
-      const res = await fetch(`${API}/doctors/${id}`, { method: 'PATCH', headers: authH, body: JSON.stringify(data) })
-      if (res.ok) { showToast('Doctor updated', 'ok'); setEditDoc(null); fetchAll() }
-      else showToast('Failed to update', 'err')
-    } catch { showToast('Network error', 'err') }
-  }
-
   return (
     <div className="p-5 max-w-4xl mx-auto space-y-5">
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
@@ -241,36 +148,17 @@ export default function ServicesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-gray-800 dark:text-white">Services & Doctors</h1>
-          <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Manage clinic services and doctor profiles</p>
+          <h1 className="text-2xl font-black text-gray-800 dark:text-white">Services</h1>
+          <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Manage clinic services</p>
         </div>
-      </div>
-
-      {/* Tab switcher */}
-      <div className="flex gap-2 bg-gray-100 dark:bg-white/5 rounded-2xl p-1 w-fit">
-        {[
-          { key: 'services' as STab, label: 'Services', icon: Stethoscope },
-          { key: 'doctors'  as STab, label: 'Doctors',  icon: Users       },
-        ].map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={cn(
-              'flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all',
-              tab === key
-                ? 'bg-white dark:bg-white/10 text-gray-800 dark:text-white shadow-sm'
-                : 'text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/70',
-            )}>
-            <Icon size={15} /> {label}
-          </button>
-        ))}
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : tab === 'services' ? (
+      ) : (
         <div className="space-y-4">
-          {/* Add service */}
           {!showAdd && !editSvc && (
             <button onClick={() => setShowAdd(true)}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black text-white hover:-translate-y-0.5 transition-all"
@@ -278,9 +166,8 @@ export default function ServicesPage() {
               <Plus size={15} /> Add Service
             </button>
           )}
-          {showAdd  && <ServiceForm onSave={createService} onCancel={() => setShowAdd(false)} />}
+          {showAdd && <ServiceForm onSave={createService} onCancel={() => setShowAdd(false)} />}
 
-          {/* Services grid */}
           <div className="grid gap-3 sm:grid-cols-2">
             {services.map(s => (
               editSvc?.id === s.id ? (
@@ -332,24 +219,6 @@ export default function ServicesPage() {
               <Stethoscope size={40} className="text-gray-200 dark:text-white/10 mb-3" />
               <p className="text-gray-400">No services configured yet</p>
               <button onClick={() => setShowAdd(true)} className="mt-3 text-sm text-cyan-600 hover:underline">Add your first service</button>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Doctors tab */
-        <div className="space-y-3">
-          <p className="text-xs text-gray-400 dark:text-white/40">To add or remove doctors, use the Admin panel. You can update specialisation and calendar colour here.</p>
-          {doctors.map(d => (
-            editDoc === d.id ? (
-              <DoctorEditForm key={d.id} doctor={d} onSave={(data) => updateDoctor(d.id, data)} onCancel={() => setEditDoc(null)} />
-            ) : (
-              <DoctorCard key={d.id} doctor={d} onEdit={() => setEditDoc(d.id)} />
-            )
-          ))}
-          {doctors.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Users size={40} className="text-gray-200 dark:text-white/10 mb-3" />
-              <p className="text-gray-400">No doctors found</p>
             </div>
           )}
         </div>
