@@ -755,8 +755,11 @@ export default function ReceptionistDashboard() {
         </div>
       </div>
 
-      {/* ── Main 3-column grid ─────────────────────────────────── */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3 min-w-0">
+      {/* ── Live Patient Flow — full width, right after stats ─── */}
+      <LivePatientFlow />
+
+      {/* ── Main 2-column grid ─────────────────────────────────── */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 min-w-0">
 
         {/* ── LEFT COLUMN ─────────────────────────────────────── */}
         <div className="space-y-4 min-w-0">
@@ -968,11 +971,6 @@ export default function ReceptionistDashboard() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* ── Live Patient Flow — full width ────────────────────── */}
-      <div className="rounded-2xl overflow-hidden border border-gray-100 dark:border-white/10 shadow-sm">
-        <LivePatientFlow />
       </div>
 
       {/* ── Sarah Chatbot ─────────────────────────────────────── */}
