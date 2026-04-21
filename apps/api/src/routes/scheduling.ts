@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth'
 import { clinicalStaff } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
+import { syncAppointmentToGCal } from '../services/gcal'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -132,7 +133,7 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
     data: { patientId, doctorId, serviceId, startAt: start, endAt: end, notes, createdById: req.user!.id },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
-      doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+      doctor:  { include: { user: { select: { firstName: true, lastName: true, email: true } } } },
       service: true,
     },
   })
@@ -154,6 +155,9 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
   } catch (smsErr: any) {
     console.warn('[SMS] Booking confirmation failed:', smsErr.message)
   }
+
+  // Auto-sync to Google Calendar (fire-and-forget)
+  syncAppointmentToGCal(appointment).catch(() => {})
 
   res.status(201).json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })
