@@ -126,7 +126,7 @@ export default function SettingsPage() {
     setSaving(true)
     try {
       const token = localStorage.getItem('cc_token')
-      const res = await fetch(`${API}/users/me`, {
+      const res = await fetch(`${API}/auth/me`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim(), bio: bio.trim(), avatar }),

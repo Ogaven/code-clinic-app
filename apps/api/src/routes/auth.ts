@@ -300,6 +300,31 @@ router.post('/2fa/verify', requireAuth, validate(totpSchema), async (req, res) =
   res.json({ message: '2FA enabled' })
 })
 
+// PATCH /auth/me — update own profile (name, phone, bio, avatar)
+router.patch('/me', requireAuth, async (req, res) => {
+  const { firstName, lastName, phone, bio, avatar } = req.body
+  try {
+    const data: any = {}
+    if (firstName) data.firstName = firstName.trim()
+    if (lastName)  data.lastName  = lastName.trim()
+    if (phone !== undefined) data.phone = phone?.trim() || null
+    if (bio   !== undefined) data.bio   = bio?.trim()   || null
+    if (avatar !== undefined) data.avatarR2Key = avatar   // base64 data URL or R2 key
+
+    const updated = await prisma.user.update({
+      where: { id: req.user!.id },
+      data,
+      select: { id:true, email:true, role:true, firstName:true, lastName:true, phone:true, avatarR2Key:true },
+    })
+    const avatarUrl = updated.avatarR2Key
+      ? (updated.avatarR2Key.startsWith('data:') ? updated.avatarR2Key : getPublicUrl(updated.avatarR2Key))
+      : null
+    res.json({ ...updated, avatarUrl, avatar: avatarUrl })
+  } catch (e: any) {
+    res.status(500).json({ error: 'Failed to update profile' })
+  }
+})
+
 // GET /auth/me
 router.get('/me', requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({

@@ -204,8 +204,9 @@ export default function ReceptionistLayout({ children }: { children: React.React
     if (!stored) { router.push('/login'); return }
     const u = JSON.parse(stored)
     setUser(u)
-    if (u.avatarUrl) {
-      setAvatarUrl(u.avatarUrl)
+    // Check locally-stored avatar first (covers settings-page uploads and API-resolved URLs)
+    if (u.avatarUrl || u.avatar) {
+      setAvatarUrl(u.avatarUrl || u.avatar)
     } else {
       const token = localStorage.getItem('cc_token')
       fetch('/api-proxy/auth/me', { headers: { Authorization: `Bearer ${token}` } })
