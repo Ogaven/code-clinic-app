@@ -6,6 +6,7 @@ import { clinicalStaff } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
 import { syncAppointmentToGCal } from '../services/gcal'
+import { sendWhatsAppMessage } from '../services/agent/channels/whatsapp-channel'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -158,6 +159,18 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
 
   // Auto-sync to Google Calendar (fire-and-forget)
   syncAppointmentToGCal(appointment).catch(() => {})
+
+  // WhatsApp pre-visit form link (fire-and-forget)
+  try {
+    const appUrl   = process.env.APP_URL || 'http://localhost:3000'
+    const formLink = `${appUrl}/pre-visit?appt=${appointment.id}&phone=${encodeURIComponent(appointment.patient.phone)}`
+    const p  = appointment.patient
+    const d  = appointment.doctor.user
+    const dateStr = start.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
+    const timeStr = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' })
+    const waMsg = `Hi ${p.firstName}! 😊 Your appointment at *Code Clinic* is confirmed.\n\n📅 ${dateStr} at ${timeStr}\n👨‍⚕️ Dr. ${d.firstName} ${d.lastName}\n🦷 ${appointment.service.name}\n\nPlease fill in your pre-visit health form before you come in — it takes 2 minutes:\n${formLink}\n\nSee you soon! 🌟`
+    sendWhatsAppMessage(p.phone, waMsg).catch(() => {})
+  } catch { /* non-blocking */ }
 
   res.status(201).json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })
