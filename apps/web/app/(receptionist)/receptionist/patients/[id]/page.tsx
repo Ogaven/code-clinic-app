@@ -64,14 +64,20 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
 
   useEffect(() => {
     setForm({
-      firstName: patient.firstName || '',
-      lastName:  patient.lastName  || '',
-      phone:     patient.phone     || '',
-      email:     patient.email     || '',
-      gender:    patient.gender    || 'FEMALE',
-      dob:       patient.dob ? patient.dob.slice(0, 10) : '',
-      address:   patient.address   || '',
-      notes:     patient.notes     || '',
+      firstName:        patient.firstName        || '',
+      lastName:         patient.lastName         || '',
+      phone:            patient.phone            || '',
+      email:            patient.email            || '',
+      gender:           patient.gender           || 'FEMALE',
+      dob:              patient.dob ? patient.dob.slice(0, 10) : '',
+      address:          patient.address          || '',
+      district:         patient.district         || '',
+      nextOfKinName:    patient.nextOfKinName    || '',
+      nextOfKinPhone:   patient.nextOfKinPhone   || '',
+      nextOfKinRelation:patient.nextOfKinRelation|| '',
+      allergies:        patient.allergies        || '',
+      medicalHistory:   patient.medicalHistory   || '',
+      notes:            patient.notes            || '',
     })
   }, [patient])
 
@@ -139,13 +145,71 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
                 <input type="date" value={form.dob} onChange={e => setForm((f: any) => ({...f, dob: e.target.value}))} className={inputCls} />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Place of Residence</label>
+                <input value={form.address} onChange={e => setForm((f: any) => ({...f, address: e.target.value}))} className={inputCls} placeholder="Street / village" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">District</label>
+                <input value={form.district} onChange={e => setForm((f: any) => ({...f, district: e.target.value}))} className={inputCls} placeholder="e.g. Kampala" />
+              </div>
+            </div>
+            <div className="pt-1">
+              <p className="text-xs font-black text-gray-400 dark:text-white/40 uppercase tracking-wider mb-2">Next of Kin</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Name</label>
+                  <input value={form.nextOfKinName} onChange={e => setForm((f: any) => ({...f, nextOfKinName: e.target.value}))} className={inputCls} placeholder="Full name" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Contact</label>
+                  <input value={form.nextOfKinPhone} onChange={e => setForm((f: any) => ({...f, nextOfKinPhone: e.target.value}))} className={inputCls} placeholder="Phone number" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Relationship</label>
+                  <select value={form.nextOfKinRelation} onChange={e => setForm((f: any) => ({...f, nextOfKinRelation: e.target.value}))} className={inputCls}>
+                    <option value="">Select...</option>
+                    <option value="Spouse">Spouse</option>
+                    <option value="Parent">Parent</option>
+                    <option value="Child">Child</option>
+                    <option value="Sibling">Sibling</option>
+                    <option value="Friend">Friend</option>
+                    <option value="Guardian">Guardian</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+            </div>
             <div>
-              <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Address</label>
-              <input value={form.address} onChange={e => setForm((f: any) => ({...f, address: e.target.value}))} className={inputCls} placeholder="Patient's address" />
+              <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Allergies</label>
+              <input value={form.allergies} onChange={e => setForm((f: any) => ({...f, allergies: e.target.value}))} className={inputCls} placeholder="e.g. Penicillin, Latex (comma separated)" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Medical History</label>
+              <div className="flex flex-wrap gap-2">
+                {['Diabetes', 'Ulcers', 'Hypertension', 'Asthma', 'Heart Disease', 'HIV/AIDS'].map(cond => {
+                  const selected = (form.medicalHistory || '').split(',').map((s: string) => s.trim()).filter(Boolean)
+                  const isOn = selected.includes(cond)
+                  return (
+                    <button key={cond} type="button" onClick={() => {
+                      const next = isOn ? selected.filter((s: string) => s !== cond) : [...selected, cond]
+                      setForm((f: any) => ({...f, medicalHistory: next.join(', ')}))
+                    }}
+                      className={cn('px-3 py-1.5 rounded-xl text-xs font-bold transition-all',
+                        isOn ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-600 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-white/15')}>
+                      {cond}
+                    </button>
+                  )
+                })}
+              </div>
+              {form.medicalHistory && (
+                <p className="text-xs text-gray-400 mt-1">{form.medicalHistory}</p>
+              )}
             </div>
             <div>
               <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Notes</label>
-              <textarea rows={3} value={form.notes} onChange={e => setForm((f: any) => ({...f, notes: e.target.value}))} className={cn(inputCls, 'resize-none')} placeholder="General patient notes..." />
+              <textarea rows={2} value={form.notes} onChange={e => setForm((f: any) => ({...f, notes: e.target.value}))} className={cn(inputCls, 'resize-none')} placeholder="General patient notes..." />
             </div>
             <button onClick={save} disabled={saving}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black text-white disabled:opacity-60"
@@ -177,10 +241,36 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
               <Mail size={13} className="text-cyan-500 flex-shrink-0" />
               <span className="text-sm text-gray-700 dark:text-white/70">{patient.email || 'No email'}</span>
             </div>
-            {patient.address && (
-              <div className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2.5">
-                <span className="text-xs font-black text-gray-400 uppercase tracking-wider mr-1">Addr</span>
-                <span className="text-sm text-gray-700 dark:text-white/70">{patient.address}</span>
+            {(patient.address || patient.district) && (
+              <div className="bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2.5">
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wider mb-0.5">Place of Residence</p>
+                <p className="text-sm text-gray-700 dark:text-white/70">{[patient.address, patient.district].filter(Boolean).join(', ')}</p>
+              </div>
+            )}
+            {(patient.nextOfKinName || patient.nextOfKinPhone) && (
+              <div className="bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2.5">
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wider mb-1">Next of Kin</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                  {patient.nextOfKinName && <span className="text-sm font-semibold text-gray-800 dark:text-white">{patient.nextOfKinName}</span>}
+                  {patient.nextOfKinRelation && <span className="text-xs text-cyan-600 dark:text-cyan-400 font-semibold self-center">({patient.nextOfKinRelation})</span>}
+                  {patient.nextOfKinPhone && <span className="text-sm text-gray-500 dark:text-white/60">{patient.nextOfKinPhone}</span>}
+                </div>
+              </div>
+            )}
+            {patient.allergies && (
+              <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-700/20 rounded-xl px-3 py-2.5">
+                <p className="text-[10px] font-black text-red-500 uppercase tracking-wider mb-0.5">Allergies</p>
+                <p className="text-sm text-red-700 dark:text-red-300">{patient.allergies}</p>
+              </div>
+            )}
+            {patient.medicalHistory && (
+              <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-700/20 rounded-xl px-3 py-2.5">
+                <p className="text-[10px] font-black text-blue-500 uppercase tracking-wider mb-1.5">Medical History</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {patient.medicalHistory.split(',').map((c: string) => c.trim()).filter(Boolean).map((cond: string) => (
+                    <span key={cond} className="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-bold">{cond}</span>
+                  ))}
+                </div>
               </div>
             )}
             {patient.notes && (

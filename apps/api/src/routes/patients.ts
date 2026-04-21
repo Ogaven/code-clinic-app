@@ -137,7 +137,7 @@ router.patch('/:id', requireAuth, auditLog('patients'), async (req, res) => {
   try {
     const {
       firstName, lastName, phone, email, gender, dob, address, district, isActive,
-      nextOfKinName, nextOfKinPhone, nextOfKinRelation,
+      nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
     } = req.body
     const patient = await prisma.patient.update({
       where: { id: req.params.id },
@@ -146,6 +146,7 @@ router.patch('/:id', requireAuth, auditLog('patients'), async (req, res) => {
         dob: dob ? new Date(dob) : undefined,
         address, district, isActive,
         nextOfKinName, nextOfKinPhone, nextOfKinRelation,
+        allergies, medicalHistory,
       },
     })
     res.json({ ...patient, accountBalance: Number(patient.accountBalance) })
