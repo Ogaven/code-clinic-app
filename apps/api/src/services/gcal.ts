@@ -58,9 +58,6 @@ export async function syncAppointmentToGCal(appt: {
       start:      { dateTime: appt.startAt.toISOString(), timeZone: 'Africa/Kampala' },
       end:        { dateTime: appt.endAt.toISOString(),   timeZone: 'Africa/Kampala' },
       colorId:    statusColorId(appt.status),
-      attendees:  appt.doctor.user.email
-        ? [{ email: appt.doctor.user.email, displayName: `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}` }]
-        : undefined,
       extendedProperties: { private: { codeclinicId: appt.id } },
     }
 

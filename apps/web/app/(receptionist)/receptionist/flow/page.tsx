@@ -82,12 +82,18 @@ const STAGES = [
   },
 ] as const
 
-function elapsed(startAt: string) {
+function elapsed(startAt: string): { label: string; mins: number } {
   const diff = Date.now() - new Date(startAt).getTime()
   const m = Math.floor(diff / 60000)
-  if (m < 1) return 'Just now'
-  if (m < 60) return `${m}m`
-  return `${Math.floor(m / 60)}h ${m % 60}m`
+  if (m < 1) return { label: 'Just now', mins: 0 }
+  if (m < 60) return { label: `${m}m`, mins: m }
+  return { label: `${Math.floor(m / 60)}h ${m % 60}m`, mins: m }
+}
+
+function waitClass(mins: number) {
+  if (mins < 20) return { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400' }
+  if (mins < 45) return { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400' }
+  return { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400' }
 }
 
 // ── Patient Card ──────────────────────────────────────────────
@@ -106,7 +112,8 @@ function PatientCard({
   const time = new Date(appt.startAt).toLocaleTimeString('en-UG', {
     hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
   })
-  const waitTime = elapsed(appt.startAt)
+  const wait     = elapsed(appt.startAt)
+  const wc       = waitClass(wait.mins)
   const initials = `${appt.patient?.firstName?.[0] || ''}${appt.patient?.lastName?.[0] || ''}`
   const service  = appt.service?.name || 'Appointment'
   const doctor   = `Dr. ${appt.doctor?.user?.firstName || ''} ${appt.doctor?.user?.lastName || ''}`.trim()
@@ -138,14 +145,14 @@ function PatientCard({
             <p className="text-xs text-gray-500 dark:text-white/50 truncate mt-0.5">{service}</p>
             <p className="text-xs font-semibold truncate" style={{ color: stageColor }}>{doctor}</p>
           </div>
-          {/* Time badge */}
+          {/* Time + duration badge */}
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
             <span className="text-[10px] font-black px-2 py-0.5 rounded-full text-white"
               style={{ background: stageColor }}>
               {time}
             </span>
-            <span className="text-[10px] text-gray-400 dark:text-white/30 flex items-center gap-0.5">
-              <Clock size={9} /> {waitTime}
+            <span className={cn('text-[11px] font-black px-2 py-0.5 rounded-full flex items-center gap-0.5', wc.bg, wc.text)}>
+              <Clock size={9} /> {wait.label}
             </span>
           </div>
         </div>
@@ -221,7 +228,10 @@ function StageLane({
         <div className="flex-1 text-left">
           <p className="text-sm font-black" style={{ color: stage.color }}>{stage.label}</p>
           <p className="text-xs text-gray-500 dark:text-white/40">
-            {patients.length === 0 ? 'No patients' : `${patients.length} patient${patients.length > 1 ? 's' : ''}`}
+            {patients.length === 0 ? 'No patients' : (() => {
+              const avg = Math.round(patients.reduce((sum, a) => sum + elapsed(a.startAt).mins, 0) / patients.length)
+              return `${patients.length} patient${patients.length > 1 ? 's' : ''} · avg ${avg < 1 ? '<1' : avg}m`
+            })()}
           </p>
         </div>
 

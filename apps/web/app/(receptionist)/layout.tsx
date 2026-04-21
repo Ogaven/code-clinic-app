@@ -8,7 +8,7 @@ import {
   LayoutDashboard, CalendarDays, Users, MessageSquare,
   Bot, BarChart2, Settings, HelpCircle, Bell, Search,
   ChevronLeft, ChevronRight, LogOut, User, Lock, Download,
-  Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Stethoscope, UserCog,
+  Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Stethoscope, UserCog, Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -196,6 +196,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const [showTheme, setShowTheme] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [notifPerm, setNotifPerm] = useState<string>('default')
+  const [todayAppts, setTodayAppts] = useState<any[]>([])
 
   const API = '/api-proxy'
 
@@ -220,6 +221,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
         .catch(() => {})
     }
     fetchUnread(u)
+    fetchTodayAppts()
     const t = setInterval(() => fetchUnread(u), 15000)
     const savedTheme = (localStorage.getItem('cc_theme') as Theme) || 'system'
     setTheme(savedTheme)
@@ -272,6 +274,20 @@ export default function ReceptionistLayout({ children }: { children: React.React
           }
           return count
         })
+      }
+    } catch {}
+  }
+
+  async function fetchTodayAppts() {
+    try {
+      const token = localStorage.getItem('cc_token')
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
+      const res = await fetch(`${API}/scheduling/appointments?startDate=${today}&endDate=${today}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setTodayAppts(Array.isArray(data) ? data : [])
       }
     } catch {}
   }
@@ -368,6 +384,41 @@ export default function ReceptionistLayout({ children }: { children: React.React
               )
             })}
           </div>
+
+          {/* Today's Appointments mini-list */}
+          {!collapsed && todayAppts.length > 0 && (
+            <div className="mt-3 mb-1">
+              <div className="flex items-center justify-between px-3 mb-1.5">
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/30 flex items-center gap-1">
+                  <Clock size={9} /> Today
+                </span>
+                <span className="text-[9px] text-gray-400 dark:text-white/30 font-semibold">{todayAppts.length} appts</span>
+              </div>
+              <div className="space-y-0.5 max-h-[180px] overflow-y-auto pr-0.5">
+                {todayAppts.map(appt => {
+                  const t = new Date(appt.startAt).toLocaleTimeString('en-UG', {
+                    timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit', hour12: true,
+                  })
+                  const statusDot: Record<string, string> = {
+                    PENDING: 'bg-slate-400', CONFIRMED: 'bg-blue-500', CHECKED_IN: 'bg-yellow-500',
+                    IN_CHAIR: 'bg-orange-500', WITH_PROVIDER: 'bg-teal-500',
+                    READY_CHECKOUT: 'bg-purple-500', COMPLETED: 'bg-green-500',
+                    NO_SHOW: 'bg-red-400', CANCELLED: 'bg-gray-300',
+                  }
+                  return (
+                    <Link key={appt.id} href="/receptionist/appointments"
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors group">
+                      <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusDot[appt.status] || 'bg-gray-300')} />
+                      <span className="text-[10px] text-gray-400 dark:text-white/40 font-mono flex-shrink-0 w-[52px]">{t}</span>
+                      <span className="text-[11px] text-gray-700 dark:text-white/70 truncate font-medium group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
+                        {appt.patient.firstName} {appt.patient.lastName}
+                      </span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Divider */}
           <div className={cn('my-2 border-t border-gray-100 dark:border-white/[0.06]', collapsed && 'mx-1')} />
@@ -559,13 +610,13 @@ export default function ReceptionistLayout({ children }: { children: React.React
               <button onClick={() => setProf(!showProfile)}
                 className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm text-white transition-all hover:scale-105 ring-2 ring-white/30"
                 style={avatarUrl ? {} : { background: 'linear-gradient(135deg, #29ABE2, #1A237E)' }}>
-                {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" /> : initials}
+                {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" onError={() => setAvatarUrl(null)} /> : initials}
               </button>
               {showProfile && (
                 <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#0e2045] rounded-2xl shadow-xl border border-gray-100 dark:border-white/10 py-2 z-50 animate-fade-in">
                   <div className="px-4 py-3 border-b border-gray-100 dark:border-white/8">
                     {avatarUrl ? (
-                      <img src={avatarUrl} alt="" className="w-12 h-12 rounded-full object-cover mx-auto mb-2" />
+                      <img src={avatarUrl} alt="" className="w-12 h-12 rounded-full object-cover mx-auto mb-2" onError={() => setAvatarUrl(null)} />
                     ) : (
                     <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-base text-white mx-auto mb-2"
                       style={{ background: 'linear-gradient(135deg, #29ABE2, #1A237E)' }}>

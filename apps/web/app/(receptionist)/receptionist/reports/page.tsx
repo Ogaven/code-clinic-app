@@ -55,21 +55,41 @@ export default function ReportsPage() {
     { label: 'Cancelled / No Show',statuses: ['CANCELLED', 'NO_SHOW'],       color: '#EF4444' },
   ]
 
+  function durationMins(a: any): number {
+    const end = a.status === 'COMPLETED' && a.updatedAt ? new Date(a.updatedAt) : new Date()
+    return Math.round((end.getTime() - new Date(a.startAt).getTime()) / 60000)
+  }
+
+  function fmtMins(m: number) { return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m` }
+
   function exportFlowPDF() {
     const today = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
+
+    // Per-stage breakdown
+    const stageRows = FLOW_STAGES.map(s => {
+      const pts = appts.filter(a => s.statuses.includes(a.status))
+      const avg = pts.length ? Math.round(pts.reduce((sum, a) => sum + durationMins(a), 0) / pts.length) : null
+      return `<tr>
+        <td style="color:${s.color};font-weight:700">${s.label}</td>
+        <td>${pts.length}</td>
+        <td>${avg !== null ? fmtMins(avg) : '—'}</td>
+        <td>${pts.length ? fmtMins(Math.min(...pts.map(durationMins))) : '—'}</td>
+        <td>${pts.length ? fmtMins(Math.max(...pts.map(durationMins))) : '—'}</td>
+      </tr>`
+    }).join('')
+
     const rows = appts.map(a => {
-      const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+      const t     = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
       const stage = FLOW_STAGES.find(s => s.statuses.includes(a.status))?.label || a.status
-      const elapsed = a.status === 'COMPLETED' && a.updatedAt
-        ? `${Math.round((new Date(a.updatedAt).getTime() - new Date(a.startAt).getTime()) / 60000)} min`
-        : '—'
+      const dur   = fmtMins(durationMins(a))
+      const label = a.status === 'COMPLETED' ? 'Total' : 'So far'
       return `<tr>
         <td>${a.patient?.firstName} ${a.patient?.lastName}</td>
         <td>${t}</td>
         <td>${a.service?.name || '—'}</td>
         <td>Dr. ${a.doctor?.user?.firstName} ${a.doctor?.user?.lastName}</td>
         <td>${stage}</td>
-        <td>${elapsed}</td>
+        <td>${dur} <span style="font-size:10px;color:#9ca3af">(${label})</span></td>
       </tr>`
     }).join('')
 
@@ -78,12 +98,13 @@ export default function ReportsPage() {
 <style>
   body { font-family: Arial, sans-serif; padding: 32px; color: #1a1a1a; }
   h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 14px; font-weight: 700; margin: 24px 0 10px; }
   p.sub { color: #666; font-size: 13px; margin-bottom: 24px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
   th { background: #0c1e50; color: white; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
   td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
   tr:nth-child(even) td { background: #f9fafb; }
-  .summary { display: flex; gap: 24px; margin-bottom: 24px; }
+  .summary { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
   .stat { background: #f1f5f9; border-radius: 10px; padding: 12px 20px; text-align: center; }
   .stat .n { font-size: 28px; font-weight: 900; color: #0c1e50; }
   .stat .l { font-size: 11px; color: #64748b; margin-top: 2px; }
@@ -98,6 +119,12 @@ export default function ReportsPage() {
   <div class="stat"><div class="n" style="color:#d97706">${noShow}</div><div class="l">No Show</div></div>
   <div class="stat"><div class="n" style="color:#0891b2">${appts.length - completed - cancelled - noShow}</div><div class="l">Active / Pending</div></div>
 </div>
+<h2>Stage Duration Summary</h2>
+<table>
+  <thead><tr><th>Stage</th><th>Count</th><th>Avg Duration</th><th>Min</th><th>Max</th></tr></thead>
+  <tbody>${stageRows}</tbody>
+</table>
+<h2>Appointment Log</h2>
 <table>
   <thead><tr><th>Patient</th><th>Time</th><th>Service</th><th>Doctor</th><th>Stage</th><th>Duration</th></tr></thead>
   <tbody>${rows}</tbody>
@@ -182,14 +209,14 @@ export default function ReportsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-white/5">
-                    {['Time', 'Patient', 'Doctor', 'Service', 'Status'].map(h => (
+                    {['Time', 'Patient', 'Doctor', 'Service', 'Status', 'Duration'].map(h => (
                       <th key={h} className="text-left px-4 py-2.5 text-xs font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-white/5">
                   {appts.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center py-8 text-gray-400 dark:text-white/40 text-sm">No appointments today</td></tr>
+                    <tr><td colSpan={6} className="text-center py-8 text-gray-400 dark:text-white/40 text-sm">No appointments today</td></tr>
                   ) : appts.map(a => {
                     const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
                     const statusColor: Record<string, string> = {
@@ -211,6 +238,7 @@ export default function ReportsPage() {
                             {a.status}
                           </span>
                         </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-white/50 font-mono">{fmtMins(durationMins(a))}</td>
                       </tr>
                     )
                   })}

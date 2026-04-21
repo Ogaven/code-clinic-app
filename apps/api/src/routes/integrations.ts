@@ -174,19 +174,15 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
           `Doctor:  Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`,
           `Status:  ${appt.status}`,
           ``,
-          `Manage: ${process.env.APP_URL || 'http://localhost:3000'}/scheduling`,
+          `Manage: ${process.env.APP_URL || 'http://localhost:3000'}/receptionist/appointments`,
         ].join('\n'),
         start:      { dateTime: appt.startAt.toISOString(), timeZone: 'Africa/Kampala' },
         end:        { dateTime: appt.endAt.toISOString(),   timeZone: 'Africa/Kampala' },
         colorId:    statusColorId(appt.status),
-        attendees:  appt.doctor.user.email
-          ? [{ email: appt.doctor.user.email, displayName: `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}` }]
-          : undefined,
         extendedProperties: { private: { codeclinicId: appt.id } },
       }
 
       try {
-        // Look for an existing event we created before
         const existing = await (calendar.events.list as any)({
           calendarId,
           privateExtendedProperty: `codeclinicId=${appt.id}`,
@@ -200,6 +196,8 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
           await calendar.events.insert({ calendarId, requestBody: event })
           created++
         }
+        // Respect Google Calendar API rate limits (3 req/s per user)
+        await new Promise(r => setTimeout(r, 350))
       } catch (e: any) {
         console.error('[GCal] Event error:', appt.id, e.message)
         errors++
