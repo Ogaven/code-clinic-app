@@ -46,6 +46,69 @@ export default function ReportsPage() {
   const noShow     = appts.filter(a => a.status === 'NO_SHOW').length
   const pending    = appts.filter(a => a.status === 'PENDING').length
 
+  const FLOW_STAGES = [
+    { label: 'Patient Arrived',    statuses: ['PENDING'],                    color: '#64748B' },
+    { label: 'Waiting Room',       statuses: ['CONFIRMED', 'CHECKED_IN'],    color: '#3B82F6' },
+    { label: 'Session with Doctor',statuses: ['IN_CHAIR', 'WITH_PROVIDER'],  color: '#0D9488' },
+    { label: 'Checkout & Billing', statuses: ['READY_CHECKOUT'],             color: '#9333EA' },
+    { label: 'Patient Departed',   statuses: ['COMPLETED'],                  color: '#16A34A' },
+    { label: 'Cancelled / No Show',statuses: ['CANCELLED', 'NO_SHOW'],       color: '#EF4444' },
+  ]
+
+  function exportFlowPDF() {
+    const today = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
+    const rows = appts.map(a => {
+      const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+      const stage = FLOW_STAGES.find(s => s.statuses.includes(a.status))?.label || a.status
+      const elapsed = a.status === 'COMPLETED' && a.updatedAt
+        ? `${Math.round((new Date(a.updatedAt).getTime() - new Date(a.startAt).getTime()) / 60000)} min`
+        : '—'
+      return `<tr>
+        <td>${a.patient?.firstName} ${a.patient?.lastName}</td>
+        <td>${t}</td>
+        <td>${a.service?.name || '—'}</td>
+        <td>Dr. ${a.doctor?.user?.firstName} ${a.doctor?.user?.lastName}</td>
+        <td>${stage}</td>
+        <td>${elapsed}</td>
+      </tr>`
+    }).join('')
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Live Flow Report — ${today}</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 32px; color: #1a1a1a; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.sub { color: #666; font-size: 13px; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #0c1e50; color: white; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
+  tr:nth-child(even) td { background: #f9fafb; }
+  .summary { display: flex; gap: 24px; margin-bottom: 24px; }
+  .stat { background: #f1f5f9; border-radius: 10px; padding: 12px 20px; text-align: center; }
+  .stat .n { font-size: 28px; font-weight: 900; color: #0c1e50; }
+  .stat .l { font-size: 11px; color: #64748b; margin-top: 2px; }
+  @media print { body { padding: 16px; } }
+</style></head><body>
+<h1>Live Patient Flow Report</h1>
+<p class="sub">Code Clinic — ${today}</p>
+<div class="summary">
+  <div class="stat"><div class="n">${appts.length}</div><div class="l">Total Today</div></div>
+  <div class="stat"><div class="n" style="color:#16a34a">${completed}</div><div class="l">Completed</div></div>
+  <div class="stat"><div class="n" style="color:#ef4444">${cancelled}</div><div class="l">Cancelled</div></div>
+  <div class="stat"><div class="n" style="color:#d97706">${noShow}</div><div class="l">No Show</div></div>
+  <div class="stat"><div class="n" style="color:#0891b2">${appts.length - completed - cancelled - noShow}</div><div class="l">Active / Pending</div></div>
+</div>
+<table>
+  <thead><tr><th>Patient</th><th>Time</th><th>Service</th><th>Doctor</th><th>Stage</th><th>Duration</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<p style="margin-top:24px;font-size:11px;color:#9ca3af">Generated ${new Date().toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} · Code Clinic Management System</p>
+</body></html>`
+
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close(); w.print() }
+  }
+
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       {/* Header */}
@@ -61,9 +124,10 @@ export default function ReportsPage() {
             <option value="week">This week</option>
             <option value="month">This month</option>
           </select>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
+          <button onClick={exportFlowPDF}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
             style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-            <Download size={14} /> Export PDF
+            <Download size={14} /> Export Live Flow PDF
           </button>
         </div>
       </div>
