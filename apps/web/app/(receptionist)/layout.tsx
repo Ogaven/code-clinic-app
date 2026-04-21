@@ -183,6 +183,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const pathname  = usePathname()
   const router    = useRouter()
   const [user, setUser]         = useState<any>(null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [collapsed, setCol]     = useState(false)
   const [showProfile, setProf]  = useState(false)
   const [unread, setUnread]     = useState(0)
@@ -203,6 +204,20 @@ export default function ReceptionistLayout({ children }: { children: React.React
     if (!stored) { router.push('/login'); return }
     const u = JSON.parse(stored)
     setUser(u)
+    if (u.avatarUrl) {
+      setAvatarUrl(u.avatarUrl)
+    } else {
+      const token = localStorage.getItem('cc_token')
+      fetch('/api-proxy/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data?.avatarUrl) {
+            setAvatarUrl(data.avatarUrl)
+            localStorage.setItem('cc_user', JSON.stringify({ ...u, avatarUrl: data.avatarUrl }))
+          }
+        })
+        .catch(() => {})
+    }
     fetchUnread(u)
     const t = setInterval(() => fetchUnread(u), 15000)
     const savedTheme = (localStorage.getItem('cc_theme') as Theme) || 'system'
@@ -541,17 +556,21 @@ export default function ReceptionistLayout({ children }: { children: React.React
             {/* Avatar dropdown */}
             <div className="relative">
               <button onClick={() => setProf(!showProfile)}
-                className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm text-white transition-all hover:scale-105 ring-2 ring-white/30"
-                style={{ background: 'linear-gradient(135deg, #29ABE2, #1A237E)' }}>
-                {initials}
+                className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm text-white transition-all hover:scale-105 ring-2 ring-white/30"
+                style={avatarUrl ? {} : { background: 'linear-gradient(135deg, #29ABE2, #1A237E)' }}>
+                {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" /> : initials}
               </button>
               {showProfile && (
                 <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#0e2045] rounded-2xl shadow-xl border border-gray-100 dark:border-white/10 py-2 z-50 animate-fade-in">
                   <div className="px-4 py-3 border-b border-gray-100 dark:border-white/8">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt="" className="w-12 h-12 rounded-full object-cover mx-auto mb-2" />
+                    ) : (
                     <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-base text-white mx-auto mb-2"
                       style={{ background: 'linear-gradient(135deg, #29ABE2, #1A237E)' }}>
                       {initials}
                     </div>
+                    )}
                     <p className="text-sm font-bold text-gray-800 dark:text-white text-center">{user?.firstName} {user?.lastName}</p>
                     <p className="text-xs text-gray-400 text-center truncate">{user?.email}</p>
                     <p className="text-[10px] font-bold text-cyan-500 text-center mt-0.5 uppercase tracking-wide">Receptionist</p>

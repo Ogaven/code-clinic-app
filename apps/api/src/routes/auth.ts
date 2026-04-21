@@ -8,6 +8,7 @@ import { PrismaClient } from '@prisma/client'
 import { validate } from '../middleware/validate'
 import { requireAuth } from '../middleware/auth'
 import { authLimiter } from '../middleware/rateLimit'
+import { getPublicUrl } from '../services/storage/r2'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -139,9 +140,12 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   const refreshToken = signRefresh(user.id)
   setRefreshCookie(res, refreshToken)
 
+  const avatarUrl = user.avatarR2Key
+    ? (user.avatarR2Key.startsWith('data:') ? user.avatarR2Key : getPublicUrl(user.avatarR2Key))
+    : null
   res.json({
     accessToken,
-    user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName, avatarR2Key: user.avatarR2Key },
+    user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName, avatarR2Key: user.avatarR2Key, avatarUrl },
   })
 })
 
@@ -303,7 +307,11 @@ router.get('/me', requireAuth, async (req, res) => {
     select: { id:true, email:true, role:true, firstName:true, lastName:true, phone:true, avatarR2Key:true, twoFactorEnabled:true, lastLogin:true, createdAt:true,
       doctor: { select: { id:true, specialisation:true, colour:true, photoR2Key:true } } },
   })
-  res.json(user)
+  if (!user) { res.status(404).json({ error: 'User not found' }); return }
+  const avatarUrl = user.avatarR2Key
+    ? (user.avatarR2Key.startsWith('data:') ? user.avatarR2Key : getPublicUrl(user.avatarR2Key))
+    : null
+  res.json({ ...user, avatarUrl })
 })
 
 export default router

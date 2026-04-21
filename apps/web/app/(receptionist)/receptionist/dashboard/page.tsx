@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import {
   Calendar, Users, UserCheck, Bot, TrendingUp, TrendingDown,
   ChevronRight, Clock, AlertTriangle, CheckCircle2,
-  MessageSquare, Plus, X, Send, Mic, MicOff,
+  Plus, X, Send, Mic, MicOff,
   Minimize2, Maximize2, LogIn, LogOut, Search, UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -791,8 +791,8 @@ export default function ReceptionistDashboard() {
 
             <div>
               {appointments.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <Calendar size={28} className="mx-auto mb-2 text-gray-200" />
+                <div className="px-4 py-3 text-center">
+                  <Calendar size={22} className="mx-auto mb-1.5 text-gray-200" />
                   <p className="text-sm text-gray-400">No appointments scheduled</p>
                 </div>
               ) : (
@@ -909,30 +909,13 @@ export default function ReceptionistDashboard() {
                 </div>
               </div>
             ) : (
-              <div className="px-4 py-8 text-center">
-                <Clock size={28} className="mx-auto mb-2 text-gray-200" />
+              <div className="px-4 py-3 text-center">
+                <Clock size={22} className="mx-auto mb-1.5 text-gray-200" />
                 <p className="text-sm text-gray-400">No active consultation</p>
-                <p className="text-xs text-gray-300 mt-1">Appointments will appear here when started</p>
               </div>
             )}
           </div>
 
-          {/* WhatsApp Live Feed */}
-          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
-              <div className="flex items-center gap-2">
-                <MessageSquare size={15} className="text-emerald-500" />
-                <h3 className="text-sm font-bold text-gray-800 dark:text-white">WhatsApp Live Feed</h3>
-              </div>
-              <Link href="/receptionist/communications"
-                className="text-xs text-cyan-600 font-semibold hover:underline">View all</Link>
-            </div>
-            <div className="px-4 py-8 text-center">
-              <MessageSquare size={28} className="mx-auto mb-2 text-gray-200" />
-              <p className="text-sm text-gray-400">No active WhatsApp conversations</p>
-              <p className="text-xs text-gray-300 mt-1">AI-handled chats will appear here</p>
-            </div>
-          </div>
         </div>
 
         {/* ── RIGHT COLUMN ────────────────────────────────────── */}
