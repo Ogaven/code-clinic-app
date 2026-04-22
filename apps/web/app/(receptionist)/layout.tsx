@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 
 const navTop = [
   { label: 'Dashboard',    href: '/receptionist/dashboard',    icon: LayoutDashboard },
-  { label: 'Appointments', href: '/receptionist/appointments', icon: CalendarDays },
+  { label: 'Scheduling',   href: '/receptionist/appointments', icon: CalendarDays },
   { label: 'Doctors',      href: '/receptionist/doctors',      icon: UserCog },
   { label: 'Services',     href: '/receptionist/services',     icon: Stethoscope },
   { label: 'Patients',     href: '/receptionist/patients',     icon: Users },
@@ -282,7 +282,9 @@ export default function ReceptionistLayout({ children }: { children: React.React
     try {
       const token = localStorage.getItem('cc_token')
       const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
-      const res = await fetch(`${API}/scheduling/appointments?startDate=${today}&endDate=${today}`, {
+      const until = new Date(); until.setDate(until.getDate() + 6)
+      const endDate = until.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
+      const res = await fetch(`${API}/scheduling/appointments?startDate=${today}&endDate=${endDate}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
@@ -385,20 +387,23 @@ export default function ReceptionistLayout({ children }: { children: React.React
             })}
           </div>
 
-          {/* Today's Appointments mini-list */}
+          {/* Upcoming Appointments mini-list */}
           {!collapsed && todayAppts.length > 0 && (
             <div className="mt-3 mb-1">
               <div className="flex items-center justify-between px-3 mb-1.5">
                 <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/30 flex items-center gap-1">
-                  <Clock size={9} /> Today
+                  <Clock size={9} /> Scheduling
                 </span>
-                <span className="text-[9px] text-gray-400 dark:text-white/30 font-semibold">{todayAppts.length} appts</span>
+                <span className="text-[9px] text-gray-400 dark:text-white/30 font-semibold">{todayAppts.length}</span>
               </div>
-              <div className="space-y-0.5 max-h-[180px] overflow-y-auto pr-0.5">
+              <div className="space-y-0.5 max-h-[200px] overflow-y-auto pr-0.5">
                 {todayAppts.map(appt => {
-                  const t = new Date(appt.startAt).toLocaleTimeString('en-UG', {
+                  const d = new Date(appt.startAt)
+                  const isToday = d.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' }) === new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
+                  const t = d.toLocaleTimeString('en-UG', {
                     timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit', hour12: true,
                   })
+                  const dateLabel = isToday ? t : d.toLocaleDateString('en-UG', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Africa/Kampala' })
                   const statusDot: Record<string, string> = {
                     PENDING: 'bg-slate-400', CONFIRMED: 'bg-blue-500', CHECKED_IN: 'bg-yellow-500',
                     IN_CHAIR: 'bg-orange-500', WITH_PROVIDER: 'bg-teal-500',
@@ -409,7 +414,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
                     <Link key={appt.id} href="/receptionist/appointments"
                       className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors group">
                       <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusDot[appt.status] || 'bg-gray-300')} />
-                      <span className="text-[10px] text-gray-400 dark:text-white/40 font-mono flex-shrink-0 w-[52px]">{t}</span>
+                      <span className="text-[10px] text-gray-400 dark:text-white/40 font-mono flex-shrink-0 w-[56px] truncate">{dateLabel}</span>
                       <span className="text-[11px] text-gray-700 dark:text-white/70 truncate font-medium group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
                         {appt.patient.firstName} {appt.patient.lastName}
                       </span>

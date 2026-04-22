@@ -1,27 +1,39 @@
 import { google } from 'googleapis'
-import fs from 'fs'
-import path from 'path'
+import { PrismaClient } from '@prisma/client'
 
-const TOKEN_FILE = fs.existsSync('/data')
-  ? '/data/gcal-tokens.json'
-  : path.resolve(process.cwd(), '../../gcal-tokens.json')
+const prisma = new PrismaClient()
+const GCAL_KEY = 'gcal_tokens'
 
-function loadTokens(): any | null {
-  try { return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf-8')) } catch { return null }
-}
-function saveTokens(tokens: any) {
-  try { fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2)) } catch {}
+async function loadTokens(): Promise<any | null> {
+  try {
+    const row = await (prisma as any).appSetting.findUnique({ where: { key: GCAL_KEY } })
+    return row ? JSON.parse(row.value) : null
+  } catch { return null }
 }
 
-function getAuthedClient() {
-  const tokens = loadTokens()
+async function saveTokens(tokens: any) {
+  try {
+    const value = JSON.stringify(tokens)
+    await (prisma as any).appSetting.upsert({
+      where:  { key: GCAL_KEY },
+      update: { value },
+      create: { key: GCAL_KEY, value },
+    })
+  } catch {}
+}
+
+async function getAuthedClient() {
+  const tokens = await loadTokens()
   if (!tokens) return null
   const auth = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
   )
   auth.setCredentials(tokens)
-  auth.on('tokens', (t) => saveTokens({ ...loadTokens(), ...t }))
+  auth.on('tokens', async (t) => {
+    const current = await loadTokens()
+    await saveTokens({ ...current, ...t })
+  })
   return auth
 }
 
@@ -38,7 +50,7 @@ export async function syncAppointmentToGCal(appt: {
   doctor: { user: { firstName: string; lastName: string; email?: string | null } }
   service: { name: string; durationMins: number }
 }) {
-  const auth = getAuthedClient()
+  const auth = await getAuthedClient()
   if (!auth) return
 
   try {

@@ -650,3 +650,11 @@ model DoctorCheckIn {
   @@index([doctorId])
   @@map("doctor_check_ins")
 }
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}

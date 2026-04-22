@@ -1,10 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express'
 import { google } from 'googleapis'
 import { PrismaClient } from '@prisma/client'
-import fs from 'fs'
-import path from 'path'
 import { requireAuth } from '../middleware/auth'
-import { adminOnly, clinicalStaff } from '../middleware/rbac'
+import { clinicalStaff } from '../middleware/rbac'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -27,26 +25,40 @@ function makeOAuth2Client() {
   )
 }
 
-// Token file: prefer Railway Volume (/data) for persistence across restarts
-const TOKEN_FILE = fs.existsSync('/data')
-  ? '/data/gcal-tokens.json'
-  : path.resolve(process.cwd(), '../../gcal-tokens.json')
+// ─── DB-backed token store (persists across Railway deploys) ──
+const GCAL_KEY = 'gcal_tokens'
 
-function loadTokens(): any | null {
-  try { return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf-8')) } catch { return null }
+async function loadTokens(): Promise<any | null> {
+  try {
+    const row = await (prisma as any).appSetting.findUnique({ where: { key: GCAL_KEY } })
+    return row ? JSON.parse(row.value) : null
+  } catch { return null }
 }
-function saveTokens(tokens: any) {
-  try { fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2)) } catch (e) { console.error('[GCal] saveTokens error:', e) }
+
+async function saveTokens(tokens: any) {
+  try {
+    const value = JSON.stringify(tokens)
+    await (prisma as any).appSetting.upsert({
+      where:  { key: GCAL_KEY },
+      update: { value },
+      create: { key: GCAL_KEY, value },
+    })
+  } catch (e) { console.error('[GCal] saveTokens error:', e) }
 }
-function deleteTokens() {
-  try { fs.unlinkSync(TOKEN_FILE) } catch { }
+
+async function deleteTokens() {
+  try { await (prisma as any).appSetting.deleteMany({ where: { key: GCAL_KEY } }) } catch {}
 }
-function getAuthedClient() {
-  const tokens = loadTokens()
+
+async function getAuthedClient() {
+  const tokens = await loadTokens()
   if (!tokens) return null
   const auth = makeOAuth2Client()
   auth.setCredentials(tokens)
-  auth.on('tokens', (t) => saveTokens({ ...loadTokens(), ...t }))
+  auth.on('tokens', async (t) => {
+    const current = await loadTokens()
+    await saveTokens({ ...current, ...t })
+  })
   return auth
 }
 
@@ -59,8 +71,8 @@ function acceptTokenFromQuery(req: Request, _res: Response, next: NextFunction) 
 }
 
 // ─── GET /integrations/google-calendar/status ────────────────
-router.get('/google-calendar/status', requireAuth, (_req, res) => {
-  const tokens = loadTokens()
+router.get('/google-calendar/status', requireAuth, async (_req, res) => {
+  const tokens = await loadTokens()
   if (!tokens) return res.json({ connected: false })
   res.json({
     connected:  true,
@@ -123,8 +135,8 @@ router.get('/google-calendar/callback', async (req, res) => {
   try {
     const auth       = makeOAuth2Client()
     const { tokens } = await auth.getToken(code)
-    saveTokens(tokens)
-    console.log('[GCal] Connected — tokens saved to', TOKEN_FILE)
+    await saveTokens(tokens)
+    console.log('[GCal] Connected — tokens saved to DB')
     res.redirect(`${front}${returnTo}?gcal=connected`)
   } catch (e: any) {
     console.error('[GCal] Token exchange error:', e.message)
@@ -133,14 +145,14 @@ router.get('/google-calendar/callback', async (req, res) => {
 })
 
 // ─── DELETE /integrations/google-calendar/disconnect ─────────
-router.delete('/google-calendar/disconnect', requireAuth, clinicalStaff, (_req, res) => {
-  deleteTokens()
+router.delete('/google-calendar/disconnect', requireAuth, clinicalStaff, async (_req, res) => {
+  await deleteTokens()
   res.json({ message: 'Disconnected' })
 })
 
 // ─── POST /integrations/google-calendar/sync ─────────────────
 router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res) => {
-  const auth = getAuthedClient()
+  const auth = await getAuthedClient()
   if (!auth) {
     return res.status(401).json({ error: 'Google Calendar not connected. Please connect first.' })
   }
@@ -212,7 +224,7 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
   } catch (e: any) {
     console.error('[GCal] Sync error:', e.message)
     if (e.code === 401 || e.message?.includes('invalid_grant')) {
-      deleteTokens()
+      await deleteTokens()
       return res.status(401).json({ error: 'Google session expired — please reconnect.' })
     }
     res.status(500).json({ error: 'Sync failed: ' + e.message })
