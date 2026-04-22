@@ -8,13 +8,14 @@ import {
   LayoutDashboard, CalendarDays, Users, MessageSquare,
   Bot, BarChart2, Settings, HelpCircle, Bell, Search,
   ChevronLeft, ChevronRight, LogOut, User, Lock, Download,
-  Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Stethoscope, UserCog, Clock,
+  Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Stethoscope, UserCog, Clock, ListChecks,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navTop = [
   { label: 'Dashboard',    href: '/receptionist/dashboard',    icon: LayoutDashboard },
   { label: 'Scheduling',   href: '/receptionist/appointments', icon: CalendarDays },
+  { label: 'Appointments', href: '/receptionist/appts',        icon: ListChecks },
   { label: 'Doctors',      href: '/receptionist/doctors',      icon: UserCog },
   { label: 'Services',     href: '/receptionist/services',     icon: Stethoscope },
   { label: 'Patients',     href: '/receptionist/patients',     icon: Users },
@@ -205,21 +206,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
     if (!stored) { router.push('/login'); return }
     const u = JSON.parse(stored)
     setUser(u)
-    // Check locally-stored avatar first (covers settings-page uploads and API-resolved URLs)
-    if (u.avatarUrl || u.avatar) {
-      setAvatarUrl(u.avatarUrl || u.avatar)
-    } else {
-      const token = localStorage.getItem('cc_token')
-      fetch('/api-proxy/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          if (data?.avatarUrl) {
-            setAvatarUrl(data.avatarUrl)
-            localStorage.setItem('cc_user', JSON.stringify({ ...u, avatarUrl: data.avatarUrl }))
-          }
-        })
-        .catch(() => {})
-    }
+    refreshAvatar(u)
     fetchUnread(u)
     fetchTodayAppts()
     const t = setInterval(() => fetchUnread(u), 15000)
@@ -229,10 +216,16 @@ export default function ReceptionistLayout({ children }: { children: React.React
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     const onMqChange = () => { if ((localStorage.getItem('cc_theme') || 'system') === 'system') applyTheme('system') }
     mq.addEventListener('change', onMqChange)
-    // Notification permission status
     if ('Notification' in window) setNotifPerm(Notification.permission)
     return () => { clearInterval(t); mq.removeEventListener('change', onMqChange) }
   }, [])
+
+  // Re-read avatar from localStorage whenever route changes (e.g. after saving in Settings)
+  useEffect(() => {
+    const stored = localStorage.getItem('cc_user')
+    if (!stored) return
+    refreshAvatar(JSON.parse(stored))
+  }, [pathname])
 
   useEffect(() => {
     const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e) }
@@ -276,6 +269,24 @@ export default function ReceptionistLayout({ children }: { children: React.React
         })
       }
     } catch {}
+  }
+
+  function refreshAvatar(u: any) {
+    const url = u.avatarUrl || u.avatar || null
+    if (url) {
+      setAvatarUrl(url)
+    } else {
+      const token = localStorage.getItem('cc_token')
+      fetch('/api-proxy/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data?.avatarUrl) {
+            setAvatarUrl(data.avatarUrl)
+            localStorage.setItem('cc_user', JSON.stringify({ ...u, avatarUrl: data.avatarUrl }))
+          }
+        })
+        .catch(() => {})
+    }
   }
 
   async function fetchTodayAppts() {
