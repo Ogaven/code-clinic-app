@@ -30,24 +30,24 @@ const GCAL_KEY = 'gcal_tokens'
 
 async function loadTokens(): Promise<any | null> {
   try {
-    const row = await (prisma as any).appSetting.findUnique({ where: { key: GCAL_KEY } })
-    return row ? JSON.parse(row.value) : null
+    const rows = await prisma.$queryRaw<{ value: string }[]>`SELECT value FROM app_settings WHERE key = ${GCAL_KEY} LIMIT 1`
+    return rows.length ? JSON.parse(rows[0].value) : null
   } catch { return null }
 }
 
 async function saveTokens(tokens: any) {
   try {
     const value = JSON.stringify(tokens)
-    await (prisma as any).appSetting.upsert({
-      where:  { key: GCAL_KEY },
-      update: { value },
-      create: { key: GCAL_KEY, value },
-    })
+    await prisma.$executeRaw`
+      INSERT INTO app_settings (key, value, "updatedAt")
+      VALUES (${GCAL_KEY}, ${value}, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = ${value}, "updatedAt" = NOW()
+    `
   } catch (e) { console.error('[GCal] saveTokens error:', e) }
 }
 
 async function deleteTokens() {
-  try { await (prisma as any).appSetting.deleteMany({ where: { key: GCAL_KEY } }) } catch {}
+  try { await prisma.$executeRaw`DELETE FROM app_settings WHERE key = ${GCAL_KEY}` } catch {}
 }
 
 async function getAuthedClient() {

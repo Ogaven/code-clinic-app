@@ -58,7 +58,13 @@ export default function PatientsPage() {
   const csvInputRef               = useRef<HTMLInputElement>(null)
 
   // Add patient form
-  const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', email: '', gender: 'FEMALE', dob: '' })
+  const [form, setForm] = useState({
+    firstName: '', lastName: '', phone: '', email: '', gender: 'FEMALE', dob: '',
+    address: '', district: '',
+    nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '',
+    allergies: '',
+    medicalHistory: [] as string[],
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
 
@@ -122,7 +128,7 @@ export default function PatientsPage() {
       })
       if (res.ok) {
         fetchPatients(); setShowAdd(false)
-        setForm({ firstName: '', lastName: '', phone: '', email: '', gender: 'FEMALE', dob: '' })
+        setForm({ firstName: '', lastName: '', phone: '', email: '', gender: 'FEMALE', dob: '', address: '', district: '', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '', allergies: '', medicalHistory: [] })
         showToast('Patient added successfully', 'ok')
       } else { const d = await res.json(); setError(d.error || 'Failed to add patient') }
     } catch { setError('Network error') } finally { setSaving(false) }
@@ -481,14 +487,16 @@ export default function PatientsPage() {
       {/* ── Add patient modal ─────────────────────────────────── */}
       {showAdd && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-md p-6 animate-fade-in">
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-lg p-6 animate-fade-in max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-black text-gray-800 dark:text-white">New Patient</h2>
               <button onClick={() => setShowAdd(false)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
                 <X size={16} className="text-gray-400" />
               </button>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-4">
+
+              {/* Basic info */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">First Name *</label>
@@ -521,6 +529,68 @@ export default function PatientsPage() {
                   <input type="date" value={form.dob} onChange={e => setForm(f => ({ ...f, dob: e.target.value }))} className={inputCls} />
                 </div>
               </div>
+
+              {/* Residence */}
+              <div className="pt-1">
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Residence</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Address</label>
+                    <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={inputCls} placeholder="Street / Estate" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">District</label>
+                    <input value={form.district} onChange={e => setForm(f => ({ ...f, district: e.target.value }))} className={inputCls} placeholder="e.g. Kampala" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Next of Kin */}
+              <div className="pt-1">
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Next of Kin</p>
+                <div className="space-y-2">
+                  <input value={form.nextOfKinName} onChange={e => setForm(f => ({ ...f, nextOfKinName: e.target.value }))} className={inputCls} placeholder="Full name" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <input value={form.nextOfKinPhone} onChange={e => setForm(f => ({ ...f, nextOfKinPhone: e.target.value }))} className={inputCls} placeholder="Phone number" />
+                    <input value={form.nextOfKinRelation} onChange={e => setForm(f => ({ ...f, nextOfKinRelation: e.target.value }))} className={inputCls} placeholder="Relationship" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Allergies */}
+              <div className="pt-1">
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Allergies</p>
+                <textarea value={form.allergies} onChange={e => setForm(f => ({ ...f, allergies: e.target.value }))} rows={2}
+                  className={inputCls} placeholder="List any known allergies..." />
+              </div>
+
+              {/* Medical History */}
+              <div className="pt-1">
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Medical History</p>
+                <div className="flex flex-wrap gap-2">
+                  {['Diabetes', 'Ulcers', 'Hypertension'].map(condition => {
+                    const active = form.medicalHistory.includes(condition)
+                    return (
+                      <button key={condition} type="button"
+                        onClick={() => setForm(f => ({
+                          ...f,
+                          medicalHistory: active
+                            ? f.medicalHistory.filter(c => c !== condition)
+                            : [...f.medicalHistory, condition],
+                        }))}
+                        className={cn(
+                          'px-3 py-1.5 rounded-xl text-xs font-bold border transition-all',
+                          active
+                            ? 'bg-cyan-500 text-white border-cyan-500'
+                            : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-white/60 border-gray-200 dark:border-white/10 hover:border-cyan-400',
+                        )}>
+                        {condition}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
               {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
 
               {/* CSV import hint */}

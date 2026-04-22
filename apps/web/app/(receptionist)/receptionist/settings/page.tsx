@@ -236,9 +236,9 @@ export default function SettingsPage() {
             {avatar ? (
               <img src={avatar} alt="Avatar" className="w-20 h-20 rounded-3xl object-cover ring-4 ring-white/20" />
             ) : (
-              <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-2xl font-black text-white ring-4 ring-white/20"
-                style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.2),rgba(255,255,255,0.05))' }}>
-                {initials}
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center ring-4 ring-white/20 border-2 border-dashed border-white/30 cursor-pointer hover:border-white/60 transition-colors"
+                onClick={() => fileRef.current?.click()}>
+                <Camera size={24} className="text-white/40" />
               </div>
             )}
             <button type="button" onClick={() => fileRef.current?.click()}
@@ -295,9 +295,9 @@ export default function SettingsPage() {
                   {avatar ? (
                     <img src={avatar} alt="Avatar" className="w-20 h-20 rounded-2xl object-cover ring-4 ring-cyan-500/20" />
                   ) : (
-                    <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-2xl font-black text-white ring-4 ring-cyan-500/20"
-                      style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)' }}>
-                      {initials}
+                    <div className="w-20 h-20 rounded-2xl flex items-center justify-center ring-4 ring-cyan-500/20 border-2 border-dashed border-gray-300 dark:border-white/20 cursor-pointer hover:border-cyan-400 dark:hover:border-cyan-400 transition-colors"
+                      onClick={() => fileRef.current?.click()}>
+                      <Camera size={24} className="text-gray-300 dark:text-white/20" />
                     </div>
                   )}
                   <button type="button" onClick={() => fileRef.current?.click()}
