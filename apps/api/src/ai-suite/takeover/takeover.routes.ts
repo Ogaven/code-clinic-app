@@ -84,4 +84,36 @@ router.get('/conversations/:conversationId/messages', async (req, res) => {
   }
 })
 
+// POST /ai-suite/conversations/:conversationId/send
+// Staff sends a message directly while in human-takeover mode.
+router.post('/conversations/:conversationId/send', async (req, res) => {
+  try {
+    const { text } = req.body as { text?: string }
+    if (!text?.trim()) return res.status(400).json({ error: 'text required' })
+
+    const conversation = await prisma.aiConversation.findUnique({
+      where: { id: req.params.conversationId },
+    })
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' })
+
+    await prisma.aiMessage.create({
+      data: {
+        conversationId: req.params.conversationId,
+        role:    'AGENT',
+        content: text.trim(),
+      },
+    })
+
+    if (conversation.channel === 'WHATSAPP') {
+      const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
+      await sendWhatsAppMessage(conversation.phoneNumber, text.trim())
+    }
+
+    res.json({ success: true })
+  } catch (err: any) {
+    console.error('[Takeover] send error:', err.message)
+    res.status(500).json({ error: 'Failed to send message' })
+  }
+})
+
 export default router
