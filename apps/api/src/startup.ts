@@ -16,8 +16,8 @@ export async function runStartup() {
       env: { ...process.env },
     })
     console.log('[startup] Schema pushed.')
-  } catch (e: any) {
-    console.error('[startup] db push failed:', e.message?.split('\n')[0])
+  } catch (err: any) {
+    console.error('[startup] DB migration failed but continuing:', err.message)
   }
 
   // ── 2. Seed if database is empty or sparse ────────────────────
