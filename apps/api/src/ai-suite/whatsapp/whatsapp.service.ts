@@ -4,7 +4,6 @@ import { getAgentReply } from '../agent/agent.service'
 const prisma = new PrismaClient()
 
 const GRAPH_API_VERSION = 'v18.0'
-const WELCOME_MESSAGE   = "Hi! I'm Sarah from Code Clinic. I received your message and will respond shortly. 😊"
 
 export async function processInbound(from: string, text: string): Promise<void> {
   try {
@@ -13,7 +12,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
       where: { phone: from },
     })
 
-    // ── 2. Find or create conversation ───────────────────────────────────────
+    // ── 2. Find or create an active conversation for this number ─────────────
     let conversation = await prisma.aiConversation.findFirst({
       where: {
         phoneNumber: from,
@@ -26,16 +25,16 @@ export async function processInbound(from: string, text: string): Promise<void> 
     if (!conversation) {
       conversation = await prisma.aiConversation.create({
         data: {
-          patientId:   patient?.id ?? null,
-          channel:     'WHATSAPP',
-          phoneNumber: from,
-          status:      'ACTIVE',
+          patientId:    patient?.id ?? null,
+          channel:      'WHATSAPP',
+          phoneNumber:  from,
+          status:       'ACTIVE',
           agentEnabled: true,
         },
       })
     }
 
-    // ── 3. Save inbound message ───────────────────────────────────────────────
+    // ── 3. Save inbound message before calling the agent ─────────────────────
     await prisma.aiMessage.create({
       data: {
         conversationId: conversation.id,
@@ -44,10 +43,10 @@ export async function processInbound(from: string, text: string): Promise<void> 
       },
     })
 
-    // ── 4. Get agent reply ────────────────────────────────────────────────────
-    const agentReply = await getAgentReply(text, from)
+    // ── 4. Get Sarah's reply from Claude ──────────────────────────────────────
+    const agentReply = await getAgentReply(conversation.id, from, text)
 
-    // ── 5. Save agent message ─────────────────────────────────────────────────
+    // ── 5. Persist Sarah's reply ──────────────────────────────────────────────
     await prisma.aiMessage.create({
       data: {
         conversationId: conversation.id,
@@ -56,8 +55,8 @@ export async function processInbound(from: string, text: string): Promise<void> 
       },
     })
 
-    // ── 6. Send reply via Meta Graph API ──────────────────────────────────────
-    await sendWhatsAppMessage(from, WELCOME_MESSAGE)
+    // ── 6. Deliver Sarah's reply via Meta Graph API ───────────────────────────
+    await sendWhatsAppMessage(from, agentReply)
 
   } catch (err) {
     console.error('[WhatsApp] processInbound error:', err)
