@@ -28,10 +28,18 @@ import knowledgeRouter from './routes/knowledge'
 import setupRouter from './routes/setup'
 import clinicalRouter from './routes/clinical'
 import previsitRouter from './routes/previsit'
-import aiSuiteRouter from './ai-suite/whatsapp/whatsapp.routes'
-import { startScheduler } from './services/agent/scheduler'
 
-const app = express()
+// AI Suite routers
+import aiSuiteRouter  from './ai-suite/whatsapp/whatsapp.routes'
+import smsRouter      from './ai-suite/sms/sms.routes'
+import takeoverRouter from './ai-suite/takeover/takeover.routes'
+
+// Schedulers
+import { startScheduler } from './services/agent/scheduler'
+import { checkAndSendReminders } from './ai-suite/scheduler/reminder.service'
+import { checkAndSendFollowups } from './ai-suite/scheduler/followup.service'
+
+const app  = express()
 const PORT = process.env.PORT || 4000
 
 // Railway (and most PaaS) run behind a reverse proxy — trust it so that
@@ -84,27 +92,37 @@ app.get('/health', (_req, res) => {
 })
 
 // ─── Routes ───────────────────────────────────────────────────
-app.use('/auth', authRouter)
-app.use('/employees', employeesRouter)
-app.use('/scheduling', schedulingRouter)
-app.use('/patients', patientsRouter)
-app.use('/doctors', doctorsRouter)
-app.use('/services', servicesRouter)
-app.use('/accounts', accountsRouter)
-app.use('/ai', aiRouter)
-app.use('/crm', crmRouter)
-app.use('/campaigns', campaignsRouter)
-app.use('/developer', developerRouter)
+app.use('/auth',         authRouter)
+app.use('/employees',    employeesRouter)
+app.use('/scheduling',   schedulingRouter)
+app.use('/patients',     patientsRouter)
+app.use('/doctors',      doctorsRouter)
+app.use('/services',     servicesRouter)
+app.use('/accounts',     accountsRouter)
+app.use('/ai',           aiRouter)
+app.use('/crm',          crmRouter)
+app.use('/campaigns',    campaignsRouter)
+app.use('/developer',    developerRouter)
 app.use('/integrations', integrationsRouter)
 app.use('/api/integrations', integrationsRouter)  // alias for OAuth callbacks configured with /api/ prefix
 app.use('/receptionist', receptionistRouter)
-app.use('/assistant', assistantRouter)
-app.use('/agent', agentRouter)
-app.use('/knowledge', knowledgeRouter)
-app.use('/setup', setupRouter)
-app.use('/clinical', clinicalRouter)
-app.use('/pre-visit', previsitRouter)
-app.use('/ai-suite', aiSuiteRouter)
+app.use('/assistant',    assistantRouter)
+app.use('/agent',        agentRouter)
+app.use('/knowledge',    knowledgeRouter)
+app.use('/setup',        setupRouter)
+app.use('/clinical',     clinicalRouter)
+app.use('/pre-visit',    previsitRouter)
+
+// ─── AI Suite ─────────────────────────────────────────────────
+// WhatsApp webhook: GET /ai-suite/webhook  POST /ai-suite/webhook
+app.use('/ai-suite',     aiSuiteRouter)
+// SMS inbound:      POST /ai-suite/sms/incoming
+app.use('/ai-suite/sms', smsRouter)
+// Inbox & takeover: GET  /ai-suite/conversations
+//                   GET  /ai-suite/conversations/:id/messages
+//                   POST /ai-suite/takeover/:id
+//                   POST /ai-suite/handback/:id
+app.use('/ai-suite',     takeoverRouter)
 
 // ─── 404 ──────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -117,8 +135,26 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ error: 'Internal server error' })
 })
 
+// ─── Start ────────────────────────────────────────────────────
 runStartup().then(() => {
+  // Existing voice/outbound agent scheduler
   startScheduler()
+
+  // AI Suite schedulers — run every hour
+  const ONE_HOUR = 60 * 60 * 1000
+  setInterval(() => {
+    checkAndSendReminders().catch(err => console.error('[Reminder] Scheduler error:', err))
+  }, ONE_HOUR)
+  setInterval(() => {
+    checkAndSendFollowups().catch(err => console.error('[Followup] Scheduler error:', err))
+  }, ONE_HOUR)
+
+  // Run once 2 minutes after startup (gives DB time to settle after migrations)
+  setTimeout(() => {
+    checkAndSendReminders().catch(err => console.error('[Reminder] Initial run error:', err))
+    checkAndSendFollowups().catch(err => console.error('[Followup] Initial run error:', err))
+  }, 2 * 60 * 1000)
+
   app.listen(PORT, () => {
     console.log(`\n🦷 CodeClinic API running on http://localhost:${PORT}`)
     console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`)

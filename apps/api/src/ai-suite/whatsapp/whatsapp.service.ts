@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import { getAgentReply } from '../agent/agent.service'
+import { isAgentEnabled } from '../takeover/takeover.service'
+import { setBookingState } from '../booking/booking.state'
 
 const prisma = new PrismaClient()
 
@@ -43,10 +45,102 @@ export async function processInbound(from: string, text: string): Promise<void> 
       },
     })
 
-    // ── 4. Get Sarah's reply from Claude ──────────────────────────────────────
+    // ── 4. Human takeover guard ───────────────────────────────────────────────
+    // If a staff member has taken over this conversation, save the message
+    // silently so they can read it — do NOT auto-reply.
+    const agentOn = await isAgentEnabled(conversation.id)
+    if (!agentOn) {
+      console.log(`[WhatsApp] Conversation ${conversation.id} in human takeover — message saved, no auto-reply`)
+      return
+    }
+
+    // ── 5. Reminder reply detection ───────────────────────────────────────────
+    // If a reminder was sent to this patient in the last 2 hours and their
+    // reply is clearly YES or NO, handle it directly without calling Claude.
+    if (patient) {
+      const twoHoursAgo    = new Date(Date.now() - 2 * 60 * 60 * 1000)
+      const recentReminder = await prisma.aiScheduledMessage.findFirst({
+        where: {
+          patientId:    patient.id,
+          templateType: 'REMINDER',
+          sent:         true,
+          createdAt:    { gte: twoHoursAgo },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      if (recentReminder) {
+        const lower = text.toLowerCase().trim()
+
+        const isYes = [
+          'yes', 'yeah', 'yep', 'yep!', 'sure', 'ok', 'okay', 'confirm',
+          'i will', "i'll be there", 'will come', 'coming', 'will be there', '✓', '👍',
+        ].some(w => lower.includes(w))
+
+        const isNo = [
+          'no', 'nope', 'cancel', 'reschedule', 'change', "can't", "cannot",
+          "won't", 'wont', "i can't", 'not coming', 'unable',
+        ].some(w => lower.includes(w))
+
+        if (isYes) {
+          // Confirm their next upcoming appointment
+          const upcoming = await prisma.appointment.findFirst({
+            where: {
+              patientId: patient.id,
+              startAt:   { gt: new Date() },
+              status:    { notIn: ['CANCELLED'] },
+            },
+            orderBy: { startAt: 'asc' },
+          })
+
+          if (upcoming) {
+            await prisma.appointment.update({
+              where: { id: upcoming.id },
+              data:  { status: 'CONFIRMED' },
+            })
+          }
+
+          const reply = `Great! We'll see you tomorrow 😊 If anything changes, just let me know!\n\nSarah — Code Clinic`
+          await prisma.aiMessage.create({
+            data: { conversationId: conversation.id, role: 'AGENT', content: reply },
+          })
+          await sendWhatsAppMessage(from, reply)
+          return
+        }
+
+        if (isNo) {
+          // Set reschedule state so the next message kicks off the reschedule flow
+          const upcoming = await prisma.appointment.findFirst({
+            where: {
+              patientId: patient.id,
+              startAt:   { gt: new Date() },
+              status:    { notIn: ['CANCELLED'] },
+            },
+            orderBy: { startAt: 'asc' },
+          })
+
+          if (upcoming) {
+            setBookingState(from, {
+              state:         'AWAITING_RESCHEDULE_SLOT',
+              appointmentId: upcoming.id,
+              serviceId:     upcoming.serviceId,
+            })
+          }
+
+          const reply = `No problem! Let me help you find another time. What day works best for you? 😊\n\nSarah — Code Clinic`
+          await prisma.aiMessage.create({
+            data: { conversationId: conversation.id, role: 'AGENT', content: reply },
+          })
+          await sendWhatsAppMessage(from, reply)
+          return
+        }
+      }
+    }
+
+    // ── 6. Get Sarah's reply from Claude ──────────────────────────────────────
     const agentReply = await getAgentReply(conversation.id, from, text)
 
-    // ── 5. Persist Sarah's reply ──────────────────────────────────────────────
+    // ── 7. Persist Sarah's reply ──────────────────────────────────────────────
     await prisma.aiMessage.create({
       data: {
         conversationId: conversation.id,
@@ -55,7 +149,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
       },
     })
 
-    // ── 6. Deliver Sarah's reply via Meta Graph API ───────────────────────────
+    // ── 8. Deliver Sarah's reply via Meta Graph API ───────────────────────────
     await sendWhatsAppMessage(from, agentReply)
 
   } catch (err) {
@@ -63,7 +157,8 @@ export async function processInbound(from: string, text: string): Promise<void> 
   }
 }
 
-async function sendWhatsAppMessage(to: string, body: string): Promise<void> {
+// Exported so schedulers (reminder, followup) can send outbound WhatsApp messages
+export async function sendWhatsAppMessage(to: string, body: string): Promise<void> {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
   const token         = process.env.WHATSAPP_TOKEN
 
@@ -72,8 +167,7 @@ async function sendWhatsAppMessage(to: string, body: string): Promise<void> {
     return
   }
 
-  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`
-
+  const url     = `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`
   const payload = {
     messaging_product: 'whatsapp',
     to,
