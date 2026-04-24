@@ -28,6 +28,7 @@ import knowledgeRouter from './routes/knowledge'
 import setupRouter from './routes/setup'
 import clinicalRouter from './routes/clinical'
 import previsitRouter from './routes/previsit'
+import aiSuiteRouter from './ai-suite/whatsapp/whatsapp.routes'
 import { startScheduler } from './services/agent/scheduler'
 
 const app = express()
@@ -103,6 +104,7 @@ app.use('/knowledge', knowledgeRouter)
 app.use('/setup', setupRouter)
 app.use('/clinical', clinicalRouter)
 app.use('/pre-visit', previsitRouter)
+app.use('/ai-suite', aiSuiteRouter)
 
 // ─── 404 ──────────────────────────────────────────────────────
 app.use((_req, res) => {

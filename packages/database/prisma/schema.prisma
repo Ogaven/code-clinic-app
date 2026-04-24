@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
 }
 
 // ─────────────────────────────────────────────
@@ -93,19 +95,21 @@ model Patient {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  appointments     Appointment[]
-  invoices         Invoice[]
-  payments         Payment[]
-  feedback         PatientFeedback[]
-  nurtureLogs      NurtureLog[]
-  agentLogs        AgentLog[]
-  agentMemory      AgentMemory[]
-  outboundQueue    OutboundQueue[]
-  treatmentPlans   TreatmentPlan[]
-  treatmentNotes   TreatmentNote[]
-  dentalChart      DentalChart?
-  documents        PatientDocument[]
-  activities       PatientActivity[]
+  appointments          Appointment[]
+  invoices              Invoice[]
+  payments              Payment[]
+  feedback              PatientFeedback[]
+  nurtureLogs           NurtureLog[]
+  agentLogs             AgentLog[]
+  agentMemory           AgentMemory[]
+  outboundQueue         OutboundQueue[]
+  treatmentPlans        TreatmentPlan[]
+  treatmentNotes        TreatmentNote[]
+  dentalChart           DentalChart?
+  documents             PatientDocument[]
+  activities            PatientActivity[]
+  aiConversations       AiConversation[]
+  aiScheduledMessages   AiScheduledMessage[]
 
   @@unique([phone])
   @@map("patients")
@@ -657,4 +661,77 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 
   @@map("app_settings")
+}
+
+// ─────────────────────────────────────────────
+// AI SUITE — Sarah (WhatsApp / Omnichannel)
+// ─────────────────────────────────────────────
+
+model AiConversation {
+  id           String   @id @default(cuid())
+  patientId    String?
+  patient      Patient? @relation(fields: [patientId], references: [id])
+  channel      String   // WHATSAPP | SMS | VOICE | WEBSITE | FACEBOOK | INSTAGRAM
+  phoneNumber  String
+  status       String   @default("ACTIVE") // ACTIVE | HUMAN_TAKEOVER | CLOSED
+  agentEnabled Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  messages     AiMessage[]
+
+  @@index([phoneNumber])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String         // USER | AGENT | SYSTEM
+  content        String
+  metadata       String?        // JSON
+  createdAt      DateTime       @default(now())
+
+  @@index([conversationId])
+  @@map("ai_messages")
+}
+
+model AiKnowledgeBase {
+  id        String                      @id @default(cuid())
+  title     String
+  type      String                      // PDF | IMAGE | AUDIO | VIDEO | URL | TEXT
+  content   String
+  embedding Unsupported("vector")?
+  sourceUrl String?
+  createdAt DateTime                    @default(now())
+  updatedAt DateTime                    @updatedAt
+
+  @@map("ai_knowledge_base")
+}
+
+model AiAgentConfig {
+  id          String   @id @default(cuid())
+  name        String   @default("Sarah")
+  personality String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ai_agent_config")
+}
+
+model AiScheduledMessage {
+  id           String   @id @default(cuid())
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id])
+  channel      String
+  templateType String   // REMINDER | FOLLOWUP | DEBT | LEADNURTURE
+  scheduledFor DateTime
+  sent         Boolean  @default(false)
+  content      String
+  createdAt    DateTime @default(now())
+
+  @@index([sent, scheduledFor])
+  @@map("ai_scheduled_messages")
 }
