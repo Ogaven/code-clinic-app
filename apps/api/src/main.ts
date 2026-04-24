@@ -30,14 +30,18 @@ import clinicalRouter from './routes/clinical'
 import previsitRouter from './routes/previsit'
 
 // AI Suite routers
-import aiSuiteRouter  from './ai-suite/whatsapp/whatsapp.routes'
-import smsRouter      from './ai-suite/sms/sms.routes'
-import takeoverRouter from './ai-suite/takeover/takeover.routes'
+import aiSuiteRouter    from './ai-suite/whatsapp/whatsapp.routes'
+import smsRouter        from './ai-suite/sms/sms.routes'
+import takeoverRouter   from './ai-suite/takeover/takeover.routes'
+import aiKnowledgeRouter from './ai-suite/knowledge/knowledge.routes'
+import leadNurtureRouter from './ai-suite/lead-nurture/lead-nurture.routes'
+import debtRouter        from './ai-suite/debt/debt.routes'
 
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
-import { checkAndSendReminders } from './ai-suite/scheduler/reminder.service'
-import { checkAndSendFollowups } from './ai-suite/scheduler/followup.service'
+import { checkAndSendReminders }           from './ai-suite/scheduler/reminder.service'
+import { checkAndSendFollowups }           from './ai-suite/scheduler/followup.service'
+import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
 
 const app  = express()
 const PORT = process.env.PORT || 4000
@@ -115,14 +119,20 @@ app.use('/pre-visit',    previsitRouter)
 
 // ─── AI Suite ─────────────────────────────────────────────────
 // WhatsApp webhook: GET /ai-suite/webhook  POST /ai-suite/webhook
-app.use('/ai-suite',     aiSuiteRouter)
+app.use('/ai-suite',              aiSuiteRouter)
 // SMS inbound:      POST /ai-suite/sms/incoming
-app.use('/ai-suite/sms', smsRouter)
+app.use('/ai-suite/sms',          smsRouter)
 // Inbox & takeover: GET  /ai-suite/conversations
 //                   GET  /ai-suite/conversations/:id/messages
 //                   POST /ai-suite/takeover/:id
 //                   POST /ai-suite/handback/:id
-app.use('/ai-suite',     takeoverRouter)
+app.use('/ai-suite',              takeoverRouter)
+// Knowledge base:   GET/POST/DELETE /ai-suite/knowledge/...
+app.use('/ai-suite/knowledge',    aiKnowledgeRouter)
+// Lead nurture:     POST /ai-suite/lead-nurture/trigger
+app.use('/ai-suite/lead-nurture', leadNurtureRouter)
+// Debt outreach:    POST /ai-suite/debt/trigger
+app.use('/ai-suite/debt',         debtRouter)
 
 // ─── 404 ──────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -147,11 +157,15 @@ runStartup().then(() => {
   setInterval(() => {
     checkAndSendFollowups().catch(err => console.error('[Followup] Scheduler error:', err))
   }, ONE_HOUR)
+  setInterval(() => {
+    checkAndSendLeadNurtureMessages().catch(err => console.error('[LeadNurture] Scheduler error:', err))
+  }, ONE_HOUR)
 
   // Run once 2 minutes after startup (gives DB time to settle after migrations)
   setTimeout(() => {
     checkAndSendReminders().catch(err => console.error('[Reminder] Initial run error:', err))
     checkAndSendFollowups().catch(err => console.error('[Followup] Initial run error:', err))
+    checkAndSendLeadNurtureMessages().catch(err => console.error('[LeadNurture] Initial run error:', err))
   }, 2 * 60 * 1000)
 
   app.listen(PORT, () => {
