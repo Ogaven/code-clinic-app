@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth'
 import { handleWhatsAppWebhook } from '../services/agent/channels/whatsapp-channel'
 import { handleInboundCall, triggerOutboundCall, handleRecordingComplete } from '../services/agent/channels/voice-channel'
 import { runAgent } from '../services/agent/unified-agent'
-import { runReminderJob, runFollowupJob, runDebtJob, processQueue } from '../services/agent/scheduler'
+// import { runReminderJob, runFollowupJob, runDebtJob, processQueue } from '../services/agent/scheduler' // disabled
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -295,24 +295,9 @@ router.post('/config/:responsibility/test', requireAuth, async (req, res) => {
 // ADMIN: Manual scheduler triggers
 // ════════════════════════════════════════════
 
-// POST /agent/scheduler/run — trigger a scheduler job manually
-router.post('/scheduler/run', requireAuth, async (req, res) => {
-  try {
-    if (!['ADMIN'].includes(req.user!.role)) {
-      return res.status(403).json({ error: 'Admin access required' })
-    }
-    const { job } = req.body
-    switch (job) {
-      case 'reminder':  await runReminderJob();  break
-      case 'followup':  await runFollowupJob();  break
-      case 'debt':      await runDebtJob();      break
-      case 'queue':     await processQueue();    break
-      default: return res.status(400).json({ error: 'Unknown job. Valid: reminder, followup, debt, queue' })
-    }
-    res.json({ success: true, message: `Job '${job}' executed` })
-  } catch (err: any) {
-    res.status(500).json({ error: err.message })
-  }
+// POST /agent/scheduler/run — disabled (outboundQueue/agentMemory tables not in schema)
+router.post('/scheduler/run', requireAuth, async (_req, res) => {
+  res.status(503).json({ error: 'Voice/outbound scheduler is disabled. Use AI Suite scheduler instead.' })
 })
 
 // ── XML escape helper for AT voice responses ─────────────────

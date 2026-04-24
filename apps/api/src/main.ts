@@ -35,7 +35,7 @@ import smsRouter      from './ai-suite/sms/sms.routes'
 import takeoverRouter from './ai-suite/takeover/takeover.routes'
 
 // Schedulers
-import { startScheduler } from './services/agent/scheduler'
+// import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
 import { checkAndSendReminders } from './ai-suite/scheduler/reminder.service'
 import { checkAndSendFollowups } from './ai-suite/scheduler/followup.service'
 
@@ -137,8 +137,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 // ─── Start ────────────────────────────────────────────────────
 runStartup().then(() => {
-  // Existing voice/outbound agent scheduler
-  startScheduler()
+  // startScheduler() — disabled, outboundQueue/agentMemory tables not in schema
 
   // AI Suite schedulers — run every hour
   const ONE_HOUR = 60 * 60 * 1000
