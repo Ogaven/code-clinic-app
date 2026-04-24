@@ -100,7 +100,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
             })
           }
 
-          const reply = `Great! We'll see you tomorrow 😊 If anything changes, just let me know!\n\nSarah — Code Clinic`
+          const reply = `Great! We'll see you tomorrow 😊 If anything changes, just let me know!`
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
@@ -127,7 +127,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
             })
           }
 
-          const reply = `No problem! Let me help you find another time. What day works best for you? 😊\n\nSarah — Code Clinic`
+          const reply = `No problem! Let me help you find another time. What day works best for you? 😊`
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })

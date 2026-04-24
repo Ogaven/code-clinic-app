@@ -34,10 +34,28 @@ router.post('/webhook', async (req: Request, res: Response) => {
         if (!messages?.length) continue
 
         for (const msg of messages) {
-          if (msg.type !== 'text') continue
+          const from = msg.from  // international format e.g. "256700000000"
+          let text: string
 
-          const from = msg.from              // international format e.g. "256700000000"
-          const text = msg.text?.body ?? ''
+          switch (msg.type) {
+            case 'text':
+              text = msg.text?.body ?? ''
+              break
+            case 'audio':
+              text = '[Patient sent a voice note]'
+              break
+            case 'image':
+              text = msg.image?.caption || '[Patient sent an image]'
+              break
+            case 'document':
+              text = msg.document?.caption || `[Patient sent a document: ${msg.document?.filename ?? 'file'}]`
+              break
+            case 'video':
+              text = msg.video?.caption || '[Patient sent a video]'
+              break
+            default:
+              continue
+          }
 
           await processInbound(from, text)
         }
@@ -59,11 +77,15 @@ interface WhatsAppWebhookPayload {
     changes: Array<{
       value: {
         messages?: Array<{
-          from: string
-          id: string
-          type: string
-          text?: { body: string }
+          from:      string
+          id:        string
+          type:      string
           timestamp: string
+          text?:     { body: string }
+          audio?:    { id: string; mime_type: string }
+          image?:    { id: string; mime_type: string; caption?: string }
+          document?: { id: string; mime_type: string; filename?: string; caption?: string }
+          video?:    { id: string; mime_type: string; caption?: string }
         }>
       }
       field: string

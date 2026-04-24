@@ -18,7 +18,7 @@ import {
 
 const prisma = new PrismaClient()
 
-const SARAH_SYSTEM_PROMPT = `You are Sarah, the patient care assistant for Code Clinic, a dental clinic in Kampala, Uganda. You are warm, friendly, and speak in natural conversational Ugandan English — not stiff, not formal, not robotic. You genuinely care about every patient. You remember everything about them from previous conversations and refer to their history naturally without making it feel strange. You help patients book, reschedule, and cancel appointments conversationally. You send reminders and follow up after treatment warmly. When discussing outstanding balances you are empathetic and non-judgmental — like a trusted friend helping them sort things out, never making them feel embarrassed. You know everything about Code Clinic's services, prices, hours, and doctors from the knowledge provided to you. When you truly cannot help, you escalate gracefully to a human staff member by saying you will get someone to follow up. You sign off messages as 'Sarah — Code Clinic 😊'. You keep responses short and conversational — 1 to 3 sentences maximum unless the patient asks for detail. Never say you are an AI unless directly and explicitly asked. If asked directly, say you are Sarah, Code Clinic's care assistant. Never mention Claude or Anthropic.`
+const SARAH_SYSTEM_PROMPT = `You are Sarah, the patient care assistant for Code Clinic, a dental clinic in Kampala, Uganda. You are warm, friendly, and speak in natural conversational Ugandan English — not stiff, not formal, not robotic. You genuinely care about every patient. You remember everything about them from previous conversations and refer to their history naturally without making it feel strange. You help patients book, reschedule, and cancel appointments conversationally. You send reminders and follow up after treatment warmly. When discussing outstanding balances you are empathetic and non-judgmental — like a trusted friend helping them sort things out, never making them feel embarrassed. You know everything about Code Clinic's services, prices, hours, and doctors from the knowledge provided to you. When you truly cannot help, you escalate gracefully to a human staff member by saying you will get someone to follow up. You never sign off messages with your name or clinic name. You just end naturally like a real person would in a text conversation. No 'Sarah — Code Clinic', no signatures, no formal closings. You use natural Ugandan conversational English. You can say things like 'sure thing', 'no worries', 'sounds good', 'let me check that for you', 'aah okay', naturally — not scripted phrases. You use emojis sparingly and naturally — only when it genuinely fits the tone, not on every message. You keep responses short and conversational — 1 to 3 sentences maximum unless the patient asks for detail. Never say you are an AI unless directly and explicitly asked. If asked directly, say you are Sarah, Code Clinic's care assistant. Never mention Claude or Anthropic. When a patient sends a voice note, respond naturally — something like 'Got your voice note! I can only read text messages though — could you type out what you need? Happy to help' but say it naturally, not scripted. When they send an image or document, acknowledge it warmly and ask what they need help with regarding it.`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -136,7 +136,7 @@ function formatSlotLine(slot: AvailableSlot, index: number): string {
 
 function formatSlotsMessage(slots: AvailableSlot[], serviceName: string): string {
   if (slots.length === 0) {
-    return `I'm sorry, I couldn't find any available slots for *${serviceName}* in the next 7 days. Would you like me to look further ahead, or shall I have someone from the clinic call you to arrange a time? 😊\n\nSarah — Code Clinic 😊`
+    return `I'm sorry, I couldn't find any available slots for *${serviceName}* in the next 7 days. Would you like me to look further ahead, or shall I have someone from the clinic call you to arrange a time? 😊`
   }
   const lines = slots.slice(0, 5).map((s, i) => formatSlotLine(s, i)).join('\n')
   return `I found these available slots for *${serviceName}* 😊\n\n${lines}\n\nJust reply with the number that works best for you!`
@@ -154,7 +154,7 @@ function formatConfirmation(appt: {
     hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
   }).toLowerCase()
   const doctor = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
-  return `Perfect! You're all booked 🎉 *${day}* at *${time}* with *${doctor}* for *${appt.service.name}*. We'll send you a reminder the day before. See you then!\n\nSarah — Code Clinic 😊`
+  return `Perfect! You're all booked 🎉 *${day}* at *${time}* with *${doctor}* for *${appt.service.name}*. We'll send you a reminder the day before. See you then!`
 }
 
 // ── Parse patient's slot choice (1/2/3 or "first"/"second" etc.) ──────────────
@@ -266,13 +266,13 @@ async function handleIdleBookIntent(
 ): Promise<string> {
   if (intent === 'BOOK') {
     setBookingState(from, { state: 'AWAITING_SERVICE' })
-    return `Of course! What dental service are you looking for? For example — cleaning, filling, whitening, extraction, or something else? 😊\n\nSarah — Code Clinic 😊`
+    return `Of course! What dental service are you looking for? For example — cleaning, filling, whitening, extraction, or something else? 😊`
   }
 
   // RESCHEDULE or CANCEL — need to find their upcoming appointment
   const patient = await prisma.patient.findUnique({ where: { phone: from } })
   if (!patient) {
-    return `I don't have any upcoming appointments on record for this number. Would you like to book a new one instead? 😊\n\nSarah — Code Clinic 😊`
+    return `I don't have any upcoming appointments on record for this number. Would you like to book a new one instead? 😊`
   }
 
   const upcoming = await prisma.appointment.findFirst({
@@ -289,7 +289,7 @@ async function handleIdleBookIntent(
   })
 
   if (!upcoming) {
-    return `I don't see any upcoming appointments for you right now. Would you like to book one? 😊\n\nSarah — Code Clinic 😊`
+    return `I don't see any upcoming appointments for you right now. Would you like to book one? 😊`
   }
 
   const apptDay = upcoming.startAt.toLocaleDateString('en-UG', {
@@ -302,7 +302,7 @@ async function handleIdleBookIntent(
 
   if (intent === 'CANCEL') {
     setBookingState(from, { state: 'AWAITING_CANCEL_CONFIRMATION', appointmentId: upcoming.id })
-    return `I can see you have an appointment on *${apptDay}* at *${apptTime}* with *${apptDoctor}* for *${upcoming.service.name}*. Are you sure you want to cancel it? Just reply *yes* to confirm or *no* to keep it. 😊\n\nSarah — Code Clinic 😊`
+    return `I can see you have an appointment on *${apptDay}* at *${apptTime}* with *${apptDoctor}* for *${upcoming.service.name}*. Are you sure you want to cancel it? Just reply *yes* to confirm or *no* to keep it. 😊`
   }
 
   // RESCHEDULE
@@ -311,7 +311,7 @@ async function handleIdleBookIntent(
     appointmentId: upcoming.id,
     serviceId:     upcoming.service.id,
   })
-  return `Sure! Your appointment is on *${apptDay}* at *${apptTime}* with *${apptDoctor}* for *${upcoming.service.name}*. What day or time would work better for you? 😊\n\nSarah — Code Clinic 😊`
+  return `Sure! Your appointment is on *${apptDay}* at *${apptTime}* with *${apptDoctor}* for *${upcoming.service.name}*. What day or time would work better for you? 😊`
 }
 
 async function handleAwaitingService(from: string, message: string): Promise<string> {
@@ -324,7 +324,7 @@ async function handleAwaitingService(from: string, message: string): Promise<str
   }
 
   setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
-  return `Got it! *${service.name}* — great choice 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?\n\nSarah — Code Clinic 😊`
+  return `Got it! *${service.name}* — great choice 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
 }
 
 async function handleAwaitingDoctorPreference(
@@ -343,7 +343,7 @@ async function handleAwaitingDoctorPreference(
     setBookingState(from, { state: 'AWAITING_DOCTOR_NAME', serviceId: state.serviceId })
     const doctors  = await getDoctors()
     const nameList = doctors.map(d => `• Dr ${d.firstName} ${d.lastName}${d.specialisation ? ` (${d.specialisation})` : ''}`).join('\n')
-    return `Of course! Here are our doctors:\n\n${nameList}\n\nWhich doctor would you like? 😊\n\nSarah — Code Clinic 😊`
+    return `Of course! Here are our doctors:\n\n${nameList}\n\nWhich doctor would you like? 😊`
   }
 
   // Patient named a doctor directly
@@ -429,7 +429,7 @@ async function handleAwaitingSlotConfirmation(
   } catch (err: any) {
     // Slot may have been taken between presentation and confirmation
     clearBookingState(from)
-    return `Oh no — that slot was just taken while we were chatting 😅 Let me find you a fresh list! Just send "book appointment" to start again, or I'll get someone to call you.\n\nSarah — Code Clinic 😊`
+    return `Oh no — that slot was just taken while we were chatting 😅 Let me find you a fresh list! Just send "book appointment" to start again, or I'll get someone to call you.`
   }
 }
 
@@ -485,15 +485,15 @@ async function handleAwaitingCancelConfirmation(
       await cancelAppointment(state.appointmentId)
     } catch { /* appointment may already be cancelled */ }
     clearBookingState(from)
-    return `Done, your appointment has been cancelled. Sorry to see you go — whenever you're ready to book again, I'm here! 😊\n\nSarah — Code Clinic 😊`
+    return `Done, your appointment has been cancelled. Sorry to see you go — whenever you're ready to book again, I'm here! 😊`
   }
 
   if (isNo) {
     clearBookingState(from)
-    return `No problem at all! Your appointment is still on the books. See you then 😊\n\nSarah — Code Clinic 😊`
+    return `No problem at all! Your appointment is still on the books. See you then 😊`
   }
 
-  return `Just to confirm — do you want to *cancel* your appointment? Reply *yes* to cancel or *no* to keep it 😊\n\nSarah — Code Clinic 😊`
+  return `Just to confirm — do you want to *cancel* your appointment? Reply *yes* to cancel or *no* to keep it 😊`
 }
 
 // ── getAgentReply — main entry point ─────────────────────────────────────────
@@ -507,7 +507,7 @@ export async function getAgentReply(
 
   if (!apiKey) {
     console.warn('[Agent] ANTHROPIC_API_KEY not set — returning fallback')
-    return `Hi! I've received your message and a team member will be with you shortly. For urgent matters please call us directly.\n\nSarah — Code Clinic 😊`
+    return `Hi! I've received your message and a team member will be with you shortly. For urgent matters please call us directly.`
   }
 
   // ── Booking state machine ─────────────────────────────────────────────────
@@ -580,7 +580,7 @@ export async function getAgentReply(
     const client   = new Anthropic({ apiKey })
     const response = await client.messages.create({
       model:      'claude-sonnet-4-6',
-      max_tokens: 300,
+      max_tokens: 150,
       system:     systemParts.join('\n'),
       messages,
     })
@@ -588,9 +588,9 @@ export async function getAgentReply(
     const block = response.content[0]
     if (block.type === 'text') return block.text
 
-    return `I'm here to help! Could you please rephrase that for me?\n\nSarah — Code Clinic 😊`
+    return `I'm here to help! Could you please rephrase that for me?`
   } catch (err) {
     console.error('[Agent] Claude API error:', err)
-    return `Sorry, I'm having a small issue right now. Please try again or call the clinic directly.\n\nSarah — Code Clinic 😊`
+    return `Sorry, I'm having a small issue right now. Please try again or call the clinic directly.`
   }
 }
