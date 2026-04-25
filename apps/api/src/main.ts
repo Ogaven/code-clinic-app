@@ -36,12 +36,14 @@ import takeoverRouter   from './ai-suite/takeover/takeover.routes'
 import aiKnowledgeRouter from './ai-suite/knowledge/knowledge.routes'
 import leadNurtureRouter from './ai-suite/lead-nurture/lead-nurture.routes'
 import debtRouter        from './ai-suite/debt/debt.routes'
+import voiceRouter       from './ai-suite/voice/voice.routes'
 
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
 import { checkAndSendReminders }           from './ai-suite/scheduler/reminder.service'
 import { checkAndSendFollowups }           from './ai-suite/scheduler/followup.service'
 import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
+import { initializeSIP }                   from './ai-suite/voice/sip.service'
 
 const app  = express()
 const PORT = process.env.PORT || 4000
@@ -133,6 +135,10 @@ app.use('/ai-suite/knowledge',    aiKnowledgeRouter)
 app.use('/ai-suite/lead-nurture', leadNurtureRouter)
 // Debt outreach:    POST /ai-suite/debt/trigger
 app.use('/ai-suite/debt',         debtRouter)
+// Voice calls:      POST /ai-suite/voice/call
+//                   POST /ai-suite/voice/no-answer-sms
+//                   GET  /ai-suite/voice/calls
+app.use('/ai-suite/voice',        voiceRouter)
 
 // ─── 404 ──────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -148,6 +154,9 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // ─── Start ────────────────────────────────────────────────────
 runStartup().then(() => {
   // startScheduler() — disabled, outboundQueue/agentMemory tables not in schema
+
+  // SIP voice — connects to drachtio-server (no-op if DRACHTIO_HOST is not set)
+  initializeSIP()
 
   // AI Suite schedulers — run every hour
   const ONE_HOUR = 60 * 60 * 1000
