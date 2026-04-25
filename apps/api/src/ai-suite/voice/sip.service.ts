@@ -14,8 +14,16 @@ import { startVoiceConversation } from './voice-ai.service'
 // its private hostname. Set SIP_HOST to the Roke trunk IP in drachtio-server's
 // config, not here (this service only talks to drachtio-server, not the trunk).
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const Srf = require('drachtio-srf') as any
+// drachtio-srf is an optional dependency. Loaded lazily so the server starts
+// normally when the package is not installed — SIP calls just won't connect.
+function loadSrf(): any {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('drachtio-srf')
+  } catch {
+    return null
+  }
+}
 
 let srf: any        = null
 let connected       = false
@@ -31,6 +39,12 @@ export function initializeSIP(): void {
 
   if (!drachtioHost) {
     console.warn('[SIP] DRACHTIO_HOST not set — SIP voice calls disabled')
+    return
+  }
+
+  const Srf = loadSrf()
+  if (!Srf) {
+    console.warn('[SIP] drachtio-srf not installed — SIP voice calls disabled')
     return
   }
 
