@@ -1,0 +1,25 @@
+FROM drachtio/drachtio-server:latest
+
+# Entrypoint generates /etc/drachtio.conf.xml from env vars at startup.
+# Required env vars (set in Railway service):
+#
+#   DRACHTIO_SECRET       shared secret for drachtio-srf → drachtio-server auth (default: cymru)
+#   DRACHTIO_SIP_CONTACT  public SIP URI Roke sends INVITEs to (e.g. sip:1.2.3.4:5060)
+#                         → set this AFTER Railway assigns a public TCP port for port 5060
+#   ROKE_TRUNK_HOST       Roke trunk IP/hostname (default: 41.191.76.76)
+#   ROKE_TRUNK_PORT       Roke trunk SIP port  (default: 5060)
+#   DRACHTIO_LOG_LEVEL    debug | info | warn  (default: info)
+#
+# Railway networking:
+#   Port 5060 (TCP) — expose via Railway TCP proxy; give Roke the assigned public addr
+#   Port 9022 (TCP) — internal only; API connects via DRACHTIO_HOST=<private hostname>
+
+COPY scripts/drachtio-entrypoint.sh /usr/local/bin/drachtio-entrypoint.sh
+RUN chmod +x /usr/local/bin/drachtio-entrypoint.sh
+
+# SIP signalling  (expose TCP; Railway TCP proxy does not support UDP)
+EXPOSE 5060
+# drachtio-srf management connection from the API service
+EXPOSE 9022
+
+ENTRYPOINT ["/usr/local/bin/drachtio-entrypoint.sh"]
