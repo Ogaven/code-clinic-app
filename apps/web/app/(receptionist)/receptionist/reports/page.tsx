@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { BarChart2, Download, Bot, Loader2, ListChecks } from 'lucide-react'
+import { BarChart2, Download, Bot, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import AppointmentsListPage from '../appts/page'
 
 function StatBox({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
   return (
@@ -18,14 +17,10 @@ function StatBox({ label, value, sub, color }: { label: string; value: string | 
   )
 }
 
-type ReportTab = 'overview' | 'appointments'
-
 export default function ReportsPage() {
   const API   = '/api-proxy'
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { Authorization: `Bearer ${token}` }
-
-  const [reportTab, setReportTab] = useState<ReportTab>('overview')
   const [stats, setStats]     = useState<any>(null)
   const [appts, setAppts]     = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -143,54 +138,28 @@ export default function ReportsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex-shrink-0 px-6 pt-5 pb-0 bg-white dark:bg-transparent border-b border-gray-100 dark:border-white/8">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <div className="flex-shrink-0 px-6 pt-5 pb-4 bg-white dark:bg-transparent border-b border-gray-100 dark:border-white/8">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-black text-gray-800 dark:text-white">Reports</h1>
             <p className="text-sm text-gray-400 mt-0.5">Receptionist summary — today's activity</p>
           </div>
-          {reportTab === 'overview' && (
-            <div className="flex items-center gap-3">
-              <select value={dateRange} onChange={e => setDate(e.target.value)}
-                className="text-sm border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-gray-600 dark:text-gray-300 bg-white dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
-                <option value="today">Today</option>
-                <option value="week">This week</option>
-                <option value="month">This month</option>
-              </select>
-              <button onClick={exportFlowPDF}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
-                style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-                <Download size={14} /> Export Live Flow PDF
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-1">
-          {([
-            { key: 'overview',      label: 'Overview',      icon: BarChart2  },
-            { key: 'appointments',  label: 'Appointments',  icon: ListChecks },
-          ] as { key: ReportTab; label: string; icon: any }[]).map(({ key, label, icon: Icon }) => (
-            <button key={key} onClick={() => setReportTab(key)}
-              className={cn(
-                'flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all border-b-2',
-                reportTab === key
-                  ? 'text-cyan-600 dark:text-cyan-400 border-cyan-500 bg-cyan-50 dark:bg-cyan-500/10'
-                  : 'text-gray-500 dark:text-white/50 border-transparent hover:text-gray-700 dark:hover:text-white/70',
-              )}>
-              <Icon size={13} /> {label}
+          <div className="flex items-center gap-3">
+            <select value={dateRange} onChange={e => setDate(e.target.value)}
+              className="text-sm border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-gray-600 dark:text-gray-300 bg-white dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
+              <option value="today">Today</option>
+              <option value="week">This week</option>
+              <option value="month">This month</option>
+            </select>
+            <button onClick={exportFlowPDF}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+              <Download size={14} /> Export Live Flow PDF
             </button>
-          ))}
+          </div>
         </div>
       </div>
 
-      {/* Tab content */}
-      {reportTab === 'appointments' ? (
-        <div className="flex-1 overflow-hidden">
-          <AppointmentsListPage />
-        </div>
-      ) : (
       <div className="flex-1 overflow-y-auto p-6 space-y-6 max-w-4xl">
 
       {loading ? (
@@ -305,7 +274,6 @@ export default function ReportsPage() {
         </>
       )}
       </div>
-      )}
     </div>
   )
 }

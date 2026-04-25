@@ -30,13 +30,16 @@ import clinicalRouter from './routes/clinical'
 import previsitRouter from './routes/previsit'
 
 // AI Suite routers
-import aiSuiteRouter    from './ai-suite/whatsapp/whatsapp.routes'
-import smsRouter        from './ai-suite/sms/sms.routes'
-import takeoverRouter   from './ai-suite/takeover/takeover.routes'
+import aiSuiteRouter     from './ai-suite/whatsapp/whatsapp.routes'
+import smsRouter         from './ai-suite/sms/sms.routes'
+import takeoverRouter    from './ai-suite/takeover/takeover.routes'
 import aiKnowledgeRouter from './ai-suite/knowledge/knowledge.routes'
 import leadNurtureRouter from './ai-suite/lead-nurture/lead-nurture.routes'
 import debtRouter        from './ai-suite/debt/debt.routes'
 import voiceRouter       from './ai-suite/voice/voice.routes'
+import agentControlRouter from './ai-suite/agent-control/agent-control.routes'
+import facebookRouter    from './ai-suite/facebook/facebook.routes'
+import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
 
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
@@ -138,7 +141,31 @@ app.use('/ai-suite/debt',         debtRouter)
 // Voice calls:      POST /ai-suite/voice/call
 //                   POST /ai-suite/voice/no-answer-sms
 //                   GET  /ai-suite/voice/calls
+//                   GET/POST /ai-suite/voice/settings
+//                   GET  /ai-suite/voice/voices
+//                   POST /ai-suite/voice/preview
+//                   POST /ai-suite/voice/train
+//                   PUT  /ai-suite/voice/voices/:id/assign
+//                   DELETE /ai-suite/voice/voices/:id
 app.use('/ai-suite/voice',        voiceRouter)
+// Agent control:    GET  /ai-suite/agents
+//                   POST /ai-suite/agents/:name/toggle
+//                   GET/POST /ai-suite/agents/escalation
+app.use('/ai-suite',              agentControlRouter)
+// Facebook/Instagram webhooks: GET/POST /ai-suite/facebook/webhook
+//                              GET/POST /ai-suite/instagram/webhook
+app.use('/ai-suite',              facebookRouter)
+// Website chatbot:  POST /ai-suite/website/message
+//                   GET  /ai-suite/website/messages/:sessionId
+app.use('/ai-suite/website',      websiteRouter)
+
+// ─── Chat widget ─────────────────────────────────────────────
+// Embeddable <script src="https://api.../widget.js"> snippet
+app.get('/widget.js', (_req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+  res.setHeader('Cache-Control', 'public, max-age=300')
+  res.send(WIDGET_JS)
+})
 
 // ─── 404 ──────────────────────────────────────────────────────
 app.use((_req, res) => {

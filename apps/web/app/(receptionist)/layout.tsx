@@ -7,20 +7,39 @@ import { useEffect, useRef, useState } from 'react'
 import {
   LayoutDashboard, CalendarDays, Users, MessageSquare,
   Bot, BarChart2, Settings, HelpCircle, Bell, Search,
-  ChevronLeft, ChevronRight, LogOut, User, Lock, Download,
+  ChevronLeft, ChevronRight, ChevronDown, LogOut, User, Lock, Download,
   Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Stethoscope, UserCog, Clock,
+  Phone, Mic, BookOpen, Inbox,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const navTop = [
-  { label: 'Dashboard',    href: '/receptionist/dashboard',    icon: LayoutDashboard },
-  { label: 'Scheduling',   href: '/receptionist/appointments', icon: CalendarDays },
-  { label: 'Doctors',      href: '/receptionist/doctors',      icon: UserCog },
-  { label: 'Services',     href: '/receptionist/services',     icon: Stethoscope },
-  { label: 'Patients',     href: '/receptionist/patients',     icon: Users },
-  { label: 'Live Flow',    href: '/receptionist/flow',         icon: Zap },
-  { label: 'AI Suite',     href: '/receptionist/ai-suite',     icon: Bot },
-  { label: 'Reports',      href: '/receptionist/reports',      icon: BarChart2 },
+type SubNavItem = { label: string; href: string; icon: React.ElementType }
+type NavItem    = { label: string; href: string; icon: React.ElementType; sub?: SubNavItem[] }
+
+const navTop: NavItem[] = [
+  { label: 'Dashboard',  href: '/receptionist/dashboard',    icon: LayoutDashboard },
+  {
+    label: 'Scheduling', href: '/receptionist/appointments', icon: CalendarDays,
+    sub: [
+      { label: 'Appointments', href: '/receptionist/appointments', icon: CalendarDays },
+    ],
+  },
+  { label: 'Doctors',    href: '/receptionist/doctors',      icon: UserCog },
+  { label: 'Services',   href: '/receptionist/services',     icon: Stethoscope },
+  { label: 'Patients',   href: '/receptionist/patients',     icon: Users },
+  { label: 'Live Flow',  href: '/receptionist/flow',         icon: Zap },
+  {
+    label: 'AI Suite',   href: '/receptionist/ai-suite',     icon: Bot,
+    sub: [
+      { label: 'Agent Control',  href: '/receptionist/ai-suite',              icon: Bot },
+      { label: 'Inbox',          href: '/receptionist/ai-suite/inbox',        icon: Inbox },
+      { label: 'Call Logs',      href: '/receptionist/ai-suite/calls',        icon: Phone },
+      { label: 'Voice Studio',   href: '/receptionist/ai-suite/voice-studio', icon: Mic },
+      { label: 'Knowledge Base', href: '/receptionist/ai-suite/knowledge',    icon: BookOpen },
+      { label: 'Settings',       href: '/receptionist/ai-suite/settings',     icon: Settings },
+    ],
+  },
+  { label: 'Reports',    href: '/receptionist/reports',      icon: BarChart2 },
 ]
 
 const navBottom = [
@@ -371,28 +390,61 @@ export default function ReceptionistLayout({ children }: { children: React.React
           {/* Top section */}
           <div className="space-y-0.5">
             {navTop.map((item) => {
-              const Icon   = item.icon
-              const active = pathname === item.href || pathname.startsWith(item.href + '/')
+              const Icon    = item.icon
+              const active  = pathname === item.href || pathname.startsWith(item.href + '/')
+              const hasSub  = item.sub && item.sub.length > 0
               return (
-                <Link key={item.href} href={item.href}
-                  title={collapsed ? item.label : undefined}
-                  className={cn(
-                    'rec-nav-item relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group text-[13px] font-medium',
-                    collapsed && 'justify-center px-2',
-                    active && 'active',
-                  )}>
-                  {active && (
-                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-cyan-500" />
-                  )}
-                  <Icon size={17} className="flex-shrink-0" />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                  {collapsed && (
-                    <div className="absolute left-full ml-3 px-2.5 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 shadow-xl text-xs text-white bg-gray-900">
-                      {item.label}
-                      <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                <div key={item.href}>
+                  <Link href={item.href}
+                    title={collapsed ? item.label : undefined}
+                    className={cn(
+                      'rec-nav-item relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group text-[13px] font-medium',
+                      collapsed && 'justify-center px-2',
+                      active && 'active',
+                    )}>
+                    {active && (
+                      <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-cyan-500" />
+                    )}
+                    <Icon size={17} className="flex-shrink-0" />
+                    {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+                    {!collapsed && hasSub && (
+                      <ChevronDown size={12} className={cn(
+                        'flex-shrink-0 text-gray-400 dark:text-white/30 transition-transform',
+                        active && 'rotate-180',
+                      )} />
+                    )}
+                    {collapsed && (
+                      <div className="absolute left-full ml-3 px-2.5 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 shadow-xl text-xs text-white bg-gray-900">
+                        {item.label}
+                        <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                      </div>
+                    )}
+                  </Link>
+
+                  {/* Sub-nav (shown when parent is active and sidebar is expanded) */}
+                  {!collapsed && hasSub && active && (
+                    <div className="ml-3 pl-3 border-l border-gray-200 dark:border-white/[0.08] mt-0.5 mb-1 space-y-0.5">
+                      {item.sub!.map(sub => {
+                        const SubIcon   = sub.icon
+                        const subActive = sub.href === item.href
+                          ? pathname === sub.href
+                          : pathname === sub.href || pathname.startsWith(sub.href + '/')
+                        return (
+                          <Link key={sub.href} href={sub.href}
+                            className={cn(
+                              'flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all text-[12px] font-medium',
+                              subActive
+                                ? 'text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/20'
+                                : 'text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5',
+                            )}>
+                            <SubIcon size={14} className="flex-shrink-0" />
+                            {sub.label}
+                          </Link>
+                        )
+                      })}
                     </div>
                   )}
-                </Link>
+                </div>
               )
             })}
           </div>

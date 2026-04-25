@@ -77,9 +77,13 @@ export async function processInbound(from: string, text: string): Promise<void> 
           'i will', "i'll be there", 'will come', 'coming', 'will be there', '✓', '👍',
         ].some(w => lower.includes(w))
 
-        const isNo = [
-          'no', 'nope', 'cancel', 'reschedule', 'change', "can't", "cannot",
-          "won't", 'wont', "i can't", 'not coming', 'unable',
+        const isCancel = [
+          'no', 'nope', "can't", "cannot", "won't", 'wont', "i can't",
+          'not coming', 'unable', 'cancel',
+        ].some(w => lower.includes(w))
+
+        const isReschedule = [
+          'reschedule', 'change', 'different time', 'another time', 'move', 'postpone',
         ].some(w => lower.includes(w))
 
         if (isYes) {
@@ -108,8 +112,8 @@ export async function processInbound(from: string, text: string): Promise<void> 
           return
         }
 
-        if (isNo) {
-          // Set reschedule state so the next message kicks off the reschedule flow
+        if (isReschedule || (isCancel && lower.includes('reschedule'))) {
+          // Patient wants a different time — set state and ask
           const upcoming = await prisma.appointment.findFirst({
             where: {
               patientId: patient.id,
@@ -120,6 +124,10 @@ export async function processInbound(from: string, text: string): Promise<void> 
           })
 
           if (upcoming) {
+            await prisma.appointment.update({
+              where: { id: upcoming.id },
+              data:  { status: 'RESCHEDULED' },
+            })
             setBookingState(from, {
               state:         'AWAITING_RESCHEDULE_SLOT',
               appointmentId: upcoming.id,
@@ -128,6 +136,32 @@ export async function processInbound(from: string, text: string): Promise<void> 
           }
 
           const reply = `No problem! Let me help you find another time. What day works best for you? 😊`
+          await prisma.aiMessage.create({
+            data: { conversationId: conversation.id, role: 'AGENT', content: reply },
+          })
+          await sendWhatsAppMessage(from, reply)
+          return
+        }
+
+        if (isCancel) {
+          // Patient is cancelling — mark appointment CANCELLED
+          const upcoming = await prisma.appointment.findFirst({
+            where: {
+              patientId: patient.id,
+              startAt:   { gt: new Date() },
+              status:    { notIn: ['CANCELLED'] },
+            },
+            orderBy: { startAt: 'asc' },
+          })
+
+          if (upcoming) {
+            await prisma.appointment.update({
+              where: { id: upcoming.id },
+              data:  { status: 'CANCELLED', notes: 'Cancelled via WhatsApp reminder reply' },
+            })
+          }
+
+          const reply = `Understood! I've cancelled your appointment. If you'd like to book again in the future, just let us know 😊`
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })

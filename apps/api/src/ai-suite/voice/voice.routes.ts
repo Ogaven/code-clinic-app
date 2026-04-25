@@ -1,11 +1,13 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
+import multer from 'multer'
 import { makeOutboundCall, formatToE164, isSipConnected } from './sip.service'
 import { startVoiceConversation } from './voice-ai.service'
 import { sendSMS } from '../sms/sms.service'
 
 const router = Router()
 const prisma = new PrismaClient()
+const upload = multer({ storage: multer.memoryStorage() })
 
 // ── POST /ai-suite/voice/call ─────────────────────────────────────────────────
 // Trigger an outbound call.  Fire-and-forget — returns immediately while the
@@ -109,6 +111,179 @@ router.get('/calls', async (_req, res) => {
     res.json(logs)
   } catch (err: any) {
     console.error('[Voice] /calls error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── GET /ai-suite/voice/settings ─────────────────────────────────────────────
+
+router.get('/settings', async (_req, res) => {
+  try {
+    const keys = ['voice_persona_name', 'voice_elevenlabs_id', 'voice_stability', 'voice_similarity_boost']
+    const rows = await prisma.appSetting.findMany({ where: { key: { in: keys } } })
+    const map  = Object.fromEntries(rows.map(r => [r.key, r.value]))
+    res.json({
+      personaName:      map['voice_persona_name']        ?? 'Sarah',
+      elevenLabsVoiceId: map['voice_elevenlabs_id']      ?? '',
+      stability:        parseFloat(map['voice_stability'] ?? '0.5'),
+      similarityBoost:  parseFloat(map['voice_similarity_boost'] ?? '0.75'),
+      elevenLabsKeySet: !!process.env.ELEVENLABS_API_KEY,
+    })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── POST /ai-suite/voice/settings ────────────────────────────────────────────
+
+router.post('/settings', async (req, res) => {
+  try {
+    const { personaName, elevenLabsVoiceId, stability, similarityBoost } =
+      req.body as { personaName?: string; elevenLabsVoiceId?: string; stability?: number; similarityBoost?: number }
+
+    const pairs = [
+      { key: 'voice_persona_name',       value: String(personaName      ?? 'Sarah') },
+      { key: 'voice_elevenlabs_id',      value: String(elevenLabsVoiceId ?? '') },
+      { key: 'voice_stability',          value: String(stability         ?? 0.5) },
+      { key: 'voice_similarity_boost',   value: String(similarityBoost   ?? 0.75) },
+    ]
+
+    await Promise.all(pairs.map(({ key, value }) =>
+      prisma.appSetting.upsert({ where: { key }, update: { value }, create: { key, value } })
+    ))
+    res.json({ success: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── GET /ai-suite/voice/voices ───────────────────────────────────────────────
+
+router.get('/voices', async (_req, res) => {
+  try {
+    const profiles = await prisma.voiceProfile.findMany({ orderBy: { createdAt: 'desc' } })
+    res.json(profiles)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── POST /ai-suite/voice/preview ─────────────────────────────────────────────
+// Body: { text, voiceId? }  Returns audio/mpeg stream.
+
+router.post('/preview', async (req, res) => {
+  try {
+    const { text, voiceId } = req.body as { text?: string; voiceId?: string }
+    if (!text?.trim()) return res.status(400).json({ error: 'text required' })
+
+    const apiKey = process.env.ELEVENLABS_API_KEY
+    if (!apiKey) return res.status(503).json({ error: 'ELEVENLABS_API_KEY not set' })
+
+    let vid = voiceId
+    if (!vid) {
+      const setting = await prisma.appSetting.findUnique({ where: { key: 'voice_elevenlabs_id' } })
+      vid = setting?.value || 'EXAVITQu4vr4xnSDxMaL' // ElevenLabs Rachel
+    }
+
+    const stability       = parseFloat((await prisma.appSetting.findUnique({ where: { key: 'voice_stability' } }))?.value       ?? '0.5')
+    const similarityBoost = parseFloat((await prisma.appSetting.findUnique({ where: { key: 'voice_similarity_boost' } }))?.value ?? '0.75')
+
+    const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${vid}`, {
+      method:  'POST',
+      headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_monolingual_v1',
+        voice_settings: { stability, similarity_boost: similarityBoost },
+      }),
+    })
+
+    if (!upstream.ok) return res.status(upstream.status).json({ error: await upstream.text() })
+
+    res.setHeader('Content-Type', 'audio/mpeg')
+    res.send(Buffer.from(await upstream.arrayBuffer()))
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── POST /ai-suite/voice/train ───────────────────────────────────────────────
+// Multipart: { name: string, file: audio file }
+
+router.post('/train', upload.single('file'), async (req, res) => {
+  try {
+    const { name } = req.body as { name?: string }
+    const file = req.file
+    if (!name?.trim() || !file) return res.status(400).json({ error: 'name and file required' })
+
+    const apiKey = process.env.ELEVENLABS_API_KEY
+    if (!apiKey) return res.status(503).json({ error: 'ELEVENLABS_API_KEY not set' })
+
+    const form = new FormData()
+    form.append('name', name.trim())
+    form.append('files', new Blob([file.buffer], { type: file.mimetype }), file.originalname)
+
+    const upstream = await fetch('https://api.elevenlabs.io/v1/voices/add', {
+      method:  'POST',
+      headers: { 'xi-api-key': apiKey },
+      body:    form,
+    })
+
+    if (!upstream.ok) return res.status(upstream.status).json({ error: await upstream.text() })
+
+    const { voice_id } = await upstream.json() as { voice_id: string }
+
+    const profile = await prisma.voiceProfile.create({
+      data: { name: name.trim(), elevenLabsVoiceId: voice_id, isCloned: true, isDefault: false },
+    })
+
+    res.json(profile)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── PUT /ai-suite/voice/voices/:id/assign ────────────────────────────────────
+
+router.put('/voices/:id/assign', async (req, res) => {
+  try {
+    const profile = await prisma.voiceProfile.findUnique({ where: { id: req.params.id } })
+    if (!profile) return res.status(404).json({ error: 'Voice not found' })
+
+    await prisma.$transaction([
+      prisma.voiceProfile.updateMany({ data: { isDefault: false } }),
+      prisma.voiceProfile.update({ where: { id: req.params.id }, data: { isDefault: true } }),
+      prisma.appSetting.upsert({
+        where:  { key: 'voice_elevenlabs_id' },
+        update: { value: profile.elevenLabsVoiceId },
+        create: { key: 'voice_elevenlabs_id', value: profile.elevenLabsVoiceId },
+      }),
+    ])
+
+    res.json({ success: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── DELETE /ai-suite/voice/voices/:id ────────────────────────────────────────
+
+router.delete('/voices/:id', async (req, res) => {
+  try {
+    const profile = await prisma.voiceProfile.findUnique({ where: { id: req.params.id } })
+    if (!profile) return res.status(404).json({ error: 'Voice not found' })
+
+    const apiKey = process.env.ELEVENLABS_API_KEY
+    if (apiKey && profile.isCloned) {
+      await fetch(`https://api.elevenlabs.io/v1/voices/${profile.elevenLabsVoiceId}`, {
+        method:  'DELETE',
+        headers: { 'xi-api-key': apiKey },
+      }).catch(err => console.error('[Voice] ElevenLabs delete error:', err))
+    }
+
+    await prisma.voiceProfile.delete({ where: { id: req.params.id } })
+    res.json({ success: true })
+  } catch (err: any) {
     res.status(500).json({ error: err.message })
   }
 })
