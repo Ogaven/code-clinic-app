@@ -429,9 +429,7 @@ function MonthView({ year, month, appointments, onDateClick }: {
 type ViewMode = 'doctors' | 'week' | 'month'
 
 export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: Props) {
-  const token   = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-  const headers = { Authorization: `Bearer ${token}` }
-  const API     = '/api-proxy'
+  const API = '/api-proxy'
 
   const [view,        setView]        = useState<ViewMode>('doctors')
   const [date,        setDate]        = useState(new Date())
@@ -439,42 +437,55 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   const [weekAppts,   setWeekAppts]   = useState<Appointment[]>([])
   const [monthAppts,  setMonthAppts]  = useState<Appointment[]>([])
   const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState<string | null>(null)
   const [lastFetched, setLastFetched] = useState<Date | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Read token fresh inside each fetch to avoid stale SSR closure
+  function authHeaders() {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+    return { Authorization: `Bearer ${token}` }
+  }
+
   const fetchDay = useCallback(async (d: Date) => {
     setLoading(true)
+    setError(null)
     try {
-      const res  = await fetch(`${API}/scheduling/calendar?date=${toDateStr(d)}`, { headers })
+      const res  = await fetch(`${API}/scheduling/calendar?date=${toDateStr(d)}`, { headers: authHeaders() })
+      if (!res.ok) { setError(`API error ${res.status}`); return }
       const data = await res.json()
       if (data.calendar) setColumns(data.calendar)
       setLastFetched(new Date())
-    } catch { } finally { setLoading(false) }
-  }, [API, token])
+    } catch (e: any) { setError(e?.message || 'Network error') } finally { setLoading(false) }
+  }, [API])
 
   const fetchWeek = useCallback(async (anchor: Date) => {
     setLoading(true)
+    setError(null)
     const week = getWeekDates(anchor)
     const s = toDateStr(week[0]), e = toDateStr(week[5])
     try {
-      const res  = await fetch(`${API}/scheduling/appointments?startDate=${s}&endDate=${e}`, { headers })
+      const res  = await fetch(`${API}/scheduling/appointments?startDate=${s}&endDate=${e}`, { headers: authHeaders() })
+      if (!res.ok) { setError(`API error ${res.status}`); return }
       const data = await res.json()
       setWeekAppts(Array.isArray(data) ? data : [])
       setLastFetched(new Date())
-    } catch { } finally { setLoading(false) }
-  }, [API, token])
+    } catch (e: any) { setError(e?.message || 'Network error') } finally { setLoading(false) }
+  }, [API])
 
   const fetchMonth = useCallback(async (anchor: Date) => {
     setLoading(true)
+    setError(null)
     const s = toDateStr(new Date(anchor.getFullYear(), anchor.getMonth(), 1))
     const e = toDateStr(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0))
     try {
-      const res  = await fetch(`${API}/scheduling/appointments?startDate=${s}&endDate=${e}`, { headers })
+      const res  = await fetch(`${API}/scheduling/appointments?startDate=${s}&endDate=${e}`, { headers: authHeaders() })
+      if (!res.ok) { setError(`API error ${res.status}`); return }
       const data = await res.json()
       setMonthAppts(Array.isArray(data) ? data : [])
       setLastFetched(new Date())
-    } catch { } finally { setLoading(false) }
-  }, [API, token])
+    } catch (e: any) { setError(e?.message || 'Network error') } finally { setLoading(false) }
+  }, [API])
 
   // Fetch on view/date change
   useEffect(() => {
@@ -604,8 +615,20 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
         <div className="flex-1 flex items-center justify-center text-gray-400">
           <div className="text-center">
             <div className="text-5xl mb-3">📅</div>
-            <p className="font-semibold text-gray-500">No data yet</p>
-            <p className="text-sm mt-1">Check API connection or add doctors</p>
+            {error ? (
+              <>
+                <p className="font-semibold text-red-500">Failed to load calendar</p>
+                <p className="text-sm mt-1 text-red-400">{error}</p>
+                <button onClick={() => fetchDay(date)} className="mt-3 px-4 py-2 text-sm font-semibold bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">
+                  Retry
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-gray-500">No doctors found</p>
+                <p className="text-sm mt-1">Add doctors in the Doctors tab to see the calendar</p>
+              </>
+            )}
           </div>
         </div>
       )}

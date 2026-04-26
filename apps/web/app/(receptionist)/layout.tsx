@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import {
-  LayoutDashboard, CalendarDays, Users, MessageSquare,
+  LayoutDashboard, CalendarDays, ListChecks, Users, MessageSquare,
   Bot, BarChart2, Settings, HelpCircle, Bell, Search,
   ChevronLeft, ChevronRight, ChevronDown, LogOut, User, Lock, Download,
   Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Stethoscope, UserCog, Clock,
@@ -17,13 +17,9 @@ type SubNavItem = { label: string; href: string; icon: React.ElementType }
 type NavItem    = { label: string; href: string; icon: React.ElementType; sub?: SubNavItem[] }
 
 const navTop: NavItem[] = [
-  { label: 'Dashboard',  href: '/receptionist/dashboard',    icon: LayoutDashboard },
-  {
-    label: 'Scheduling', href: '/receptionist/appointments', icon: CalendarDays,
-    sub: [
-      { label: 'Appointments', href: '/receptionist/appointments', icon: CalendarDays },
-    ],
-  },
+  { label: 'Dashboard',    href: '/receptionist/dashboard',    icon: LayoutDashboard },
+  { label: 'Scheduling',   href: '/receptionist/scheduling',   icon: CalendarDays },
+  { label: 'Appointments', href: '/receptionist/appointments', icon: ListChecks },
   { label: 'Doctors',    href: '/receptionist/doctors',      icon: UserCog },
   { label: 'Services',   href: '/receptionist/services',     icon: Stethoscope },
   { label: 'Patients',   href: '/receptionist/patients',     icon: Users },
@@ -473,7 +469,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
                     NO_SHOW: 'bg-red-400', CANCELLED: 'bg-gray-300',
                   }
                   return (
-                    <Link key={appt.id} href="/receptionist/appointments"
+                    <Link key={appt.id} href="/receptionist/scheduling"
                       className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors group">
                       <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusDot[appt.status] || 'bg-gray-300')} />
                       <span className="text-[10px] text-gray-400 dark:text-white/40 font-mono flex-shrink-0 w-[56px] truncate">{dateLabel}</span>
