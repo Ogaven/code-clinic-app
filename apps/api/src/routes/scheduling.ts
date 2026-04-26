@@ -177,15 +177,28 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
 
 // ─── Reschedule / update appointment ─────────────────────────────────────────
 const rescheduleSchema = z.object({
-  startAt:   z.string().datetime().optional(),
-  doctorId:  z.string().uuid().optional(),
-  serviceId: z.string().uuid().optional(),
-  notes:     z.string().optional(),
+  startAt:     z.string().datetime().optional(),
+  scheduledAt: z.string().datetime().optional(),
+  doctorId:    z.string().uuid().optional(),
+  serviceId:   z.string().uuid().optional(),
+  notes:       z.string().optional(),
+  status:      z.string().optional(),
 })
+
+const PATCH_VALID_STATUSES = [
+  'PENDING', 'CONFIRMED',
+  'ARRIVED', 'WAITING', 'IN_OPERATORY', 'WITH_PROVIDER', 'SESSION_COMPLETE', 'CHECKOUT', 'DEPARTED',
+  'CHECKED_IN', 'IN_CHAIR', 'READY_CHECKOUT', 'COMPLETED',
+  'CANCELLED', 'NO_SHOW', 'RESCHEDULED',
+]
 
 router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(rescheduleSchema), auditLog('appointments'), async (req, res) => {
   const existing = await prisma.appointment.findUnique({ where: { id: req.params.id }, include: { service: true } })
   if (!existing) { res.status(404).json({ error: 'Appointment not found' }); return }
+
+  if (req.body.status && !PATCH_VALID_STATUSES.includes(req.body.status)) {
+    res.status(400).json({ error: 'Invalid status' }); return
+  }
 
   const serviceId = req.body.serviceId || existing.serviceId
   const doctorId  = req.body.doctorId  || existing.doctorId
@@ -193,13 +206,13 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
   const service = await prisma.service.findUnique({ where: { id: serviceId } })
   if (!service) { res.status(404).json({ error: 'Service not found' }); return }
 
+  const rawStart = req.body.startAt || req.body.scheduledAt
   let start = existing.startAt
   let end   = existing.endAt
-  if (req.body.startAt) {
-    start = new Date(req.body.startAt)
+  if (rawStart) {
+    start = new Date(rawStart)
     end   = new Date(start.getTime() + service.durationMins * 60_000)
 
-    // Conflict check (exclude self)
     const conflict = await prisma.appointment.findFirst({
       where: {
         id: { not: req.params.id },
@@ -216,6 +229,7 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
       startAt: start, endAt: end,
       doctorId, serviceId,
       notes: req.body.notes !== undefined ? req.body.notes : existing.notes,
+      ...(req.body.status ? { status: req.body.status } : {}),
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true } },

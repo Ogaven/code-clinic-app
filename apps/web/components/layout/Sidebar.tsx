@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, CalendarDays, Users, Stethoscope, UserCog,
+  LayoutDashboard, CalendarDays, ListChecks, Users, Stethoscope, UserCog,
   Wallet, Receipt, ShoppingBag, CreditCard, FileBarChart,
   Bot, Megaphone, UserPlus, QrCode, Settings, HeadphonesIcon,
   ChevronLeft, ChevronRight, Globe, BookOpen, Package, BarChart2,
@@ -20,7 +20,8 @@ const adminNav: NavGroup[] = [
     label: 'CLINIC',
     items: [
       { label: 'Dashboard',    href: '/dashboard',    icon: LayoutDashboard },
-      { label: 'Appointments', href: '/scheduling',   icon: CalendarDays },
+      { label: 'Scheduling',   href: '/scheduling',   icon: CalendarDays },
+      { label: 'Appointments', href: '/appointments', icon: ListChecks },
       { label: 'Patients',     href: '/patients',     icon: Users },
       { label: 'Treatments',   href: '/treatments',   icon: Stethoscope },
       { label: 'Analytics',    href: '/analytics',    icon: BarChart2 },
