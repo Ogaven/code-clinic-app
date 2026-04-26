@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import {
   MessageSquare, Facebook, Instagram, Phone, Mic2,
   CheckCircle2, XCircle, Loader2, Plus, Trash2, Edit3, Save, X,
-  ChevronDown, ChevronUp, Copy, ExternalLink,
+  ChevronDown, ChevronUp, ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -84,84 +84,67 @@ function SaveBtn({ saving, onClick }: { saving: boolean; onClick: () => void }) 
 // ── WhatsApp section ───────────────────────────────────────────────────────────
 
 function WhatsAppSection({ toast }: { toast: (m: string) => void }) {
-  const API   = '/api-proxy'
+  const API = '/api-proxy'
   function authH() {
     const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
     return { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }
   }
 
-  const [status,    setStatus]  = useState<{ connected: boolean; phoneNumberId: string | null; verifyToken: string | null } | null>(null)
-  const [phoneId,   setPhoneId] = useState('')
-  const [token,     setToken]   = useState('')
+  const [status,    setStatus]  = useState<{ connected: boolean; pending?: boolean; phone?: string | null } | null>(null)
+  const [phone,     setPhone]   = useState('')
   const [saving,    setSaving]  = useState(false)
-  const [copied,    setCopied]  = useState(false)
+  const [submitted, setSubmitted] = useState(false)
 
   useEffect(() => {
     fetch(`${API}/ai-suite/connections/whatsapp`, { headers: authH() })
       .then(r => r.json()).then(setStatus).catch(() => {})
   }, [])
 
-  async function save() {
-    if (!phoneId || !token) return toast('Phone Number ID and Access Token are required')
+  async function submit() {
+    if (!phone) return toast('Please enter your WhatsApp phone number')
     setSaving(true)
     try {
-      const res = await fetch(`${API}/ai-suite/connections/whatsapp`, {
-        method: 'PATCH', headers: authH(), body: JSON.stringify({ phoneNumberId: phoneId, accessToken: token }),
+      await fetch(`${API}/ai-suite/connections/whatsapp/simple`, {
+        method: 'PATCH', headers: authH(), body: JSON.stringify({ phone }),
       })
-      const d = await res.json()
-      setStatus(s => s ? { ...s, connected: d.connected, phoneNumberId: d.phoneNumberId } : null)
-      setPhoneId(''); setToken('')
-      toast('WhatsApp connected')
-    } catch { toast('Failed to save') } finally { setSaving(false) }
+      setSubmitted(true)
+      setPhone('')
+    } catch { toast('Failed to submit') } finally { setSaving(false) }
   }
 
-  function copyVerify() {
-    if (!status?.verifyToken) return
-    navigator.clipboard.writeText(status.verifyToken).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
-  }
-
-  const webhookUrl = 'https://api-production-4c43.up.railway.app/ai-suite/webhook'
+  const isPending  = submitted || status?.pending
+  const isConnected = status?.connected
 
   return (
     <SectionCard expandedDefault
       icon={<div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#25D36618' }}><MessageSquare size={16} style={{ color: '#25D366' }} /></div>}
-      label="WhatsApp (Meta)"
-      badge={status && <StatusBadge connected={status.connected} />}>
+      label="WhatsApp"
+      badge={status && <StatusBadge connected={!!isConnected} />}>
       <div className="space-y-4">
-        {status?.connected && (
+        {isConnected ? (
           <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
             <CheckCircle2 size={14} />
-            <span>Connected · Phone ID: <span className="font-mono">{status.phoneNumberId}</span></span>
+            <span>WhatsApp is connected and active.</span>
           </div>
+        ) : isPending ? (
+          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-700/40">
+            <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Request received!</p>
+            <p className="text-sm text-amber-600 dark:text-amber-300/80 mt-1">Our team will set this up for you. You'll receive a confirmation within 24 hours.</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-gray-500 dark:text-white/50">Enter your clinic's WhatsApp number and our team will connect it for you.</p>
+            <Field label="WhatsApp Phone Number">
+              <Input value={phone} onChange={setPhone} placeholder="+256741087667" />
+            </Field>
+            <button onClick={submit} disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
+              Request Setup
+            </button>
+          </>
         )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Phone Number ID">
-            <Input value={phoneId} onChange={setPhoneId} placeholder="From Meta Business Manager" />
-          </Field>
-          <Field label="System User Access Token">
-            <Input value={token} onChange={setToken} placeholder="Starts with EAAJ..." type="password" />
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Webhook URL">
-            <div className="flex items-center gap-2 p-2.5 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10">
-              <code className="flex-1 text-xs font-mono text-gray-600 dark:text-white/60 truncate">{webhookUrl}</code>
-              <button onClick={() => navigator.clipboard.writeText(webhookUrl)} className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"><Copy size={13} /></button>
-            </div>
-          </Field>
-          <Field label="Verify Token">
-            <div className="flex items-center gap-2 p-2.5 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10">
-              <code className="flex-1 text-xs font-mono text-gray-600 dark:text-white/60 truncate">{status?.verifyToken || 'codeclinic-whatsapp-2026'}</code>
-              <button onClick={copyVerify} className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors">
-                {copied ? <CheckCircle2 size={13} className="text-emerald-500" /> : <Copy size={13} />}
-              </button>
-            </div>
-          </Field>
-        </div>
-
-        <SaveBtn saving={saving} onClick={save} />
       </div>
     </SectionCard>
   )
@@ -185,7 +168,8 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
   }, [])
 
   function connectFacebook() {
-    const w = window.open(`${API}/ai-suite/connections/facebook/oauth`, '_blank', 'width=600,height=700')
+    const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : ''
+    const w = window.open(`${API}/ai-suite/connections/facebook/oauth?token=${token}`, '_blank', 'width=600,height=700')
     const t = setInterval(() => {
       if (w?.closed) {
         clearInterval(t)
@@ -233,11 +217,6 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
             </button>
           </div>
         )}
-        <div className="pt-2">
-          <p className="text-[11px] text-gray-400 dark:text-white/30">
-            Webhook: <code className="font-mono">https://api-production-4c43.up.railway.app/ai-suite/facebook/webhook</code>
-          </p>
-        </div>
       </div>
     </SectionCard>
   )
@@ -261,7 +240,8 @@ function InstagramSection({ toast }: { toast: (m: string) => void }) {
   }, [])
 
   function connectInstagram() {
-    const w = window.open(`${API}/ai-suite/connections/instagram/oauth`, '_blank', 'width=600,height=700')
+    const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : ''
+    const w = window.open(`${API}/ai-suite/connections/instagram/oauth?token=${token}`, '_blank', 'width=600,height=700')
     const t = setInterval(() => {
       if (w?.closed) {
         clearInterval(t)
@@ -309,9 +289,6 @@ function InstagramSection({ toast }: { toast: (m: string) => void }) {
             </button>
           </div>
         )}
-        <p className="text-[11px] text-gray-400 dark:text-white/30">
-          Webhook: <code className="font-mono">https://api-production-4c43.up.railway.app/ai-suite/instagram/webhook</code>
-        </p>
       </div>
     </SectionCard>
   )
@@ -329,13 +306,12 @@ function SmsSection({ toast }: { toast: (m: string) => void }) {
   const [connected, setConnected] = useState(false)
   const [apiKey,    setApiKey]    = useState('')
   const [username,  setUsername]  = useState('')
-  const [senderId,  setSenderId]  = useState('')
   const [saving,    setSaving]    = useState(false)
 
   useEffect(() => {
     fetch(`${API}/ai-suite/connections/sms`, { headers: authH() })
       .then(r => r.json())
-      .then(d => { setConnected(d.connected); setUsername(d.username || ''); setSenderId(d.senderId || '') })
+      .then(d => { setConnected(d.connected); setUsername(d.username || '') })
       .catch(() => {})
   }, [])
 
@@ -344,7 +320,7 @@ function SmsSection({ toast }: { toast: (m: string) => void }) {
     try {
       const res = await fetch(`${API}/ai-suite/connections/sms`, {
         method: 'PATCH', headers: authH(),
-        body: JSON.stringify({ ...(apiKey && { apiKey }), username, senderId }),
+        body: JSON.stringify({ ...(apiKey && { apiKey }), username }),
       })
       const d = await res.json()
       setConnected(d.connected)
@@ -359,20 +335,14 @@ function SmsSection({ toast }: { toast: (m: string) => void }) {
       label="SMS (Africa's Talking)"
       badge={<StatusBadge connected={connected} />}>
       <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="API Key">
             <Input value={apiKey} onChange={setApiKey} placeholder="Leave blank to keep existing" type="password" />
           </Field>
           <Field label="Username">
             <Input value={username} onChange={setUsername} placeholder="Your AT username" />
           </Field>
-          <Field label="Sender ID">
-            <Input value={senderId} onChange={setSenderId} placeholder="CodeClinic (optional)" />
-          </Field>
         </div>
-        <p className="text-[11px] text-gray-400 dark:text-white/30">
-          Inbound webhook: <code className="font-mono">https://api-production-4c43.up.railway.app/ai-suite/sms/incoming</code>
-        </p>
         <SaveBtn saving={saving} onClick={save} />
       </div>
     </SectionCard>

@@ -13,14 +13,29 @@ async function getConfig() {
 
 // ── WhatsApp ──────────────────────────────────────────────────────────────────
 router.get('/connections/whatsapp', requireAuth, async (_req, res) => {
-  const config = await getConfig()
+  const config  = await getConfig()
   const phoneId = config.waPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || null
-  const token   = config.waAccessToken  || process.env.WHATSAPP_TOKEN           || null
+  const token   = config.waAccessToken   || process.env.WHATSAPP_TOKEN           || null
+  // A phone number (starts with +) means a "pending setup" request, not a live connection
+  const isPending = phoneId ? phoneId.startsWith('+') : false
   res.json({
-    connected:     !!(phoneId && token),
-    phoneNumberId: phoneId ? phoneId.slice(0, 6) + '…' : null,
-    verifyToken:   process.env.WHATSAPP_VERIFY_TOKEN || 'codeclinic-whatsapp-2026',
+    connected:  !!(phoneId && token && !isPending),
+    pending:    isPending,
+    phone:      isPending ? phoneId : null,
+    phoneNumberId: (!isPending && phoneId) ? phoneId.slice(0, 6) + '…' : null,
   })
+})
+
+// Simplified form: clinic staff enters just their phone number, dev handles the rest
+router.patch('/connections/whatsapp/simple', requireAuth, async (req, res) => {
+  const { phone } = req.body
+  if (!phone) return res.status(400).json({ error: 'phone required' })
+  const config = await getConfig()
+  await prisma.aiAgentConfig.update({
+    where: { id: config.id },
+    data: { waPhoneNumberId: phone, waAccessToken: '__pending__' },
+  })
+  res.json({ pending: true, phone })
 })
 
 router.patch('/connections/whatsapp', requireAuth, async (req, res) => {
@@ -36,8 +51,16 @@ router.patch('/connections/whatsapp', requireAuth, async (req, res) => {
   res.json({ connected: true, phoneNumberId: updated.waPhoneNumberId?.slice(0, 6) + '…' })
 })
 
+// Middleware: read JWT from ?token= query param (browser redirects can't set headers)
+function tokenFromQuery(req: any, _res: any, next: any) {
+  if (req.query.token && !req.headers.authorization) {
+    req.headers.authorization = `Bearer ${req.query.token}`
+  }
+  next()
+}
+
 // ── Facebook OAuth ─────────────────────────────────────────────────────────────
-router.get('/connections/facebook/oauth', requireAuth, (_req, res) => {
+router.get('/connections/facebook/oauth', tokenFromQuery, requireAuth, (_req, res) => {
   const appId      = process.env.FACEBOOK_APP_ID
   const apiBase    = process.env.API_URL || 'https://api-production-4c43.up.railway.app'
   const callbackUrl = encodeURIComponent(`${apiBase}/ai-suite/connections/facebook/callback`)
@@ -96,7 +119,7 @@ router.delete('/connections/facebook', requireAuth, async (_req, res) => {
 })
 
 // ── Instagram OAuth ────────────────────────────────────────────────────────────
-router.get('/connections/instagram/oauth', requireAuth, (_req, res) => {
+router.get('/connections/instagram/oauth', tokenFromQuery, requireAuth, (_req, res) => {
   const appId     = process.env.FACEBOOK_APP_ID
   const apiBase   = process.env.API_URL || 'https://api-production-4c43.up.railway.app'
   const callback  = encodeURIComponent(`${apiBase}/ai-suite/connections/instagram/callback`)
