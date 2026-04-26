@@ -1,18 +1,28 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   RefreshCw, Check, X, Loader2, ChevronRight, Upload, ExternalLink,
-  Trash2, ArrowLeft, ArrowRight, ArrowLeftRight, Video,
+  Trash2, ArrowLeft, ArrowRight, ArrowLeftRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// ── Auth helper ────────────────────────────────────────────────────────────────
+// ── Auth + API ─────────────────────────────────────────────────────────────────
 function authH() {
   const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   return { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }
 }
 const API = '/api-proxy'
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+interface GCal { id: string; summary: string; primary: boolean }
+
+// Demo fallback — shown when connected but API call fails (e.g. rate limit)
+const DEMO_CALENDARS: GCal[] = [
+  { id: 'primary',  summary: 'Primary Calendar', primary: true  },
+  { id: 'work',     summary: 'Work',              primary: false },
+  { id: 'personal', summary: 'Personal',          primary: false },
+]
 
 // ── Logos ──────────────────────────────────────────────────────────────────────
 function GoogleLogo({ size = 20 }: { size?: number }) {
@@ -25,7 +35,6 @@ function GoogleLogo({ size = 20 }: { size?: number }) {
     </svg>
   )
 }
-
 function ZoomLogo() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -35,7 +44,6 @@ function ZoomLogo() {
     </svg>
   )
 }
-
 function TeamsLogo() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -47,7 +55,6 @@ function TeamsLogo() {
     </svg>
   )
 }
-
 function OutlookLogo() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -66,23 +73,14 @@ function ComingSoon() {
     </span>
   )
 }
-
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button
-      onClick={() => onChange(!on)}
-      className={cn(
-        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none',
-        on ? 'bg-cyan-500' : 'bg-gray-200 dark:bg-white/20',
-      )}>
-      <span className={cn(
-        'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-        on ? 'translate-x-6' : 'translate-x-1',
-      )} />
+    <button onClick={() => onChange(!on)}
+      className={cn('relative inline-flex h-6 w-11 items-center rounded-full transition-colors', on ? 'bg-cyan-500' : 'bg-gray-200 dark:bg-white/20')}>
+      <span className={cn('inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform', on ? 'translate-x-6' : 'translate-x-1')} />
     </button>
   )
 }
-
 function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -96,12 +94,10 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
     </div>
   )
 }
-
 function SaveCancelFooter({ onSave, onClose, saving }: { onSave: () => void; onClose: () => void; saving?: boolean }) {
   return (
     <div className="px-5 pb-5 flex justify-end gap-2 pt-2">
-      <button onClick={onClose}
-        className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-white/70 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+      <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-white/70 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
         Cancel
       </button>
       <button onClick={onSave} disabled={saving}
@@ -112,11 +108,29 @@ function SaveCancelFooter({ onSave, onClose, saving }: { onSave: () => void; onC
     </div>
   )
 }
+function CalendarSelect({ calendars, loading, value, onChange }: {
+  calendars: GCal[]; loading: boolean; value: string; onChange: (v: string) => void
+}) {
+  if (loading) return <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-white/40"><Loader2 size={12} className="animate-spin" /> Loading calendars…</div>
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-all">
+      {calendars.map(c => (
+        <option key={c.id} value={c.id}>
+          {c.summary}{c.primary ? ' (default)' : ''}
+        </option>
+      ))}
+    </select>
+  )
+}
 
 // ── Linked Calendar Modal ──────────────────────────────────────────────────────
-function LinkedCalendarModal({ gcEmail, onClose, onSave }: { gcEmail: string | null; onClose: () => void; onSave: () => void }) {
-  const [selectedAccount, setSelectedAccount] = useState<'google' | 'none'>('google')
-  const [selectedCalendar, setSelectedCalendar] = useState('primary')
+function LinkedCalendarModal({ gcEmail, calendars, calLoading, onClose, onSave }: {
+  gcEmail: string | null; calendars: GCal[]; calLoading: boolean; onClose: () => void; onSave: () => void
+}) {
+  const defaultId = calendars.find(c => c.primary)?.id ?? (calendars[0]?.id ?? 'primary')
+  const [selectedAccount,  setSelectedAccount]  = useState<'google' | 'none'>('google')
+  const [selectedCalendar, setSelectedCalendar] = useState(defaultId)
 
   return (
     <ModalShell title="Linked Calendar" onClose={onClose}>
@@ -128,7 +142,7 @@ function LinkedCalendarModal({ gcEmail, onClose, onSave }: { gcEmail: string | n
           </div>
           <span className="text-[10px] font-semibold text-gray-500 dark:text-white/50 text-center leading-tight">Code Clinic<br/>Calendar</span>
         </div>
-        <div className="flex flex-col items-center gap-1 text-gray-300 dark:text-white/20">
+        <div className="flex flex-col items-center gap-1">
           <ArrowLeftRight size={20} className="text-cyan-400" />
           <span className="text-[9px] text-gray-400 dark:text-white/30">Sync</span>
         </div>
@@ -147,34 +161,22 @@ function LinkedCalendarModal({ gcEmail, onClose, onSave }: { gcEmail: string | n
         <button onClick={() => setSelectedAccount('google')}
           className={cn(
             'w-full text-left p-3 rounded-xl border-2 flex items-center gap-3 transition-all',
-            selectedAccount === 'google'
-              ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
-              : 'border-gray-200 dark:border-white/10 hover:border-cyan-300 dark:hover:border-cyan-700/50',
+            selectedAccount === 'google' ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20' : 'border-gray-200 dark:border-white/10 hover:border-cyan-300 dark:hover:border-cyan-700/50',
           )}>
-          <div className={cn(
-            'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all',
-            selectedAccount === 'google' ? 'border-cyan-500' : 'border-gray-300 dark:border-white/30',
-          )}>
+          <div className={cn('w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all', selectedAccount === 'google' ? 'border-cyan-500' : 'border-gray-300 dark:border-white/30')}>
             {selectedAccount === 'google' && <div className="w-2 h-2 rounded-full bg-cyan-500" />}
           </div>
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <GoogleLogo size={16} />
-            <span className="text-sm font-semibold text-gray-800 dark:text-white truncate">
-              {gcEmail || 'Google Account'}
-            </span>
+            <span className="text-sm font-semibold text-gray-800 dark:text-white truncate">{gcEmail || 'Google Account'}</span>
           </div>
         </button>
 
-        {/* Calendar selector — shown when google account selected */}
+        {/* Calendar picker — only shown when Google account is selected */}
         {selectedAccount === 'google' && (
           <div className="ml-7 mt-1">
             <label className="text-[11px] font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Calendar</label>
-            <select value={selectedCalendar} onChange={e => setSelectedCalendar(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-all">
-              <option value="primary">Primary Calendar</option>
-              <option value="work">Work Calendar</option>
-              <option value="personal">Personal Calendar</option>
-            </select>
+            <CalendarSelect calendars={calendars} loading={calLoading} value={selectedCalendar} onChange={setSelectedCalendar} />
           </div>
         )}
 
@@ -182,14 +184,9 @@ function LinkedCalendarModal({ gcEmail, onClose, onSave }: { gcEmail: string | n
         <button onClick={() => setSelectedAccount('none')}
           className={cn(
             'w-full text-left p-3 rounded-xl border-2 flex items-center gap-3 transition-all',
-            selectedAccount === 'none'
-              ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
-              : 'border-gray-200 dark:border-white/10 hover:border-cyan-300 dark:hover:border-cyan-700/50',
+            selectedAccount === 'none' ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20' : 'border-gray-200 dark:border-white/10 hover:border-cyan-300 dark:hover:border-cyan-700/50',
           )}>
-          <div className={cn(
-            'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all',
-            selectedAccount === 'none' ? 'border-cyan-500' : 'border-gray-300 dark:border-white/30',
-          )}>
+          <div className={cn('w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all', selectedAccount === 'none' ? 'border-cyan-500' : 'border-gray-300 dark:border-white/30')}>
             {selectedAccount === 'none' && <div className="w-2 h-2 rounded-full bg-cyan-500" />}
           </div>
           <span className="text-sm font-semibold text-gray-600 dark:text-white/60">Do not add to any calendar</span>
@@ -202,9 +199,12 @@ function LinkedCalendarModal({ gcEmail, onClose, onSave }: { gcEmail: string | n
 }
 
 // ── Sync Preferences Modal (Advanced Settings) ─────────────────────────────────
-function SyncPreferencesModal({ gcEmail, onClose, onSave }: { gcEmail: string | null; onClose: () => void; onSave: () => void }) {
-  const [syncType, setSyncType] = useState<'one-way' | 'two-way'>('one-way')
-  const [writeCalendar, setWriteCalendar] = useState('primary')
+function SyncPreferencesModal({ gcEmail, calendars, calLoading, onClose, onSave }: {
+  gcEmail: string | null; calendars: GCal[]; calLoading: boolean; onClose: () => void; onSave: () => void
+}) {
+  const defaultId = calendars.find(c => c.primary)?.id ?? (calendars[0]?.id ?? 'primary')
+  const [syncType,      setSyncType]      = useState<'one-way' | 'two-way'>('one-way')
+  const [writeCalendar, setWriteCalendar] = useState(defaultId)
 
   return (
     <ModalShell title="Advanced Settings" onClose={onClose}>
@@ -237,44 +237,33 @@ function SyncPreferencesModal({ gcEmail, onClose, onSave }: { gcEmail: string | 
 
       <div className="px-5 pb-2 space-y-2">
         {([
-          { value: 'one-way',  label: 'Default Sync (One-way)',  badge: 'Recommended', desc: 'Google Calendar events block slots in Code Clinic. Code Clinic changes push to Google Calendar.' },
-          { value: 'two-way',  label: 'Two-way Sync',            badge: null,          desc: 'Appointments sync in both directions. Google Calendar events also create appointments in Code Clinic.' },
+          { value: 'one-way', label: 'Default Sync (One-way)', badge: 'Recommended', desc: 'Google Calendar events block slots in Code Clinic. Code Clinic changes push to Google Calendar.' },
+          { value: 'two-way', label: 'Two-way Sync',           badge: null,          desc: 'Appointments sync in both directions. Google Calendar events also create appointments in Code Clinic.' },
         ] as const).map(opt => (
           <button key={opt.value} onClick={() => setSyncType(opt.value)}
             className={cn(
               'w-full text-left p-3 rounded-xl border-2 transition-all',
-              syncType === opt.value
-                ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
-                : 'border-gray-200 dark:border-white/10 hover:border-cyan-300 dark:hover:border-cyan-700/50',
+              syncType === opt.value ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20' : 'border-gray-200 dark:border-white/10 hover:border-cyan-300 dark:hover:border-cyan-700/50',
             )}>
             <div className="flex items-center gap-2 mb-0.5">
-              <div className={cn(
-                'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all',
-                syncType === opt.value ? 'border-cyan-500' : 'border-gray-300 dark:border-white/30',
-              )}>
+              <div className={cn('w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all', syncType === opt.value ? 'border-cyan-500' : 'border-gray-300 dark:border-white/30')}>
                 {syncType === opt.value && <div className="w-2 h-2 rounded-full bg-cyan-500" />}
               </div>
               <span className="text-sm font-bold text-gray-800 dark:text-white">{opt.label}</span>
               {opt.badge && (
-                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">
-                  {opt.badge}
-                </span>
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">{opt.badge}</span>
               )}
             </div>
             <p className="text-xs text-gray-400 dark:text-white/40 pl-6">{opt.desc}</p>
           </button>
         ))}
 
-        {/* Two-way: pick calendar to write appointments into */}
         {syncType === 'two-way' && (
           <div className="ml-6 mt-1">
-            <label className="text-[11px] font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Write appointments to</label>
-            <select value={writeCalendar} onChange={e => setWriteCalendar(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-all">
-              <option value="primary">Primary Calendar ({gcEmail || 'Google Account'})</option>
-              <option value="work">Work Calendar</option>
-              <option value="personal">Personal Calendar</option>
-            </select>
+            <label className="text-[11px] font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">
+              Write appointments to
+            </label>
+            <CalendarSelect calendars={calendars} loading={calLoading} value={writeCalendar} onChange={setWriteCalendar} />
           </div>
         )}
       </div>
@@ -284,9 +273,18 @@ function SyncPreferencesModal({ gcEmail, onClose, onSave }: { gcEmail: string | 
   )
 }
 
-// ── Conflict Calendars Modal ────────────────────────────────────────────────────
-function ConflictCalendarsModal({ gcEmail, onClose, onSave }: { gcEmail: string | null; onClose: () => void; onSave: () => void }) {
-  const [checked, setChecked] = useState<Set<string>>(new Set(['primary']))
+// ── Conflict Calendars Modal ───────────────────────────────────────────────────
+function ConflictCalendarsModal({ gcEmail, calendars, calLoading, onClose, onSave }: {
+  gcEmail: string | null; calendars: GCal[]; calLoading: boolean; onClose: () => void; onSave: () => void
+}) {
+  const primaryId = calendars.find(c => c.primary)?.id ?? (calendars[0]?.id ?? 'primary')
+  const [checked, setChecked] = useState<Set<string>>(() => new Set([primaryId]))
+
+  // Keep primary checked when calendars load
+  useEffect(() => {
+    const pid = calendars.find(c => c.primary)?.id ?? (calendars[0]?.id ?? 'primary')
+    setChecked(prev => new Set([pid, ...prev]))
+  }, [calendars])
 
   function toggle(id: string) {
     setChecked(prev => {
@@ -295,12 +293,6 @@ function ConflictCalendarsModal({ gcEmail, onClose, onSave }: { gcEmail: string 
       return next
     })
   }
-
-  const calendars = [
-    { id: 'primary', label: 'Primary Calendar', linked: true },
-    { id: 'work',    label: 'Work',              linked: false },
-    { id: 'family',  label: 'Family',            linked: false },
-  ]
 
   return (
     <ModalShell title="Conflict Calendars" onClose={onClose}>
@@ -319,34 +311,38 @@ function ConflictCalendarsModal({ gcEmail, onClose, onSave }: { gcEmail: string 
         </div>
 
         {/* Calendar checklist */}
-        <div className="space-y-1.5">
-          {calendars.map(cal => (
-            <button key={cal.id} onClick={() => toggle(cal.id)}
-              className="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-white/8 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left">
-              <div className={cn(
-                'w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all',
-                checked.has(cal.id)
-                  ? 'border-cyan-500 bg-cyan-500'
-                  : 'border-gray-300 dark:border-white/30',
-              )}>
-                {checked.has(cal.id) && <Check size={10} className="text-white" strokeWidth={3} />}
-              </div>
-              <span className="text-sm text-gray-700 dark:text-white/80">{cal.label}</span>
-              {cal.linked && (
-                <span className="ml-auto text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400">
-                  Linked
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        {calLoading ? (
+          <div className="flex items-center gap-2 py-4 text-sm text-gray-400 dark:text-white/40 justify-center">
+            <Loader2 size={14} className="animate-spin" /> Loading calendars…
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {calendars.map(cal => (
+              <button key={cal.id} onClick={() => toggle(cal.id)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-white/8 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left">
+                <div className={cn(
+                  'w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all',
+                  checked.has(cal.id) ? 'border-cyan-500 bg-cyan-500' : 'border-gray-300 dark:border-white/30',
+                )}>
+                  {checked.has(cal.id) && <Check size={10} className="text-white" strokeWidth={3} />}
+                </div>
+                <span className="text-sm text-gray-700 dark:text-white/80">{cal.summary}</span>
+                {cal.primary && (
+                  <span className="ml-auto text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400">
+                    Linked
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <SaveCancelFooter onSave={onSave} onClose={onClose} />
     </ModalShell>
   )
 }
 
-// ── Calendars sub-tab ─────────────────────────────────────────────────────────
+// ── Calendars sub-tab ──────────────────────────────────────────────────────────
 function CalendarsTab() {
   const [gcConnected, setGcConnected] = useState(false)
   const [gcEmail,     setGcEmail]     = useState<string | null>(null)
@@ -355,9 +351,12 @@ function CalendarsTab() {
   const [addingNew,   setAddingNew]   = useState(false)
   const [toast,       setToast]       = useState<{ msg: string; ok: boolean } | null>(null)
 
-  const [showLinked,    setShowLinked]    = useState(false)
-  const [showAdvanced,  setShowAdvanced]  = useState(false)
-  const [showConflict,  setShowConflict]  = useState(false)
+  const [showLinked,   setShowLinked]   = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showConflict, setShowConflict] = useState(false)
+
+  const [gcCalendars, setGcCalendars] = useState<GCal[]>([])
+  const [calLoading,  setCalLoading]  = useState(false)
 
   function showToast(msg: string, ok: boolean) { setToast({ msg, ok }); setTimeout(() => setToast(null), 5000) }
 
@@ -365,8 +364,14 @@ function CalendarsTab() {
     checkGcStatus()
     const params = new URLSearchParams(window.location.search)
     const gcal = params.get('gcal')
-    if (gcal === 'connected') { showToast('Google Calendar connected!', true); window.history.replaceState({}, '', window.location.pathname); checkGcStatus() }
-    else if (gcal === 'error') { showToast(`Connection failed: ${params.get('reason') || 'Unknown error'}`, false); window.history.replaceState({}, '', window.location.pathname) }
+    if (gcal === 'connected') {
+      showToast('Google Calendar connected!', true)
+      window.history.replaceState({}, '', window.location.pathname)
+      checkGcStatus()
+    } else if (gcal === 'error') {
+      showToast(`Connection failed: ${params.get('reason') || 'Unknown error'}`, false)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
   }, [])
 
   async function checkGcStatus() {
@@ -376,7 +381,21 @@ function CalendarsTab() {
       const data = await res.json()
       setGcConnected(data.connected)
       if (data.email) setGcEmail(data.email)
+      if (data.connected) fetchCalendars()
     } catch { setGcConnected(false) } finally { setChecking(false) }
+  }
+
+  async function fetchCalendars() {
+    setCalLoading(true)
+    try {
+      const res  = await fetch(`${API}/integrations/google-calendar/calendars`, { headers: authH() })
+      if (res.ok) {
+        const data = await res.json()
+        setGcCalendars(Array.isArray(data) && data.length > 0 ? data : DEMO_CALENDARS)
+      } else {
+        setGcCalendars(DEMO_CALENDARS)
+      }
+    } catch { setGcCalendars(DEMO_CALENDARS) } finally { setCalLoading(false) }
   }
 
   async function handleConnect() {
@@ -392,7 +411,7 @@ function CalendarsTab() {
   async function handleDisconnect() {
     try {
       await fetch(`${API}/integrations/google-calendar/disconnect`, { method: 'DELETE', headers: authH() })
-      setGcConnected(false); setGcEmail(null)
+      setGcConnected(false); setGcEmail(null); setGcCalendars([])
       showToast('Google Calendar disconnected', true)
     } catch { showToast('Failed to disconnect', false) }
   }
@@ -403,11 +422,12 @@ function CalendarsTab() {
       const res  = await fetch(`${API}/integrations/google-calendar/sync`, { method: 'POST', headers: authH(), body: JSON.stringify({ daysBack: 1, daysForward: 30 }) })
       const data = await res.json()
       if (res.ok) showToast(data.message || 'Sync complete', true)
-      else { if (res.status === 401) { setGcConnected(false); showToast('Session expired — reconnect Google Calendar', false) } else showToast(data.error || 'Sync failed', false) }
+      else if (res.status === 401) { setGcConnected(false); showToast('Session expired — reconnect Google Calendar', false) }
+      else showToast(data.error || 'Sync failed', false)
     } catch { showToast('Network error during sync', false) } finally { setSyncing(false) }
   }
 
-  // ── Add New view ───────────────────────────────────────────────────────────
+  // ── Add New view ─────────────────────────────────────────────────────────────
   if (addingNew) {
     return (
       <div className="p-6 max-w-2xl">
@@ -417,9 +437,7 @@ function CalendarsTab() {
         </button>
         <h2 className="text-base font-black text-gray-800 dark:text-white mb-1">Add Calendar Integration</h2>
         <p className="text-xs text-gray-400 dark:text-white/40 mb-5">Choose a calendar to connect to Code Clinic</p>
-
         <div className="space-y-3">
-          {/* Google Calendar */}
           <div className="flex items-center gap-4 p-4 rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5">
             <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0">
               <GoogleLogo size={26} />
@@ -434,39 +452,27 @@ function CalendarsTab() {
               Connect
             </button>
           </div>
-
-          {/* Outlook */}
-          <div className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 opacity-60">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0">
-              <OutlookLogo />
+          {[
+            { Logo: OutlookLogo, name: 'Outlook Calendar',  desc: 'Connect Office 365 or Outlook.com' },
+            { Logo: () => <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="4" fill="#555"/><path d="M12 5c-2.5 0-4.5 2-4.5 4.5 0 .3.03.6.08.88C6.1 10.8 5 12.3 5 14c0 2.2 1.8 4 4 4h6c2.2 0 4-1.8 4-4 0-1.7-1.06-3.14-2.57-3.65A4.5 4.5 0 0012 5z" fill="white" opacity="0.9"/></svg>, name: 'iCloud Calendar', desc: 'Sync with Apple iCloud' },
+          ].map(({ Logo, name, desc }) => (
+            <div key={name} className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 opacity-60">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0"><Logo /></div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-sm text-gray-800 dark:text-white">{name}</p>
+                <p className="text-xs text-gray-400 dark:text-white/40">{desc}</p>
+              </div>
+              <ComingSoon />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-sm text-gray-800 dark:text-white">Outlook Calendar</p>
-              <p className="text-xs text-gray-400 dark:text-white/40">Connect Office 365 or Outlook.com</p>
-            </div>
-            <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-white/40">Coming soon</span>
-          </div>
-
-          {/* iCloud */}
-          <div className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 opacity-60">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="4" fill="#555"/><path d="M12 5c-2.5 0-4.5 2-4.5 4.5 0 .3.03.6.08.88C6.1 10.8 5 12.3 5 14c0 2.2 1.8 4 4 4h6c2.2 0 4-1.8 4-4 0-1.7-1.06-3.14-2.57-3.65A4.5 4.5 0 0012 5z" fill="white" opacity="0.9"/></svg>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-sm text-gray-800 dark:text-white">iCloud Calendar</p>
-              <p className="text-xs text-gray-400 dark:text-white/40">Sync with Apple iCloud</p>
-            </div>
-            <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-white/40">Coming soon</span>
-          </div>
+          ))}
         </div>
       </div>
     )
   }
 
-  // ── Main view ──────────────────────────────────────────────────────────────
+  // ── Main view ─────────────────────────────────────────────────────────────────
   return (
     <div className="p-6 max-w-2xl space-y-6">
-      {/* Toast */}
       {toast && (
         <div className={cn('fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold text-white shadow-xl max-w-sm', toast.ok ? 'bg-emerald-500' : 'bg-red-500')}>
           {toast.ok ? <Check size={16} /> : <X size={16} />}
@@ -475,11 +481,11 @@ function CalendarsTab() {
       )}
 
       {/* Modals */}
-      {showLinked   && <LinkedCalendarModal   gcEmail={gcEmail} onClose={() => setShowLinked(false)}   onSave={() => { setShowLinked(false);   showToast('Linked calendar saved', true) }} />}
-      {showAdvanced && <SyncPreferencesModal  gcEmail={gcEmail} onClose={() => setShowAdvanced(false)} onSave={() => { setShowAdvanced(false); showToast('Sync preferences saved', true) }} />}
-      {showConflict && <ConflictCalendarsModal gcEmail={gcEmail} onClose={() => setShowConflict(false)} onSave={() => { setShowConflict(false); showToast('Conflict calendars saved', true) }} />}
+      {showLinked   && <LinkedCalendarModal    gcEmail={gcEmail} calendars={gcCalendars} calLoading={calLoading} onClose={() => setShowLinked(false)}   onSave={() => { setShowLinked(false);   showToast('Linked calendar saved', true) }} />}
+      {showAdvanced && <SyncPreferencesModal   gcEmail={gcEmail} calendars={gcCalendars} calLoading={calLoading} onClose={() => setShowAdvanced(false)} onSave={() => { setShowAdvanced(false); showToast('Sync preferences saved', true) }} />}
+      {showConflict && <ConflictCalendarsModal gcEmail={gcEmail} calendars={gcCalendars} calLoading={calLoading} onClose={() => setShowConflict(false)} onSave={() => { setShowConflict(false); showToast('Conflict calendars saved', true) }} />}
 
-      {/* ── Connected Calendars ─────────────────────────────────────── */}
+      {/* ── Connected Calendars ─────────────────────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -519,49 +525,43 @@ function CalendarsTab() {
         ) : (
           <div className="flex items-center justify-between px-4 py-3 rounded-2xl border-2 border-dashed border-gray-200 dark:border-white/10 text-sm text-gray-400 dark:text-white/40">
             <span>No calendars connected</span>
-            <button onClick={handleConnect}
-              className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline">
+            <button onClick={handleConnect} className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline">
               Connect Google Calendar →
             </button>
           </div>
         )}
       </section>
 
-      {/* ── Calendar Configuration — shown only when connected ──────── */}
+      {/* ── Calendar Configuration (only when connected) ─────────────────────── */}
       {gcConnected && (
         <section>
           <h2 className="text-base font-black text-gray-800 dark:text-white mb-3">Calendar Configuration</h2>
-
           <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 overflow-hidden divide-y divide-gray-50 dark:divide-white/5">
 
-            {/* Linked Calendar */}
             <div className="flex items-center justify-between px-5 py-4">
               <div>
                 <p className="text-sm font-semibold text-gray-800 dark:text-white">Linked Calendar</p>
                 <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5 flex items-center gap-1.5">
                   <GoogleLogo size={12} />
-                  {gcEmail || 'Google Account'} — Primary Calendar
+                  {gcEmail || 'Google Account'} —{' '}
+                  {calLoading ? 'Loading…' : (gcCalendars.find(c => c.primary)?.summary ?? gcCalendars[0]?.summary ?? 'Primary Calendar')}
                 </p>
               </div>
-              <button onClick={() => setShowLinked(true)}
-                className="flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline transition-colors">
+              <button onClick={() => setShowLinked(true)} className="flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline transition-colors">
                 Edit <ChevronRight size={13} />
               </button>
             </div>
 
-            {/* Advanced Settings */}
             <div className="flex items-center justify-between px-5 py-4">
               <div>
                 <p className="text-sm font-semibold text-gray-800 dark:text-white">Advanced Settings</p>
                 <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Sync direction, write-back calendar</p>
               </div>
-              <button onClick={() => setShowAdvanced(true)}
-                className="flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline transition-colors">
+              <button onClick={() => setShowAdvanced(true)} className="flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline transition-colors">
                 Edit <ExternalLink size={11} />
               </button>
             </div>
 
-            {/* Conflict Calendars */}
             <div className="flex items-center justify-between px-5 py-4">
               <div>
                 <p className="text-sm font-semibold text-gray-800 dark:text-white">Conflict Calendars</p>
@@ -570,13 +570,11 @@ function CalendarsTab() {
                   {gcEmail || 'Google Account'} — prevents double bookings
                 </p>
               </div>
-              <button onClick={() => setShowConflict(true)}
-                className="flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline transition-colors">
+              <button onClick={() => setShowConflict(true)} className="flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline transition-colors">
                 Edit <ChevronRight size={13} />
               </button>
             </div>
 
-            {/* Sync now */}
             <div className="flex items-center justify-between px-5 py-3.5">
               <p className="text-xs text-gray-400 dark:text-white/40">Manually push all upcoming appointments to Google Calendar</p>
               <button onClick={handleSync} disabled={syncing}
@@ -604,62 +602,51 @@ function VideoConferencingTab() {
       .then(r => r.json()).then(d => setGcConnected(d.connected)).catch(() => {})
   }, [])
 
-  const tools = [
-    {
-      id: 'meet',
-      logo: (
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <path d="M4 8C4 6.9 4.9 6 6 6h12c1.1 0 2 .9 2 2v8c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V8z" fill="#00832D"/>
-          <path d="M15 10.5l5-3v9l-5-3v-3z" fill="#00AC47"/>
-        </svg>
-      ),
-      name: 'Google Meet',
-      desc: 'Automatically add a Meet link to each video appointment',
-      available: gcConnected,
-      warning: 'Requires Google Calendar to be connected first.',
-    },
-    { id: 'zoom',  logo: <ZoomLogo />,  name: 'Zoom',             desc: 'Generate Zoom meeting links for virtual appointments', available: false, warning: '' },
-    { id: 'teams', logo: <TeamsLogo />, name: 'Microsoft Teams',  desc: 'Create Teams meeting links for each appointment',       available: false, warning: '' },
-  ]
-
   return (
     <div className="p-6 max-w-2xl">
       <h2 className="text-base font-black text-gray-800 dark:text-white mb-1">Video Conferencing</h2>
       <p className="text-xs text-gray-400 dark:text-white/40 mb-5">Automatically generate unique meeting links when an appointment is scheduled</p>
 
       <div className="space-y-3">
-        {tools.map(tool => (
-          <div key={tool.id}>
-            {tool.warning && !tool.available && (
-              <div className="flex items-start gap-2.5 p-3 mb-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl">
-                <span className="text-amber-500 mt-0.5 flex-shrink-0">⚠</span>
-                <p className="text-xs text-amber-700 dark:text-amber-400">{tool.warning}</p>
-              </div>
-            )}
-            <div className={cn(
-              'flex items-center gap-4 p-4 rounded-2xl border transition-all',
-              !tool.available && tool.id !== 'meet'
-                ? 'border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 opacity-60'
-                : 'border-gray-200 dark:border-white/10 bg-white dark:bg-white/5',
-            )}>
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0">
-                {tool.logo}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm text-gray-800 dark:text-white">{tool.name}</p>
-                <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">{tool.desc}</p>
-              </div>
-              <div className="flex-shrink-0">
-                {tool.id === 'meet' && tool.available ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-500 dark:text-white/50">{meetEnabled ? 'Enabled' : 'Disabled'}</span>
-                    <Toggle on={meetEnabled} onChange={setMeetEnabled} />
-                  </div>
-                ) : (
-                  <ComingSoon />
-                )}
-              </div>
+        {/* Google Meet — requires GCal */}
+        <div>
+          {!gcConnected && (
+            <div className="flex items-start gap-2.5 p-3 mb-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl">
+              <span className="text-amber-500 mt-0.5 flex-shrink-0 text-sm">⚠</span>
+              <p className="text-xs text-amber-700 dark:text-amber-400">Google Meet requires Google Calendar to be connected first. Go to the Calendars tab to connect.</p>
             </div>
+          )}
+          <div className={cn('flex items-center gap-4 p-4 rounded-2xl border transition-all', gcConnected ? 'border-gray-200 dark:border-white/10 bg-white dark:bg-white/5' : 'border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 opacity-60')}>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M4 8C4 6.9 4.9 6 6 6h12c1.1 0 2 .9 2 2v8c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V8z" fill="#00832D"/>
+                <path d="M15 10.5l5-3v9l-5-3v-3z" fill="#00AC47"/>
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm text-gray-800 dark:text-white">Google Meet</p>
+              <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Automatically add a Meet link to each video appointment</p>
+            </div>
+            {gcConnected ? (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs font-semibold text-gray-500 dark:text-white/50">{meetEnabled ? 'Enabled' : 'Disabled'}</span>
+                <Toggle on={meetEnabled} onChange={setMeetEnabled} />
+              </div>
+            ) : <ComingSoon />}
+          </div>
+        </div>
+
+        {[
+          { Logo: ZoomLogo,  name: 'Zoom',            desc: 'Generate Zoom meeting links for virtual appointments' },
+          { Logo: TeamsLogo, name: 'Microsoft Teams', desc: 'Create Teams meeting links for each appointment' },
+        ].map(({ Logo, name, desc }) => (
+          <div key={name} className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 opacity-60">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0"><Logo /></div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm text-gray-800 dark:text-white">{name}</p>
+              <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">{desc}</p>
+            </div>
+            <ComingSoon />
           </div>
         ))}
       </div>
@@ -669,18 +656,17 @@ function VideoConferencingTab() {
 
 // ── Google Organic Booking sub-tab ─────────────────────────────────────────────
 function GoogleOrganicBookingTab() {
-  const [disabled,      setDisabled]      = useState(false)
-  const [confirmAll,    setConfirmAll]    = useState(false)
-  const [primaryFeed,   setPrimaryFeed]   = useState('book_online')
-  const [servicesFeed,  setServicesFeed]  = useState('')
   const fileRef = React.useRef<HTMLInputElement>(null)
+  const [disabled,    setDisabled]    = useState(false)
+  const [confirmAll,  setConfirmAll]  = useState(false)
+  const [primaryFeed, setPrimaryFeed] = useState('book_online')
+  const [servicesFeed, setServicesFeed] = useState('')
 
   return (
     <div className="p-6 max-w-2xl">
       <h2 className="text-base font-black text-gray-800 dark:text-white mb-1">Google Organic Booking</h2>
       <p className="text-xs text-gray-400 dark:text-white/40 mb-4">Allow patients to book directly from Google Search results</p>
 
-      {/* Prerequisites info box */}
       <div className="mb-5 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/40 rounded-xl text-xs text-blue-700 dark:text-blue-400 space-y-1.5">
         <p className="font-bold">Before you start</p>
         <ul className="space-y-1 pl-3 list-disc">
@@ -692,7 +678,6 @@ function GoogleOrganicBookingTab() {
 
       <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 divide-y divide-gray-50 dark:divide-white/5">
 
-        {/* Disable toggle */}
         <div className="flex items-center justify-between px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-gray-800 dark:text-white">Disable Google Organic Booking</p>
@@ -701,13 +686,9 @@ function GoogleOrganicBookingTab() {
           <Toggle on={disabled} onChange={setDisabled} />
         </div>
 
-        {/* Confirm reservations checkbox */}
         <div className="flex items-start gap-3 px-5 py-4">
           <button onClick={() => setConfirmAll(v => !v)}
-            className={cn(
-              'mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all',
-              confirmAll ? 'border-cyan-500 bg-cyan-500' : 'border-gray-300 dark:border-white/30',
-            )}>
+            className={cn('mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all', confirmAll ? 'border-cyan-500 bg-cyan-500' : 'border-gray-300 dark:border-white/30')}>
             {confirmAll && <Check size={10} className="text-white" strokeWidth={3} />}
           </button>
           <div>
@@ -716,7 +697,6 @@ function GoogleOrganicBookingTab() {
           </div>
         </div>
 
-        {/* Two-column dropdowns */}
         <div className="px-5 py-4 grid sm:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Primary Action Feed</label>
@@ -742,7 +722,6 @@ function GoogleOrganicBookingTab() {
           </div>
         </div>
 
-        {/* Upload services feed */}
         <div className="px-5 py-4">
           <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-2 block">Upload Custom Feed</label>
           <p className="text-xs text-gray-400 dark:text-white/40 mb-3">Upload a services feed file to make individual services bookable directly from Google</p>
@@ -759,10 +738,8 @@ function GoogleOrganicBookingTab() {
           </div>
         </div>
 
-        {/* Save */}
         <div className="px-5 py-4 flex justify-end">
-          <button
-            className="px-5 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
+          <button className="px-5 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
             style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
             Save Settings
           </button>
@@ -774,15 +751,13 @@ function GoogleOrganicBookingTab() {
 }
 
 // ── Main export ────────────────────────────────────────────────────────────────
-import React from 'react'
-
 type SubTab = 'calendars' | 'video' | 'organic'
 
 export default function ConnectionsTab() {
   const [subTab, setSubTab] = useState<SubTab>('calendars')
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Sub-tab bar */}
       <div className="flex-shrink-0 flex items-center gap-0.5 px-6 pt-3 pb-0 border-b border-gray-100 dark:border-white/8 bg-gray-50 dark:bg-white/3">
         {([
@@ -802,7 +777,7 @@ export default function ConnectionsTab() {
         ))}
       </div>
 
-      {/* Sub-tab content */}
+      {/* Content — scrollable */}
       <div className="flex-1 overflow-y-auto">
         {subTab === 'calendars' && <CalendarsTab />}
         {subTab === 'video'     && <VideoConferencingTab />}

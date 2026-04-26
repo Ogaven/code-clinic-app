@@ -75,7 +75,9 @@ router.get('/google-calendar/status', requireAuth, async (_req, res) => {
   const tokens = await loadTokens()
   if (!tokens) return res.json({ connected: false })
   const emailRow = await prisma.$queryRaw<{ value: string }[]>`SELECT value FROM app_settings WHERE key = 'gcal_email' LIMIT 1`.catch(() => [])
-  const email = emailRow.length ? emailRow[0].value : null
+  let email: string | null = emailRow.length ? emailRow[0].value : null
+  // Handle legacy rows that were stored with JSON.stringify (have surrounding quotes)
+  if (email) { try { email = JSON.parse(email) } catch { /* raw value is fine */ } }
   res.json({
     connected:  true,
     email,
@@ -149,10 +151,9 @@ router.get('/google-calendar/callback', async (req, res) => {
       const info   = await oauth2.userinfo.get()
       const email  = info.data.email
       if (email) {
-        const v = JSON.stringify(email)
         await prisma.$executeRaw`
-          INSERT INTO app_settings (key, value, "updatedAt") VALUES ('gcal_email', ${v}, NOW())
-          ON CONFLICT (key) DO UPDATE SET value = ${v}, "updatedAt" = NOW()
+          INSERT INTO app_settings (key, value, "updatedAt") VALUES ('gcal_email', ${email}, NOW())
+          ON CONFLICT (key) DO UPDATE SET value = ${email}, "updatedAt" = NOW()
         `
         console.log('[GCal] Connected as', email)
       }
@@ -248,6 +249,30 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
       return res.status(401).json({ error: 'Google session expired — please reconnect.' })
     }
     res.status(500).json({ error: 'Sync failed: ' + e.message })
+  }
+})
+
+// ─── GET /integrations/google-calendar/calendars ─────────────
+// Returns the list of calendars in the connected Google account
+router.get('/google-calendar/calendars', requireAuth, async (_req, res) => {
+  const auth = await getAuthedClient()
+  if (!auth) return res.status(401).json({ error: 'Google Calendar not connected' })
+  try {
+    const calendar = google.calendar({ version: 'v3', auth })
+    const r = await calendar.calendarList.list({ maxResults: 50 })
+    const items = (r.data.items || []).map(c => ({
+      id:      c.id!,
+      summary: c.summary || c.id || 'Calendar',
+      primary: !!c.primary,
+    }))
+    res.json(items)
+  } catch (e: any) {
+    console.error('[GCal] calendars error:', e.message)
+    if (e.code === 401 || e.message?.includes('invalid_grant')) {
+      await deleteTokens()
+      return res.status(401).json({ error: 'Google session expired — please reconnect.' })
+    }
+    res.status(500).json({ error: e.message })
   }
 })
 

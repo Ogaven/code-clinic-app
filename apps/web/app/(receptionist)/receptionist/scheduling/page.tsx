@@ -60,7 +60,7 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden flex flex-col">
         {tab === 'calendar' && (
           <MultiDoctorCalendar
             key={refreshKey}
