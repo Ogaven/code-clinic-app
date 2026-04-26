@@ -255,8 +255,48 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
 // ─── GET /integrations/google-calendar/calendars ─────────────
 // Returns the list of calendars in the connected Google account
 router.get('/google-calendar/calendars', requireAuth, async (_req, res) => {
-  const auth = await getAuthedClient()
-  if (!auth) return res.status(401).json({ error: 'Google Calendar not connected' })
+  const tokens = await loadTokens()
+  if (!tokens) {
+    console.log('[GCal] calendars: no tokens stored — not connected')
+    return res.status(401).json({ error: 'Google Calendar not connected' })
+  }
+
+  console.log('[GCal] calendars: access_token=%s refresh_token=%s expiry=%s',
+    tokens.access_token ? 'present' : 'MISSING',
+    tokens.refresh_token ? 'present' : 'MISSING',
+    tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : 'none',
+  )
+
+  const auth = makeOAuth2Client()
+  auth.setCredentials(tokens)
+  auth.on('tokens', async (t) => {
+    const current = await loadTokens()
+    await saveTokens({ ...current, ...t })
+    console.log('[GCal] calendars: auto-refreshed tokens saved, expiry=%s',
+      t.expiry_date ? new Date(t.expiry_date).toISOString() : 'none')
+  })
+
+  // Proactively refresh if the access token is already expired
+  if (tokens.expiry_date && Date.now() >= tokens.expiry_date) {
+    console.log('[GCal] calendars: access token expired — refreshing proactively')
+    if (!tokens.refresh_token) {
+      console.error('[GCal] calendars: no refresh_token available — reconnect required')
+      return res.status(401).json({ error: 'Google session expired — please reconnect.' })
+    }
+    try {
+      const { credentials } = await auth.refreshAccessToken()
+      const merged = { ...tokens, ...credentials }
+      await saveTokens(merged)
+      auth.setCredentials(merged)
+      console.log('[GCal] calendars: proactive refresh succeeded, new expiry=%s',
+        credentials.expiry_date ? new Date(credentials.expiry_date).toISOString() : 'none')
+    } catch (refreshErr: any) {
+      console.error('[GCal] calendars: proactive refresh failed:', refreshErr.message)
+      await deleteTokens()
+      return res.status(401).json({ error: 'Google session expired — please reconnect.' })
+    }
+  }
+
   try {
     const calendar = google.calendar({ version: 'v3', auth })
     const r = await calendar.calendarList.list({ maxResults: 50 })
@@ -265,14 +305,15 @@ router.get('/google-calendar/calendars', requireAuth, async (_req, res) => {
       summary: c.summary || c.id || 'Calendar',
       primary: !!c.primary,
     }))
+    console.log('[GCal] calendars: fetched %d calendars', items.length)
     res.json(items)
   } catch (e: any) {
-    console.error('[GCal] calendars error:', e.message)
-    if (e.code === 401 || e.message?.includes('invalid_grant')) {
+    console.error('[GCal] calendars error — code=%s status=%s message=%s', e.code, e.status, e.message)
+    if (e.code === 401 || e.status === 401 || e.message?.includes('invalid_grant')) {
       await deleteTokens()
       return res.status(401).json({ error: 'Google session expired — please reconnect.' })
     }
-    res.status(500).json({ error: e.message })
+    res.status(500).json({ error: e.message || 'Unknown error fetching calendars' })
   }
 })
 
