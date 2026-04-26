@@ -39,6 +39,8 @@ import debtRouter        from './ai-suite/debt/debt.routes'
 import voiceRouter       from './ai-suite/voice/voice.routes'
 import agentControlRouter from './ai-suite/agent-control/agent-control.routes'
 import facebookRouter    from './ai-suite/facebook/facebook.routes'
+import configRouter      from './ai-suite/config/config.routes'
+import connectionsRouter from './ai-suite/connections/connections.routes'
 import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
 
 // Schedulers
@@ -152,6 +154,14 @@ app.use('/ai-suite/voice',        voiceRouter)
 //                   POST /ai-suite/agents/:name/toggle
 //                   GET/POST /ai-suite/agents/escalation
 app.use('/ai-suite',              agentControlRouter)
+// Agent config:     GET/PATCH /ai-suite/config
+app.use('/ai-suite',              configRouter)
+// Connections:      GET/PATCH /ai-suite/connections/whatsapp
+//                   GET/DELETE /ai-suite/connections/facebook/status
+//                   GET/DELETE /ai-suite/connections/instagram/status
+//                   GET/PATCH /ai-suite/connections/sms
+//                   GET/POST/PATCH/DELETE /ai-suite/connections/sip-trunks
+app.use('/ai-suite',              connectionsRouter)
 // Facebook/Instagram webhooks: GET/POST /ai-suite/facebook/webhook
 //                              GET/POST /ai-suite/instagram/webhook
 app.use('/ai-suite',              facebookRouter)

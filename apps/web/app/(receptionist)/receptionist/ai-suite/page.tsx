@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bot, Phone, AlertTriangle, Settings, Loader2 } from 'lucide-react'
+import { Bot, Phone, AlertTriangle, Settings, Loader2, Save, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type Agent = { name: string; label: string; description: string; group: string; isActive: boolean }
@@ -43,9 +43,13 @@ function AgentCard({ agent, toggling, onToggle }: { agent: Agent; toggling: bool
 }
 
 export default function AgentControlPage() {
-  const API   = '/api-proxy'
-  const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-  const authH = { Authorization: `Bearer ${token}` }
+  const API = '/api-proxy'
+  function authH(json = false) {
+    const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+    const h: Record<string, string> = { Authorization: `Bearer ${t}` }
+    if (json) h['Content-Type'] = 'application/json'
+    return h
+  }
 
   const [agents, setAgents]         = useState<Agent[]>([])
   const [loading, setLoading]       = useState(true)
@@ -55,19 +59,25 @@ export default function AgentControlPage() {
   const [savingEsc, setSavingEsc]   = useState(false)
   const [toast, setToast]           = useState<string | null>(null)
 
-  useEffect(() => { fetchAgents(); fetchEscalation() }, [])
+  // Sarah's config
+  const [configTab,     setConfigTab]     = useState<'prompt' | 'escalation'>('prompt')
+  const [systemPrompt,  setSystemPrompt]  = useState('')
+  const [savingPrompt,  setSavingPrompt]  = useState(false)
+  const [configOpen,    setConfigOpen]    = useState(true)
+
+  useEffect(() => { fetchAgents(); fetchEscalation(); fetchConfig() }, [])
 
   async function fetchAgents() {
     setLoading(true)
     try {
-      const res = await fetch(`${API}/ai-suite/agents`, { headers: authH })
+      const res = await fetch(`${API}/ai-suite/agents`, { headers: authH() })
       if (res.ok) setAgents(await res.json())
     } catch {} finally { setLoading(false) }
   }
 
   async function fetchEscalation() {
     try {
-      const res = await fetch(`${API}/ai-suite/agents/escalation`, { headers: authH })
+      const res = await fetch(`${API}/ai-suite/agents/escalation`, { headers: authH() })
       if (res.ok) {
         const d = await res.json()
         setEscPhone(d.phone || '')
@@ -76,11 +86,22 @@ export default function AgentControlPage() {
     } catch {}
   }
 
+  async function fetchConfig() {
+    try {
+      const res = await fetch(`${API}/ai-suite/config`, { headers: authH() })
+      if (res.ok) {
+        const d = await res.json()
+        setSystemPrompt(d.systemPrompt || '')
+        if (!escPhone) setEscPhone(d.escalationPhone || '')
+      }
+    } catch {}
+  }
+
   async function toggleAgent(name: string) {
     setToggling(name)
     try {
       const res = await fetch(`${API}/ai-suite/agents/${name}/toggle`, {
-        method: 'POST', headers: authH,
+        method: 'POST', headers: authH(),
       })
       if (res.ok) {
         const d = await res.json()
@@ -94,11 +115,27 @@ export default function AgentControlPage() {
     setSavingEsc(true)
     try {
       await fetch(`${API}/ai-suite/agents/escalation`, {
-        method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' },
+        method: 'POST', headers: authH(true),
         body: JSON.stringify({ phone: escPhone, template: escTemplate }),
+      })
+      // Also persist escalation phone to AiAgentConfig
+      await fetch(`${API}/ai-suite/config`, {
+        method: 'PATCH', headers: authH(true),
+        body: JSON.stringify({ escalationPhone: escPhone }),
       })
       showToast('Escalation settings saved')
     } catch {} finally { setSavingEsc(false) }
+  }
+
+  async function savePrompt() {
+    setSavingPrompt(true)
+    try {
+      await fetch(`${API}/ai-suite/config`, {
+        method: 'PATCH', headers: authH(true),
+        body: JSON.stringify({ systemPrompt }),
+      })
+      showToast('Prompt saved — takes effect on next conversation')
+    } catch { showToast('Failed to save prompt') } finally { setSavingPrompt(false) }
   }
 
   async function pauseAll() {
@@ -131,6 +168,86 @@ export default function AgentControlPage() {
         </button>
       </div>
 
+      {/* ── Sarah's Configuration ─────────────────────── */}
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+        <button onClick={() => setConfigOpen(o => !o)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-cyan-50 dark:bg-cyan-900/20 flex items-center justify-center text-lg">🤖</div>
+            <span className="text-sm font-bold text-gray-800 dark:text-white">Sarah&apos;s Configuration</span>
+          </div>
+          {configOpen ? <ChevronDown size={15} className="text-gray-400 rotate-180 transition-transform" /> : <ChevronDown size={15} className="text-gray-400 transition-transform" />}
+        </button>
+
+        {configOpen && (
+          <div className="border-t border-gray-50 dark:border-white/5">
+            {/* Tab bar */}
+            <div className="flex border-b border-gray-50 dark:border-white/5">
+              {(['prompt', 'escalation'] as const).map(tab => (
+                <button key={tab} onClick={() => setConfigTab(tab)}
+                  className={cn(
+                    'px-5 py-3 text-xs font-bold transition-all border-b-2 -mb-px',
+                    configTab === tab
+                      ? 'border-cyan-500 text-cyan-600 dark:text-cyan-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-white/60',
+                  )}>
+                  {tab === 'prompt' ? 'Personality & Prompt' : 'Escalation Settings'}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-5">
+              {configTab === 'prompt' ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-400 dark:text-white/40">
+                    This is Sarah&apos;s system prompt — the personality, tone, and behaviour instructions she follows in every conversation. Leave blank to use the built-in default.
+                  </p>
+                  <textarea
+                    value={systemPrompt}
+                    onChange={e => setSystemPrompt(e.target.value)}
+                    rows={10}
+                    placeholder="You are Sarah, the patient care assistant for Code Clinic…"
+                    className="w-full px-4 py-3 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white resize-y focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all font-mono leading-relaxed"
+                  />
+                  <button onClick={savePrompt} disabled={savingPrompt}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+                    {savingPrompt ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    Save Prompt
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-xs text-gray-400 dark:text-white/40">
+                    When Sarah can&apos;t resolve a conversation, she will alert this WhatsApp number.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Escalation Phone</label>
+                      <input value={escPhone} onChange={e => setEscPhone(e.target.value)}
+                        placeholder="+256700000000"
+                        className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Message Template</label>
+                      <input value={escTemplate} onChange={e => setEscTpl(e.target.value)}
+                        placeholder="Hi, patient [name] on [channel] needs your attention"
+                        className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500" />
+                    </div>
+                  </div>
+                  <button onClick={saveEscalation} disabled={savingEsc}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+                    {savingEsc ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    Save Settings
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 size={24} className="animate-spin text-cyan-500" />
@@ -157,36 +274,6 @@ export default function AgentControlPage() {
                 <AgentCard key={a.name} agent={a} toggling={toggling === a.name} onToggle={() => toggleAgent(a.name)} />
               ))}
             </div>
-          </div>
-
-          {/* Escalation */}
-          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
-            <h2 className="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
-              <Settings size={15} className="text-cyan-500" /> Escalation Settings
-            </h2>
-            <p className="text-xs text-gray-400 dark:text-white/40">
-              When the AI can&apos;t resolve a conversation, it will alert this WhatsApp number.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Escalation Phone</label>
-                <input value={escPhone} onChange={e => setEscPhone(e.target.value)}
-                  placeholder="+256700000000"
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Message Template</label>
-                <input value={escTemplate} onChange={e => setEscTpl(e.target.value)}
-                  placeholder="Hi, patient [name] on [channel] needs your attention"
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500" />
-              </div>
-            </div>
-            <button onClick={saveEscalation} disabled={savingEsc}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-60"
-              style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-              {savingEsc && <Loader2 size={13} className="animate-spin" />}
-              Save Settings
-            </button>
           </div>
         </>
       )}

@@ -563,8 +563,15 @@ export async function getAgentReply(
     messages.push({ role: 'user', content: latestMessage })
   }
 
+  // Fetch custom system prompt from DB if configured, fall back to hardcoded
+  let activeSystemPrompt = SARAH_SYSTEM_PROMPT
+  try {
+    const agentConfig = await prisma.aiAgentConfig.findFirst({ select: { systemPrompt: true } })
+    if (agentConfig?.systemPrompt) activeSystemPrompt = agentConfig.systemPrompt
+  } catch { /* non-critical — use hardcoded fallback */ }
+
   const systemParts = [
-    SARAH_SYSTEM_PROMPT,
+    activeSystemPrompt,
     '',
     'PATIENT CONTEXT:',
     `Name: ${context.patientName}`,

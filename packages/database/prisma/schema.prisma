@@ -712,11 +712,45 @@ model AiAgentConfig {
   id          String   @id @default(cuid())
   name        String   @default("Sarah")
   personality String
-  isActive    Boolean  @default(true)
+  systemPrompt        String?
+  isActive            Boolean  @default(true)
+  escalationPhone     String?
+  escalationTriggers  String?
+  waPhoneNumberId         String?
+  waAccessToken           String?
+  facebookPageAccessToken String?
+  facebookPageName        String?
+  instagramAccessToken    String?
+  instagramAccountName    String?
+  smsApiKey     String?
+  smsUsername   String?
+  smsSenderId   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("ai_agent_config")
+}
+
+model SipTrunk {
+  id                 String   @id @default(cuid())
+  name               String
+  host               String
+  port               Int      @default(5060)
+  netmask            Int      @default(32)
+  protocol           String   @default("UDP")
+  allowInbound       Boolean  @default(true)
+  allowOutbound      Boolean  @default(true)
+  optionsPing        Boolean  @default(false)
+  username           String?
+  password           String?
+  useSipRegistration Boolean  @default(false)
+  leadingPlus        Boolean  @default(false)
+  techPrefix         String?
+  sipDiversionHeader String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("sip_trunks")
 }
 
 model AiScheduledMessage {

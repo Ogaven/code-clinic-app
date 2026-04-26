@@ -85,7 +85,19 @@ router.post('/url', async (req, res) => {
   }
 })
 
-// ── POST /ai-suite/knowledge/file ─────────────────────────────────────────────
+// ── POST /ai-suite/knowledge/file (alias: /upload) ────────────────────────────
+
+router.post('/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+    const file  = req.file
+    const title = (req.body.title as string | undefined) || file.originalname
+    await ingestFile(title, file.mimetype, file.buffer)
+    res.json({ success: true, message: `Ingested file: ${file.originalname}` })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
 
 router.post('/file', upload.single('file'), async (req, res) => {
   try {
