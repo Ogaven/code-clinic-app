@@ -452,6 +452,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     setError(null)
     try {
       const res  = await fetch(`${API}/scheduling/calendar?date=${toDateStr(d)}`, { headers: authHeaders() })
+      if (res.status === 401) { window.location.href = '/login'; return }
       if (!res.ok) { setError(`API error ${res.status}`); return }
       const data = await res.json()
       if (data.calendar) setColumns(data.calendar)
@@ -466,6 +467,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     const s = toDateStr(week[0]), e = toDateStr(week[5])
     try {
       const res  = await fetch(`${API}/scheduling/appointments?startDate=${s}&endDate=${e}`, { headers: authHeaders() })
+      if (res.status === 401) { window.location.href = '/login'; return }
       if (!res.ok) { setError(`API error ${res.status}`); return }
       const data = await res.json()
       setWeekAppts(Array.isArray(data) ? data : [])
@@ -480,6 +482,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     const e = toDateStr(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0))
     try {
       const res  = await fetch(`${API}/scheduling/appointments?startDate=${s}&endDate=${e}`, { headers: authHeaders() })
+      if (res.status === 401) { window.location.href = '/login'; return }
       if (!res.ok) { setError(`API error ${res.status}`); return }
       const data = await res.json()
       setMonthAppts(Array.isArray(data) ? data : [])

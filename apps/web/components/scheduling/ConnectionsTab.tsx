@@ -2,60 +2,20 @@
 
 import { useState, useEffect } from 'react'
 import {
-  RefreshCw, Link2, Unlink, Check, X, Loader2, AlertTriangle,
-  Video, ChevronRight, Upload, ToggleLeft, ToggleRight, ExternalLink,
-  CalendarDays,
+  RefreshCw, Check, X, Loader2, ChevronRight, Upload, ExternalLink,
+  Trash2, ArrowLeft, ArrowRight, ArrowLeftRight, Video,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// ── tiny shared helpers ────────────────────────────────────────────────────────
-
-function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="mb-4">
-      <h2 className="text-base font-black text-gray-800 dark:text-white">{title}</h2>
-      <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">{subtitle}</p>
-    </div>
-  )
+// ── Auth helper ────────────────────────────────────────────────────────────────
+function authH() {
+  const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  return { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }
 }
-
-function ComingSoonBadge() {
-  return (
-    <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-white/40">
-      Coming soon
-    </span>
-  )
-}
-
-function IntegrationCard({
-  logo, name, description, children, disabled = false,
-}: {
-  logo: React.ReactNode; name: string; description: string; children: React.ReactNode; disabled?: boolean
-}) {
-  return (
-    <div className={cn(
-      'flex items-center gap-4 p-4 rounded-2xl border transition-all',
-      disabled
-        ? 'border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 opacity-60'
-        : 'border-gray-200 dark:border-white/10 bg-white dark:bg-white/5',
-    )}>
-      <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm flex-shrink-0 border border-gray-100 dark:border-white/10">
-        {logo}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap mb-0.5">
-          <span className="font-bold text-sm text-gray-800 dark:text-white">{name}</span>
-        </div>
-        <p className="text-xs text-gray-400 dark:text-white/40">{description}</p>
-      </div>
-      <div className="flex-shrink-0">{children}</div>
-    </div>
-  )
-}
+const API = '/api-proxy'
 
 // ── Logos ──────────────────────────────────────────────────────────────────────
-
-function GoogleLogo({ size = 24 }: { size?: number }) {
+function GoogleLogo({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48">
       <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -66,19 +26,9 @@ function GoogleLogo({ size = 24 }: { size?: number }) {
   )
 }
 
-function OutlookLogo() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <rect width="24" height="24" rx="4" fill="#0078D4"/>
-      <path d="M7 7h5.5a3 3 0 010 6H7V7z" fill="white" opacity="0.9"/>
-      <rect x="7" y="14" width="10" height="3" rx="1" fill="white" opacity="0.7"/>
-    </svg>
-  )
-}
-
 function ZoomLogo() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
       <rect width="24" height="24" rx="4" fill="#2D8CFF"/>
       <path d="M4 8.5h9.5a2 2 0 012 2v3a2 2 0 01-2 2H4a2 2 0 01-2-2v-3a2 2 0 012-2z" fill="white"/>
       <path d="M15.5 10.5l4-2v7l-4-2v-3z" fill="white"/>
@@ -88,7 +38,7 @@ function ZoomLogo() {
 
 function TeamsLogo() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
       <rect width="24" height="24" rx="4" fill="#6264A7"/>
       <circle cx="14" cy="8" r="2.5" fill="white"/>
       <path d="M11 14.5C11 12.567 12.567 11 14.5 11H17c1.657 0 3 1.343 3 3v1H11v-.5z" fill="white" opacity="0.9"/>
@@ -98,108 +48,325 @@ function TeamsLogo() {
   )
 }
 
-// ── Sync Preferences modal ─────────────────────────────────────────────────────
-
-function SyncPreferencesModal({
-  syncType,
-  setSyncType,
-  onSave,
-  onClose,
-}: {
-  syncType: 'one-way' | 'two-way'
-  setSyncType: (v: 'one-way' | 'two-way') => void
-  onSave: () => void
-  onClose: () => void
-}) {
+function OutlookLogo() {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white dark:bg-[#0e2045] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-md mx-4 overflow-hidden">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <rect width="24" height="24" rx="4" fill="#0078D4"/>
+      <path d="M7 7h5.5a3 3 0 010 6H7V7z" fill="white" opacity="0.9"/>
+      <rect x="7" y="14" width="10" height="3" rx="1" fill="white" opacity="0.7"/>
+    </svg>
+  )
+}
+
+// ── Shared UI atoms ────────────────────────────────────────────────────────────
+function ComingSoon() {
+  return (
+    <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-white/40">
+      Coming soon
+    </span>
+  )
+}
+
+function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      onClick={() => onChange(!on)}
+      className={cn(
+        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none',
+        on ? 'bg-cyan-500' : 'bg-gray-200 dark:bg-white/20',
+      )}>
+      <span className={cn(
+        'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+        on ? 'translate-x-6' : 'translate-x-1',
+      )} />
+    </button>
+  )
+}
+
+function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-[#0e2045] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-lg overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/8">
-          <h3 className="text-sm font-black text-gray-800 dark:text-white">Sync Preferences</h3>
+          <h3 className="text-sm font-black text-gray-800 dark:text-white">{title}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-white/70 transition-colors"><X size={16} /></button>
         </div>
-        <div className="p-5 space-y-3">
-          {([
-            { value: 'one-way', label: 'Default Sync (One-way Sync)', badge: 'Recommended', desc: 'Code Clinic appointments are pushed to Google Calendar. Changes in Google Calendar do not affect clinic bookings.' },
-            { value: 'two-way', label: 'Two-way Sync', badge: null, desc: 'Appointments are synced in both directions. Clinic events appear in Google Calendar and Google Calendar events block clinic availability.' },
-          ] as const).map(opt => (
-            <button key={opt.value} onClick={() => setSyncType(opt.value)}
-              className={cn(
-                'w-full text-left p-4 rounded-xl border-2 transition-all',
-                syncType === opt.value
-                  ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
-                  : 'border-gray-200 dark:border-white/10 hover:border-cyan-300 dark:hover:border-cyan-700',
-              )}>
-              <div className="flex items-center gap-2 mb-1">
-                <div className={cn(
-                  'w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all',
-                  syncType === opt.value ? 'border-cyan-500' : 'border-gray-300 dark:border-white/30',
-                )}>
-                  {syncType === opt.value && <div className="w-2 h-2 rounded-full bg-cyan-500" />}
-                </div>
-                <span className="text-sm font-bold text-gray-800 dark:text-white">{opt.label}</span>
-                {opt.badge && (
-                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">
-                    {opt.badge}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-gray-400 dark:text-white/40 pl-6">{opt.desc}</p>
-            </button>
-          ))}
-        </div>
-        <div className="px-5 pb-5 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-white/70 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-            Cancel
-          </button>
-          <button onClick={onSave}
-            className="px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
-            style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-            Save
-          </button>
-        </div>
+        {children}
       </div>
     </div>
   )
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
+function SaveCancelFooter({ onSave, onClose, saving }: { onSave: () => void; onClose: () => void; saving?: boolean }) {
+  return (
+    <div className="px-5 pb-5 flex justify-end gap-2 pt-2">
+      <button onClick={onClose}
+        className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-white/70 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+        Cancel
+      </button>
+      <button onClick={onSave} disabled={saving}
+        className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-60 transition-all hover:-translate-y-0.5"
+        style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+        {saving ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+      </button>
+    </div>
+  )
+}
 
-export default function ConnectionsTab() {
-  const API = '/api-proxy'
-  function authH() {
-    const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-    return { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }
+// ── Linked Calendar Modal ──────────────────────────────────────────────────────
+function LinkedCalendarModal({ gcEmail, onClose, onSave }: { gcEmail: string | null; onClose: () => void; onSave: () => void }) {
+  const [selectedAccount, setSelectedAccount] = useState<'google' | 'none'>('google')
+  const [selectedCalendar, setSelectedCalendar] = useState('primary')
+
+  return (
+    <ModalShell title="Linked Calendar" onClose={onClose}>
+      {/* Sync diagram */}
+      <div className="mx-5 my-4 flex items-center justify-center gap-3">
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1A237E] to-[#29ABE2] flex items-center justify-center shadow-sm">
+            <span className="text-white text-xs font-black">CC</span>
+          </div>
+          <span className="text-[10px] font-semibold text-gray-500 dark:text-white/50 text-center leading-tight">Code Clinic<br/>Calendar</span>
+        </div>
+        <div className="flex flex-col items-center gap-1 text-gray-300 dark:text-white/20">
+          <ArrowLeftRight size={20} className="text-cyan-400" />
+          <span className="text-[9px] text-gray-400 dark:text-white/30">Sync</span>
+        </div>
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="w-10 h-10 rounded-xl bg-white dark:bg-white/10 border border-gray-100 dark:border-white/10 flex items-center justify-center shadow-sm">
+            <GoogleLogo size={22} />
+          </div>
+          <span className="text-[10px] font-semibold text-gray-500 dark:text-white/50 text-center leading-tight">Linked<br/>Calendar</span>
+        </div>
+      </div>
+
+      <div className="px-5 pb-2 space-y-2">
+        <p className="text-xs font-bold text-gray-600 dark:text-white/60 mb-3">Which account's calendar should we link to?</p>
+
+        {/* Google account option */}
+        <button onClick={() => setSelectedAccount('google')}
+          className={cn(
+            'w-full text-left p-3 rounded-xl border-2 flex items-center gap-3 transition-all',
+            selectedAccount === 'google'
+              ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
+              : 'border-gray-200 dark:border-white/10 hover:border-cyan-300 dark:hover:border-cyan-700/50',
+          )}>
+          <div className={cn(
+            'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all',
+            selectedAccount === 'google' ? 'border-cyan-500' : 'border-gray-300 dark:border-white/30',
+          )}>
+            {selectedAccount === 'google' && <div className="w-2 h-2 rounded-full bg-cyan-500" />}
+          </div>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <GoogleLogo size={16} />
+            <span className="text-sm font-semibold text-gray-800 dark:text-white truncate">
+              {gcEmail || 'Google Account'}
+            </span>
+          </div>
+        </button>
+
+        {/* Calendar selector — shown when google account selected */}
+        {selectedAccount === 'google' && (
+          <div className="ml-7 mt-1">
+            <label className="text-[11px] font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Calendar</label>
+            <select value={selectedCalendar} onChange={e => setSelectedCalendar(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-all">
+              <option value="primary">Primary Calendar</option>
+              <option value="work">Work Calendar</option>
+              <option value="personal">Personal Calendar</option>
+            </select>
+          </div>
+        )}
+
+        {/* Do not add option */}
+        <button onClick={() => setSelectedAccount('none')}
+          className={cn(
+            'w-full text-left p-3 rounded-xl border-2 flex items-center gap-3 transition-all',
+            selectedAccount === 'none'
+              ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
+              : 'border-gray-200 dark:border-white/10 hover:border-cyan-300 dark:hover:border-cyan-700/50',
+          )}>
+          <div className={cn(
+            'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all',
+            selectedAccount === 'none' ? 'border-cyan-500' : 'border-gray-300 dark:border-white/30',
+          )}>
+            {selectedAccount === 'none' && <div className="w-2 h-2 rounded-full bg-cyan-500" />}
+          </div>
+          <span className="text-sm font-semibold text-gray-600 dark:text-white/60">Do not add to any calendar</span>
+        </button>
+      </div>
+
+      <SaveCancelFooter onSave={onSave} onClose={onClose} />
+    </ModalShell>
+  )
+}
+
+// ── Sync Preferences Modal (Advanced Settings) ─────────────────────────────────
+function SyncPreferencesModal({ gcEmail, onClose, onSave }: { gcEmail: string | null; onClose: () => void; onSave: () => void }) {
+  const [syncType, setSyncType] = useState<'one-way' | 'two-way'>('one-way')
+  const [writeCalendar, setWriteCalendar] = useState('primary')
+
+  return (
+    <ModalShell title="Advanced Settings" onClose={onClose}>
+      {/* Diagram */}
+      <div className="mx-5 my-4 p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/8">
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-white/50">
+          <div className="flex items-center gap-1.5 font-semibold">
+            <div className="w-6 h-6 rounded-lg bg-white dark:bg-white/10 border border-gray-200 dark:border-white/15 flex items-center justify-center">
+              <GoogleLogo size={13} />
+            </div>
+            Linked Calendar
+          </div>
+          {syncType === 'one-way'
+            ? <ArrowRight size={14} className="text-cyan-400 flex-shrink-0" />
+            : <ArrowLeftRight size={14} className="text-cyan-400 flex-shrink-0" />
+          }
+          <div className="flex items-center gap-1.5 font-semibold">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#1A237E] to-[#29ABE2] flex items-center justify-center">
+              <span className="text-white text-[9px] font-black">CC</span>
+            </div>
+            {syncType === 'one-way' ? 'Blocked Slots' : 'Appointments'}
+          </div>
+        </div>
+        <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1.5">
+          {syncType === 'one-way'
+            ? 'Events from your linked calendar block availability in Code Clinic.'
+            : 'Appointments sync in both directions between Code Clinic and Google Calendar.'}
+        </p>
+      </div>
+
+      <div className="px-5 pb-2 space-y-2">
+        {([
+          { value: 'one-way',  label: 'Default Sync (One-way)',  badge: 'Recommended', desc: 'Google Calendar events block slots in Code Clinic. Code Clinic changes push to Google Calendar.' },
+          { value: 'two-way',  label: 'Two-way Sync',            badge: null,          desc: 'Appointments sync in both directions. Google Calendar events also create appointments in Code Clinic.' },
+        ] as const).map(opt => (
+          <button key={opt.value} onClick={() => setSyncType(opt.value)}
+            className={cn(
+              'w-full text-left p-3 rounded-xl border-2 transition-all',
+              syncType === opt.value
+                ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
+                : 'border-gray-200 dark:border-white/10 hover:border-cyan-300 dark:hover:border-cyan-700/50',
+            )}>
+            <div className="flex items-center gap-2 mb-0.5">
+              <div className={cn(
+                'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all',
+                syncType === opt.value ? 'border-cyan-500' : 'border-gray-300 dark:border-white/30',
+              )}>
+                {syncType === opt.value && <div className="w-2 h-2 rounded-full bg-cyan-500" />}
+              </div>
+              <span className="text-sm font-bold text-gray-800 dark:text-white">{opt.label}</span>
+              {opt.badge && (
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">
+                  {opt.badge}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 dark:text-white/40 pl-6">{opt.desc}</p>
+          </button>
+        ))}
+
+        {/* Two-way: pick calendar to write appointments into */}
+        {syncType === 'two-way' && (
+          <div className="ml-6 mt-1">
+            <label className="text-[11px] font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Write appointments to</label>
+            <select value={writeCalendar} onChange={e => setWriteCalendar(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-all">
+              <option value="primary">Primary Calendar ({gcEmail || 'Google Account'})</option>
+              <option value="work">Work Calendar</option>
+              <option value="personal">Personal Calendar</option>
+            </select>
+          </div>
+        )}
+      </div>
+
+      <SaveCancelFooter onSave={onSave} onClose={onClose} />
+    </ModalShell>
+  )
+}
+
+// ── Conflict Calendars Modal ────────────────────────────────────────────────────
+function ConflictCalendarsModal({ gcEmail, onClose, onSave }: { gcEmail: string | null; onClose: () => void; onSave: () => void }) {
+  const [checked, setChecked] = useState<Set<string>>(new Set(['primary']))
+
+  function toggle(id: string) {
+    setChecked(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
   }
 
-  // Google Calendar state
-  const [gcConnected,    setGcConnected]    = useState(false)
-  const [gcEmail,        setGcEmail]        = useState<string | null>(null)
-  const [checking,       setChecking]       = useState(true)
-  const [syncing,        setSyncing]        = useState(false)
-  const [toast,          setToast]          = useState<{ msg: string; ok: boolean } | null>(null)
+  const calendars = [
+    { id: 'primary', label: 'Primary Calendar', linked: true },
+    { id: 'work',    label: 'Work',              linked: false },
+    { id: 'family',  label: 'Family',            linked: false },
+  ]
 
-  // Sync preferences modal
-  const [showSyncModal,  setShowSyncModal]  = useState(false)
-  const [syncType,       setSyncType]       = useState<'one-way' | 'two-way'>('one-way')
+  return (
+    <ModalShell title="Conflict Calendars" onClose={onClose}>
+      <div className="px-5 py-3">
+        <p className="text-xs text-gray-500 dark:text-white/50 mb-4">
+          Events from the selected calendars will block availability in Code Clinic to prevent double bookings.
+        </p>
 
-  // Organic booking
-  const [organicDisabled, setOrganicDisabled] = useState(false)
-  const [primaryFeed,    setPrimaryFeed]    = useState('book_online')
+        {/* Connected account row */}
+        <div className="flex items-center gap-2 mb-3 p-2.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/8">
+          <GoogleLogo size={18} />
+          <span className="text-sm font-semibold text-gray-700 dark:text-white/80">{gcEmail || 'Google Account'}</span>
+          <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
+            <Check size={10} /> Connected
+          </span>
+        </div>
+
+        {/* Calendar checklist */}
+        <div className="space-y-1.5">
+          {calendars.map(cal => (
+            <button key={cal.id} onClick={() => toggle(cal.id)}
+              className="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-white/8 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left">
+              <div className={cn(
+                'w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all',
+                checked.has(cal.id)
+                  ? 'border-cyan-500 bg-cyan-500'
+                  : 'border-gray-300 dark:border-white/30',
+              )}>
+                {checked.has(cal.id) && <Check size={10} className="text-white" strokeWidth={3} />}
+              </div>
+              <span className="text-sm text-gray-700 dark:text-white/80">{cal.label}</span>
+              {cal.linked && (
+                <span className="ml-auto text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400">
+                  Linked
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+      <SaveCancelFooter onSave={onSave} onClose={onClose} />
+    </ModalShell>
+  )
+}
+
+// ── Calendars sub-tab ─────────────────────────────────────────────────────────
+function CalendarsTab() {
+  const [gcConnected, setGcConnected] = useState(false)
+  const [gcEmail,     setGcEmail]     = useState<string | null>(null)
+  const [checking,    setChecking]    = useState(true)
+  const [syncing,     setSyncing]     = useState(false)
+  const [addingNew,   setAddingNew]   = useState(false)
+  const [toast,       setToast]       = useState<{ msg: string; ok: boolean } | null>(null)
+
+  const [showLinked,    setShowLinked]    = useState(false)
+  const [showAdvanced,  setShowAdvanced]  = useState(false)
+  const [showConflict,  setShowConflict]  = useState(false)
+
+  function showToast(msg: string, ok: boolean) { setToast({ msg, ok }); setTimeout(() => setToast(null), 5000) }
 
   useEffect(() => {
     checkGcStatus()
-    // Handle OAuth callback redirect
     const params = new URLSearchParams(window.location.search)
-    const gcal   = params.get('gcal')
-    if (gcal === 'connected') {
-      showToast('Google Calendar connected!', true)
-      window.history.replaceState({}, '', window.location.pathname)
-      checkGcStatus()
-    } else if (gcal === 'error') {
-      showToast(`Connection failed: ${params.get('reason') || 'Unknown error'}`, false)
-      window.history.replaceState({}, '', window.location.pathname)
-    }
+    const gcal = params.get('gcal')
+    if (gcal === 'connected') { showToast('Google Calendar connected!', true); window.history.replaceState({}, '', window.location.pathname); checkGcStatus() }
+    else if (gcal === 'error') { showToast(`Connection failed: ${params.get('reason') || 'Unknown error'}`, false); window.history.replaceState({}, '', window.location.pathname) }
   }, [])
 
   async function checkGcStatus() {
@@ -212,7 +379,7 @@ export default function ConnectionsTab() {
     } catch { setGcConnected(false) } finally { setChecking(false) }
   }
 
-  async function handleGcConnect() {
+  async function handleConnect() {
     try {
       const returnTo = encodeURIComponent(window.location.pathname)
       const res  = await fetch(`${API}/integrations/google-calendar/auth-url?returnTo=${returnTo}`, { headers: authH() })
@@ -222,7 +389,7 @@ export default function ConnectionsTab() {
     } catch { showToast('Network error — please try again', false) }
   }
 
-  async function handleGcDisconnect() {
+  async function handleDisconnect() {
     try {
       await fetch(`${API}/integrations/google-calendar/disconnect`, { method: 'DELETE', headers: authH() })
       setGcConnected(false); setGcEmail(null)
@@ -233,285 +400,413 @@ export default function ConnectionsTab() {
   async function handleSync() {
     setSyncing(true)
     try {
-      const res = await fetch(`${API}/integrations/google-calendar/sync`, {
-        method: 'POST', headers: authH(), body: JSON.stringify({ calendarId: 'primary', daysBack: 1, daysForward: 30 }),
-      })
+      const res  = await fetch(`${API}/integrations/google-calendar/sync`, { method: 'POST', headers: authH(), body: JSON.stringify({ daysBack: 1, daysForward: 30 }) })
       const data = await res.json()
       if (res.ok) showToast(data.message || 'Sync complete', true)
       else { if (res.status === 401) { setGcConnected(false); showToast('Session expired — reconnect Google Calendar', false) } else showToast(data.error || 'Sync failed', false) }
     } catch { showToast('Network error during sync', false) } finally { setSyncing(false) }
   }
 
-  function showToast(msg: string, ok: boolean) { setToast({ msg, ok }); setTimeout(() => setToast(null), 5000) }
+  // ── Add New view ───────────────────────────────────────────────────────────
+  if (addingNew) {
+    return (
+      <div className="p-6 max-w-2xl">
+        <button onClick={() => setAddingNew(false)}
+          className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 dark:text-white/50 hover:text-gray-800 dark:hover:text-white mb-5 transition-colors">
+          <ArrowLeft size={15} /> Back
+        </button>
+        <h2 className="text-base font-black text-gray-800 dark:text-white mb-1">Add Calendar Integration</h2>
+        <p className="text-xs text-gray-400 dark:text-white/40 mb-5">Choose a calendar to connect to Code Clinic</p>
 
-  function saveSyncPrefs() { setShowSyncModal(false); showToast('Sync preferences saved', true) }
+        <div className="space-y-3">
+          {/* Google Calendar */}
+          <div className="flex items-center gap-4 p-4 rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0">
+              <GoogleLogo size={26} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm text-gray-800 dark:text-white">Google Calendar</p>
+              <p className="text-xs text-gray-400 dark:text-white/40">Sync appointments with your Google account</p>
+            </div>
+            <button onClick={() => { setAddingNew(false); handleConnect() }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5"
+              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+              Connect
+            </button>
+          </div>
 
+          {/* Outlook */}
+          <div className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 opacity-60">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0">
+              <OutlookLogo />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm text-gray-800 dark:text-white">Outlook Calendar</p>
+              <p className="text-xs text-gray-400 dark:text-white/40">Connect Office 365 or Outlook.com</p>
+            </div>
+            <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-white/40">Coming soon</span>
+          </div>
+
+          {/* iCloud */}
+          <div className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 opacity-60">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="4" fill="#555"/><path d="M12 5c-2.5 0-4.5 2-4.5 4.5 0 .3.03.6.08.88C6.1 10.8 5 12.3 5 14c0 2.2 1.8 4 4 4h6c2.2 0 4-1.8 4-4 0-1.7-1.06-3.14-2.57-3.65A4.5 4.5 0 0012 5z" fill="white" opacity="0.9"/></svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm text-gray-800 dark:text-white">iCloud Calendar</p>
+              <p className="text-xs text-gray-400 dark:text-white/40">Sync with Apple iCloud</p>
+            </div>
+            <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-white/40">Coming soon</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Main view ──────────────────────────────────────────────────────────────
   return (
-    <div className="flex-1 overflow-y-auto">
-
+    <div className="p-6 max-w-2xl space-y-6">
       {/* Toast */}
       {toast && (
-        <div className={cn(
-          'fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold text-white shadow-xl max-w-sm',
-          toast.ok ? 'bg-emerald-500' : 'bg-red-500',
-        )}>
+        <div className={cn('fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold text-white shadow-xl max-w-sm', toast.ok ? 'bg-emerald-500' : 'bg-red-500')}>
           {toast.ok ? <Check size={16} /> : <X size={16} />}
           {toast.msg}
         </div>
       )}
 
-      {/* Sync Preferences modal */}
-      {showSyncModal && (
-        <SyncPreferencesModal
-          syncType={syncType}
-          setSyncType={setSyncType}
-          onSave={saveSyncPrefs}
-          onClose={() => setShowSyncModal(false)}
-        />
-      )}
+      {/* Modals */}
+      {showLinked   && <LinkedCalendarModal   gcEmail={gcEmail} onClose={() => setShowLinked(false)}   onSave={() => { setShowLinked(false);   showToast('Linked calendar saved', true) }} />}
+      {showAdvanced && <SyncPreferencesModal  gcEmail={gcEmail} onClose={() => setShowAdvanced(false)} onSave={() => { setShowAdvanced(false); showToast('Sync preferences saved', true) }} />}
+      {showConflict && <ConflictCalendarsModal gcEmail={gcEmail} onClose={() => setShowConflict(false)} onSave={() => { setShowConflict(false); showToast('Conflict calendars saved', true) }} />}
 
-      <div className="p-6 space-y-10 max-w-2xl">
-
-        {/* ── Section 1: Calendars ─────────────────────────────── */}
-        <section>
-          <SectionHeader
-            title="Calendars"
-            subtitle="Connect your third-party calendar(s) to check availability, update appointments and avoid double bookings"
-          />
-
-          <div className="space-y-3">
-            {/* Google Calendar */}
-            <IntegrationCard
-              logo={<GoogleLogo size={26} />}
-              name="Google Calendar"
-              description={gcConnected
-                ? (gcEmail ? `Connected as ${gcEmail}` : 'Connected — appointments sync automatically')
-                : 'Sync Code Clinic appointments with your Google Calendar'
-              }>
-              {checking ? (
-                <Loader2 size={15} className="animate-spin text-gray-400" />
-              ) : gcConnected ? (
-                <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
-                    <Check size={10} /> Connected
-                  </span>
-                  <button onClick={handleGcDisconnect}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 transition-colors">
-                    <Unlink size={11} /> Disconnect
-                  </button>
-                </div>
-              ) : (
-                <button onClick={handleGcConnect}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5"
-                  style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-                  <Link2 size={12} /> Connect
-                </button>
-              )}
-            </IntegrationCard>
-
-            {/* Outlook Calendar */}
-            <IntegrationCard disabled
-              logo={<OutlookLogo />}
-              name="Outlook Calendar"
-              description="Connect your Office 365 or Outlook.com calendar">
-              <ComingSoonBadge />
-            </IntegrationCard>
-
-            {/* iCloud Calendar */}
-            <IntegrationCard disabled
-              logo={
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <rect width="24" height="24" rx="4" fill="#555"/>
-                  <path d="M12 5c-2.5 0-4.5 2-4.5 4.5 0 .3.03.6.08.88C6.1 10.8 5 12.3 5 14c0 2.2 1.8 4 4 4h6c2.2 0 4-1.8 4-4 0-1.7-1.06-3.14-2.57-3.65A4.5 4.5 0 0012 5z" fill="white" opacity="0.9"/>
-                </svg>
-              }
-              name="iCloud Calendar"
-              description="Sync with your Apple iCloud calendar">
-              <ComingSoonBadge />
-            </IntegrationCard>
+      {/* ── Connected Calendars ─────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-base font-black text-gray-800 dark:text-white">Connected Calendars</h2>
+            <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Connect your calendar to check availability and avoid double bookings</p>
           </div>
+          <button onClick={() => setAddingNew(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5"
+            style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+            + Add New
+          </button>
+        </div>
 
-          {/* Calendar Configuration — shown only when Google Calendar is connected */}
-          {gcConnected && (
-            <div className="mt-5 bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-50 dark:border-white/5">
-                <p className="text-xs font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Calendar Configuration</p>
-              </div>
-
-              {/* Linked Calendar */}
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50 dark:border-white/5">
-                <div>
-                  <p className="text-sm font-semibold text-gray-800 dark:text-white">Linked Calendar</p>
-                  <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5 flex items-center gap-1.5">
-                    <GoogleLogo size={13} />
-                    {gcEmail || 'Google Account'} — Primary Calendar
-                  </p>
-                </div>
-                <button onClick={() => setShowSyncModal(true)}
-                  className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1">
-                  Edit <ChevronRight size={12} />
-                </button>
-              </div>
-
-              {/* Conflict Calendars */}
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50 dark:border-white/5">
-                <div>
-                  <p className="text-sm font-semibold text-gray-800 dark:text-white">Conflict Calendars</p>
-                  <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5 flex items-center gap-1.5">
-                    <GoogleLogo size={13} />
-                    {gcEmail || 'Google Account'} — prevents double bookings
-                  </p>
-                </div>
-                <button onClick={() => setShowSyncModal(true)}
-                  className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1">
-                  Edit <ChevronRight size={12} />
-                </button>
-              </div>
-
-              {/* Sync now + Advanced settings */}
-              <div className="flex items-center justify-between px-5 py-3">
-                <button onClick={() => setShowSyncModal(true)}
-                  className="text-xs font-bold text-gray-500 dark:text-white/50 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors flex items-center gap-1">
-                  Advanced Settings <ExternalLink size={11} />
-                </button>
-                <button onClick={handleSync} disabled={syncing}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white disabled:opacity-60 transition-all hover:-translate-y-0.5"
-                  style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-                  {syncing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                  {syncing ? 'Syncing…' : 'Sync Now'}
-                </button>
-              </div>
+        {checking ? (
+          <div className="flex items-center gap-2 px-4 py-3 text-sm text-gray-400 dark:text-white/40">
+            <Loader2 size={14} className="animate-spin" /> Checking connection…
+          </div>
+        ) : gcConnected ? (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0">
+              <GoogleLogo size={22} />
             </div>
-          )}
-        </section>
-
-        {/* ── Section 2: Video Conferencing ─────────────────────── */}
-        <section>
-          <SectionHeader
-            title="Video Conferencing"
-            subtitle="Automatically generate unique meeting links whenever an appointment is scheduled"
-          />
-
-          <div className="space-y-3">
-            {/* Google Meet */}
-            <div className="space-y-2">
-              {!gcConnected && (
-                <div className="flex items-start gap-3 p-3.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl">
-                  <AlertTriangle size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Google Meet requires Google Calendar to be connected</p>
-                    <button onClick={handleGcConnect}
-                      className="mt-1.5 text-xs font-bold text-amber-700 dark:text-amber-400 underline hover:no-underline transition-all">
-                      Connect Google Calendar →
-                    </button>
-                  </div>
-                </div>
-              )}
-              <IntegrationCard
-                logo={
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M4 8C4 6.9 4.9 6 6 6h12c1.1 0 2 .9 2 2v8c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V8z" fill="#00832D"/>
-                    <path d="M15 10.5l5-3v9l-5-3v-3z" fill="#00AC47"/>
-                    <path d="M4 8C4 6.9 4.9 6 6 6h9v4H4V8z" fill="#00832D" opacity="0.7"/>
-                  </svg>
-                }
-                name="Google Meet"
-                description="Automatically add a Meet link to each video appointment"
-                disabled={!gcConnected}>
-                {gcConnected ? (
-                  <button
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5"
-                    style={{ background: 'linear-gradient(135deg,#00832D,#00AC47)' }}>
-                    <Video size={12} /> Enable
-                  </button>
-                ) : (
-                  <ComingSoonBadge />
-                )}
-              </IntegrationCard>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm text-gray-800 dark:text-white">Google Calendar</span>
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
+                  <Check size={10} /> Connected
+                </span>
+              </div>
+              {gcEmail && <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">{gcEmail}</p>}
             </div>
-
-            {/* Zoom */}
-            <IntegrationCard disabled
-              logo={<ZoomLogo />}
-              name="Zoom"
-              description="Generate Zoom meeting links for virtual appointments">
-              <ComingSoonBadge />
-            </IntegrationCard>
-
-            {/* Microsoft Teams */}
-            <IntegrationCard disabled
-              logo={<TeamsLogo />}
-              name="Microsoft Teams"
-              description="Create Teams meeting links for each appointment">
-              <ComingSoonBadge />
-            </IntegrationCard>
+            <button onClick={handleDisconnect}
+              className="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0">
+              <Trash2 size={14} />
+            </button>
           </div>
-        </section>
+        ) : (
+          <div className="flex items-center justify-between px-4 py-3 rounded-2xl border-2 border-dashed border-gray-200 dark:border-white/10 text-sm text-gray-400 dark:text-white/40">
+            <span>No calendars connected</span>
+            <button onClick={handleConnect}
+              className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline">
+              Connect Google Calendar →
+            </button>
+          </div>
+        )}
+      </section>
 
-        {/* ── Section 3: Google Organic Booking ─────────────────── */}
+      {/* ── Calendar Configuration — shown only when connected ──────── */}
+      {gcConnected && (
         <section>
-          <SectionHeader
-            title="Google Organic Booking"
-            subtitle="Allow patients to book directly from Google Search results"
-          />
+          <h2 className="text-base font-black text-gray-800 dark:text-white mb-3">Calendar Configuration</h2>
 
-          {/* Info box */}
-          <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/40 rounded-xl text-xs text-blue-700 dark:text-blue-400 space-y-1.5">
-            <p className="font-bold">Before you start</p>
-            <ul className="space-y-1 pl-3 list-disc">
-              <li><strong>Verify Location Details</strong> — Ensure your Google Business Profile address matches what patients see in Google Maps</li>
-              <li><strong>Match Descriptions</strong> — Service names and descriptions should match those in your Google Business listing</li>
-              <li>Organic booking links are managed through Google Reserve — approval can take 1–2 weeks</li>
-            </ul>
-          </div>
+          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 overflow-hidden divide-y divide-gray-50 dark:divide-white/5">
 
-          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 divide-y divide-gray-50 dark:divide-white/5">
-
-            {/* Toggle */}
+            {/* Linked Calendar */}
             <div className="flex items-center justify-between px-5 py-4">
               <div>
-                <p className="text-sm font-semibold text-gray-800 dark:text-white">Disable Google Organic Booking</p>
-                <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Turn off to stop showing your clinic in Google's booking module</p>
+                <p className="text-sm font-semibold text-gray-800 dark:text-white">Linked Calendar</p>
+                <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5 flex items-center gap-1.5">
+                  <GoogleLogo size={12} />
+                  {gcEmail || 'Google Account'} — Primary Calendar
+                </p>
               </div>
-              <button onClick={() => setOrganicDisabled(d => !d)} className="flex-shrink-0">
-                {organicDisabled
-                  ? <ToggleRight size={30} className="text-cyan-500" />
-                  : <ToggleLeft  size={30} className="text-gray-300 dark:text-white/30" />
-                }
+              <button onClick={() => setShowLinked(true)}
+                className="flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline transition-colors">
+                Edit <ChevronRight size={13} />
               </button>
             </div>
 
-            {/* Primary Action Feed */}
-            <div className="px-5 py-4">
-              <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-2 block">Primary Action Feed</label>
-              <select value={primaryFeed} onChange={e => setPrimaryFeed(e.target.value)}
-                className="w-full sm:w-64 px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-all">
-                <option value="book_online">Book Online</option>
-                <option value="schedule_appointment">Schedule Appointment</option>
-                <option value="request_appointment">Request Appointment</option>
-                <option value="get_quote">Get a Quote</option>
-              </select>
-              <p className="text-[11px] text-gray-400 dark:text-white/30 mt-1.5">This is the primary call-to-action shown in Google Search results</p>
+            {/* Advanced Settings */}
+            <div className="flex items-center justify-between px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold text-gray-800 dark:text-white">Advanced Settings</p>
+                <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Sync direction, write-back calendar</p>
+              </div>
+              <button onClick={() => setShowAdvanced(true)}
+                className="flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline transition-colors">
+                Edit <ExternalLink size={11} />
+              </button>
             </div>
 
-            {/* Services Feed */}
-            <div className="px-5 py-4">
-              <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-2 block">Services Feed</label>
-              <p className="text-xs text-gray-400 dark:text-white/40 mb-3">Upload a services feed to make individual services bookable directly from Google</p>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 max-w-xs px-3 py-2.5 text-sm border-2 border-dashed border-gray-300 dark:border-white/20 rounded-xl text-gray-400 dark:text-white/30 text-center">
-                  services-feed.csv or .xml
-                </div>
-                <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
-                  style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-                  <Upload size={14} /> Upload
-                </button>
+            {/* Conflict Calendars */}
+            <div className="flex items-center justify-between px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold text-gray-800 dark:text-white">Conflict Calendars</p>
+                <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5 flex items-center gap-1.5">
+                  <GoogleLogo size={12} />
+                  {gcEmail || 'Google Account'} — prevents double bookings
+                </p>
               </div>
+              <button onClick={() => setShowConflict(true)}
+                className="flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline transition-colors">
+                Edit <ChevronRight size={13} />
+              </button>
+            </div>
+
+            {/* Sync now */}
+            <div className="flex items-center justify-between px-5 py-3.5">
+              <p className="text-xs text-gray-400 dark:text-white/40">Manually push all upcoming appointments to Google Calendar</p>
+              <button onClick={handleSync} disabled={syncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white disabled:opacity-60 transition-all hover:-translate-y-0.5"
+                style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+                {syncing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                {syncing ? 'Syncing…' : 'Sync Now'}
+              </button>
             </div>
 
           </div>
         </section>
+      )}
+    </div>
+  )
+}
 
+// ── Video Conferencing sub-tab ─────────────────────────────────────────────────
+function VideoConferencingTab() {
+  const [gcConnected, setGcConnected] = useState(false)
+  const [meetEnabled, setMeetEnabled] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API}/integrations/google-calendar/status`, { headers: authH() })
+      .then(r => r.json()).then(d => setGcConnected(d.connected)).catch(() => {})
+  }, [])
+
+  const tools = [
+    {
+      id: 'meet',
+      logo: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M4 8C4 6.9 4.9 6 6 6h12c1.1 0 2 .9 2 2v8c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V8z" fill="#00832D"/>
+          <path d="M15 10.5l5-3v9l-5-3v-3z" fill="#00AC47"/>
+        </svg>
+      ),
+      name: 'Google Meet',
+      desc: 'Automatically add a Meet link to each video appointment',
+      available: gcConnected,
+      warning: 'Requires Google Calendar to be connected first.',
+    },
+    { id: 'zoom',  logo: <ZoomLogo />,  name: 'Zoom',             desc: 'Generate Zoom meeting links for virtual appointments', available: false, warning: '' },
+    { id: 'teams', logo: <TeamsLogo />, name: 'Microsoft Teams',  desc: 'Create Teams meeting links for each appointment',       available: false, warning: '' },
+  ]
+
+  return (
+    <div className="p-6 max-w-2xl">
+      <h2 className="text-base font-black text-gray-800 dark:text-white mb-1">Video Conferencing</h2>
+      <p className="text-xs text-gray-400 dark:text-white/40 mb-5">Automatically generate unique meeting links when an appointment is scheduled</p>
+
+      <div className="space-y-3">
+        {tools.map(tool => (
+          <div key={tool.id}>
+            {tool.warning && !tool.available && (
+              <div className="flex items-start gap-2.5 p-3 mb-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl">
+                <span className="text-amber-500 mt-0.5 flex-shrink-0">⚠</span>
+                <p className="text-xs text-amber-700 dark:text-amber-400">{tool.warning}</p>
+              </div>
+            )}
+            <div className={cn(
+              'flex items-center gap-4 p-4 rounded-2xl border transition-all',
+              !tool.available && tool.id !== 'meet'
+                ? 'border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3 opacity-60'
+                : 'border-gray-200 dark:border-white/10 bg-white dark:bg-white/5',
+            )}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white dark:bg-white/10 shadow-sm border border-gray-100 dark:border-white/10 flex-shrink-0">
+                {tool.logo}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-sm text-gray-800 dark:text-white">{tool.name}</p>
+                <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">{tool.desc}</p>
+              </div>
+              <div className="flex-shrink-0">
+                {tool.id === 'meet' && tool.available ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-white/50">{meetEnabled ? 'Enabled' : 'Disabled'}</span>
+                    <Toggle on={meetEnabled} onChange={setMeetEnabled} />
+                  </div>
+                ) : (
+                  <ComingSoon />
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Google Organic Booking sub-tab ─────────────────────────────────────────────
+function GoogleOrganicBookingTab() {
+  const [disabled,      setDisabled]      = useState(false)
+  const [confirmAll,    setConfirmAll]    = useState(false)
+  const [primaryFeed,   setPrimaryFeed]   = useState('book_online')
+  const [servicesFeed,  setServicesFeed]  = useState('')
+  const fileRef = React.useRef<HTMLInputElement>(null)
+
+  return (
+    <div className="p-6 max-w-2xl">
+      <h2 className="text-base font-black text-gray-800 dark:text-white mb-1">Google Organic Booking</h2>
+      <p className="text-xs text-gray-400 dark:text-white/40 mb-4">Allow patients to book directly from Google Search results</p>
+
+      {/* Prerequisites info box */}
+      <div className="mb-5 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/40 rounded-xl text-xs text-blue-700 dark:text-blue-400 space-y-1.5">
+        <p className="font-bold">Before you start</p>
+        <ul className="space-y-1 pl-3 list-disc">
+          <li><strong>Verify Location Details</strong> — Ensure your Google Business Profile address matches what patients see in Google Maps</li>
+          <li><strong>Match Descriptions</strong> — Service names should match those in your Google Business listing</li>
+          <li>Organic booking is managed through Google Reserve — approval can take 1–2 weeks</li>
+        </ul>
+      </div>
+
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 divide-y divide-gray-50 dark:divide-white/5">
+
+        {/* Disable toggle */}
+        <div className="flex items-center justify-between px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-800 dark:text-white">Disable Google Organic Booking</p>
+            <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Stop showing your clinic in Google's booking module</p>
+          </div>
+          <Toggle on={disabled} onChange={setDisabled} />
+        </div>
+
+        {/* Confirm reservations checkbox */}
+        <div className="flex items-start gap-3 px-5 py-4">
+          <button onClick={() => setConfirmAll(v => !v)}
+            className={cn(
+              'mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all',
+              confirmAll ? 'border-cyan-500 bg-cyan-500' : 'border-gray-300 dark:border-white/30',
+            )}>
+            {confirmAll && <Check size={10} className="text-white" strokeWidth={3} />}
+          </button>
+          <div>
+            <p className="text-sm font-semibold text-gray-800 dark:text-white">Confirm all reservations before adding to calendar</p>
+            <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">New bookings from Google will appear as pending until approved by staff</p>
+          </div>
+        </div>
+
+        {/* Two-column dropdowns */}
+        <div className="px-5 py-4 grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Primary Action Feed</label>
+            <select value={primaryFeed} onChange={e => setPrimaryFeed(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-all">
+              <option value="book_online">Book Online</option>
+              <option value="schedule">Schedule Appointment</option>
+              <option value="request">Request Appointment</option>
+              <option value="quote">Get a Quote</option>
+            </select>
+            <p className="text-[11px] text-gray-400 dark:text-white/30 mt-1">Primary CTA shown in Google Search</p>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Services Feed</label>
+            <select value={servicesFeed} onChange={e => setServicesFeed(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-all">
+              <option value="">-- Select a feed --</option>
+              <option value="all">All Services</option>
+              <option value="general">General Consultations</option>
+              <option value="specialist">Specialist Services</option>
+            </select>
+            <p className="text-[11px] text-gray-400 dark:text-white/30 mt-1">Services shown in Google's booking panel</p>
+          </div>
+        </div>
+
+        {/* Upload services feed */}
+        <div className="px-5 py-4">
+          <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-2 block">Upload Custom Feed</label>
+          <p className="text-xs text-gray-400 dark:text-white/40 mb-3">Upload a services feed file to make individual services bookable directly from Google</p>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-xs px-3 py-2.5 text-sm border-2 border-dashed border-gray-300 dark:border-white/20 rounded-xl text-gray-400 dark:text-white/30 text-center">
+              services-feed.csv or .xml
+            </div>
+            <input ref={fileRef} type="file" accept=".csv,.xml" className="hidden" />
+            <button onClick={() => fileRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
+              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+              <Upload size={14} /> Upload
+            </button>
+          </div>
+        </div>
+
+        {/* Save */}
+        <div className="px-5 py-4 flex justify-end">
+          <button
+            className="px-5 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
+            style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+            Save Settings
+          </button>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+// ── Main export ────────────────────────────────────────────────────────────────
+import React from 'react'
+
+type SubTab = 'calendars' | 'video' | 'organic'
+
+export default function ConnectionsTab() {
+  const [subTab, setSubTab] = useState<SubTab>('calendars')
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Sub-tab bar */}
+      <div className="flex-shrink-0 flex items-center gap-0.5 px-6 pt-3 pb-0 border-b border-gray-100 dark:border-white/8 bg-gray-50 dark:bg-white/3">
+        {([
+          { key: 'calendars', label: 'Calendars' },
+          { key: 'video',     label: 'Video Conferencing' },
+          { key: 'organic',   label: 'Google Organic Booking' },
+        ] as { key: SubTab; label: string }[]).map(({ key, label }) => (
+          <button key={key} onClick={() => setSubTab(key)}
+            className={cn(
+              'px-4 py-2.5 text-sm font-semibold border-b-2 transition-all -mb-px',
+              subTab === key
+                ? 'border-cyan-500 text-cyan-600 dark:text-cyan-400'
+                : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300',
+            )}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Sub-tab content */}
+      <div className="flex-1 overflow-y-auto">
+        {subTab === 'calendars' && <CalendarsTab />}
+        {subTab === 'video'     && <VideoConferencingTab />}
+        {subTab === 'organic'   && <GoogleOrganicBookingTab />}
       </div>
     </div>
   )

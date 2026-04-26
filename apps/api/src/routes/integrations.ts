@@ -74,10 +74,14 @@ function acceptTokenFromQuery(req: Request, _res: Response, next: NextFunction) 
 router.get('/google-calendar/status', requireAuth, async (_req, res) => {
   const tokens = await loadTokens()
   if (!tokens) return res.json({ connected: false })
+  const emailRow = await prisma.$queryRaw<{ value: string }[]>`SELECT value FROM app_settings WHERE key = 'gcal_email' LIMIT 1`.catch(() => [])
+  const email = emailRow.length ? emailRow[0].value : null
   res.json({
     connected:  true,
+    email,
     hasRefresh: !!tokens.refresh_token,
     expiry:     tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+    redirectUri: getRedirectUri(),
   })
 })
 
@@ -92,6 +96,7 @@ router.get('/google-calendar/auth-url', requireAuth, clinicalStaff, (req, res) =
     scope: [
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/userinfo.email',
     ],
     state: encodeURIComponent(returnTo),
   })
@@ -111,6 +116,7 @@ router.get('/google-calendar/auth',
       scope: [
         'https://www.googleapis.com/auth/calendar',
         'https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/userinfo.email',
       ],
       state: encodeURIComponent(returnTo),
     })
@@ -136,7 +142,21 @@ router.get('/google-calendar/callback', async (req, res) => {
     const auth       = makeOAuth2Client()
     const { tokens } = await auth.getToken(code)
     await saveTokens(tokens)
-    console.log('[GCal] Connected — tokens saved to DB')
+    // Fetch and persist the authenticated user's email
+    try {
+      auth.setCredentials(tokens)
+      const oauth2 = google.oauth2({ version: 'v2', auth })
+      const info   = await oauth2.userinfo.get()
+      const email  = info.data.email
+      if (email) {
+        const v = JSON.stringify(email)
+        await prisma.$executeRaw`
+          INSERT INTO app_settings (key, value, "updatedAt") VALUES ('gcal_email', ${v}, NOW())
+          ON CONFLICT (key) DO UPDATE SET value = ${v}, "updatedAt" = NOW()
+        `
+        console.log('[GCal] Connected as', email)
+      }
+    } catch (emailErr: any) { console.warn('[GCal] Could not fetch email:', emailErr.message) }
     res.redirect(`${front}${returnTo}?gcal=connected`)
   } catch (e: any) {
     console.error('[GCal] Token exchange error:', e.message)
