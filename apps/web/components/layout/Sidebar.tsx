@@ -9,18 +9,29 @@ import {
   Wallet, Receipt, ShoppingBag, CreditCard, FileBarChart,
   Bot, Megaphone, UserPlus, QrCode, Settings, HeadphonesIcon,
   ChevronLeft, ChevronRight, Globe, BookOpen, Package, BarChart2,
+  ListChecks, Inbox, Phone, Mic,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-interface NavItem  { label: string; href: string; icon: React.ElementType }
+interface NavItem  { label: string; href: string; icon: React.ElementType; sub?: NavItem[] }
 interface NavGroup { label?: string; items: NavItem[] }
+
+const AI_SUITE_SUB: NavItem[] = [
+  { label: 'Agent Control',  href: '/ai-suite',               icon: Bot },
+  { label: 'Inbox',          href: '/ai-suite/inbox',          icon: Inbox },
+  { label: 'Call Logs',      href: '/ai-suite/calls',          icon: Phone },
+  { label: 'Voice Studio',   href: '/ai-suite/voice-studio',   icon: Mic },
+  { label: 'Knowledge Base', href: '/ai-suite/knowledge-base', icon: BookOpen },
+  { label: 'Settings',       href: '/ai-suite/settings',       icon: Settings },
+]
 
 const adminNav: NavGroup[] = [
   {
     label: 'CLINIC',
     items: [
       { label: 'Dashboard',    href: '/dashboard',    icon: LayoutDashboard },
-      { label: 'Appointments', href: '/scheduling',   icon: CalendarDays },
+      { label: 'Scheduling',   href: '/scheduling',   icon: CalendarDays },
+      { label: 'Appointments', href: '/appointments', icon: ListChecks },
       { label: 'Patients',     href: '/patients',     icon: Users },
       { label: 'Treatments',   href: '/treatments',   icon: Stethoscope },
       { label: 'Analytics',    href: '/analytics',    icon: BarChart2 },
@@ -41,7 +52,7 @@ const adminNav: NavGroup[] = [
   {
     label: 'GROWTH',
     items: [
-      { label: 'AI Suite',    href: '/ai-suite',                icon: Bot },
+      { label: 'AI Suite',    href: '/ai-suite',                icon: Bot, sub: AI_SUITE_SUB },
       { label: 'Campaigns',   href: '/campaigns',               icon: Megaphone },
       { label: 'CRM / Leads', href: '/crm/leads',               icon: UserPlus },
       { label: 'QR Capture',  href: '/crm/qr',                  icon: QrCode },
@@ -57,9 +68,37 @@ const adminNav: NavGroup[] = [
   },
 ]
 
+const accountsNav: NavGroup[] = [
+  {
+    label: 'FINANCE',
+    items: [
+      { label: 'Accounts',  href: '/accounts/dashboard', icon: Wallet },
+      { label: 'Sales',     href: '/accounts/invoices',  icon: Receipt },
+      { label: 'Expenses',  href: '/accounts/expenses',  icon: ShoppingBag },
+      { label: 'Payroll',   href: '/accounts/payroll',   icon: CreditCard },
+      { label: 'Stocks',    href: '/stocks',             icon: Package },
+      { label: 'Reports',   href: '/accounts/reports',   icon: FileBarChart },
+    ],
+  },
+  {
+    label: 'GROWTH',
+    items: [
+      { label: 'AI Suite', href: '/ai-suite', icon: Bot, sub: AI_SUITE_SUB },
+    ],
+  },
+  {
+    items: [
+      { label: 'Settings', href: '/settings', icon: Settings },
+      { label: 'Support',  href: '/support',  icon: HeadphonesIcon },
+    ],
+  },
+]
+
 export default function Sidebar({ role = 'ADMIN', dark = false }: { role?: string; dark?: boolean }) {
   const pathname  = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+
+  const nav = role === 'ACCOUNTS' ? accountsNav : adminNav
 
   // colour tokens
   const sideBg    = dark ? 'rgba(8,14,52,0.92)'      : 'rgba(255,255,255,0.92)'
@@ -73,6 +112,7 @@ export default function Sidebar({ role = 'ADMIN', dark = false }: { role?: strin
   const bdrClr    = dark ? 'rgba(255,255,255,0.06)'  : '#F3F4F6'
   const toggleBdr = dark ? 'rgba(255,255,255,0.1)'   : '#E5E7EB'
   const toggleC   = dark ? 'rgba(148,163,200,0.7)'   : '#9CA3AF'
+  const subInact  = dark ? 'rgba(148,163,184,0.65)'  : '#6B7280'
 
   return (
     <aside
@@ -111,7 +151,7 @@ export default function Sidebar({ role = 'ADMIN', dark = false }: { role?: strin
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 sidebar-nav">
-        {adminNav.map((group, gi) => (
+        {nav.map((group, gi) => (
           <div key={gi} className="pb-1" style={gi > 0 ? { marginTop: 4, paddingTop: 4, borderTop: `1px solid ${bdrClr}` } : {}}>
             {group.label && !collapsed && (
               <p className="text-[9px] font-black uppercase tracking-[0.15em] px-4 py-2"
@@ -120,49 +160,80 @@ export default function Sidebar({ role = 'ADMIN', dark = false }: { role?: strin
               </p>
             )}
             {group.items.map((item) => {
-              const Icon   = item.icon
+              const Icon = item.icon
+              const hasSub = !!item.sub
               const active =
                 pathname === item.href ||
                 (item.href !== '/dashboard' && pathname.startsWith(item.href + '/')) ||
                 (item.href === '/accounts/dashboard' && pathname.startsWith('/accounts'))
+              const showSub = !collapsed && hasSub && active
 
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={collapsed ? item.label : undefined}
-                  className={cn(
-                    'relative flex items-center gap-3 transition-all duration-150 group mx-2 rounded-xl my-0.5',
-                    collapsed ? 'justify-center p-2.5' : 'px-3 py-2',
-                  )}
-                  style={{
-                    background: active ? activeBg : 'transparent',
-                    color: active ? activeC : inactiveC,
-                  }}
-                  onMouseEnter={e => { if (!active) e.currentTarget.style.background = hoverBg }}
-                  onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
-                >
-                  {active && (
-                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full"
-                      style={{ background: 'linear-gradient(to bottom, #1A237E, #29ABE2)' }} />
-                  )}
+                <div key={item.href}>
+                  <Link
+                    href={item.href}
+                    title={collapsed ? item.label : undefined}
+                    className={cn(
+                      'relative flex items-center gap-3 transition-all duration-150 group mx-2 rounded-xl my-0.5',
+                      collapsed ? 'justify-center p-2.5' : 'px-3 py-2',
+                    )}
+                    style={{
+                      background: active ? activeBg : 'transparent',
+                      color: active ? activeC : inactiveC,
+                    }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = hoverBg }}
+                    onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+                  >
+                    {active && (
+                      <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full"
+                        style={{ background: 'linear-gradient(to bottom, #1A237E, #29ABE2)' }} />
+                    )}
 
-                  <Icon size={17} className="flex-shrink-0 transition-colors"
-                    style={{ color: active ? activeI : undefined }} />
+                    <Icon size={17} className="flex-shrink-0 transition-colors"
+                      style={{ color: active ? activeI : undefined }} />
 
-                  {!collapsed && (
-                    <span className="text-[13px] font-medium truncate"
-                      style={{ fontWeight: active ? 600 : 500 }}>{item.label}</span>
-                  )}
+                    {!collapsed && (
+                      <span className="text-[13px] font-medium truncate"
+                        style={{ fontWeight: active ? 600 : 500 }}>{item.label}</span>
+                    )}
 
-                  {collapsed && (
-                    <div className="absolute left-full ml-3 px-2.5 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 shadow-xl text-xs text-white"
-                      style={{ background: '#111827' }}>
-                      {item.label}
-                      <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
-                    </div>
-                  )}
-                </Link>
+                    {collapsed && (
+                      <div className="absolute left-full ml-3 px-2.5 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 shadow-xl text-xs text-white"
+                        style={{ background: '#111827' }}>
+                        {item.label}
+                        <span className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                      </div>
+                    )}
+                  </Link>
+
+                  {/* Sub-items (AI Suite sub-nav) */}
+                  {showSub && item.sub?.map(sub => {
+                    const SubIcon = sub.icon
+                    const subActive = pathname === sub.href
+                    return (
+                      <Link
+                        key={sub.href}
+                        href={sub.href}
+                        className="relative flex items-center gap-2.5 mx-2 pl-8 pr-3 py-1.5 rounded-xl transition-all duration-150 group"
+                        style={{
+                          background: subActive ? activeBg : 'transparent',
+                          color: subActive ? activeC : subInact,
+                          fontSize: '12px',
+                        }}
+                        onMouseEnter={e => { if (!subActive) e.currentTarget.style.background = hoverBg }}
+                        onMouseLeave={e => { if (!subActive) e.currentTarget.style.background = 'transparent' }}
+                      >
+                        {subActive && (
+                          <span className="absolute left-2 top-1.5 bottom-1.5 w-[2px] rounded-r-full"
+                            style={{ background: '#29ABE2' }} />
+                        )}
+                        <SubIcon size={13} className="flex-shrink-0"
+                          style={{ color: subActive ? activeI : undefined }} />
+                        <span style={{ fontWeight: subActive ? 600 : 400 }}>{sub.label}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
               )
             })}
           </div>

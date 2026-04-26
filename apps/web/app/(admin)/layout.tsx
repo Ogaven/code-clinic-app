@@ -9,7 +9,8 @@ import { Menu, X } from 'lucide-react'
 
 const pageTitles: Record<string, string> = {
   '/dashboard':              'Dashboard',
-  '/scheduling':             'Appointments',
+  '/scheduling':             'Scheduling',
+  '/appointments':           'Appointments',
   '/patients':               'Patients',
   '/treatments':             'Treatments',
   '/stocks':                 'Stocks',
@@ -20,10 +21,13 @@ const pageTitles: Record<string, string> = {
   '/accounts/expenses':      'Expenses',
   '/accounts/payroll':       'Payroll',
   '/accounts/reports':       'Reports',
-  '/ai-suite':               'AI Suite',
+  '/ai-suite':               'Agent Control',
+  '/ai-suite/inbox':         'Inbox',
+  '/ai-suite/calls':         'Call Logs',
   '/ai-suite/voice-studio':  'Voice Studio',
-  '/ai-suite/recordings':    'Call Recordings',
   '/ai-suite/knowledge-base':'Knowledge Base',
+  '/ai-suite/settings':      'AI Settings',
+  '/ai-suite/recordings':    'Call Recordings',
   '/ai-suite/agent-config':  'Agent Config',
   '/campaigns':              'Campaigns',
   '/crm/leads':              'CRM — Leads',
@@ -48,7 +52,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const u = JSON.parse(stored)
     if (u.role === 'RECEPTIONIST') { router.replace('/receptionist/dashboard'); return }
     if (u.role === 'DOCTOR') { router.replace('/doctor/dashboard'); return }
-    if (u.role === 'ACCOUNTS') { router.replace('/accounts/dashboard'); return }
     setUser(u)
     const isDark = localStorage.getItem('cc_theme') === 'dark'
     setDark(isDark)
