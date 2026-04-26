@@ -1,15 +1,25 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, KeyboardEvent } from 'react'
 import {
   MessageSquare, Facebook, Instagram, Phone, Mic2,
   CheckCircle2, XCircle, Loader2, Plus, Trash2, Edit3, Save, X,
-  ChevronDown, ChevronUp, ExternalLink,
+  ChevronDown, ChevronUp, ExternalLink, ArrowLeft, Copy, Globe,
+  Mail, MapPin, Upload, Lock, MoreVertical, AlertTriangle,
+  Image as ImageIcon, Link2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// ── types ──────────────────────────────────────────────────────────────────────
+// ── API ────────────────────────────────────────────────────────────────────────
+const API = '/api-proxy'
+function authH(json = false) {
+  const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  const h: Record<string, string> = { Authorization: `Bearer ${t}` }
+  if (json) h['Content-Type'] = 'application/json'
+  return h
+}
 
+// ── Shared UI atoms ────────────────────────────────────────────────────────────
 type SipTrunk = {
   id: string; name: string; host: string; port: number; netmask: number
   protocol: string; allowInbound: boolean; allowOutbound: boolean
@@ -17,8 +27,6 @@ type SipTrunk = {
   useSipRegistration: boolean; leadingPlus: boolean
   techPrefix?: string | null; sipDiversionHeader?: string | null
 }
-
-// ── small helpers ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ connected }: { connected: boolean }) {
   return connected ? (
@@ -61,105 +69,839 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function Input({ value, onChange, placeholder, type = 'text' }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; type?: string
+function Inp({ value, onChange, placeholder, type = 'text', disabled }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; type?: string; disabled?: boolean
 }) {
   return (
-    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all" />
+    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
+      className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed" />
   )
 }
 
-function SaveBtn({ saving, onClick }: { saving: boolean; onClick: () => void }) {
+function SaveBtn({ saving, onClick, label = 'Save' }: { saving: boolean; onClick: () => void; label?: string }) {
   return (
     <button onClick={onClick} disabled={saving}
       className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-60"
       style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
       {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-      Save
+      {label}
     </button>
   )
 }
 
-// ── WhatsApp section ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// WHATSAPP PANEL — GHL-style
+// ═══════════════════════════════════════════════════════════════════════════════
 
-function WhatsAppSection({ toast }: { toast: (m: string) => void }) {
-  const API = '/api-proxy'
-  function authH() {
-    const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-    return { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }
+type WaNumber = { id: string; phoneNumber: string; name: string; status: string; qualityRating: string; country: string }
+type WaProfile = { displayName: string; category: string; description: string; address: string; email: string; website: string; imageUrl: string | null }
+type WaInsights = { tier: string; messagingLimit: number; qualityRating: string }
+
+const WA_CATEGORIES = [
+  { value: 'AUTOMOTIVE',                label: 'Automotive'             },
+  { value: 'BEAUTY_SPA_AND_SALON',      label: 'Beauty, Spa & Salon'    },
+  { value: 'CLOTHING_AND_APPAREL',      label: 'Clothing & Apparel'     },
+  { value: 'EDUCATION',                 label: 'Education'              },
+  { value: 'ENTERTAINMENT',             label: 'Entertainment'          },
+  { value: 'EVENT_PLANNING_AND_SERVICE',label: 'Event Planning'         },
+  { value: 'FINANCE_AND_BANKING',       label: 'Finance & Banking'      },
+  { value: 'FOOD_AND_GROCERY',          label: 'Food & Grocery'         },
+  { value: 'HOTEL_AND_LODGING',         label: 'Hotel & Lodging'        },
+  { value: 'MEDICAL_AND_HEALTH',        label: 'Medical & Health'       },
+  { value: 'NONPROFIT',                 label: 'Nonprofit'              },
+  { value: 'PROFESSIONAL_SERVICES',     label: 'Professional Services'  },
+  { value: 'SHOPPING_AND_RETAIL',       label: 'Shopping & Retail'      },
+  { value: 'TRAVEL_AND_TRANSPORTATION', label: 'Travel & Transportation'},
+  { value: 'RESTAURANT',                label: 'Restaurant'             },
+  { value: 'OTHER',                     label: 'Other'                  },
+]
+
+const COUNTRY_CODES = [
+  { code: '+256', flag: '🇺🇬', name: 'Uganda'       },
+  { code: '+254', flag: '🇰🇪', name: 'Kenya'        },
+  { code: '+255', flag: '🇹🇿', name: 'Tanzania'     },
+  { code: '+250', flag: '🇷🇼', name: 'Rwanda'       },
+  { code: '+251', flag: '🇪🇹', name: 'Ethiopia'     },
+  { code: '+234', flag: '🇳🇬', name: 'Nigeria'      },
+  { code: '+27',  flag: '🇿🇦', name: 'South Africa' },
+  { code: '+44',  flag: '🇬🇧', name: 'UK'           },
+  { code: '+1',   flag: '🇺🇸', name: 'USA'          },
+  { code: '+91',  flag: '🇮🇳', name: 'India'        },
+]
+
+// ── OTP input ──────────────────────────────────────────────────────────────────
+function OtpInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const refs = useRef<(HTMLInputElement | null)[]>(Array(6).fill(null))
+  const digits = value.padEnd(6, '').split('').slice(0, 6)
+
+  function handleChange(i: number, raw: string) {
+    const d = raw.replace(/\D/g, '').slice(-1)
+    const next = [...digits]; next[i] = d
+    onChange(next.join('').replace(/\s/g, ''))
+    if (d && i < 5) refs.current[i + 1]?.focus()
   }
-
-  const [status,    setStatus]  = useState<{ connected: boolean; pending?: boolean; phone?: string | null } | null>(null)
-  const [phone,     setPhone]   = useState('')
-  const [saving,    setSaving]  = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-
-  useEffect(() => {
-    fetch(`${API}/ai-suite/connections/whatsapp`, { headers: authH() })
-      .then(r => r.json()).then(setStatus).catch(() => {})
-  }, [])
-
-  async function submit() {
-    if (!phone) return toast('Please enter your WhatsApp phone number')
-    setSaving(true)
-    try {
-      await fetch(`${API}/ai-suite/connections/whatsapp/simple`, {
-        method: 'PATCH', headers: authH(), body: JSON.stringify({ phone }),
-      })
-      setSubmitted(true)
-      setPhone('')
-    } catch { toast('Failed to submit') } finally { setSaving(false) }
+  function handleKey(i: number, e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Backspace' && !digits[i] && i > 0) refs.current[i - 1]?.focus()
   }
-
-  const isPending  = submitted || status?.pending
-  const isConnected = status?.connected
+  function handlePaste(e: React.ClipboardEvent) {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    onChange(pasted)
+    refs.current[Math.min(pasted.length, 5)]?.focus()
+  }
 
   return (
-    <SectionCard expandedDefault
-      icon={<div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#25D36618' }}><MessageSquare size={16} style={{ color: '#25D366' }} /></div>}
-      label="WhatsApp"
-      badge={status && <StatusBadge connected={!!isConnected} />}>
-      <div className="space-y-4">
-        {isConnected ? (
-          <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
-            <CheckCircle2 size={14} />
-            <span>WhatsApp is connected and active.</span>
-          </div>
-        ) : isPending ? (
-          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-700/40">
-            <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Request received!</p>
-            <p className="text-sm text-amber-600 dark:text-amber-300/80 mt-1">Our team will set this up for you. You'll receive a confirmation within 24 hours.</p>
-          </div>
-        ) : (
-          <>
-            <p className="text-sm text-gray-500 dark:text-white/50">Enter your clinic's WhatsApp number and our team will connect it for you.</p>
-            <Field label="WhatsApp Phone Number">
-              <Input value={phone} onChange={setPhone} placeholder="+256741087667" />
-            </Field>
-            <button onClick={submit} disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-60"
-              style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-              {saving ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
-              Request Setup
-            </button>
-          </>
-        )}
-      </div>
-    </SectionCard>
+    <div className="flex gap-3 justify-center" onPaste={handlePaste}>
+      {digits.map((d, i) => (
+        <input key={i} ref={el => { refs.current[i] = el }}
+          type="text" inputMode="numeric" maxLength={1} value={d}
+          onChange={e => handleChange(i, e.target.value)}
+          onKeyDown={e => handleKey(i, e)}
+          className="w-12 h-14 text-center text-2xl font-bold border-2 border-gray-200 rounded-2xl focus:border-blue-500 outline-none transition-colors bg-gray-50" />
+      ))}
+    </div>
   )
 }
 
-// ── Facebook section ───────────────────────────────────────────────────────────
+// ── Add Number Modal ───────────────────────────────────────────────────────────
+function AddNumberModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [step,          setStep]         = useState<'form' | 'otp'>('form')
+  const [displayName,   setDisplayName]  = useState('Code Clinic')
+  const [countryCode,   setCountryCode]  = useState('+256')
+  const [localPhone,    setLocalPhone]   = useState('')
+  const [otp,           setOtp]          = useState('')
+  const [phoneNumberId, setPhoneNumberId] = useState('')
+  const [loading,       setLoading]      = useState(false)
+  const [error,         setError]        = useState('')
 
-function FacebookSection({ toast }: { toast: (m: string) => void }) {
-  const API = '/api-proxy'
-  function authH() {
-    const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-    return { Authorization: `Bearer ${t}` }
+  async function proceed() {
+    if (!displayName.trim() || !localPhone.trim()) { setError('Please fill in all fields'); return }
+    setError(''); setLoading(true)
+    try {
+      const res  = await fetch(`${API}/ai-suite/connections/whatsapp/register`, {
+        method: 'POST', headers: authH(true),
+        body: JSON.stringify({ displayName, phoneNumber: countryCode + localPhone.replace(/\D/g, '') }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Registration failed'); return }
+      setPhoneNumberId(data.phoneNumberId)
+      setStep('otp')
+    } catch { setError('Network error — please try again') } finally { setLoading(false) }
   }
 
-  const [status,       setStatus]       = useState<{ connected: boolean; pageName: string | null } | null>(null)
+  async function verify() {
+    if (otp.length < 6) { setError('Enter the 6-digit code'); return }
+    setError(''); setLoading(true)
+    try {
+      const res  = await fetch(`${API}/ai-suite/connections/whatsapp/verify`, {
+        method: 'POST', headers: authH(true),
+        body: JSON.stringify({ phoneNumberId, otp }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Verification failed'); return }
+      onSuccess()
+    } catch { setError('Network error — please try again') } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 className="text-base font-bold text-gray-800">Configure Phone Number</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={18} /></button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {step === 'form' ? (
+            <>
+              {/* Warning */}
+              <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  Once you connect your WhatsApp here, you will no longer be able to use it on the WhatsApp mobile app.
+                </p>
+              </div>
+
+              {/* Display name info */}
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Your display name must comply with WhatsApp's guidelines.{' '}
+                <a href="https://www.facebook.com/business/help/757569725593362" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  Learn more about display name guidelines
+                </a>
+              </p>
+
+              {/* Display name */}
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Display Name</label>
+                <input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Code Clinic"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-blue-500 transition-colors" />
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Add your own phone number</label>
+                <div className="flex gap-2">
+                  <select value={countryCode} onChange={e => setCountryCode(e.target.value)}
+                    className="px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-blue-500 transition-colors">
+                    {COUNTRY_CODES.map(c => (
+                      <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
+                    ))}
+                  </select>
+                  <input value={localPhone} onChange={e => setLocalPhone(e.target.value)} placeholder="741 087 667"
+                    className="flex-1 px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-blue-500 transition-colors" />
+                </div>
+              </div>
+
+              {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
+            </>
+          ) : (
+            <>
+              <div className="text-center">
+                <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
+                  <MessageSquare size={28} className="text-[#25D366]" />
+                </div>
+                <p className="text-sm font-bold text-gray-800 mb-1">Verify your number</p>
+                <p className="text-xs text-gray-500">
+                  Enter the 6-digit code sent to <strong>{countryCode} {localPhone}</strong>
+                </p>
+              </div>
+              <OtpInput value={otp} onChange={setOtp} />
+              {error && <p className="text-xs text-red-600 font-semibold text-center">{error}</p>}
+              <p className="text-xs text-gray-400 text-center">Didn't receive a code? <button className="text-blue-600 hover:underline">Resend</button></p>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-6 pb-5">
+          <button onClick={step === 'form' ? onClose : () => setStep('form')}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+            {step === 'form' ? 'Cancel' : 'Back'}
+          </button>
+          <button onClick={step === 'form' ? proceed : verify} disabled={loading}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors">
+            {loading && <Loader2 size={13} className="animate-spin" />}
+            {step === 'form' ? 'Proceed to verify' : 'Verify'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Phone frame preview ────────────────────────────────────────────────────────
+function PhonePreview({ profile }: { profile: WaProfile }) {
+  const catLabel = WA_CATEGORIES.find(c => c.value === profile.category)?.label || profile.category
+  return (
+    <div className="flex-shrink-0 w-[240px]">
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 text-center">Live Preview</p>
+      <div className="bg-gray-900 rounded-[38px] p-2.5 shadow-2xl border-4 border-gray-900">
+        {/* Notch */}
+        <div className="relative flex justify-center mb-0.5">
+          <div className="w-20 h-5 bg-gray-950 rounded-full" />
+        </div>
+        {/* Screen */}
+        <div className="bg-white rounded-[28px] overflow-hidden" style={{ height: 480 }}>
+          {/* WA header */}
+          <div className="flex items-center gap-2 px-3 py-2.5" style={{ background: '#075E54' }}>
+            <span className="text-white/70 text-lg leading-none">‹</span>
+            <div className="flex-1">
+              <p className="text-white text-xs font-bold leading-tight truncate">{profile.displayName || 'Code Clinic'}</p>
+            </div>
+          </div>
+          {/* Profile banner */}
+          <div className="h-24 flex items-center justify-center relative" style={{ background: '#128C7E' }}>
+            {profile.imageUrl ? (
+              <img src={profile.imageUrl} alt="" className="w-16 h-16 rounded-full object-cover border-2 border-white" />
+            ) : (
+              <div className="w-16 h-16 rounded-full flex items-center justify-center border-2 border-white" style={{ background: '#25D366' }}>
+                <span className="text-white text-xl font-black">CC</span>
+              </div>
+            )}
+          </div>
+          {/* Info */}
+          <div className="px-3 py-2 border-b border-gray-100">
+            <p className="text-xs font-bold text-gray-800 truncate">{profile.displayName || 'Code Clinic'}</p>
+            <p className="text-[10px] text-[#25D366] font-semibold">Share</p>
+          </div>
+          <div className="overflow-y-auto" style={{ height: 220 }}>
+            {profile.description && (
+              <div className="px-3 py-2 border-b border-gray-100">
+                <p className="text-[10px] text-gray-600 leading-relaxed line-clamp-3">{profile.description}</p>
+              </div>
+            )}
+            <div className="px-3 py-2 space-y-1.5">
+              {catLabel && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px]">🏥</span>
+                  <span className="text-[10px] text-gray-500">{catLabel}</span>
+                </div>
+              )}
+              {profile.address && (
+                <div className="flex items-center gap-1.5">
+                  <MapPin size={9} className="text-gray-400 flex-shrink-0" />
+                  <span className="text-[10px] text-gray-500 truncate">{profile.address}</span>
+                </div>
+              )}
+              {profile.email && (
+                <div className="flex items-center gap-1.5">
+                  <Mail size={9} className="text-gray-400 flex-shrink-0" />
+                  <span className="text-[10px] text-gray-500 truncate">{profile.email}</span>
+                </div>
+              )}
+              {profile.website && (
+                <div className="flex items-center gap-1.5">
+                  <Globe size={9} className="text-[#25D366] flex-shrink-0" />
+                  <span className="text-[10px] text-[#25D366] truncate">{profile.website}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Add to Contacts */}
+          <div className="px-3 py-2 border-t border-gray-100">
+            <div className="w-full py-1.5 rounded-full text-center text-[10px] font-bold text-white" style={{ background: '#25D366' }}>
+              Add to Contacts
+            </div>
+          </div>
+        </div>
+        {/* Home bar */}
+        <div className="flex justify-center mt-2">
+          <div className="w-20 h-1 bg-white/20 rounded-full" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Insights tab ───────────────────────────────────────────────────────────────
+function InsightsTab({ phoneNumber }: { phoneNumber: string }) {
+  const [data, setData] = useState<WaInsights | null>(null)
+
+  useEffect(() => {
+    fetch(`${API}/ai-suite/connections/whatsapp/insights`, { headers: authH() })
+      .then(r => r.json()).then(setData).catch(() => {})
+  }, [])
+
+  const TIERS = [
+    { tier: 'TIER_1K',        label: '1,000'    },
+    { tier: 'TIER_10K',       label: '10,000'   },
+    { tier: 'TIER_100K',      label: '100,000'  },
+    { tier: 'TIER_UNLIMITED', label: 'Unlimited'},
+  ]
+  const currentIdx = data ? TIERS.findIndex(t => t.tier === data.tier) : 0
+
+  return (
+    <div className="p-6 max-w-2xl space-y-6">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-base font-bold text-gray-800">Messaging Limits</h3>
+          <div className="w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center cursor-help" title="Business-initiated conversation limits">
+            <span className="text-[9px] font-black text-gray-500">i</span>
+          </div>
+        </div>
+        <p className="text-xs text-gray-400 mb-5">Business-initiated conversations in a rolling 24-hour period</p>
+
+        {/* Tier row */}
+        <div className="flex items-center gap-0 overflow-x-auto pb-2">
+          {TIERS.map((t, i) => {
+            const isCurrent = i === currentIdx
+            const isNext    = i === currentIdx + 1
+            const isLocked  = i > currentIdx
+            return (
+              <div key={t.tier} className="flex items-center">
+                <div className={cn(
+                  'flex flex-col items-center px-4 py-3 rounded-xl border-2 min-w-[100px] transition-all',
+                  isCurrent ? 'border-emerald-500 bg-emerald-50'  : '',
+                  isNext    ? 'border-amber-300  bg-amber-50'     : '',
+                  !isCurrent && !isNext ? 'border-gray-200 bg-gray-50' : '',
+                )}>
+                  <div className="flex items-center gap-1 mb-1">
+                    {isLocked && !isNext && <Lock size={11} className="text-gray-400" />}
+                    <span className={cn('text-base font-black',
+                      isCurrent ? 'text-emerald-700' : isNext ? 'text-amber-700' : 'text-gray-400')}>
+                      {t.label}
+                    </span>
+                  </div>
+                  <span className={cn('text-[10px] font-semibold',
+                    isCurrent ? 'text-emerald-600' : isNext ? 'text-amber-600' : 'text-gray-400')}>
+                    {isCurrent ? 'Current' : isNext ? 'Next Level' : 'Locked'}
+                  </span>
+                </div>
+                {i < TIERS.length - 1 && (
+                  <div className={cn('w-8 h-0.5', i < currentIdx ? 'bg-emerald-300' : 'bg-gray-200')} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-5 flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+          <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <span className="text-[9px] font-black text-white">i</span>
+          </div>
+          <p className="text-xs text-blue-700">
+            Initiate conversations with <strong>500 unique customers</strong> in a rolling 7 days period to qualify for the next tier.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Profile tab ────────────────────────────────────────────────────────────────
+function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
+  const imgRef = useRef<HTMLInputElement>(null)
+  const [profile, setProfile]  = useState<WaProfile>({ displayName: 'Code Clinic', category: 'MEDICAL_AND_HEALTH', description: '', address: '', email: '', website: '', imageUrl: null })
+  const [saving,  setSaving]   = useState(false)
+  const [saved,   setSaved]    = useState(false)
+
+  useEffect(() => {
+    fetch(`${API}/ai-suite/connections/whatsapp/profile`, { headers: authH() })
+      .then(r => r.json()).then(setProfile).catch(() => {})
+  }, [])
+
+  function set(k: keyof WaProfile, v: string) {
+    setProfile(p => ({ ...p, [k]: v }))
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      const base64 = ev.target?.result as string
+      setProfile(p => ({ ...p, imageUrl: base64 }))
+      await fetch(`${API}/ai-suite/connections/whatsapp/profile/image`, {
+        method: 'POST', headers: authH(true), body: JSON.stringify({ imageBase64: base64 }),
+      }).catch(() => {})
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      await fetch(`${API}/ai-suite/connections/whatsapp/profile`, {
+        method: 'PATCH', headers: authH(true),
+        body: JSON.stringify({ category: profile.category, description: profile.description, address: profile.address, email: profile.email, website: profile.website }),
+      })
+      setSaved(true); setTimeout(() => setSaved(false), 3000)
+    } catch {} finally { setSaving(false) }
+  }
+
+  return (
+    <div className="flex gap-8 p-6">
+      {/* Form side */}
+      <div className="flex-1 min-w-0 space-y-5">
+        <div>
+          <p className="text-base font-bold text-gray-800">Personal Info</p>
+          <p className="text-xs text-gray-400 mt-0.5">Update your photo and personal details here</p>
+        </div>
+
+        {/* Image upload */}
+        <div className="flex items-start gap-4 pb-5 border-b border-gray-100">
+          <div>
+            {profile.imageUrl ? (
+              <img src={profile.imageUrl} alt="" className="w-16 h-16 rounded-full object-cover border-2 border-gray-200" />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-[#25D366]/20 flex items-center justify-center border-2 border-gray-200">
+                <span className="text-[#25D366] text-xl font-black">CC</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-1">Display Image</p>
+            <p className="text-xs text-gray-400 mb-2">PNG or JPG, square, max 5 MB. 640×640 recommended.</p>
+            <button onClick={() => imgRef.current?.click()}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors">
+              <Upload size={12} /> Upload Image
+            </button>
+            <input ref={imgRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleImageUpload} />
+          </div>
+        </div>
+
+        {/* Display name (readonly) */}
+        <div className="pb-5 border-b border-gray-100">
+          <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Display Name</label>
+          <input value={profile.displayName} disabled
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 text-gray-400 cursor-not-allowed" />
+          <p className="text-[11px] text-gray-400 mt-1">Display Name can't be edited after verification.</p>
+        </div>
+
+        {/* Category */}
+        <div className="pb-5 border-b border-gray-100">
+          <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Category</label>
+          <select value={profile.category} onChange={e => set('category', e.target.value)}
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-cyan-500 transition-colors">
+            {WA_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+        </div>
+
+        {/* Description */}
+        <div className="pb-5 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Description</label>
+            <span className="text-[11px] text-gray-400">{profile.description.length}/512</span>
+          </div>
+          <textarea value={profile.description} onChange={e => set('description', e.target.value.slice(0, 512))}
+            rows={3} placeholder="Describe your business..."
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-cyan-500 transition-colors resize-none" />
+        </div>
+
+        {/* Address */}
+        <div className="pb-5 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Address</label>
+            <span className="text-[11px] text-gray-400">{profile.address.length}/256</span>
+          </div>
+          <input value={profile.address} onChange={e => set('address', e.target.value.slice(0, 256))}
+            placeholder="123 Kampala Rd, Kampala, Uganda"
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-cyan-500 transition-colors" />
+        </div>
+
+        {/* Email */}
+        <div className="pb-5 border-b border-gray-100">
+          <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Email Address</label>
+          <div className="relative">
+            <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={profile.email} onChange={e => set('email', e.target.value)} placeholder="clinic@example.com" type="email"
+              className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-cyan-500 transition-colors" />
+          </div>
+        </div>
+
+        {/* Website */}
+        <div className="pb-5 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Website</label>
+            <span className="text-[11px] text-gray-400">{profile.website.length}/256</span>
+          </div>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-mono">https://</span>
+            <input value={profile.website} onChange={e => set('website', e.target.value.slice(0, 256))} placeholder="www.yourclinic.com"
+              className="w-full pl-16 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-cyan-500 transition-colors" />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button onClick={save} disabled={saving}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors">
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            Save
+          </button>
+          {saved && <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1"><CheckCircle2 size={13} /> Saved!</span>}
+        </div>
+      </div>
+
+      {/* Phone preview */}
+      <PhonePreview profile={profile} />
+    </div>
+  )
+}
+
+// ── Message Links tab ──────────────────────────────────────────────────────────
+function MessageLinksTab({ phoneNumber }: { phoneNumber: string }) {
+  const [copied, setCopied] = useState(false)
+  const rawPhone = phoneNumber.replace(/[^\d]/g, '')
+  const waLink   = `https://wa.me/${rawPhone}`
+  const qrUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(waLink)}`
+
+  function copy() {
+    navigator.clipboard.writeText(waLink).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }).catch(() => {})
+  }
+
+  return (
+    <div className="p-6 max-w-lg space-y-6">
+      <div>
+        <h3 className="text-base font-bold text-gray-800 mb-1">Click-to-Chat Link</h3>
+        <p className="text-xs text-gray-400 mb-4">Share this link so customers can start a WhatsApp conversation with you.</p>
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl">
+            <Link2 size={14} className="text-gray-400 flex-shrink-0" />
+            <span className="text-sm text-gray-700 font-mono truncate">{waLink}</span>
+          </div>
+          <button onClick={copy}
+            className={cn('flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all',
+              copied ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')}>
+            <Copy size={13} />
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-base font-bold text-gray-800 mb-3">QR Code</h3>
+        <div className="inline-block p-4 bg-white border-2 border-gray-100 rounded-2xl shadow-sm">
+          <img src={qrUrl} alt="WhatsApp QR Code" width={160} height={160} className="rounded-lg" />
+        </div>
+        <p className="text-xs text-gray-400 mt-2">Customers can scan this code to open a WhatsApp chat.</p>
+      </div>
+
+      <button
+        onClick={() => window.open(`https://wa.me/?phone=${rawPhone}`, '_blank')}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
+        style={{ background: '#25D366' }}>
+        <MessageSquare size={14} /> Share Link
+      </button>
+    </div>
+  )
+}
+
+// ── Manage page ────────────────────────────────────────────────────────────────
+function WhatsAppManagePage({ number, onBack }: { number: WaNumber; onBack: () => void }) {
+  const [tab, setTab] = useState<'insights' | 'profile' | 'links'>('insights')
+  return (
+    <div className="min-h-full bg-gray-50 dark:bg-transparent">
+      {/* Back + header */}
+      <div className="bg-white dark:bg-white/5 border-b border-gray-100 dark:border-white/10 px-6 py-4">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-gray-800 dark:text-white/50 dark:hover:text-white mb-3 transition-colors">
+          <ArrowLeft size={15} /> Back to WhatsApp
+        </button>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: '#25D36618' }}>
+            <MessageSquare size={22} style={{ color: '#25D366' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-lg font-black text-gray-800 dark:text-white">{number.phoneNumber}</span>
+              <span className="text-sm font-semibold text-gray-500 dark:text-white/50">{number.name}</span>
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 size={9} /> {number.status}
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">● {number.qualityRating}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex items-center border-b border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 px-6">
+        {([
+          { key: 'insights', label: 'Insights'      },
+          { key: 'profile',  label: 'Profile'       },
+          { key: 'links',    label: 'Message Links' },
+        ] as { key: typeof tab; label: string }[]).map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={cn('px-4 py-3 text-sm font-semibold border-b-2 -mb-px transition-all',
+              tab === t.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-700')}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="overflow-y-auto">
+        {tab === 'insights' && <InsightsTab phoneNumber={number.phoneNumber} />}
+        {tab === 'profile'  && <ProfileTab  phoneNumber={number.phoneNumber} />}
+        {tab === 'links'    && <MessageLinksTab phoneNumber={number.phoneNumber} />}
+      </div>
+    </div>
+  )
+}
+
+// ── WhatsApp Panel (GHL-style numbers list) ────────────────────────────────────
+function WhatsAppPanel({ onManage }: { onManage: (n: WaNumber) => void }) {
+  const [waTab,       setWaTab]       = useState<'numbers' | 'templates' | 'flows'>('numbers')
+  const [numbers,     setNumbers]     = useState<WaNumber[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [showAdd,     setShowAdd]     = useState(false)
+  const [openMenu,    setOpenMenu]    = useState<string | null>(null)
+
+  const isConnected = numbers.length > 0
+
+  function load() {
+    setLoading(true)
+    fetch(`${API}/ai-suite/connections/whatsapp/numbers`, { headers: authH() })
+      .then(r => r.json()).then(d => { setNumbers(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
+
+  function flagFor(phone: string) {
+    if (phone.startsWith('+256')) return '🇺🇬'
+    if (phone.startsWith('+254')) return '🇰🇪'
+    if (phone.startsWith('+255')) return '🇹🇿'
+    if (phone.startsWith('+234')) return '🇳🇬'
+    if (phone.startsWith('+27'))  return '🇿🇦'
+    return '🌍'
+  }
+
+  return (
+    <>
+      {showAdd && (
+        <AddNumberModal
+          onClose={() => setShowAdd(false)}
+          onSuccess={() => { setShowAdd(false); load() }}
+        />
+      )}
+
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+        {/* Panel header */}
+        <div className="px-5 pt-5 pb-4 border-b border-gray-100 dark:border-white/8">
+          <div className="flex items-start justify-between gap-4 mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#25D36618' }}>
+                <MessageSquare size={18} style={{ color: '#25D366' }} />
+              </div>
+              <span className="text-base font-black text-gray-800 dark:text-white">WhatsApp</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-600 dark:text-white/60 border border-gray-200 dark:border-white/15 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                Create Engagement Ad
+              </button>
+              <button onClick={() => setShowAdd(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5"
+                style={{ background: '#111827' }}>
+                <Plus size={13} /> Add Number
+              </button>
+            </div>
+          </div>
+
+          {/* Account status badges */}
+          {isConnected && (
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/40">
+                <CheckCircle2 size={9} /> Approved
+              </span>
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/40">
+                <CheckCircle2 size={9} /> Meta business verification: Verified
+              </span>
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/40">
+                <CheckCircle2 size={9} /> Marketing messages: Enabled
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-gray-800 dark:text-white">
+                Phone numbers — {String(numbers.length).padStart(2, '0')} Numbers
+              </p>
+              <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Manage WhatsApp numbers</p>
+            </div>
+          </div>
+
+          {/* Sub-tabs */}
+          <div className="flex items-center gap-0 mt-3 border-b border-gray-100 dark:border-white/8 -mx-5 px-5">
+            {([
+              { key: 'numbers',   label: 'Numbers'   },
+              { key: 'templates', label: 'Templates' },
+              { key: 'flows',     label: 'Flows'     },
+            ] as { key: typeof waTab; label: string }[]).map(t => (
+              <button key={t.key} onClick={() => setWaTab(t.key)}
+                className={cn('px-4 py-2 text-xs font-bold border-b-2 -mb-px transition-all',
+                  waTab === t.key ? 'border-[#25D366] text-[#25D366]' : 'border-transparent text-gray-400 hover:text-gray-600')}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tab content */}
+        {waTab === 'numbers' && (
+          <div>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={20} className="animate-spin text-gray-300" />
+              </div>
+            ) : numbers.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14 text-center px-6">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3" style={{ background: '#25D36610' }}>
+                  <MessageSquare size={28} style={{ color: '#25D366' }} />
+                </div>
+                <p className="text-sm font-bold text-gray-700 dark:text-white/70 mb-1">No numbers connected</p>
+                <p className="text-xs text-gray-400 dark:text-white/40 mb-4">Add a WhatsApp number to get started</p>
+                <button onClick={() => setShowAdd(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
+                  style={{ background: '#25D366' }}>
+                  <Plus size={14} /> Add Number
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100 dark:border-white/8">
+                      {['Phone Number', 'Country', 'Status', 'Name', 'Quality Rating', 'Actions'].map(h => (
+                        <th key={h} className="px-5 py-3 text-left text-[10px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {numbers.map(num => (
+                      <tr key={num.id} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/3 transition-colors">
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <span className="text-sm font-semibold text-gray-800 dark:text-white">
+                            {flagFor(num.phoneNumber)} {num.phoneNumber}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5 text-sm text-gray-600 dark:text-white/60 whitespace-nowrap">{num.country}</td>
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                            {num.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-white/70">{num.name}</td>
+                        <td className="px-5 py-3.5">
+                          <span className="text-[11px] font-bold text-green-600">● {num.qualityRating}</span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => onManage(num)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-700 dark:text-white/70 border border-gray-200 dark:border-white/15 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+                              Manage
+                            </button>
+                            <div className="relative">
+                              <button onClick={() => setOpenMenu(openMenu === num.id ? null : num.id)}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+                                <MoreVertical size={14} />
+                              </button>
+                              {openMenu === num.id && (
+                                <div className="absolute right-0 top-8 z-20 bg-white dark:bg-[#0e2045] border border-gray-100 dark:border-white/10 rounded-xl shadow-xl py-1 min-w-[140px]">
+                                  <button onClick={() => { onManage(num); setOpenMenu(null) }}
+                                    className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                    Manage
+                                  </button>
+                                  <button onClick={() => setOpenMenu(null)}
+                                    className="w-full text-left px-4 py-2 text-xs font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                    Remove Number
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+        {waTab === 'templates' && (
+          <div className="flex flex-col items-center justify-center py-14 text-center px-6">
+            <p className="text-sm font-bold text-gray-500 dark:text-white/50 mb-1">Templates</p>
+            <p className="text-xs text-gray-400 dark:text-white/30">Message templates will appear here once you have an approved number.</p>
+          </div>
+        )}
+        {waTab === 'flows' && (
+          <div className="flex flex-col items-center justify-center py-14 text-center px-6">
+            <p className="text-sm font-bold text-gray-500 dark:text-white/50 mb-1">Flows</p>
+            <p className="text-xs text-gray-400 dark:text-white/30">WhatsApp Flows will appear here once configured.</p>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OTHER CHANNEL SECTIONS (unchanged)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function FacebookSection({ toast }: { toast: (m: string) => void }) {
+  const [status,        setStatus]        = useState<{ connected: boolean; pageName: string | null } | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
 
   useEffect(() => {
@@ -167,7 +909,7 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
       .then(r => r.json()).then(setStatus).catch(() => {})
   }, [])
 
-  function connectFacebook() {
+  function connect() {
     const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : ''
     const w = window.open(`${API}/ai-suite/connections/facebook/oauth?token=${token}`, '_blank', 'width=600,height=700')
     const t = setInterval(() => {
@@ -183,8 +925,7 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
     setDisconnecting(true)
     try {
       await fetch(`${API}/ai-suite/connections/facebook`, { method: 'DELETE', headers: authH() })
-      setStatus({ connected: false, pageName: null })
-      toast('Facebook disconnected')
+      setStatus({ connected: false, pageName: null }); toast('Facebook disconnected')
     } catch { toast('Failed') } finally { setDisconnecting(false) }
   }
 
@@ -198,22 +939,20 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
           <>
             <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
               <CheckCircle2 size={14} />
-              <span>Connected to page: <span className="font-semibold">{status.pageName}</span></span>
+              <span>Connected to page: <strong>{status.pageName}</strong></span>
             </div>
             <button onClick={disconnect} disabled={disconnecting}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 hover:bg-red-100 transition-colors disabled:opacity-60">
-              {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
-              Disconnect
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors disabled:opacity-60">
+              {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />} Disconnect
             </button>
           </>
         ) : (
           <div className="space-y-3">
             <p className="text-xs text-gray-400 dark:text-white/40">Connect your Facebook Page to receive and send Messenger messages through Sarah.</p>
-            <button onClick={connectFacebook}
+            <button onClick={connect}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
               style={{ background: '#1877F2' }}>
-              <Facebook size={14} /> Connect with Facebook
-              <ExternalLink size={12} className="opacity-70" />
+              <Facebook size={14} /> Connect with Facebook <ExternalLink size={12} className="opacity-70" />
             </button>
           </div>
         )}
@@ -222,15 +961,7 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
   )
 }
 
-// ── Instagram section ──────────────────────────────────────────────────────────
-
 function InstagramSection({ toast }: { toast: (m: string) => void }) {
-  const API = '/api-proxy'
-  function authH() {
-    const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-    return { Authorization: `Bearer ${t}` }
-  }
-
   const [status,        setStatus]        = useState<{ connected: boolean; accountName: string | null } | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
 
@@ -239,7 +970,7 @@ function InstagramSection({ toast }: { toast: (m: string) => void }) {
       .then(r => r.json()).then(setStatus).catch(() => {})
   }, [])
 
-  function connectInstagram() {
+  function connect() {
     const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : ''
     const w = window.open(`${API}/ai-suite/connections/instagram/oauth?token=${token}`, '_blank', 'width=600,height=700')
     const t = setInterval(() => {
@@ -255,8 +986,7 @@ function InstagramSection({ toast }: { toast: (m: string) => void }) {
     setDisconnecting(true)
     try {
       await fetch(`${API}/ai-suite/connections/instagram`, { method: 'DELETE', headers: authH() })
-      setStatus({ connected: false, accountName: null })
-      toast('Instagram disconnected')
+      setStatus({ connected: false, accountName: null }); toast('Instagram disconnected')
     } catch { toast('Failed') } finally { setDisconnecting(false) }
   }
 
@@ -269,23 +999,20 @@ function InstagramSection({ toast }: { toast: (m: string) => void }) {
         {status?.connected ? (
           <>
             <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
-              <CheckCircle2 size={14} />
-              <span>Connected: <span className="font-semibold">{status.accountName}</span></span>
+              <CheckCircle2 size={14} /><span>Connected: <strong>{status.accountName}</strong></span>
             </div>
             <button onClick={disconnect} disabled={disconnecting}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 hover:bg-red-100 transition-colors disabled:opacity-60">
-              {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
-              Disconnect
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors disabled:opacity-60">
+              {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />} Disconnect
             </button>
           </>
         ) : (
           <div className="space-y-3">
             <p className="text-xs text-gray-400 dark:text-white/40">Connect your Instagram Business account to manage DMs through Sarah.</p>
-            <button onClick={connectInstagram}
+            <button onClick={connect}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
               style={{ background: 'linear-gradient(135deg,#E4405F,#833AB4,#F77737)' }}>
-              <Instagram size={14} /> Connect with Instagram
-              <ExternalLink size={12} className="opacity-70" />
+              <Instagram size={14} /> Connect with Instagram <ExternalLink size={12} className="opacity-70" />
             </button>
           </div>
         )}
@@ -294,15 +1021,7 @@ function InstagramSection({ toast }: { toast: (m: string) => void }) {
   )
 }
 
-// ── SMS section ────────────────────────────────────────────────────────────────
-
 function SmsSection({ toast }: { toast: (m: string) => void }) {
-  const API = '/api-proxy'
-  function authH() {
-    const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-    return { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }
-  }
-
   const [connected, setConnected] = useState(false)
   const [apiKey,    setApiKey]    = useState('')
   const [username,  setUsername]  = useState('')
@@ -319,13 +1038,11 @@ function SmsSection({ toast }: { toast: (m: string) => void }) {
     setSaving(true)
     try {
       const res = await fetch(`${API}/ai-suite/connections/sms`, {
-        method: 'PATCH', headers: authH(),
+        method: 'PATCH', headers: authH(true),
         body: JSON.stringify({ ...(apiKey && { apiKey }), username }),
       })
       const d = await res.json()
-      setConnected(d.connected)
-      setApiKey('')
-      toast("SMS settings saved")
+      setConnected(d.connected); setApiKey(''); toast('SMS settings saved')
     } catch { toast('Failed to save') } finally { setSaving(false) }
   }
 
@@ -336,20 +1053,14 @@ function SmsSection({ toast }: { toast: (m: string) => void }) {
       badge={<StatusBadge connected={connected} />}>
       <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="API Key">
-            <Input value={apiKey} onChange={setApiKey} placeholder="Leave blank to keep existing" type="password" />
-          </Field>
-          <Field label="Username">
-            <Input value={username} onChange={setUsername} placeholder="Your AT username" />
-          </Field>
+          <Field label="API Key"><Inp value={apiKey} onChange={setApiKey} placeholder="Leave blank to keep existing" type="password" /></Field>
+          <Field label="Username"><Inp value={username} onChange={setUsername} placeholder="Your AT username" /></Field>
         </div>
         <SaveBtn saving={saving} onClick={save} />
       </div>
     </SectionCard>
   )
 }
-
-// ── SIP Trunks section ─────────────────────────────────────────────────────────
 
 const BLANK_TRUNK: Omit<SipTrunk, 'id'> = {
   name: '', host: '', port: 5060, netmask: 32, protocol: 'UDP',
@@ -359,14 +1070,6 @@ const BLANK_TRUNK: Omit<SipTrunk, 'id'> = {
 }
 
 function SipTrunksSection({ toast }: { toast: (m: string) => void }) {
-  const API = '/api-proxy'
-  function authH(json = false) {
-    const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-    const h: Record<string, string> = { Authorization: `Bearer ${t}` }
-    if (json) h['Content-Type'] = 'application/json'
-    return h
-  }
-
   const [trunks,  setTrunks]  = useState<SipTrunk[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<SipTrunk | null>(null)
@@ -384,14 +1087,7 @@ function SipTrunksSection({ toast }: { toast: (m: string) => void }) {
     setForm({ name: t.name, host: t.host, port: t.port, netmask: t.netmask, protocol: t.protocol,
       allowInbound: t.allowInbound, allowOutbound: t.allowOutbound, optionsPing: t.optionsPing,
       username: t.username || '', password: t.password || '', useSipRegistration: t.useSipRegistration,
-      leadingPlus: t.leadingPlus, techPrefix: t.techPrefix || '', sipDiversionHeader: t.sipDiversionHeader || '',
-    })
-    setAdding(true)
-  }
-
-  function startAdd() {
-    setEditing(null)
-    setForm({ ...BLANK_TRUNK })
+      leadingPlus: t.leadingPlus, techPrefix: t.techPrefix || '', sipDiversionHeader: t.sipDiversionHeader || '' })
     setAdding(true)
   }
 
@@ -400,19 +1096,13 @@ function SipTrunksSection({ toast }: { toast: (m: string) => void }) {
     setSaving(true)
     try {
       if (editing) {
-        const res = await fetch(`${API}/ai-suite/connections/sip-trunks/${editing.id}`, {
-          method: 'PATCH', headers: authH(true), body: JSON.stringify(form),
-        })
+        const res = await fetch(`${API}/ai-suite/connections/sip-trunks/${editing.id}`, { method: 'PATCH', headers: authH(true), body: JSON.stringify(form) })
         const updated = await res.json()
-        setTrunks(ts => ts.map(t => t.id === editing.id ? updated : t))
-        toast('Trunk updated')
+        setTrunks(ts => ts.map(t => t.id === editing.id ? updated : t)); toast('Trunk updated')
       } else {
-        const res = await fetch(`${API}/ai-suite/connections/sip-trunks`, {
-          method: 'POST', headers: authH(true), body: JSON.stringify(form),
-        })
+        const res = await fetch(`${API}/ai-suite/connections/sip-trunks`, { method: 'POST', headers: authH(true), body: JSON.stringify(form) })
         const created = await res.json()
-        setTrunks(ts => [...ts, created])
-        toast('Trunk added')
+        setTrunks(ts => [...ts, created]); toast('Trunk added')
       }
       setAdding(false); setEditing(null)
     } catch { toast('Failed to save') } finally { setSaving(false) }
@@ -421,24 +1111,19 @@ function SipTrunksSection({ toast }: { toast: (m: string) => void }) {
   async function remove(id: string) {
     if (!confirm('Delete this SIP trunk?')) return
     await fetch(`${API}/ai-suite/connections/sip-trunks/${id}`, { method: 'DELETE', headers: authH() })
-    setTrunks(ts => ts.filter(t => t.id !== id))
-    toast('Trunk deleted')
+    setTrunks(ts => ts.filter(t => t.id !== id)); toast('Trunk deleted')
   }
 
-  function setF(k: keyof typeof BLANK_TRUNK, v: any) {
-    setForm(f => ({ ...f, [k]: v }))
-  }
+  function setF(k: keyof typeof BLANK_TRUNK, v: any) { setForm(f => ({ ...f, [k]: v })) }
 
   return (
     <SectionCard
       icon={<div className="w-8 h-8 rounded-xl flex items-center justify-center bg-purple-50 dark:bg-purple-900/20"><Mic2 size={16} className="text-purple-500" /></div>}
       label="SIP Trunks (Voice)">
       <div className="space-y-4">
-        {loading ? (
-          <Loader2 size={16} className="animate-spin text-gray-400" />
-        ) : trunks.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-white/40">No SIP trunks configured yet.</p>
-        ) : (
+        {loading ? <Loader2 size={16} className="animate-spin text-gray-400" />
+        : trunks.length === 0 ? <p className="text-sm text-gray-400 dark:text-white/40">No SIP trunks configured yet.</p>
+        : (
           <div className="divide-y divide-gray-50 dark:divide-white/5">
             {trunks.map(t => (
               <div key={t.id} className="flex items-center justify-between py-3">
@@ -446,26 +1131,21 @@ function SipTrunksSection({ toast }: { toast: (m: string) => void }) {
                   <p className="text-sm font-semibold text-gray-800 dark:text-white">{t.name}</p>
                   <p className="text-xs text-gray-400 dark:text-white/40 font-mono">{t.host}:{t.port} · {t.protocol}</p>
                   <div className="flex gap-2 mt-1">
-                    {t.allowInbound  && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">Inbound</span>}
-                    {t.allowOutbound && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">Outbound</span>}
-                    {t.useSipRegistration && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">Registered</span>}
+                    {t.allowInbound  && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600">Inbound</span>}
+                    {t.allowOutbound && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-600">Outbound</span>}
+                    {t.useSipRegistration && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-600">Registered</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => startEdit(t)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-gray-400 hover:text-gray-600 dark:hover:text-white/70">
-                    <Edit3 size={13} />
-                  </button>
-                  <button onClick={() => remove(t.id)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-gray-400 hover:text-red-500">
-                    <Trash2 size={13} />
-                  </button>
+                  <button onClick={() => startEdit(t)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-gray-400 hover:text-gray-600"><Edit3 size={13} /></button>
+                  <button onClick={() => remove(t.id)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
                 </div>
               </div>
             ))}
           </div>
         )}
-
         {!adding ? (
-          <button onClick={startAdd}
+          <button onClick={() => { setEditing(null); setForm({ ...BLANK_TRUNK }); setAdding(true) }}
             className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-gray-600 dark:text-white/70 border border-dashed border-gray-300 dark:border-white/20 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
             <Plus size={13} /> Add SIP Trunk
           </button>
@@ -476,36 +1156,29 @@ function SipTrunksSection({ toast }: { toast: (m: string) => void }) {
               <button onClick={() => { setAdding(false); setEditing(null) }} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"><X size={16} /></button>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Name"><Input value={form.name} onChange={v => setF('name', v)} placeholder="Roke Telecom" /></Field>
-              <Field label="Host"><Input value={form.host} onChange={v => setF('host', v)} placeholder="41.191.76.76" /></Field>
-              <Field label="Port"><Input value={String(form.port)} onChange={v => setF('port', parseInt(v) || 5060)} placeholder="5060" /></Field>
+              <Field label="Name"><Inp value={form.name} onChange={v => setF('name', v)} placeholder="Roke Telecom" /></Field>
+              <Field label="Host"><Inp value={form.host} onChange={v => setF('host', v)} placeholder="41.191.76.76" /></Field>
+              <Field label="Port"><Inp value={String(form.port)} onChange={v => setF('port', parseInt(v) || 5060)} /></Field>
               <Field label="Protocol">
                 <select value={form.protocol} onChange={e => setF('protocol', e.target.value)}
                   className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500">
-                  {['UDP', 'TCP', 'TLS'].map(p => <option key={p} value={p}>{p}</option>)}
+                  {['UDP','TCP','TLS'].map(p => <option key={p}>{p}</option>)}
                 </select>
               </Field>
-              <Field label="Username (optional)"><Input value={form.username || ''} onChange={v => setF('username', v)} placeholder="trunk_user" /></Field>
-              <Field label="Password (optional)"><Input value={form.password || ''} onChange={v => setF('password', v)} placeholder="••••••••" type="password" /></Field>
+              <Field label="Username (optional)"><Inp value={form.username || ''} onChange={v => setF('username', v)} placeholder="trunk_user" /></Field>
+              <Field label="Password (optional)"><Inp value={form.password || ''} onChange={v => setF('password', v)} placeholder="••••••••" type="password" /></Field>
             </div>
             <div className="flex flex-wrap gap-4 py-1">
-              {([
-                ['allowInbound',       'Allow Inbound'],
-                ['allowOutbound',      'Allow Outbound'],
-                ['useSipRegistration', 'SIP Registration'],
-                ['leadingPlus',        'Leading +'],
-                ['optionsPing',        'OPTIONS Ping'],
-              ] as [keyof typeof BLANK_TRUNK, string][]).map(([k, label]) => (
+              {([['allowInbound','Allow Inbound'],['allowOutbound','Allow Outbound'],['useSipRegistration','SIP Registration'],['leadingPlus','Leading +'],['optionsPing','OPTIONS Ping']] as [keyof typeof BLANK_TRUNK, string][]).map(([k, label]) => (
                 <label key={k} className="flex items-center gap-2 text-xs text-gray-600 dark:text-white/60 cursor-pointer">
-                  <input type="checkbox" checked={!!form[k]} onChange={e => setF(k, e.target.checked)}
-                    className="w-3.5 h-3.5 rounded accent-cyan-500" />
+                  <input type="checkbox" checked={!!form[k]} onChange={e => setF(k, e.target.checked)} className="w-3.5 h-3.5 rounded accent-cyan-500" />
                   {label}
                 </label>
               ))}
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Tech Prefix"><Input value={form.techPrefix || ''} onChange={v => setF('techPrefix', v)} placeholder="Optional" /></Field>
-              <Field label="SIP Diversion Header"><Input value={form.sipDiversionHeader || ''} onChange={v => setF('sipDiversionHeader', v)} placeholder="Optional" /></Field>
+              <Field label="Tech Prefix"><Inp value={form.techPrefix || ''} onChange={v => setF('techPrefix', v)} placeholder="Optional" /></Field>
+              <Field label="SIP Diversion Header"><Inp value={form.sipDiversionHeader || ''} onChange={v => setF('sipDiversionHeader', v)} placeholder="Optional" /></Field>
             </div>
             <SaveBtn saving={saving} onClick={save} />
           </div>
@@ -515,18 +1188,31 @@ function SipTrunksSection({ toast }: { toast: (m: string) => void }) {
   )
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN PAGE
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export default function ConnectionsPage() {
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast,          setToast]          = useState<string | null>(null)
+  const [managingNumber, setManagingNumber] = useState<WaNumber | null>(null)
+
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000) }
 
+  if (managingNumber) {
+    return (
+      <div className="h-full overflow-y-auto">
+        {toast && (
+          <div className="fixed top-5 right-5 z-50 bg-gray-900 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl">{toast}</div>
+        )}
+        <WhatsAppManagePage number={managingNumber} onBack={() => setManagingNumber(null)} />
+      </div>
+    )
+  }
+
   return (
-    <div className="p-6 space-y-5 max-w-3xl">
+    <div className="p-6 max-w-4xl space-y-5">
       {toast && (
-        <div className="fixed top-5 right-5 z-50 bg-gray-900 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl">
-          {toast}
-        </div>
+        <div className="fixed top-5 right-5 z-50 bg-gray-900 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl">{toast}</div>
       )}
 
       <div>
@@ -534,11 +1220,14 @@ export default function ConnectionsPage() {
         <p className="text-sm text-gray-400 mt-0.5">Connect Sarah to your messaging channels</p>
       </div>
 
-      <WhatsAppSection  toast={showToast} />
-      <FacebookSection  toast={showToast} />
-      <InstagramSection toast={showToast} />
-      <SmsSection       toast={showToast} />
-      <SipTrunksSection toast={showToast} />
+      <WhatsAppPanel onManage={num => setManagingNumber(num)} />
+
+      <div className="space-y-5 max-w-3xl">
+        <FacebookSection  toast={showToast} />
+        <InstagramSection toast={showToast} />
+        <SmsSection       toast={showToast} />
+        <SipTrunksSection toast={showToast} />
+      </div>
     </div>
   )
 }

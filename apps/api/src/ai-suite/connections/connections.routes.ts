@@ -177,6 +177,187 @@ router.delete('/connections/instagram', requireAuth, async (_req, res) => {
   res.json({ connected: false })
 })
 
+// ── WhatsApp — numbers / register / verify / insights / profile ───────────────
+
+function waCredentials(config: any) {
+  return {
+    token:   config.waAccessToken   || process.env.WHATSAPP_TOKEN           || null,
+    phoneId: config.waPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || null,
+  }
+}
+
+function tierToLimit(tier?: string): number {
+  switch (tier) {
+    case 'TIER_10K':       return 10000
+    case 'TIER_100K':      return 100000
+    case 'TIER_UNLIMITED': return -1
+    default:               return 1000
+  }
+}
+
+router.get('/connections/whatsapp/numbers', requireAuth, async (_req, res) => {
+  try {
+    const config = await getConfig()
+    const { token, phoneId } = waCredentials(config)
+    if (!phoneId || !token || phoneId.startsWith('+') || token === '__pending__') {
+      return res.json([])
+    }
+    const wabaId = process.env.WHATSAPP_WABA_ID
+    if (wabaId) {
+      try {
+        const r    = await fetch(`https://graph.facebook.com/v19.0/${wabaId}/phone_numbers?fields=display_phone_number,status,verified_name,quality_rating&access_token=${token}`)
+        const data = await r.json() as any
+        if (data.data?.length) {
+          return res.json(data.data.map((n: any) => ({
+            id:            n.id,
+            phoneNumber:   n.display_phone_number || phoneId,
+            name:          n.verified_name || 'Code Clinic',
+            status:        n.status === 'CONNECTED' ? 'Connected' : (n.status || 'Connected'),
+            qualityRating: n.quality_rating || 'GREEN',
+            country:       (n.display_phone_number || '').startsWith('+256') ? 'Uganda' : 'Unknown',
+          })))
+        }
+      } catch (e: any) { console.warn('[WA] numbers Meta error:', e.message) }
+    }
+    const displayPhone = process.env.WHATSAPP_PHONE_NUMBER || phoneId
+    res.json([{
+      id: phoneId, phoneNumber: displayPhone, name: 'Code Clinic',
+      status: 'Connected', qualityRating: 'GREEN',
+      country: displayPhone.startsWith('+256') ? 'Uganda' : 'Unknown',
+    }])
+  } catch (e: any) { console.error('[WA] numbers error:', e.message); res.json([]) }
+})
+
+router.post('/connections/whatsapp/register', requireAuth, async (req, res) => {
+  const { displayName, phoneNumber } = req.body as { displayName?: string; phoneNumber?: string }
+  if (!displayName || !phoneNumber) {
+    return res.status(400).json({ error: 'displayName and phoneNumber are required' })
+  }
+  const wabaId = process.env.WHATSAPP_WABA_ID
+  const token  = process.env.WHATSAPP_TOKEN || (await getConfig()).waAccessToken
+  if (!wabaId || !token || token === '__pending__') {
+    return res.status(503).json({ error: 'WHATSAPP_WABA_ID and WHATSAPP_TOKEN must be configured' })
+  }
+  const cleaned = phoneNumber.replace(/\D/g, '')
+  const cc      = cleaned.startsWith('0') ? '256' : cleaned.slice(0, 3)
+  const number  = cleaned.startsWith('0') ? cleaned.slice(1) : cleaned.slice(3)
+  try {
+    const addRes  = await fetch(`https://graph.facebook.com/v19.0/${wabaId}/phone_numbers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ cc, phone_number: number, migrate_phone_number: false, verified_name: displayName, code_verification_method: 'SMS', language: 'en_US' }),
+    })
+    const addData = await addRes.json() as any
+    if (addData.error) throw new Error(addData.error.message || JSON.stringify(addData.error))
+    const phoneNumberId = addData.id as string
+    await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/request_code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code_method: 'SMS', language: 'en_US' }),
+    })
+    res.json({ phoneNumberId, success: true })
+  } catch (e: any) {
+    console.error('[WA] register error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/connections/whatsapp/verify', requireAuth, async (req, res) => {
+  const { phoneNumberId, otp } = req.body as { phoneNumberId?: string; otp?: string }
+  if (!phoneNumberId || !otp) return res.status(400).json({ error: 'phoneNumberId and otp required' })
+  const token = process.env.WHATSAPP_TOKEN || (await getConfig()).waAccessToken
+  if (!token || token === '__pending__') return res.status(503).json({ error: 'WHATSAPP_TOKEN not configured' })
+  try {
+    const r    = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/verify_code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code: otp }),
+    })
+    const data = await r.json() as any
+    if (data.error) throw new Error(data.error.message)
+    const config = await getConfig()
+    await prisma.aiAgentConfig.update({ where: { id: config.id }, data: { waPhoneNumberId: phoneNumberId } })
+    res.json({ success: true })
+  } catch (e: any) {
+    console.error('[WA] verify error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.get('/connections/whatsapp/insights', requireAuth, async (_req, res) => {
+  try {
+    const config = await getConfig()
+    const { token, phoneId } = waCredentials(config)
+    if (!phoneId || !token || phoneId.startsWith('+') || token === '__pending__') {
+      return res.json({ tier: 'TIER_1K', messagingLimit: 1000, qualityRating: 'GREEN' })
+    }
+    const r    = await fetch(`https://graph.facebook.com/v19.0/${phoneId}?fields=messaging_limit_tier,quality_rating&access_token=${token}`)
+    const data = await r.json() as any
+    if (data.error) throw new Error(data.error.message)
+    res.json({ tier: data.messaging_limit_tier || 'TIER_1K', messagingLimit: tierToLimit(data.messaging_limit_tier), qualityRating: data.quality_rating || 'GREEN' })
+  } catch { res.json({ tier: 'TIER_1K', messagingLimit: 1000, qualityRating: 'GREEN' }) }
+})
+
+router.get('/connections/whatsapp/profile', requireAuth, async (_req, res) => {
+  try {
+    const config = await getConfig()
+    const { token, phoneId } = waCredentials(config)
+    if (phoneId && token && !phoneId.startsWith('+') && token !== '__pending__') {
+      try {
+        const r    = await fetch(`https://graph.facebook.com/v19.0/${phoneId}/whatsapp_business_profile?fields=address,description,email,profile_picture_url,websites,vertical&access_token=${token}`)
+        const data = await r.json() as any
+        if (data.data?.[0]) {
+          const p = data.data[0]
+          const rows = await prisma.$queryRaw<{ value: string }[]>`SELECT value FROM app_settings WHERE key = 'wa_profile' LIMIT 1`
+          const local = rows.length ? JSON.parse(rows[0].value) : {}
+          return res.json({ displayName: config.name || 'Code Clinic', category: p.vertical || local.category || 'MEDICAL_AND_HEALTH', description: p.description || local.description || '', address: p.address || local.address || '', email: p.email || local.email || '', website: p.websites?.[0] || local.website || '', imageUrl: p.profile_picture_url || local.imageUrl || null })
+        }
+      } catch (e: any) { console.warn('[WA] profile Meta error:', e.message) }
+    }
+    const rows = await prisma.$queryRaw<{ value: string }[]>`SELECT value FROM app_settings WHERE key = 'wa_profile' LIMIT 1`
+    const p = rows.length ? JSON.parse(rows[0].value) : {}
+    res.json({ displayName: config.name || 'Code Clinic', category: p.category || 'MEDICAL_AND_HEALTH', description: p.description || '', address: p.address || '', email: p.email || '', website: p.website || '', imageUrl: p.imageUrl || null })
+  } catch { res.json({ displayName: 'Code Clinic', category: 'MEDICAL_AND_HEALTH', description: '', address: '', email: '', website: '', imageUrl: null }) }
+})
+
+router.patch('/connections/whatsapp/profile', requireAuth, async (req, res) => {
+  const { category, description, address, email, website } = req.body
+  const rows    = await prisma.$queryRaw<{ value: string }[]>`SELECT value FROM app_settings WHERE key = 'wa_profile' LIMIT 1`
+  const existing = rows.length ? JSON.parse(rows[0].value) : {}
+  const profile  = { ...existing, category, description, address, email, website }
+  const value    = JSON.stringify(profile)
+  await prisma.$executeRaw`INSERT INTO app_settings (key, value, "updatedAt") VALUES ('wa_profile', ${value}, NOW()) ON CONFLICT (key) DO UPDATE SET value = ${value}, "updatedAt" = NOW()`
+  try {
+    const config = await getConfig()
+    const { token, phoneId } = waCredentials(config)
+    if (phoneId && token && !phoneId.startsWith('+') && token !== '__pending__') {
+      const body: any = { messaging_product: 'whatsapp' }
+      if (category)    body.vertical    = category
+      if (description) body.description = description
+      if (address)     body.address     = address
+      if (email)       body.email       = email
+      if (website)     body.websites    = [website]
+      const r = await fetch(`https://graph.facebook.com/v19.0/${phoneId}/whatsapp_business_profile`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body),
+      })
+      const d = await r.json() as any
+      if (d.error) console.warn('[WA] profile update Meta error:', d.error.message)
+    }
+  } catch (e: any) { console.warn('[WA] profile update error:', e.message) }
+  res.json({ success: true, ...profile })
+})
+
+router.post('/connections/whatsapp/profile/image', requireAuth, async (req, res) => {
+  const { imageBase64 } = req.body
+  if (!imageBase64) return res.status(400).json({ error: 'imageBase64 required' })
+  const rows    = await prisma.$queryRaw<{ value: string }[]>`SELECT value FROM app_settings WHERE key = 'wa_profile' LIMIT 1`
+  const existing = rows.length ? JSON.parse(rows[0].value) : {}
+  const profile  = { ...existing, imageUrl: imageBase64 }
+  const value    = JSON.stringify(profile)
+  await prisma.$executeRaw`INSERT INTO app_settings (key, value, "updatedAt") VALUES ('wa_profile', ${value}, NOW()) ON CONFLICT (key) DO UPDATE SET value = ${value}, "updatedAt" = NOW()`
+  res.json({ success: true, imageUrl: imageBase64 })
+})
+
 // ── SMS ────────────────────────────────────────────────────────────────────────
 router.get('/connections/sms', requireAuth, async (_req, res) => {
   const config = await getConfig()
