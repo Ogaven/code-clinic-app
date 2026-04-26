@@ -8,7 +8,7 @@ import {
   LayoutDashboard, CalendarDays, ListChecks, Users, MessageSquare,
   Bot, BarChart2, Settings, HelpCircle, Bell, Search,
   ChevronLeft, ChevronRight, ChevronDown, LogOut, User, Lock, Download,
-  Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Stethoscope, UserCog, Clock,
+  Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Clock,
   Phone, Mic, BookOpen, Inbox,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -20,8 +20,6 @@ const navTop: NavItem[] = [
   { label: 'Dashboard',    href: '/receptionist/dashboard',    icon: LayoutDashboard },
   { label: 'Scheduling',   href: '/receptionist/scheduling',   icon: CalendarDays },
   { label: 'Appointments', href: '/receptionist/appointments', icon: ListChecks },
-  { label: 'Doctors',    href: '/receptionist/doctors',      icon: UserCog },
-  { label: 'Services',   href: '/receptionist/services',     icon: Stethoscope },
   { label: 'Patients',   href: '/receptionist/patients',     icon: Users },
   { label: 'Live Flow',  href: '/receptionist/flow',         icon: Zap },
   {

@@ -1,16 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { CalendarDays, Users, Stethoscope, CalendarCheck } from 'lucide-react'
+import { CalendarDays, Users, Stethoscope, Plug } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MultiDoctorCalendar from '@/components/scheduling/MultiDoctorCalendar'
 import BookingDrawer from '@/components/scheduling/BookingDrawer'
 import AppointmentModal from '@/components/scheduling/AppointmentModal'
 import DoctorsTab from '@/components/scheduling/DoctorsTab'
 import ServicesTab from '@/components/scheduling/ServicesTab'
-import GoogleCalendarTab from '@/components/scheduling/GoogleCalendarTab'
+import ConnectionsTab from '@/components/scheduling/ConnectionsTab'
 
-type Tab = 'calendar' | 'doctors' | 'services' | 'gcal'
+type Tab = 'calendar' | 'doctors' | 'services' | 'connections'
 
 export default function AppointmentsPage() {
   const [tab,             setTab]             = useState<Tab>('calendar')
@@ -31,10 +31,10 @@ export default function AppointmentsPage() {
       {/* Tab bar */}
       <div className="flex-shrink-0 flex items-center gap-1 px-4 pt-3 pb-0 bg-white dark:bg-white/5 dark:backdrop-blur-sm border-b border-gray-100 dark:border-white/8">
         {([
-          { key: 'calendar', label: 'Calendar',        Icon: CalendarDays  },
-          { key: 'doctors',  label: 'Doctors',         Icon: Users         },
-          { key: 'services', label: 'Services',        Icon: Stethoscope   },
-          { key: 'gcal',     label: 'Google Calendar', Icon: CalendarCheck },
+          { key: 'calendar',     label: 'Calendar',     Icon: CalendarDays },
+          { key: 'doctors',      label: 'Doctors',      Icon: Users        },
+          { key: 'services',     label: 'Services',     Icon: Stethoscope  },
+          { key: 'connections',  label: 'Connections',  Icon: Plug         },
         ] as { key: Tab; label: string; Icon: any }[]).map(({ key, label, Icon }) => (
           <button key={key} onClick={() => setTab(key)}
             className={cn(
@@ -68,9 +68,9 @@ export default function AppointmentsPage() {
             onClickAppointment={setSelectedAppt}
           />
         )}
-        {tab === 'doctors'  && <DoctorsTab />}
-        {tab === 'services' && <ServicesTab />}
-        {tab === 'gcal'     && <GoogleCalendarTab />}
+        {tab === 'doctors'      && <DoctorsTab />}
+        {tab === 'services'     && <ServicesTab />}
+        {tab === 'connections'  && <ConnectionsTab />}
       </div>
 
       {/* Booking drawer */}
