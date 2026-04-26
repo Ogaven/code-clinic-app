@@ -567,7 +567,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
           {/* Deploy test badge */}
           {!collapsed && (
             <div className="mx-2 mb-1 px-3 py-1.5 rounded-xl text-center text-[10px] font-black tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40">
-              ✓ v2 · 22 APR
+              ✓ v1.0 · 26 APR
             </div>
           )}
         </div>

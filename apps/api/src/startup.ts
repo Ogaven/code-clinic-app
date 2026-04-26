@@ -39,6 +39,14 @@ export async function runStartup() {
     } else {
       console.log(`[startup] Database healthy: ${userCount} users, ${patientCount} patients, ${apptCount} appts.`)
     }
+
+    // Always ensure admin credentials are current
+    const adminPw = await bcrypt.hash('CodeClinic2026!', 12)
+    await prisma.user.updateMany({
+      where: { email: 'admin@codeclinic.ug' },
+      data:  { passwordHash: adminPw, firstName: 'Code Clinic', lastName: 'Admin' },
+    })
+    console.log('[startup] Admin credentials updated.')
   } catch (e: any) {
     console.error('[startup] Seed error:', e.message?.split('\n')[0])
   } finally {
@@ -47,12 +55,12 @@ export async function runStartup() {
 }
 
 async function seed() {
-  const adminPw  = await bcrypt.hash('Admin@2024!', 12)
+  const adminPw  = await bcrypt.hash('CodeClinic2026!', 12)
   const staffPw  = await bcrypt.hash('Staff@2024!', 12)
   const doctorPw = await bcrypt.hash('Doctor@2024!', 12)
 
   // Staff users
-  await prisma.user.upsert({ where: { email: 'admin@codeclinic.ug' },     update: {}, create: { email: 'admin@codeclinic.ug',     passwordHash: adminPw,  role: 'ADMIN',        firstName: 'Admin',     lastName: 'User',  phone: '+256700000001' } })
+  await prisma.user.upsert({ where: { email: 'admin@codeclinic.ug' },     update: { passwordHash: adminPw, firstName: 'Code Clinic', lastName: 'Admin' }, create: { email: 'admin@codeclinic.ug',     passwordHash: adminPw,  role: 'ADMIN',        firstName: 'Code Clinic', lastName: 'Admin', phone: '+256700000001' } })
   await prisma.user.upsert({ where: { email: 'reception@codeclinic.ug' }, update: {}, create: { email: 'reception@codeclinic.ug', passwordHash: staffPw,  role: 'RECEPTIONIST', firstName: 'Reception', lastName: 'Staff', phone: '+256700000002' } })
   await prisma.user.upsert({ where: { email: 'accounts@codeclinic.ug' },  update: {}, create: { email: 'accounts@codeclinic.ug',  passwordHash: staffPw,  role: 'ACCOUNTS',     firstName: 'Accounts',  lastName: 'Staff', phone: '+256700000003' } })
   console.log('[startup] Staff users created.')
@@ -202,7 +210,7 @@ async function seed() {
   console.log('[startup] Demo patients created.')
 
   console.log('\n[startup] Seed done!')
-  console.log('   admin@codeclinic.ug     → Admin@2024!')
+  console.log('   admin@codeclinic.ug     → CodeClinic2026!')
   console.log('   reception@codeclinic.ug → Staff@2024!')
   console.log('   accounts@codeclinic.ug  → Staff@2024!')
   await seedDemoData()

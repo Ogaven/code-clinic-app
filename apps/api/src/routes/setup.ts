@@ -108,14 +108,14 @@ router.post('/seed-production', async (req, res) => {
       log(`Schema sync warning (non-fatal): ${e.message?.slice(0, 100)}`)
     }
     // ── 1. Staff users ────────────────────────────────────────
-    const adminPw  = await bcrypt.hash('Admin@2024!', 12)
+    const adminPw  = await bcrypt.hash('CodeClinic2026!', 12)
     const staffPw  = await bcrypt.hash('Staff@2024!', 12)
     const doctorPw = await bcrypt.hash('Doctor@2024!', 12)
 
     await prisma.user.upsert({
       where:  { email: 'admin@codeclinic.ug' },
-      update: {},
-      create: { email: 'admin@codeclinic.ug', passwordHash: adminPw, role: 'ADMIN', firstName: 'Admin', lastName: 'User', phone: '+256700000001' },
+      update: { passwordHash: adminPw, firstName: 'Code Clinic', lastName: 'Admin' },
+      create: { email: 'admin@codeclinic.ug', passwordHash: adminPw, role: 'ADMIN', firstName: 'Code Clinic', lastName: 'Admin', phone: '+256700000001' },
     })
     await prisma.user.upsert({
       where:  { email: 'reception@codeclinic.ug' },
@@ -856,7 +856,7 @@ router.post('/seed-production', async (req, res) => {
       message: 'Production database seeded successfully',
       details: results,
       credentials: {
-        admin:       'admin@codeclinic.ug / Admin@2024!',
+        admin:       'admin@codeclinic.ug / CodeClinic2026!',
         receptionist: 'reception@codeclinic.ug / Staff@2024!',
         accounts:    'accounts@codeclinic.ug / Staff@2024!',
       },
