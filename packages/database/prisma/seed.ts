@@ -262,7 +262,7 @@ async function main() {
   ) {
     const existing = await prisma.aiConversation.findFirst({ where: { phoneNumber: phone, channel } })
     const conv = existing ?? await prisma.aiConversation.create({
-      data: { phoneNumber: phone, channel, agentEnabled, status: 'OPEN' },
+      data: { phoneNumber: phone, channel, agentEnabled, status: 'ACTIVE' },
     })
     for (const m of messages) {
       const dup = await prisma.aiMessage.findFirst({ where: { conversationId: conv.id, role: m.role, content: m.content } })

@@ -166,9 +166,16 @@ router.get('/google-calendar/callback', async (req, res) => {
 })
 
 // ─── DELETE /integrations/google-calendar/disconnect ─────────
-router.delete('/google-calendar/disconnect', requireAuth, clinicalStaff, async (_req, res) => {
+router.delete('/google-calendar/disconnect', requireAuth, async (_req, res) => {
   await deleteTokens()
   res.json({ message: 'Disconnected' })
+})
+
+// ─── POST /integrations/google-calendar/reset ─────────────────
+// Clears expired/invalid tokens so status shows "Not connected".
+router.post('/google-calendar/reset', requireAuth, async (_req, res) => {
+  await deleteTokens()
+  res.json({ message: 'Tokens cleared — reconnect Google Calendar' })
 })
 
 // ─── POST /integrations/google-calendar/sync ─────────────────

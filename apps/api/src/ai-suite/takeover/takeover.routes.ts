@@ -31,11 +31,14 @@ router.post('/handback/:conversationId', async (req, res) => {
 })
 
 // GET /ai-suite/conversations
-// Returns all conversations with last message, patient name, channel, agent status.
+// Returns conversations filtered by ?channel=whatsapp|instagram|facebook|website
 // Ordered by most recently updated conversation first.
-router.get('/conversations', async (_req, res) => {
+router.get('/conversations', async (req, res) => {
   try {
+    const channelParam = (req.query.channel as string | undefined)?.toUpperCase()
+    const where = channelParam ? { channel: channelParam } : {}
     const conversations = await prisma.aiConversation.findMany({
+      where,
       orderBy: { updatedAt: 'desc' },
       include: {
         patient: {

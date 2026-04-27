@@ -38,21 +38,24 @@ const CHANNELS: { key: ChannelKey; label: string; icon: React.ComponentType<any>
 
 // ── Avatar ─────────────────────────────────────────────────────────────────────
 const PALETTE = ['#E91E63','#1565C0','#00897B','#F57F17','#6A1B9A','#2E7D32','#AD1457','#0277BD','#4E342E','#FF6F00','#1A237E','#00695C']
-function nameInitials(name: string): string {
-  const parts = name.trim().split(/\s+/)
+function nameInitials(name: string | null | undefined): string {
+  if (!name) return '??'
+  const parts = name.trim().split(/\s+/).filter(Boolean)
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return name.slice(0, 2).toUpperCase()
+  if (parts[0]?.length >= 2) return parts[0].slice(0, 2).toUpperCase()
+  return (name.slice(0, 2) || '??').toUpperCase()
 }
 function avatarColor(seed: string): string {
   let h = 0
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0
   return PALETTE[Math.abs(h) % PALETTE.length]
 }
-function Avatar({ name, size = 40, borderColor }: { name: string; size?: number; borderColor?: string }) {
+function Avatar({ name, size = 40, borderColor }: { name: string | null | undefined; size?: number; borderColor?: string }) {
+  const safe = name || '?'
   return (
     <div className="rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-      style={{ width: size, height: size, background: avatarColor(name), fontSize: size * 0.35, boxShadow: borderColor ? `0 0 0 2px ${borderColor}` : undefined }}>
-      {nameInitials(name)}
+      style={{ width: size, height: size, background: avatarColor(safe), fontSize: size * 0.35, boxShadow: borderColor ? `0 0 0 2px ${borderColor}` : undefined }}>
+      {nameInitials(safe)}
     </div>
   )
 }
@@ -68,6 +71,23 @@ function fmtTime(iso: string): string {
 }
 function fmtFull(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+}
+
+// ── Channel identity ───────────────────────────────────────────────────────────
+// Each channel stores a different kind of identifier in phoneNumber:
+//   WHATSAPP  → real phone number (+256...)
+//   INSTAGRAM → Meta PSID (numeric string)
+//   FACEBOOK  → Meta PSID (numeric string)
+//   WEBSITE   → session UUID
+// Returns a human-readable label for the conversation list.
+function convLabel(conv: Conversation, channel: ChannelKey): string {
+  if (conv.patientName) return conv.patientName
+  const id = conv.phoneNumber || ''
+  if (channel === 'WHATSAPP') return id || 'Unknown'
+  if (channel === 'INSTAGRAM') return `@${id.slice(0, 10)}`
+  if (channel === 'FACEBOOK')  return `FB User ${id.slice(0, 8)}`
+  if (channel === 'WEBSITE')   return `Visitor ${id.slice(0, 8)}`
+  return id || 'Unknown'
 }
 
 // ── Media bubble ───────────────────────────────────────────────────────────────
@@ -252,8 +272,8 @@ export default function InboxPage() {
 
   const filtered = convs.filter(c => {
     if (!search) return true
-    const name = (c.patientName || c.phoneNumber).toLowerCase()
-    return name.includes(search.toLowerCase()) || c.phoneNumber.includes(search)
+    const name = convLabel(c, channel).toLowerCase()
+    return name.includes(search.toLowerCase()) || (c.phoneNumber || '').includes(search)
   })
 
   const isHuman = sel ? !sel.agentEnabled : false
@@ -331,7 +351,7 @@ export default function InboxPage() {
             <p className="text-sm text-gray-400">No WhatsApp conversations yet</p>
           </div>
         ) : filtered.map(conv => {
-          const name    = conv.patientName || conv.phoneNumber
+          const name    = convLabel(conv, 'WHATSAPP')
           const last    = conv.lastMessage
           const time    = fmtTime(last?.createdAt ?? conv.updatedAt)
           const active  = sel?.id === conv.id
@@ -372,13 +392,13 @@ export default function InboxPage() {
           <ChevronLeft size={20} />
         </button>
         <div className="relative">
-          <Avatar name={sel.patientName || sel.phoneNumber} size={40} />
+          <Avatar name={convLabel(sel, 'WHATSAPP')} size={40} />
           {sel.status === 'active' && (
             <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[#25D366] border-2 border-[#075E54]" />
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-white truncate">{sel.patientName || sel.phoneNumber}</p>
+          <p className="text-sm font-bold text-white truncate">{convLabel(sel, 'WHATSAPP')}</p>
           <p className="text-[11px]" style={{ color: '#90cbb7' }}>
             {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'} · {sel.phoneNumber}
           </p>
@@ -475,7 +495,7 @@ export default function InboxPage() {
             <p className="text-sm text-gray-400">No {ch.label} conversations yet</p>
           </div>
         ) : filtered.map(conv => {
-          const name    = conv.patientName || conv.phoneNumber
+          const name    = convLabel(conv, channel)
           const last    = conv.lastMessage
           const time    = fmtTime(last?.createdAt ?? conv.updatedAt)
           const active  = sel?.id === conv.id
@@ -515,11 +535,11 @@ export default function InboxPage() {
         <button onClick={() => { setSel(null); setMobileView('list') }} className="md:hidden text-gray-500 hover:text-gray-700 mr-1">
           <ChevronLeft size={20} />
         </button>
-        <Avatar name={sel.patientName || sel.phoneNumber} size={40} />
+        <Avatar name={convLabel(sel, channel)} size={40} />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-gray-800 truncate">{sel.patientName || sel.phoneNumber}</p>
+          <p className="text-sm font-bold text-gray-800 truncate">{convLabel(sel, channel)}</p>
           <p className="text-[11px] text-gray-400">
-            {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'} · {sel.phoneNumber}
+            {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'}{channel === 'WHATSAPP' ? ` · ${sel.phoneNumber}` : ''}
           </p>
         </div>
         <button onClick={toggleTakeover}
@@ -539,7 +559,7 @@ export default function InboxPage() {
           const showTime = i === msgs.length - 1 || msgs[i + 1]?.role !== msg.role
           return (
             <div key={msg.id} className={cn('flex items-end gap-2', isAgent ? 'justify-end' : 'justify-start')}>
-              {!isAgent && <Avatar name={sel.patientName || sel.phoneNumber} size={28} />}
+              {!isAgent && <Avatar name={convLabel(sel, channel)} size={28} />}
               <div className={cn('max-w-[65%] flex flex-col', isAgent ? 'items-end' : 'items-start')}>
                 <div className={cn('px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm',
                   isAgent ? 'rounded-tr-sm text-white' : 'rounded-tl-sm text-gray-800 bg-white border border-gray-100')}

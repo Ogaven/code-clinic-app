@@ -391,6 +391,12 @@ function CalendarsTab() {
     setCalError(false)
     try {
       const res  = await fetch(`${API}/integrations/google-calendar/calendars`, { headers: authH() })
+      if (res.status === 401) {
+        // Token expired and refresh failed — clear stored tokens, treat as disconnected
+        await fetch(`${API}/integrations/google-calendar/reset`, { method: 'POST', headers: authH() }).catch(() => {})
+        setGcConnected(false); setGcEmail(null); setGcCalendars([])
+        return
+      }
       if (res.ok) {
         const data = await res.json()
         if (Array.isArray(data) && data.length > 0) {

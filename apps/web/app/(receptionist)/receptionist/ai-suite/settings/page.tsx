@@ -457,7 +457,11 @@ function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
 
   useEffect(() => {
     fetch(`${API}/ai-suite/connections/whatsapp/profile`, { headers: authH() })
-      .then(r => r.json()).then(setProfile).catch(() => {})
+      .then(r => r.json())
+      .then(d => {
+        if (d && typeof d.displayName === 'string') setProfile(d)
+      })
+      .catch(() => {})
   }, [])
 
   function set(k: keyof WaProfile, v: string) {
@@ -540,7 +544,7 @@ function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
         <div className="pb-5 border-b border-gray-100">
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Description</label>
-            <span className="text-[11px] text-gray-400">{profile.description.length}/512</span>
+            <span className="text-[11px] text-gray-400">{(profile.description || '').length}/512</span>
           </div>
           <textarea value={profile.description} onChange={e => set('description', e.target.value.slice(0, 512))}
             rows={3} placeholder="Describe your business..."
@@ -551,7 +555,7 @@ function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
         <div className="pb-5 border-b border-gray-100">
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Address</label>
-            <span className="text-[11px] text-gray-400">{profile.address.length}/256</span>
+            <span className="text-[11px] text-gray-400">{(profile.address || '').length}/256</span>
           </div>
           <input value={profile.address} onChange={e => set('address', e.target.value.slice(0, 256))}
             placeholder="123 Kampala Rd, Kampala, Uganda"
@@ -572,7 +576,7 @@ function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
         <div className="pb-5 border-b border-gray-100">
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Website</label>
-            <span className="text-[11px] text-gray-400">{profile.website.length}/256</span>
+            <span className="text-[11px] text-gray-400">{(profile.website || '').length}/256</span>
           </div>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-mono">https://</span>
@@ -1079,7 +1083,7 @@ function SipTrunksSection({ toast }: { toast: (m: string) => void }) {
 
   useEffect(() => {
     fetch(`${API}/ai-suite/connections/sip-trunks`, { headers: authH() })
-      .then(r => r.json()).then(setTrunks).catch(() => {}).finally(() => setLoading(false))
+      .then(r => r.json()).then(d => setTrunks(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
   function startEdit(t: SipTrunk) {
