@@ -187,25 +187,38 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
             </div>
             <div>
               <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Medical History</label>
-              <div className="flex flex-wrap gap-2">
-                {['Diabetes', 'Ulcers', 'Hypertension', 'Asthma', 'Heart Disease', 'HIV/AIDS'].map(cond => {
-                  const selected = (form.medicalHistory || '').split(',').map((s: string) => s.trim()).filter(Boolean)
-                  const isOn = selected.includes(cond)
-                  return (
-                    <button key={cond} type="button" onClick={() => {
-                      const next = isOn ? selected.filter((s: string) => s !== cond) : [...selected, cond]
-                      setForm((f: any) => ({...f, medicalHistory: next.join(', ')}))
-                    }}
-                      className={cn('px-3 py-1.5 rounded-xl text-xs font-bold transition-all',
-                        isOn ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-600 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-white/15')}>
-                      {cond}
-                    </button>
-                  )
-                })}
-              </div>
-              {form.medicalHistory && (
-                <p className="text-xs text-gray-400 mt-1">{form.medicalHistory}</p>
-              )}
+              {(() => {
+                const STANDARD = ['Diabetes','Hypertension','Ulcers','Heart Disease','Asthma','HIV/AIDS','Hepatitis B','Kidney Disease','Blood Disorder','Epilepsy','Arthritis','Cancer']
+                const selected = (form.medicalHistory || '').split(',').map((s: string) => s.trim()).filter(Boolean)
+                const extras   = selected.filter((s: string) => !STANDARD.includes(s))
+                return (
+                  <>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {STANDARD.map(cond => {
+                        const isOn = selected.includes(cond)
+                        return (
+                          <button key={cond} type="button" onClick={() => {
+                            const next = isOn ? selected.filter((s: string) => s !== cond) : [...selected, cond]
+                            setForm((f: any) => ({...f, medicalHistory: next.join(', ')}))
+                          }}
+                            className={cn('px-3 py-1.5 rounded-xl text-xs font-bold transition-all',
+                              isOn ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-600 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-white/15')}>
+                            {cond}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <input
+                      value={extras.join(', ')}
+                      onChange={e => {
+                        const pills  = selected.filter((s: string) => STANDARD.includes(s))
+                        const newExt = e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean)
+                        setForm((f: any) => ({...f, medicalHistory: [...pills, ...newExt].join(', ')}))
+                      }}
+                      className={inputCls} placeholder="Other conditions..." />
+                  </>
+                )
+              })()}
             </div>
             <div>
               <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Notes</label>

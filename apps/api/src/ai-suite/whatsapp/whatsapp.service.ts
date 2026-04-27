@@ -24,6 +24,8 @@ export async function processInbound(from: string, text: string): Promise<void> 
       orderBy: { createdAt: 'desc' },
     })
 
+    const isNewConversation = !conversation
+
     if (!conversation) {
       conversation = await prisma.aiConversation.create({
         data: {
@@ -45,7 +47,19 @@ export async function processInbound(from: string, text: string): Promise<void> 
       },
     })
 
-    // ── 4. Human takeover guard ───────────────────────────────────────────────
+    // ── 4. New conversation greeting ─────────────────────────────────────────
+    // First-ever message from this number: send opening greeting, store it, return.
+    // Their actual request will be processed on the next message.
+    if (isNewConversation) {
+      const greeting = `Hi! 😊 Thanks for reaching out to Code Clinic, this is Sarah — how may I brighten your smile today?`
+      await prisma.aiMessage.create({
+        data: { conversationId: conversation.id, role: 'AGENT', content: greeting },
+      })
+      await sendWhatsAppMessage(from, greeting)
+      return
+    }
+
+    // ── 5. Human takeover guard ───────────────────────────────────────────────
     // If a staff member has taken over this conversation, save the message
     // silently so they can read it — do NOT auto-reply.
     const agentOn = await isAgentEnabled(conversation.id)
@@ -54,7 +68,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
       return
     }
 
-    // ── 5. Reminder reply detection ───────────────────────────────────────────
+    // ── 6. Reminder reply detection ───────────────────────────────────────────
     // If a reminder was sent to this patient in the last 2 hours and their
     // reply is clearly YES or NO, handle it directly without calling Claude.
     if (patient) {
@@ -171,10 +185,10 @@ export async function processInbound(from: string, text: string): Promise<void> 
       }
     }
 
-    // ── 6. Get Sarah's reply from Claude ──────────────────────────────────────
+    // ── 7. Get Sarah's reply from Claude ──────────────────────────────────────
     const agentReply = await getAgentReply(conversation.id, from, text)
 
-    // ── 7. Persist Sarah's reply ──────────────────────────────────────────────
+    // ── 8. Persist Sarah's reply ──────────────────────────────────────────────
     await prisma.aiMessage.create({
       data: {
         conversationId: conversation.id,
@@ -183,7 +197,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
       },
     })
 
-    // ── 8. Deliver Sarah's reply via Meta Graph API ───────────────────────────
+    // ── 9. Deliver Sarah's reply via Meta Graph API ───────────────────────────
     await sendWhatsAppMessage(from, agentReply)
 
   } catch (err) {

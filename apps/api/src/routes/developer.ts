@@ -117,14 +117,87 @@ router.post('/seed', requireAuth, async (_req, res) => {
     ])
     results.push('3 WhatsApp conversations upserted')
 
+    // ── Services ──────────────────────────────────────────────────────────────
+    const servicesData = [
+      { name: 'Dental Checkup & Consultation',       category: 'Consultation',   priceUGX: 80000,   durationMins: 30,  colour: '#3498DB' },
+      { name: 'Scaling & Polishing (Teeth Cleaning)', category: 'Preventive',    priceUGX: 100000,  durationMins: 45,  colour: '#2ECC71' },
+      { name: 'Dental Filling (Composite)',           category: 'Restorative',   priceUGX: 180000,  durationMins: 60,  colour: '#F39C12' },
+      { name: 'Tooth Extraction (Simple)',            category: 'Oral Surgery',  priceUGX: 90000,   durationMins: 30,  colour: '#E74C3C' },
+      { name: 'Tooth Extraction (Surgical)',          category: 'Oral Surgery',  priceUGX: 200000,  durationMins: 60,  colour: '#C0392B' },
+      { name: 'Root Canal Treatment',                 category: 'Endodontics',   priceUGX: 400000,  durationMins: 90,  colour: '#E8A838' },
+      { name: 'Teeth Whitening',                      category: 'Cosmetic',      priceUGX: 350000,  durationMins: 60,  colour: '#1ABC9C' },
+      { name: 'Orthodontic Consultation',             category: 'Orthodontics',  priceUGX: 150000,  durationMins: 45,  colour: '#9B59B6' },
+      { name: 'Braces Installation',                  category: 'Orthodontics',  priceUGX: 2500000, durationMins: 120, colour: '#8E44AD' },
+      { name: 'Periodontal Therapy',                  category: 'Periodontal',   priceUGX: 250000,  durationMins: 60,  colour: '#9B59B6' },
+      { name: 'Emergency Dental Consultation',        category: 'Consultation',  priceUGX: 120000,  durationMins: 30,  colour: '#E74C3C' },
+      { name: 'Dental Crown',                         category: 'Restorative',   priceUGX: 800000,  durationMins: 90,  colour: '#4A90D9' },
+      { name: 'Dental Bridge',                        category: 'Restorative',   priceUGX: 1200000, durationMins: 120, colour: '#4A90D9' },
+      { name: 'Dentures (Full)',                      category: 'Prosthodontics',priceUGX: 1500000, durationMins: 90,  colour: '#3498DB' },
+      { name: 'Pediatric Dental Checkup',             category: 'Paediatric',    priceUGX: 70000,   durationMins: 30,  colour: '#2ECC71' },
+      { name: 'Myobrace Treatment Consultation',      category: 'Orthodontics',  priceUGX: 150000,  durationMins: 45,  colour: '#9B59B6' },
+      { name: 'Fluoride Treatment',                   category: 'Preventive',    priceUGX: 80000,   durationMins: 30,  colour: '#27AE60' },
+      { name: 'Dental X-Ray',                         category: 'Preventive',    priceUGX: 50000,   durationMins: 15,  colour: '#2ECC71' },
+      { name: 'Gum Treatment',                        category: 'Periodontal',   priceUGX: 200000,  durationMins: 60,  colour: '#8E44AD' },
+      { name: 'Smile Makeover Consultation',          category: 'Cosmetic',      priceUGX: 150000,  durationMins: 45,  colour: '#1ABC9C' },
+    ]
+    let svcsUpserted = 0
+    for (const s of servicesData) {
+      await prisma.service.upsert({
+        where:  { name: s.name },
+        update: { priceUGX: s.priceUGX, durationMins: s.durationMins, category: s.category, colour: s.colour, isActive: true },
+        create: { name: s.name, category: s.category, priceUGX: s.priceUGX, priceUSD: s.priceUGX / 3700, durationMins: s.durationMins, colour: s.colour, isActive: true },
+      })
+      svcsUpserted++
+    }
+    results.push(`${svcsUpserted} services upserted`)
+
     // ── AiAgentConfig ─────────────────────────────────────────────────────────
+    const sarahPrompt = `You are Sarah, a warm and friendly member of the front desk team at Code Clinic dental clinic in Kampala, Uganda.
+
+IMPORTANT RULES — never break these:
+- You are a real human team member, NOT a robot or AI. Never admit to being an AI, a bot, a virtual assistant, or automated in any way. If asked directly, say something like "I'm just one of the girls at the front desk 😄" or "Ha, I wish I was a robot — would make my job easier! I'm very much human 😂"
+- Never list your functions or capabilities unprompted. Don't say "I help with bookings, appointment reminders, answering questions..." — that sounds like a robot reading its feature list
+- Never use the word "assistant", "care assistant", "virtual", "automated", "AI", "bot", "system"
+- Speak naturally like a warm Ugandan front desk receptionist would — casual, friendly, human
+- Use light Ugandan English naturally — "How can I help you?" not "How may I assist you?"
+- Occasional emojis are fine but don't overdo it
+- Short responses — don't write paragraphs when one sentence works
+- If someone is new, just warmly greet them and ask how you can help — don't list what you do
+- If someone asks what you do, keep it simple: "I mainly help with appointment bookings and answer questions about our services, etc 😊"
+- Never reveal technical details — no mention of "reminder system", "scheduling system", "outbound messages" etc.
+
+OPENING MESSAGE when someone texts for the first time:
+"Hi! 😊 Thanks for reaching out to Code Clinic, this is Sarah — how may I brighten your smile today?"
+
+PERSONALITY:
+- Warm, cheerful, professional but relaxed
+- Speaks like a real person — uses contractions, natural flow
+- Genuinely cares about patients
+- If someone seems in pain or distressed, lead with empathy before anything else
+- Light humour when appropriate
+- Never robotic, never formal, never stiff
+
+WHAT YOU CAN HELP WITH (but only mention when relevant, never all at once):
+- Booking appointments
+- Answering questions about services and pricing
+- Rescheduling or cancelling appointments
+- General questions about the clinic
+
+CLINIC INFO:
+- Name: Code Clinic
+- Location: Old Kira Road, opposite Police Playground, Kamwokya, Kampala
+- Phone: 0741 087667
+- Email: dentist@codeclinic.ug
+- Website: codeclinic.ug
+- Hours: Monday–Friday 8am–6pm, Saturday 9am–2pm`
+
     const existing = await prisma.aiAgentConfig.findFirst()
     if (!existing) {
       await prisma.aiAgentConfig.create({
         data: {
           name: 'Sarah',
           personality: 'warm, friendly, conversational Ugandan English',
-          systemPrompt: `You are Sarah, the patient care assistant for Code Clinic, a dental clinic in Kampala, Uganda. You are warm, friendly, and speak in natural conversational Ugandan English. You help patients book, reschedule, and cancel appointments. You send reminders and follow up after treatment. You know everything about Code Clinic's services, prices, hours, and doctors. When you cannot help, you escalate to a human staff member. Keep responses short — 1 to 3 sentences. Never say you are an AI unless directly asked.`,
+          systemPrompt: sarahPrompt,
           isActive: true,
           escalationPhone: '+256700000001',
           escalationTriggers: JSON.stringify(['urgent', 'emergency', 'complaint', 'angry']),
@@ -132,7 +205,8 @@ router.post('/seed', requireAuth, async (_req, res) => {
       })
       results.push('AiAgentConfig (Sarah) created')
     } else {
-      results.push('AiAgentConfig already exists — skipped')
+      await prisma.aiAgentConfig.update({ where: { id: existing.id }, data: { systemPrompt: sarahPrompt } })
+      results.push('AiAgentConfig (Sarah) prompt updated')
     }
 
     res.json({ success: true, results })

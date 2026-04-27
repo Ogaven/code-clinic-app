@@ -79,14 +79,24 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /patients
 router.post('/', requireAuth, auditLog('patients'), async (req, res) => {
   try {
-    const { firstName, lastName, phone, email, gender, dob, address, district } = req.body
+    const {
+      firstName, lastName, phone, email, gender, dob, address, district,
+      nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
+    } = req.body
     if (!firstName || !lastName || !phone) {
       res.status(400).json({ error: 'firstName, lastName and phone are required' }); return
     }
     const existing = await prisma.patient.findFirst({ where: { phone } })
     if (existing) { res.status(409).json({ error: 'A patient with this phone number already exists' }); return }
+    const medHistory = Array.isArray(medicalHistory) ? medicalHistory.join(', ') : (medicalHistory ?? undefined)
     const patient = await prisma.patient.create({
-      data: { firstName, lastName, phone, email, gender, dob: dob ? new Date(dob) : undefined, address, district },
+      data: {
+        firstName, lastName, phone, email, gender,
+        dob: dob ? new Date(dob) : undefined,
+        address, district,
+        nextOfKinName, nextOfKinPhone, nextOfKinRelation,
+        allergies, medicalHistory: medHistory,
+      },
     })
     res.status(201).json({ ...patient, accountBalance: Number(patient.accountBalance) })
   } catch { res.status(500).json({ error: 'Failed to create patient' }) }

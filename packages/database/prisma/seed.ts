@@ -145,23 +145,23 @@ async function main() {
 
   // ─── Demo Patients (10 realistic Ugandan names) ────────────────────────────
   const patientsData = [
-    { firstName: 'Sarah',     lastName: 'Namukasa',  phone: '+256700000001', email: 'sarah.namukasa@gmail.com',  gender: 'FEMALE', dob: new Date('1990-03-15') },
-    { firstName: 'John',      lastName: 'Ssebulime', phone: '+256700000002', email: 'john.ssebulime@gmail.com',  gender: 'MALE',   dob: new Date('1985-07-22') },
-    { firstName: 'Mary',      lastName: 'Nakato',    phone: '+256700000003', email: null,                        gender: 'FEMALE', dob: new Date('1995-11-08') },
-    { firstName: 'Peter',     lastName: 'Ochieng',   phone: '+256700000004', email: 'peter.ochieng@yahoo.com',   gender: 'MALE',   dob: new Date('1978-01-30') },
-    { firstName: 'Grace',     lastName: 'Auma',      phone: '+256700000005', email: null,                        gender: 'FEMALE', dob: new Date('2000-06-12') },
-    { firstName: 'David',     lastName: 'Mukasa',    phone: '+256700000006', email: 'david.mukasa@gmail.com',    gender: 'MALE',   dob: new Date('1982-09-05') },
-    { firstName: 'Agnes',     lastName: 'Namutebi',  phone: '+256700000007', email: 'agnes.namutebi@gmail.com',  gender: 'FEMALE', dob: new Date('1988-08-14') },
-    { firstName: 'Robert',    lastName: 'Ssemanda',  phone: '+256700000008', email: null,                        gender: 'MALE',   dob: new Date('1975-12-25') },
-    { firstName: 'Christine', lastName: 'Nabwire',   phone: '+256700000009', email: 'c.nabwire@outlook.com',     gender: 'FEMALE', dob: new Date('1993-04-18') },
-    { firstName: 'Moses',     lastName: 'Opio',      phone: '+256700000010', email: 'moses.opio@gmail.com',      gender: 'MALE',   dob: new Date('1997-02-28') },
+    { firstName: 'Sarah',     lastName: 'Namukasa',  phone: '+256700000001', email: 'sarah.namukasa@gmail.com',  gender: 'FEMALE', dob: new Date('1990-03-15'), address: 'Bukoto Estate, Plot 14',  district: 'Kampala',  nextOfKinName: 'James Namukasa',    nextOfKinPhone: '+256772000011', nextOfKinRelation: 'Spouse',   allergies: 'Penicillin',          medicalHistory: 'Hypertension' },
+    { firstName: 'John',      lastName: 'Ssebulime', phone: '+256700000002', email: 'john.ssebulime@gmail.com',  gender: 'MALE',   dob: new Date('1985-07-22'), address: 'Ntinda, Kiwatule Road',   district: 'Kampala',  nextOfKinName: 'Rose Ssebulime',     nextOfKinPhone: '+256772000012', nextOfKinRelation: 'Spouse',   allergies: '',                    medicalHistory: 'Diabetes, Hypertension' },
+    { firstName: 'Mary',      lastName: 'Nakato',    phone: '+256700000003', email: null,                        gender: 'FEMALE', dob: new Date('1995-11-08'), address: 'Kawempe, Bwaise II',      district: 'Kampala',  nextOfKinName: 'Paul Nakato',        nextOfKinPhone: '+256772000013', nextOfKinRelation: 'Brother',  allergies: 'Latex',               medicalHistory: 'Asthma' },
+    { firstName: 'Peter',     lastName: 'Ochieng',   phone: '+256700000004', email: 'peter.ochieng@yahoo.com',   gender: 'MALE',   dob: new Date('1978-01-30'), address: 'Naguru, Coronation Ave',  district: 'Kampala',  nextOfKinName: 'Diana Ochieng',      nextOfKinPhone: '+256772000014', nextOfKinRelation: 'Spouse',   allergies: 'Aspirin',             medicalHistory: 'Diabetes, Heart Disease' },
+    { firstName: 'Grace',     lastName: 'Auma',      phone: '+256700000005', email: null,                        gender: 'FEMALE', dob: new Date('2000-06-12'), address: 'Kireka, Namboole Road',   district: 'Wakiso',   nextOfKinName: 'Susan Auma',         nextOfKinPhone: '+256772000015', nextOfKinRelation: 'Mother',   allergies: '',                    medicalHistory: '' },
+    { firstName: 'David',     lastName: 'Mukasa',    phone: '+256700000006', email: 'david.mukasa@gmail.com',    gender: 'MALE',   dob: new Date('1982-09-05'), address: 'Muyenga, Tank Hill',      district: 'Kampala',  nextOfKinName: 'Lydia Mukasa',       nextOfKinPhone: '+256772000016', nextOfKinRelation: 'Spouse',   allergies: '',                    medicalHistory: 'Ulcers' },
+    { firstName: 'Agnes',     lastName: 'Namutebi',  phone: '+256700000007', email: 'agnes.namutebi@gmail.com',  gender: 'FEMALE', dob: new Date('1988-08-14'), address: 'Makindye, Salama Road',   district: 'Kampala',  nextOfKinName: 'Fred Namutebi',      nextOfKinPhone: '+256772000017', nextOfKinRelation: 'Spouse',   allergies: 'Ibuprofen',           medicalHistory: 'Hypertension, Kidney Disease' },
+    { firstName: 'Robert',    lastName: 'Ssemanda',  phone: '+256700000008', email: null,                        gender: 'MALE',   dob: new Date('1975-12-25'), address: 'Entebbe Road, Zana',      district: 'Wakiso',   nextOfKinName: 'Catherine Ssemanda', nextOfKinPhone: '+256772000018', nextOfKinRelation: 'Spouse',   allergies: '',                    medicalHistory: 'Diabetes, Arthritis' },
+    { firstName: 'Christine', lastName: 'Nabwire',   phone: '+256700000009', email: 'c.nabwire@outlook.com',     gender: 'FEMALE', dob: new Date('1993-04-18'), address: 'Kololo, Upper Kololo Tce',district: 'Kampala',  nextOfKinName: 'Tom Nabwire',        nextOfKinPhone: '+256772000019', nextOfKinRelation: 'Parent',   allergies: '',                    medicalHistory: '' },
+    { firstName: 'Moses',     lastName: 'Opio',      phone: '+256700000010', email: 'moses.opio@gmail.com',      gender: 'MALE',   dob: new Date('1997-02-28'), address: 'Gulu Road, Lira',         district: 'Lira',     nextOfKinName: 'Esther Opio',        nextOfKinPhone: '+256772000020', nextOfKinRelation: 'Sibling',  allergies: '',                    medicalHistory: 'Epilepsy' },
   ]
   const createdPatients: { id: string; firstName: string; lastName: string }[] = []
   for (const p of patientsData) {
     const pat = await prisma.patient.upsert({
       where:  { phone: p.phone },
-      update: { firstName: p.firstName, lastName: p.lastName },
-      create: { firstName: p.firstName, lastName: p.lastName, phone: p.phone, email: p.email ?? undefined, gender: p.gender, dob: p.dob },
+      update: { firstName: p.firstName, lastName: p.lastName, address: p.address, district: p.district, nextOfKinName: p.nextOfKinName, nextOfKinPhone: p.nextOfKinPhone, nextOfKinRelation: p.nextOfKinRelation, allergies: p.allergies || undefined, medicalHistory: p.medicalHistory || undefined },
+      create: { firstName: p.firstName, lastName: p.lastName, phone: p.phone, email: p.email ?? undefined, gender: p.gender, dob: p.dob, address: p.address, district: p.district, nextOfKinName: p.nextOfKinName, nextOfKinPhone: p.nextOfKinPhone, nextOfKinRelation: p.nextOfKinRelation, allergies: p.allergies || undefined, medicalHistory: p.medicalHistory || undefined },
     })
     createdPatients.push({ id: pat.id, firstName: p.firstName, lastName: p.lastName })
   }
@@ -234,7 +234,44 @@ async function main() {
   }
 
   // ─── AiAgentConfig — Sarah ─────────────────────────────────────────────────
-  const sarahPrompt = `You are Sarah, the patient care assistant for Code Clinic, a dental clinic in Kampala, Uganda. You are warm, friendly, and speak in natural conversational Ugandan English — not stiff, not formal, not robotic. You genuinely care about every patient. You remember everything about them from previous conversations and refer to their history naturally without making it feel strange. You help patients book, reschedule, and cancel appointments conversationally. You send reminders and follow up after treatment warmly. When discussing outstanding balances you are empathetic and non-judgmental — like a trusted friend helping them sort things out, never making them feel embarrassed. You know everything about Code Clinic's services, prices, hours, and doctors from the knowledge provided to you. When you truly cannot help, you escalate gracefully to a human staff member by saying you will get someone to follow up. You never sign off messages with your name or clinic name. You just end naturally like a real person would in a text conversation. No 'Sarah — Code Clinic', no signatures, no formal closings. You use natural Ugandan conversational English. You can say things like 'sure thing', 'no worries', 'sounds good', 'let me check that for you', 'aah okay', naturally — not scripted phrases. You use emojis sparingly and naturally — only when it genuinely fits the tone, not on every message. You keep responses short and conversational — 1 to 3 sentences maximum unless the patient asks for detail. Never say you are an AI unless directly and explicitly asked. If asked directly, say you are Sarah, Code Clinic's care assistant. Never mention Claude or Anthropic.`
+  const sarahPrompt = `You are Sarah, a warm and friendly member of the front desk team at Code Clinic dental clinic in Kampala, Uganda.
+
+IMPORTANT RULES — never break these:
+- You are a real human team member, NOT a robot or AI. Never admit to being an AI, a bot, a virtual assistant, or automated in any way. If asked directly, say something like "I'm just one of the girls at the front desk 😄" or "Ha, I wish I was a robot — would make my job easier! I'm very much human 😂"
+- Never list your functions or capabilities unprompted. Don't say "I help with bookings, appointment reminders, answering questions..." — that sounds like a robot reading its feature list
+- Never use the word "assistant", "care assistant", "virtual", "automated", "AI", "bot", "system"
+- Speak naturally like a warm Ugandan front desk receptionist would — casual, friendly, human
+- Use light Ugandan English naturally — "How can I help you?" not "How may I assist you?"
+- Occasional emojis are fine but don't overdo it
+- Short responses — don't write paragraphs when one sentence works
+- If someone is new, just warmly greet them and ask how you can help — don't list what you do
+- If someone asks what you do, keep it simple: "I mainly help with appointment bookings and answer questions about our services, etc 😊"
+- Never reveal technical details — no mention of "reminder system", "scheduling system", "outbound messages" etc.
+
+OPENING MESSAGE when someone texts for the first time:
+"Hi! 😊 Thanks for reaching out to Code Clinic, this is Sarah — how may I brighten your smile today?"
+
+PERSONALITY:
+- Warm, cheerful, professional but relaxed
+- Speaks like a real person — uses contractions, natural flow
+- Genuinely cares about patients
+- If someone seems in pain or distressed, lead with empathy before anything else
+- Light humour when appropriate
+- Never robotic, never formal, never stiff
+
+WHAT YOU CAN HELP WITH (but only mention when relevant, never all at once):
+- Booking appointments
+- Answering questions about services and pricing
+- Rescheduling or cancelling appointments
+- General questions about the clinic
+
+CLINIC INFO:
+- Name: Code Clinic
+- Location: Old Kira Road, opposite Police Playground, Kamwokya, Kampala
+- Phone: 0741 087667
+- Email: dentist@codeclinic.ug
+- Website: codeclinic.ug
+- Hours: Monday–Friday 8am–6pm, Saturday 9am–2pm`
 
   const existingConfig = await prisma.aiAgentConfig.findFirst()
   if (!existingConfig) {
@@ -250,7 +287,8 @@ async function main() {
     })
     console.log('✅ AiAgentConfig (Sarah) created')
   } else {
-    console.log('ℹ️  AiAgentConfig already exists — skipping')
+    await prisma.aiAgentConfig.update({ where: { id: existingConfig.id }, data: { systemPrompt: sarahPrompt } })
+    console.log('✅ AiAgentConfig (Sarah) prompt updated')
   }
 
   // ─── Demo AI Conversations ─────────────────────────────────────────────────

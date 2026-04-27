@@ -535,7 +535,7 @@ export default function PatientsPage() {
                 <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Residence</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Address</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Street / Estate</label>
                     <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={inputCls} placeholder="Street / Estate" />
                   </div>
                   <div>
@@ -567,8 +567,8 @@ export default function PatientsPage() {
               {/* Medical History */}
               <div className="pt-1">
                 <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Medical History</p>
-                <div className="flex flex-wrap gap-2">
-                  {['Diabetes', 'Ulcers', 'Hypertension'].map(condition => {
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {['Diabetes', 'Hypertension', 'Ulcers', 'Heart Disease', 'Asthma', 'HIV/AIDS', 'Hepatitis B', 'Kidney Disease', 'Blood Disorder', 'Epilepsy', 'Arthritis', 'Cancer'].map(condition => {
                     const active = form.medicalHistory.includes(condition)
                     return (
                       <button key={condition} type="button"
@@ -589,6 +589,15 @@ export default function PatientsPage() {
                     )
                   })}
                 </div>
+                <input
+                  value={form.medicalHistory.filter(c => !['Diabetes','Hypertension','Ulcers','Heart Disease','Asthma','HIV/AIDS','Hepatitis B','Kidney Disease','Blood Disorder','Epilepsy','Arthritis','Cancer'].includes(c)).join(', ')}
+                  onChange={e => {
+                    const standard = ['Diabetes','Hypertension','Ulcers','Heart Disease','Asthma','HIV/AIDS','Hepatitis B','Kidney Disease','Blood Disorder','Epilepsy','Arthritis','Cancer']
+                    const pills = form.medicalHistory.filter(c => standard.includes(c))
+                    const extras = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                    setForm(f => ({ ...f, medicalHistory: [...pills, ...extras] }))
+                  }}
+                  className={inputCls} placeholder="Other conditions..." />
               </div>
 
               {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
