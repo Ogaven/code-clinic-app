@@ -19,6 +19,7 @@ router.post('/message', async (req, res) => {
       where:   { phoneNumber: sessionId, channel: 'WEBSITE', status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
     })
+    const isNewConversation = !conversation
     if (!conversation) {
       conversation = await prisma.aiConversation.create({
         data: { channel: 'WEBSITE', phoneNumber: sessionId, status: 'ACTIVE', agentEnabled: true },
@@ -36,6 +37,9 @@ router.post('/message', async (req, res) => {
       reply = 'Our team has taken over this conversation. A staff member will respond shortly.'
     } else {
       reply = await getAgentReply(conversation.id, sessionId, message)
+      if (isNewConversation) {
+        reply = `Hi there! 😊 I'm Sarah from Code Clinic — How may I brighten your smile today?\n\n${reply}`
+      }
       await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: reply },
       })
@@ -113,7 +117,7 @@ export const WIDGET_JS = `
   document.body.appendChild(bWrap);
 
   var panel = document.createElement('div'); panel.id = 'cc-w-p';
-  panel.innerHTML = '<div id="cc-w-h"><div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;font:700 15px sans-serif;color:#fff">CC</div><div style="flex:1"><div style="font:700 15px sans-serif">'+clinicName+'</div><div style="font-size:12px;opacity:.9">Ask us anything</div></div><button onclick="document.getElementById(\'cc-w-p\').style.display=\'none\'" style="background:none;border:none;color:#fff;cursor:pointer;font-size:22px;line-height:1;padding:0">&times;</button></div><div id="cc-w-msgs"><div class="cc-m cc-ma">Hi there! 😊 I\'m Sarah from '+clinicName+'. How can I help you today?</div></div><div id="cc-w-inp-row"><input id="cc-w-inp" placeholder="Type a message..." /><button id="cc-w-snd"><svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button></div>';
+  panel.innerHTML = '<div id="cc-w-h"><div style="width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;font:700 15px sans-serif;color:#fff">CC</div><div style="flex:1"><div style="font:700 15px sans-serif">'+clinicName+'</div><div style="font-size:12px;opacity:.9">Ask us anything</div></div><button onclick="document.getElementById(\'cc-w-p\').style.display=\'none\'" style="background:none;border:none;color:#fff;cursor:pointer;font-size:22px;line-height:1;padding:0">&times;</button></div><div id="cc-w-msgs"><div class="cc-m cc-ma">Hi there! 😊 I\'m Sarah from Code Clinic — How may I brighten your smile today?</div></div><div id="cc-w-inp-row"><input id="cc-w-inp" placeholder="Type a message..." /><button id="cc-w-snd"><svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button></div>';
   document.body.appendChild(panel);
 
   document.getElementById('cc-w-btn').addEventListener('click', function () {

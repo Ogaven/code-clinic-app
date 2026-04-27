@@ -27,14 +27,15 @@
     #cc-widget-root{position:fixed;bottom:24px;right:24px;z-index:2147483647;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}\
     \
     @keyframes cc-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}\
-    @keyframes cc-glow{0%,100%{box-shadow:0 0 10px rgba(41,171,226,0.4),0 0 20px rgba(41,171,226,0.2),0 4px 20px rgba(0,0,0,0.25)}50%{box-shadow:0 0 20px rgba(41,171,226,0.8),0 0 40px rgba(41,171,226,0.4),0 0 60px rgba(41,171,226,0.2),0 4px 20px rgba(0,0,0,0.25)}}\
+    @keyframes gentleBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}\
     @keyframes cc-slide-up{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}\
     @keyframes cc-badge-pop{0%{transform:scale(0)}60%{transform:scale(1.3)}100%{transform:scale(1)}}\
     \
-    #cc-btn-wrap{position:relative;cursor:pointer;width:64px;height:64px}\
-    #cc-btn-avatar{width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:center top;animation:cc-bounce 2.2s ease-in-out infinite,cc-glow 2.2s ease-in-out infinite;border:3px solid rgba(41,171,226,0.5);display:block}\
+    #cc-btn-wrap{position:relative;cursor:pointer;width:72px;height:72px}\
+    #cc-btn-avatar{width:72px;height:72px;border-radius:50%;object-fit:cover;object-position:center top;animation:gentleBounce 3s ease-in-out infinite;box-shadow:0 4px 20px rgba(41,171,226,0.35);border:3px solid rgba(41,171,226,0.5);display:block}\
+    #cc-btn-wrap:hover #cc-btn-avatar{box-shadow:0 4px 25px rgba(41,171,226,0.55)}\
     #cc-badge{position:absolute;top:0;right:0;width:14px;height:14px;background:#EF4444;border-radius:50%;border:2px solid #fff;display:none;animation:cc-badge-pop 0.3s ease}\
-    #cc-tooltip{position:absolute;right:74px;top:50%;transform:translateY(-50%);background:#111827;color:#fff;font-size:12px;font-weight:600;padding:7px 12px;border-radius:10px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 0.15s;box-shadow:0 4px 12px rgba(0,0,0,0.3)}\
+    #cc-tooltip{position:absolute;right:82px;top:50%;transform:translateY(-50%);background:#111827;color:#fff;font-size:12px;font-weight:600;padding:7px 12px;border-radius:10px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 0.15s;box-shadow:0 4px 12px rgba(0,0,0,0.3)}\
     #cc-tooltip:after{content:"";position:absolute;left:100%;top:50%;transform:translateY(-50%);border:5px solid transparent;border-left-color:#111827}\
     #cc-btn-wrap:hover #cc-tooltip{opacity:1}\
     \
@@ -64,6 +65,10 @@
     #cc-inp:focus{border-color:' + PRIMARY + '}\
     #cc-send{width:36px;height:36px;border-radius:50%;background:' + PRIMARY + ';border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity 0.15s}\
     #cc-send:disabled{opacity:0.5;cursor:default}\
+    \
+    .cc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding:0 2px}\
+    .cc-chip{padding:6px 12px;border:1.5px solid #29ABE2;border-radius:20px;background:#fff;color:#29ABE2;font-size:12px;font-weight:500;cursor:pointer;transition:all 0.15s;font-family:inherit;line-height:1.3}\
+    .cc-chip:hover{background:#29ABE2;color:#fff}\
   ';
 
   var styleEl = document.createElement('style');
@@ -147,9 +152,34 @@
     setTimeout(function () { inpEl().focus(); }, 50);
     if (!greetingDone) {
       greetingDone = true;
-      var greeting = cfg.greeting || 'Hi there! 👋 I\'m Sarah from Code Clinic 😊 How can I help you today?';
-      setTimeout(function () { addMsg(greeting, 'cc-agent'); }, 300);
+      var greeting = cfg.greeting || 'Hi there! 😊 I\'m Sarah from Code Clinic — How may I brighten your smile today?';
+      setTimeout(function () { addMsg(greeting, 'cc-agent'); addQuickReplies(); }, 300);
     }
+  }
+
+  function addQuickReplies() {
+    var chips = [
+      '📅 Book an appointment',
+      '💰 View our services & prices',
+      '📍 Find us / Opening hours',
+      '📞 Talk to someone',
+    ];
+    var container = document.createElement('div');
+    container.className = 'cc-chips';
+    chips.forEach(function(label) {
+      var btn = document.createElement('button');
+      btn.className = 'cc-chip';
+      btn.textContent = label;
+      btn.addEventListener('click', function() {
+        container.remove();
+        inpEl().value = label;
+        sendMessage();
+      });
+      container.appendChild(btn);
+    });
+    var box = msgsEl();
+    box.appendChild(container);
+    box.scrollTop = box.scrollHeight;
   }
 
   function closePanel() {

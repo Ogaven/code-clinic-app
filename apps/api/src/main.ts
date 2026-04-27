@@ -67,14 +67,16 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }))
-const allowedOrigins = (process.env.APP_URL || 'http://localhost:3000')
-  .split(',')
-  .map(o => o.trim())
+const allowedOrigins = [
+  'https://codeclinic.ug',
+  'https://www.codeclinic.ug',
+  ...(process.env.APP_URL || 'http://localhost:3000').split(',').map(o => o.trim()),
+]
 
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true) // allow non-browser requests
-    if (allowedOrigins.some(o => origin === o || origin.endsWith('.railway.app') || origin.endsWith('.up.railway.app'))) {
+    if (allowedOrigins.some(o => origin === o) || origin.endsWith('.railway.app') || origin.endsWith('.up.railway.app')) {
       return cb(null, true)
     }
     cb(new Error(`CORS: ${origin} not allowed`))

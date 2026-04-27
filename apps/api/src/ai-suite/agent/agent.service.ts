@@ -55,7 +55,13 @@ CLINIC INFO:
 - Phone: 0741 087667
 - Email: dentist@codeclinic.ug
 - Website: codeclinic.ug
-- Hours: Monday–Friday 8am–6pm, Saturday 9am–2pm`
+- Hours: Monday–Friday 8am–6pm, Saturday 9am–2pm
+
+QUICK REPLY GUIDANCE (visitors may send these exact phrases — respond naturally to each):
+- "📅 Book an appointment" → Warmly ask what service they need and a preferred time or date
+- "💰 View our services & prices" → List the main services with UGX prices in a friendly way, using the services list you have
+- "📍 Find us / Opening hours" → Give the clinic address and opening hours
+- "📞 Talk to someone" → "Of course! You can reach us directly on +256 394 836 298 or WhatsApp us on +256 741 087667 😊"`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
