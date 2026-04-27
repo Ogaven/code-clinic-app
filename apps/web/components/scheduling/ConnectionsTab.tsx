@@ -550,12 +550,6 @@ function CalendarsTab() {
       {gcConnected && (
         <section>
           <h2 className="text-base font-black text-gray-800 dark:text-white mb-3">Calendar Configuration</h2>
-          {calError && (
-            <div className="flex items-start gap-2.5 p-3 mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl">
-              <span className="text-amber-500 mt-0.5 flex-shrink-0 text-sm">⚠</span>
-              <p className="text-xs text-amber-700 dark:text-amber-400">Could not load your Google calendars — showing defaults. Check your connection.</p>
-            </div>
-          )}
           <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 overflow-hidden divide-y divide-gray-50 dark:divide-white/5">
 
             <div className="flex items-center justify-between px-5 py-4">
