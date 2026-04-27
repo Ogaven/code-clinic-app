@@ -221,7 +221,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
     refreshAvatar(u)
     fetchUnread(u)
     fetchTodayAppts()
-    const t = setInterval(() => fetchUnread(u), 15000)
+    const t = setInterval(() => fetchUnread(u), 10000)
     const savedTheme = (localStorage.getItem('cc_theme') as Theme) || 'system'
     setTheme(savedTheme)
     applyTheme(savedTheme)
@@ -273,9 +273,17 @@ export default function ReceptionistLayout({ children }: { children: React.React
         const data = await res.json()
         const count = data.unread || 0
         setUnread(prev => {
-          // Fire notification if new unread
-          if (count > prev && prev > 0 && Notification.permission === 'granted') {
-            showLocalNotification('New Notification', `You have ${count} unread messages.`, '/receptionist/communications')
+          if (count > prev && prev >= 0) {
+            // Find the newest unread notification to show in browser toast
+            const unreadItems: any[] = (data.notifications || []).filter((n: any) => !n.isRead)
+            const latest = unreadItems[0]
+            if (Notification.permission === 'granted' && latest) {
+              showLocalNotification(
+                latest.title || 'New Notification',
+                latest.body || latest.message || `You have ${count} unread messages.`,
+                '/receptionist/communications',
+              )
+            }
           }
           return count
         })

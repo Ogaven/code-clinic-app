@@ -273,12 +273,14 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
               {/* Slot rows */}
               {timeSlots.map((slot, i) => (
                 <div key={slot}
-                  className="absolute left-0 right-0 hover:bg-blue-50/40 transition-colors group cursor-pointer"
+                  className={`absolute left-0 right-0 transition-colors group${onBookSlot ? ' hover:bg-blue-50/40 cursor-pointer' : ''}`}
                   style={{ top: `${i * SLOT_HEIGHT}px`, height: `${SLOT_HEIGHT}px`, borderBottom: '1px solid #F5F5F7' }}
                   onClick={() => handleClick(doctor.id, slot)}>
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] text-clinic-blue opacity-0 group-hover:opacity-100 font-semibold pointer-events-none">
-                    + Book
-                  </span>
+                  {onBookSlot && (
+                    <span className="absolute inset-0 flex items-center justify-center text-[10px] text-clinic-blue opacity-0 group-hover:opacity-100 font-semibold pointer-events-none">
+                      + Book
+                    </span>
+                  )}
                 </div>
               ))}
               {/* Blocked */}
@@ -354,12 +356,14 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment }: {
               style={{ height: `${timeSlots.length * SLOT_HEIGHT}px` }}>
               {timeSlots.map((slot, i) => (
                 <div key={slot}
-                  className="absolute left-0 right-0 hover:bg-blue-50/40 transition-colors group cursor-pointer"
+                  className={`absolute left-0 right-0 transition-colors group${onBookSlot ? ' hover:bg-blue-50/40 cursor-pointer' : ''}`}
                   style={{ top: `${i * SLOT_HEIGHT}px`, height: `${SLOT_HEIGHT}px`, borderBottom: '1px solid #F5F5F7' }}
                   onClick={() => handleClick(date, slot)}>
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] text-clinic-blue opacity-0 group-hover:opacity-100 font-semibold pointer-events-none">
-                    + Book
-                  </span>
+                  {onBookSlot && (
+                    <span className="absolute inset-0 flex items-center justify-center text-[10px] text-clinic-blue opacity-0 group-hover:opacity-100 font-semibold pointer-events-none">
+                      + Book
+                    </span>
+                  )}
                 </div>
               ))}
               {dayAppts.map((a) => <ApptBlock key={a.id} appt={a} onClick={() => onClickAppointment?.(a)} />)}
