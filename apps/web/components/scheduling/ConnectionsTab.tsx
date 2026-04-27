@@ -551,9 +551,17 @@ function CalendarsTab() {
         <section>
           <h2 className="text-base font-black text-gray-800 dark:text-white mb-3">Calendar Configuration</h2>
           {calError && (
-            <div className="flex items-start gap-2.5 p-3 mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl">
-              <span className="text-amber-500 mt-0.5 flex-shrink-0 text-sm">⚠</span>
-              <p className="text-xs text-amber-700 dark:text-amber-400">Could not load your Google calendars — showing defaults. Check your connection.</p>
+            <div className="flex items-center gap-3 p-4 mb-3 bg-white dark:bg-white/5 border border-red-100 dark:border-red-900/30 rounded-2xl">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800 dark:text-white">Google Calendar session expired</p>
+                <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Your session has expired. Reconnect to restore calendar sync.</p>
+              </div>
+              <button
+                onClick={async () => { await handleDisconnect(); setTimeout(handleConnect, 300) }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5 flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+                Reconnect Google Calendar
+              </button>
             </div>
           )}
           <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 overflow-hidden divide-y divide-gray-50 dark:divide-white/5">

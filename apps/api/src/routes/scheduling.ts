@@ -6,7 +6,7 @@ import { clinicalStaff } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
 import { syncAppointmentToGCal } from '../services/gcal'
-import { sendWhatsAppMessage } from '../services/agent/channels/whatsapp-channel'
+import { sendAppointmentNotification } from '../ai-suite/notifications/notification.service'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -160,17 +160,8 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
   // Auto-sync to Google Calendar (fire-and-forget)
   syncAppointmentToGCal(appointment).catch(() => {})
 
-  // WhatsApp pre-visit form link (fire-and-forget)
-  try {
-    const appUrl   = process.env.APP_URL || 'http://localhost:3000'
-    const formLink = `${appUrl}/pre-visit?appt=${appointment.id}&phone=${encodeURIComponent(appointment.patient.phone)}`
-    const p  = appointment.patient
-    const d  = appointment.doctor.user
-    const dateStr = start.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
-    const timeStr = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' })
-    const waMsg = `Hi ${p.firstName}! 😊 Your appointment at *Code Clinic* is confirmed.\n\n📅 ${dateStr} at ${timeStr}\n👨‍⚕️ Dr. ${d.firstName} ${d.lastName}\n🦷 ${appointment.service.name}\n\nPlease fill in your pre-visit health form before you come in — it takes 2 minutes:\n${formLink}\n\nSee you soon! 🌟`
-    sendWhatsAppMessage(p.phone, waMsg).catch(() => {})
-  } catch { /* non-blocking */ }
+  // WhatsApp booking confirmation (fire-and-forget)
+  sendAppointmentNotification(appointment.id, 'booked').catch(() => {})
 
   res.status(201).json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })
@@ -237,6 +228,13 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
       service: true,
     },
   })
+
+  // WhatsApp rescheduled / cancelled notification (fire-and-forget)
+  if (req.body.status === 'CANCELLED') {
+    sendAppointmentNotification(updated.id, 'cancelled').catch(() => {})
+  } else if (rawStart) {
+    sendAppointmentNotification(updated.id, 'rescheduled').catch(() => {})
+  }
 
   res.json({ ...updated, service: { ...updated.service, priceUGX: Number(updated.service.priceUGX) } })
 })

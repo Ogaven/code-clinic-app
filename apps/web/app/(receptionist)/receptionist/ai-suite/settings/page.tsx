@@ -1193,6 +1193,85 @@ function SipTrunksSection({ toast }: { toast: (m: string) => void }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// WEBSITE CHATBOT SECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const EMBED_CODE = `<!-- Code Clinic Chat Widget -->
+<script>
+  window.CodeClinicChatConfig = {
+    clinicId: 'codeclinic',
+    primaryColor: '#29ABE2',
+    avatarUrl: 'https://codeclinic-production-73f628.up.railway.app/sarah.jpg'
+  };
+</script>
+<script src="https://codeclinic-production-73f628.up.railway.app/chatbot-widget.js" async></script>`
+
+function WebsiteChatbotSection() {
+  const [copied, setCopied] = useState(false)
+
+  function copyCode() {
+    navigator.clipboard.writeText(EMBED_CODE).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <SectionCard
+      icon={<Globe size={16} className="text-cyan-500" />}
+      label="Website Chatbot"
+      expandedDefault
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/30 rounded-xl">
+          <Globe size={14} className="text-blue-500 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-blue-700 dark:text-blue-400">
+            Add the snippet below to your website — Sarah will appear as a floating chat button. Works on any website including WordPress, Squarespace, and Wix.
+          </p>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide">Embed Code</p>
+            <button
+              onClick={copyCode}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                copied
+                  ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-white/15',
+              )}>
+              <Copy size={12} />
+              {copied ? 'Copied!' : 'Copy Code'}
+            </button>
+          </div>
+          <pre className="bg-gray-900 text-gray-100 text-[11px] rounded-xl p-4 overflow-x-auto leading-relaxed select-all whitespace-pre-wrap break-all font-mono">
+            {EMBED_CODE}
+          </pre>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="p-3 bg-gray-50 dark:bg-white/3 rounded-xl border border-gray-100 dark:border-white/5">
+            <p className="text-xs font-semibold text-gray-700 dark:text-white/70 mb-1">Widget Preview</p>
+            <p className="text-xs text-gray-400 dark:text-white/40">Sarah avatar &bull; Bouncing &bull; Teal glow &bull; Chat with us tooltip</p>
+          </div>
+          <div className="p-3 bg-gray-50 dark:bg-white/3 rounded-xl border border-gray-100 dark:border-white/5">
+            <p className="text-xs font-semibold text-gray-700 dark:text-white/70 mb-1">Live Widget Page</p>
+            <a
+              href="/chatbot-widget"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-xs text-cyan-600 dark:text-cyan-400 hover:underline mt-0.5">
+              Open chatbot-widget <ExternalLink size={10} />
+            </a>
+          </div>
+        </div>
+      </div>
+    </SectionCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1227,10 +1306,11 @@ export default function ConnectionsPage() {
       <WhatsAppPanel onManage={num => setManagingNumber(num)} />
 
       <div className="space-y-5 max-w-3xl">
-        <FacebookSection  toast={showToast} />
-        <InstagramSection toast={showToast} />
-        <SmsSection       toast={showToast} />
-        <SipTrunksSection toast={showToast} />
+        <FacebookSection      toast={showToast} />
+        <InstagramSection     toast={showToast} />
+        <SmsSection           toast={showToast} />
+        <SipTrunksSection     toast={showToast} />
+        <WebsiteChatbotSection />
       </div>
     </div>
   )

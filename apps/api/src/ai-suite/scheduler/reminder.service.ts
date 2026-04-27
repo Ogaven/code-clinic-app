@@ -56,12 +56,19 @@ export async function checkAndSendReminders(): Promise<void> {
     const channel = whatsappConv ? 'WHATSAPP' : 'SMS'
 
     // ── Build message ─────────────────────────────────────────────────────────
-    const time = appt.startAt.toLocaleTimeString('en-US', {
-      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
-    }).toLowerCase()
-    const doctor  = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+    const time = appt.startAt.toLocaleTimeString('en-UG', {
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+    })
+    const dayDate = appt.startAt.toLocaleDateString('en-UG', {
+      weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Kampala',
+    })
+    const doctor  = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
     const message =
-      `Hi ${patient.firstName}! 👋 Just a reminder that you have an appointment tomorrow at ${time} with ${doctor} for ${appt.service.name} at Code Clinic. Are you still able to make it? Reply YES to confirm or NO if you need to reschedule. 😊\n\nSarah — Code Clinic`
+      `Hi ${patient.firstName}! 👋 Just a reminder that you have an appointment tomorrow:\n\n` +
+      `📅 ${dayDate} at ${time}\n` +
+      `👨‍⚕️ ${doctor} — ${appt.service.name}\n` +
+      `📍 Code Clinic, Kamwokya\n\n` +
+      `Reply YES to confirm you'll be coming or NO if you need to reschedule.`
 
     // ── Send ──────────────────────────────────────────────────────────────────
     try {
