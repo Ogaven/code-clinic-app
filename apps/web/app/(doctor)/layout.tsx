@@ -164,11 +164,17 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     return () => { clearInterval(refreshInterval); clearInterval(unreadInterval) }
   }, [router, fetchUnread, fetchDoctorAvatar])
 
-  // Re-fetch avatar when returning to layout (e.g. after profile pic upload)
+  // Re-fetch avatar on navigation and on same-tab upload events
   useEffect(() => {
     const cached = localStorage.getItem('cc_avatar')
     if (cached) setAvatarUrl(cached)
   }, [pathname])
+
+  useEffect(() => {
+    const onAvatarUpdate = (e: CustomEvent) => setAvatarUrl(e.detail as string)
+    window.addEventListener('cc-avatar-updated', onAvatarUpdate as EventListener)
+    return () => window.removeEventListener('cc-avatar-updated', onAvatarUpdate as EventListener)
+  }, [])
 
   useEffect(() => { setDrawer(false) }, [pathname])
 

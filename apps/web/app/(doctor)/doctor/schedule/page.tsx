@@ -4,26 +4,13 @@ import { useState } from 'react'
 import { CalendarDays, Users, Stethoscope } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MultiDoctorCalendar from '@/components/scheduling/MultiDoctorCalendar'
-import BookingDrawer from '@/components/scheduling/BookingDrawer'
-import AppointmentModal from '@/components/scheduling/AppointmentModal'
 import DoctorsTab from '@/components/scheduling/DoctorsTab'
 import ServicesTab from '@/components/scheduling/ServicesTab'
 
 type Tab = 'calendar' | 'doctors' | 'services'
 
 export default function DoctorSchedulePage() {
-  const [tab,             setTab]             = useState<Tab>('calendar')
-  const [drawerOpen,      setDrawerOpen]      = useState(false)
-  const [prefillDoctorId, setPrefillDoctorId] = useState<string | undefined>()
-  const [prefillStartAt,  setPrefillStartAt]  = useState<Date | undefined>()
-  const [selectedAppt,    setSelectedAppt]    = useState<any | null>(null)
-  const [refreshKey,      setRefreshKey]      = useState(0)
-
-  function handleBookSlot(doctorId: string, startAt: Date) {
-    setPrefillDoctorId(doctorId || undefined)
-    setPrefillStartAt(startAt)
-    setDrawerOpen(true)
-  }
+  const [tab, setTab] = useState<Tab>('calendar')
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
@@ -45,46 +32,14 @@ export default function DoctorSchedulePage() {
             {label}
           </button>
         ))}
-
-        {tab === 'calendar' && (
-          <button
-            onClick={() => { setPrefillDoctorId(undefined); setPrefillStartAt(undefined); setDrawerOpen(true) }}
-            className="ml-auto mb-1 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
-            style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 12px rgba(41,171,226,0.3)' }}>
-            + Book Appointment
-          </button>
-        )}
       </div>
 
-      {/* Content */}
+      {/* Content — read-only view for doctors */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {tab === 'calendar' && (
-          <MultiDoctorCalendar
-            key={refreshKey}
-            onBookSlot={handleBookSlot}
-            onClickAppointment={setSelectedAppt}
-          />
-        )}
+        {tab === 'calendar' && <MultiDoctorCalendar />}
         {tab === 'doctors'  && <DoctorsTab />}
         {tab === 'services' && <ServicesTab />}
       </div>
-
-      <BookingDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        prefillDoctorId={prefillDoctorId}
-        prefillStartAt={prefillStartAt}
-        onBooked={() => { setRefreshKey(k => k + 1); setDrawerOpen(false) }}
-      />
-
-      {selectedAppt && (
-        <AppointmentModal
-          appointment={selectedAppt}
-          onClose={() => setSelectedAppt(null)}
-          onStatusChange={() => { setRefreshKey(k => k + 1); setSelectedAppt(null) }}
-          userRole="RECEPTIONIST"
-        />
-      )}
     </div>
   )
 }

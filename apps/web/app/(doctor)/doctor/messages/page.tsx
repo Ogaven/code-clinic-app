@@ -1,321 +1,236 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, MessageSquare, Check, CheckCheck, RefreshCw, Send, Inbox } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { ArrowLeft, Send, RefreshCw, CheckCheck } from 'lucide-react'
 
-function timeAgo(dateStr: string) {
-  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
-  if (diff < 60) return `${diff}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return new Date(dateStr).toLocaleDateString('en-UG', { day: 'numeric', month: 'short' })
+function fmtTime(dateStr: string) {
+  return new Date(dateStr).toLocaleTimeString('en-UG', {
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+  })
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  ADMIN: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-  RECEPTIONIST: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  SYSTEM: 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400',
-  DOCTOR: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
+function fmtDay(dateStr: string) {
+  const d = new Date(dateStr)
+  const today = new Date()
+  if (d.toDateString() === today.toDateString()) return 'Today'
+  const y = new Date(today); y.setDate(y.getDate() - 1)
+  if (d.toDateString() === y.toDateString()) return 'Yesterday'
+  return d.toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-type Tab = 'inbox' | 'sent'
+interface ChatMessage {
+  id: string
+  type: 'received' | 'sent'
+  text: string
+  title?: string
+  timestamp: string
+}
 
 export default function DoctorMessagesPage() {
-  const [tab, setTab]              = useState<Tab>('inbox')
-  const [notifications, setNotifs] = useState<any[]>([])
-  const [selected, setSelected]   = useState<any | null>(null)
-  const [unread, setUnread]       = useState(0)
-  const [loading, setLoading]     = useState(true)
-  const [marking, setMarking]     = useState(false)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [compose, setCompose]   = useState('')
+  const [sending, setSending]   = useState(false)
+  const [toast, setToast]       = useState('')
+  const bottomRef               = useRef<HTMLDivElement>(null)
+  const textareaRef             = useRef<HTMLTextAreaElement>(null)
 
-  // Compose / Sent state
-  const [composeMsg, setCompose]  = useState('')
-  const [sending, setSending]     = useState(false)
-  const [sendToast, setSendToast] = useState('')
-  const [sentMsgs, setSentMsgs]   = useState<{ text: string; time: string }[]>([])
+  const token  = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  const userId = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cc_user') || '{}').id : null
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  const SENT_KEY = `cc_sent_msgs_${userId}`
 
-  const fetchNotifs = useCallback(async () => {
+  function loadSent(): ChatMessage[] {
+    try { return JSON.parse(localStorage.getItem(SENT_KEY) || '[]') } catch { return [] }
+  }
+
+  function saveSent(msgs: ChatMessage[]) {
+    localStorage.setItem(SENT_KEY, JSON.stringify(msgs.slice(-200)))
+  }
+
+  const fetchMessages = useCallback(async () => {
     if (!token) return
-    setLoading(true)
     try {
       const r = await fetch('/api-proxy/receptionist/notifications', { headers: { Authorization: `Bearer ${token}` } })
       const d = await r.json()
-      setNotifs(d.notifications || [])
-      setUnread(d.unread || 0)
+      const received: ChatMessage[] = (d.notifications || []).map((n: any) => ({
+        id: n.id,
+        type: 'received' as const,
+        text: n.body || n.message || '',
+        title: n.title,
+        timestamp: n.createdAt,
+      }))
+      const sent = loadSent()
+      const all = [...received, ...sent].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      )
+      setMessages(all)
+      // Mark unread as read
+      fetch('/api-proxy/receptionist/notifications/mark-read', {
+        method: 'PUT', headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {})
     } catch {} finally { setLoading(false) }
-  }, [token])
+  }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { fetchNotifs() }, [fetchNotifs])
+  useEffect(() => { fetchMessages() }, [fetchMessages])
 
-  async function markAllRead() {
-    if (!token) return
-    setMarking(true)
-    try {
-      await fetch('/api-proxy/receptionist/notifications/mark-read', {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      setUnread(0)
-      setNotifs(n => n.map(x => ({ ...x, isRead: true })))
-    } catch {} finally { setMarking(false) }
-  }
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
-  function markOne(n: any) {
-    setSelected(n)
-    if (!n.isRead) {
-      setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x))
-      setUnread(u => Math.max(0, u - 1))
-    }
-  }
+  // Poll for new messages every 20s
+  useEffect(() => {
+    const t = setInterval(fetchMessages, 20000)
+    return () => clearInterval(t)
+  }, [fetchMessages])
 
-  async function sendToAdmin() {
-    if (!composeMsg.trim() || !token) return
+  async function send() {
+    if (!compose.trim() || !token) return
     setSending(true)
+    const text = compose.trim()
     try {
       await fetch('/api-proxy/receptionist/notifications/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: 'Doctor Message', body: composeMsg.trim(), type: 'DOCTOR' }),
+        body: JSON.stringify({ title: 'Doctor Message', body: text, type: 'DOCTOR' }),
       })
-      setSentMsgs(prev => [{ text: composeMsg.trim(), time: new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' }) }, ...prev])
+      const newMsg: ChatMessage = { id: `sent-${Date.now()}`, type: 'sent', text, timestamp: new Date().toISOString() }
+      const updated = [...loadSent(), newMsg]
+      saveSent(updated)
+      setMessages(prev => [...prev, newMsg])
       setCompose('')
-      setSendToast('Message sent to admin!')
-      setTimeout(() => setSendToast(''), 3000)
+      textareaRef.current?.focus()
     } catch {
-      setSendToast('Failed to send. Try again.')
-      setTimeout(() => setSendToast(''), 3000)
+      setToast('Failed to send. Try again.')
+      setTimeout(() => setToast(''), 3000)
     } finally { setSending(false) }
   }
 
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+  }
+
+  // Group messages by day
+  const groups: { day: string; msgs: ChatMessage[] }[] = []
+  for (const m of messages) {
+    const day = fmtDay(m.timestamp)
+    const last = groups[groups.length - 1]
+    if (last?.day === day) last.msgs.push(m)
+    else groups.push({ day, msgs: [m] })
+  }
+
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)] animate-fade-in">
+    <div className="flex flex-col h-[calc(100vh-56px)] bg-gray-50 dark:bg-[#0A0F1E]">
 
       {/* Toast */}
-      {sendToast && (
-        <div className="fixed top-4 right-4 z-[99999] bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold">
-          {sendToast}
+      {toast && (
+        <div className="fixed top-4 right-4 z-[99999] bg-red-600 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold">
+          {toast}
         </div>
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-100 dark:border-white/[0.06] bg-white dark:bg-[#0d1526] flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <Link href="/doctor/dashboard"
-            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center">
-            <ArrowLeft size={15} />
-          </Link>
-          <div>
-            <h1 className="font-bold text-gray-800 dark:text-white text-sm">Communications</h1>
-            {unread > 0 && <p className="text-[10px] text-blue-500 font-semibold">{unread} unread</p>}
+      <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-[#0d1526] border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0">
+        <Link href="/doctor/dashboard"
+          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center">
+          <ArrowLeft size={15} />
+        </Link>
+        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+          RC
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-gray-800 dark:text-white text-sm">Reception & Admin</p>
+          <p className="text-[10px] text-emerald-500 font-medium">● Online</p>
+        </div>
+        <button onClick={fetchMessages}
+          className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400">
+          <RefreshCw size={13} />
+        </button>
+      </div>
+
+      {/* Chat messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+        {loading ? (
+          <div className="space-y-3 pt-4">
+            {[1,2,3].map(i => (
+              <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : ''}`}>
+                <div className="h-12 w-52 bg-gray-200 dark:bg-white/10 rounded-2xl animate-pulse" />
+              </div>
+            ))}
           </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={fetchNotifs}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400">
-            <RefreshCw size={13} />
-          </button>
-          {tab === 'inbox' && unread > 0 && (
-            <button onClick={markAllRead} disabled={marking}
-              className="text-[10px] font-semibold text-blue-500 hover:underline px-2 py-1 min-h-[36px]">
-              Mark all read
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex bg-gray-100 dark:bg-white/5 mx-4 mt-3 mb-0 rounded-2xl p-1 gap-1 flex-shrink-0">
-        <button onClick={() => { setTab('inbox'); setSelected(null) }}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all min-h-[44px]',
-            tab === 'inbox'
-              ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-300 shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
-          )}>
-          <Inbox size={14} />
-          Inbox
-          {unread > 0 && (
-            <span className="text-[10px] font-bold bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0">
-              {unread > 9 ? '9+' : unread}
-            </span>
-          )}
-        </button>
-        <button onClick={() => { setTab('sent'); setSelected(null) }}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all min-h-[44px]',
-            tab === 'sent'
-              ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-300 shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
-          )}>
-          <Send size={14} />
-          Sent
-        </button>
-      </div>
-
-      {/* ── INBOX TAB ───────────────────────────────────────────────────────── */}
-      {tab === 'inbox' && (
-        <div className="flex flex-1 min-h-0 mt-3">
-
-          {/* LEFT: message list */}
-          <div className={cn('flex flex-col border-r border-gray-100 dark:border-white/[0.06] bg-white dark:bg-[#0d1526]',
-            selected ? 'hidden md:flex md:w-80 lg:w-96' : 'flex flex-1 md:w-80 lg:w-96')}>
-            <div className="flex-1 overflow-y-auto">
-              {loading ? (
-                <div className="p-4 space-y-2">
-                  {[1,2,3,4].map(i => <div key={i} className="h-16 bg-gray-100 dark:bg-white/5 rounded-xl animate-pulse" />)}
-                </div>
-              ) : notifications.length === 0 ? (
-                <div className="py-16 text-center text-gray-400">
-                  <MessageSquare size={32} className="mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No messages yet</p>
-                </div>
-              ) : (
-                notifications.map((n) => {
-                  const isSelected = selected?.id === n.id
-                  const senderRole = n.type === 'SYSTEM' ? 'SYSTEM' : 'ADMIN'
-                  return (
-                    <button key={n.id} onClick={() => markOne(n)}
-                      className={cn(
-                        'w-full text-left px-4 py-3.5 border-b border-gray-50 dark:border-white/[0.04] transition-colors min-h-[68px]',
-                        isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-white/[0.03]',
-                        !n.isRead && 'bg-blue-50/50 dark:bg-blue-900/10',
-                      )}>
-                      <div className="flex items-start gap-3">
-                        <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5',
-                          senderRole === 'SYSTEM' ? 'bg-gray-100 dark:bg-white/10 text-gray-500' : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300')}>
-                          {senderRole === 'SYSTEM' ? '⚙️' : '👤'}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-0.5">
-                            <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', ROLE_COLORS[senderRole] || ROLE_COLORS.SYSTEM)}>
-                              {n.title || senderRole}
-                            </span>
-                            <span className="text-[9px] text-gray-400 flex-shrink-0">{timeAgo(n.createdAt)}</span>
-                          </div>
-                          <p className={cn('text-xs truncate', n.isRead ? 'text-gray-500 dark:text-gray-400' : 'text-gray-800 dark:text-white font-semibold')}>
-                            {n.body}
-                          </p>
-                        </div>
-                        {!n.isRead && <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />}
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400 text-center py-12">
+            <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center mb-4">
+              <span className="text-3xl">💬</span>
+            </div>
+            <p className="font-semibold text-sm">No messages yet</p>
+            <p className="text-xs mt-1">Send a message to the reception team below</p>
+          </div>
+        ) : (
+          groups.map(({ day, msgs }) => (
+            <div key={day}>
+              {/* Day separator */}
+              <div className="flex items-center gap-3 py-3">
+                <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
+                <span className="text-[10px] font-semibold text-gray-400 px-2">{day}</span>
+                <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
+              </div>
+              <div className="space-y-2">
+                {msgs.map((m) => (
+                  <div key={m.id} className={`flex ${m.type === 'sent' ? 'justify-end' : 'justify-start'}`}>
+                    {m.type === 'received' && (
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 mt-auto mr-2 mb-0.5">
+                        RC
                       </div>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          {/* RIGHT: message detail */}
-          <div className={cn('flex-1 flex flex-col bg-gray-50 dark:bg-[#0A0F1E]', !selected && 'hidden md:flex')}>
-            {selected ? (
-              <>
-                <div className="flex items-center gap-3 px-5 py-3.5 bg-white dark:bg-[#0d1526] border-b border-gray-100 dark:border-white/[0.06]">
-                  <button onClick={() => setSelected(null)}
-                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center">
-                    <ArrowLeft size={15} />
-                  </button>
-                  <div className="flex-1">
-                    <p className="font-bold text-gray-800 dark:text-white text-sm">{selected.title || 'Notification'}</p>
-                    <p className="text-[10px] text-gray-400">{timeAgo(selected.createdAt)}</p>
-                  </div>
-                  {selected.isRead
-                    ? <CheckCheck size={15} className="text-blue-400" />
-                    : <Check size={15} className="text-gray-400" />}
-                </div>
-                <div className="flex-1 overflow-y-auto p-6 flex items-start justify-center">
-                  <div className="bg-white dark:bg-[#0d1526] rounded-2xl border border-gray-100 dark:border-white/10 p-6 max-w-lg w-full shadow-sm">
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className={cn('text-xs font-bold px-2.5 py-1 rounded-full', ROLE_COLORS[selected.type] || ROLE_COLORS.SYSTEM)}>
-                        {selected.type}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {new Date(selected.createdAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}
-                      </span>
-                    </div>
-                    <h2 className="font-bold text-gray-800 dark:text-white mb-3">{selected.title}</h2>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{selected.body}</p>
-                    {selected.href && (
-                      <Link href={selected.href} className="inline-flex items-center gap-1.5 mt-4 text-sm font-semibold text-blue-600 hover:underline">
-                        View details →
-                      </Link>
                     )}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-center text-gray-400 p-8">
-                <div>
-                  <MessageSquare size={48} className="mx-auto mb-3 opacity-20" />
-                  <p className="text-base font-semibold">Select a message to read</p>
-                  <p className="text-sm mt-1">Choose from the list on the left</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── SENT TAB ────────────────────────────────────────────────────────── */}
-      {tab === 'sent' && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Compose box */}
-          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50 dark:border-white/[0.06]">
-              <h2 className="font-bold text-gray-800 dark:text-white text-sm">Message Admin / Reception</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Send a note to the admin or reception team</p>
-            </div>
-            <div className="p-4 space-y-3">
-              <textarea
-                value={composeMsg}
-                onChange={e => setCompose(e.target.value)}
-                rows={4}
-                placeholder="Type your message…"
-                className="w-full px-4 py-3 text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none dark:text-white placeholder-gray-400"
-                style={{ fontSize: 16 }}
-              />
-              <button onClick={sendToAdmin} disabled={sending || !composeMsg.trim()}
-                className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors min-h-[44px]">
-                <Send size={14} /> {sending ? 'Sending…' : 'Send Message'}
-              </button>
-            </div>
-          </div>
-
-          {/* Sent messages log */}
-          {sentMsgs.length > 0 && (
-            <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-50 dark:border-white/[0.06]">
-                <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Sent this session</p>
-              </div>
-              <div className="divide-y divide-gray-50 dark:divide-white/[0.04]">
-                {sentMsgs.map((m, i) => (
-                  <div key={i} className="flex items-start gap-3 px-5 py-3.5">
-                    <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
-                      <Send size={11} className="text-blue-500" />
+                    <div className={`max-w-[75%] ${m.type === 'sent' ? 'items-end' : 'items-start'} flex flex-col`}>
+                      {m.type === 'received' && m.title && (
+                        <p className="text-[10px] font-bold text-purple-500 mb-0.5 px-1">{m.title}</p>
+                      )}
+                      <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                        m.type === 'sent'
+                          ? 'bg-blue-600 text-white rounded-br-sm'
+                          : 'bg-white dark:bg-[#0d1526] text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-white/10 rounded-bl-sm'
+                      }`}>
+                        {m.text}
+                      </div>
+                      <div className={`flex items-center gap-1 mt-0.5 px-1 ${m.type === 'sent' ? 'flex-row-reverse' : ''}`}>
+                        <span className="text-[9px] text-gray-400">{fmtTime(m.timestamp)}</span>
+                        {m.type === 'sent' && <CheckCheck size={10} className="text-blue-400" />}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-700 dark:text-gray-200">{m.text}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Sent at {m.time}</p>
-                    </div>
-                    <CheckCheck size={13} className="text-blue-400 flex-shrink-0 mt-1" />
                   </div>
                 ))}
               </div>
             </div>
-          )}
+          ))
+        )}
+        <div ref={bottomRef} />
+      </div>
 
-          {sentMsgs.length === 0 && (
-            <div className="text-center py-12 text-gray-400">
-              <Send size={36} className="mx-auto mb-2 opacity-20" />
-              <p className="text-sm">No sent messages yet</p>
-              <p className="text-xs mt-1">Use the form above to message admin</p>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Compose bar */}
+      <div className="flex-shrink-0 bg-white dark:bg-[#0d1526] border-t border-gray-100 dark:border-white/[0.06] px-4 py-3 flex items-end gap-3"
+        style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
+        <textarea
+          ref={textareaRef}
+          value={compose}
+          onChange={e => setCompose(e.target.value)}
+          onKeyDown={handleKey}
+          rows={1}
+          placeholder="Message reception…"
+          className="flex-1 px-4 py-2.5 text-sm bg-gray-100 dark:bg-white/8 border border-gray-200 dark:border-white/10 rounded-2xl resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none dark:text-white placeholder-gray-400 max-h-[120px] overflow-y-auto"
+          style={{ fontSize: 16 }}
+        />
+        <button onClick={send} disabled={sending || !compose.trim()}
+          className="w-11 h-11 flex-shrink-0 rounded-2xl flex items-center justify-center text-white transition-all disabled:opacity-40 hover:-translate-y-0.5 hover:shadow-md"
+          style={{ background: compose.trim() ? 'linear-gradient(135deg,#1A237E,#29ABE2)' : '#9CA3AF' }}>
+          {sending
+            ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            : <Send size={15} />}
+        </button>
+      </div>
     </div>
   )
 }

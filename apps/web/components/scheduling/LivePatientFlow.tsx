@@ -36,11 +36,11 @@ const STAGES = [
     bg: 'bg-orange-50 dark:bg-orange-900/10',
     badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
     next: 'WITH_PROVIDER',
-    nextLabel: 'With Provider',
+    nextLabel: 'With Doctor',
   },
   {
     key: 'WITH_PROVIDER',
-    label: 'With Provider',
+    label: 'With Doctor',
     statuses: ['WITH_PROVIDER'],
     color: '#14B8A6',
     bg: 'bg-teal-50 dark:bg-teal-900/10',
@@ -132,6 +132,22 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000, pat
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       })
+      if (newStatus === 'SESSION_COMPLETE') {
+        const appt = appointments.find(a => a.id === apptId)
+        if (appt) {
+          const patientName = `${appt.patient.firstName} ${appt.patient.lastName}`
+          const doctorName  = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+          fetch('/api-proxy/receptionist/notifications/broadcast', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: 'Patient Ready for Checkout',
+              message: `${patientName} is ready for checkout (${doctorName})`,
+              type: 'PATIENT_FLOW',
+            }),
+          }).catch(() => {})
+        }
+      }
       await fetchFlow()
     } finally { setAdvancing(null) }
   }

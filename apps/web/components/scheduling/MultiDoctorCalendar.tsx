@@ -27,8 +27,8 @@ interface DoctorCol {
   blockedTimes:  BlockedTime[]
 }
 interface Props {
-  onBookSlot:         (doctorId: string, startAt: Date) => void
-  onClickAppointment: (appt: Appointment) => void
+  onBookSlot?:         (doctorId: string, startAt: Date) => void
+  onClickAppointment?: (appt: Appointment) => void
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -207,13 +207,14 @@ function TimeCol({ width }: { width: number }) {
 function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
   columns:          DoctorCol[]
   dateStr:          string
-  onBookSlot:       (docId: string, at: Date) => void
-  onClickAppointment: (a: Appointment) => void
+  onBookSlot?:       (docId: string, at: Date) => void
+  onClickAppointment?: (a: Appointment) => void
 }) {
   const today   = toDateStr(new Date()) === dateStr
   const TIME_W  = 56
 
   function handleClick(docId: string, slot: string) {
+    if (!onBookSlot) return
     const [h, m] = slot.split(':').map(Number)
     const d = new Date(dateStr + 'T00:00:00')
     d.setHours(h, m, 0, 0)
@@ -284,7 +285,7 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
               {blockedTimes.map((b) => <BlockedBlock key={b.id} block={b} />)}
               {/* Appointments */}
               {appointments.filter((a) => a.status !== 'CANCELLED').map((a) => (
-                <ApptBlock key={a.id} appt={a} onClick={() => onClickAppointment(a)} />
+                <ApptBlock key={a.id} appt={a} onClick={() => onClickAppointment?.(a)} />
               ))}
               {/* Now line */}
               {today && <NowLine />}
@@ -300,13 +301,14 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
 function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment }: {
   weekDates:          Date[]
   appointments:       Appointment[]
-  onBookSlot:         (docId: string, at: Date) => void
-  onClickAppointment: (a: Appointment) => void
+  onBookSlot?:        (docId: string, at: Date) => void
+  onClickAppointment?: (a: Appointment) => void
 }) {
   const today  = new Date()
   const TIME_W = 56
 
   function handleClick(date: Date, slot: string) {
+    if (!onBookSlot) return
     const [h, m] = slot.split(':').map(Number)
     const d = new Date(date)
     d.setHours(h, m, 0, 0)
@@ -360,7 +362,7 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment }: {
                   </span>
                 </div>
               ))}
-              {dayAppts.map((a) => <ApptBlock key={a.id} appt={a} onClick={() => onClickAppointment(a)} />)}
+              {dayAppts.map((a) => <ApptBlock key={a.id} appt={a} onClick={() => onClickAppointment?.(a)} />)}
               {isToday && <NowLine />}
             </div>
           )
