@@ -49,7 +49,12 @@ export default function LoginPage() {
 
     // Show OAuth error if redirected back from Google with error
     const oauthError = new URLSearchParams(window.location.search).get('error')
-    if (oauthError) setError('Google sign-in failed. Please try again or use email.')
+    if (oauthError === 'google_no_account')
+      setError('No account found for that Google address. Ask your admin to create your account first.')
+    else if (oauthError === 'google_inactive')
+      setError('Your account is inactive. Contact your administrator.')
+    else if (oauthError)
+      setError('Google sign-in failed. Please try again or use email/password.')
 
     // Redirect to setup if no users exist
     fetch('/api-proxy/auth/needs-setup')

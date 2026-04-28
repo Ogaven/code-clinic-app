@@ -164,21 +164,17 @@ router.get('/google/callback', async (req, res) => {
     })
     const profile = await profileRes.json() as any
 
-    // Find or create user
-    let user = await prisma.user.findUnique({ where: { email: profile.email } })
+    // Only allow Google sign-in for accounts already created by an admin.
+    // Self-registration via Google is disabled — prevents unknown users getting
+    // a default RECEPTIONIST role and accessing the system.
+    const user = await prisma.user.findUnique({ where: { email: profile.email } })
     if (!user) {
-      // First Google user becomes ADMIN if DB is empty, else RECEPTIONIST
-      const count = await prisma.user.count()
-      user = await prisma.user.create({
-        data: {
-          email: profile.email,
-          passwordHash: '',
-          role: count === 0 ? 'ADMIN' : 'RECEPTIONIST',
-          firstName: profile.given_name || profile.name?.split(' ')[0] || 'User',
-          lastName: profile.family_name || profile.name?.split(' ').slice(1).join(' ') || '',
-          phone: '+256700000000',
-        },
-      })
+      res.redirect(`${appUrl}/login?error=google_no_account`)
+      return
+    }
+    if (!user.isActive) {
+      res.redirect(`${appUrl}/login?error=google_inactive`)
+      return
     }
 
     await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } })
