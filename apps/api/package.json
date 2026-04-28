@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tsx watch --env-file=../../.env src/main.ts",
     "build": "tsc",
-    "start": "node dist/main.js",
+    "start": "pnpm --filter database run push && node dist/main.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

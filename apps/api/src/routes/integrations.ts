@@ -267,9 +267,61 @@ router.post('/google-calendar/reset', requireAuth, async (_req, res) => {
 
 // ─── POST /integrations/google-calendar/sync ─────────────────
 router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res) => {
-  const auth = await getAuthedClient()
-  if (!auth) {
+  console.log('[GCal Sync] Manual sync triggered by user', (req as any).user?.email)
+
+  const tokens = await loadTokens()
+  if (!tokens) {
+    console.log('[GCal Sync] No tokens stored — not connected')
     return res.status(401).json({ error: 'Google Calendar not connected. Please connect first.' })
+  }
+
+  console.log('[GCal Sync] Token status — access_token:%s refresh_token:%s expiry:%s',
+    tokens.access_token ? 'present' : 'MISSING',
+    tokens.refresh_token ? 'present' : 'MISSING',
+    tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : 'none',
+  )
+
+  const auth = makeOAuth2Client()
+  auth.setCredentials(tokens)
+  auth.on('tokens', async (t) => {
+    const current = await loadTokens()
+    await saveTokens({ ...current, ...t })
+    console.log('[GCal Sync] Tokens auto-refreshed, new expiry:', t.expiry_date ? new Date(t.expiry_date).toISOString() : 'none')
+  })
+
+  // Proactive token refresh if access token is expired
+  if (tokens.expiry_date && Date.now() >= tokens.expiry_date) {
+    console.log('[GCal Sync] Access token expired — refreshing proactively')
+    if (!tokens.refresh_token) {
+      console.error('[GCal Sync] No refresh token available — reconnect required')
+      await deleteTokens()
+      return res.status(401).json({ error: 'token_expired', message: 'Google session expired — please reconnect Google Calendar.' })
+    }
+    try {
+      const { credentials } = await auth.refreshAccessToken()
+      const merged = { ...tokens, ...credentials }
+      await saveTokens(merged)
+      auth.setCredentials(merged)
+      console.log('[GCal Sync] Proactive refresh succeeded, new expiry:', credentials.expiry_date ? new Date(credentials.expiry_date).toISOString() : 'none')
+    } catch (refreshErr: any) {
+      console.error('[GCal Sync] Proactive refresh failed:', refreshErr.message)
+      await deleteTokens()
+      return res.status(401).json({ error: 'token_expired', message: 'Google session expired — please reconnect Google Calendar.' })
+    }
+  }
+
+  // Token health-check: verify the token works before looping over 50+ appointments
+  try {
+    const calendar = google.calendar({ version: 'v3', auth })
+    await calendar.calendarList.list({ maxResults: 1 })
+    console.log('[GCal Sync] Token health check passed')
+  } catch (healthErr: any) {
+    console.error('[GCal Sync] Token health check FAILED — code:%s message:%s', healthErr.code || healthErr.status, healthErr.message)
+    if (healthErr.code === 401 || healthErr.status === 401 || healthErr.message?.includes('invalid_grant')) {
+      await deleteTokens()
+      return res.status(401).json({ error: 'token_expired', message: 'Google session expired — please reconnect Google Calendar.' })
+    }
+    return res.status(500).json({ error: 'Google Calendar API unreachable: ' + healthErr.message })
   }
 
   const { calendarId = 'primary', daysBack = 1, daysForward = 30 } = req.body
@@ -280,6 +332,8 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
     const since = new Date(); since.setDate(since.getDate() - Number(daysBack))
     const until = new Date(); until.setDate(until.getDate() + Number(daysForward))
 
+    console.log('[GCal Sync] Query window: %s → %s (calendarId: %s)', since.toISOString(), until.toISOString(), calendarId)
+
     const appointments = await prisma.appointment.findMany({
       where: { startAt: { gte: since, lte: until }, status: { not: 'CANCELLED' } },
       include: {
@@ -289,9 +343,15 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
       },
     })
 
+    console.log('[GCal Sync] Appointments found:', appointments.length)
+
     let created = 0, updated = 0, errors = 0
+    const sampleErrors: string[] = []
 
     for (const appt of appointments) {
+      const storedEventId = (appt as any).googleEventId as string | null
+      console.log('[GCal Sync] Processing appt %s  startAt=%s  googleEventId=%s', appt.id, appt.startAt.toISOString(), storedEventId || 'none')
+
       const event = {
         summary: `${appt.patient.firstName} ${appt.patient.lastName} — ${appt.service.name}`,
         description: [
@@ -301,7 +361,7 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
           `Doctor:  Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`,
           `Status:  ${appt.status}`,
           ``,
-          `Manage: ${process.env.APP_URL || 'http://localhost:3000'}/receptionist/appointments`,
+          `Manage: ${process.env.APP_URL || 'http://localhost:3000'}/receptionist/scheduling`,
         ].join('\n'),
         start:      { dateTime: appt.startAt.toISOString(), timeZone: 'Africa/Kampala' },
         end:        { dateTime: appt.endAt.toISOString(),   timeZone: 'Africa/Kampala' },
@@ -310,37 +370,75 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
       }
 
       try {
-        const existing = await (calendar.events.list as any)({
-          calendarId,
-          privateExtendedProperty: `codeclinicId=${appt.id}`,
-          maxResults: 1,
-        })
+        let eventId: string
 
-        if (existing.data.items?.length) {
-          await calendar.events.patch({ calendarId, eventId: existing.data.items[0].id!, requestBody: event })
-          updated++
+        if (storedEventId) {
+          // Fast path: use stored event ID directly
+          try {
+            await calendar.events.patch({ calendarId, eventId: storedEventId, requestBody: event })
+            eventId = storedEventId
+            updated++
+            console.log('[GCal Sync] Updated event %s (fast path)', eventId)
+          } catch (patchErr: any) {
+            if (patchErr.code !== 404) throw patchErr
+            // Event deleted in GCal — re-create it
+            const ins = await calendar.events.insert({ calendarId, requestBody: event })
+            eventId = ins.data.id!
+            created++
+            console.log('[GCal Sync] Re-created event %s (was deleted)', eventId)
+          }
         } else {
-          await calendar.events.insert({ calendarId, requestBody: event })
-          created++
+          // Slow path: search by extended property (first-time sync)
+          const existing = await (calendar.events.list as any)({
+            calendarId,
+            privateExtendedProperty: `codeclinicId=${appt.id}`,
+            maxResults: 1,
+          })
+          if (existing.data.items?.length) {
+            eventId = existing.data.items[0].id!
+            await calendar.events.patch({ calendarId, eventId, requestBody: event })
+            updated++
+            console.log('[GCal Sync] Updated event %s (search path)', eventId)
+          } else {
+            const ins = await calendar.events.insert({ calendarId, requestBody: event })
+            eventId = ins.data.id!
+            created++
+            console.log('[GCal Sync] Created event %s', eventId)
+          }
         }
+
+        // Persist event ID for fast future syncs
+        await prisma.appointment.update({ where: { id: appt.id }, data: { googleEventId: eventId } }).catch(() => {})
+
         // Respect Google Calendar API rate limits (3 req/s per user)
         await new Promise(r => setTimeout(r, 350))
       } catch (e: any) {
-        console.error('[GCal] Event error:', appt.id, e.message)
+        const msg = `${appt.id}: [${e.code || e.status || '?'}] ${e.message}`
+        console.error('[GCal Sync] Failed for appt', msg)
         errors++
+        if (sampleErrors.length < 3) sampleErrors.push(msg)
       }
     }
 
+    console.log('[GCal Sync] Complete — created:%d updated:%d errors:%d', created, updated, errors)
+
+    const synced = created + updated
     res.json({
-      success: true, created, updated, errors,
-      total:   appointments.length,
-      message: `Synced ${created + updated} of ${appointments.length} appointments`,
+      success:  errors === 0 || synced > 0,
+      created,  updated,  errors,
+      total:    appointments.length,
+      message:  synced > 0
+        ? `Synced ${synced} of ${appointments.length} appointments${errors > 0 ? ` (${errors} failed)` : ''}`
+        : errors > 0
+          ? `Sync failed for all ${errors} appointments — check Railway logs`
+          : 'No appointments in range',
+      ...(sampleErrors.length ? { sampleErrors } : {}),
     })
   } catch (e: any) {
-    console.error('[GCal] Sync error:', e.message)
+    console.error('[GCal Sync] Fatal error — code:%s message:%s', e.code, e.message)
     if (e.code === 401 || e.message?.includes('invalid_grant')) {
       await deleteTokens()
-      return res.status(401).json({ error: 'Google session expired — please reconnect.' })
+      return res.status(401).json({ error: 'token_expired', message: 'Google session expired — please reconnect Google Calendar.' })
     }
     res.status(500).json({ error: 'Sync failed: ' + e.message })
   }

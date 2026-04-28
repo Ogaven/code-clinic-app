@@ -283,11 +283,26 @@ export default function SettingsPage() {
       const res   = await fetch(`${API}/integrations/google-calendar/sync`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ daysBack: 1, daysForward: 30 }),
+        body: JSON.stringify({ daysBack: 7, daysForward: 60 }),
       })
       const data = await res.json()
-      if (res.ok) showToast(`Synced ${(data.created || 0) + (data.updated || 0)} appointments`, 'ok')
-      else showToast(data.error || 'Sync failed', 'err')
+      if (res.status === 401 || data.error === 'token_expired') {
+        setGcal({ connected: false })
+        showToast('Google session expired — please reconnect.', 'err')
+      } else if (res.ok) {
+        const synced  = (data.created || 0) + (data.updated || 0)
+        const errored = data.errors || 0
+        if (synced > 0) {
+          showToast(`Synced ${synced} of ${data.total} appointments${errored > 0 ? ` (${errored} failed)` : ''}`, 'ok')
+        } else if (errored > 0) {
+          showToast(`Sync failed — ${errored} errors. Check Railway logs.`, 'err')
+        } else {
+          showToast(data.message || 'No appointments in range', 'ok')
+        }
+        await fetchGCalStatus()
+      } else {
+        showToast(data.message || data.error || 'Sync failed', 'err')
+      }
     } catch {
       showToast('Network error during sync', 'err')
     } finally { setSyncing(false) }

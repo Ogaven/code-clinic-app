@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "generate": "prisma generate",
+    "push": "prisma db push --skip-generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio",
