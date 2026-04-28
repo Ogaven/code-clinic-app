@@ -129,7 +129,7 @@ export default function Sidebar({ role = 'ADMIN', dark = false }: { role?: strin
       }}
     >
       {/* Logo area */}
-      <Link href={role === 'ACCOUNTS' ? '/accounts/dashboard' : role === 'DOCTOR' ? '/doctor/dashboard' : role === 'RECEPTIONIST' ? '/receptionist/dashboard' : '/dashboard'}
+      <Link href={role === 'ACCOUNTS' ? '/accounts/dashboard' : role === 'DOCTOR' ? '/doctor/dashboard' : role === 'RECEPTIONIST' ? '/receptionist/dashboard' : role === 'DEVELOPER' ? '/developer/dashboard' : '/dashboard'}
         className={cn(
           'flex items-center transition-all duration-200',
           collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2 gap-2',

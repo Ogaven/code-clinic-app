@@ -130,7 +130,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
     if (u.role !== 'DOCTOR') {
       const roleMap: Record<string, string> = {
-        ADMIN: '/dashboard', DEVELOPER: '/dashboard',
+        ADMIN: '/dashboard', DEVELOPER: '/developer/dashboard',
         RECEPTIONIST: '/receptionist/dashboard',
         ACCOUNTS: '/accounts/dashboard',
       }

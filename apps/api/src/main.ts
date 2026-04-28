@@ -98,22 +98,31 @@ app.use(generalLimiter)
 app.use('/uploads', express.static(uploadsDir))
 
 // ─── Health check ─────────────────────────────────────────────
+const startTime = Date.now()
 app.get('/health', async (_req, res) => {
-  let dbStatus: 'ok' | 'error' = 'ok'
-  try {
-    await healthPrisma.$queryRaw`SELECT 1`
-  } catch {
-    dbStatus = 'error'
-  }
+  let dbOk = true
+  try { await healthPrisma.$queryRaw`SELECT 1` } catch { dbOk = false }
 
-  const status = dbStatus === 'ok' ? 'ok' : 'degraded'
-  res.status(dbStatus === 'ok' ? 200 : 503).json({
+  // Probe optional services
+  const emailOk   = !!(process.env.SMTP_HOST || process.env.SENDGRID_API_KEY)
+  const pushOk    = !!(process.env.FCM_SERVER_KEY || process.env.ONESIGNAL_APP_ID)
+  const storageOk = !!(process.env.R2_BUCKET && process.env.R2_ACCOUNT_ID)
+  const redisOk   = !!(process.env.REDIS_URL)
+
+  const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000)
+  const status = dbOk ? 'ok' : 'degraded'
+
+  res.status(dbOk ? 200 : 503).json({
     status,
     service: 'CodeClinic API',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     timezone: 'Africa/Kampala',
-    checks: { database: dbStatus },
+    uptime: uptimeSeconds,
+    db:     { status: dbOk   ? 'ok' : 'error' },
+    redis:  { status: redisOk ? 'ok' : 'noop' },
+    services: { email: emailOk, push: pushOk, storage: storageOk },
+    checks: { database: dbOk ? 'ok' : 'error' },
   })
 })
 

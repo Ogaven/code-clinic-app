@@ -61,10 +61,11 @@ export default function TwoFAPage() {
       localStorage.setItem('cc_user', JSON.stringify(data.user))
 
       const role = data.user.role
-      if (role === 'ADMIN') router.push('/dashboard')
-      else if (role === 'DOCTOR') router.push('/doctor/dashboard')
+      if (role === 'ADMIN')        router.push('/dashboard')
+      else if (role === 'DOCTOR')       router.push('/doctor/dashboard')
       else if (role === 'RECEPTIONIST') router.push('/receptionist/dashboard')
-      else if (role === 'ACCOUNTS') router.push('/accounts/dashboard')
+      else if (role === 'ACCOUNTS')     router.push('/accounts/dashboard')
+      else if (role === 'DEVELOPER')    router.push('/developer/dashboard')
       else router.push('/dashboard')
     } catch {
       setError('Network error. Please try again.')

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 
 const ROLE_MAP: Record<string, string> = {
   ADMIN:        '/dashboard',
-  DEVELOPER:    '/dashboard',
+  DEVELOPER:    '/developer/dashboard',
   DOCTOR:       '/doctor/dashboard',
   RECEPTIONIST: '/receptionist/dashboard',
   ACCOUNTS:     '/accounts/dashboard',
