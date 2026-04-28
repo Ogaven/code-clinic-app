@@ -7,10 +7,19 @@ import {
   User, Lock, Bell, Palette, Camera, Check, X, Eye, EyeOff,
   Save, Sun, Moon, Monitor, Shield, Mail, Phone, MessageSquare,
   Smartphone, Globe, LogOut, Trash2, CheckCircle2, AlertCircle,
+  Link2, RefreshCw, Calendar, Unlink, Wifi, WifiOff, RotateCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Tab = 'profile' | 'security' | 'notifications' | 'appearance'
+type Tab = 'profile' | 'security' | 'notifications' | 'appearance' | 'integrations'
+
+type GCalStatus = {
+  connected:     boolean
+  email?:        string | null
+  hasRefresh?:   boolean
+  webhookActive?: boolean
+  webhookExpiry?: string | null
+}
 type Theme = 'light' | 'dark' | 'system'
 
 function applyTheme(t: Theme) {
@@ -74,13 +83,28 @@ export default function SettingsPage() {
   const [theme, setTheme] = useState<Theme>('system')
   const [lang,  setLang]  = useState('en-UG')
 
+  // Integrations
+  const [gcal,       setGcal]       = useState<GCalStatus>({ connected: false })
+  const [gcalLoading, setGcalLoad]  = useState(false)
+  const [syncing,    setSyncing]    = useState(false)
+
   const API = '/api-proxy'
 
   useEffect(() => {
     // Read tab from URL without useSearchParams (avoids Suspense requirement)
     const params = new URLSearchParams(window.location.search)
     const t = params.get('tab') as Tab
-    if (t && ['profile', 'security', 'notifications', 'appearance'].includes(t)) setTab(t)
+    if (t && ['profile', 'security', 'notifications', 'appearance', 'integrations'].includes(t)) setTab(t)
+
+    // Handle Google Calendar OAuth return
+    const gcalResult = params.get('gcal')
+    if (gcalResult === 'connected') {
+      showToast('Google Calendar connected!', 'ok')
+      setTab('integrations')
+    } else if (gcalResult === 'error') {
+      showToast('Google Calendar connection failed. Try again.', 'err')
+      setTab('integrations')
+    }
 
     const stored = localStorage.getItem('cc_user')
     if (!stored) { router.push('/login'); return }
@@ -106,6 +130,10 @@ export default function SettingsPage() {
     if ('Notification' in window) setNotifPerm(Notification.permission)
     else setNotifPerm('unsupported')
   }, [])
+
+  useEffect(() => {
+    if (tab === 'integrations') fetchGCalStatus()
+  }, [tab])
 
   function showToast(msg: string, type: 'ok' | 'err') {
     setToast({ msg, type })
@@ -203,6 +231,68 @@ export default function SettingsPage() {
     applyTheme(t)
   }
 
+  async function fetchGCalStatus() {
+    try {
+      const token = localStorage.getItem('cc_token')
+      const res = await fetch(`${API}/integrations/google-calendar/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) setGcal(await res.json())
+    } catch {}
+  }
+
+  async function connectGCal() {
+    setGcalLoad(true)
+    try {
+      const token = localStorage.getItem('cc_token')
+      const res   = await fetch(`${API}/integrations/google-calendar/auth-url?returnTo=/receptionist/settings%3Ftab%3Dintegrations`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const { url } = await res.json()
+        window.location.href = url
+      } else {
+        showToast('Failed to get Google auth URL', 'err')
+        setGcalLoad(false)
+      }
+    } catch {
+      showToast('Network error', 'err')
+      setGcalLoad(false)
+    }
+  }
+
+  async function disconnectGCal() {
+    if (!confirm('Disconnect Google Calendar? Existing appointments will not be removed from Google Calendar.')) return
+    try {
+      const token = localStorage.getItem('cc_token')
+      await fetch(`${API}/integrations/google-calendar/disconnect`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setGcal({ connected: false })
+      showToast('Google Calendar disconnected', 'ok')
+    } catch {
+      showToast('Failed to disconnect', 'err')
+    }
+  }
+
+  async function manualSync() {
+    setSyncing(true)
+    try {
+      const token = localStorage.getItem('cc_token')
+      const res   = await fetch(`${API}/integrations/google-calendar/sync`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ daysBack: 1, daysForward: 30 }),
+      })
+      const data = await res.json()
+      if (res.ok) showToast(`Synced ${(data.created || 0) + (data.updated || 0)} appointments`, 'ok')
+      else showToast(data.error || 'Sync failed', 'err')
+    } catch {
+      showToast('Network error during sync', 'err')
+    } finally { setSyncing(false) }
+  }
+
   const initials = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'R'
   const pwStrength = newPw.length === 0 ? 0 : newPw.length < 6 ? 1 : newPw.length < 10 ? 2 : /[A-Z]/.test(newPw) && /[0-9]/.test(newPw) ? 4 : 3
   const pwColors   = ['', 'bg-red-500', 'bg-amber-400', 'bg-yellow-400', 'bg-emerald-500']
@@ -213,6 +303,7 @@ export default function SettingsPage() {
     { key: 'security',      label: 'Security',      icon: Shield    },
     { key: 'notifications', label: 'Notifications', icon: Bell      },
     { key: 'appearance',    label: 'Appearance',    icon: Palette   },
+    { key: 'integrations',  label: 'Integrations',  icon: Link2     },
   ]
 
   return (
@@ -559,6 +650,130 @@ export default function SettingsPage() {
                 style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 16px rgba(41,171,226,0.3)' }}>
                 <Save size={14} /> Save Preferences
               </button>
+            </div>
+          )}
+
+          {/* ── INTEGRATIONS ────────────────────────────────────── */}
+          {tab === 'integrations' && (
+            <div className="space-y-4">
+              {/* Google Calendar card */}
+              <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm overflow-hidden">
+
+                {/* Header */}
+                <div className="px-6 py-5 border-b border-gray-100 dark:border-white/8 flex items-center gap-4">
+                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: 'linear-gradient(135deg,#4285F4,#34A853)' }}>
+                    <Calendar size={20} className="text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-base font-black text-gray-800 dark:text-white">Google Calendar</h2>
+                    <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Two-way sync — appointments appear in Google Calendar and changes reflect back here</p>
+                  </div>
+                  {gcal.connected
+                    ? <span className="flex items-center gap-1.5 text-xs font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/30 px-2.5 py-1 rounded-full">
+                        <Wifi size={12} /> Connected
+                      </span>
+                    : <span className="flex items-center gap-1.5 text-xs font-black text-gray-400 dark:text-white/30 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 px-2.5 py-1 rounded-full">
+                        <WifiOff size={12} /> Not connected
+                      </span>
+                  }
+                </div>
+
+                <div className="px-6 py-5 space-y-5">
+                  {gcal.connected ? (
+                    <>
+                      {/* Connection details */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-white/5">
+                          <span className="text-xs font-bold text-gray-500 dark:text-white/50">Google Account</span>
+                          <span className="text-sm text-gray-800 dark:text-white font-medium">{gcal.email || '—'}</span>
+                        </div>
+                        <div className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-white/5">
+                          <span className="text-xs font-bold text-gray-500 dark:text-white/50">Sync Direction</span>
+                          <span className="text-sm text-gray-800 dark:text-white font-medium flex items-center gap-1.5">
+                            <RefreshCw size={12} className="text-cyan-500" /> Two-way
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between py-2">
+                          <span className="text-xs font-bold text-gray-500 dark:text-white/50">Push Notifications</span>
+                          {gcal.webhookActive
+                            ? <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                <CheckCircle2 size={13} /> Active
+                              </span>
+                            : <span className="flex items-center gap-1.5 text-xs font-bold text-amber-500">
+                                <AlertCircle size={13} /> Inactive
+                              </span>
+                          }
+                        </div>
+                      </div>
+
+                      {/* What syncs */}
+                      <div className="bg-gray-50 dark:bg-white/3 rounded-xl p-4 space-y-2">
+                        <p className="text-[11px] font-black text-gray-500 dark:text-white/40 uppercase tracking-widest mb-2">What syncs</p>
+                        {[
+                          'New appointments → created in Google Calendar',
+                          'Reschedules → time updated in Google Calendar',
+                          'Status changes → event colour updated',
+                          'Google Calendar moves → appointment time updated here',
+                          'Google Calendar deletions → appointment marked cancelled',
+                        ].map(item => (
+                          <div key={item} className="flex items-center gap-2.5 text-xs text-gray-600 dark:text-white/60">
+                            <CheckCircle2 size={12} className="text-emerald-500 flex-shrink-0" />
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-wrap gap-3">
+                        <button onClick={manualSync} disabled={syncing}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-60 transition-all hover:-translate-y-0.5"
+                          style={{ background: 'linear-gradient(135deg,#4285F4,#34A853)', boxShadow: '0 4px 12px rgba(66,133,244,0.35)' }}>
+                          {syncing
+                            ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Syncing...</>
+                            : <><RotateCw size={14} /> Sync Now</>
+                          }
+                        </button>
+                        <button onClick={disconnectGCal}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border border-red-200 dark:border-red-700/40 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                          <Unlink size={14} /> Disconnect
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Not connected — benefits list */}
+                      <div className="space-y-2">
+                        {[
+                          'Appointments auto-appear in your Google Calendar',
+                          'Get Google reminders for each appointment',
+                          'Move events in Google Calendar to reschedule here',
+                          'Delete events in Google to cancel appointments',
+                        ].map(item => (
+                          <div key={item} className="flex items-center gap-2.5 text-sm text-gray-600 dark:text-white/60">
+                            <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                              <Check size={11} className="text-blue-500" />
+                            </div>
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+
+                      <button onClick={connectGCal} disabled={gcalLoading}
+                        className="flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-black text-white disabled:opacity-60 transition-all hover:-translate-y-0.5"
+                        style={{ background: 'linear-gradient(135deg,#4285F4,#34A853)', boxShadow: '0 4px 16px rgba(66,133,244,0.4)' }}>
+                        {gcalLoading
+                          ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Redirecting...</>
+                          : <><Calendar size={15} /> Connect Google Calendar</>
+                        }
+                      </button>
+                      <p className="text-xs text-gray-400 dark:text-white/30">
+                        You will be redirected to Google to grant calendar access. Only the clinic calendar is used.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

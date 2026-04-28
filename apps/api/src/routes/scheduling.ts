@@ -229,6 +229,9 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
     },
   })
 
+  // Auto-sync to Google Calendar (fire-and-forget)
+  syncAppointmentToGCal(updated).catch(() => {})
+
   // WhatsApp rescheduled / cancelled notification (fire-and-forget)
   if (req.body.status === 'CANCELLED') {
     sendAppointmentNotification(updated.id, 'cancelled').catch(() => {})
@@ -256,8 +259,8 @@ router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('a
     where: { id: req.params.id },
     data: { status },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true } },
-      doctor:  { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+      doctor:  { include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } } },
       service: true,
     },
   })
@@ -345,6 +348,9 @@ router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('a
   } catch (e) {
     console.error('[STATUS SIDE-EFFECTS]', e)
   }
+
+  // Auto-sync status / color change to Google Calendar (fire-and-forget)
+  syncAppointmentToGCal(appointment).catch(() => {})
 
   res.json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })

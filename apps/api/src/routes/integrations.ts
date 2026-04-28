@@ -1,8 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express'
 import { google } from 'googleapis'
 import { PrismaClient } from '@prisma/client'
+import { randomUUID } from 'crypto'
 import { requireAuth } from '../middleware/auth'
 import { clinicalStaff } from '../middleware/rbac'
+import { processIncrementalSync } from '../services/gcal'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -70,20 +72,100 @@ function acceptTokenFromQuery(req: Request, _res: Response, next: NextFunction) 
   next()
 }
 
+// ─── Webhook channel helpers ──────────────────────────────────
+const GCAL_CHANNEL_KEY = 'gcal_channel'
+
+function getWebhookAddress(): string | null {
+  if (process.env.GOOGLE_WEBHOOK_URL) return process.env.GOOGLE_WEBHOOK_URL
+  if (process.env.RAILWAY_PUBLIC_DOMAIN)
+    return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/integrations/google-calendar/webhook`
+  return null
+}
+
+async function loadChannel(): Promise<any | null> {
+  try {
+    const rows = await prisma.$queryRaw<{ value: string }[]>`SELECT value FROM app_settings WHERE key = ${GCAL_CHANNEL_KEY} LIMIT 1`
+    return rows.length ? JSON.parse(rows[0].value) : null
+  } catch { return null }
+}
+
+async function saveChannel(data: any) {
+  try {
+    const value = JSON.stringify(data)
+    await prisma.$executeRaw`
+      INSERT INTO app_settings (key, value, "updatedAt") VALUES (${GCAL_CHANNEL_KEY}, ${value}, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = ${value}, "updatedAt" = NOW()
+    `
+  } catch {}
+}
+
+async function deleteChannel() {
+  try { await prisma.$executeRaw`DELETE FROM app_settings WHERE key = ${GCAL_CHANNEL_KEY}` } catch {}
+}
+
+async function registerWatchChannel(auth: any): Promise<void> {
+  const address = getWebhookAddress()
+  if (!address) {
+    console.log('[GCal] No public webhook URL — skipping watch channel registration')
+    return
+  }
+  try {
+    const calendar  = google.calendar({ version: 'v3', auth })
+    const channelId = randomUUID()
+    const res = await calendar.events.watch({
+      calendarId: 'primary',
+      requestBody: {
+        id:      channelId,
+        type:    'web_hook',
+        address,
+        token:   process.env.GCAL_WEBHOOK_TOKEN || channelId,
+      },
+    })
+    await saveChannel({
+      channelId,
+      resourceId:  res.data.resourceId,
+      expiration:  res.data.expiration,
+      registeredAt: new Date().toISOString(),
+    })
+    console.log('[GCal] Watch channel registered, expires:', res.data.expiration)
+  } catch (e: any) {
+    console.warn('[GCal] Watch channel registration failed:', e.message)
+  }
+}
+
+async function stopWatchChannel(auth: any): Promise<void> {
+  const channel = await loadChannel()
+  if (!channel) return
+  try {
+    const calendar = google.calendar({ version: 'v3', auth })
+    await calendar.channels.stop({
+      requestBody: { id: channel.channelId, resourceId: channel.resourceId },
+    })
+    console.log('[GCal] Watch channel stopped')
+  } catch (e: any) {
+    console.warn('[GCal] Stop channel failed:', e.message)
+  }
+  await deleteChannel()
+}
+
 // ─── GET /integrations/google-calendar/status ────────────────
 router.get('/google-calendar/status', requireAuth, async (_req, res) => {
   const tokens = await loadTokens()
   if (!tokens) return res.json({ connected: false })
   const emailRow = await prisma.$queryRaw<{ value: string }[]>`SELECT value FROM app_settings WHERE key = 'gcal_email' LIMIT 1`.catch(() => [])
   let email: string | null = emailRow.length ? emailRow[0].value : null
-  // Handle legacy rows that were stored with JSON.stringify (have surrounding quotes)
   if (email) { try { email = JSON.parse(email) } catch { /* raw value is fine */ } }
+  const channel = await loadChannel()
+  const channelExpiry = channel?.expiration ? new Date(Number(channel.expiration)).toISOString() : null
+  const channelActive = channel && channelExpiry ? new Date(channelExpiry) > new Date() : false
   res.json({
-    connected:  true,
+    connected:     true,
     email,
-    hasRefresh: !!tokens.refresh_token,
-    expiry:     tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
-    redirectUri: getRedirectUri(),
+    hasRefresh:    !!tokens.refresh_token,
+    expiry:        tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+    redirectUri:   getRedirectUri(),
+    webhookActive: channelActive,
+    webhookExpiry: channelExpiry,
   })
 })
 
@@ -158,6 +240,8 @@ router.get('/google-calendar/callback', async (req, res) => {
         console.log('[GCal] Connected as', email)
       }
     } catch (emailErr: any) { console.warn('[GCal] Could not fetch email:', emailErr.message) }
+    // Register push notification channel for two-way sync (fire-and-forget)
+    registerWatchChannel(auth).catch((e: any) => console.warn('[GCal] Watch registration error:', e.message))
     res.redirect(`${front}${returnTo}?gcal=connected`)
   } catch (e: any) {
     console.error('[GCal] Token exchange error:', e.message)
@@ -167,7 +251,10 @@ router.get('/google-calendar/callback', async (req, res) => {
 
 // ─── DELETE /integrations/google-calendar/disconnect ─────────
 router.delete('/google-calendar/disconnect', requireAuth, async (_req, res) => {
+  const auth = await getAuthedClient()
+  if (auth) stopWatchChannel(auth).catch(() => {})
   await deleteTokens()
+  await prisma.$executeRaw`DELETE FROM app_settings WHERE key = 'gcal_sync_token'`.catch(() => {})
   res.json({ message: 'Disconnected' })
 })
 
@@ -257,6 +344,44 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
     }
     res.status(500).json({ error: 'Sync failed: ' + e.message })
   }
+})
+
+// ─── POST /integrations/google-calendar/webhook ──────────────
+// Google Calendar push notification endpoint (no auth — called by Google)
+router.post('/google-calendar/webhook', async (req, res) => {
+  // Always respond 200 immediately so Google does not retry
+  res.sendStatus(200)
+
+  const state      = req.headers['x-goog-resource-state'] as string
+  const channelId  = req.headers['x-goog-channel-id']     as string
+
+  if (state === 'sync') return // Initial handshake — no data yet
+
+  // Verify channel ID matches what we registered
+  const stored = await loadChannel().catch(() => null)
+  if (stored && stored.channelId !== channelId) {
+    console.warn('[GCal] Webhook: unknown channel ID', channelId)
+    return
+  }
+
+  // Run incremental sync in the background
+  processIncrementalSync()
+    .then(r => { if (r.updated > 0 || r.cancelled > 0) console.log('[GCal] Webhook sync:', r) })
+    .catch((e: any) => console.warn('[GCal] Webhook sync error:', e.message))
+})
+
+// ─── POST /integrations/google-calendar/watch ────────────────
+// Manually register (or renew) the push notification channel
+router.post('/google-calendar/watch', requireAuth, clinicalStaff, async (_req, res) => {
+  const auth = await getAuthedClient()
+  if (!auth) return res.status(401).json({ error: 'Google Calendar not connected' })
+
+  // Stop existing channel first (ignore errors)
+  await stopWatchChannel(auth).catch(() => {})
+  await registerWatchChannel(auth)
+
+  const channel = await loadChannel()
+  res.json({ success: true, channel })
 })
 
 // ─── GET /integrations/google-calendar/calendars ─────────────
