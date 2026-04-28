@@ -77,6 +77,9 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter database exec prisma generate
 
+      - name: Enable pgvector extension
+        run: psql postgresql://postgres:testpass@localhost:5432/codeclinic_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
       - name: Push schema to test DB
         run: pnpm --filter database exec prisma db push --skip-generate
 
@@ -90,6 +93,7 @@ jobs:
           name: coverage-report
           path: apps/api/coverage/
           retention-days: 7
+          if-no-files-found: ignore
 
   # ── Build ─────────────────────────────��───────────────────────
   build:
