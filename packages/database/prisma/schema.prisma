@@ -8,14 +8,53 @@ datasource db {
 }
 
 // ─────────────────────────────────────────────
-// ENUMS (SQLite uses String — validated at app level)
+// ENUMS — PostgreSQL native enum types
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  DOCTOR
+  RECEPTIONIST
+  ACCOUNTS
+  DEVELOPER
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
+  NO_SHOW
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum ConversationStatus {
+  ACTIVE
+  HUMAN_TAKEOVER
+  CLOSED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
 // ─────────────────────────────────────────────
 
 model User {
   id                String    @id @default(uuid())
   email             String    @unique
   passwordHash      String
-  role              String    // ADMIN | DOCTOR | RECEPTIONIST | ACCOUNTS | DEVELOPER
+  role              UserRole  @default(RECEPTIONIST)
   firstName         String
   lastName          String
   phone             String?
@@ -31,10 +70,12 @@ model User {
   auditLogs         AuditLog[]
   assistantMessages AssistantMessage[]
   supportTickets    SupportTicket[]
-  expenses          Expense[]   @relation("RecordedBy")
+  expenses          Expense[]      @relation("RecordedBy")
   payroll           StaffPayroll[]
-  appointments      Appointment[] @relation("CreatedBy")
+  appointments      Appointment[]  @relation("CreatedBy")
+  treatmentNotes    TreatmentNote[]
 
+  @@index([isActive])
   @@map("users")
 }
 
@@ -77,7 +118,7 @@ model Patient {
   phone                 String
   email                 String?
   dob                   DateTime?
-  gender                String?  // MALE | FEMALE | OTHER
+  gender                Gender?
   address               String?
   district              String?
   medicalNotesEncrypted String?
@@ -110,6 +151,8 @@ model Patient {
   aiScheduledMessages   AiScheduledMessage[]
 
   @@unique([phone])
+  @@index([isActive, createdAt])
+  @@index([lastName, firstName])
   @@map("patients")
 }
 
@@ -144,7 +187,7 @@ model Appointment {
   service     Service  @relation(fields: [serviceId], references: [id])
   startAt     DateTime
   endAt       DateTime
-  status      String   @default("PENDING")
+  status      AppointmentStatus @default(PENDING)
   notes       String?
   createdById String?
   createdBy   User?    @relation("CreatedBy", fields: [createdById], references: [id])
@@ -155,6 +198,9 @@ model Appointment {
   feedback    PatientFeedback?
 
   @@unique([doctorId, startAt])
+  @@index([doctorId, startAt])
+  @@index([patientId, startAt])
+  @@index([status, startAt])
   @@map("appointments")
 }
 
@@ -169,8 +215,8 @@ model Invoice {
   subtotalUGX   Int
   vatUGX        Int      @default(0)
   totalUGX      Int
-  paidUGX       Int      @default(0)
-  status        String   @default("DRAFT")
+  paidUGX       Int           @default(0)
+  status        InvoiceStatus @default(DRAFT)
   dueDate       DateTime?
   notes         String?
   createdAt     DateTime @default(now())
@@ -178,6 +224,8 @@ model Invoice {
 
   payments      Payment[]
 
+  @@index([patientId, status])
+  @@index([status, dueDate])
   @@map("invoices")
 }
 
@@ -468,6 +516,8 @@ model Notification {
   href      String?
   createdAt DateTime @default(now())
 
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
   @@map("notifications")
 }
 
@@ -590,6 +640,7 @@ model TreatmentNote {
   patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
   content   String
   authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -669,16 +720,17 @@ model AiConversation {
   id           String   @id @default(cuid())
   patientId    String?
   patient      Patient? @relation(fields: [patientId], references: [id])
-  channel      String   // WHATSAPP | SMS | VOICE | WEBSITE | FACEBOOK | INSTAGRAM
+  channel      String             // WHATSAPP | SMS | VOICE | WEBSITE | FACEBOOK | INSTAGRAM
   phoneNumber  String
-  status       String   @default("ACTIVE") // ACTIVE | HUMAN_TAKEOVER | CLOSED
-  agentEnabled Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  status       ConversationStatus @default(ACTIVE)
+  agentEnabled Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   messages     AiMessage[]
 
   @@index([phoneNumber])
+  @@index([channel, status, phoneNumber])
   @@map("ai_conversations")
 }
 
@@ -692,6 +744,7 @@ model AiMessage {
   createdAt      DateTime       @default(now())
 
   @@index([conversationId])
+  @@index([conversationId, createdAt])
   @@map("ai_messages")
 }
 

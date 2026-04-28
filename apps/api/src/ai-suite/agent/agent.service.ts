@@ -74,6 +74,40 @@ interface ContextPackage {
   doctors: string
 }
 
+// ── Services / doctors cache (5-minute TTL — rarely change) ──────────────────
+
+interface CachedMenu { services: string; doctors: string; expiresAt: number }
+let menuCache: CachedMenu | null = null
+
+async function getCachedMenu(): Promise<{ services: string; doctors: string }> {
+  if (menuCache && Date.now() < menuCache.expiresAt) {
+    return { services: menuCache.services, doctors: menuCache.doctors }
+  }
+
+  const [allServices, allDoctors] = await Promise.all([
+    prisma.service.findMany({
+      where: { isActive: true },
+      select: { name: true, priceUGX: true, durationMins: true },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.doctor.findMany({
+      include: { user: { select: { firstName: true, lastName: true } } },
+      where: { user: { isActive: true } },
+    }),
+  ])
+
+  const services = allServices
+    .map(s => `- ${s.name}: UGX ${s.priceUGX.toLocaleString()} (${s.durationMins} mins)`)
+    .join('\n')
+
+  const doctors = allDoctors
+    .map(d => `- Dr ${d.user.firstName} ${d.user.lastName}${d.specialisation ? ` — ${d.specialisation}` : ''}`)
+    .join('\n')
+
+  menuCache = { services, doctors, expiresAt: Date.now() + 5 * 60 * 1000 }
+  return { services, doctors }
+}
+
 // ── buildContext ──────────────────────────────────────────────────────────────
 
 async function buildContext(
@@ -81,24 +115,35 @@ async function buildContext(
   from: string,
   message: string
 ): Promise<ContextPackage> {
-  const patient = await prisma.patient.findUnique({
-    where: { phone: from },
-    select: { id: true, firstName: true, lastName: true, phone: true, email: true, createdAt: true },
-  })
+  // Extract keyword for KB search before firing parallel queries
+  const keyword = message.split(/\s+/).find(w => w.length >= 4)
 
-  const patientName = patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown patient'
-
-  let conversationHistory = ''
-  if (patient) {
-    const dbMessages = await prisma.aiMessage.findMany({
+  // Run all independent queries in parallel
+  const [patient, dbMessages, menu, kbResults] = await Promise.all([
+    prisma.patient.findUnique({
+      where: { phone: from },
+      select: { id: true, firstName: true, lastName: true, phone: true, email: true, createdAt: true },
+    }),
+    prisma.aiMessage.findMany({
       where: { conversationId },
       orderBy: { createdAt: 'asc' },
       take: 15,
-    })
-    conversationHistory = dbMessages
-      .map(m => (m.role === 'USER' ? `Patient: ${m.content}` : `Sarah: ${m.content}`))
-      .join('\n')
-  }
+    }),
+    getCachedMenu(),
+    keyword
+      ? prisma.aiKnowledgeBase.findMany({
+          where: { content: { contains: keyword, mode: 'insensitive' } },
+          take: 3,
+          select: { content: true },
+        })
+      : Promise.resolve([]),
+  ])
+
+  const patientName = patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown patient'
+
+  const conversationHistory = dbMessages
+    .map(m => (m.role === 'USER' ? `Patient: ${m.content}` : `Sarah: ${m.content}`))
+    .join('\n')
 
   let appointments = 'none on record'
   if (patient) {
@@ -124,35 +169,9 @@ async function buildContext(
     }
   }
 
-  let knowledgeBase = ''
-  const keyword = message.split(/\s+/).find(w => w.length >= 4)
-  if (keyword) {
-    const kbResults = await prisma.aiKnowledgeBase.findMany({
-      where: { content: { contains: keyword, mode: 'insensitive' } },
-      take: 3,
-      select: { content: true },
-    })
-    knowledgeBase = kbResults.map(k => k.content).join('\n\n')
-  }
+  const knowledgeBase = kbResults.map((k: { content: string }) => k.content).join('\n\n')
 
-  const allServices = await prisma.service.findMany({
-    where: { isActive: true },
-    select: { name: true, priceUGX: true, durationMins: true },
-    orderBy: { name: 'asc' },
-  })
-  const services = allServices
-    .map(s => `- ${s.name}: UGX ${s.priceUGX.toLocaleString()} (${s.durationMins} mins)`)
-    .join('\n')
-
-  const allDoctors = await prisma.doctor.findMany({
-    include: { user: { select: { firstName: true, lastName: true } } },
-    where: { user: { isActive: true } },
-  })
-  const doctors = allDoctors
-    .map(d => `- Dr ${d.user.firstName} ${d.user.lastName}${d.specialisation ? ` — ${d.specialisation}` : ''}`)
-    .join('\n')
-
-  return { patientName, conversationHistory, appointments, knowledgeBase, services, doctors }
+  return { patientName, conversationHistory, appointments, knowledgeBase, ...menu }
 }
 
 // ── Intent detection ──────────────────────────────────────────────────────────
@@ -632,44 +651,52 @@ export async function getAgentReply(
     if (agentConfig?.systemPrompt) activeSystemPrompt = agentConfig.systemPrompt
   } catch { /* non-critical — use hardcoded fallback */ }
 
-  const systemParts = [
-    activeSystemPrompt,
-    '',
-    'CLINIC CONTACT:',
-    'Phone: +256 394 836 298',
-    'WhatsApp: +256 741 087667',
-    'Email: dentist@codeclinic.ug',
-    'Website: codeclinic.ug',
-    'Address: Old Kira Road, opposite Police Playground, Kamwokya, Kampala',
-    'Hours: Monday–Friday 8am–6pm, Saturday 9am–2pm',
-    '',
-    'OUR SERVICES:',
-    context.services,
-    '',
-    'OUR DOCTORS:',
-    context.doctors,
-    '',
-    'PATIENT CONTEXT:',
-    `Name: ${context.patientName}`,
-    `Phone: ${from}`,
-    'Recent appointments:',
-    context.appointments,
-  ]
-  if (context.knowledgeBase) {
-    systemParts.push('', 'CLINIC KNOWLEDGE BASE:', context.knowledgeBase)
-  }
-
   try {
-    const client   = new Anthropic({ apiKey })
+    const client = new Anthropic({ apiKey })
+
+    // Split system prompt into cacheable (static) and dynamic parts.
+    // The static part (persona + clinic info + services/doctors) rarely changes —
+    // Anthropic will cache it after the first call, reducing cost by ~70%.
+    const staticSystem = [
+      activeSystemPrompt,
+      '',
+      'CLINIC CONTACT:',
+      'Phone: +256 394 836 298',
+      'WhatsApp: +256 741 087667',
+      'Email: dentist@codeclinic.ug',
+      'Website: codeclinic.ug',
+      'Address: Old Kira Road, opposite Police Playground, Kamwokya, Kampala',
+      'Hours: Monday–Friday 8am–6pm, Saturday 9am–2pm',
+      '',
+      'OUR SERVICES:',
+      context.services,
+      '',
+      'OUR DOCTORS:',
+      context.doctors,
+    ].join('\n')
+
+    const dynamicSystem = [
+      '',
+      'PATIENT CONTEXT:',
+      `Name: ${context.patientName}`,
+      `Phone: ${from}`,
+      'Recent appointments:',
+      context.appointments,
+      ...(context.knowledgeBase ? ['', 'CLINIC KNOWLEDGE BASE:', context.knowledgeBase] : []),
+    ].join('\n')
+
     const response = await client.messages.create({
       model:      'claude-sonnet-4-6',
-      max_tokens: 150,
-      system:     systemParts.join('\n'),
+      max_tokens: 200,
+      system: [
+        { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: dynamicSystem },
+      ],
       messages,
     })
 
     const block = response.content[0]
-    if (block.type === 'text') return block.text
+    if (block && block.type === 'text') return block.text
 
     return `I'm here to help! Could you please rephrase that for me?`
   } catch (err) {

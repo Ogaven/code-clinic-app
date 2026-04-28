@@ -1,12 +1,17 @@
 import 'dotenv/config'
+import './lib/env' // Validate env vars at startup — exits if required vars are missing
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import path from 'path'
 import fs from 'fs'
+import { PrismaClient } from '@prisma/client'
 import { generalLimiter } from './middleware/rateLimit'
 import { runStartup } from './startup'
+import { logger } from './lib/logger'
+
+const healthPrisma = new PrismaClient()
 
 // Routes
 import authRouter from './routes/auth'
@@ -75,10 +80,9 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true) // allow non-browser requests
-    if (allowedOrigins.some(o => origin === o) || origin.endsWith('.railway.app') || origin.endsWith('.up.railway.app')) {
-      return cb(null, true)
-    }
+    if (!origin) return cb(null, true) // allow non-browser requests (curl, Postman, server-to-server)
+    if (allowedOrigins.includes(origin)) return cb(null, true)
+    logger.warn({ origin }, 'CORS: rejected request from unlisted origin')
     cb(new Error(`CORS: ${origin} not allowed`))
   },
   credentials: true,
@@ -94,13 +98,22 @@ app.use(generalLimiter)
 app.use('/uploads', express.static(uploadsDir))
 
 // ─── Health check ─────────────────────────────────────────────
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'ok',
+app.get('/health', async (_req, res) => {
+  let dbStatus: 'ok' | 'error' = 'ok'
+  try {
+    await healthPrisma.$queryRaw`SELECT 1`
+  } catch {
+    dbStatus = 'error'
+  }
+
+  const status = dbStatus === 'ok' ? 'ok' : 'degraded'
+  res.status(dbStatus === 'ok' ? 200 : 503).json({
+    status,
     service: 'CodeClinic API',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     timezone: 'Africa/Kampala',
+    checks: { database: dbStatus },
   })
 })
 
@@ -217,10 +230,25 @@ runStartup().then(() => {
   }, 2 * 60 * 1000)
 
   app.listen(PORT, () => {
-    console.log(`\n🦷 CodeClinic API running on http://localhost:${PORT}`)
-    console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`)
-    console.log(`   Timezone:    Africa/Kampala\n`)
+    logger.info({
+      port: PORT,
+      env: process.env.NODE_ENV || 'development',
+      timezone: 'Africa/Kampala',
+    }, 'CodeClinic API started')
   })
+})
+
+// ─── Graceful shutdown ───────────────────────────────────────
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM received — shutting down gracefully')
+  await healthPrisma.$disconnect()
+  process.exit(0)
+})
+
+process.on('SIGINT', async () => {
+  logger.info('SIGINT received — shutting down')
+  await healthPrisma.$disconnect()
+  process.exit(0)
 })
 
 export default app

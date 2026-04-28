@@ -1,5 +1,5 @@
 FROM node:20-alpine AS base
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl curl
 RUN npm install -g pnpm@9
 WORKDIR /app
 
@@ -17,12 +17,16 @@ COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
 COPY . .
 RUN cd packages/database && ./node_modules/.bin/prisma generate
-RUN pnpm --filter api build || true
+# Build fails hard — no || true silencer
+RUN pnpm --filter api build
 
 # ── Runtime ───────────────────────────────────────────────────
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+
+# Run as non-root user for security
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Copy ALL node_modules from builder (includes generated Prisma client wherever pnpm put it)
 COPY --from=builder /app/node_modules ./node_modules
@@ -32,5 +36,15 @@ COPY --from=builder /app/packages/database/node_modules ./packages/database/node
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
 
+# Ensure upload directory is owned by app user
+RUN mkdir -p /data/uploads && chown -R appuser:appgroup /data
+
+USER appuser
+
 EXPOSE 4000
-CMD ["/bin/sh", "-c", "cd /app/packages/database && ./node_modules/.bin/prisma db push --accept-data-loss --skip-generate 2>/dev/null || true && node /app/apps/api/dist/main.js"]
+
+# Migration fails hard — container will not start with a stale schema
+CMD ["/bin/sh", "-c", "cd /app/packages/database && ./node_modules/.bin/prisma db push --accept-data-loss --skip-generate && node /app/apps/api/dist/main.js"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:4000/health || exit 1

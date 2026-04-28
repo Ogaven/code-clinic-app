@@ -9,6 +9,7 @@ import { validate } from '../middleware/validate'
 import { requireAuth } from '../middleware/auth'
 import { authLimiter } from '../middleware/rateLimit'
 import { getPublicUrl } from '../services/storage/r2'
+import { blacklistToken } from '../lib/tokenBlacklist'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -26,7 +27,7 @@ function signAccess(user: { id: string; email: string; role: string; firstName: 
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName },
     process.env.JWT_SECRET!,
-    { expiresIn: '7d' },
+    { expiresIn: (process.env.JWT_EXPIRES_IN || '15m') as jwt.SignOptions['expiresIn'] },
   )
 }
 
@@ -273,9 +274,22 @@ router.post('/refresh', async (req, res) => {
 })
 
 // POST /auth/logout
-router.post('/logout', (req, res) => {
-  res.clearCookie('refreshToken', { path: '/auth/refresh' })
-  res.json({ message: 'Logged out' })
+router.post('/logout', requireAuth, async (req, res) => {
+  try {
+    // Blacklist the current access token so it cannot be reused before expiry
+    if (req.token) {
+      const decoded = jwt.decode(req.token) as { exp?: number } | null
+      if (decoded?.exp) {
+        const ttl = decoded.exp - Math.floor(Date.now() / 1000)
+        if (ttl > 0) await blacklistToken(req.token, ttl)
+      }
+    }
+    res.clearCookie('refreshToken', { path: '/auth/refresh' })
+    res.json({ message: 'Logged out' })
+  } catch {
+    res.clearCookie('refreshToken', { path: '/auth/refresh' })
+    res.json({ message: 'Logged out' })
+  }
 })
 
 // POST /auth/2fa/setup

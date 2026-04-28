@@ -1,11 +1,34 @@
 import { Router } from 'express'
+import { z } from 'zod'
 import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '../middleware/auth'
+import { clinicalStaff } from '../middleware/rbac'
 import { auditLog } from '../middleware/audit'
-import { getSignedDownloadUrl, getPublicUrl } from '../services/storage/r2'
+import { validate } from '../middleware/validate'
+import { getPublicUrl } from '../services/storage/r2'
 import multer from 'multer'
 import { uploadAvatar, deleteFile } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
+
+const ugandaPhone = z.string().regex(/^\+?[0-9]{9,15}$/, 'Invalid phone number')
+
+const createPatientSchema = z.object({
+  firstName:          z.string().min(1).max(100),
+  lastName:           z.string().min(1).max(100),
+  phone:              ugandaPhone,
+  email:              z.string().email().optional().or(z.literal('')),
+  gender:             z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
+  dob:                z.string().datetime({ offset: true }).optional().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
+  address:            z.string().max(255).optional(),
+  district:           z.string().max(100).optional(),
+  nextOfKinName:      z.string().max(100).optional(),
+  nextOfKinPhone:     ugandaPhone.optional(),
+  nextOfKinRelation:  z.string().max(50).optional(),
+  allergies:          z.string().max(500).optional(),
+  medicalHistory:     z.union([z.string(), z.array(z.string())]).optional(),
+})
+
+const updatePatientSchema = createPatientSchema.partial()
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -76,8 +99,8 @@ router.get('/', requireAuth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch patients' }) }
 })
 
-// POST /patients
-router.post('/', requireAuth, auditLog('patients'), async (req, res) => {
+// POST /patients — receptionist, doctor, or admin only
+router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), auditLog('patients'), async (req, res) => {
   try {
     const {
       firstName, lastName, phone, email, gender, dob, address, district,
@@ -142,8 +165,8 @@ router.get('/:id/activity', requireAuth, async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to fetch activities' }) }
 })
 
-// PATCH /patients/:id
-router.patch('/:id', requireAuth, auditLog('patients'), async (req, res) => {
+// PATCH /patients/:id — clinical staff only
+router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), auditLog('patients'), async (req, res) => {
   try {
     const {
       firstName, lastName, phone, email, gender, dob, address, district, isActive,

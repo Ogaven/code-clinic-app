@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "tsx watch --env-file=../../.env src/main.ts",
     "build": "tsc",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.26.0",
@@ -30,6 +35,7 @@
     "openai": "^6.34.0",
     "otpauth": "^9.3.3",
     "pdf-parse": "^2.4.5",
+    "pino": "^9.0.0",
     "qrcode": "^1.5.3",
     "sharp": "^0.33.4",
     "drachtio-srf": "^5.0.22",
@@ -47,7 +53,13 @@
     "@types/nodemailer": "^6.4.15",
     "@types/pdf-parse": "^1.1.5",
     "@types/qrcode": "^1.5.5",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vitest/coverage-v8": "^1.6.0",
+    "eslint": "^8.57.0",
+    "pino-pretty": "^11.0.0",
     "tsx": "^4.11.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
   }
 }
