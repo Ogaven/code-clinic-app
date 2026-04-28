@@ -217,6 +217,15 @@ export default function ReceptionistLayout({ children }: { children: React.React
     const stored = localStorage.getItem('cc_user')
     if (!stored) { router.push('/login'); return }
     const u = JSON.parse(stored)
+    // Redirect non-receptionist users to their own app
+    if (u.role !== 'RECEPTIONIST') {
+      const map: Record<string, string> = {
+        ADMIN: '/dashboard', DEVELOPER: '/dashboard',
+        DOCTOR: '/doctor/dashboard', ACCOUNTS: '/accounts/dashboard',
+      }
+      router.replace(map[u.role] || '/login')
+      return
+    }
     setUser(u)
     refreshAvatar(u)
     fetchUnread(u)

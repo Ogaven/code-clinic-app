@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react'
 
 const ROLE_REDIRECTS: Record<string, string> = {
   ACCOUNTS: '/accounts/dashboard', RECEPTIONIST: '/receptionist/dashboard',
-  DOCTOR: '/dashboard', ADMIN: '/dashboard', DEVELOPER: '/dashboard',
+  DOCTOR: '/doctor/dashboard', ADMIN: '/dashboard', DEVELOPER: '/dashboard',
 }
 
 export default function AuthCallback() {

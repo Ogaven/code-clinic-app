@@ -51,7 +51,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!stored) { router.push('/login'); return }
     const u = JSON.parse(stored)
     if (u.role === 'RECEPTIONIST') { router.replace('/receptionist/dashboard'); return }
-    if (u.role === 'DOCTOR') { router.replace('/doctor/dashboard'); return }
+    if (u.role === 'DOCTOR')       { router.replace('/doctor/dashboard'); return }
+    // Accounts users can only access /accounts/*, /stocks, /settings, /support
+    if (u.role === 'ACCOUNTS') {
+      const allowed = ['/accounts', '/stocks', '/settings', '/support']
+      const ok = allowed.some(p => pathname === p || pathname.startsWith(p + '/'))
+      if (!ok) { router.replace('/accounts/dashboard'); return }
+    }
     setUser(u)
     const isDark = localStorage.getItem('cc_theme') === 'dark'
     setDark(isDark)
