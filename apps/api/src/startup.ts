@@ -1,6 +1,6 @@
 import { execSync } from 'child_process'
 import path from 'path'
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, Gender } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -205,7 +205,7 @@ async function seed() {
     { firstName: 'Brian',    lastName: 'Wasswa',   phone: '+256700123456', gender: 'MALE',   dob: new Date('1997-02-28') },
   ]
   for (const p of patientsData) {
-    await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: p })
+    await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: { ...p, gender: p.gender as Gender } })
   }
   console.log('[startup] Demo patients created.')
 
@@ -272,7 +272,7 @@ export async function seedDemoData() {
   ]
   const upsertedPatients: any[] = []
   for (const p of patientList) {
-    const pt = await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: p })
+    const pt = await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: { ...p, gender: p.gender as Gender } })
     upsertedPatients.push(pt)
   }
   console.log(`[startup] ${upsertedPatients.length} patients upserted.`)
@@ -353,9 +353,10 @@ export async function seedDemoData() {
       const tp = treatmentTypes[(patient.id.charCodeAt(0) + i) % treatmentTypes.length]
       await prisma.treatmentPlan.create({
         data: {
-          patientId: patient.id, doctorId: doctor.id,
-          title: tp.title, status: tp.status as any,
-          estimatedCost: tp.cost, currency: 'UGX',
+          patientId: patient.id,
+          notes: tp.title,
+          status: tp.status,
+          costPerUnit: tp.cost,
         },
       }).catch(() => {})
     }

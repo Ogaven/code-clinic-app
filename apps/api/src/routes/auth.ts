@@ -55,36 +55,6 @@ router.get('/needs-setup', async (_req, res) => {
   }
 })
 
-// GET /auth/db-status — debug: show counts
-router.get('/db-status', async (_req, res) => {
-  try {
-    const users = await prisma.user.count()
-    res.json({ ok: true, users })
-  } catch (e: any) {
-    res.json({ ok: false, error: e.message })
-  }
-})
-
-// GET /auth/seed — manually seed DB from browser (only works when empty)
-router.get('/seed', async (_req, res) => {
-  try {
-    const count = await prisma.user.count()
-    if (count > 0) {
-      res.json({ ok: true, message: `Already seeded — ${count} users exist. Login with admin@codeclinic.ug / Admin@2024!` })
-      return
-    }
-    const bcrypt = require('bcryptjs')
-    const adminPw  = await bcrypt.hash('Admin@2024!', 12)
-    const staffPw  = await bcrypt.hash('Staff@2024!', 12)
-    await prisma.user.create({ data: { email: 'admin@codeclinic.ug',     passwordHash: adminPw, role: 'ADMIN',        firstName: 'Admin',     lastName: 'User',  phone: '+256700000001' } })
-    await prisma.user.create({ data: { email: 'reception@codeclinic.ug', passwordHash: staffPw, role: 'RECEPTIONIST', firstName: 'Reception', lastName: 'Staff', phone: '+256700000002' } })
-    await prisma.user.create({ data: { email: 'accounts@codeclinic.ug',  passwordHash: staffPw, role: 'ACCOUNTS',     firstName: 'Accounts',  lastName: 'Staff', phone: '+256700000003' } })
-    res.json({ ok: true, message: 'Seeded! Login: admin@codeclinic.ug / Admin@2024!' })
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e.message })
-  }
-})
-
 // POST /auth/setup — create admin account (upserts so always works)
 router.post('/setup', async (req, res) => {
   try {

@@ -1,6 +1,7 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, Gender, AppointmentStatus } from '@prisma/client'
 import { requireAuth } from '../middleware/auth'
+import { adminOnly } from '../middleware/rbac'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -9,7 +10,7 @@ router.get('/', requireAuth, (_req, res) => res.json({ message: 'Developer endpo
 
 // POST /developer/seed
 // Idempotent — safe to call multiple times. Order: services → patients → appointments → conversations → agent config
-router.post('/seed', requireAuth, async (_req, res) => {
+router.post('/seed', requireAuth, adminOnly, async (_req, res) => {
   try {
     const results: string[] = []
 
@@ -58,7 +59,7 @@ router.post('/seed', requireAuth, async (_req, res) => {
       const pat = await prisma.patient.upsert({
         where:  { phone: p.phone },
         update: { firstName: p.firstName, lastName: p.lastName, address: p.address, district: p.district, nextOfKinName: p.nextOfKinName, nextOfKinPhone: p.nextOfKinPhone, nextOfKinRelation: p.nextOfKinRelation, allergies: p.allergies || undefined, medicalHistory: p.medicalHistory || undefined },
-        create: { firstName: p.firstName, lastName: p.lastName, phone: p.phone, email: p.email ?? undefined, gender: p.gender, dob: p.dob, address: p.address, district: p.district, nextOfKinName: p.nextOfKinName, nextOfKinPhone: p.nextOfKinPhone, nextOfKinRelation: p.nextOfKinRelation, allergies: p.allergies || undefined, medicalHistory: p.medicalHistory || undefined },
+        create: { firstName: p.firstName, lastName: p.lastName, phone: p.phone, email: p.email ?? undefined, gender: p.gender as Gender, dob: p.dob, address: p.address, district: p.district, nextOfKinName: p.nextOfKinName, nextOfKinPhone: p.nextOfKinPhone, nextOfKinRelation: p.nextOfKinRelation, allergies: p.allergies || undefined, medicalHistory: p.medicalHistory || undefined },
       })
       createdPatients.push({ id: pat.id, firstName: p.firstName })
     }
@@ -113,8 +114,8 @@ router.post('/seed', requireAuth, async (_req, res) => {
         try {
           await prisma.appointment.upsert({
             where:  { doctorId_startAt: { doctorId: a.doctorId, startAt: a.startAt } },
-            update: { status: a.status },
-            create: { patientId: a.patientId, doctorId: a.doctorId, serviceId: a.serviceId, startAt: a.startAt, endAt, status: a.status, createdById: adminUser?.id },
+            update: { status: a.status as AppointmentStatus },
+            create: { patientId: a.patientId, doctorId: a.doctorId, serviceId: a.serviceId, startAt: a.startAt, endAt, status: a.status as AppointmentStatus, createdById: adminUser?.id },
           })
           apptCreated++
         } catch { /* skip duplicates */ }

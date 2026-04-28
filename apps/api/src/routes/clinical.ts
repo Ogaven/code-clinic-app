@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '../middleware/auth'
+import { doctorOrAdmin, clinicalStaff } from '../middleware/rbac'
 import Anthropic from '@anthropic-ai/sdk'
 import multer from 'multer'
 import { uploadAvatar, getPublicUrl } from '../services/storage/r2'
@@ -49,7 +50,7 @@ router.get('/patients/:id/dental-chart', requireAuth, async (req, res) => {
 })
 
 // PUT /clinical/patients/:id/dental-chart
-router.put('/patients/:id/dental-chart', requireAuth, async (req, res) => {
+router.put('/patients/:id/dental-chart', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     const { teeth, periodontal } = req.body
     const chart = await prisma.dentalChart.upsert({
@@ -72,7 +73,7 @@ router.put('/patients/:id/dental-chart', requireAuth, async (req, res) => {
 })
 
 // POST /clinical/patients/:id/dental-chart/ai-summary
-router.post('/patients/:id/dental-chart/ai-summary', requireAuth, async (req, res) => {
+router.post('/patients/:id/dental-chart/ai-summary', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     const { chartData, type } = req.body
     const isPerio = type === 'perio'
@@ -105,7 +106,7 @@ router.post('/patients/:id/dental-chart/ai-summary', requireAuth, async (req, re
 })
 
 // POST /clinical/dental-chart/smart-entry
-router.post('/dental-chart/smart-entry', requireAuth, async (req, res) => {
+router.post('/dental-chart/smart-entry', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     const { command } = req.body
 
@@ -145,7 +146,7 @@ router.get('/patients/:id/treatment-plans', requireAuth, async (req, res) => {
 })
 
 // POST /clinical/patients/:id/treatment-plans
-router.post('/patients/:id/treatment-plans', requireAuth, async (req, res) => {
+router.post('/patients/:id/treatment-plans', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     const { serviceId, toothNumber, quantity, costPerUnit, discount, notes, status } = req.body
     const plan = await prisma.treatmentPlan.create({
@@ -168,7 +169,7 @@ router.post('/patients/:id/treatment-plans', requireAuth, async (req, res) => {
 })
 
 // PUT /clinical/patients/:id/treatment-plans/:planId
-router.put('/patients/:id/treatment-plans/:planId', requireAuth, async (req, res) => {
+router.put('/patients/:id/treatment-plans/:planId', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     const { serviceId, toothNumber, quantity, costPerUnit, discount, notes, status } = req.body
     const plan = await prisma.treatmentPlan.update({
@@ -193,7 +194,7 @@ router.put('/patients/:id/treatment-plans/:planId', requireAuth, async (req, res
 })
 
 // DELETE /clinical/patients/:id/treatment-plans/:planId
-router.delete('/patients/:id/treatment-plans/:planId', requireAuth, async (req, res) => {
+router.delete('/patients/:id/treatment-plans/:planId', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     await prisma.treatmentPlan.delete({ where: { id: req.params.planId } })
     res.json({ message: 'Deleted' })
@@ -218,7 +219,7 @@ router.get('/patients/:id/treatment-notes', requireAuth, async (req, res) => {
 })
 
 // POST /clinical/patients/:id/treatment-notes
-router.post('/patients/:id/treatment-notes', requireAuth, async (req, res) => {
+router.post('/patients/:id/treatment-notes', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     const { content } = req.body
     if (!content?.trim()) { res.status(400).json({ error: 'Content required' }); return }
@@ -233,7 +234,7 @@ router.post('/patients/:id/treatment-notes', requireAuth, async (req, res) => {
 })
 
 // PUT /clinical/patients/:id/treatment-notes/:noteId
-router.put('/patients/:id/treatment-notes/:noteId', requireAuth, async (req, res) => {
+router.put('/patients/:id/treatment-notes/:noteId', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     const existing = await prisma.treatmentNote.findUnique({ where: { id: req.params.noteId } })
     if (!existing) { res.status(404).json({ error: 'Note not found' }); return }
@@ -251,7 +252,7 @@ router.put('/patients/:id/treatment-notes/:noteId', requireAuth, async (req, res
 })
 
 // DELETE /clinical/patients/:id/treatment-notes/:noteId
-router.delete('/patients/:id/treatment-notes/:noteId', requireAuth, async (req, res) => {
+router.delete('/patients/:id/treatment-notes/:noteId', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     const existing = await prisma.treatmentNote.findUnique({ where: { id: req.params.noteId } })
     if (!existing) { res.status(404).json({ error: 'Note not found' }); return }
@@ -282,7 +283,7 @@ router.get('/patients/:id/documents', requireAuth, async (req, res) => {
 })
 
 // POST /clinical/patients/:id/documents
-router.post('/patients/:id/documents', requireAuth, upload.single('file'), async (req, res) => {
+router.post('/patients/:id/documents', requireAuth, clinicalStaff, upload.single('file'), async (req, res) => {
   try {
     if (!req.file && !req.body.fileUrl) { res.status(400).json({ error: 'No file provided' }); return }
 
@@ -316,7 +317,7 @@ router.post('/patients/:id/documents', requireAuth, upload.single('file'), async
 })
 
 // DELETE /clinical/patients/:id/documents/:docId
-router.delete('/patients/:id/documents/:docId', requireAuth, async (req, res) => {
+router.delete('/patients/:id/documents/:docId', requireAuth, clinicalStaff, async (req, res) => {
   try {
     const doc = await prisma.patientDocument.findUnique({ where: { id: req.params.docId } })
     if (!doc) { res.status(404).json({ error: 'Not found' }); return }
@@ -345,7 +346,7 @@ router.get('/patients/:id/activity', requireAuth, async (req, res) => {
 })
 
 // POST /clinical/patients/:id/activity (internal)
-router.post('/patients/:id/activity', requireAuth, async (req, res) => {
+router.post('/patients/:id/activity', requireAuth, clinicalStaff, async (req, res) => {
   try {
     const { action, metadata } = req.body
     await logActivity(req.params.id, req.user!.id, `${req.user!.firstName} ${req.user!.lastName}`, action, metadata)

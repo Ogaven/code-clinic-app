@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, AppointmentStatus } from '@prisma/client'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireAuth } from '../middleware/auth'
 
@@ -69,7 +69,7 @@ async function update_appointment_status(appointment_id: string, status: string)
   if (!valid.includes(status)) return { error: 'Invalid status' }
   const appt = await prisma.appointment.update({
     where: { id: appointment_id },
-    data: { status },
+    data: { status: status as AppointmentStatus },
     include: { patient: { select: { firstName: true, lastName: true } } },
   })
   return { success: true, message: `${appt.patient.firstName} ${appt.patient.lastName}'s appointment marked as ${status}` }
@@ -83,7 +83,7 @@ async function pause_agent(agent_type: string) {
 }
 
 async function send_notification(target_role: string, message: string, fromUserId: string, fromName: string) {
-  const recipients = await prisma.user.findMany({ where: { role: target_role, isActive: true } })
+  const recipients = await prisma.user.findMany({ where: { role: target_role as any, isActive: true } })
   await Promise.all(recipients.map((u) =>
     (prisma as any).notification.create({
       data: {

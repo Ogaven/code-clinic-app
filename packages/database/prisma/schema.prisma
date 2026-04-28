@@ -22,6 +22,11 @@ enum UserRole {
 enum AppointmentStatus {
   PENDING
   CONFIRMED
+  IN_PROGRESS
+  ARRIVED
+  WAITING
+  IN_OPERATORY
+  WITH_PROVIDER
   COMPLETED
   CANCELLED
   RESCHEDULED
@@ -32,6 +37,8 @@ enum InvoiceStatus {
   DRAFT
   SENT
   PAID
+  UNPAID
+  PARTIAL
   OVERDUE
   CANCELLED
 }

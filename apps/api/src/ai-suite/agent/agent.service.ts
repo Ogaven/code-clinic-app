@@ -689,7 +689,7 @@ export async function getAgentReply(
       model:      'claude-sonnet-4-6',
       max_tokens: 200,
       system: [
-        { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: staticSystem },
         { type: 'text', text: dynamicSystem },
       ],
       messages,

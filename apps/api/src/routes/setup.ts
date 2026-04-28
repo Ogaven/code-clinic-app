@@ -4,7 +4,7 @@
  * Protected by SEED_SECRET env var — delete or disable after first use.
  */
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, Gender, AppointmentStatus } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { execSync } from 'child_process'
 import path from 'path'
@@ -232,7 +232,7 @@ router.post('/seed-production', async (req, res) => {
       { firstName: 'Joseph',   lastName: 'Tumwine',  phone: '+256700100008', gender: 'MALE',   dob: new Date('1975-12-25') },
     ]
     for (const p of patientDefs) {
-      await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: p })
+      await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: { ...p, gender: p.gender as Gender } })
     }
     log(`${patientDefs.length} demo patients upserted`)
 
@@ -293,7 +293,7 @@ router.post('/seed-production', async (req, res) => {
       await prisma.patient.upsert({
         where:  { phone: '+256700100009' },
         update: {},
-        create: { firstName: 'Grace', lastName: 'Atuhaire', phone: '+256700100009', gender: 'FEMALE', dob: new Date('1992-06-20') },
+        create: { firstName: 'Grace', lastName: 'Atuhaire', phone: '+256700100009', gender: 'FEMALE' as Gender, dob: new Date('1992-06-20') },
       })
 
       const stevenSlots = [
@@ -474,7 +474,7 @@ router.post('/seed-production', async (req, res) => {
       { firstName: 'Yvonne',    lastName: 'Naluwooza', phone: '+256701200025', email: 'y.naluwooza@gmail.com',     gender: 'FEMALE', dob: new Date('2002-01-23'), address: 'Kireka, Wakiso',        district: 'Wakiso'  },
     ]
     for (const p of extraPatients) {
-      await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: p })
+      await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: { ...p, gender: p.gender as Gender } })
     }
     log(`${extraPatients.length} extended demo patients upserted`)
 
