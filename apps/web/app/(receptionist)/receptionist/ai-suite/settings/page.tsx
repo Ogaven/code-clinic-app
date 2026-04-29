@@ -745,48 +745,82 @@ function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
 
 // ── Message Links tab ──────────────────────────────────────────────────────────
 function MessageLinksTab({ phoneNumber }: { phoneNumber: string }) {
-  const [copied, setCopied] = useState(false)
+  const [copied,       setCopied]       = useState(false)
+  const [customText,   setCustomText]   = useState('')
+  const imgRef = useRef<HTMLImageElement>(null)
   const rawPhone = phoneNumber.replace(/[^\d]/g, '')
-  const waLink   = `https://wa.me/${rawPhone}`
-  const qrUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(waLink)}`
+  const waLink   = customText.trim()
+    ? `https://wa.me/${rawPhone}?text=${encodeURIComponent(customText)}`
+    : `https://wa.me/${rawPhone}`
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(waLink)}&bgcolor=ffffff&color=000000&margin=2`
 
   function copy() {
     navigator.clipboard.writeText(waLink).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }).catch(() => {})
   }
 
+  function downloadQR() {
+    const a = document.createElement('a')
+    a.href = qrUrl
+    a.download = `code-clinic-whatsapp-qr.png`
+    a.target = '_blank'
+    a.click()
+  }
+
   return (
     <div className="p-6 max-w-lg space-y-6">
+      {/* Click-to-Chat Link */}
       <div>
-        <h3 className="text-base font-bold text-gray-800 mb-1">Click-to-Chat Link</h3>
+        <h3 className="text-base font-bold text-gray-800 dark:text-white mb-1">Click-to-Chat Link</h3>
         <p className="text-xs text-gray-400 mb-4">Share this link so customers can start a WhatsApp conversation with you.</p>
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl">
+          <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl min-w-0">
             <Link2 size={14} className="text-gray-400 flex-shrink-0" />
-            <span className="text-sm text-gray-700 font-mono truncate">{waLink}</span>
+            <span className="text-sm text-gray-700 dark:text-white/70 font-mono truncate">{waLink}</span>
           </div>
           <button onClick={copy}
-            className={cn('flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all',
-              copied ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')}>
+            className={cn('flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex-shrink-0',
+              copied ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-white/15')}>
             <Copy size={13} />
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
       </div>
 
+      {/* Pre-filled message */}
       <div>
-        <h3 className="text-base font-bold text-gray-800 mb-3">QR Code</h3>
-        <div className="inline-block p-4 bg-white border-2 border-gray-100 rounded-2xl shadow-sm">
-          <img src={qrUrl} alt="WhatsApp QR Code" width={160} height={160} className="rounded-lg" />
-        </div>
-        <p className="text-xs text-gray-400 mt-2">Customers can scan this code to open a WhatsApp chat.</p>
+        <h3 className="text-sm font-bold text-gray-700 dark:text-white/70 mb-1.5">Pre-filled Message (optional)</h3>
+        <textarea
+          value={customText}
+          onChange={e => setCustomText(e.target.value)}
+          rows={2}
+          placeholder="Hi Code Clinic! I'd like to book an appointment…"
+          className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#25D366]/20 focus:border-[#25D366] transition-all resize-none"
+        />
+        <p className="text-[11px] text-gray-400 mt-1">When set, opening the link pre-fills this text in the patient's WhatsApp compose box.</p>
       </div>
 
-      <button
-        onClick={() => window.open(`https://wa.me/?phone=${rawPhone}`, '_blank')}
-        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5"
-        style={{ background: '#25D366' }}>
-        <MessageSquare size={14} /> Share Link
-      </button>
+      {/* QR Code */}
+      <div>
+        <h3 className="text-base font-bold text-gray-800 dark:text-white mb-3">QR Code</h3>
+        <div className="flex items-start gap-4">
+          <div className="inline-block p-3 bg-white border-2 border-gray-100 rounded-2xl shadow-sm flex-shrink-0">
+            <img ref={imgRef} src={qrUrl} alt="WhatsApp QR Code" width={140} height={140} className="rounded-lg block" crossOrigin="anonymous" />
+          </div>
+          <div className="space-y-2 pt-1">
+            <p className="text-xs text-gray-500 dark:text-white/50 leading-relaxed">Customers scan this code to open a WhatsApp chat instantly.</p>
+            <button onClick={downloadQR}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+              <ImageIcon size={13} /> Download QR Code
+            </button>
+            <button
+              onClick={() => window.open(waLink, '_blank')}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5"
+              style={{ background: '#25D366' }}>
+              <MessageSquare size={13} /> Share Link
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

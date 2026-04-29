@@ -302,9 +302,16 @@ router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('a
   const { status } = req.body
   if (!validStatuses.includes(status)) { res.status(400).json({ error: 'Invalid status' }); return }
 
+  // Record stage timestamps as patient progresses through the flow
+  const now = new Date()
+  const timestampData: Record<string, Date> = {}
+  if (status === 'ARRIVED' || status === 'CHECKED_IN') timestampData.arrivedAt = now
+  if (status === 'WITH_PROVIDER' || status === 'IN_CHAIR') timestampData.withProviderAt = now
+  if (status === 'DEPARTED' || status === 'COMPLETED' || status === 'SESSION_COMPLETE') timestampData.departedAt = now
+
   const appointment = await prisma.appointment.update({
     where: { id: req.params.id },
-    data: { status },
+    data: { status, ...timestampData },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
       doctor:  { include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } } },

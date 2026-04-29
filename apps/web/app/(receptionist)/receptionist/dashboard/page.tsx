@@ -511,14 +511,7 @@ export default function ReceptionistDashboard() {
     "Today's schedule", 'AI agent status', 'Any escalations?', 'Add patient',
   ]
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-full">
-      <div className="text-center">
-        <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-sm text-gray-400 font-medium">Loading dashboard...</p>
-      </div>
-    </div>
-  )
+  const sk = stats === null
 
   return (
     <div className="p-5 space-y-5 max-w-[1600px] mx-auto overflow-x-hidden">
@@ -692,85 +685,128 @@ export default function ReceptionistDashboard() {
       {/* ── Stats Row ──────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Today's Appointments */}
-        <div className="dark-pop stat-card-cyan bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md">
+        <div className="dark-pop stat-card-cyan bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
           <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'linear-gradient(135deg, #0891b2, #06b6d4)' }}>
               <Calendar size={18} className="text-white" />
             </div>
-            <span className="text-xs font-bold bg-cyan-50 text-cyan-600 px-2 py-0.5 rounded-full">Today</span>
+            {sk ? <div className="h-5 w-12 bg-gray-100 dark:bg-white/10 rounded-full animate-pulse" />
+              : <span className="text-xs font-bold bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 px-2 py-0.5 rounded-full">Today</span>}
           </div>
-          <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.appointments?.total || 0}</p>
-          <p className="text-xs text-gray-500 dark:text-white/40 mt-1">
-            <span className="text-blue-500 font-bold">{stats?.appointments?.confirmed || 0} confirmed</span>
-            {' · '}
-            <span className="text-amber-500 font-bold">{stats?.appointments?.pending || 0} pending</span>
-          </p>
+          {sk ? (
+            <div className="space-y-2">
+              <div className="h-8 w-16 bg-gray-200 dark:bg-white/10 rounded-lg animate-pulse" />
+              <div className="h-4 w-28 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
+            </div>
+          ) : (
+            <>
+              <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.appointments?.total || 0}</p>
+              <p className="text-xs text-gray-500 dark:text-white/40 mt-1">
+                <span className="text-blue-500 font-bold">{stats?.appointments?.confirmed || 0} confirmed</span>
+                {' · '}
+                <span className="text-amber-500 font-bold">{stats?.appointments?.pending || 0} pending</span>
+              </p>
+            </>
+          )}
         </div>
 
         {/* New Patients */}
-        <div className="dark-pop stat-card-purple bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md">
+        <div className="dark-pop stat-card-purple bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
           <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)' }}>
               <Users size={18} className="text-white" />
             </div>
-            {(stats?.newPatients?.pctChange ?? 0) >= 0 ? (
-              <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                <TrendingUp size={10} /> {stats?.newPatients?.pctChange || 0}%
-              </span>
-            ) : (
-              <span className="text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                <TrendingDown size={10} /> {Math.abs(stats?.newPatients?.pctChange || 0)}%
-              </span>
-            )}
+            {sk ? <div className="h-5 w-10 bg-gray-100 dark:bg-white/10 rounded-full animate-pulse" />
+              : (stats?.newPatients?.pctChange ?? 0) >= 0 ? (
+                <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                  <TrendingUp size={10} /> {stats?.newPatients?.pctChange || 0}%
+                </span>
+              ) : (
+                <span className="text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                  <TrendingDown size={10} /> {Math.abs(stats?.newPatients?.pctChange || 0)}%
+                </span>
+              )}
           </div>
-          <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.newPatients?.count || 0}</p>
-          <p className="text-xs text-gray-400 dark:text-white/40 mt-1">New patients today</p>
+          {sk ? (
+            <div className="space-y-2">
+              <div className="h-8 w-10 bg-gray-200 dark:bg-white/10 rounded-lg animate-pulse" />
+              <div className="h-4 w-24 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
+            </div>
+          ) : (
+            <>
+              <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.newPatients?.count || 0}</p>
+              <p className="text-xs text-gray-400 dark:text-white/40 mt-1">New patients today</p>
+            </>
+          )}
         </div>
 
         {/* Returning Patients */}
-        <div className="dark-pop stat-card-green bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md">
+        <div className="dark-pop stat-card-green bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
           <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}>
               <UserCheck size={18} className="text-white" />
             </div>
-            {(stats?.returningPatients?.pctChange ?? 0) >= 0 ? (
-              <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                <TrendingUp size={10} /> {stats?.returningPatients?.pctChange || 0}%
-              </span>
-            ) : (
-              <span className="text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                <TrendingDown size={10} /> {Math.abs(stats?.returningPatients?.pctChange || 0)}%
-              </span>
-            )}
+            {sk ? <div className="h-5 w-10 bg-gray-100 dark:bg-white/10 rounded-full animate-pulse" />
+              : (stats?.returningPatients?.pctChange ?? 0) >= 0 ? (
+                <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                  <TrendingUp size={10} /> {stats?.returningPatients?.pctChange || 0}%
+                </span>
+              ) : (
+                <span className="text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                  <TrendingDown size={10} /> {Math.abs(stats?.returningPatients?.pctChange || 0)}%
+                </span>
+              )}
           </div>
-          <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.returningPatients?.count || 0}</p>
-          <p className="text-xs text-gray-400 dark:text-white/40 mt-1">Returning patients today</p>
+          {sk ? (
+            <div className="space-y-2">
+              <div className="h-8 w-10 bg-gray-200 dark:bg-white/10 rounded-lg animate-pulse" />
+              <div className="h-4 w-28 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
+            </div>
+          ) : (
+            <>
+              <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.returningPatients?.count || 0}</p>
+              <p className="text-xs text-gray-400 dark:text-white/40 mt-1">Returning patients today</p>
+            </>
+          )}
         </div>
 
         {/* AI Agent Status */}
         <div className={cn(
           'dark-pop stat-card-orange rounded-2xl p-4 border shadow-sm hover:shadow-md',
-          agentActive ? 'bg-white border-gray-100' : 'bg-red-50 border-red-100',
+          sk ? 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/8'
+            : agentActive ? 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/8' : 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-500/20',
         )}>
           <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: agentActive ? 'linear-gradient(135deg, #059669, #10b981)' : 'linear-gradient(135deg, #dc2626, #ef4444)' }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: sk ? 'linear-gradient(135deg,#9CA3AF,#D1D5DB)' : agentActive ? 'linear-gradient(135deg, #059669, #10b981)' : 'linear-gradient(135deg, #dc2626, #ef4444)' }}>
               <Bot size={18} className="text-white" />
             </div>
-            <div className="flex items-center gap-1">
-              <span className={cn('w-2 h-2 rounded-full animate-pulse', agentActive ? 'bg-emerald-500' : 'bg-red-500')} />
-              <span className={cn('text-xs font-bold', agentActive ? 'text-emerald-500' : 'text-red-500')}>
-                {agentActive ? 'Active' : 'Paused'}
-              </span>
-            </div>
+            {sk ? <div className="h-5 w-14 bg-gray-100 dark:bg-white/10 rounded-full animate-pulse" />
+              : (
+                <div className="flex items-center gap-1">
+                  <span className={cn('w-2 h-2 rounded-full animate-pulse', agentActive ? 'bg-emerald-500' : 'bg-red-500')} />
+                  <span className={cn('text-xs font-bold', agentActive ? 'text-emerald-500' : 'text-red-500')}>
+                    {agentActive ? 'Active' : 'Paused'}
+                  </span>
+                </div>
+              )}
           </div>
-          <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.aiAgents?.count || 0}</p>
-          <p className="text-xs text-gray-400 dark:text-white/40 mt-1">
-            {stats?.aiAgents?.escalationsToday || 0} escalations today
-          </p>
+          {sk ? (
+            <div className="space-y-2">
+              <div className="h-8 w-10 bg-gray-200 dark:bg-white/10 rounded-lg animate-pulse" />
+              <div className="h-4 w-24 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
+            </div>
+          ) : (
+            <>
+              <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.aiAgents?.count || 0}</p>
+              <p className="text-xs text-gray-400 dark:text-white/40 mt-1">
+                {stats?.aiAgents?.escalationsToday || 0} escalations today
+              </p>
+            </>
+          )}
         </div>
       </div>
 

@@ -165,7 +165,7 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
           <button onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false) }}
             className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105"
             style={{ background: btnBg, border: `1px solid ${btnBdr}` }}>
-            <Bell size={20} style={{ color: iconCl }} />
+            <Bell size={28} style={{ color: iconCl }} />
             {unread > 0 && (
               <span className="absolute flex items-center justify-center text-white text-[10px] font-bold bg-red-500 rounded-full"
                 style={{ top: -4, right: -4, minWidth: 18, height: 18, padding: '0 4px' }}>

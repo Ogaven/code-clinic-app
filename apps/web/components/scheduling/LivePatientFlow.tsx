@@ -81,6 +81,9 @@ interface Appointment {
   status: string
   startAt: string
   updatedAt: string
+  arrivedAt?: string | null
+  withProviderAt?: string | null
+  departedAt?: string | null
   patient: { id: string; firstName: string; lastName: string }
   doctor: { user: { firstName: string; lastName: string } }
   service: { name: string; colour: string }
@@ -105,43 +108,61 @@ function minsDiff(a?: string, b?: string) {
 
 interface ReportRow {
   patient: string
+  service?: string
+  doctor?: string
   arrived?: string
-  waitingRoom?: string
   withDoctor?: string
   departed?: string
   totalMins?: number
-  service?: string
 }
 
 function DailyReport({ appointments, onClose }: { appointments: Appointment[]; onClose: () => void }) {
   const today = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
 
-  const rows: ReportRow[] = appointments.map(a => ({
-    patient: `${a.patient.firstName} ${a.patient.lastName}`,
-    service: a.service.name,
-    arrived:    a.startAt,
-    withDoctor: a.updatedAt,
-    totalMins:  Math.round((new Date(a.updatedAt).getTime() - new Date(a.startAt).getTime()) / 60000),
-  }))
+  const rows: ReportRow[] = appointments.map(a => {
+    const arrived    = a.arrivedAt    || a.startAt
+    const withDoctor = a.withProviderAt || undefined
+    const departed   = a.departedAt   || undefined
+    const totalMins  = departed && arrived
+      ? Math.round((new Date(departed).getTime() - new Date(arrived).getTime()) / 60000)
+      : undefined
+    return {
+      patient:    `${a.patient.firstName} ${a.patient.lastName}`,
+      service:    a.service.name,
+      doctor:     `Dr. ${a.doctor.user.firstName} ${a.doctor.user.lastName}`,
+      arrived,
+      withDoctor,
+      departed,
+      totalMins,
+    }
+  })
 
   function downloadCSV() {
-    const header = 'Patient,Service,Arrived,With Doctor,Total Time\n'
-    const body   = rows.map(r => `"${r.patient}","${r.service || ''}","${fmt(r.arrived)}","${fmt(r.withDoctor)}","${r.totalMins ?? ''}m"`).join('\n')
-    const blob = new Blob([header + body], { type: 'text/csv' })
+    const clinic  = 'Code Clinic, Kamwokya'
+    const dateStr = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
+    const header  = `"${clinic}"\n"${dateStr}"\n\nPatient,Service,Doctor,Arrived,Waiting Room → With Doctor,Departed,Total Time\n`
+    const body    = rows.map(r =>
+      `"${r.patient}","${r.service || ''}","${r.doctor || ''}","${fmt(r.arrived)}","${fmt(r.withDoctor)}","${fmt(r.departed)}","${r.totalMins !== undefined ? r.totalMins + 'm' : '—'}"`
+    ).join('\n')
+    const avgLine = rows.length
+      ? `\n\nAverage Total Time,${Math.round(rows.filter(r => r.totalMins !== undefined).reduce((s, r) => s + (r.totalMins ?? 0), 0) / (rows.filter(r => r.totalMins !== undefined).length || 1))}m`
+      : ''
+    const blob = new Blob([header + body + avgLine], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href = url; a.download = `code-clinic-flow-${new Date().toISOString().slice(0,10)}.csv`
     a.click(); URL.revokeObjectURL(url)
   }
 
-  const avgWait = rows.length
-    ? Math.round(rows.reduce((s, r) => s + (r.totalMins ?? 0), 0) / rows.length)
+  const completedRows = rows.filter(r => r.totalMins !== undefined)
+  const avgTotal = completedRows.length
+    ? Math.round(completedRows.reduce((s, r) => s + (r.totalMins ?? 0), 0) / completedRows.length)
     : 0
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-[#0e2045] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/8">
+      <div className="bg-white dark:bg-[#0e2045] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/8 flex-shrink-0">
           <div>
             <h3 className="text-base font-bold text-gray-800 dark:text-white">Daily Patient Flow Report</h3>
             <p className="text-xs text-gray-400 mt-0.5">{today} · Code Clinic, Kamwokya</p>
@@ -164,27 +185,33 @@ function DailyReport({ appointments, onClose }: { appointments: Appointment[]; o
               <p className="text-sm text-gray-400">No patients recorded today</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-white/8 bg-gray-50 dark:bg-white/5">
-                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Patient</th>
-                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Service</th>
-                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Arrived</th>
-                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">With Doctor</th>
-                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Total Time</th>
+            <table className="w-full text-sm min-w-[700px]">
+              <thead className="sticky top-0">
+                <tr className="border-b border-gray-100 dark:border-white/8 bg-gray-50 dark:bg-[#0a1a3a]">
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-white/40 uppercase tracking-wide whitespace-nowrap">Patient</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-white/40 uppercase tracking-wide whitespace-nowrap">Service</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-white/40 uppercase tracking-wide whitespace-nowrap">Doctor</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-white/40 uppercase tracking-wide whitespace-nowrap">Arrived</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-white/40 uppercase tracking-wide whitespace-nowrap">With Doctor</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-white/40 uppercase tracking-wide whitespace-nowrap">Departed</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-white/40 uppercase tracking-wide whitespace-nowrap">Total Time</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={i} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5">
-                    <td className="px-4 py-3 font-semibold text-gray-800 dark:text-white">{r.patient}</td>
-                    <td className="px-4 py-3 text-gray-500">{r.service}</td>
-                    <td className="px-4 py-3 text-gray-500">{fmt(r.arrived)}</td>
-                    <td className="px-4 py-3 text-gray-500">{fmt(r.withDoctor)}</td>
-                    <td className="px-4 py-3">
-                      <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full', (r.totalMins ?? 0) > 30 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600')}>
-                        {r.totalMins !== undefined ? `${r.totalMins}m` : '—'}
-                      </span>
+                  <tr key={i} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                    <td className="px-4 py-3 font-semibold text-gray-800 dark:text-white whitespace-nowrap">{r.patient}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-white/50 whitespace-nowrap">{r.service}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-white/50 whitespace-nowrap">{r.doctor}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-white/50 whitespace-nowrap font-mono text-xs">{fmt(r.arrived)}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-white/50 whitespace-nowrap font-mono text-xs">{fmt(r.withDoctor)}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-white/50 whitespace-nowrap font-mono text-xs">{fmt(r.departed)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {r.totalMins !== undefined ? (
+                        <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full', r.totalMins > 60 ? 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400' : r.totalMins > 30 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' : 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400')}>
+                          {r.totalMins}m
+                        </span>
+                      ) : <span className="text-gray-300 dark:text-white/20 text-xs">In progress</span>}
                     </td>
                   </tr>
                 ))}
@@ -194,9 +221,11 @@ function DailyReport({ appointments, onClose }: { appointments: Appointment[]; o
         </div>
 
         {rows.length > 0 && (
-          <div className="flex items-center gap-6 px-6 py-3 border-t border-gray-100 dark:border-white/8 bg-gray-50 dark:bg-white/5 text-xs text-gray-500">
+          <div className="flex items-center gap-6 px-6 py-3 border-t border-gray-100 dark:border-white/8 bg-gray-50 dark:bg-white/5 text-xs text-gray-500 dark:text-white/40 flex-shrink-0">
             <span><strong className="text-gray-800 dark:text-white">{rows.length}</strong> patients</span>
-            <span>Avg time: <strong className="text-gray-800 dark:text-white">{avgWait}m</strong></span>
+            {completedRows.length > 0 && (
+              <span>Avg total: <strong className={cn(avgTotal > 60 ? 'text-red-500' : avgTotal > 30 ? 'text-amber-500' : 'text-green-500')}>{avgTotal}m</strong></span>
+            )}
           </div>
         )}
       </div>
