@@ -25,8 +25,10 @@ function loadSrf(): any {
   }
 }
 
-let srf: any        = null
-let connected       = false
+let srf: any           = null
+let connected          = false
+let _reconnectDelay    = 5_000
+let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
 // ── initializeSIP ─────────────────────────────────────────────────────────────
 // Call once from main.ts after startup.  No-op and logs a warning if
@@ -56,14 +58,34 @@ export function initializeSIP(): void {
     secret: drachtioSecret,
   })
 
+  function scheduleReconnect() {
+    if (_reconnectTimer) return
+    _reconnectTimer = setTimeout(() => {
+      _reconnectTimer = null
+      console.log(`[SIP] Reconnecting to drachtio-server at ${drachtioHost}:${drachtioPort}…`)
+      try {
+        srf.connect({ host: drachtioHost, port: drachtioPort, secret: drachtioSecret })
+      } catch (e: any) {
+        console.error('[SIP] Reconnect attempt failed:', e.message)
+        _reconnectDelay = Math.min(_reconnectDelay * 2, 60_000)
+        scheduleReconnect()
+      }
+    }, _reconnectDelay)
+    console.log(`[SIP] Will retry in ${_reconnectDelay / 1000}s`)
+  }
+
   srf.on('connect', (_err: Error | null, hostport: string) => {
     connected = true
+    _reconnectDelay = 5_000  // reset backoff on successful connect
+    if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null }
     console.log(`[SIP] Connected to drachtio-server at ${hostport}`)
   })
 
   srf.on('error', (err: Error) => {
     connected = false
     console.error('[SIP] drachtio error:', err.message)
+    _reconnectDelay = Math.min(_reconnectDelay * 2, 60_000)
+    scheduleReconnect()
   })
 
   // Inbound call handler — Roke trunk will INVITE us for calls to 256205477000/1

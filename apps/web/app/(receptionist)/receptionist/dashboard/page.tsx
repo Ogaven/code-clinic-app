@@ -11,6 +11,7 @@ import {
   Minimize2, Maximize2, LogIn, LogOut, Search, UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { fetchWithAuth } from '@/lib/api'
 import LivePatientFlow from '@/components/scheduling/LivePatientFlow'
 import BookingDrawer from '@/components/scheduling/BookingDrawer'
 
@@ -336,6 +337,8 @@ export default function ReceptionistDashboard() {
   const [checkinResults, setCheckinResults] = useState<any[]>([])
   const [checkinSearching, setCheckinSearching] = useState(false)
   const [checkinMode, setCheckinMode] = useState<'in' | 'out'>('in')
+  const [checkinError, setCheckinError] = useState('')
+  const [checkinLoading, setCheckinLoading] = useState(false)
   const [showBooking, setShowBooking]   = useState(false)
   const [showAddPatient, setShowAddPatient] = useState(false)
   const [newPatient, setNewPatient]     = useState({ firstName: '', lastName: '', phone: '', email: '', gender: 'UNKNOWN' })
@@ -484,22 +487,34 @@ export default function ReceptionistDashboard() {
 
   async function doCheckInOut(apptId: string) {
     const status = checkinMode === 'in' ? 'CHECKED_IN' : 'COMPLETED'
-    const res = await fetch(`${API}/scheduling/appointments/${apptId}/status`, {
-      method: 'PATCH',
-      headers: { ...authH, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
-    if (res.ok && checkinMode === 'in') {
-      // Fire WhatsApp check-in message via backend
-      fetch(`${API}/scheduling/appointments/${apptId}/checkin-notify`, {
-        method: 'POST',
-        headers: { ...authH, 'Content-Type': 'application/json' },
-      }).catch(() => {})
+    setCheckinLoading(true)
+    setCheckinError('')
+    try {
+      const res = await fetchWithAuth(`${API}/scheduling/appointments/${apptId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setCheckinError(body.error || `Failed to ${checkinMode === 'in' ? 'check in' : 'check out'} patient. Please try again.`)
+        return
+      }
+      if (checkinMode === 'in') {
+        fetchWithAuth(`${API}/scheduling/appointments/${apptId}/checkin-notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }).catch(() => {})
+      }
+      setShowCheckin(false)
+      setCheckinSearch('')
+      setCheckinResults([])
+      fetchAll(true)
+    } catch {
+      setCheckinError('Network error — please check your connection and try again.')
+    } finally {
+      setCheckinLoading(false)
     }
-    setShowCheckin(false)
-    setCheckinSearch('')
-    setCheckinResults([])
-    fetchAll(true)
   }
 
   const greeting = () => {
@@ -536,7 +551,7 @@ export default function ReceptionistDashboard() {
                   </button>
                 </div>
               </div>
-              <button onClick={() => { setShowCheckin(false); setCheckinSearch(''); setCheckinResults([]) }}
+              <button onClick={() => { setShowCheckin(false); setCheckinSearch(''); setCheckinResults([]); setCheckinError('') }}
                 className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
                 <X size={16} className="text-gray-400" />
               </button>
@@ -574,7 +589,7 @@ export default function ReceptionistDashboard() {
                     <div key={appt.id} className={cn(
                       'flex items-center gap-3 p-3 rounded-2xl border transition-all',
                       canAct ? 'border-cyan-200 dark:border-cyan-500/30 bg-cyan-50/50 dark:bg-cyan-900/10 cursor-pointer hover:border-cyan-400' : 'border-gray-100 dark:border-white/8 opacity-60',
-                    )} onClick={() => canAct && doCheckInOut(appt.id)}>
+                    )} onClick={() => canAct && !checkinLoading && doCheckInOut(appt.id)}>
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                         style={{ background: appt.service?.colour || '#29ABE2' }}>
                         {appt.patient?.firstName?.[0]}{appt.patient?.lastName?.[0]}
@@ -596,6 +611,19 @@ export default function ReceptionistDashboard() {
                 })}
               </div>
 
+              {/* Error message */}
+              {checkinError && (
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/30">
+                  <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
+                  <p className="text-xs text-red-600 dark:text-red-400">{checkinError}</p>
+                </div>
+              )}
+
+              {/* Loading indicator */}
+              {checkinLoading && (
+                <p className="text-xs text-cyan-500 text-center py-1 animate-pulse">Processing...</p>
+              )}
+
               {/* Today's list shortcut */}
               {checkinSearch.length < 2 && appointments.length > 0 && (
                 <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -609,7 +637,7 @@ export default function ReceptionistDashboard() {
                     return (
                       <div key={appt.id}
                         className="flex items-center gap-3 p-3 rounded-2xl border border-cyan-200 dark:border-cyan-500/30 bg-cyan-50/50 dark:bg-cyan-900/10 cursor-pointer hover:border-cyan-400 transition-all"
-                        onClick={() => doCheckInOut(appt.id)}>
+                        onClick={() => !checkinLoading && doCheckInOut(appt.id)}>
                         <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                           style={{ background: appt.service?.colour || '#29ABE2' }}>
                           {appt.patient?.firstName?.[0]}{appt.patient?.lastName?.[0]}

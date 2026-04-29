@@ -309,15 +309,22 @@ router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('a
   if (status === 'WITH_PROVIDER' || status === 'IN_CHAIR') timestampData.withProviderAt = now
   if (status === 'DEPARTED' || status === 'COMPLETED' || status === 'SESSION_COMPLETE') timestampData.departedAt = now
 
-  const appointment = await prisma.appointment.update({
-    where: { id: req.params.id },
-    data: { status, ...timestampData },
-    include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
-      doctor:  { include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } } },
-      service: true,
-    },
-  })
+  let appointment: any
+  try {
+    appointment = await prisma.appointment.update({
+      where: { id: req.params.id },
+      data: { status, ...timestampData },
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        doctor:  { include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } } },
+        service: true,
+      },
+    })
+  } catch (e: any) {
+    if (e?.code === 'P2025') { res.status(404).json({ error: 'Appointment not found' }); return }
+    console.error('[STATUS] update failed:', e)
+    res.status(500).json({ error: 'Failed to update appointment status' }); return
+  }
 
   // ─── Log to PatientActivity ─────────────────────────────────────────────
   const statusLabels: Record<string, string> = {
