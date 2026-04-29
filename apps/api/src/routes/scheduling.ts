@@ -7,6 +7,48 @@ import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
 import { syncAppointmentToGCal } from '../services/gcal'
 import { sendAppointmentNotification } from '../ai-suite/notifications/notification.service'
+import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+
+const STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
+
+async function notifyStaff(
+  prismaClient: PrismaClient,
+  type: 'booked' | 'rescheduled' | 'cancelled',
+  appt: { id: string; patient: { firstName: string; lastName: string }; service: { name: string }; doctor: { user: { firstName: string; lastName: string } }; startAt: Date },
+) {
+  const p    = appt.patient
+  const doc  = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+  const svc  = appt.service.name
+  const date = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
+  const time = appt.startAt.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+  const name = `${p.firstName} ${p.lastName}`
+
+  let waMsg = '', notifTitle = '', notifBody = ''
+  if (type === 'booked') {
+    waMsg       = `📋 New booking: ${name} — ${svc} on ${date} at ${time} with ${doc}`
+    notifTitle  = 'New Appointment Booked'
+    notifBody   = `${name} — ${svc} on ${date} at ${time} with ${doc}`
+  } else if (type === 'rescheduled') {
+    waMsg       = `🔄 Rescheduled: ${name} — new time ${date} at ${time}`
+    notifTitle  = 'Appointment Rescheduled'
+    notifBody   = `${name} rescheduled to ${date} at ${time} with ${doc}`
+  } else {
+    waMsg       = `❌ Cancelled: ${name} — ${svc} on ${date}`
+    notifTitle  = 'Appointment Cancelled'
+    notifBody   = `${name}'s ${svc} on ${date} was cancelled`
+  }
+
+  // In-app notifications to all receptionists and admins
+  try {
+    const staff = await prismaClient.user.findMany({ where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true } })
+    await Promise.all(staff.map(u => prismaClient.notification.create({
+      data: { userId: u.id, type: 'APPOINTMENT', title: notifTitle, body: notifBody, href: '/receptionist/appointments' },
+    })))
+  } catch (e: any) { console.warn('[Staff notif] in-app failed:', e.message) }
+
+  // WhatsApp to clinic main number
+  sendWhatsAppMessage(STAFF_NUMBER, waMsg).catch(() => {})
+}
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -160,8 +202,11 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
   // Auto-sync to Google Calendar (fire-and-forget)
   syncAppointmentToGCal(appointment).catch(() => {})
 
-  // WhatsApp booking confirmation (fire-and-forget)
+  // WhatsApp booking confirmation to patient (fire-and-forget)
   sendAppointmentNotification(appointment.id, 'booked').catch(() => {})
+
+  // Staff notifications (fire-and-forget)
+  notifyStaff(prisma, 'booked', appointment).catch(() => {})
 
   res.status(201).json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })
@@ -232,11 +277,13 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
   // Auto-sync to Google Calendar (fire-and-forget)
   syncAppointmentToGCal(updated).catch(() => {})
 
-  // WhatsApp rescheduled / cancelled notification (fire-and-forget)
+  // WhatsApp patient notification + staff notification (fire-and-forget)
   if (req.body.status === 'CANCELLED') {
     sendAppointmentNotification(updated.id, 'cancelled').catch(() => {})
+    notifyStaff(prisma, 'cancelled', updated).catch(() => {})
   } else if (rawStart) {
     sendAppointmentNotification(updated.id, 'rescheduled').catch(() => {})
+    notifyStaff(prisma, 'rescheduled', updated).catch(() => {})
   }
 
   res.json({ ...updated, service: { ...updated.service, priceUGX: Number(updated.service.priceUGX) } })
@@ -353,6 +400,23 @@ router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('a
   syncAppointmentToGCal(appointment).catch(() => {})
 
   res.json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
+})
+
+// ─── Check-in WhatsApp notification ──────────────────────────────────────────
+router.post('/appointments/:id/checkin-notify', requireAuth, async (req, res) => {
+  try {
+    const appt = await prisma.appointment.findUnique({
+      where: { id: req.params.id },
+      include: {
+        patient: { select: { firstName: true, phone: true } },
+        doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+      },
+    })
+    if (!appt) { res.status(404).json({ error: 'Not found' }); return }
+    const msg = `Hi ${appt.patient.firstName}! You've been checked in at Code Clinic. Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName} will be with you shortly 😊`
+    sendWhatsAppMessage(appt.patient.phone, msg).catch(() => {})
+    res.json({ sent: true })
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
 })
 
 // ─── Availability slots ───────────────────────────────────────────────────────

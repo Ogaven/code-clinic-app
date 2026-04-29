@@ -83,7 +83,50 @@ const SECTIONS = [
 
 type SectionKey = typeof SECTIONS[number]['key']
 
-// ─── Appointment row ────────────────────────────────────────────
+// ─── Mobile appointment card ─────────────────────────────────────
+function ApptCard({ appt, onClick }: { appt: any; onClick: () => void }) {
+  const t = new Date(appt.startAt).toLocaleTimeString('en-UG', {
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+  })
+  const d = new Date(appt.startAt).toLocaleDateString('en-UG', {
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala',
+  })
+  return (
+    <div
+      onClick={onClick}
+      className="flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors active:bg-gray-100 dark:active:bg-white/10"
+    >
+      <div
+        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+        style={{ background: appt.service?.colour || '#29ABE2' }}
+      >
+        {appt.patient?.firstName?.[0]}{appt.patient?.lastName?.[0]}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">
+            {appt.patient?.firstName} {appt.patient?.lastName}
+          </p>
+          <span className={cn('text-[9px] font-black px-2 py-0.5 rounded-full flex-shrink-0', STATUS_STYLE[appt.status] || STATUS_STYLE.PENDING)}>
+            {STATUS_LABEL[appt.status] || appt.status}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-xs font-mono font-semibold text-cyan-600 dark:text-cyan-400">{t}</span>
+          <span className="text-[10px] text-gray-400">{d}</span>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-[11px] text-gray-500 dark:text-white/50 truncate">{appt.service?.name || '—'}</span>
+          <span className="text-[10px] text-gray-400 dark:text-white/30">·</span>
+          <span className="text-[11px] text-gray-500 dark:text-white/50 truncate">Dr. {appt.doctor?.user?.firstName} {appt.doctor?.user?.lastName}</span>
+        </div>
+      </div>
+      <ChevronRight size={14} className="text-gray-300 dark:text-white/20 flex-shrink-0" />
+    </div>
+  )
+}
+
+// ─── Appointment row (desktop) ───────────────────────────────────
 function ApptRow({ appt, onClick }: { appt: any; onClick: () => void }) {
   const t = new Date(appt.startAt).toLocaleTimeString('en-UG', {
     hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
@@ -188,34 +231,34 @@ export default function AppointmentsListPage() {
     <div className="flex flex-col h-full">
 
       {/* ── Header ───────────────────────────────────────────── */}
-      <div className="flex-shrink-0 px-6 pt-5 pb-4 bg-white dark:bg-transparent border-b border-gray-100 dark:border-white/8">
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-white dark:bg-transparent border-b border-gray-100 dark:border-white/8">
+        <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
           <div>
-            <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-black text-gray-800 dark:text-white flex items-center gap-2">
               <ListChecks size={20} className="text-cyan-500" />
               Appointments
             </h1>
             <p className="text-xs text-gray-400 mt-0.5">{appts.length} total in range</p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
             <input
               type="date" value={startDate}
               onChange={e => setStartDate(e.target.value)}
-              className="text-xs border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+              className="text-xs border border-gray-200 dark:border-white/10 rounded-xl px-2.5 py-2 bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 w-[130px] sm:w-auto"
             />
-            <span className="text-xs text-gray-400">to</span>
+            <span className="text-xs text-gray-400">–</span>
             <input
               type="date" value={endDate}
               onChange={e => setEndDate(e.target.value)}
-              className="text-xs border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+              className="text-xs border border-gray-200 dark:border-white/10 rounded-xl px-2.5 py-2 bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 w-[130px] sm:w-auto"
             />
             <button onClick={fetchAppts}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5"
               style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-              <RefreshCw size={12} /> Refresh
+              <RefreshCw size={12} /> <span className="hidden sm:inline">Refresh</span>
             </button>
             <Link href="/receptionist/appointments"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
               <CalendarDays size={12} /> Calendar View
             </Link>
           </div>
@@ -281,22 +324,31 @@ export default function AppointmentsListPage() {
             <p className="text-sm text-gray-300 dark:text-white/20 mt-1">Try adjusting the date range or search</p>
           </div>
         ) : (
-          <table className="w-full">
-            <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#0a1f4a]/90 backdrop-blur-sm">
-              <tr>
-                {['Patient', 'Time', 'Service', 'Doctor', 'Status', ''].map(h => (
-                  <th key={h} className="text-left px-4 py-2.5 text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+          <>
+            {/* Mobile card list */}
+            <div className="sm:hidden divide-y divide-gray-50 dark:divide-white/5">
               {visible.map(appt => (
-                <ApptRow key={appt.id} appt={appt} onClick={() => setSelected(appt)} />
+                <ApptCard key={appt.id} appt={appt} onClick={() => setSelected(appt)} />
               ))}
-            </tbody>
-          </table>
+            </div>
+            {/* Desktop table */}
+            <table className="hidden sm:table w-full">
+              <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#0a1f4a]/90 backdrop-blur-sm">
+                <tr>
+                  {['Patient', 'Time', 'Service', 'Doctor', 'Status', ''].map(h => (
+                    <th key={h} className="text-left px-4 py-2.5 text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+                {visible.map(appt => (
+                  <ApptRow key={appt.id} appt={appt} onClick={() => setSelected(appt)} />
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
 

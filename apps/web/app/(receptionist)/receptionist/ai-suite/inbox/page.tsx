@@ -285,7 +285,7 @@ export default function InboxPage() {
   function Composer({ dark }: { dark: boolean }) {
     return (
       <div className={cn('flex-shrink-0 px-3 py-2 border-t', dark ? 'border-white/8' : 'border-gray-100')}
-        style={{ background: dark ? '#1F2C34' : '#f0f2f5' }}>
+        style={{ background: dark ? '#1F2C34' : '#f0f2f5', paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
         {attachment && (
           <div className={cn('flex items-center gap-2 mb-2 px-3 py-2 rounded-xl', dark ? 'bg-[#2A3942]' : 'bg-white border border-gray-200')}>
             <Paperclip size={13} className={dark ? 'text-white/60' : 'text-gray-500'} />
@@ -307,14 +307,18 @@ export default function InboxPage() {
           </button>
           <input ref={fileRef} type="file" className="hidden"
             onChange={e => { if (e.target.files?.[0]) setAttachment(e.target.files[0]); e.target.value = '' }} />
-          <input value={reply} onChange={e => setReply(e.target.value)}
+          <textarea
+            value={reply}
+            onChange={e => setReply(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
             placeholder="Type a message"
-            className={cn('flex-1 px-4 py-2.5 rounded-2xl text-sm outline-none',
+            rows={1}
+            className={cn('flex-1 px-4 py-2.5 rounded-2xl text-sm outline-none resize-none min-h-[44px] max-h-[120px]',
               dark ? 'text-white placeholder-white/30' : 'text-gray-800 placeholder-gray-400 shadow-sm')}
-            style={{ background: dark ? '#2A3942' : '#fff' }} />
+            style={{ background: dark ? '#2A3942' : '#fff' }}
+          />
           <button onClick={send} disabled={sending || (!reply.trim() && !attachment)}
-            className={cn('p-2.5 rounded-full flex items-center justify-center transition-all', reply.trim() || attachment ? 'hover:-translate-y-0.5 hover:scale-105' : 'opacity-40')}
+            className={cn('p-2.5 rounded-full flex items-center justify-center transition-all flex-shrink-0', reply.trim() || attachment ? 'hover:-translate-y-0.5 hover:scale-105' : 'opacity-40')}
             style={{ background: channel === 'WHATSAPP' ? '#25D366' : accent }}>
             {sending ? <Loader2 size={18} className="animate-spin text-white" /> : <Send size={18} className="text-white" />}
           </button>
@@ -386,7 +390,7 @@ export default function InboxPage() {
   )
 
   const WaChatPanel = sel ? (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ background: '#075E54' }}>
         <button onClick={() => { setSel(null); setMobileView('list') }} className="md:hidden text-white/70 hover:text-white mr-1">
           <ChevronLeft size={20} />
@@ -410,7 +414,7 @@ export default function InboxPage() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1.5"
+      <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4 space-y-1.5 pb-safe"
         style={{ background: '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-400" /></div>

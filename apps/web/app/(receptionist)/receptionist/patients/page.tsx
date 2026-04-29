@@ -240,29 +240,29 @@ export default function PatientsPage() {
       )}
 
       {/* ── Patient list ─────────────────────────────────────── */}
-      <div className={cn('flex flex-col border-r border-gray-100 dark:border-white/8 bg-white dark:bg-white/[0.03] transition-all', selected ? 'w-[420px] flex-shrink-0' : 'flex-1')}>
+      <div className={cn('flex flex-col border-r border-gray-100 dark:border-white/8 bg-white dark:bg-white/[0.03] transition-all', selected ? 'hidden sm:flex sm:w-[420px] sm:flex-shrink-0' : 'flex-1')}>
 
         {/* Header */}
-        <div className="px-5 py-4 border-b border-gray-100 dark:border-white/8">
+        <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-gray-100 dark:border-white/8">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h1 className="text-lg font-black text-gray-800 dark:text-white">Patients</h1>
               <p className="text-xs text-gray-400 dark:text-white/40">{filtered.length} of {patients.length} shown</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               {/* Import CSV */}
               <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
               <button
                 onClick={() => csvInputRef.current?.click()}
                 disabled={importing}
-                title="Import from CSV"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50">
+                title="Import CSV"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50">
                 <Upload size={13} />
                 {importing ? 'Importing...' : 'Import CSV'}
               </button>
 
               {/* Export dropdown */}
-              <div className="relative group">
+              <div className="relative group hidden sm:block">
                 <button
                   disabled={exporting}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50">
@@ -284,7 +284,7 @@ export default function PatientsPage() {
               <button onClick={() => setShowAdd(true)}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
                 style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-                <Plus size={13} /> Add Patient
+                <Plus size={13} /> <span className="hidden sm:inline">Add Patient</span><span className="sm:hidden">Add</span>
               </button>
             </div>
           </div>
@@ -309,7 +309,7 @@ export default function PatientsPage() {
           </div>
         </div>
 
-        {/* ── Table ──────────────────────────────────────────── */}
+        {/* ── Patient list ──────────────────────────────────── */}
         <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="flex items-center justify-center h-32">
@@ -321,82 +321,108 @@ export default function PatientsPage() {
               <p className="text-sm">No patients found</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-gray-50 dark:bg-[#0e1f4d] z-10 border-b border-gray-100 dark:border-white/8">
-                <tr>
-                  <th className="text-left px-5 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Patient</th>
-                  <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Phone</th>
-                  <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden md:table-cell">Email</th>
-                  <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden lg:table-cell">Gender</th>
-                  <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden lg:table-cell">Visits</th>
-                  <th className="text-right px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+            <>
+              {/* Mobile card list */}
+              <div className="sm:hidden divide-y divide-gray-50 dark:divide-white/5">
                 {filtered.map(p => (
-                  <tr key={p.id}
+                  <div key={p.id}
                     onClick={() => router.push(`/receptionist/patients/${p.id}`)}
-                    className={cn(
-                      'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/3 transition-colors',
-                      selected?.id === p.id && 'bg-cyan-50 dark:bg-cyan-900/20 border-l-4 border-l-cyan-500',
-                    )}>
-                    {/* Name + avatar */}
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                          style={{ background: avatarColor(`${p.firstName || ''}${p.lastName || ''}`) }}>
-                          {(p.firstName || '?')[0]}{(p.lastName || '')[0]}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-800 dark:text-white">{p.firstName || ''} {p.lastName || ''}</p>
-                          <p className="text-[11px] text-gray-400 dark:text-white/40">
-                            {p.dob ? `${new Date().getFullYear() - new Date(p.dob).getFullYear()} yrs` : 'Age N/A'}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    {/* Phone */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5 text-gray-700 dark:text-white/70">
-                        <Phone size={11} className="text-cyan-500 flex-shrink-0" />
-                        <span className="text-xs">{p.phone}</span>
-                      </div>
-                    </td>
-                    {/* Email */}
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <div className="flex items-center gap-1.5 text-gray-600 dark:text-white/60">
-                        <Mail size={11} className="text-cyan-500 flex-shrink-0" />
-                        <span className="text-xs truncate max-w-[160px]">{p.email || '—'}</span>
-                      </div>
-                    </td>
-                    {/* Gender */}
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      <span className="text-xs text-gray-500 dark:text-white/50 capitalize">{p.gender?.toLowerCase() || '—'}</span>
-                    </td>
-                    {/* Visits */}
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      <span className="text-xs font-bold text-gray-700 dark:text-white/70">{p._count?.appointments || 0}</span>
-                    </td>
-                    {/* Status */}
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    className="flex items-center gap-3 px-4 py-3.5 cursor-pointer active:bg-gray-50 dark:active:bg-white/5 transition-colors">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                      style={{ background: avatarColor(`${p.firstName || ''}${p.lastName || ''}`) }}>
+                      {(p.firstName || '?')[0]}{(p.lastName || '')[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{p.firstName} {p.lastName}</p>
                         {(p._count?.appointments || 0) > 1 && (
-                          <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded-full">Returning</span>
+                          <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded-full flex-shrink-0">Returning</span>
                         )}
-                        <ChevronRight size={14} className="text-gray-300 dark:text-white/20" />
                       </div>
-                    </td>
-                  </tr>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Phone size={10} className="text-cyan-500 flex-shrink-0" />
+                        <span className="text-xs text-gray-500 dark:text-white/50">{p.phone}</span>
+                      </div>
+                      {p.email && (
+                        <p className="text-[11px] text-gray-400 dark:text-white/30 truncate mt-0.5">{p.email}</p>
+                      )}
+                    </div>
+                    <ChevronRight size={14} className="text-gray-300 dark:text-white/20 flex-shrink-0" />
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+              {/* Desktop table */}
+              <table className="hidden sm:table w-full text-sm">
+                <thead className="sticky top-0 bg-gray-50 dark:bg-[#0e1f4d] z-10 border-b border-gray-100 dark:border-white/8">
+                  <tr>
+                    <th className="text-left px-5 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Patient</th>
+                    <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Phone</th>
+                    <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden md:table-cell">Email</th>
+                    <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden lg:table-cell">Gender</th>
+                    <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden lg:table-cell">Visits</th>
+                    <th className="text-right px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+                  {filtered.map(p => (
+                    <tr key={p.id}
+                      onClick={() => router.push(`/receptionist/patients/${p.id}`)}
+                      className={cn(
+                        'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/3 transition-colors',
+                        selected?.id === p.id && 'bg-cyan-50 dark:bg-cyan-900/20 border-l-4 border-l-cyan-500',
+                      )}>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                            style={{ background: avatarColor(`${p.firstName || ''}${p.lastName || ''}`) }}>
+                            {(p.firstName || '?')[0]}{(p.lastName || '')[0]}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-800 dark:text-white">{p.firstName || ''} {p.lastName || ''}</p>
+                            <p className="text-[11px] text-gray-400 dark:text-white/40">
+                              {p.dob ? `${new Date().getFullYear() - new Date(p.dob).getFullYear()} yrs` : 'Age N/A'}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 text-gray-700 dark:text-white/70">
+                          <Phone size={11} className="text-cyan-500 flex-shrink-0" />
+                          <span className="text-xs">{p.phone}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <div className="flex items-center gap-1.5 text-gray-600 dark:text-white/60">
+                          <Mail size={11} className="text-cyan-500 flex-shrink-0" />
+                          <span className="text-xs truncate max-w-[160px]">{p.email || '—'}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        <span className="text-xs text-gray-500 dark:text-white/50 capitalize">{p.gender?.toLowerCase() || '—'}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        <span className="text-xs font-bold text-gray-700 dark:text-white/70">{p._count?.appointments || 0}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {(p._count?.appointments || 0) > 1 && (
+                            <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded-full">Returning</span>
+                          )}
+                          <ChevronRight size={14} className="text-gray-300 dark:text-white/20" />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
       </div>
 
       {/* ── Patient detail panel ─────────────────────────────── */}
       {selected && (
-        <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-transparent p-6">
+        <div className="fixed inset-0 z-30 bg-slate-50 dark:bg-[#080f2a] overflow-y-auto sm:relative sm:inset-auto sm:z-auto sm:flex-1 sm:bg-slate-50 sm:dark:bg-transparent p-4 sm:p-6">
           <div className="max-w-lg space-y-4">
             {/* Profile card */}
             <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm p-5">

@@ -20,12 +20,18 @@ const roleColors: Record<string, string> = {
   ADMIN: '#1A237E', DOCTOR: '#29ABE2', RECEPTIONIST: '#10B981',
   ACCOUNTS: '#F59E0B', DEVELOPER: '#8B5CF6',
 }
-const notifications = [
-  { id: 1, text: 'Sarah Namukasa checked in for Teeth Whitening', time: '2 min ago', dot: '#29ABE2' },
-  { id: 2, text: 'Invoice #CC-2024-00042 is overdue — UGX 380,000', time: '1h ago',  dot: '#F59E0B' },
-  { id: 3, text: 'Maya AI: 3 new leads captured from website',     time: '2h ago',  dot: '#10B981' },
-  { id: 4, text: 'Dr. Kutesa blocked time Fri 3–5pm',              time: '4h ago',  dot: '#6B7280' },
-]
+const TYPE_DOT: Record<string, string> = {
+  APPOINTMENT: '#29ABE2', INVOICE: '#F59E0B', AI: '#10B981', SYSTEM: '#6B7280',
+}
+
+function timeAgo(dateStr: string): string {
+  const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000)
+  if (mins < 1)   return 'just now'
+  if (mins < 60)  return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24)   return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
 
 export default function TopBar({ title, user, dark = false, onThemeToggle }: TopBarProps) {
   const router = useRouter()
@@ -35,14 +41,53 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
   const [search,       setSearch]       = useState('')
   const [installPrompt, setInstallPrompt] = useState<any>(null)
   const [installed,    setInstalled]    = useState(false)
+  const [isIOS,        setIsIOS]        = useState(false)
+  const [isAndroid,    setIsAndroid]    = useState(false)
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [unread,       setUnread]       = useState(0)
 
   useEffect(() => {
+    const ua  = navigator.userAgent
+    setIsIOS(/iPad|iPhone|iPod/.test(ua))
+    setIsAndroid(/Android/.test(ua))
+
     const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e) }
     window.addEventListener('beforeinstallprompt', handler)
-    window.addEventListener('appinstalled', () => setInstalled(true))
+    window.addEventListener('appinstalled', () => {
+      setInstalled(true)
+      localStorage.setItem('app_installed', 'true')
+    })
     if (window.matchMedia('(display-mode: standalone)').matches) setInstalled(true)
+    if (localStorage.getItem('app_installed') === 'true') setInstalled(true)
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
+
+  useEffect(() => {
+    fetchNotifications()
+    const t = setInterval(fetchNotifications, 30000)
+    return () => clearInterval(t)
+  }, [])
+
+  async function fetchNotifications() {
+    try {
+      const token = localStorage.getItem('cc_token')
+      if (!token) return
+      const res = await fetch('/api-proxy/receptionist/notifications', { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) return
+      const data = await res.json()
+      setNotifications(Array.isArray(data.notifications) ? data.notifications.slice(0, 20) : [])
+      setUnread(data.unread || 0)
+    } catch {}
+  }
+
+  async function markAllRead() {
+    try {
+      const token = localStorage.getItem('cc_token')
+      await fetch('/api-proxy/receptionist/notifications/mark-read', { method: 'PUT', headers: { Authorization: `Bearer ${token}` } })
+      setUnread(0)
+      setNotifications(n => n.map(x => ({ ...x, isRead: true })))
+    } catch {}
+  }
 
   async function handleInstall() {
     if (installPrompt) {
@@ -94,18 +139,17 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
 
       <div className="flex items-center gap-2 flex-shrink-0">
 
-        {/* Install / Download button — always visible */}
-        {!installed ? (
-          <button onClick={installPrompt ? handleInstall : () => setInstallOpen(true)}
+        {/* Install / Download button — device-aware */}
+        {!installed && (
+          <button
+            onClick={() => {
+              if (installPrompt && (isAndroid || !isIOS)) { handleInstall() }
+              else { setInstallOpen(true) }
+            }}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:scale-105"
             style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)', color: 'white', boxShadow: '0 2px 8px rgba(41,171,226,0.4)' }}>
-            <Download size={13} /> Install App
-          </button>
-        ) : (
-          <button onClick={() => setInstallOpen(true)}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:scale-105"
-            style={{ background: btnBg, border: `1px solid ${btnBdr}`, color: iconCl }}>
-            <Download size={13} /> Get App
+            <Download size={13} />
+            {isIOS ? 'Add to Home Screen' : 'Install App'}
           </button>
         )}
 
@@ -121,8 +165,13 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
           <button onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false) }}
             className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105"
             style={{ background: btnBg, border: `1px solid ${btnBdr}` }}>
-            <Bell size={16} style={{ color: iconCl }} />
-            <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full" />
+            <Bell size={20} style={{ color: iconCl }} />
+            {unread > 0 && (
+              <span className="absolute flex items-center justify-center text-white text-[10px] font-bold bg-red-500 rounded-full"
+                style={{ top: -4, right: -4, minWidth: 18, height: 18, padding: '0 4px' }}>
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
           </button>
           {notifOpen && (
             <>
@@ -131,21 +180,25 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
                 style={{ background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
                 <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
                   <p className="font-bold text-sm" style={{ color: titleC }}>Notifications</p>
-                  <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-1.5 py-0.5">{notifications.length}</span>
+                  {unread > 0 && <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-1.5 py-0.5">{unread}</span>}
                 </div>
                 <div className="divide-y max-h-72 overflow-y-auto" style={{ borderColor: bdr }}>
-                  {notifications.map(n => (
-                    <div key={n.id} className="flex items-start gap-3 px-4 py-3 hover:bg-white/5 cursor-pointer">
-                      <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: n.dot }} />
-                      <div>
-                        <p className="text-xs font-medium leading-snug" style={{ color: dark ? '#C8D8F0' : '#374151' }}>{n.text}</p>
-                        <p className="text-[10px] mt-0.5" style={{ color: iconCl }}>{n.time}</p>
+                  {notifications.length === 0 ? (
+                    <p className="text-xs text-center py-6" style={{ color: iconCl }}>No notifications</p>
+                  ) : notifications.map((n: any) => (
+                    <div key={n.id} className={`flex items-start gap-3 px-4 py-3 hover:bg-white/5 cursor-pointer transition-colors ${!n.isRead ? 'bg-blue-500/5' : ''}`}>
+                      <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: TYPE_DOT[n.type] || '#6B7280' }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold leading-snug truncate" style={{ color: dark ? '#C8D8F0' : '#374151' }}>{n.title}</p>
+                        <p className="text-[10px] leading-snug mt-0.5" style={{ color: dark ? '#8BA0C0' : '#6B7280' }}>{n.body}</p>
+                        <p className="text-[10px] mt-0.5" style={{ color: iconCl }}>{timeAgo(n.createdAt)}</p>
                       </div>
+                      {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />}
                     </div>
                   ))}
                 </div>
                 <div className="px-4 py-2.5" style={{ borderTop: `1px solid ${bdr}` }}>
-                  <button className="text-xs font-semibold hover:underline" style={{ color: '#29ABE2' }}>Mark all as read</button>
+                  <button onClick={markAllRead} className="text-xs font-semibold hover:underline" style={{ color: '#29ABE2' }}>Mark all as read</button>
                 </div>
               </div>
             </>

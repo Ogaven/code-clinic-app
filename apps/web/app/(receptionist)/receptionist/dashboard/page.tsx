@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import LivePatientFlow from '@/components/scheduling/LivePatientFlow'
+import BookingDrawer from '@/components/scheduling/BookingDrawer'
 
 // ── Analog Clock ──────────────────────────────────────────────
 function AnalogClock() {
@@ -329,11 +330,17 @@ export default function ReceptionistDashboard() {
   const [escalations, setEscalations] = useState<any[]>([])
   const [agentActive, setAgentActive] = useState(true)
   const [loading, setLoading]       = useState(true)
+  const lastFetch = useRef(0)
   const [showCheckin, setShowCheckin]   = useState(false)
   const [checkinSearch, setCheckinSearch] = useState('')
   const [checkinResults, setCheckinResults] = useState<any[]>([])
   const [checkinSearching, setCheckinSearching] = useState(false)
   const [checkinMode, setCheckinMode] = useState<'in' | 'out'>('in')
+  const [showBooking, setShowBooking]   = useState(false)
+  const [showAddPatient, setShowAddPatient] = useState(false)
+  const [newPatient, setNewPatient]     = useState({ firstName: '', lastName: '', phone: '', email: '', gender: 'UNKNOWN' })
+  const [addingPatient, setAddingPatient] = useState(false)
+  const [addPatientError, setAddPatientError] = useState('')
 
   // Sarah chatbot state
   type Msg = { from: 'sarah' | 'user'; text: string; time: string }
@@ -366,8 +373,8 @@ export default function ReceptionistDashboard() {
         time: nowTime(),
       }])
     }
-    fetchAll()
-    const t = setInterval(fetchAll, 30000)
+    fetchAll(true)
+    const t = setInterval(() => fetchAll(), 30000)
     return () => clearInterval(t)
   }, [])
 
@@ -396,7 +403,9 @@ export default function ReceptionistDashboard() {
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
   }, [dragging])
 
-  async function fetchAll() {
+  async function fetchAll(force = false) {
+    const now = Date.now()
+    if (!force && now - lastFetch.current < 5 * 60 * 1000 && stats !== null) return
     try {
       const [s, a, u, ac, e] = await Promise.all([
         fetch(`${API}/receptionist/dashboard-stats`, { headers: authH }).then(r => r.json()),
@@ -405,6 +414,7 @@ export default function ReceptionistDashboard() {
         fetch(`${API}/receptionist/active-consultation`, { headers: authH }).then(r => r.json()),
         fetch(`${API}/receptionist/escalations`, { headers: authH }).then(r => r.json()),
       ])
+      lastFetch.current = Date.now()
       setStats(s); setAppts(Array.isArray(a) ? a : [])
       setUpcoming(Array.isArray(u) ? u : [])
       setActive(ac); setEscalations(Array.isArray(e) ? e : [])
@@ -474,15 +484,22 @@ export default function ReceptionistDashboard() {
 
   async function doCheckInOut(apptId: string) {
     const status = checkinMode === 'in' ? 'CHECKED_IN' : 'COMPLETED'
-    await fetch(`${API}/scheduling/appointments/${apptId}/status`, {
+    const res = await fetch(`${API}/scheduling/appointments/${apptId}/status`, {
       method: 'PATCH',
       headers: { ...authH, 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
+    if (res.ok && checkinMode === 'in') {
+      // Fire WhatsApp check-in message via backend
+      fetch(`${API}/scheduling/appointments/${apptId}/checkin-notify`, {
+        method: 'POST',
+        headers: { ...authH, 'Content-Type': 'application/json' },
+      }).catch(() => {})
+    }
     setShowCheckin(false)
     setCheckinSearch('')
     setCheckinResults([])
-    fetchAll()
+    fetchAll(true)
   }
 
   const greeting = () => {
@@ -660,14 +677,16 @@ export default function ReceptionistDashboard() {
           style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: '0 4px 20px rgba(16,185,129,0.4)' }}>
           <LogOut size={16} /> Check Out Patient
         </button>
-        <Link href="/receptionist/appointments"
+        <button
+          onClick={() => setShowBooking(true)}
           className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white/80">
           <Plus size={16} className="text-cyan-500" /> Book Appointment
-        </Link>
-        <Link href="/receptionist/patients"
+        </button>
+        <button
+          onClick={() => { setNewPatient({ firstName: '', lastName: '', phone: '', email: '', gender: 'UNKNOWN' }); setAddPatientError(''); setShowAddPatient(true) }}
           className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white/80">
           <UserPlus size={16} className="text-purple-500" /> Add Patient
-        </Link>
+        </button>
       </div>
 
       {/* ── Stats Row ──────────────────────────────────────────── */}
@@ -955,6 +974,81 @@ export default function ReceptionistDashboard() {
           </div>
         </div>
       </div>
+
+      {/* ── Book Appointment Drawer ──────────────────────────── */}
+      <BookingDrawer open={showBooking} onClose={() => setShowBooking(false)} onBooked={() => { setShowBooking(false); fetchAll(true) }} />
+
+      {/* ── Add Patient Modal ────────────────────────────────── */}
+      {showAddPatient && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#0e2045] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-white/8">
+              <h3 className="text-base font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <UserPlus size={16} className="text-purple-500" /> Add New Patient
+              </h3>
+              <button onClick={() => setShowAddPatient(false)} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/8">
+                <X size={16} className="text-gray-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">First Name *</label>
+                  <input value={newPatient.firstName} onChange={e => setNewPatient(p => ({ ...p, firstName: e.target.value }))}
+                    placeholder="e.g. Sarah" className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">Last Name *</label>
+                  <input value={newPatient.lastName} onChange={e => setNewPatient(p => ({ ...p, lastName: e.target.value }))}
+                    placeholder="e.g. Nakato" className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block">Phone *</label>
+                <input value={newPatient.phone} onChange={e => setNewPatient(p => ({ ...p, phone: e.target.value }))}
+                  placeholder="+256 7xx xxx xxx" className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block">Email</label>
+                <input type="email" value={newPatient.email} onChange={e => setNewPatient(p => ({ ...p, email: e.target.value }))}
+                  placeholder="patient@email.com" className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block">Gender</label>
+                <select value={newPatient.gender} onChange={e => setNewPatient(p => ({ ...p, gender: e.target.value }))}
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500">
+                  <option value="UNKNOWN">Prefer not to say</option>
+                  <option value="MALE">Male</option>
+                  <option value="FEMALE">Female</option>
+                </select>
+              </div>
+              {addPatientError && <p className="text-xs text-red-500 font-semibold">{addPatientError}</p>}
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setShowAddPatient(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/60">
+                  Cancel
+                </button>
+                <button
+                  disabled={addingPatient}
+                  onClick={async () => {
+                    if (!newPatient.firstName || !newPatient.lastName || !newPatient.phone) { setAddPatientError('First name, last name and phone are required'); return }
+                    setAddingPatient(true); setAddPatientError('')
+                    try {
+                      const res = await fetch(`${API}/patients`, { method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' }, body: JSON.stringify(newPatient) })
+                      if (!res.ok) { const d = await res.json(); setAddPatientError(d.error || 'Failed to add patient'); return }
+                      setShowAddPatient(false)
+                      fetchAll(true)
+                    } catch { setAddPatientError('Network error. Please try again.') }
+                    finally { setAddingPatient(false) }
+                  }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-1.5 disabled:opacity-60"
+                  style={{ background: 'linear-gradient(135deg,#7c3aed,#8b5cf6)' }}>
+                  {addingPatient ? <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Saving...</> : <><UserPlus size={14} /> Add Patient</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Sarah Chatbot ─────────────────────────────────────── */}
       <div

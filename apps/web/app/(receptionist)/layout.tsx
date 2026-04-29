@@ -386,10 +386,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
             collapsed ? 'justify-center px-2 py-3' : 'px-4 py-3 gap-2',
           )}>
           {collapsed ? (
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #29ABE2, #1A237E)' }}>
-              <span className="text-white font-black text-[10px]">CC</span>
-            </div>
+            <img src="/icon.png" alt="Code Clinic" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" />
           ) : (
             <Image src="/logo.png" alt="Code Clinic" width={105} height={32}
               className="object-contain dark:brightness-0 dark:invert" priority />
@@ -737,10 +734,32 @@ export default function ReceptionistLayout({ children }: { children: React.React
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           {children}
         </main>
       </div>
+
+      {/* ── Mobile Bottom Nav ─────────────────────────────────── */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#0a1f4a] border-t border-gray-100 dark:border-white/10 flex items-center justify-around px-2 py-1.5"
+        style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
+        {[
+          { href: '/receptionist/dashboard',    icon: LayoutDashboard, label: 'Home' },
+          { href: '/receptionist/scheduling',   icon: CalendarDays,    label: 'Schedule' },
+          { href: '/receptionist/patients',     icon: Users,           label: 'Patients' },
+          { href: '/receptionist/ai-suite/inbox', icon: Inbox,         label: 'Inbox' },
+          { href: '/receptionist/flow',         icon: Zap,             label: 'Flow' },
+        ].map(({ href, icon: Icon, label }) => {
+          const active = pathname === href || pathname.startsWith(href + '/')
+          return (
+            <Link key={href} href={href}
+              className={cn('flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl min-w-[44px] transition-all',
+                active ? 'text-cyan-500' : 'text-gray-400 dark:text-white/40')}>
+              <Icon size={20} />
+              <span className="text-[9px] font-semibold">{label}</span>
+            </Link>
+          )
+        })}
+      </nav>
 
     </div>
   )

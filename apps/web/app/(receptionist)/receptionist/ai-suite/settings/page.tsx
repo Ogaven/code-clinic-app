@@ -162,29 +162,65 @@ function OtpInput({ value, onChange }: { value: string; onChange: (v: string) =>
   )
 }
 
-// ── Add Number Modal ───────────────────────────────────────────────────────────
-function AddNumberModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [step,          setStep]         = useState<'form' | 'otp'>('form')
-  const [displayName,   setDisplayName]  = useState('Code Clinic')
-  const [countryCode,   setCountryCode]  = useState('+256')
-  const [localPhone,    setLocalPhone]   = useState('')
-  const [otp,           setOtp]          = useState('')
-  const [phoneNumberId, setPhoneNumberId] = useState('')
-  const [loading,       setLoading]      = useState(false)
-  const [error,         setError]        = useState('')
+// ── 4-Step Add Number Wizard ───────────────────────────────────────────────────
+const PREREQS = [
+  'Active Meta Business account (business.facebook.com)',
+  'Meta Business verification completed',
+  'WhatsApp Business Account (WABA) created in Meta Business Suite',
+  'Phone number NOT already registered on WhatsApp',
+]
 
-  async function proceed() {
+const META_ERRORS: Record<string, string> = {
+  '100':    'Invalid parameter — double-check your App ID and WABA ID.',
+  '190':    'Access token expired or invalid — generate a new permanent System Token.',
+  '200':    'Insufficient permissions — ensure the token has whatsapp_business_management scope.',
+  '10':     'App not approved — your Meta App must have WhatsApp product added and approved.',
+  '368':    'Temporarily blocked for policy violations — review Meta policies.',
+  '80007':  'Rate limit reached — wait a few minutes and try again.',
+  'default':'Something went wrong. Check your credentials and try again.',
+}
+function friendlyMetaError(code?: string | number) {
+  return META_ERRORS[String(code)] || META_ERRORS.default
+}
+
+function AddNumberModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [step,          setStep]          = useState<1 | 2 | 3 | 4>(1)
+  // Step 2 state
+  const [appId,         setAppId]         = useState('')
+  const [appSecret,     setAppSecret]     = useState('')
+  const [wabaId,        setWabaId]        = useState('')
+  const [systemToken,   setSystemToken]   = useState('')
+  // Step 3 state
+  const [displayName,   setDisplayName]   = useState('Code Clinic')
+  const [countryCode,   setCountryCode]   = useState('+256')
+  const [localPhone,    setLocalPhone]    = useState('')
+  // Step 4 state
+  const [otp,           setOtp]           = useState('')
+  const [phoneNumberId, setPhoneNumberId] = useState('')
+  // Shared
+  const [loading,       setLoading]       = useState(false)
+  const [error,         setError]         = useState('')
+  const [checked,       setChecked]       = useState<boolean[]>(PREREQS.map(() => false))
+
+  function toggleCheck(i: number) { setChecked(c => c.map((v, j) => j === i ? !v : v)) }
+  const allChecked = checked.every(Boolean)
+
+  async function sendOtp() {
     if (!displayName.trim() || !localPhone.trim()) { setError('Please fill in all fields'); return }
     setError(''); setLoading(true)
     try {
-      const res  = await fetch(`${API}/ai-suite/connections/whatsapp/register`, {
+      const res = await fetch(`${API}/ai-suite/connections/whatsapp/register`, {
         method: 'POST', headers: authH(true),
-        body: JSON.stringify({ displayName, phoneNumber: countryCode + localPhone.replace(/\D/g, '') }),
+        body: JSON.stringify({
+          displayName,
+          phoneNumber: countryCode + localPhone.replace(/\D/g, ''),
+          appId, appSecret, wabaId, systemToken,
+        }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Registration failed'); return }
+      if (!res.ok) { setError(friendlyMetaError(data.code || data.errorCode)); return }
       setPhoneNumberId(data.phoneNumberId)
-      setStep('otp')
+      setStep(4)
     } catch { setError('Network error — please try again') } finally { setLoading(false) }
   }
 
@@ -192,73 +228,155 @@ function AddNumberModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
     if (otp.length < 6) { setError('Enter the 6-digit code'); return }
     setError(''); setLoading(true)
     try {
-      const res  = await fetch(`${API}/ai-suite/connections/whatsapp/verify`, {
+      const res = await fetch(`${API}/ai-suite/connections/whatsapp/verify`, {
         method: 'POST', headers: authH(true),
         body: JSON.stringify({ phoneNumberId, otp }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Verification failed'); return }
+      if (!res.ok) { setError(friendlyMetaError(data.code || data.errorCode)); return }
       onSuccess()
     } catch { setError('Network error — please try again') } finally { setLoading(false) }
   }
 
+  const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/10 transition-colors'
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
+
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-800">Configure Phone Number</h3>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#25D36618' }}>
+              <MessageSquare size={18} style={{ color: '#25D366' }} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-800">Connect WhatsApp</h3>
+              <p className="text-[11px] text-gray-400">Step {step} of 4</p>
+            </div>
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={18} /></button>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
-          {step === 'form' ? (
+        {/* Step progress */}
+        <div className="flex items-center gap-0 px-6 py-3 border-b border-gray-50 flex-shrink-0">
+          {([1,2,3,4] as const).map((s, i) => (
+            <div key={s} className="flex items-center flex-1">
+              <div className={cn(
+                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all flex-shrink-0',
+                step > s ? 'bg-[#25D366] text-white' :
+                step === s ? 'bg-[#1A237E] text-white' :
+                'bg-gray-100 text-gray-400',
+              )}>
+                {step > s ? <CheckCircle2 size={14} /> : s}
+              </div>
+              {i < 3 && <div className={cn('flex-1 h-0.5 mx-1', step > s ? 'bg-[#25D366]' : 'bg-gray-100')} />}
+            </div>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+          {/* ── Step 1: Prerequisites ── */}
+          {step === 1 && (
             <>
-              {/* Warning */}
+              <div>
+                <p className="text-base font-bold text-gray-800 mb-0.5">Before you begin</p>
+                <p className="text-xs text-gray-400">Check that you have everything ready to connect via the Meta API.</p>
+              </div>
+              <div className="space-y-3">
+                {PREREQS.map((req, i) => (
+                  <button key={i} onClick={() => toggleCheck(i)}
+                    className={cn(
+                      'w-full flex items-start gap-3 p-3.5 rounded-2xl border-2 text-left transition-all',
+                      checked[i]
+                        ? 'border-[#25D366] bg-[#25D366]/5'
+                        : 'border-gray-200 bg-gray-50 hover:border-gray-300',
+                    )}>
+                    <div className={cn(
+                      'w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all',
+                      checked[i] ? 'border-[#25D366] bg-[#25D366]' : 'border-gray-300',
+                    )}>
+                      {checked[i] && <CheckCircle2 size={11} className="text-white" />}
+                    </div>
+                    <span className={cn('text-sm leading-relaxed', checked[i] ? 'text-gray-700 font-medium' : 'text-gray-500')}>{req}</span>
+                  </button>
+                ))}
+              </div>
               <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700 leading-relaxed">
-                  Once you connect your WhatsApp here, you will no longer be able to use it on the WhatsApp mobile app.
+                  Once connected, this number <strong>cannot be used</strong> on the WhatsApp mobile app simultaneously.
                 </p>
               </div>
+            </>
+          )}
 
-              {/* Display name info */}
-              <p className="text-xs text-gray-500 leading-relaxed">
-                Your display name must comply with WhatsApp's guidelines.{' '}
-                <a href="https://www.facebook.com/business/help/757569725593362" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                  Learn more about display name guidelines
-                </a>
-              </p>
-
-              {/* Display name */}
+          {/* ── Step 2: API Credentials ── */}
+          {step === 2 && (
+            <>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Display Name</label>
-                <input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Code Clinic"
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-blue-500 transition-colors" />
+                <p className="text-base font-bold text-gray-800 mb-0.5">Meta API credentials</p>
+                <p className="text-xs text-gray-400">Find these in your <strong>Meta Developer Dashboard</strong> under your WhatsApp app.</p>
               </div>
-
-              {/* Phone */}
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Add your own phone number</label>
-                <div className="flex gap-2">
-                  <select value={countryCode} onChange={e => setCountryCode(e.target.value)}
-                    className="px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-blue-500 transition-colors">
-                    {COUNTRY_CODES.map(c => (
-                      <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
-                    ))}
-                  </select>
-                  <input value={localPhone} onChange={e => setLocalPhone(e.target.value)} placeholder="741 087 667"
-                    className="flex-1 px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-blue-500 transition-colors" />
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Meta App ID</label>
+                  <input value={appId} onChange={e => setAppId(e.target.value)} placeholder="123456789012345" className={inputCls} />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Meta App Secret</label>
+                  <input value={appSecret} onChange={e => setAppSecret(e.target.value)} placeholder="••••••••••••••••" type="password" className={inputCls} />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">WhatsApp Business Account ID (WABA ID)</label>
+                  <input value={wabaId} onChange={e => setWabaId(e.target.value)} placeholder="111222333444555" className={inputCls} />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Permanent System Token</label>
+                  <input value={systemToken} onChange={e => setSystemToken(e.target.value)} placeholder="EAABs..." type="password" className={inputCls} />
+                  <p className="text-[11px] text-gray-400 mt-1">Generate a permanent token via a System User in Meta Business Settings.</p>
                 </div>
               </div>
-
               {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
             </>
-          ) : (
+          )}
+
+          {/* ── Step 3: Phone number ── */}
+          {step === 3 && (
+            <>
+              <div>
+                <p className="text-base font-bold text-gray-800 mb-0.5">Add phone number</p>
+                <p className="text-xs text-gray-400">This must be the number registered in your WhatsApp Business Account.</p>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Display Name</label>
+                  <input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Code Clinic" className={inputCls} />
+                  <p className="text-[11px] text-gray-400 mt-1">Must match your approved Meta display name. <a href="https://www.facebook.com/business/help/757569725593362" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Guidelines ↗</a></p>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Phone number</label>
+                  <div className="flex gap-2">
+                    <select value={countryCode} onChange={e => setCountryCode(e.target.value)}
+                      className="px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-[#25D366] transition-colors">
+                      {COUNTRY_CODES.map(c => <option key={c.code} value={c.code}>{c.flag} {c.code}</option>)}
+                    </select>
+                    <input value={localPhone} onChange={e => setLocalPhone(e.target.value)} placeholder="741 087 667" className={cn(inputCls, 'flex-1')} />
+                  </div>
+                </div>
+              </div>
+              {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
+            </>
+          )}
+
+          {/* ── Step 4: OTP ── */}
+          {step === 4 && (
             <>
               <div className="text-center">
                 <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
-                  <MessageSquare size={28} className="text-[#25D366]" />
+                  <MessageSquare size={28} style={{ color: '#25D366' }} />
                 </div>
                 <p className="text-sm font-bold text-gray-800 mb-1">Verify your number</p>
                 <p className="text-xs text-gray-500">
@@ -273,16 +391,40 @@ function AddNumberModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-6 pb-5">
-          <button onClick={step === 'form' ? onClose : () => setStep('form')}
+        <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-gray-100 flex-shrink-0">
+          <button
+            onClick={() => step === 1 ? onClose() : setStep((step - 1) as 1|2|3|4)}
             className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
-            {step === 'form' ? 'Cancel' : 'Back'}
+            {step === 1 ? 'Cancel' : '← Back'}
           </button>
-          <button onClick={step === 'form' ? proceed : verify} disabled={loading}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors">
-            {loading && <Loader2 size={13} className="animate-spin" />}
-            {step === 'form' ? 'Proceed to verify' : 'Verify'}
-          </button>
+          {step === 1 && (
+            <button onClick={() => setStep(2)} disabled={!allChecked}
+              className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:hover:translate-y-0"
+              style={{ background: allChecked ? '#25D366' : '#9CA3AF' }}>
+              I'm ready to proceed →
+            </button>
+          )}
+          {step === 2 && (
+            <button onClick={() => { if (!appId || !wabaId || !systemToken) { setError('All fields are required'); return } setError(''); setStep(3) }}
+              className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white bg-[#1A237E] hover:bg-[#0d1857] transition-colors">
+              Next → Add phone number
+            </button>
+          )}
+          {step === 3 && (
+            <button onClick={sendOtp} disabled={loading}
+              className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white bg-[#1A237E] hover:bg-[#0d1857] disabled:opacity-60 transition-colors">
+              {loading && <Loader2 size={13} className="animate-spin" />}
+              Send verification code →
+            </button>
+          )}
+          {step === 4 && (
+            <button onClick={verify} disabled={loading}
+              className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-60 transition-colors"
+              style={{ background: '#25D366' }}>
+              {loading && <Loader2 size={13} className="animate-spin" />}
+              Verify & Connect
+            </button>
+          )}
         </div>
       </div>
     </div>

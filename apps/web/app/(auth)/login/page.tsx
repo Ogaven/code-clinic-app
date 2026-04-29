@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import Image from 'next/image'
 import { Eye, EyeOff, Loader2, Mail, Lock, Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -192,10 +191,6 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <p className="text-center text-xs mt-4" style={{ color:subClr }}>
-              New here?{' '}
-              <Link href="/setup" className="font-bold hover:underline" style={{ color:'#29ABE2' }}>Create account</Link>
-            </p>
           </div>
           <p className="text-center text-[11px] mt-3" style={{ color:dark?'rgba(255,255,255,0.2)':'rgba(26,35,126,0.3)' }}>©2026 elyrac Ai</p>
         </div>

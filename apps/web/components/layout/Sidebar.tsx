@@ -139,10 +139,7 @@ export default function Sidebar({ role = 'ADMIN', dark = false }: { role?: strin
         onMouseLeave={e => (e.currentTarget.style.background = '')}
       >
         {collapsed ? (
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg, #1A237E, #29ABE2)' }}>
-            <span className="text-white font-black text-[10px]">CC</span>
-          </div>
+          <img src="/icon.png" alt="Code Clinic" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" />
         ) : (
           <Image src="/logo.png" alt="Code Clinic" width={110} height={36}
             className={cn('object-contain transition-all', dark && 'brightness-0 invert')} priority />

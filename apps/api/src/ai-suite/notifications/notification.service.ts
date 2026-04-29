@@ -38,26 +38,25 @@ export async function sendAppointmentNotification(
       case 'booked':
         message =
           `Hi ${p.firstName}! 😊 Your appointment has been confirmed:\n\n` +
-          `📅 Date: ${dayDate}\n` +
-          `⏰ Time: ${time}\n` +
-          `👨‍⚕️ Doctor: ${doc}\n` +
-          `🦷 Service: ${svc}\n` +
-          `📍 Code Clinic, Old Kira Road, Kamwokya\n\n` +
-          `Reply CONFIRM to confirm or CANCEL to cancel. See you soon!`
+          `📅 ${dayDate}\n` +
+          `⏰ ${time}\n` +
+          `👨‍⚕️ ${doc}\n` +
+          `🦷 ${svc}\n` +
+          `📍 Code Clinic, Kamwokya\n\n` +
+          `Reply YES to confirm or NO to cancel.`
         break
       case 'rescheduled':
         message =
-          `Hi ${p.firstName}! Your appointment has been rescheduled:\n\n` +
-          `📅 New Date: ${dayDate}\n` +
-          `⏰ New Time: ${time}\n` +
-          `👨‍⚕️ Doctor: ${doc}\n` +
-          `🦷 Service: ${svc}\n\n` +
-          `Reply CONFIRM to confirm this new time or call us at 0741 087667 if you need to discuss.`
+          `Hi ${p.firstName}! Your appointment has been rescheduled to:\n\n` +
+          `📅 ${dayDate}\n` +
+          `⏰ ${time}\n` +
+          `👨‍⚕️ ${doc}\n\n` +
+          `Reply YES to confirm or call 0741 087667.`
         break
       case 'cancelled':
         message =
-          `Hi ${p.firstName}, your appointment on ${shortDate} at ${time} with ${doc} has been cancelled.\n\n` +
-          `If this was a mistake or you'd like to rebook, just reply here and we'll sort it out for you 😊`
+          `Hi ${p.firstName}, your appointment on ${shortDate} has been cancelled. ` +
+          `Reply to rebook anytime 😊`
         break
       case 'reminder':
         message =

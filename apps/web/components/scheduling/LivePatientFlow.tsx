@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Clock, ChevronRight, RefreshCw, UserCheck } from 'lucide-react'
+import { Clock, ChevronRight, RefreshCw, UserCheck, FileBarChart, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
 
@@ -92,11 +92,124 @@ interface LivePatientFlowProps {
   patientBasePath?: string
 }
 
+function fmt(dateStr?: string) {
+  if (!dateStr) return '—'
+  return new Date(dateStr).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+}
+
+function minsDiff(a?: string, b?: string) {
+  if (!a || !b) return '—'
+  const m = Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000)
+  return m < 0 ? '—' : `${m}m`
+}
+
+interface ReportRow {
+  patient: string
+  arrived?: string
+  waitingRoom?: string
+  withDoctor?: string
+  departed?: string
+  totalMins?: number
+  service?: string
+}
+
+function DailyReport({ appointments, onClose }: { appointments: Appointment[]; onClose: () => void }) {
+  const today = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
+
+  const rows: ReportRow[] = appointments.map(a => ({
+    patient: `${a.patient.firstName} ${a.patient.lastName}`,
+    service: a.service.name,
+    arrived:    a.startAt,
+    withDoctor: a.updatedAt,
+    totalMins:  Math.round((new Date(a.updatedAt).getTime() - new Date(a.startAt).getTime()) / 60000),
+  }))
+
+  function downloadCSV() {
+    const header = 'Patient,Service,Arrived,With Doctor,Total Time\n'
+    const body   = rows.map(r => `"${r.patient}","${r.service || ''}","${fmt(r.arrived)}","${fmt(r.withDoctor)}","${r.totalMins ?? ''}m"`).join('\n')
+    const blob = new Blob([header + body], { type: 'text/csv' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = `code-clinic-flow-${new Date().toISOString().slice(0,10)}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
+  const avgWait = rows.length
+    ? Math.round(rows.reduce((s, r) => s + (r.totalMins ?? 0), 0) / rows.length)
+    : 0
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-white dark:bg-[#0e2045] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/8">
+          <div>
+            <h3 className="text-base font-bold text-gray-800 dark:text-white">Daily Patient Flow Report</h3>
+            <p className="text-xs text-gray-400 mt-0.5">{today} · Code Clinic, Kamwokya</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={downloadCSV}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white"
+              style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+              <FileBarChart size={13} /> Download CSV
+            </button>
+            <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/8">
+              <X size={16} className="text-gray-400" />
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-auto flex-1">
+          {rows.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-sm text-gray-400">No patients recorded today</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-white/8 bg-gray-50 dark:bg-white/5">
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Patient</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Service</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Arrived</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">With Doctor</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">Total Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5">
+                    <td className="px-4 py-3 font-semibold text-gray-800 dark:text-white">{r.patient}</td>
+                    <td className="px-4 py-3 text-gray-500">{r.service}</td>
+                    <td className="px-4 py-3 text-gray-500">{fmt(r.arrived)}</td>
+                    <td className="px-4 py-3 text-gray-500">{fmt(r.withDoctor)}</td>
+                    <td className="px-4 py-3">
+                      <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full', (r.totalMins ?? 0) > 30 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600')}>
+                        {r.totalMins !== undefined ? `${r.totalMins}m` : '—'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {rows.length > 0 && (
+          <div className="flex items-center gap-6 px-6 py-3 border-t border-gray-100 dark:border-white/8 bg-gray-50 dark:bg-white/5 text-xs text-gray-500">
+            <span><strong className="text-gray-800 dark:text-white">{rows.length}</strong> patients</span>
+            <span>Avg time: <strong className="text-gray-800 dark:text-white">{avgWait}m</strong></span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function LivePatientFlow({ doctorId, refreshInterval = 30000, patientBasePath = '/patients' }: LivePatientFlowProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading]           = useState(true)
   const [advancing, setAdvancing]       = useState<string | null>(null)
-  const [tick, setTick]                 = useState(0)  // forces re-render every 30s for timer refresh
+  const [tick, setTick]                 = useState(0)
+  const [showReport, setShowReport]     = useState(false)
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   const fetchFlow = useCallback(async () => {
@@ -155,6 +268,8 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000, pat
   const totalActive = appointments.length
 
   return (
+    <>
+    {showReport && <DailyReport appointments={appointments} onClose={() => setShowReport(false)} />}
     <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/8">
@@ -174,6 +289,10 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000, pat
             <span className="inline-block w-2 h-2 rounded-full bg-amber-500 mx-1 ml-2" />15-30m
             <span className="inline-block w-2 h-2 rounded-full bg-red-500 mx-1 ml-2" />&gt;30m
           </span>
+          <button onClick={() => setShowReport(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50 dark:bg-teal-900/20 dark:text-teal-300 hover:bg-teal-100 transition-colors">
+            <FileBarChart size={12} /> Daily Report
+          </button>
           <button onClick={fetchFlow}
             className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
             <RefreshCw size={13} />
@@ -269,5 +388,6 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000, pat
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> &gt;30m</span>
       </div>
     </div>
+    </>
   )
 }
