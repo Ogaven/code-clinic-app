@@ -15,11 +15,16 @@ import { startVoiceConversation } from './voice-ai.service'
 // config, not here (this service only talks to drachtio-server, not the trunk).
 
 // Process-level safety net: drachtio-srf creates an internal TCP socket for the
-// management connection. If DNS resolution fails (ENOTFOUND), that socket emits
-// 'error' before drachtio has a chance to forward it to the Srf instance — Node.js
-// would crash the entire process with "Unhandled 'error' event". Catch it here.
+// management connection. If DNS resolution fails (ENOTFOUND), that socket can
+// emit 'error' before drachtio forwards it to the Srf instance — Node.js would
+// crash the entire process with "Unhandled 'error' event".
+//
+// IMPORTANT: only suppress when DRACHTIO_HOST is actually configured. Checking
+// bare ENOTFOUND without this guard would silence DNS errors from unrelated
+// services (email, SMS, etc.) and flood logs when SIP is disabled.
 process.on('uncaughtException', (err: Error & { code?: string }) => {
-  if (err.message?.includes('drachtio') || err.code === 'ENOTFOUND') {
+  if (process.env.DRACHTIO_HOST &&
+      (err.message?.includes('drachtio') || err.code === 'ENOTFOUND')) {
     console.warn('[SIP] Suppressed drachtio connection error:', err.message)
     return
   }
