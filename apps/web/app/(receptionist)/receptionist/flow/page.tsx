@@ -131,19 +131,19 @@ function PatientCard({
         <div className="flex items-start gap-3 mb-3">
           {appt.patient?.avatarUrl ? (
             <img src={appt.patient.avatarUrl} alt=""
-              className="w-12 h-12 rounded-xl object-cover flex-shrink-0 ring-2 ring-white dark:ring-white/10 shadow-sm" />
+              className="w-9 h-9 rounded-xl object-cover flex-shrink-0 ring-2 ring-white dark:ring-white/10 shadow-sm" />
           ) : (
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-black text-base flex-shrink-0 shadow-sm"
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-[13px] flex-shrink-0 shadow-sm"
               style={{ background: appt.service?.colour || stageColor }}>
               {initials}
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="font-black text-gray-800 dark:text-white text-sm leading-tight truncate">
+            <p className="font-semibold text-gray-800 dark:text-white text-[13px] leading-snug" style={{ wordBreak: 'break-word' }}>
               {appt.patient?.firstName} {appt.patient?.lastName}
             </p>
-            <p className="text-xs text-gray-500 dark:text-white/50 truncate mt-0.5">{service}</p>
-            <p className="text-xs font-semibold truncate" style={{ color: stageColor }}>{doctor}</p>
+            <p className="text-[12px] text-gray-500 dark:text-white/50 truncate mt-0.5">{service}</p>
+            <p className="text-[12px] font-semibold truncate" style={{ color: stageColor }}>{doctor}</p>
           </div>
           {/* Time + duration badge */}
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -257,7 +257,7 @@ function StageLane({
               No patients in this stage right now
             </p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="flex flex-col gap-3">
               {patients.map(appt => (
                 <PatientCard
                   key={appt.id}
@@ -427,7 +427,7 @@ export default function LiveFlowPage() {
                   </span>
                   <div className="h-px flex-1 bg-gray-100 dark:bg-white/5" />
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 opacity-50">
+                <div className="flex flex-col gap-2 opacity-50">
                   {cancelled.map(appt => {
                     const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
                     return (
