@@ -223,7 +223,7 @@ export default function PatientsPage() {
     setTimeout(() => setToast(null), 3500)
   }
 
-  const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
+  const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
 
   return (
     <ErrorBoundary>
@@ -545,9 +545,9 @@ export default function PatientsPage() {
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Gender</label>
                   <select value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))} className={inputCls}>
-                    <option value="FEMALE">Female</option>
-                    <option value="MALE">Male</option>
-                    <option value="OTHER">Other</option>
+                    <option value="FEMALE" className="dark:bg-gray-800">Female</option>
+                    <option value="MALE" className="dark:bg-gray-800">Male</option>
+                    <option value="OTHER" className="dark:bg-gray-800">Other</option>
                   </select>
                 </div>
                 <div>

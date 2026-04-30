@@ -302,9 +302,9 @@ export default function AppointmentsPage() {
               <div>
                 <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide">Status</label>
                 <select value={editStatus} onChange={e => setEditStatus(e.target.value)}
-                  className="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
+                  className="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
                   {EDIT_STATUSES.map(s => (
-                    <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                    <option key={s} value={s} className="dark:bg-gray-800">{s.replace(/_/g, ' ')}</option>
                   ))}
                 </select>
               </div>
@@ -312,16 +312,16 @@ export default function AppointmentsPage() {
               <div>
                 <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide">Date &amp; Time</label>
                 <input type="datetime-local" value={editDate} onChange={e => setEditDate(e.target.value)}
-                  className="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500" />
+                  className="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500" />
               </div>
 
               {doctors.length > 0 && (
                 <div>
                   <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide">Doctor</label>
                   <select value={editDoctorId} onChange={e => setEditDoctorId(e.target.value)}
-                    className="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
+                    className="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
                     {doctors.map(d => (
-                      <option key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}</option>
+                      <option key={d.id} value={d.id} className="dark:bg-gray-800">Dr. {d.firstName} {d.lastName}</option>
                     ))}
                   </select>
                 </div>
@@ -331,9 +331,9 @@ export default function AppointmentsPage() {
                 <div>
                   <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide">Service</label>
                   <select value={editServiceId} onChange={e => setEditServiceId(e.target.value)}
-                    className="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
+                    className="mt-1 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
                     {services.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
+                      <option key={s.id} value={s.id} className="dark:bg-gray-800">{s.name}</option>
                     ))}
                   </select>
                 </div>

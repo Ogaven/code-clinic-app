@@ -146,10 +146,10 @@ export default function ReportsPage() {
           </div>
           <div className="flex items-center gap-3">
             <select value={dateRange} onChange={e => setDate(e.target.value)}
-              className="text-sm border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-gray-600 dark:text-gray-300 bg-white dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
-              <option value="today">Today</option>
-              <option value="week">This week</option>
-              <option value="month">This month</option>
+              className="text-sm border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-gray-600 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
+              <option value="today" className="dark:bg-gray-800">Today</option>
+              <option value="week" className="dark:bg-gray-800">This week</option>
+              <option value="month" className="dark:bg-gray-800">This month</option>
             </select>
             <button onClick={exportFlowPDF}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"

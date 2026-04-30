@@ -864,10 +864,10 @@ export default function ReceptionistDashboard() {
                     const res = await fetch(`${API}/receptionist/today-appointments?date=${iso}`, { headers: authH })
                     if (res.ok) setAppts(await res.json())
                   }}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 focus:outline-none">
-                  <option value="today">Today</option>
-                  <option value="tomorrow">Tomorrow</option>
-                  <option value="week">This week</option>
+                  className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-gray-600 dark:text-white dark:bg-gray-800 focus:outline-none">
+                  <option value="today" className="dark:bg-gray-800">Today</option>
+                  <option value="tomorrow" className="dark:bg-gray-800">Tomorrow</option>
+                  <option value="week" className="dark:bg-gray-800">This week</option>
                 </select>
               </div>
             </div>
@@ -1080,10 +1080,10 @@ export default function ReceptionistDashboard() {
               <div>
                 <label className="text-xs font-bold text-gray-500 mb-1 block">Gender</label>
                 <select value={newPatient.gender} onChange={e => setNewPatient(p => ({ ...p, gender: e.target.value }))}
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500">
-                  <option value="UNKNOWN">Prefer not to say</option>
-                  <option value="MALE">Male</option>
-                  <option value="FEMALE">Female</option>
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 dark:text-white focus:outline-none focus:border-cyan-500">
+                  <option value="UNKNOWN" className="dark:bg-gray-800">Prefer not to say</option>
+                  <option value="MALE" className="dark:bg-gray-800">Male</option>
+                  <option value="FEMALE" className="dark:bg-gray-800">Female</option>
                 </select>
               </div>
               {addPatientError && <p className="text-xs text-red-500 font-semibold">{addPatientError}</p>}

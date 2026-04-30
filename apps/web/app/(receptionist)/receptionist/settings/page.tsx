@@ -54,6 +54,7 @@ export default function SettingsPage() {
   const [toast, setToast]     = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [saving, setSaving]   = useState(false)
   const [avatar, setAvatar]   = useState<string | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
 
   // Profile fields
   const [firstName,  setFirstName]  = useState('')
@@ -143,6 +144,7 @@ export default function SettingsPage() {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5MB', 'err'); return }
+    setPhotoPreview(URL.createObjectURL(file))
     const reader = new FileReader()
     reader.onload = () => setAvatar(reader.result as string)
     reader.readAsDataURL(file)
@@ -350,8 +352,8 @@ export default function SettingsPage() {
         <div className="relative flex items-center gap-5">
           {/* Avatar */}
           <div className="relative flex-shrink-0">
-            {avatar ? (
-              <img src={avatar} alt="Avatar" className="w-20 h-20 rounded-3xl object-cover ring-4 ring-white/20" />
+            {(photoPreview || avatar) ? (
+              <img src={photoPreview || avatar!} alt="Avatar" className="w-20 h-20 rounded-3xl object-cover ring-4 ring-white/20" />
             ) : (
               <div className="w-20 h-20 rounded-3xl flex items-center justify-center ring-4 ring-white/20 border-2 border-dashed border-white/30 cursor-pointer hover:border-white/60 transition-colors"
                 onClick={() => fileRef.current?.click()}>
@@ -409,8 +411,8 @@ export default function SettingsPage() {
               {/* Avatar */}
               <div className="flex items-center gap-5">
                 <div className="relative">
-                  {avatar ? (
-                    <img src={avatar} alt="Avatar" className="w-20 h-20 rounded-2xl object-cover ring-4 ring-cyan-500/20" />
+                  {(photoPreview || avatar) ? (
+                    <img src={photoPreview || avatar!} alt="Avatar" className="w-20 h-20 rounded-2xl object-cover ring-4 ring-cyan-500/20" />
                   ) : (
                     <div className="w-20 h-20 rounded-2xl flex items-center justify-center ring-4 ring-cyan-500/20 border-2 border-dashed border-gray-300 dark:border-white/20 cursor-pointer hover:border-cyan-400 dark:hover:border-cyan-400 transition-colors"
                       onClick={() => fileRef.current?.click()}>
@@ -458,7 +460,7 @@ export default function SettingsPage() {
               <div>
                 <label className="text-xs font-bold text-gray-500 dark:text-white/50 mb-1.5 block">Email Address</label>
                 <input value={email} readOnly
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-100 dark:bg-white/3 text-gray-500 dark:text-white/40 cursor-not-allowed" />
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-white cursor-not-allowed" />
                 <p className="text-[11px] text-gray-400 dark:text-white/30 mt-1">Email cannot be changed. Contact admin.</p>
               </div>
 
@@ -848,10 +850,10 @@ export default function SettingsPage() {
               <div>
                 <p className="text-xs font-black text-gray-500 dark:text-white/50 uppercase tracking-widest mb-3">Language & Region</p>
                 <select value={lang} onChange={e => setLang(e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
-                  <option value="en-UG">English (Uganda)</option>
-                  <option value="en-US">English (United States)</option>
-                  <option value="en-GB">English (United Kingdom)</option>
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                  <option value="en-UG" className="dark:bg-gray-800">English (Uganda)</option>
+                  <option value="en-US" className="dark:bg-gray-800">English (United States)</option>
+                  <option value="en-GB" className="dark:bg-gray-800">English (United Kingdom)</option>
                 </select>
               </div>
 

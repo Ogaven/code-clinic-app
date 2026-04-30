@@ -360,8 +360,8 @@ function AddNumberModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Phone number</label>
                   <div className="flex gap-2">
                     <select value={countryCode} onChange={e => setCountryCode(e.target.value)}
-                      className="px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-[#25D366] transition-colors">
-                      {COUNTRY_CODES.map(c => <option key={c.code} value={c.code}>{c.flag} {c.code}</option>)}
+                      className="px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 dark:text-white focus:outline-none focus:border-[#25D366] transition-colors">
+                      {COUNTRY_CODES.map(c => <option key={c.code} value={c.code} className="dark:bg-gray-800">{c.flag} {c.code}</option>)}
                     </select>
                     <input value={localPhone} onChange={e => setLocalPhone(e.target.value)} placeholder="741 087 667" className={cn(inputCls, 'flex-1')} />
                   </div>
@@ -677,8 +677,8 @@ function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
         <div className="pb-5 border-b border-gray-100">
           <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Category</label>
           <select value={profile.category} onChange={e => set('category', e.target.value)}
-            className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-colors">
-            {WA_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 dark:text-white focus:outline-none focus:border-cyan-500 transition-colors">
+            {WA_CATEGORIES.map(c => <option key={c.value} value={c.value} className="dark:bg-gray-800">{c.label}</option>)}
           </select>
         </div>
 
@@ -1341,8 +1341,8 @@ function SipTrunksSection({ toast }: { toast: (m: string) => void }) {
               <Field label="Port"><Inp value={String(form.port)} onChange={v => setF('port', parseInt(v) || 5060)} /></Field>
               <Field label="Protocol">
                 <select value={form.protocol} onChange={e => setF('protocol', e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500">
-                  {['UDP','TCP','TLS'].map(p => <option key={p}>{p}</option>)}
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 dark:text-white focus:outline-none focus:border-cyan-500">
+                  {['UDP','TCP','TLS'].map(p => <option key={p} className="dark:bg-gray-800">{p}</option>)}
                 </select>
               </Field>
               <Field label="Username (optional)"><Inp value={form.username || ''} onChange={v => setF('username', v)} placeholder="trunk_user" /></Field>
