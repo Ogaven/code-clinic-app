@@ -299,8 +299,8 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
     'CHECKED_IN', 'IN_CHAIR', 'READY_CHECKOUT', 'COMPLETED',
     'CANCELLED', 'NO_SHOW',
   ]
+  console.log('[CHECKIN]', { id: req.params.id, status: req.body.status, role: (req as any).user?.role })
   const { status } = req.body
-  console.log(`[STATUS] PATCH /${req.params.id}/status  role=${req.user?.role}  status=${status}`)
   if (!validStatuses.includes(status)) { res.status(400).json({ error: 'Invalid status' }); return }
 
   // Record stage timestamps as patient progresses through the flow
@@ -322,8 +322,8 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
       },
     })
   } catch (e: any) {
+    console.error('[CHECKIN ERROR]', JSON.stringify({ message: e?.message, code: e?.code, meta: e?.meta, stack: e?.stack?.split('\n').slice(0, 5) }))
     if (e?.code === 'P2025') { res.status(404).json({ error: 'Appointment not found' }); return }
-    console.error('[STATUS] update failed:', e)
     res.status(500).json({ error: 'Failed to update appointment status' }); return
   }
 
