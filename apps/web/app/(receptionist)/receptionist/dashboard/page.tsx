@@ -700,12 +700,12 @@ export default function ReceptionistDashboard() {
         </button>
         <button
           onClick={() => setShowBooking(true)}
-          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white/80">
+          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
           <Plus size={16} className="text-cyan-500" /> Book Appointment
         </button>
         <button
           onClick={() => { setNewPatient({ firstName: '', lastName: '', phone: '', email: '', gender: 'UNKNOWN' }); setAddPatientError(''); setShowAddPatient(true) }}
-          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white/80">
+          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
           <UserPlus size={16} className="text-purple-500" /> Add Patient
         </button>
       </div>

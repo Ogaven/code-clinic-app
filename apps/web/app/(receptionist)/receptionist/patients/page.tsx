@@ -368,7 +368,7 @@ export default function PatientsPage() {
                     <tr key={p.id}
                       onClick={() => router.push(`/receptionist/patients/${p.id}`)}
                       className={cn(
-                        'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/3 transition-colors',
+                        'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
                         selected?.id === p.id && 'bg-cyan-50 dark:bg-cyan-900/20 border-l-4 border-l-cyan-500',
                       )}>
                       <td className="px-5 py-3">

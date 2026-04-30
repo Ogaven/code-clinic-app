@@ -630,7 +630,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
               value={search}
               onChange={e => handleSearch(e.target.value)}
               placeholder="Find patients or appointments..."
-              className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 dark:bg-white/8 border border-gray-200 dark:border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all dark:text-white dark:placeholder-white/40"
+              className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all dark:text-white dark:placeholder-gray-400"
             />
             {search.length > 1 && (
               <div className="absolute top-full mt-1 left-0 right-0 bg-white dark:bg-[#0e2045] rounded-xl shadow-xl border border-gray-100 dark:border-white/10 z-50 overflow-hidden">
