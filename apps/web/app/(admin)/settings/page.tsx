@@ -294,6 +294,7 @@ export default function SettingsPage() {
           onClick={() => {
             localStorage.removeItem('cc_token')
             localStorage.removeItem('cc_user')
+            document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
             window.location.href = '/login'
           }}
           className="px-5 py-2.5 rounded-xl text-sm font-bold text-red-600 border border-red-200 hover:bg-red-50 transition-all">

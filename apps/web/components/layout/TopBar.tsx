@@ -252,6 +252,7 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
                   <button onClick={() => {
                     localStorage.removeItem('cc_token')
                     localStorage.removeItem('cc_user')
+                    document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
                     window.location.href = '/login'
                   }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-red-500/10 transition-colors text-red-400">
                     <span className="text-base">🚪</span> Sign Out

@@ -2,6 +2,17 @@
 // Set API_URL env var in Railway (Web service) to point to the API service URL.
 const API_URL = '/api-proxy'
 
+// Cookie helpers — keep cc_token in sync as a regular (non-HttpOnly) cookie so that
+// Next.js middleware can read it server-side to guard protected routes.
+export function setAuthCookie(token: string) {
+  if (typeof document === 'undefined') return
+  document.cookie = `cc_token=${token}; path=/; SameSite=Lax; max-age=900`
+}
+export function clearAuthCookie() {
+  if (typeof document === 'undefined') return
+  document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
+}
+
 export const getApiUrl = () => API_URL
 
 // ── Auto-refresh logic ────────────────────────────────────────
@@ -14,7 +25,7 @@ async function refreshToken(): Promise<string | null> {
       const r = await fetch(`${API_URL}/auth/refresh`, { method: 'POST', credentials: 'include' })
       if (!r.ok) return null
       const d = await r.json()
-      if (d.accessToken) { localStorage.setItem('cc_token', d.accessToken); return d.accessToken }
+      if (d.accessToken) { localStorage.setItem('cc_token', d.accessToken); setAuthCookie(d.accessToken); return d.accessToken }
     } catch {}
     return null
   })().finally(() => { _refreshing = null })
@@ -35,6 +46,7 @@ export async function fetchWithAuth(input: RequestInfo | URL, init: RequestInit 
       hdrs.set('Authorization', `Bearer ${fresh}`)
       res = await fetch(input, { ...init, headers: hdrs, credentials: 'include' })
     } else if (typeof window !== 'undefined') {
+      clearAuthCookie()
       window.location.replace('/login')
     }
   }

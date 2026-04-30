@@ -182,6 +182,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     localStorage.removeItem('cc_token')
     localStorage.removeItem('cc_user')
     localStorage.removeItem('cc_avatar')
+    document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
     router.push('/login')
   }
 

@@ -350,6 +350,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
   function logout() {
     localStorage.removeItem('cc_token')
     localStorage.removeItem('cc_user')
+    document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
     router.push('/login')
   }
 

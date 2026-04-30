@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Eye, EyeOff, Loader2, Mail, Lock, Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { setAuthCookie } from '@/lib/api'
 
 function GoogleIcon() {
   return (
@@ -84,6 +85,7 @@ export default function LoginPage() {
       if (data.requiresTwoFactor) { sessionStorage.setItem('cc_temp_token', data.tempToken); router.push('/2fa'); return }
       localStorage.setItem('cc_token', data.accessToken)
       localStorage.setItem('cc_user', JSON.stringify(data.user))
+      setAuthCookie(data.accessToken)
       router.push(ROLE_REDIRECTS[data.user?.role] || '/dashboard')
     } catch {
       setError('Cannot reach server. Please try again.')
