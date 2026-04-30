@@ -10,7 +10,7 @@ import Avatar from '@/components/ui/Avatar'
 const STAGES = [
   {
     key: 'ARRIVED',
-    label: 'Arrived',
+    label: 'Patient Arrived',
     statuses: ['ARRIVED', 'CHECKED_IN'],
     color: '#3B82F6',
     bg: 'bg-blue-50 dark:bg-blue-900/10',
@@ -20,28 +20,18 @@ const STAGES = [
   },
   {
     key: 'WAITING',
-    label: 'Waiting Room',
+    label: 'In Waiting Room',
     statuses: ['WAITING'],
     color: '#F59E0B',
     bg: 'bg-amber-50 dark:bg-amber-900/10',
     badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-    next: 'IN_OPERATORY',
-    nextLabel: 'To Operatory',
+    next: 'IN_CHAIR',
+    nextLabel: 'To Session',
   },
   {
-    key: 'IN_OPERATORY',
-    label: 'In Operatory',
-    statuses: ['IN_OPERATORY', 'IN_CHAIR'],
-    color: '#F97316',
-    bg: 'bg-orange-50 dark:bg-orange-900/10',
-    badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-    next: 'WITH_PROVIDER',
-    nextLabel: 'With Doctor',
-  },
-  {
-    key: 'WITH_PROVIDER',
-    label: 'With Doctor',
-    statuses: ['WITH_PROVIDER'],
+    key: 'IN_SESSION',
+    label: 'In Session with Doctor',
+    statuses: ['IN_OPERATORY', 'IN_CHAIR', 'WITH_PROVIDER'],
     color: '#14B8A6',
     bg: 'bg-teal-50 dark:bg-teal-900/10',
     badge: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
@@ -50,7 +40,7 @@ const STAGES = [
   },
   {
     key: 'CHECKOUT',
-    label: 'Checkout',
+    label: 'Checkout & Billing',
     statuses: ['SESSION_COMPLETE', 'CHECKOUT'],
     color: '#8B5CF6',
     bg: 'bg-purple-50 dark:bg-purple-900/10',
@@ -331,7 +321,7 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000, pat
 
       {/* 5-stage columns — horizontally scrollable on mobile */}
       <div className="overflow-x-auto">
-        <div className="grid min-w-[700px]" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+        <div className="grid min-w-[600px]" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
           {STAGES.map((stage, idx) => {
             const stageAppts = appointments.filter(a => stage.statuses.includes(a.status))
             return (

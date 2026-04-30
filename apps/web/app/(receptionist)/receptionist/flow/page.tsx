@@ -26,7 +26,7 @@ const STAGES = [
   },
   {
     key: 'waiting',
-    label: 'Waiting Room',
+    label: 'In Waiting Room',
     icon: Sofa,
     statuses: ['CONFIRMED', 'CHECKED_IN'],
     color: '#3B82F6',
@@ -40,7 +40,7 @@ const STAGES = [
   },
   {
     key: 'session',
-    label: 'Session with Doctor',
+    label: 'In Session with Doctor',
     icon: Stethoscope,
     statuses: ['IN_CHAIR', 'WITH_PROVIDER'],
     color: '#0D9488',

@@ -244,9 +244,9 @@ function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
 // ── Patient Flow Panel ─────────────────────────────────────────
 function PatientFlowPanel({ appointments, onRefresh }: { appointments: any[]; onRefresh: () => void }) {
   const groups: Record<string, { label: string; color: string; statuses: string[] }> = {
-    waiting:  { label: 'Waiting', color: '#3B82F6', statuses: ['CONFIRMED', 'CHECKED_IN'] },
-    active:   { label: 'In Clinic', color: '#F97316', statuses: ['IN_CHAIR', 'WITH_PROVIDER'] },
-    checkout: { label: 'Ready Checkout', color: '#A855F7', statuses: ['READY_CHECKOUT'] },
+    waiting:  { label: 'In Waiting Room', color: '#3B82F6', statuses: ['CONFIRMED', 'CHECKED_IN'] },
+    active:   { label: 'In Session with Doctor', color: '#14B8A6', statuses: ['IN_CHAIR', 'WITH_PROVIDER'] },
+    checkout: { label: 'Checkout & Billing', color: '#8B5CF6', statuses: ['READY_CHECKOUT'] },
   }
 
   async function advanceStatus(apptId: string, status: string) {
