@@ -23,13 +23,13 @@ export async function sendAppointmentNotification(
     const p       = appt.patient
     const doc     = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
     const dayDate = appt.startAt.toLocaleDateString('en-UG', {
-      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala',
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi',
     })
     const shortDate = appt.startAt.toLocaleDateString('en-UG', {
-      weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala',
+      weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
     })
     const time = appt.startAt.toLocaleTimeString('en-UG', {
-      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
     })
     const svc = appt.service.name
 

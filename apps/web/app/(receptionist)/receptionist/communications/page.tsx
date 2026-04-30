@@ -410,7 +410,7 @@ export default function CommunicationsPage() {
       id: n.id,
       from: 'them' as const,
       text: n.body || n.message || '',
-      time: new Date(n.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit' }),
+      time: new Date(n.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }),
       ts: new Date(n.createdAt).getTime(),
     })),
     ...(sentReplies[selectedDoctor] || []).map(r => ({
@@ -692,7 +692,7 @@ export default function CommunicationsPage() {
                   doctorList.map(({ name, last, unread }) => {
                     const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
                     const preview  = last.body || last.message || ''
-                    const timeStr  = new Date(last.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit' })
+                    const timeStr  = new Date(last.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' })
                     return (
                       <button key={name}
                         onClick={() => { setSelectedDoctor(name); setShowDoctorThread(true) }}

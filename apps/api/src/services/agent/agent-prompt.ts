@@ -45,7 +45,7 @@ export interface AgentContext {
 
 function kampalaTime(): string {
   return new Date().toLocaleString('en-UG', {
-    timeZone: 'Africa/Kampala',
+    timeZone: 'Africa/Nairobi',
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
@@ -144,7 +144,7 @@ If the caller wants to book an appointment, first ask for their name and create 
   } else if (ctx.mode === 'REMINDER' && ctx.appointment) {
     const appt = ctx.appointment
     const dateStr = appt.startAt.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long' })
-    const timeStr = appt.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit' })
+    const timeStr = appt.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' })
     modeSection = buildReminderModeSection({
       patientName: ctx.patient ? `${ctx.patient.firstName} ${ctx.patient.lastName}` : 'there',
       appointmentDate: dateStr,

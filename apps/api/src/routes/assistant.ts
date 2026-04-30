@@ -8,7 +8,7 @@ const prisma  = new PrismaClient()
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 function kampalaDay(offsetDays = 0) {
-  const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+  const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
   d.setDate(d.getDate() + offsetDays)
   d.setHours(0, 0, 0, 0)
   return d
@@ -216,7 +216,7 @@ router.post('/chat', requireAuth, async (req, res) => {
     // Fetch live context
     const stats = await get_today_stats()
     const kampalaTime = new Date().toLocaleString('en-UG', {
-      timeZone: 'Africa/Kampala',
+      timeZone: 'Africa/Nairobi',
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     })

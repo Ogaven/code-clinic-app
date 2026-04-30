@@ -6,7 +6,7 @@ import { ArrowLeft, Send, RefreshCw, CheckCheck } from 'lucide-react'
 
 function fmtTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('en-UG', {
-    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   })
 }
 

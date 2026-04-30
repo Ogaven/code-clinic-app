@@ -18,11 +18,11 @@ import BookingDrawer from '@/components/scheduling/BookingDrawer'
 // ── Analog Clock ──────────────────────────────────────────────
 function AnalogClock() {
   const [time, setTime] = useState(() =>
-    new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+    new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
   )
   useEffect(() => {
     const t = setInterval(() => {
-      setTime(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })))
+      setTime(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })))
     }, 1000)
     return () => clearInterval(t)
   }, [])
@@ -189,7 +189,7 @@ const STATUS_NEXT: Record<string, { status: string; label: string }> = {
 // ── Patient row ───────────────────────────────────────────────
 function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
   const isActive = ['CHECKED_IN','IN_CHAIR','WITH_PROVIDER'].includes(appt.status)
-  const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+  const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 
   async function changeStatus(status: string) {
     const token = localStorage.getItem('cc_token')
@@ -426,7 +426,7 @@ export default function ReceptionistDashboard() {
   }
 
   function nowTime() {
-    return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' })
+    return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
   }
 
   async function sendChat(text?: string) {
@@ -518,7 +518,7 @@ export default function ReceptionistDashboard() {
   }
 
   const greeting = () => {
-    const h = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getHours()
+    const h = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })).getHours()
     return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
   }
 
@@ -581,7 +581,7 @@ export default function ReceptionistDashboard() {
               )}
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {checkinResults.map((appt: any) => {
-                  const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Africa/Kampala' })
+                  const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Africa/Nairobi' })
                   const canCheckin  = checkinMode === 'in'  && ['PENDING','CONFIRMED'].includes(appt.status)
                   const canCheckout = checkinMode === 'out' && ['IN_CHAIR','WITH_PROVIDER','READY_CHECKOUT'].includes(appt.status)
                   const canAct = canCheckin || canCheckout
@@ -629,7 +629,7 @@ export default function ReceptionistDashboard() {
                 <div className="space-y-2 max-h-60 overflow-y-auto">
                   <p className="text-xs font-bold text-gray-400 dark:text-white/40 uppercase tracking-wider">Today's Appointments</p>
                   {appointments.slice(0, 8).map((appt: any) => {
-                    const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Africa/Kampala' })
+                    const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Africa/Nairobi' })
                     const canCheckin  = checkinMode === 'in'  && ['PENDING','CONFIRMED'].includes(appt.status)
                     const canCheckout = checkinMode === 'out' && ['IN_CHAIR','WITH_PROVIDER','READY_CHECKOUT'].includes(appt.status)
                     const canAct = canCheckin || canCheckout
@@ -664,7 +664,7 @@ export default function ReceptionistDashboard() {
         {/* Greeting text */}
         <div className="flex-1">
           <p className="text-gray-400 dark:text-white/40 text-sm font-medium mb-1">
-            {new Date().toLocaleDateString('en-UG', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'Africa/Kampala' })}
+            {new Date().toLocaleDateString('en-UG', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'Africa/Nairobi' })}
           </p>
           <h1 className="text-3xl font-black text-gray-800 dark:text-white mb-1">
             {greeting()}, <span style={{ color: '#29ABE2' }}>{user?.firstName}!</span> 👋
@@ -1016,8 +1016,8 @@ export default function ReceptionistDashboard() {
                   <p className="text-xs text-gray-400">No upcoming appointments</p>
                 </div>
               ) : upcoming.slice(0, 6).map(a => {
-                const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
-                const date = new Date(a.startAt).toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
+                const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+                const date = new Date(a.startAt).toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
                 return (
                   <div key={a.id} className="px-4 py-2.5">
                     <div className="flex items-center gap-2">

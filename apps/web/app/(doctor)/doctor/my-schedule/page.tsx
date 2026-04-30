@@ -26,11 +26,11 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
 }
 
 function fmt(s: string) {
-  return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+  return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
 
 function fmtDate(d: Date) {
-  return d.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
+  return d.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
 }
 
 function startOfWeek(d: Date) {

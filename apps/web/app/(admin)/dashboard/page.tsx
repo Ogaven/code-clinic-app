@@ -22,7 +22,7 @@ function AnalogClock() {
     const t = setInterval(() => setTime(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
-  const kla  = new Date(time.toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+  const kla  = new Date(time.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
   const h    = kla.getHours() % 12
   const m    = kla.getMinutes()
   const s    = kla.getSeconds()
@@ -121,7 +121,7 @@ const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
 // ── Weather Widget ──────────────────────────────────────────────────────────
 function WeatherWidget() {
   const [time] = useState(new Date())
-  const hour = new Date(time.toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getHours()
+  const hour = new Date(time.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })).getHours()
   const isNight = hour < 6 || hour >= 20
   const icon = isNight ? '🌙' : hour < 10 ? '🌤️' : '⛅'
   return (
@@ -161,7 +161,7 @@ function MiniCalendar() {
   const days   = Array.from({ length: daysInMonth }, (_, i) => i + 1)
   const blanks = Array.from({ length: firstDay }, (_, i) => i)
   const booked = [3, 7, 10, 14, 17, 21, 24, 28]
-  const monthName = today.toLocaleDateString('en-UG', { month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
+  const monthName = today.toLocaleDateString('en-UG', { month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
   return (
     <div>
       <p className="text-xs font-bold text-clinic-navy dark:text-white mb-3 text-center">{monthName}</p>
@@ -300,7 +300,7 @@ export default function DashboardPage() {
   const displayName  = isDoctor ? `Dr. ${name}` : name
 
   const dateStr = now.toLocaleDateString('en-UG', {
-    timeZone: 'Africa/Kampala', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    timeZone: 'Africa/Nairobi', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   })
 
   return (

@@ -87,7 +87,7 @@ interface LivePatientFlowProps {
 
 function fmt(dateStr?: string) {
   if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+  return new Date(dateStr).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
 
 function minsDiff(a?: string, b?: string) {
@@ -107,7 +107,7 @@ interface ReportRow {
 }
 
 function DailyReport({ appointments, onClose }: { appointments: Appointment[]; onClose: () => void }) {
-  const today = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
+  const today = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
 
   const rows: ReportRow[] = appointments.map(a => {
     const arrived    = a.arrivedAt    || a.startAt
@@ -129,7 +129,7 @@ function DailyReport({ appointments, onClose }: { appointments: Appointment[]; o
 
   function downloadCSV() {
     const clinic  = 'Code Clinic, Kamwokya'
-    const dateStr = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
+    const dateStr = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
     const header  = `"${clinic}"\n"${dateStr}"\n\nPatient,Service,Doctor,Arrived,Waiting Room → With Doctor,Departed,Total Time\n`
     const body    = rows.map(r =>
       `"${r.patient}","${r.service || ''}","${r.doctor || ''}","${fmt(r.arrived)}","${fmt(r.withDoctor)}","${fmt(r.departed)}","${r.totalMins !== undefined ? r.totalMins + 'm' : '—'}"`

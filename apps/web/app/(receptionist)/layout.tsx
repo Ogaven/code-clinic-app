@@ -383,9 +383,9 @@ export default function ReceptionistLayout({ children }: { children: React.React
   async function fetchTodayAppts() {
     try {
       const token = localStorage.getItem('cc_token')
-      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
       const until = new Date(); until.setDate(until.getDate() + 6)
-      const endDate = until.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
+      const endDate = until.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
       const res = await fetch(`${API}/scheduling/appointments?startDate=${today}&endDate=${endDate}`, {
         headers: { Authorization: `Bearer ${token}` },
       })

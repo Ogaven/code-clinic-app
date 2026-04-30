@@ -25,7 +25,7 @@ export function getInitials(firstName: string, lastName: string): string {
 
 export function formatKampalaTime(date: Date): string {
   return date.toLocaleTimeString('en-UG', {
-    timeZone: 'Africa/Kampala',
+    timeZone: 'Africa/Nairobi',
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
@@ -34,7 +34,7 @@ export function formatKampalaTime(date: Date): string {
 
 export function formatKampalaDate(date: Date): string {
   return date.toLocaleDateString('en-UG', {
-    timeZone: 'Africa/Kampala',
+    timeZone: 'Africa/Nairobi',
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -44,7 +44,7 @@ export function formatKampalaDate(date: Date): string {
 
 export function getGreeting(): string {
   const hour = new Date().toLocaleString('en-UG', {
-    timeZone: 'Africa/Kampala',
+    timeZone: 'Africa/Nairobi',
     hour: 'numeric',
     hour12: false,
   })

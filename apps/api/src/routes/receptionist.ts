@@ -6,7 +6,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 function kampalaDay(offsetDays = 0) {
-  const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+  const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
   d.setDate(d.getDate() + offsetDays)
   d.setHours(0, 0, 0, 0)
   return d

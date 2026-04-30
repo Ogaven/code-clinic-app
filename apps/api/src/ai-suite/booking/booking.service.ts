@@ -11,16 +11,16 @@ export interface AvailableSlot {
   endAt: Date
 }
 
-// ── Timezone helpers (Africa/Kampala = UTC+3) ─────────────────────────────────
+// ── Timezone helpers (Africa/Nairobi = UTC+3) ─────────────────────────────────
 
 function toKampalaDateStr(date: Date): string {
   // Returns YYYY-MM-DD in Kampala local time
-  return date.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
+  return date.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
 }
 
 function kampalaWeekday(date: Date): number {
   // Returns 0=Sun, 1=Mon, …, 6=Sat in Kampala timezone
-  const short = date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Africa/Kampala' })
+  const short = date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Africa/Nairobi' })
   return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(short)
 }
 

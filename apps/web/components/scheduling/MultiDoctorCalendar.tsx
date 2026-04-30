@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, X, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ function durationToHeight(mins: number): number {
 }
 function fmtTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('en-UG', {
-    timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit', hour12: true,
+    timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hour12: true,
   })
 }
 function toDateStr(d: Date): string { return d.toISOString().slice(0, 10) }
@@ -167,21 +167,28 @@ function ApptBlock({ appt, onClick }: { appt: Appointment; onClick: () => void }
 }
 
 // ─── Blocked block ────────────────────────────────────────────────────────────
-function BlockedBlock({ block }: { block: BlockedTime }) {
-  const start = new Date(block.startAt)
-  const end   = new Date(block.endAt)
+function BlockedBlock({ block, onRemove }: { block: BlockedTime; onRemove?: () => void }) {
+  const start  = new Date(block.startAt)
+  const end    = new Date(block.endAt)
   const top    = timeToTop(block.startAt)
   const height = durationToHeight((end.getTime() - start.getTime()) / 60000)
   return (
-    <div className="absolute left-1 right-1 rounded-lg z-[5] flex items-center justify-center"
+    <div
+      className={cn('absolute left-1 right-1 rounded-lg z-[5] group flex items-center justify-center', onRemove && 'cursor-pointer hover:brightness-95')}
       style={{
         top: `${top}px`, height: `${height}px`,
         background: 'repeating-linear-gradient(45deg,#F3F4F6,#F3F4F6 4px,#E5E7EB 4px,#E5E7EB 8px)',
         border: '1px solid #D1D5DB',
-      }}>
+      }}
+      onClick={e => { e.stopPropagation(); onRemove?.() }}>
       <span className="text-[10px] text-gray-400 font-medium px-1 text-center leading-tight">
         🔒 {block.reason || 'Blocked'}
       </span>
+      {onRemove && (
+        <div className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white rounded-full p-0.5 shadow-sm">
+          <X size={9} className="text-red-400" />
+        </div>
+      )}
     </div>
   )
 }
@@ -204,11 +211,15 @@ function TimeCol({ width }: { width: number }) {
 }
 
 // ─── Doctors View ─────────────────────────────────────────────────────────────
-function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
-  columns:          DoctorCol[]
-  dateStr:          string
-  onBookSlot?:       (docId: string, at: Date) => void
+function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay }: {
+  columns:             DoctorCol[]
+  dateStr:             string
+  onBookSlot?:         (docId: string, at: Date) => void
   onClickAppointment?: (a: Appointment) => void
+  onBlockClick?:       (doctorId: string, blockId: string) => void
+  onSlotDragStart?:    (doctorId: string, slotIdx: number) => void
+  onSlotDragMove?:     (doctorId: string, slotIdx: number) => void
+  dragOverlay?:        { doctorId: string; startIdx: number; endIdx: number } | null
 }) {
   const today   = toDateStr(new Date()) === dateStr
   const TIME_W  = 56
@@ -263,9 +274,11 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
           const wBot     = ((eH * 60 + eM - HOUR_START * 60) / 30) * SLOT_HEIGHT
           const total    = timeSlots.length * SLOT_HEIGHT
 
+          const ov = dragOverlay?.doctorId === doctor.id ? dragOverlay : null
+
           return (
             <div key={doctor.id}
-              className="flex-1 min-w-[130px] border-r border-gray-100 dark:border-white/10 relative"
+              className="flex-1 min-w-[130px] border-r border-gray-100 dark:border-white/10 relative select-none"
               style={{ height: `${total}px` }}>
               {/* Out-of-hours shading */}
               {wTop > 0    && <div className="absolute left-0 right-0 bg-gray-50/80 dark:bg-white/3" style={{ top: 0, height: wTop }} />}
@@ -275,6 +288,8 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
                 <div key={slot}
                   className={`absolute left-0 right-0 transition-colors group${onBookSlot ? ' hover:bg-blue-50/40 cursor-pointer' : ''}`}
                   style={{ top: `${i * SLOT_HEIGHT}px`, height: `${SLOT_HEIGHT}px`, borderBottom: '1px solid #F5F5F7' }}
+                  onMouseDown={e => { e.preventDefault(); onSlotDragStart?.(doctor.id, i) }}
+                  onMouseEnter={e => { if (e.buttons === 1) onSlotDragMove?.(doctor.id, i) }}
                   onClick={() => handleClick(doctor.id, slot)}>
                   {onBookSlot && (
                     <span className="absolute inset-0 flex items-center justify-center text-[10px] text-clinic-blue opacity-0 group-hover:opacity-100 font-semibold pointer-events-none">
@@ -283,8 +298,20 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment }: {
                   )}
                 </div>
               ))}
+              {/* Drag overlay */}
+              {ov && (() => {
+                const s = Math.min(ov.startIdx, ov.endIdx)
+                const e = Math.max(ov.startIdx, ov.endIdx)
+                return (
+                  <div className="absolute left-0 right-0 z-[15] pointer-events-none rounded bg-blue-400/20 border border-blue-400/40"
+                    style={{ top: s * SLOT_HEIGHT, height: (e - s + 1) * SLOT_HEIGHT }} />
+                )
+              })()}
               {/* Blocked */}
-              {blockedTimes.map((b) => <BlockedBlock key={b.id} block={b} />)}
+              {blockedTimes.map((b) => (
+                <BlockedBlock key={b.id} block={b}
+                  onRemove={onBlockClick ? () => onBlockClick(doctor.id, b.id) : undefined} />
+              ))}
               {/* Appointments */}
               {appointments.filter((a) => a.status !== 'CANCELLED').map((a) => (
                 <ApptBlock key={a.id} appt={a} onClick={() => onClickAppointment?.(a)} />
@@ -447,10 +474,88 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   const [lastFetched, setLastFetched] = useState<Date | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // ─── Block Time state ────────────────────────────────────────────────────────
+  const [blockModal,  setBlockModal]  = useState<{
+    doctorId: string; date: string; startTime: string; endTime: string; reason: string
+    repeat: 'none' | 'daily' | 'weekly'
+  } | null>(null)
+  const [blockSaving, setBlockSaving] = useState(false)
+  const [removeBlock, setRemoveBlock] = useState<{ doctorId: string; blockId: string } | null>(null)
+  const dragStateRef = useRef<{ doctorId: string; startIdx: number; endIdx: number } | null>(null)
+  const dateRef      = useRef(date)
+  const [dragOverlay, setDragOverlay] = useState<{ doctorId: string; startIdx: number; endIdx: number } | null>(null)
+
+  useEffect(() => { dateRef.current = date }, [date])
+
   // Read token fresh inside each fetch to avoid stale SSR closure
   function authHeaders() {
     const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
     return { Authorization: `Bearer ${token}` }
+  }
+
+  // ─── Drag-to-block global mouseup ────────────────────────────────────────────
+  useEffect(() => {
+    function onMouseUp() {
+      const d = dragStateRef.current
+      if (d && d.startIdx !== d.endIdx) {
+        const s = Math.min(d.startIdx, d.endIdx)
+        const e = Math.max(d.startIdx, d.endIdx)
+        const endSlot = e + 1 < timeSlots.length ? timeSlots[e + 1] : timeSlots[e]
+        setBlockModal({ doctorId: d.doctorId, date: toDateStr(dateRef.current), startTime: timeSlots[s], endTime: endSlot, reason: '', repeat: 'none' })
+      }
+      dragStateRef.current = null
+      setDragOverlay(null)
+    }
+    document.addEventListener('mouseup', onMouseUp)
+    return () => document.removeEventListener('mouseup', onMouseUp)
+  }, [])
+
+  function handleSlotDragStart(doctorId: string, slotIdx: number) {
+    dragStateRef.current = { doctorId, startIdx: slotIdx, endIdx: slotIdx }
+    setDragOverlay({ doctorId, startIdx: slotIdx, endIdx: slotIdx })
+  }
+  function handleSlotDragMove(doctorId: string, slotIdx: number) {
+    if (!dragStateRef.current || dragStateRef.current.doctorId !== doctorId) return
+    dragStateRef.current.endIdx = slotIdx
+    setDragOverlay({ doctorId, startIdx: dragStateRef.current.startIdx, endIdx: slotIdx })
+  }
+
+  // ─── Create blocked time ──────────────────────────────────────────────────────
+  async function createBlock() {
+    if (!blockModal) return
+    setBlockSaving(true)
+    const { doctorId, date: bDate, startTime, endTime, reason, repeat } = blockModal
+    const datesToBlock: string[] = [bDate]
+    if (repeat === 'daily') {
+      for (let i = 1; i <= 6; i++) {
+        const d = new Date(bDate + 'T00:00:00'); d.setDate(d.getDate() + i); datesToBlock.push(toDateStr(d))
+      }
+    } else if (repeat === 'weekly') {
+      for (let i = 1; i <= 3; i++) {
+        const d = new Date(bDate + 'T00:00:00'); d.setDate(d.getDate() + i * 7); datesToBlock.push(toDateStr(d))
+      }
+    }
+    try {
+      await Promise.all(datesToBlock.map(d =>
+        fetch(`${API}/scheduling/doctors/${doctorId}/block-time`, {
+          method: 'POST',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ startAt: `${d}T${startTime}:00+03:00`, endAt: `${d}T${endTime}:00+03:00`, reason }),
+        })
+      ))
+      setBlockModal(null)
+      fetchDay(dateRef.current)
+    } finally { setBlockSaving(false) }
+  }
+
+  // ─── Delete blocked time ──────────────────────────────────────────────────────
+  async function deleteBlock() {
+    if (!removeBlock) return
+    await fetch(`${API}/scheduling/doctors/${removeBlock.doctorId}/block-time/${removeBlock.blockId}`, {
+      method: 'DELETE', headers: authHeaders(),
+    })
+    setRemoveBlock(null)
+    fetchDay(dateRef.current)
   }
 
   const fetchDay = useCallback(async (d: Date) => {
@@ -576,6 +681,14 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           </div>
         )}
 
+        {/* Block Time button — doctors view only */}
+        {view === 'doctors' && (
+          <button onClick={() => setBlockModal({ doctorId: columns[0]?.doctor.id ?? '', date: toDateStr(date), startTime: '09:00', endTime: '10:00', reason: '', repeat: 'none' })}
+            className="flex items-center gap-1.5 px-3 h-8 rounded-xl text-xs font-semibold text-white bg-red-400 hover:bg-red-500 transition-colors flex-shrink-0">
+            <Lock size={11} /> Block
+          </button>
+        )}
+
         {/* View toggle */}
         <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-white/10 rounded-xl p-0.5">
           {(['doctors','week','month'] as ViewMode[]).map((v) => (
@@ -601,6 +714,10 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           dateStr={toDateStr(date)}
           onBookSlot={onBookSlot}
           onClickAppointment={onClickAppointment}
+          onBlockClick={(doctorId, blockId) => setRemoveBlock({ doctorId, blockId })}
+          onSlotDragStart={handleSlotDragStart}
+          onSlotDragMove={handleSlotDragMove}
+          dragOverlay={dragOverlay}
         />
       )}
       {view === 'week' && (
@@ -638,6 +755,99 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
                 <p className="text-sm mt-1">Add doctors in the Doctors tab to see the calendar</p>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Block Time Modal ──────────────────────────────────────────────────── */}
+      {blockModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setBlockModal(null)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2"><Lock size={14} className="text-red-400" /> Block Time</h3>
+              <button onClick={() => setBlockModal(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+            </div>
+            <div className="space-y-3">
+              {/* Doctor */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Doctor</label>
+                <select value={blockModal.doctorId} onChange={e => setBlockModal(m => m && ({ ...m, doctorId: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none">
+                  {columns.map(({ doctor }) => (
+                    <option key={doctor.id} value={doctor.id} className="dark:bg-gray-800">
+                      Dr. {doctor.firstName} {doctor.lastName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {/* Date */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Date</label>
+                <input type="date" value={blockModal.date} onChange={e => setBlockModal(m => m && ({ ...m, date: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none" />
+              </div>
+              {/* Start / End */}
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">Start</label>
+                  <select value={blockModal.startTime} onChange={e => setBlockModal(m => m && ({ ...m, startTime: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none">
+                    {timeSlots.map(t => <option key={t} value={t} className="dark:bg-gray-800">{t}</option>)}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">End</label>
+                  <select value={blockModal.endTime} onChange={e => setBlockModal(m => m && ({ ...m, endTime: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none">
+                    {timeSlots.map(t => <option key={t} value={t} className="dark:bg-gray-800">{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              {/* Reason */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Reason (optional)</label>
+                <input type="text" value={blockModal.reason} onChange={e => setBlockModal(m => m && ({ ...m, reason: e.target.value }))}
+                  placeholder="e.g. Lunch, Training, Meeting"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none placeholder-gray-400" />
+              </div>
+              {/* Repeat */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Repeat</label>
+                <div className="flex gap-2">
+                  {(['none','daily','weekly'] as const).map(r => (
+                    <button key={r} onClick={() => setBlockModal(m => m && ({ ...m, repeat: r }))}
+                      className={cn('flex-1 py-1.5 rounded-xl text-xs font-semibold border transition-colors',
+                        blockModal.repeat === r
+                          ? 'bg-red-400 text-white border-red-400'
+                          : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-red-300')}>
+                      {r === 'none' ? 'Once' : r === 'daily' ? '7 Days' : '4 Weeks'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <button onClick={createBlock} disabled={blockSaving}
+              className="mt-5 w-full py-2.5 rounded-xl text-sm font-bold text-white bg-red-400 hover:bg-red-500 disabled:opacity-50 transition-colors">
+              {blockSaving ? 'Saving…' : 'Block Time'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Remove Blocked Time Confirm ───────────────────────────────────────── */}
+      {removeBlock && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRemoveBlock(null)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 w-full max-w-xs" onClick={e => e.stopPropagation()}>
+            <p className="font-bold text-gray-800 dark:text-white mb-1">Remove block?</p>
+            <p className="text-sm text-gray-500 mb-5">This blocked time will be removed from the calendar.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setRemoveBlock(null)} className="flex-1 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                Cancel
+              </button>
+              <button onClick={deleteBlock} className="flex-1 py-2 rounded-xl text-sm font-bold text-white bg-red-400 hover:bg-red-500 transition-colors">
+                Remove
+              </button>
+            </div>
           </div>
         </div>
       )}

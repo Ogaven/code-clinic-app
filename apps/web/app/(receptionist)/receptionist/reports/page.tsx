@@ -62,7 +62,7 @@ export default function ReportsPage() {
   function fmtMins(m: number) { return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m` }
 
   function exportFlowPDF() {
-    const today = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
+    const today = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
 
     // Per-stage breakdown
     const stageRows = FLOW_STAGES.map(s => {
@@ -78,7 +78,7 @@ export default function ReportsPage() {
     }).join('')
 
     const rows = appts.map(a => {
-      const t     = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+      const t     = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
       const stage = FLOW_STAGES.find(s => s.statuses.includes(a.status))?.label || a.status
       const dur   = fmtMins(durationMins(a))
       const label = a.status === 'COMPLETED' ? 'Total' : 'So far'
@@ -128,7 +128,7 @@ export default function ReportsPage() {
   <thead><tr><th>Patient</th><th>Time</th><th>Service</th><th>Doctor</th><th>Stage</th><th>Duration</th></tr></thead>
   <tbody>${rows}</tbody>
 </table>
-<p style="margin-top:24px;font-size:11px;color:#9ca3af">Generated ${new Date().toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} · Code Clinic Management System</p>
+<p style="margin-top:24px;font-size:11px;color:#9ca3af">Generated ${new Date().toLocaleString('en-UG', { timeZone: 'Africa/Nairobi' })} · Code Clinic Management System</p>
 </body></html>`
 
     const w = window.open('', '_blank')
@@ -221,7 +221,7 @@ export default function ReportsPage() {
                   {appts.length === 0 ? (
                     <tr><td colSpan={6} className="text-center py-8 text-gray-400 dark:text-white/40 text-sm">No appointments today</td></tr>
                   ) : appts.map(a => {
-                    const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+                    const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
                     const statusColor: Record<string, string> = {
                       CONFIRMED: 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
                       COMPLETED: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400',

@@ -151,7 +151,7 @@ async function seed() {
     const adminUser   = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
 
     if (allDoctors.length && allPatients.length && allServices.length && adminUser) {
-      const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+      const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
       today.setHours(0, 0, 0, 0)
 
       const apptSlots = [

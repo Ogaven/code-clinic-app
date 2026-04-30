@@ -57,10 +57,10 @@ export async function checkAndSendReminders(): Promise<void> {
 
     // ── Build message ─────────────────────────────────────────────────────────
     const time = appt.startAt.toLocaleTimeString('en-UG', {
-      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
     })
     const dayDate = appt.startAt.toLocaleDateString('en-UG', {
-      weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Kampala',
+      weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi',
     })
     const doctor  = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
     const message =

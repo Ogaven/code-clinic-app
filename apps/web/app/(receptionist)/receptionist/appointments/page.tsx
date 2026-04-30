@@ -226,7 +226,7 @@ export default function AppointmentsPage() {
                   const date = new Date(appt.startAt).toLocaleString('en-UG', {
                     day: 'numeric', month: 'short', year: 'numeric',
                     hour: '2-digit', minute: '2-digit', hour12: true,
-                    timeZone: 'Africa/Kampala',
+                    timeZone: 'Africa/Nairobi',
                   })
                   return (
                     <tr key={appt.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">

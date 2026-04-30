@@ -244,7 +244,7 @@ router.post('/seed-production', async (req, res) => {
 
     if (adminUser && allDoctors.length && allPatients.length && allServices.length) {
       // Kampala today
-      const kampalaStr = new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })
+      const kampalaStr = new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })
       const today = new Date(kampalaStr)
       today.setHours(0, 0, 0, 0)
 
@@ -305,7 +305,7 @@ router.post('/seed-production', async (req, res) => {
         { phone: '+256700100004', h: 14, m: 0,  status: 'CONFIRMED'     as const }, // David Okello
       ]
       const consultService = await prisma.service.findFirst({ where: { name: 'Check and Treat' } })
-      const todayKampala = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+      const todayKampala = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
       todayKampala.setHours(0, 0, 0, 0)
       let stevenApptCount = 0
       for (const slot of stevenSlots) {
@@ -488,7 +488,7 @@ router.post('/seed-production', async (req, res) => {
       const doc = (i: number) => allDocs[i % allDocs.length]
       const pat = (i: number) => allPats[i % allPats.length]
 
-      const kampalaBase = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+      const kampalaBase = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
       kampalaBase.setHours(0, 0, 0, 0)
 
       const dayOffset = (d: number, h: number, m = 0) => {

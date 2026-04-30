@@ -16,7 +16,7 @@ function AnalogClock() {
     const t = setInterval(() => setTime(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
-  const kla  = new Date(time.toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+  const kla  = new Date(time.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
   const h    = kla.getHours() % 12
   const m    = kla.getMinutes()
   const s    = kla.getSeconds()
@@ -57,7 +57,7 @@ function AnalogClock() {
 }
 
 function getGreeting() {
-  const h = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getHours()
+  const h = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })).getHours()
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
 }
 
@@ -77,7 +77,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
 }
 
 function fmtTime(s: string) {
-  return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+  return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
 
 export default function DoctorDashboardPage() {
@@ -275,7 +275,7 @@ export default function DoctorDashboardPage() {
           <div>
             <h2 className="text-base font-bold text-gray-800 dark:text-white">Today&apos;s Schedule</h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              {new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Kampala' })}
+              {new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi' })}
             </p>
           </div>
           <Link href="/doctor/schedule"

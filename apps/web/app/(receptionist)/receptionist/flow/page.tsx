@@ -110,7 +110,7 @@ function PatientCard({
   onCancel: (id: string) => void
 }) {
   const time = new Date(appt.startAt).toLocaleTimeString('en-UG', {
-    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   })
   const wait     = elapsed(appt.startAt)
   const wc       = waitClass(wait.mins)
@@ -429,7 +429,7 @@ export default function LiveFlowPage() {
                 </div>
                 <div className="flex flex-col gap-2 opacity-50">
                   {cancelled.map(appt => {
-                    const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+                    const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
                     return (
                       <div key={appt.id} className="bg-gray-50 dark:bg-white/3 rounded-xl border border-gray-100 dark:border-white/5 p-3 flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gray-300 dark:bg-white/20">

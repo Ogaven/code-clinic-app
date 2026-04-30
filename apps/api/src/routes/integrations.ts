@@ -363,8 +363,8 @@ router.post('/google-calendar/sync', requireAuth, clinicalStaff, async (req, res
           ``,
           `Manage: ${process.env.APP_URL || 'http://localhost:3000'}/receptionist/scheduling`,
         ].join('\n'),
-        start:      { dateTime: appt.startAt.toISOString(), timeZone: 'Africa/Kampala' },
-        end:        { dateTime: appt.endAt.toISOString(),   timeZone: 'Africa/Kampala' },
+        start:      { dateTime: appt.startAt.toISOString(), timeZone: 'Africa/Nairobi' },
+        end:        { dateTime: appt.endAt.toISOString(),   timeZone: 'Africa/Nairobi' },
         colorId:    statusColorId(appt.status),
         extendedProperties: { private: { codeclinicId: appt.id } },
       }

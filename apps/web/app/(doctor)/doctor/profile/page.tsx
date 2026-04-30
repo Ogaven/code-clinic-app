@@ -350,7 +350,7 @@ export default function DoctorProfilePage() {
                       {new Date(ci.createdAt).toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short' })}
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-600 dark:text-gray-300">
-                      {new Date(ci.createdAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })}
+                      {new Date(ci.createdAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })}
                     </td>
                     <td className="px-5 py-3">
                       <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full',

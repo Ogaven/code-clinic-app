@@ -79,7 +79,7 @@ export default function CallLogsPage() {
                     : 'Unknown'
                   const date = new Date(log.createdAt).toLocaleString('en-UG', {
                     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                    hour12: true, timeZone: 'Africa/Kampala',
+                    hour12: true, timeZone: 'Africa/Nairobi',
                   })
                   return (
                     <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">

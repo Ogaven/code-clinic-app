@@ -70,8 +70,8 @@ function buildEventBody(appt: AppointmentForSync) {
       ``,
       `Manage: ${appUrl}/receptionist/scheduling`,
     ].join('\n'),
-    start:   { dateTime: appt.startAt.toISOString(), timeZone: 'Africa/Kampala' },
-    end:     { dateTime: appt.endAt.toISOString(),   timeZone: 'Africa/Kampala' },
+    start:   { dateTime: appt.startAt.toISOString(), timeZone: 'Africa/Nairobi' },
+    end:     { dateTime: appt.endAt.toISOString(),   timeZone: 'Africa/Nairobi' },
     colorId: statusColorId(appt.status),
     extendedProperties: { private: { codeclinicId: appt.id } },
   }

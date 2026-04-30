@@ -64,13 +64,13 @@ function Avatar({ name, size = 40, borderColor }: { name: string | null | undefi
 function fmtTime(iso: string): string {
   const d = new Date(iso), now = new Date()
   const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
-  if (diff === 0) return d.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+  if (diff === 0) return d.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
   if (diff === 1) return 'Yesterday'
   if (diff < 7)  return d.toLocaleDateString('en-UG', { weekday: 'short' })
   return d.toLocaleDateString('en-UG', { day: 'numeric', month: 'short' })
 }
 function fmtFull(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+  return new Date(iso).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
 
 // ── Channel identity ───────────────────────────────────────────────────────────
@@ -165,23 +165,110 @@ const BUBBLE_BG: Record<ChannelKey, string> = {
   WEBSITE:   '#6366f1',
 }
 
+// ── Composer ──────────────────────────────────────────────────────────────────
+// Extracted to module level so React never remounts it on parent re-renders,
+// which would cause the textarea to lose focus on every keystroke.
+interface ComposerProps {
+  sel: Conversation
+  fetchMsgs: (id: string) => void
+  channel: ChannelKey
+  accent: string
+  dark: boolean
+}
+
+function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
+  const [reply,      setReply]      = useState('')
+  const [attachment, setAttachment] = useState<File | null>(null)
+  const [showEmoji,  setShowEmoji]  = useState(false)
+  const [sending,    setSending]    = useState(false)
+  const fileRef  = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Reset composer when switching conversations
+  useEffect(() => { setReply(''); setAttachment(null); setShowEmoji(false) }, [sel.id])
+
+  async function send() {
+    if ((!reply.trim() && !attachment) || sending) return
+    setSending(true)
+    try {
+      if (attachment) {
+        const form = new FormData()
+        form.append('file', attachment)
+        form.append('conversationId', sel.id)
+        await fetch(`${API}/ai-suite/conversations/${sel.id}/send-media`, {
+          method: 'POST', headers: { Authorization: authH().Authorization }, body: form,
+        })
+        setAttachment(null)
+      } else {
+        await fetch(`${API}/ai-suite/conversations/${sel.id}/send`, {
+          method: 'POST', headers: authH(true), body: JSON.stringify({ text: reply.trim() }),
+        })
+        setReply('')
+      }
+      fetchMsgs(sel.id)
+    } catch {} finally {
+      setSending(false)
+      inputRef.current?.focus()
+    }
+  }
+
+  return (
+    <div className={cn('fixed bottom-0 left-0 right-0 z-[60] lg:static lg:flex-shrink-0 px-3 py-2 border-t', dark ? 'border-white/8' : 'border-gray-100')}
+      style={{ background: dark ? '#1F2C34' : '#f0f2f5', paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}>
+      {attachment && (
+        <div className={cn('flex items-center gap-2 mb-2 px-3 py-2 rounded-xl', dark ? 'bg-[#2A3942]' : 'bg-white border border-gray-200')}>
+          <Paperclip size={13} className={dark ? 'text-white/60' : 'text-gray-500'} />
+          <span className={cn('text-xs flex-1 truncate', dark ? 'text-white/80' : 'text-gray-700')}>{attachment.name}</span>
+          <button onClick={() => setAttachment(null)}><X size={13} className={dark ? 'text-white/40' : 'text-gray-400'} /></button>
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <button onClick={() => setShowEmoji(s => !s)}
+            className={cn('p-2 rounded-full transition-colors', dark ? 'text-white/50 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:bg-black/5')}>
+            <Smile size={20} />
+          </button>
+          {showEmoji && <EmojiPicker dark={dark} onPick={e => setReply(r => r + e)} onClose={() => setShowEmoji(false)} />}
+        </div>
+        <button onClick={() => fileRef.current?.click()}
+          className={cn('p-2 rounded-full transition-colors', dark ? 'text-white/50 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:bg-black/5')}>
+          <Paperclip size={20} />
+        </button>
+        <input ref={fileRef} type="file" className="hidden"
+          onChange={e => { if (e.target.files?.[0]) setAttachment(e.target.files[0]); e.target.value = '' }} />
+        <textarea
+          ref={inputRef}
+          value={reply}
+          onChange={e => setReply(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+          placeholder="Type a message"
+          rows={1}
+          className={cn('flex-1 px-4 py-2.5 rounded-2xl text-sm outline-none resize-none min-h-[44px] max-h-[120px]',
+            dark ? 'text-white placeholder-white/30' : 'text-gray-800 placeholder-gray-400 shadow-sm')}
+          style={{ background: dark ? '#2A3942' : '#fff' }}
+        />
+        <button onClick={send} disabled={sending || (!reply.trim() && !attachment)}
+          className={cn('p-2.5 rounded-full flex items-center justify-center transition-all flex-shrink-0', reply.trim() || attachment ? 'hover:-translate-y-0.5 hover:scale-105' : 'opacity-40')}
+          style={{ background: channel === 'WHATSAPP' ? '#25D366' : accent }}>
+          {sending ? <Loader2 size={18} className="animate-spin text-white" /> : <Send size={18} className="text-white" />}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function InboxPage() {
   const [channel,    setChannel]    = useState<ChannelKey>('WHATSAPP')
   const [convs,      setConvs]      = useState<Conversation[]>([])
   const [sel,        setSel]        = useState<Conversation | null>(null)
   const [msgs,       setMsgs]       = useState<Message[]>([])
-  const [reply,      setReply]      = useState('')
-  const [sending,    setSending]    = useState(false)
   const [loadingC,   setLoadingC]   = useState(true)
   const [loadingM,   setLoadingM]   = useState(false)
   const [search,     setSearch]     = useState('')
-  const [showEmoji,  setShowEmoji]  = useState(false)
-  const [attachment, setAttachment] = useState<File | null>(null)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
 
   const msgsEnd  = useRef<HTMLDivElement>(null)
-  const fileRef  = useRef<HTMLInputElement>(null)
   const pollConv = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollMsg  = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -220,7 +307,7 @@ export default function InboxPage() {
   }, [])
 
   useEffect(() => {
-    setSel(null); setConvs([]); setMsgs([]); setLoadingC(true); setShowEmoji(false)
+    setSel(null); setConvs([]); setMsgs([]); setLoadingC(true)
     if (pollConv.current) clearInterval(pollConv.current)
     fetchConvs()
     pollConv.current = setInterval(fetchConvs, 10000)
@@ -243,28 +330,6 @@ export default function InboxPage() {
     return () => { window.visualViewport?.removeEventListener('resize', handler) }
   }, [])
 
-  async function send() {
-    if (!sel || (!reply.trim() && !attachment) || sending) return
-    setSending(true)
-    try {
-      if (attachment) {
-        const form = new FormData()
-        form.append('file', attachment)
-        form.append('conversationId', sel.id)
-        await fetch(`${API}/ai-suite/conversations/${sel.id}/send-media`, {
-          method: 'POST', headers: { Authorization: authH().Authorization }, body: form,
-        })
-        setAttachment(null)
-      } else {
-        await fetch(`${API}/ai-suite/conversations/${sel.id}/send`, {
-          method: 'POST', headers: authH(true), body: JSON.stringify({ text: reply.trim() }),
-        })
-        setReply('')
-      }
-      fetchMsgs(sel.id)
-    } catch {} finally { setSending(false) }
-  }
-
   async function toggleTakeover() {
     if (!sel) return
     const ep = sel.agentEnabled ? 'takeover' : 'handback'
@@ -273,7 +338,7 @@ export default function InboxPage() {
   }
 
   function selectConv(conv: Conversation) {
-    setSel(conv); setMobileView('chat'); setShowEmoji(false)
+    setSel(conv); setMobileView('chat')
   }
 
   const filtered = convs.filter(c => {
@@ -286,52 +351,6 @@ export default function InboxPage() {
   const ch      = CHANNELS.find(c => c.key === channel)!
   const accent  = ch.color
   const ChIcon  = ch.icon
-
-  // ── Shared composer strip (used by both WA and Light) ─────────────────────────
-  function Composer({ dark }: { dark: boolean }) {
-    return (
-      <div className={cn('fixed bottom-0 left-0 right-0 z-[60] lg:static lg:flex-shrink-0 px-3 py-2 border-t', dark ? 'border-white/8' : 'border-gray-100')}
-        style={{ background: dark ? '#1F2C34' : '#f0f2f5', paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}>
-        {attachment && (
-          <div className={cn('flex items-center gap-2 mb-2 px-3 py-2 rounded-xl', dark ? 'bg-[#2A3942]' : 'bg-white border border-gray-200')}>
-            <Paperclip size={13} className={dark ? 'text-white/60' : 'text-gray-500'} />
-            <span className={cn('text-xs flex-1 truncate', dark ? 'text-white/80' : 'text-gray-700')}>{attachment.name}</span>
-            <button onClick={() => setAttachment(null)}><X size={13} className={dark ? 'text-white/40' : 'text-gray-400'} /></button>
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <button onClick={() => setShowEmoji(s => !s)}
-              className={cn('p-2 rounded-full transition-colors', dark ? 'text-white/50 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:bg-black/5')}>
-              <Smile size={20} />
-            </button>
-            {showEmoji && <EmojiPicker dark={dark} onPick={e => setReply(r => r + e)} onClose={() => setShowEmoji(false)} />}
-          </div>
-          <button onClick={() => fileRef.current?.click()}
-            className={cn('p-2 rounded-full transition-colors', dark ? 'text-white/50 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:bg-black/5')}>
-            <Paperclip size={20} />
-          </button>
-          <input ref={fileRef} type="file" className="hidden"
-            onChange={e => { if (e.target.files?.[0]) setAttachment(e.target.files[0]); e.target.value = '' }} />
-          <textarea
-            value={reply}
-            onChange={e => setReply(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder="Type a message"
-            rows={1}
-            className={cn('flex-1 px-4 py-2.5 rounded-2xl text-sm outline-none resize-none min-h-[44px] max-h-[120px]',
-              dark ? 'text-white placeholder-white/30' : 'text-gray-800 placeholder-gray-400 shadow-sm')}
-            style={{ background: dark ? '#2A3942' : '#fff' }}
-          />
-          <button onClick={send} disabled={sending || (!reply.trim() && !attachment)}
-            className={cn('p-2.5 rounded-full flex items-center justify-center transition-all flex-shrink-0', reply.trim() || attachment ? 'hover:-translate-y-0.5 hover:scale-105' : 'opacity-40')}
-            style={{ background: channel === 'WHATSAPP' ? '#25D366' : accent }}>
-            {sending ? <Loader2 size={18} className="animate-spin text-white" /> : <Send size={18} className="text-white" />}
-          </button>
-        </div>
-      </div>
-    )
-  }
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // WHATSAPP — authentic WA styling
@@ -459,7 +478,7 @@ export default function InboxPage() {
           </button>
         </div>
       ) : (
-        <Composer dark={false} />
+        <Composer sel={sel!} fetchMsgs={fetchMsgs} channel={channel} accent={accent} dark={false} />
       )}
     </div>
   ) : (
@@ -595,7 +614,7 @@ export default function InboxPage() {
           </button>
         </div>
       ) : (
-        <Composer dark={false} />
+        <Composer sel={sel!} fetchMsgs={fetchMsgs} channel={channel} accent={accent} dark={false} />
       )}
     </div>
   ) : (

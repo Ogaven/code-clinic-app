@@ -7,7 +7,7 @@ import { X, Send, Minimize2, Mic, MicOff, GripHorizontal } from 'lucide-react'
 type Msg = { from: 'sarah' | 'user'; text: string; time: string }
 
 function nowTime() {
-  return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' })
+  return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
 }
 
 const GREETINGS: Msg[] = [

@@ -6,7 +6,7 @@ import { X, Send, Minimize2, Maximize2, Mic, MicOff, Bot } from 'lucide-react'
 type Msg = { from: 'zoe' | 'user'; text: string; time: string }
 
 function now() {
-  return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' })
+  return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
 }
 
 function buildGreetings(): Msg[] {

@@ -207,10 +207,10 @@ export function detectIntent(message: string): Intent {
 
 function formatSlotLine(slot: AvailableSlot, index: number): string {
   const day = slot.startAt.toLocaleDateString('en-UG', {
-    weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala',
+    weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
   })
   const time = slot.startAt.toLocaleTimeString('en-US', {
-    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   }).toLowerCase()
   return `${index + 1}. ${day} at ${time} — ${slot.doctorName}`
 }
@@ -229,10 +229,10 @@ function formatConfirmation(appt: {
   service: { name: string }
 }): string {
   const day = appt.startAt.toLocaleDateString('en-UG', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala',
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi',
   })
   const time = appt.startAt.toLocaleTimeString('en-US', {
-    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   }).toLowerCase()
   const doctor = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
   return `Perfect! You're all booked 🎉 *${day}* at *${time}* with *${doctor}* for *${appt.service.name}*. We'll send you a reminder the day before. See you then!`
@@ -284,14 +284,14 @@ function parseTimeOfDay(message: string): { startH: number; endH: number } | nul
 function slotKampalaHour(slot: AvailableSlot): number {
   return parseInt(
     slot.startAt.toLocaleTimeString('en-US', {
-      hour: 'numeric', hour12: false, timeZone: 'Africa/Kampala',
+      hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi',
     })
   )
 }
 
 function slotKampalaWeekday(slot: AvailableSlot): number {
   const short = slot.startAt.toLocaleDateString('en-US', {
-    weekday: 'short', timeZone: 'Africa/Kampala',
+    weekday: 'short', timeZone: 'Africa/Nairobi',
   })
   return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(short)
 }
@@ -374,10 +374,10 @@ async function handleIdleBookIntent(
   }
 
   const apptDay = upcoming.startAt.toLocaleDateString('en-UG', {
-    weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala',
+    weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
   })
   const apptTime = upcoming.startAt.toLocaleTimeString('en-US', {
-    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   }).toLowerCase()
   const apptDoctor = `Dr ${upcoming.doctor.user.firstName} ${upcoming.doctor.user.lastName}`
 

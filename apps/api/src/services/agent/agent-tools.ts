@@ -59,7 +59,7 @@ function decryptMedicalNotes(encrypted: string | null): string | null {
 // ── Kampala time helpers ───────────────────────────────────────
 
 function kampalaDay(date: Date, offsetDays = 0): Date {
-  const d = new Date(date.toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+  const d = new Date(date.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
   d.setDate(d.getDate() + offsetDays)
   d.setHours(0, 0, 0, 0)
   return d
@@ -164,7 +164,7 @@ async function handle_get_patient_by_phone(input: { phone_number: string }) {
       .map(a => ({
         id: a.id,
         date: a.startAt.toISOString().split('T')[0],
-        time: a.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit' }),
+        time: a.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }),
         doctor: `Dr. ${a.doctor.user.firstName} ${a.doctor.user.lastName}`,
         service: a.service.name,
         status: a.status,
@@ -186,7 +186,7 @@ async function handle_get_patient_appointments(input: { patient_id: string }) {
   return appointments.map(a => ({
     id: a.id,
     date: a.startAt.toISOString().split('T')[0],
-    time: a.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit' }),
+    time: a.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }),
     doctor_name: `Dr. ${a.doctor.user.firstName} ${a.doctor.user.lastName}`,
     doctor_id: a.doctorId,
     service_name: a.service.name,

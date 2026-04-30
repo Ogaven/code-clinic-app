@@ -6,10 +6,10 @@ import { ArrowLeft, Search, Users, CalendarDays, Activity, Plus, X } from 'lucid
 import { cn } from '@/lib/utils'
 
 function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' })
+  return new Date(s).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' })
 }
 function fmtTime(s: string) {
-  return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+  return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
 
 interface PatientRow {

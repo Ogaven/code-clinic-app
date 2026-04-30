@@ -55,6 +55,9 @@ import { checkAndSendFollowups }           from './ai-suite/scheduler/followup.s
 import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
 
+// Lock process timezone to EAT (UTC+3) — must be set before any Date operations.
+process.env.TZ = 'Africa/Nairobi'
+
 const app  = express()
 const PORT = process.env.PORT || 4000
 
@@ -117,7 +120,7 @@ app.get('/health', async (_req, res) => {
     service: 'CodeClinic API',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
-    timezone: 'Africa/Kampala',
+    timezone: 'Africa/Nairobi',
     uptime: uptimeSeconds,
     db:     { status: dbOk   ? 'ok' : 'error' },
     redis:  { status: redisOk ? 'ok' : 'noop' },
@@ -242,7 +245,7 @@ runStartup().then(() => {
     logger.info({
       port: PORT,
       env: process.env.NODE_ENV || 'development',
-      timezone: 'Africa/Kampala',
+      timezone: 'Africa/Nairobi',
     }, 'CodeClinic API started')
   })
 })

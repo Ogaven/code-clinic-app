@@ -19,8 +19,8 @@ async function notifyStaff(
   const p    = appt.patient
   const doc  = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
   const svc  = appt.service.name
-  const date = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
-  const time = appt.startAt.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+  const date = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+  const time = appt.startAt.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
   const name = `${p.firstName} ${p.lastName}`
 
   let waMsg = '', notifTitle = '', notifBody = ''
@@ -188,8 +188,8 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
     if (atApiKey && atUsername && atApiKey !== 'your-key') {
       const p = appointment.patient
       const d = appointment.doctor.user
-      const dateStr = start.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
-      const timeStr = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' })
+      const dateStr = start.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+      const timeStr = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
       const smsText = `Hi ${p.firstName}, your appt at Code Clinic is confirmed: ${dateStr} at ${timeStr} with Dr. ${d.firstName} ${d.lastName}. Location: Kiira Rd, Kamwokya. Call: 0205477000`
       const AfricasTalking = require('africastalking')
       const at = AfricasTalking({ apiKey: atApiKey, username: atUsername })
@@ -478,8 +478,8 @@ router.post('/doctors/:id/block-time', requireAuth, async (req, res) => {
   const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id } })
   if (!doctor) { res.status(404).json({ error: 'Doctor not found' }); return }
 
-  if (req.user!.role !== 'ADMIN' && doctor.userId !== req.user!.id) {
-    res.status(403).json({ error: 'You can only block your own time' }); return
+  if (req.user!.role !== 'ADMIN' && req.user!.role !== 'RECEPTIONIST' && doctor.userId !== req.user!.id) {
+    res.status(403).json({ error: 'Not authorized to block this time' }); return
   }
 
   const block = await prisma.blockedTime.create({

@@ -10,12 +10,12 @@ const SARAH_GREETINGS: Msg[] = [
   {
     from: 'sarah',
     text: "Hello! 👋 I'm Sarah, your AI assistant at Code Clinic. How can I help you today?",
-    time: new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' }),
+    time: new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' }),
   },
   {
     from: 'sarah',
     text: "I can help with scheduling, patient records, billing, and more. Just ask! 🦷",
-    time: new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' }),
+    time: new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' }),
   },
 ]
 
@@ -134,7 +134,7 @@ export default function SarahChatbot() {
   async function sendMessage(text?: string) {
     const msg = text || input.trim()
     if (!msg) return
-    const now = new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' })
+    const now = new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
     setMsgs(m => [...m, { from: 'user', text: msg, time: now }])
     setInput('')
     setTyping(true)
@@ -152,9 +152,9 @@ export default function SarahChatbot() {
       const data = await res.json()
       const reply = data.content || "I'm here to help! 🦷"
       setChatHistory(h => [...h, { role: 'assistant', content: reply }])
-      setMsgs(m => [...m, { from: 'sarah', text: reply, time: new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' }) }])
+      setMsgs(m => [...m, { from: 'sarah', text: reply, time: new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' }) }])
     } catch {
-      setMsgs(m => [...m, { from: 'sarah', text: "Sorry, I couldn't connect right now. Please try again! 🙏", time: new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' }) }])
+      setMsgs(m => [...m, { from: 'sarah', text: "Sorry, I couldn't connect right now. Please try again! 🙏", time: new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' }) }])
     } finally {
       setTyping(false)
     }

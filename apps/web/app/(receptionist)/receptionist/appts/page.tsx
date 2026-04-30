@@ -86,10 +86,10 @@ type SectionKey = typeof SECTIONS[number]['key']
 // ─── Mobile appointment card ─────────────────────────────────────
 function ApptCard({ appt, onClick }: { appt: any; onClick: () => void }) {
   const t = new Date(appt.startAt).toLocaleTimeString('en-UG', {
-    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   })
   const d = new Date(appt.startAt).toLocaleDateString('en-UG', {
-    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala',
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
   })
   return (
     <div
@@ -129,10 +129,10 @@ function ApptCard({ appt, onClick }: { appt: any; onClick: () => void }) {
 // ─── Appointment row (desktop) ───────────────────────────────────
 function ApptRow({ appt, onClick }: { appt: any; onClick: () => void }) {
   const t = new Date(appt.startAt).toLocaleTimeString('en-UG', {
-    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   })
   const d = new Date(appt.startAt).toLocaleDateString('en-UG', {
-    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala',
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
   })
   return (
     <tr
@@ -194,10 +194,10 @@ export default function AppointmentsListPage() {
   const [section,     setSection]     = useState<SectionKey>('all')
   const [search,      setSearch]      = useState('')
   const [selected,    setSelected]    = useState<any | null>(null)
-  const [startDate,   setStartDate]   = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' }))
+  const [startDate,   setStartDate]   = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }))
   const [endDate,     setEndDate]     = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 30)
-    return d.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
+    return d.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
   })
 
   const fetchAppts = useCallback(async () => {

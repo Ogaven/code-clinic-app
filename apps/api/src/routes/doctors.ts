@@ -201,7 +201,7 @@ router.post('/check-in', requireAuth, async (req, res) => {
     })
 
     const timeStr = new Date().toLocaleTimeString('en-UG', {
-      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
     })
     const doctorName = `Dr. ${doctor.user.firstName} ${doctor.user.lastName}`
     const isCheckIn = type === 'CHECK_IN'
@@ -246,7 +246,7 @@ router.get('/check-in/today', requireAuth, async (req, res) => {
     })
     if (!record) { res.json({ checkedIn: false }); return }
     const timeStr = new Date(record.createdAt).toLocaleTimeString('en-UG', {
-      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
     })
     res.json({ checkedIn: true, time: timeStr, id: record.id })
   } catch (e) {

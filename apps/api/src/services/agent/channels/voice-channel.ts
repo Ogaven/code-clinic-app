@@ -175,7 +175,7 @@ export async function triggerOutboundCall(queueItemId: string): Promise<void> {
             queueItem.patient.phone,
             `${queueItem.patient.firstName} ${queueItem.patient.lastName}`,
             `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`,
-            appt.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit' }),
+            appt.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }),
             appt.id
           )
         }
