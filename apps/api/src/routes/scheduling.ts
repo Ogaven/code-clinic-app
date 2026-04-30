@@ -300,6 +300,7 @@ router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('a
     'CANCELLED', 'NO_SHOW',
   ]
   const { status } = req.body
+  console.log(`[STATUS] PATCH /${req.params.id}/status  role=${req.user?.role}  status=${status}`)
   if (!validStatuses.includes(status)) { res.status(400).json({ error: 'Invalid status' }); return }
 
   // Record stage timestamps as patient progresses through the flow
