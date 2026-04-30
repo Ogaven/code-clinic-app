@@ -290,7 +290,7 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
 })
 
 // ─── Status change ────────────────────────────────────────────────────────────
-router.patch('/appointments/:id/status', requireAuth, clinicalStaff, auditLog('appointments'), async (req, res) => {
+router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), async (req, res) => {
   // New clinical flow stages + legacy statuses for backward compat
   const validStatuses = [
     'PENDING', 'CONFIRMED',
