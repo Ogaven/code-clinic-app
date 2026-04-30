@@ -184,11 +184,11 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
           {notifOpen && (
             <>
               {/* Backdrop — closes on outside click */}
-              <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
+              <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setNotifOpen(false)} />
 
-              {/* Dropdown — full-width fixed on mobile, absolute on desktop */}
-              <div className="fixed left-2 right-2 sm:absolute sm:left-auto sm:right-0 sm:w-[380px] mt-2 rounded-2xl shadow-2xl z-50 overflow-hidden"
-                style={{ background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)', top: 'calc(100% + 8px)' }}>
+              {/* Dropdown */}
+              <div className="absolute right-0 w-[380px] max-w-[calc(100vw-1rem)] rounded-2xl shadow-2xl overflow-hidden"
+                style={{ top: 'calc(100% + 8px)', zIndex: 9999, background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
 
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
