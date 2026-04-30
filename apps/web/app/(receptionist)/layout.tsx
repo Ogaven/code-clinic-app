@@ -205,6 +205,9 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const [searching, setSearcing]= useState(false)
   const [installPrompt, setInstallPrompt] = useState<any>(null)
   const [installed, setInstalled] = useState(false)
+  const [isIOS, setIsIOS] = useState(false)
+  const [isAndroid, setIsAndroid] = useState(false)
+  const [installToast, setInstallToast] = useState('')
   const [theme, setTheme]       = useState<Theme>('system')
   const [showTheme, setShowTheme] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
@@ -251,10 +254,17 @@ export default function ReceptionistLayout({ children }: { children: React.React
   }, [pathname])
 
   useEffect(() => {
+    const ua = navigator.userAgent
+    setIsIOS(/iPad|iPhone|iPod/.test(ua))
+    setIsAndroid(/Android/.test(ua))
     const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e) }
     window.addEventListener('beforeinstallprompt', handler)
-    window.addEventListener('appinstalled', () => setInstalled(true))
+    window.addEventListener('appinstalled', () => {
+      setInstalled(true)
+      localStorage.setItem('app_installed', 'true')
+    })
     if (window.matchMedia('(display-mode: standalone)').matches) setInstalled(true)
+    if (localStorage.getItem('app_installed') === 'true') setInstalled(true)
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
@@ -262,8 +272,26 @@ export default function ReceptionistLayout({ children }: { children: React.React
     if (!installPrompt) return
     installPrompt.prompt()
     const { outcome } = await installPrompt.userChoice
-    if (outcome === 'accepted') setInstalled(true)
+    if (outcome === 'accepted') {
+      setInstalled(true)
+      localStorage.setItem('app_installed', 'true')
+    }
     setInstallPrompt(null)
+  }
+
+  function showInstallToast(msg: string, ms = 5000) {
+    setInstallToast(msg)
+    setTimeout(() => setInstallToast(''), ms)
+  }
+
+  function handlePwaClick() {
+    if (isIOS) {
+      showInstallToast('Tap the Share button (□↑) → then "Add to Home Screen"')
+    } else if (installPrompt) {
+      handleInstall()
+    } else {
+      showInstallToast('Open this app in Chrome or Edge to install', 4000)
+    }
   }
 
   async function handleEnableNotifications() {
@@ -626,13 +654,12 @@ export default function ReceptionistLayout({ children }: { children: React.React
                 style={{ objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(41,171,226,0.3))' }} />
             </div>
 
-            {/* Install app */}
-            {!installed && installPrompt && (
-              <button onClick={handleInstall}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:scale-105"
-                style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)', color: 'white', boxShadow: '0 2px 8px rgba(41,171,226,0.35)' }}>
-                <Download size={13} />
-                <span>Install</span>
+            {/* Install / PWA button — shown unless already installed in standalone */}
+            {!installed && (
+              <button onClick={handlePwaClick}
+                title={isIOS ? 'Add to Home Screen' : 'Install App'}
+                className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors text-gray-600 dark:text-white/70">
+                <Download size={18} />
               </button>
             )}
 
@@ -754,6 +781,13 @@ export default function ReceptionistLayout({ children }: { children: React.React
       </nav>
 
     </div>
+
+      {/* PWA install toast */}
+      {installToast && (
+        <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-[99999] bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold max-w-xs text-center pointer-events-none">
+          {installToast}
+        </div>
+      )}
 
       {/* Notification dropdown — fixed outside all layout containers */}
       {notifOpen && (
