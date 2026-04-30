@@ -85,6 +85,15 @@ export default function DoctorsTab() {
   const [localAvatar,      setLocalAvatar]      = useState<string | null>(null)
 
   // Block-time state
+  // Add doctor modal
+  const [showAdd,   setShowAdd]   = useState(false)
+  const [addSaving, setAddSaving] = useState(false)
+  const [addPreview, setAddPreview] = useState<string | null>(null)
+  const [addFile,   setAddFile]   = useState<File | null>(null)
+  const [addForm,   setAddForm]   = useState({ firstName: '', lastName: '', email: '', phone: '', specialisation: '' })
+  const addFileRef = useRef<HTMLInputElement>(null)
+
+  // Block-time state
   const [blockedTimes, setBlockedTimes] = useState<BlockedTime[]>([])
   const [blkDate,      setBlkDate]      = useState('')
   const [blkStart,     setBlkStart]     = useState('09:00')
@@ -216,6 +225,35 @@ export default function DoctorsTab() {
     } catch { showToast('Network error', false) } finally { setBlkSaving(false) }
   }
 
+  async function addDoctor(e: React.FormEvent) {
+    e.preventDefault()
+    if (!addForm.firstName || !addForm.lastName || !addForm.email) return
+    setAddSaving(true)
+    try {
+      const res = await fetch(`${API}/doctors`, {
+        method: 'POST', headers: jsonH,
+        body: JSON.stringify(addForm),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        showToast(d.error || 'Failed to create doctor', false)
+        return
+      }
+      const newDoc = await res.json()
+      if (addFile) {
+        const form = new FormData()
+        form.append('avatar', addFile)
+        await fetch(`${API}/doctors/${newDoc.id}/avatar`, { method: 'POST', headers: authH, body: form }).catch(() => {})
+      }
+      showToast('Doctor added', true)
+      setShowAdd(false)
+      setAddForm({ firstName: '', lastName: '', email: '', phone: '', specialisation: '' })
+      setAddPreview(null); setAddFile(null)
+      fetchDoctors()
+    } catch { showToast('Network error', false) }
+    finally { setAddSaving(false) }
+  }
+
   async function deleteBlock(blockId: string) {
     if (!selected) return
     try {
@@ -252,11 +290,97 @@ export default function DoctorsTab() {
         </div>
       )}
 
+      {/* Add Doctor modal */}
+      {showAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <form onSubmit={addDoctor} className="bg-white dark:bg-[#0f1729] rounded-2xl shadow-2xl w-full max-w-md border border-gray-100 dark:border-white/10 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/8">
+              <h3 className="font-black text-gray-800 dark:text-white">Add Doctor</h3>
+              <button type="button" onClick={() => { setShowAdd(false); setAddPreview(null); setAddFile(null) }}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
+                <X size={15} className="text-gray-400" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Photo preview */}
+              <div className="flex items-center gap-4">
+                <div className="relative group cursor-pointer flex-shrink-0" onClick={() => addFileRef.current?.click()}>
+                  <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gradient-to-br from-[#1A237E] to-[#29ABE2] flex items-center justify-center text-white font-bold text-lg">
+                    {addPreview
+                      ? <img src={addPreview} alt="" className="w-full h-full object-cover" />
+                      : <span>{(addForm.firstName[0] || '') + (addForm.lastName[0] || '') || '+'}</span>
+                    }
+                  </div>
+                  <div className="absolute inset-0 rounded-2xl bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera size={16} className="text-white" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 dark:text-white/70">Profile photo (optional)</p>
+                  <button type="button" onClick={() => addFileRef.current?.click()}
+                    className="text-xs text-cyan-500 hover:text-cyan-600 mt-0.5">Choose photo</button>
+                  <input ref={addFileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                    onChange={e => {
+                      const f = e.target.files?.[0]
+                      if (f) { setAddFile(f); setAddPreview(URL.createObjectURL(f)) }
+                    }} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1 block">First Name *</label>
+                  <input value={addForm.firstName} onChange={e => setAddForm(f => ({ ...f, firstName: e.target.value }))} required className={inputCls} placeholder="John" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1 block">Last Name *</label>
+                  <input value={addForm.lastName} onChange={e => setAddForm(f => ({ ...f, lastName: e.target.value }))} required className={inputCls} placeholder="Smith" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1 block">Email *</label>
+                <input type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} required className={inputCls} placeholder="doctor@codeclinic.ug" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1 block">Phone</label>
+                  <input value={addForm.phone} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} placeholder="+256 7xx xxx xxx" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1 block">Specialization</label>
+                  <input value={addForm.specialisation} onChange={e => setAddForm(f => ({ ...f, specialisation: e.target.value }))} className={inputCls} placeholder="General Dentistry" />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 pb-5">
+              <button type="button" onClick={() => { setShowAdd(false); setAddPreview(null); setAddFile(null) }}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
+                Cancel
+              </button>
+              <button type="submit" disabled={addSaving}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-60 transition-all hover:-translate-y-0.5"
+                style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+                {addSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                {addSaving ? 'Adding...' : 'Add Doctor'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Doctor list — left sidebar */}
       <div className="w-72 flex-shrink-0 border-r border-gray-100 dark:border-white/5 overflow-y-auto bg-gray-50/50 dark:bg-black/20">
         <div className="p-4 border-b border-gray-100 dark:border-white/5">
-          <h3 className="text-sm font-bold text-clinic-navy dark:text-clinic-blue">Doctors ({doctors.length})</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Select to edit profile & schedule</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-clinic-navy dark:text-clinic-blue">Doctors ({doctors.length})</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Select to edit profile & schedule</p>
+            </div>
+            <button onClick={() => setShowAdd(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-white flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+              <Plus size={11} /> Add
+            </button>
+          </div>
         </div>
         <div className="p-2 space-y-1">
           {doctors.map(d => (

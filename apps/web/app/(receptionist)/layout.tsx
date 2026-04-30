@@ -299,7 +299,13 @@ export default function ReceptionistLayout({ children }: { children: React.React
     } else if (installPrompt) {
       handleInstall()
     } else {
-      showInstallToast('Open this app in Chrome or Edge to install', 4000)
+      const isChromium = !!(window as any).chrome &&
+        (navigator.userAgent.includes('Chrome') || navigator.userAgent.includes('Edg'))
+      if (isChromium) {
+        showInstallToast('Click the ⊕ icon in your address bar to install', 5000)
+      } else {
+        showInstallToast('Open this app in Chrome or Edge to install', 4000)
+      }
     }
   }
 

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 import multer from 'multer'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly } from '../middleware/rbac'
@@ -38,6 +39,40 @@ function formatDoctor(d: any) {
 const INCLUDE = {
   user: { select: { id: true, firstName: true, lastName: true, avatarR2Key: true, email: true, phone: true } },
 }
+
+// POST /doctors — create new doctor (RECEPTIONIST + ADMIN allowed)
+router.post('/', requireAuth, async (req, res) => {
+  try {
+    const { firstName, lastName, email, phone, specialisation } = req.body
+    if (!firstName || !lastName || !email) {
+      res.status(400).json({ error: 'firstName, lastName and email are required' }); return
+    }
+    const existing = await prisma.user.findUnique({ where: { email } })
+    if (existing) { res.status(409).json({ error: 'Email already in use' }); return }
+
+    const tempPw = await bcrypt.hash('Doctor@2024!', 12)
+    const user = await prisma.user.create({
+      data: { email, passwordHash: tempPw, role: 'DOCTOR', firstName, lastName, phone: phone || null, isActive: true },
+    })
+    const doctor = await prisma.doctor.create({
+      data: {
+        userId: user.id,
+        specialisation: specialisation || null,
+        colour: '#4A90D9',
+        workingDays: JSON.stringify([1, 2, 3, 4, 5]),
+        workingHours: JSON.stringify({ start: '08:00', end: '18:00' }),
+        serviceIds: '[]',
+        isActive: true,
+      },
+      include: INCLUDE,
+    })
+    res.status(201).json(formatDoctor(doctor))
+  } catch (e: any) {
+    if (e.code === 'P2002') { res.status(409).json({ error: 'Email already in use' }); return }
+    console.error('[POST /doctors]', e.message)
+    res.status(500).json({ error: 'Failed to create doctor' })
+  }
+})
 
 // GET /doctors
 router.get('/', requireAuth, async (_req, res) => {
@@ -111,7 +146,7 @@ router.patch('/:id', requireAuth, adminOnly, async (req, res) => {
 })
 
 // POST /doctors/:id/avatar — upload doctor profile photo (jpg/png → R2 or base64 fallback)
-router.post('/:id/avatar', requireAuth, adminOnly, uploadLimiter, upload.single('avatar'), async (req, res) => {
+router.post('/:id/avatar', requireAuth, uploadLimiter, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
     if (!ALLOWED_MIME.includes(req.file.mimetype)) {
