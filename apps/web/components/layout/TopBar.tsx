@@ -173,32 +173,66 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
               </span>
             )}
           </button>
+
           {notifOpen && (
             <>
+              {/* Backdrop — closes on outside click */}
               <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
-              <div className="absolute right-0 mt-2 w-80 rounded-2xl shadow-xl z-50 overflow-hidden"
-                style={{ background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
+
+              {/* Dropdown — full-width fixed on mobile, absolute on desktop */}
+              <div className="fixed left-2 right-2 sm:absolute sm:left-auto sm:right-0 sm:w-[380px] mt-2 rounded-2xl shadow-2xl z-50 overflow-hidden"
+                style={{ background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)', top: 'calc(100% + 8px)' }}>
+
+                {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
                   <p className="font-bold text-sm" style={{ color: titleC }}>Notifications</p>
-                  {unread > 0 && <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-1.5 py-0.5">{unread}</span>}
+                  {unread > 0 && (
+                    <button onClick={markAllRead}
+                      className="text-[11px] font-semibold px-2 py-1 rounded-lg transition-colors hover:opacity-70"
+                      style={{ color: '#29ABE2', background: dark ? 'rgba(41,171,226,0.12)' : 'rgba(41,171,226,0.08)' }}>
+                      Mark all read
+                    </button>
+                  )}
                 </div>
-                <div className="divide-y max-h-72 overflow-y-auto" style={{ borderColor: bdr }}>
+
+                {/* List */}
+                <div className="divide-y overflow-y-auto" style={{ borderColor: bdr, maxHeight: 360 }}>
                   {notifications.length === 0 ? (
-                    <p className="text-xs text-center py-6" style={{ color: iconCl }}>No notifications</p>
-                  ) : notifications.map((n: any) => (
-                    <div key={n.id} className={`flex items-start gap-3 px-4 py-3 hover:bg-white/5 cursor-pointer transition-colors ${!n.isRead ? 'bg-blue-500/5' : ''}`}>
+                    <div className="flex flex-col items-center justify-center py-10 gap-2">
+                      <Bell size={28} style={{ color: iconCl, opacity: 0.35 }} />
+                      <p className="text-xs font-medium" style={{ color: iconCl }}>No notifications yet</p>
+                    </div>
+                  ) : notifications.slice(0, 6).map((n: any) => (
+                    <div key={n.id}
+                      onClick={() => {
+                        if (!n.isRead) {
+                          setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x))
+                          setUnread(u => Math.max(0, u - 1))
+                        }
+                        if (n.href) { router.push(n.href) }
+                        setNotifOpen(false)
+                      }}
+                      className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                      style={{ background: !n.isRead ? (dark ? 'rgba(41,171,226,0.07)' : 'rgba(59,130,246,0.05)') : 'transparent' }}>
                       <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: TYPE_DOT[n.type] || '#6B7280' }} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold leading-snug truncate" style={{ color: dark ? '#C8D8F0' : '#374151' }}>{n.title}</p>
-                        <p className="text-[10px] leading-snug mt-0.5" style={{ color: dark ? '#8BA0C0' : '#6B7280' }}>{n.body}</p>
-                        <p className="text-[10px] mt-0.5" style={{ color: iconCl }}>{timeAgo(n.createdAt)}</p>
+                        <p className="text-xs font-semibold leading-snug" style={{ color: dark ? '#C8D8F0' : '#1f2937' }}>{n.title}</p>
+                        <p className="text-[11px] leading-snug mt-0.5 line-clamp-2" style={{ color: dark ? '#8BA0C0' : '#6B7280' }}>{n.body}</p>
                       </div>
-                      {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />}
+                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-1">
+                        <span className="text-[10px] whitespace-nowrap" style={{ color: iconCl }}>{timeAgo(n.createdAt)}</span>
+                        {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                      </div>
                     </div>
                   ))}
                 </div>
-                <div className="px-4 py-2.5" style={{ borderTop: `1px solid ${bdr}` }}>
-                  <button onClick={markAllRead} className="text-xs font-semibold hover:underline" style={{ color: '#29ABE2' }}>Mark all as read</button>
+
+                {/* Footer */}
+                <div className="px-4 py-2.5 text-center" style={{ borderTop: `1px solid ${bdr}` }}>
+                  <button onClick={() => { router.push('/receptionist/communications'); setNotifOpen(false) }}
+                    className="text-xs font-semibold hover:underline" style={{ color: '#29ABE2' }}>
+                    View all notifications
+                  </button>
                 </div>
               </div>
             </>
