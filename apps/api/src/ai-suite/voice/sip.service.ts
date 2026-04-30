@@ -14,6 +14,19 @@ import { startVoiceConversation } from './voice-ai.service'
 // its private hostname. Set SIP_HOST to the Roke trunk IP in drachtio-server's
 // config, not here (this service only talks to drachtio-server, not the trunk).
 
+// Process-level safety net: drachtio-srf creates an internal TCP socket for the
+// management connection. If DNS resolution fails (ENOTFOUND), that socket emits
+// 'error' before drachtio has a chance to forward it to the Srf instance — Node.js
+// would crash the entire process with "Unhandled 'error' event". Catch it here.
+process.on('uncaughtException', (err: Error & { code?: string }) => {
+  if (err.message?.includes('drachtio') || err.code === 'ENOTFOUND') {
+    console.warn('[SIP] Suppressed drachtio connection error:', err.message)
+    return
+  }
+  // Re-throw everything else — don't swallow real application errors.
+  throw err
+})
+
 // drachtio-srf is an optional dependency. Loaded lazily so the server starts
 // normally when the package is not installed — SIP calls just won't connect.
 function loadSrf(): any {
@@ -31,10 +44,10 @@ let _reconnectDelay = 5_000
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
 // ── connectSrf ────────────────────────────────────────────────────────────────
-// Creates a fresh Srf instance and attempts to connect. On error: silences the
-// stale instance (removeAllListeners), logs once, and schedules one retry with
-// exponential backoff (5s → 10s → … → 60s max).  Called by initializeSIP()
-// and by the backoff timer itself.
+// Creates a fresh Srf instance and attempts to connect. Listeners are attached
+// synchronously BEFORE srf.connect() so no event can fire without a handler.
+// On error: silences the stale instance (removeAllListeners), logs once, and
+// schedules one retry with exponential backoff (5s → 10s → … → 60s max).
 
 function connectSrf(host: string, port: number, secret: string): void {
   // Silence and discard the previous instance so its internal retry loop
@@ -49,6 +62,8 @@ function connectSrf(host: string, port: number, secret: string): void {
 
   srf = new Srf()
 
+  // Attach ALL listeners synchronously before calling srf.connect() so there is
+  // never a window where an event can fire without a registered handler.
   srf.on('connect', (_err: Error | null, hostport: string) => {
     connected = true
     _reconnectDelay = 5_000  // reset backoff on successful connect
@@ -57,8 +72,8 @@ function connectSrf(host: string, port: number, secret: string): void {
   })
 
   srf.on('error', (err: Error) => {
-    // Only act on the first error from this instance — removeAllListeners() below
-    // ensures subsequent events from drachtio's internal retry loop are silenced.
+    // Act on the first error only — removeAllListeners() silences this instance
+    // so drachtio's internal retry loop cannot spam further events.
     connected = false
     console.error(`[SIP] drachtio error: ${err.message} — reconnecting in ${_reconnectDelay / 1000}s`)
 
@@ -81,27 +96,41 @@ function connectSrf(host: string, port: number, secret: string): void {
   })
 
   console.log(`[SIP] Connecting to drachtio-server at ${host}:${port}…`)
-  srf.connect({ host, port, secret })
+  try {
+    srf.connect({ host, port, secret })
+  } catch (err: any) {
+    console.error('[SIP] srf.connect() threw synchronously:', err.message)
+    if (!_reconnectTimer) {
+      _reconnectTimer = setTimeout(() => {
+        _reconnectTimer = null
+        _reconnectDelay = Math.min(_reconnectDelay * 2, 60_000)
+        connectSrf(host, port, secret)
+      }, _reconnectDelay)
+    }
+  }
 }
 
 // ── initializeSIP ─────────────────────────────────────────────────────────────
-// Call once from main.ts after startup.  No-op if DRACHTIO_HOST is not set.
+// Call once from main.ts after startup.
+// If DRACHTIO_HOST is not configured, returns immediately — no Srf instance is
+// created and no connection is attempted. SIP calls will simply be unavailable.
 
 export function initializeSIP(): void {
-  const drachtioHost   = process.env.DRACHTIO_HOST
-  const drachtioPort   = parseInt(process.env.DRACHTIO_PORT ?? '9022', 10)
-  const drachtioSecret = process.env.DRACHTIO_SECRET ?? 'cymru'
+  const drachtioHost = process.env.DRACHTIO_HOST
 
   if (!drachtioHost) {
-    console.log('[SIP] DRACHTIO_HOST not set — SIP disabled')
+    console.log('[SIP] DRACHTIO_HOST not configured — voice calls disabled')
     return
   }
 
   const Srf = loadSrf()
   if (!Srf) {
-    console.warn('[SIP] drachtio-srf not installed — SIP voice calls disabled')
+    console.warn('[SIP] drachtio-srf not installed — voice calls disabled')
     return
   }
+
+  const drachtioPort   = parseInt(process.env.DRACHTIO_PORT ?? '9022', 10)
+  const drachtioSecret = process.env.DRACHTIO_SECRET ?? 'cymru'
 
   connectSrf(drachtioHost, drachtioPort, drachtioSecret)
 }
