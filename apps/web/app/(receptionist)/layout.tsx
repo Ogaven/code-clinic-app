@@ -679,8 +679,15 @@ export default function ReceptionistLayout({ children }: { children: React.React
               className="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
               <Bell size={18} className="text-gray-600 dark:text-white/70" />
               {unread > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 rounded-full text-white text-[8px] font-black flex items-center justify-center badge-pop">
-                  {unread > 9 ? '9+' : unread}
+                <span style={{
+                  position: 'absolute', top: -6, right: -6,
+                  minWidth: 20, height: 20, padding: '0 4px',
+                  borderRadius: 9999, background: '#EF4444', color: 'white',
+                  fontSize: 11, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: '2px solid white', zIndex: 10,
+                }}>
+                  {unread > 99 ? '99+' : unread}
                 </span>
               )}
             </button>
