@@ -80,6 +80,13 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
     } catch {}
   }
 
+  async function markOneRead(id: string) {
+    try {
+      const token = localStorage.getItem('cc_token')
+      await fetch(`/api-proxy/receptionist/notifications/${id}/read`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } })
+    } catch {}
+  }
+
   async function markAllRead() {
     try {
       const token = localStorage.getItem('cc_token')
@@ -208,9 +215,10 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
                         if (!n.isRead) {
                           setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x))
                           setUnread(u => Math.max(0, u - 1))
+                          markOneRead(n.id)
                         }
-                        if (n.href) { router.push(n.href) }
                         setNotifOpen(false)
+                        if (n.href) { router.push(n.href) }
                       }}
                       className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                       style={{ background: !n.isRead ? (dark ? 'rgba(41,171,226,0.07)' : 'rgba(59,130,246,0.05)') : 'transparent' }}>
