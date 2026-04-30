@@ -210,6 +210,8 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const [showHelp, setShowHelp] = useState(false)
   const [notifPerm, setNotifPerm] = useState<string>('default')
   const [todayAppts, setTodayAppts] = useState<any[]>([])
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifications, setNotifications] = useState<any[]>([])
 
   const API = '/api-proxy'
 
@@ -281,6 +283,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
       if (res.ok) {
         const data = await res.json()
         const count = data.unread || 0
+        setNotifications(data.notifications?.slice(0, 20) || [])
         setUnread(prev => {
           if (count > prev && prev >= 0) {
             // Find the newest unread notification to show in browser toast
@@ -316,6 +319,22 @@ export default function ReceptionistLayout({ children }: { children: React.React
         })
         .catch(() => {})
     }
+  }
+
+  async function markOneRead(id: string) {
+    try {
+      const token = localStorage.getItem('cc_token')
+      await fetch(`${API}/receptionist/notifications/${id}/read`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } })
+    } catch {}
+  }
+
+  async function markAllRead() {
+    try {
+      const token = localStorage.getItem('cc_token')
+      await fetch(`${API}/receptionist/notifications/mark-read`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } })
+      setUnread(0)
+      setNotifications(n => n.map(x => ({ ...x, isRead: true })))
+    } catch {}
   }
 
   async function fetchTodayAppts() {
@@ -359,6 +378,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const initials   = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'R'
 
   return (
+    <>
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-transparent">
 
       {/* Help modal */}
@@ -654,7 +674,8 @@ export default function ReceptionistLayout({ children }: { children: React.React
             )}
 
             {/* Notification bell */}
-            <Link href="/receptionist/communications"
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNotifOpen(o => !o); setProf(false) }}
               className="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
               <Bell size={18} className="text-gray-600 dark:text-white/70" />
               {unread > 0 && (
@@ -662,7 +683,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
                   {unread > 9 ? '9+' : unread}
                 </span>
               )}
-            </Link>
+            </button>
 
             {/* Theme toggle */}
             <div className="relative">
@@ -763,5 +784,67 @@ export default function ReceptionistLayout({ children }: { children: React.React
       </nav>
 
     </div>
+
+      {/* Notification dropdown — fixed outside all layout containers */}
+      {notifOpen && (
+        <>
+          <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setNotifOpen(false)} />
+          <div className="fixed rounded-2xl shadow-2xl overflow-hidden bg-white dark:bg-[#0e2045] border border-gray-100 dark:border-white/10"
+            style={{ top: 64, right: 16, width: 380, zIndex: 9999 }}>
+
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/8">
+              <p className="font-bold text-sm text-gray-800 dark:text-white">Notifications</p>
+              {unread > 0 && (
+                <button onClick={markAllRead}
+                  className="text-[11px] font-semibold px-2 py-1 rounded-lg text-cyan-500 bg-cyan-50 dark:bg-cyan-900/20 hover:opacity-70 transition-colors">
+                  Mark all read
+                </button>
+              )}
+            </div>
+
+            <div className="divide-y divide-gray-100 dark:divide-white/8 overflow-y-auto" style={{ maxHeight: 360 }}>
+              {notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-2">
+                  <Bell size={28} className="text-gray-300 dark:text-white/20" />
+                  <p className="text-xs font-medium text-gray-400 dark:text-white/40">No notifications yet</p>
+                </div>
+              ) : notifications.slice(0, 6).map((n: any) => (
+                <div key={n.id}
+                  onClick={() => {
+                    if (!n.isRead) {
+                      setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x))
+                      setUnread(u => Math.max(0, u - 1))
+                      markOneRead(n.id)
+                    }
+                    setNotifOpen(false)
+                    if (n.href) { router.push(n.href) }
+                  }}
+                  className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                  style={{ background: !n.isRead ? 'rgba(59,130,246,0.04)' : 'transparent' }}>
+                  <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0 bg-cyan-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 dark:text-white leading-snug">{n.title}</p>
+                    <p className="text-[11px] text-gray-500 dark:text-white/50 leading-snug mt-0.5 line-clamp-2">{n.body}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-1">
+                    <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                      {(() => { const m = Math.floor((Date.now() - new Date(n.createdAt).getTime()) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m/60)}h ago` : `${Math.floor(m/1440)}d ago` })()}
+                    </span>
+                    {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="px-4 py-2.5 text-center border-t border-gray-100 dark:border-white/8">
+              <button onClick={() => { router.push('/receptionist/communications'); setNotifOpen(false) }}
+                className="text-xs font-semibold text-cyan-500 hover:underline">
+                View all notifications
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </>
   )
 }
