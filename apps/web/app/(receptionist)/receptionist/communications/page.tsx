@@ -209,6 +209,10 @@ export default function CommunicationsPage() {
   const [internalMsgs, setInternalMsgs] = useState(internalMessages)
   // Human control state: when true the human handles the conversation, agent stops
   const [humanControl, setHumanControl] = useState<Record<string, boolean>>({})
+  // Per-doctor threading
+  const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null)
+  const [showDoctorThread, setShowDoctorThread] = useState(false)
+  const [sentReplies, setSentReplies] = useState<Record<string, Array<{id: string; text: string; time: string}>>>({})
 
   // ── Doctor notifications (live from API) ─────────────────────────────────
   const [doctorNotifs, setDoctorNotifs]   = useState<any[]>([])
@@ -235,16 +239,22 @@ export default function CommunicationsPage() {
   }, [])
 
   async function sendReplyToDoctor() {
-    if (!replyMsg.trim()) return
+    if (!replyMsg.trim() || !selectedDoctor) return
     const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
     if (!token) return
     setReplySending(true)
+    const nowStr = nowTime()
+    const localId = Date.now().toString()
     try {
       await fetch('/api-proxy/receptionist/notifications/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: 'Reception', body: replyMsg.trim(), type: 'RECEPTION' }),
+        body: JSON.stringify({ title: `Reception → ${selectedDoctor}`, body: replyMsg.trim(), type: 'RECEPTION' }),
       })
+      setSentReplies(prev => ({
+        ...prev,
+        [selectedDoctor]: [...(prev[selectedDoctor] || []), { id: localId, text: replyMsg.trim(), time: nowStr }],
+      }))
       setReplyMsg('')
       setReplyToast('Message sent!')
       setTimeout(() => setReplyToast(''), 3000)
@@ -306,7 +316,7 @@ export default function CommunicationsPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [activeWa, activeEm, waMsgs])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [activeWa, activeEm, waMsgs, selectedDoctor])
 
   // ── Send text ────────────────────────────────────────────────
   function sendWa() {
@@ -381,6 +391,36 @@ export default function CommunicationsPage() {
   const topEmail = emMsgs[0]
 
   const totalUnread = emailConversations.reduce((s, c) => s + ((emailMessages[c.id] || []).some(m => !m.read) ? 1 : 0), 0)
+
+  // Group doctor notifications by title (doctor name) for threaded view
+  const doctorGroups = doctorNotifs.reduce((acc: Record<string, any[]>, n: any) => {
+    const name = n.title || 'Unknown'
+    if (!acc[name]) acc[name] = []
+    acc[name].push(n)
+    return acc
+  }, {})
+  const doctorList = Object.entries(doctorGroups).map(([name, notifs]) => {
+    const last = notifs[notifs.length - 1]
+    const unread = notifs.filter((n: any) => !n.isRead).length
+    return { name, notifs, last, unread }
+  }).sort((a, b) => new Date(b.last.createdAt).getTime() - new Date(a.last.createdAt).getTime())
+
+  const threadItems = selectedDoctor ? [
+    ...(doctorGroups[selectedDoctor] || []).map((n: any) => ({
+      id: n.id,
+      from: 'them' as const,
+      text: n.body || n.message || '',
+      time: new Date(n.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit' }),
+      ts: new Date(n.createdAt).getTime(),
+    })),
+    ...(sentReplies[selectedDoctor] || []).map(r => ({
+      id: r.id,
+      from: 'me' as const,
+      text: r.text,
+      time: r.time,
+      ts: parseInt(r.id),
+    })),
+  ].sort((a, b) => a.ts - b.ts) : []
 
   return (
     <div className="h-full flex flex-col bg-gray-50 dark:bg-transparent" style={{ minHeight: 0 }}>
@@ -620,101 +660,138 @@ export default function CommunicationsPage() {
 
         {/* ══ Doctors ══════════════════════════════════════════ */}
         {channel === 'doctors' && (
-          <div className="flex-1 flex flex-col bg-gray-50 dark:bg-transparent min-h-0">
+          <div className="flex-1 flex min-h-0 overflow-hidden">
             {/* Reply toast */}
             {replyToast && (
               <div className="fixed top-4 right-4 z-[99999] bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold">
                 {replyToast}
               </div>
             )}
-            {/* Sub-header */}
-            <div className="flex items-center gap-3 px-6 py-3 bg-white dark:bg-white/5 border-b border-gray-100 dark:border-white/8 flex-shrink-0">
-              <div className="flex-1">
-                <p className="text-sm font-bold text-gray-700 dark:text-white">Doctor Messages & Patient Flow</p>
-                <p className="text-[10px] text-gray-400">{doctorNotifs.length} notifications · auto-refreshes every 15s</p>
-              </div>
-              <button onClick={fetchDoctorNotifs}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400">
-                <RefreshCw size={13} className={doctorLoading ? 'animate-spin' : ''} />
-              </button>
-            </div>
 
-            {/* Notification feed */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
-              {doctorLoading && doctorNotifs.length === 0 ? (
-                <div className="space-y-2 pt-2">
-                  {[1,2,3].map(i => <div key={i} className="h-16 bg-white dark:bg-white/5 rounded-2xl animate-pulse" />)}
-                </div>
-              ) : doctorNotifs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                  <Stethoscope size={40} className="mb-3 opacity-20" />
-                  <p className="font-semibold text-sm">No doctor messages yet</p>
-                  <p className="text-xs mt-1">Messages and patient flow updates will appear here</p>
-                </div>
-              ) : (
-                doctorNotifs.map((n) => {
-                  const isDoctor   = n.type === 'DOCTOR'
-                  const isFlow     = n.type === 'PATIENT_FLOW'
-                  const isSystem   = n.type === 'SYSTEM'
-                  const iconBg     = isDoctor ? 'bg-teal-100 dark:bg-teal-900/30' : isFlow ? 'bg-purple-100 dark:bg-purple-900/30' : 'bg-gray-100 dark:bg-white/10'
-                  const iconColor  = isDoctor ? 'text-teal-600 dark:text-teal-400' : isFlow ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'
-                  const icon       = isDoctor ? '👨‍⚕️' : isFlow ? '🔄' : '⚙️'
-                  const typeLabel  = isDoctor ? 'Doctor' : isFlow ? 'Patient Flow' : 'System'
-                  const typeBadge  = isDoctor
-                    ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300'
-                    : isFlow
-                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
-                      : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400'
-                  return (
-                    <div key={n.id}
-                      className={cn(
-                        'flex items-start gap-3 p-4 bg-white dark:bg-white/5 rounded-2xl border shadow-sm transition-all',
-                        n.isRead
-                          ? 'border-gray-100 dark:border-white/8'
-                          : 'border-teal-200 dark:border-teal-700/40 ring-1 ring-teal-200/50 dark:ring-teal-700/20',
-                      )}>
-                      <div className={cn('w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0', iconBg, iconColor)}>
-                        {icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', typeBadge)}>
-                            {typeLabel}
-                          </span>
-                          {n.title && <span className="text-xs font-semibold text-gray-700 dark:text-white truncate">{n.title}</span>}
-                          {!n.isRead && <span className="w-2 h-2 rounded-full bg-teal-500 flex-shrink-0" />}
+            {/* Left panel — doctor list */}
+            <div className={`w-full md:w-72 flex-shrink-0 flex flex-col bg-white dark:bg-white/5 border-r border-gray-100 dark:border-white/8 ${showDoctorThread ? 'hidden md:flex' : 'flex'}`}>
+              <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: '#0f766e' }}>
+                <p className="flex-1 text-white font-bold text-sm">Doctor Messages</p>
+                <button onClick={fetchDoctorNotifs}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/70">
+                  <RefreshCw size={13} className={doctorLoading ? 'animate-spin' : ''} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {doctorLoading && doctorNotifs.length === 0 ? (
+                  <div className="space-y-1 p-2">
+                    {[1,2,3].map(i => <div key={i} className="h-16 bg-gray-100 dark:bg-white/5 rounded-xl animate-pulse" />)}
+                  </div>
+                ) : doctorList.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 px-4 text-center text-gray-400">
+                    <Stethoscope size={36} className="mb-3 opacity-20" />
+                    <p className="font-semibold text-sm">No messages yet</p>
+                    <p className="text-xs mt-1">Doctor messages will appear here</p>
+                  </div>
+                ) : (
+                  doctorList.map(({ name, last, unread }) => {
+                    const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
+                    const preview  = last.body || last.message || ''
+                    const timeStr  = new Date(last.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit' })
+                    return (
+                      <button key={name}
+                        onClick={() => { setSelectedDoctor(name); setShowDoctorThread(true) }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 text-left transition-colors ${selectedDoctor === name ? 'bg-teal-50 dark:bg-teal-900/20' : ''}`}>
+                        <div className="relative flex-shrink-0">
+                          <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm"
+                            style={{ background: '#0f766e' }}>
+                            {initials}
+                          </div>
+                          {unread > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full text-[9px] text-white font-black flex items-center justify-center px-1">
+                              {unread > 9 ? '9+' : unread}
+                            </span>
+                          )}
                         </div>
-                        <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed">{n.body || n.message}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">
-                          {new Date(n.createdAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
-                        </p>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-center">
+                            <p className={`text-sm truncate ${unread > 0 ? 'font-bold text-gray-900 dark:text-white' : 'font-medium text-gray-700 dark:text-white/70'}`}>{name}</p>
+                            <p className="text-[10px] text-gray-400 flex-shrink-0 ml-2">{timeStr}</p>
+                          </div>
+                          <p className="text-xs text-gray-400 dark:text-white/40 truncate mt-0.5">{preview}</p>
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
             </div>
 
-            {/* Reply compose bar */}
-            <div className="flex-shrink-0 bg-white dark:bg-[#0d1526] border-t border-gray-100 dark:border-white/8 px-4 py-3 flex items-end gap-3">
-              <div className="flex-1">
-                <p className="text-[10px] font-semibold text-gray-400 mb-1.5">Reply to doctors & team</p>
-                <input
-                  value={replyMsg}
-                  onChange={e => setReplyMsg(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') sendReplyToDoctor() }}
-                  placeholder="Type a message to the team…"
-                  className="w-full px-4 py-2.5 text-sm bg-gray-100 dark:bg-white/8 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-teal-500 focus:outline-none dark:text-white placeholder-gray-400"
-                  style={{ fontSize: 16 }}
-                />
-              </div>
-              <button onClick={sendReplyToDoctor} disabled={replySending || !replyMsg.trim()}
-                className="w-11 h-11 flex-shrink-0 rounded-2xl flex items-center justify-center text-white transition-all disabled:opacity-40 hover:-translate-y-0.5 hover:shadow-md"
-                style={{ background: replyMsg.trim() ? 'linear-gradient(135deg,#0f766e,#0891b2)' : '#9CA3AF' }}>
-                {replySending
-                  ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  : <Send size={15} />}
-              </button>
+            {/* Right panel — thread */}
+            <div className={`flex-1 flex flex-col min-h-0 bg-gray-50 dark:bg-transparent ${showDoctorThread ? 'flex' : 'hidden md:flex'}`}>
+              {selectedDoctor ? (
+                <>
+                  {/* Thread header */}
+                  <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-white/5 border-b border-gray-100 dark:border-white/8 flex-shrink-0">
+                    <button onClick={() => setShowDoctorThread(false)} className="md:hidden text-gray-500 mr-1">
+                      <ArrowLeft size={20} />
+                    </button>
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                      style={{ background: '#0f766e' }}>
+                      {selectedDoctor.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-gray-800 dark:text-white text-sm truncate">{selectedDoctor}</p>
+                      <p className="text-[10px] text-gray-400">{(doctorGroups[selectedDoctor] || []).length} messages · auto-refreshes every 15s</p>
+                    </div>
+                  </div>
+
+                  {/* Thread messages */}
+                  <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+                    {threadItems.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                        <p className="text-sm">No messages yet</p>
+                      </div>
+                    ) : threadItems.map(item => (
+                      <div key={item.id} className={`flex ${item.from === 'me' ? 'justify-end' : 'justify-start'}`}>
+                        <div className="max-w-[72%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm"
+                          style={item.from === 'me'
+                            ? { background: 'linear-gradient(135deg,#0f766e,#0891b2)', color: '#fff', borderBottomRightRadius: 4 }
+                            : { background: '#fff', color: '#111', borderBottomLeftRadius: 4 }}>
+                          <p>{item.text}</p>
+                          <p className="text-[10px] mt-1 opacity-60 text-right">{item.time}</p>
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={bottomRef} />
+                  </div>
+
+                  {/* Reply box */}
+                  <div className="flex-shrink-0 bg-white dark:bg-[#0d1526] border-t border-gray-100 dark:border-white/8 px-4 py-3 flex items-end gap-3">
+                    <div className="flex-1">
+                      <p className="text-[10px] font-semibold text-gray-400 mb-1.5">Reply to {selectedDoctor}</p>
+                      <input
+                        value={replyMsg}
+                        onChange={e => setReplyMsg(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') sendReplyToDoctor() }}
+                        placeholder={`Message ${selectedDoctor}…`}
+                        className="w-full px-4 py-2.5 text-sm bg-gray-100 dark:bg-white/8 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-teal-500 focus:outline-none dark:text-white placeholder-gray-400"
+                        style={{ fontSize: 16 }}
+                      />
+                    </div>
+                    <button onClick={sendReplyToDoctor} disabled={replySending || !replyMsg.trim()}
+                      className="w-11 h-11 flex-shrink-0 rounded-2xl flex items-center justify-center text-white transition-all disabled:opacity-40 hover:-translate-y-0.5 hover:shadow-md"
+                      style={{ background: replyMsg.trim() ? 'linear-gradient(135deg,#0f766e,#0891b2)' : '#9CA3AF' }}>
+                      {replySending
+                        ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        : <Send size={15} />}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
+                  <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: '#0f766e20' }}>
+                    <Stethoscope size={36} style={{ color: '#0f766e' }} className="opacity-60" />
+                  </div>
+                  <p className="text-gray-600 dark:text-white/60 font-semibold">Select a doctor</p>
+                  <p className="text-gray-400 dark:text-white/30 text-sm">Choose a doctor from the list to view their messages</p>
+                </div>
+              )}
             </div>
           </div>
         )}
