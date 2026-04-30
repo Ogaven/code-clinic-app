@@ -128,6 +128,7 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
   const dropBg    = dark ? 'rgba(12,20,75,0.97)'      : '#fff'
 
   return (
+    <>
     <header className="h-[60px] flex items-center justify-between px-5 sticky top-0 z-20 gap-4 flex-shrink-0"
       style={{ background: bg, backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderBottom: `1px solid ${bdr}`, transition: 'background 0.3s' }}>
 
@@ -180,71 +181,6 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
               </span>
             )}
           </button>
-
-          {notifOpen && (
-            <>
-              {/* Backdrop — closes on outside click */}
-              <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setNotifOpen(false)} />
-
-              {/* Dropdown */}
-              <div className="absolute right-0 w-[380px] max-w-[calc(100vw-1rem)] rounded-2xl shadow-2xl overflow-hidden"
-                style={{ top: 'calc(100% + 8px)', zIndex: 9999, background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
-
-                {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
-                  <p className="font-bold text-sm" style={{ color: titleC }}>Notifications</p>
-                  {unread > 0 && (
-                    <button onClick={markAllRead}
-                      className="text-[11px] font-semibold px-2 py-1 rounded-lg transition-colors hover:opacity-70"
-                      style={{ color: '#29ABE2', background: dark ? 'rgba(41,171,226,0.12)' : 'rgba(41,171,226,0.08)' }}>
-                      Mark all read
-                    </button>
-                  )}
-                </div>
-
-                {/* List */}
-                <div className="divide-y overflow-y-auto" style={{ borderColor: bdr, maxHeight: 360 }}>
-                  {notifications.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10 gap-2">
-                      <Bell size={28} style={{ color: iconCl, opacity: 0.35 }} />
-                      <p className="text-xs font-medium" style={{ color: iconCl }}>No notifications yet</p>
-                    </div>
-                  ) : notifications.slice(0, 6).map((n: any) => (
-                    <div key={n.id}
-                      onClick={() => {
-                        if (!n.isRead) {
-                          setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x))
-                          setUnread(u => Math.max(0, u - 1))
-                          markOneRead(n.id)
-                        }
-                        setNotifOpen(false)
-                        if (n.href) { router.push(n.href) }
-                      }}
-                      className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-                      style={{ background: !n.isRead ? (dark ? 'rgba(41,171,226,0.07)' : 'rgba(59,130,246,0.05)') : 'transparent' }}>
-                      <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: TYPE_DOT[n.type] || '#6B7280' }} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold leading-snug" style={{ color: dark ? '#C8D8F0' : '#1f2937' }}>{n.title}</p>
-                        <p className="text-[11px] leading-snug mt-0.5 line-clamp-2" style={{ color: dark ? '#8BA0C0' : '#6B7280' }}>{n.body}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-1">
-                        <span className="text-[10px] whitespace-nowrap" style={{ color: iconCl }}>{timeAgo(n.createdAt)}</span>
-                        {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Footer */}
-                <div className="px-4 py-2.5 text-center" style={{ borderTop: `1px solid ${bdr}` }}>
-                  <button onClick={() => { router.push('/receptionist/communications'); setNotifOpen(false) }}
-                    className="text-xs font-semibold hover:underline" style={{ color: '#29ABE2' }}>
-                    View all notifications
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
         </div>
 
         <div className="w-px h-6" style={{ background: bdr }} />
@@ -369,5 +305,66 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
         </>
       )}
     </header>
+
+      {/* Notification dropdown — outside <header> to escape its stacking context */}
+      {notifOpen && (
+        <>
+          <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setNotifOpen(false)} />
+          <div className="fixed rounded-2xl shadow-2xl overflow-hidden"
+            style={{ top: 64, right: 16, width: 380, zIndex: 9999, background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
+
+            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
+              <p className="font-bold text-sm" style={{ color: titleC }}>Notifications</p>
+              {unread > 0 && (
+                <button onClick={markAllRead}
+                  className="text-[11px] font-semibold px-2 py-1 rounded-lg transition-colors hover:opacity-70"
+                  style={{ color: '#29ABE2', background: dark ? 'rgba(41,171,226,0.12)' : 'rgba(41,171,226,0.08)' }}>
+                  Mark all read
+                </button>
+              )}
+            </div>
+
+            <div className="divide-y overflow-y-auto" style={{ borderColor: bdr, maxHeight: 360 }}>
+              {notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-2">
+                  <Bell size={28} style={{ color: iconCl, opacity: 0.35 }} />
+                  <p className="text-xs font-medium" style={{ color: iconCl }}>No notifications yet</p>
+                </div>
+              ) : notifications.slice(0, 6).map((n: any) => (
+                <div key={n.id}
+                  onClick={() => {
+                    if (!n.isRead) {
+                      setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x))
+                      setUnread(u => Math.max(0, u - 1))
+                      markOneRead(n.id)
+                    }
+                    setNotifOpen(false)
+                    if (n.href) { router.push(n.href) }
+                  }}
+                  className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                  style={{ background: !n.isRead ? (dark ? 'rgba(41,171,226,0.07)' : 'rgba(59,130,246,0.05)') : 'transparent' }}>
+                  <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: TYPE_DOT[n.type] || '#6B7280' }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold leading-snug" style={{ color: dark ? '#C8D8F0' : '#1f2937' }}>{n.title}</p>
+                    <p className="text-[11px] leading-snug mt-0.5 line-clamp-2" style={{ color: dark ? '#8BA0C0' : '#6B7280' }}>{n.body}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-1">
+                    <span className="text-[10px] whitespace-nowrap" style={{ color: iconCl }}>{timeAgo(n.createdAt)}</span>
+                    {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="px-4 py-2.5 text-center" style={{ borderTop: `1px solid ${bdr}` }}>
+              <button onClick={() => { router.push('/receptionist/communications'); setNotifOpen(false) }}
+                className="text-xs font-semibold hover:underline" style={{ color: '#29ABE2' }}>
+                View all notifications
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </>
   )
 }
