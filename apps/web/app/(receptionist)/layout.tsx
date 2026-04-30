@@ -175,21 +175,30 @@ async function requestNotificationPermission() {
   if (!('Notification' in window)) return 'not-supported'
   if (Notification.permission === 'granted') return 'granted'
   if (Notification.permission !== 'denied') {
-    const perm = await Notification.requestPermission()
-    return perm
+    try {
+      const perm = await Notification.requestPermission()
+      return perm
+    } catch {
+      return 'not-supported'
+    }
   }
   return Notification.permission
 }
 
 function showLocalNotification(title: string, body: string, url?: string) {
+  if (!('Notification' in window)) return
   if (Notification.permission !== 'granted') return
-  const n = new Notification(title, {
-    body,
-    icon: '/icon.png',
-    badge: '/icon.png',
-    tag: 'codeclinic',
-  })
-  if (url) n.onclick = () => { window.focus(); window.location.href = url }
+  const opts: NotificationOptions = { body, icon: '/icon.png', badge: '/icon.png', tag: 'codeclinic', data: { url } }
+  // Mobile browsers require going through the ServiceWorker
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts)).catch(() => {})
+    return
+  }
+  // Desktop fallback
+  try {
+    const n = new Notification(title, opts)
+    if (url) n.onclick = () => { window.focus(); window.location.href = url }
+  } catch {}
 }
 
 export default function ReceptionistLayout({ children }: { children: React.ReactNode }) {

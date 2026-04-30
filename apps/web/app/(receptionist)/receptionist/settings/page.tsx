@@ -214,11 +214,22 @@ export default function SettingsPage() {
 
   async function enablePushNotifications() {
     if (!('Notification' in window)) { showToast('Browser does not support notifications', 'err'); return }
-    const perm = await Notification.requestPermission()
+    let perm: NotificationPermission
+    try {
+      perm = await Notification.requestPermission()
+    } catch {
+      showToast('Notifications not supported on this browser', 'err')
+      return
+    }
     setNotifPerm(perm)
     setNotifPush(perm === 'granted')
     if (perm === 'granted') {
-      new Notification('Notifications enabled!', { body: 'You will now receive Code Clinic alerts.', icon: '/icon.png' })
+      const opts = { body: 'You will now receive Code Clinic alerts.', icon: '/icon.png' }
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.ready.then(reg => reg.showNotification('Notifications enabled!', opts)).catch(() => {})
+      } else {
+        try { new Notification('Notifications enabled!', opts) } catch {}
+      }
       showToast('Push notifications enabled!', 'ok')
     } else {
       showToast('Permission denied in browser settings', 'err')
