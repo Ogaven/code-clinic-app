@@ -536,7 +536,7 @@ function InsightsTab({ phoneNumber }: { phoneNumber: string }) {
     <div className="p-6 max-w-2xl space-y-6">
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <h3 className="text-base font-bold text-gray-800">Messaging Limits</h3>
+          <h3 className="text-base font-bold text-gray-800 dark:text-white">Messaging Limits</h3>
           <div className="w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center cursor-help" title="Business-initiated conversation limits">
             <span className="text-[9px] font-black text-gray-500">i</span>
           </div>
@@ -553,9 +553,9 @@ function InsightsTab({ phoneNumber }: { phoneNumber: string }) {
               <div key={t.tier} className="flex items-center">
                 <div className={cn(
                   'flex flex-col items-center px-4 py-3 rounded-xl border-2 min-w-[100px] transition-all',
-                  isCurrent ? 'border-emerald-500 bg-emerald-50'  : '',
-                  isNext    ? 'border-amber-300  bg-amber-50'     : '',
-                  !isCurrent && !isNext ? 'border-gray-200 bg-gray-50' : '',
+                  isCurrent ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30'  : '',
+                  isNext    ? 'border-amber-300  bg-amber-50 dark:bg-amber-900/30'     : '',
+                  !isCurrent && !isNext ? 'border-gray-200 bg-gray-50 dark:bg-white/5 dark:border-white/10' : '',
                 )}>
                   <div className="flex items-center gap-1 mb-1">
                     {isLocked && !isNext && <Lock size={11} className="text-gray-400" />}
@@ -577,11 +577,11 @@ function InsightsTab({ phoneNumber }: { phoneNumber: string }) {
           })}
         </div>
 
-        <div className="mt-5 flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+        <div className="mt-5 flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-700/30 rounded-xl">
           <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 mt-0.5">
             <span className="text-[9px] font-black text-white">i</span>
           </div>
-          <p className="text-xs text-blue-700">
+          <p className="text-xs text-blue-700 dark:text-blue-300">
             Initiate conversations with <strong>500 unique customers</strong> in a rolling 7 days period to qualify for the next tier.
           </p>
         </div>
@@ -639,8 +639,8 @@ function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
       {/* Form side */}
       <div className="flex-1 min-w-0 space-y-5">
         <div>
-          <p className="text-base font-bold text-gray-800">Personal Info</p>
-          <p className="text-xs text-gray-400 mt-0.5">Update your photo and personal details here</p>
+          <p className="text-base font-bold text-gray-800 dark:text-white">Personal Info</p>
+          <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Update your photo and personal details here</p>
         </div>
 
         {/* Image upload */}
@@ -655,10 +655,10 @@ function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
             )}
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-700 mb-1">Display Image</p>
-            <p className="text-xs text-gray-400 mb-2">PNG or JPG, square, max 5 MB. 640×640 recommended.</p>
+            <p className="text-sm font-semibold text-gray-700 dark:text-white/70 mb-1">Display Image</p>
+            <p className="text-xs text-gray-400 dark:text-white/40 mb-2">PNG or JPG, square, max 5 MB. 640×640 recommended.</p>
             <button onClick={() => imgRef.current?.click()}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors">
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 dark:text-white/70 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
               <Upload size={12} /> Upload Image
             </button>
             <input ref={imgRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleImageUpload} />
@@ -667,17 +667,17 @@ function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
 
         {/* Display name (readonly) */}
         <div className="pb-5 border-b border-gray-100">
-          <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Display Name</label>
+          <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Display Name</label>
           <input value={profile.displayName} disabled
-            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 text-gray-400 cursor-not-allowed" />
-          <p className="text-[11px] text-gray-400 mt-1">Display Name can't be edited after verification.</p>
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-white/30 cursor-not-allowed" />
+          <p className="text-[11px] text-gray-400 dark:text-white/30 mt-1">Display Name can't be edited after verification.</p>
         </div>
 
         {/* Category */}
         <div className="pb-5 border-b border-gray-100">
-          <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Category</label>
+          <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Category</label>
           <select value={profile.category} onChange={e => set('category', e.target.value)}
-            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-cyan-500 transition-colors">
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-colors">
             {WA_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
         </div>
@@ -685,45 +685,45 @@ function ProfileTab({ phoneNumber }: { phoneNumber: string }) {
         {/* Description */}
         <div className="pb-5 border-b border-gray-100">
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Description</label>
-            <span className="text-[11px] text-gray-400">{(profile.description || '').length}/512</span>
+            <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide">Description</label>
+            <span className="text-[11px] text-gray-400 dark:text-white/30">{(profile.description || '').length}/512</span>
           </div>
           <textarea value={profile.description} onChange={e => set('description', e.target.value.slice(0, 512))}
             rows={3} placeholder="Describe your business..."
-            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-cyan-500 transition-colors resize-none" />
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-colors resize-none" />
         </div>
 
         {/* Address */}
         <div className="pb-5 border-b border-gray-100">
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Address</label>
-            <span className="text-[11px] text-gray-400">{(profile.address || '').length}/256</span>
+            <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide">Address</label>
+            <span className="text-[11px] text-gray-400 dark:text-white/30">{(profile.address || '').length}/256</span>
           </div>
           <input value={profile.address} onChange={e => set('address', e.target.value.slice(0, 256))}
             placeholder="123 Kampala Rd, Kampala, Uganda"
-            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-cyan-500 transition-colors" />
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-colors" />
         </div>
 
         {/* Email */}
         <div className="pb-5 border-b border-gray-100">
-          <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Email Address</label>
+          <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Email Address</label>
           <div className="relative">
             <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={profile.email} onChange={e => set('email', e.target.value)} placeholder="clinic@example.com" type="email"
-              className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-cyan-500 transition-colors" />
+              className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-colors" />
           </div>
         </div>
 
         {/* Website */}
         <div className="pb-5 border-b border-gray-100">
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Website</label>
-            <span className="text-[11px] text-gray-400">{(profile.website || '').length}/256</span>
+            <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide">Website</label>
+            <span className="text-[11px] text-gray-400 dark:text-white/30">{(profile.website || '').length}/256</span>
           </div>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-mono">https://</span>
             <input value={profile.website} onChange={e => set('website', e.target.value.slice(0, 256))} placeholder="www.yourclinic.com"
-              className="w-full pl-16 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:border-cyan-500 transition-colors" />
+              className="w-full pl-16 pr-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500 transition-colors" />
           </div>
         </div>
 

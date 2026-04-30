@@ -237,6 +237,12 @@ export default function InboxPage() {
 
   useEffect(() => { msgsEnd.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
 
+  useEffect(() => {
+    const handler = () => msgsEnd.current?.scrollIntoView({ behavior: 'smooth' })
+    window.visualViewport?.addEventListener('resize', handler)
+    return () => { window.visualViewport?.removeEventListener('resize', handler) }
+  }, [])
+
   async function send() {
     if (!sel || (!reply.trim() && !attachment) || sending) return
     setSending(true)
@@ -284,8 +290,8 @@ export default function InboxPage() {
   // ── Shared composer strip (used by both WA and Light) ─────────────────────────
   function Composer({ dark }: { dark: boolean }) {
     return (
-      <div className={cn('flex-shrink-0 px-3 py-2 border-t', dark ? 'border-white/8' : 'border-gray-100')}
-        style={{ background: dark ? '#1F2C34' : '#f0f2f5', paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
+      <div className={cn('fixed bottom-0 left-0 right-0 z-[60] lg:static lg:flex-shrink-0 px-3 py-2 border-t', dark ? 'border-white/8' : 'border-gray-100')}
+        style={{ background: dark ? '#1F2C34' : '#f0f2f5', paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}>
         {attachment && (
           <div className={cn('flex items-center gap-2 mb-2 px-3 py-2 rounded-xl', dark ? 'bg-[#2A3942]' : 'bg-white border border-gray-200')}>
             <Paperclip size={13} className={dark ? 'text-white/60' : 'text-gray-500'} />
@@ -414,7 +420,7 @@ export default function InboxPage() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4 space-y-1.5 pb-safe"
+      <div className="flex-1 overflow-y-auto min-h-0 px-4 pt-4 pb-20 space-y-1.5"
         style={{ background: '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-400" /></div>
@@ -553,7 +559,7 @@ export default function InboxPage() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20 space-y-2">
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-300" /></div>
         )}
