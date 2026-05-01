@@ -4,18 +4,18 @@ import { processInbound } from './whatsapp.service'
 const router = Router()
 
 // ── GET /ai-suite/webhook — Meta webhook verification ────────────────────────
-router.get('/webhook', (req: Request, res: Response) => {
+router.get('/webhook', (req, res) => {
   const mode      = req.query['hub.mode']
   const token     = req.query['hub.verify_token']
   const challenge = req.query['hub.challenge']
 
   if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
     console.log('[WhatsApp] Webhook verified')
-    return res.status(200).send(challenge)
+    res.status(200).send(challenge)
+  } else {
+    console.warn('[WhatsApp] Webhook verification failed', { mode, token })
+    res.sendStatus(403)
   }
-
-  console.warn('[WhatsApp] Webhook verification failed — bad token or mode')
-  return res.sendStatus(403)
 })
 
 // ── POST /ai-suite/webhook — inbound messages from Meta ──────────────────────
