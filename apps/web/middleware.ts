@@ -17,8 +17,16 @@ const ROLE_HOME: Record<string, string> = {
   ADMIN:        '/admin/dashboard',
   DOCTOR:       '/doctor/dashboard',
   ACCOUNTS:     '/accounts/dashboard',
-  DEVELOPER:    '/admin/dashboard',
+  DEVELOPER:    '/developer/dashboard',
 }
+
+const ROUTE_ROLE: Array<[string, string]> = [
+  ['/receptionist', 'RECEPTIONIST'],
+  ['/admin',        'ADMIN'],
+  ['/doctor',       'DOCTOR'],
+  ['/accounts',     'ACCOUNTS'],
+  ['/developer',    'DEVELOPER'],
+]
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -33,17 +41,10 @@ export function middleware(request: NextRequest) {
   const role = decodeRole(token)
   const home = role ? (ROLE_HOME[role] ?? '/login') : '/login'
 
-  if (pathname.startsWith('/receptionist') && role !== 'RECEPTIONIST' && role !== 'ADMIN') {
-    return NextResponse.redirect(new URL(home, request.url))
-  }
-  if (pathname.startsWith('/admin') && role !== 'ADMIN' && role !== 'DEVELOPER') {
-    return NextResponse.redirect(new URL(home, request.url))
-  }
-  if (pathname.startsWith('/doctor') && role !== 'DOCTOR') {
-    return NextResponse.redirect(new URL(home, request.url))
-  }
-  if (pathname.startsWith('/accounts') && role !== 'ACCOUNTS') {
-    return NextResponse.redirect(new URL(home, request.url))
+  for (const [prefix, required] of ROUTE_ROLE) {
+    if (pathname.startsWith(prefix) && role !== required) {
+      return NextResponse.redirect(new URL(home, request.url))
+    }
   }
 
   return NextResponse.next()

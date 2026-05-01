@@ -27,11 +27,11 @@ function AppleIcon({ color }: { color: string }) {
 }
 
 const ROLE_REDIRECTS: Record<string, string> = {
-  ACCOUNTS:     '/accounts/dashboard',
   RECEPTIONIST: '/receptionist/dashboard',
-  DOCTOR:       '/doctor/dashboard',
   ADMIN:        '/admin/dashboard',
-  DEVELOPER:    '/admin/dashboard',
+  DOCTOR:       '/doctor/dashboard',
+  ACCOUNTS:     '/accounts/dashboard',
+  DEVELOPER:    '/developer/dashboard',
 }
 
 export default function LoginPage() {
