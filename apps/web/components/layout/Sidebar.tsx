@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarDays, Users, UserCog,
   Wallet, Receipt, ShoppingBag, CreditCard, FileBarChart,
-  Bot, Megaphone, UserPlus, QrCode, Settings, HeadphonesIcon,
-  ChevronLeft, ChevronRight, Globe, BookOpen, Package,
+  Bot, Settings, HeadphonesIcon,
+  ChevronLeft, ChevronRight, BookOpen, Package,
   ListChecks, Inbox, Phone, Mic,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -50,12 +50,7 @@ const adminNav: NavGroup[] = [
   {
     label: 'GROWTH',
     items: [
-      { label: 'AI Suite',    href: '/ai-suite',                icon: Bot, sub: AI_SUITE_SUB },
-      { label: 'Campaigns',   href: '/campaigns',               icon: Megaphone },
-      { label: 'CRM / Leads', href: '/crm/leads',               icon: UserPlus },
-      { label: 'QR Capture',  href: '/crm/qr',                  icon: QrCode },
-      { label: 'Website',     href: '/crm/website-visitors',    icon: Globe },
-      { label: 'Knowledge',   href: '/ai-suite/knowledge-base', icon: BookOpen },
+      { label: 'AI Suite', href: '/ai-suite', icon: Bot, sub: AI_SUITE_SUB },
     ],
   },
   {
