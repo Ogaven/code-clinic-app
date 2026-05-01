@@ -230,9 +230,9 @@ export default function CommunicationsPage() {
       const r = await fetch('/api-proxy/receptionist/messages', { headers: { Authorization: `Bearer ${token}` } })
       if (!r.ok) return
       const msgs: any[] = await r.json()
-      const doctorRelated = msgs.filter((m: any) => m.fromUser?.role === 'DOCTOR' || m.toUser?.role === 'DOCTOR')
-      setDoctorMsgs(doctorRelated)
-      setDoctorUnread(doctorRelated.filter((m: any) => !m.isRead && m.fromUser?.role === 'DOCTOR').length)
+      // API already returns only doctor-related messages for receptionists
+      setDoctorMsgs(msgs)
+      setDoctorUnread(msgs.filter((m: any) => !m.isRead && m.fromUser?.role === 'DOCTOR').length)
     } catch {} finally { setDoctorLoading(false) }
   }, [])
 

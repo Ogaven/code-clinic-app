@@ -261,14 +261,35 @@ router.get('/messages', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id
     const role   = req.user!.role
-    const msgs = await (prisma as any).internalMessage.findMany({
-      where: {
+
+    let where: any
+
+    if (role === 'RECEPTIONIST' || role === 'ADMIN') {
+      // Receptionists/admins see ALL messages to or from any doctor
+      const doctorUsers = await prisma.user.findMany({
+        where: { role: 'DOCTOR', isActive: true },
+        select: { id: true },
+      })
+      const doctorIds = doctorUsers.map(u => u.id)
+      where = {
+        OR: [
+          { fromUserId: { in: doctorIds } },
+          { toUserId:   { in: doctorIds } },
+        ],
+      }
+    } else {
+      // Doctors see their own messages only
+      where = {
         OR: [
           { fromUserId: userId },
           { toUserId: userId },
           { toRole: role },
         ],
-      },
+      }
+    }
+
+    const msgs = await (prisma as any).internalMessage.findMany({
+      where,
       orderBy: { createdAt: 'asc' },
       take: 200,
     })
@@ -278,10 +299,10 @@ router.get('/messages', requireAuth, async (req, res) => {
       ...msgs.map((m: any) => m.fromUserId),
       ...msgs.map((m: any) => m.toUserId).filter(Boolean),
     ])] as string[]
-    const users = await prisma.user.findMany({
+    const users = userIds.length > 0 ? await prisma.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, firstName: true, lastName: true, role: true },
-    })
+    }) : []
     const userMap = Object.fromEntries(users.map(u => [u.id, u]))
 
     res.json(msgs.map((m: any) => ({

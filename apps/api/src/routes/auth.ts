@@ -33,9 +33,11 @@ function signAccess(user: { id: string; email: string; role: string; firstName: 
 }
 
 async function getSignPayload(user: { id: string; email: string; role: string; firstName: string; lastName: string }) {
-  if (user.role !== 'DOCTOR') return user
+  const base = { ...user, doctorId: undefined as string | undefined }
+  if (user.role !== 'DOCTOR') return base
   const doctor = await prisma.doctor.findUnique({ where: { userId: user.id }, select: { id: true } })
-  return { ...user, doctorId: doctor?.id }
+  base.doctorId = doctor?.id
+  return base
 }
 
 function signRefresh(userId: string) {
