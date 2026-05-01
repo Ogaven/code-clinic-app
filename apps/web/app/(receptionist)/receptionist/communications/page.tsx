@@ -210,79 +210,67 @@ export default function CommunicationsPage() {
   // Human control state: when true the human handles the conversation, agent stops
   const [humanControl, setHumanControl] = useState<Record<string, boolean>>({})
   // Per-doctor threading
-  const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null)
+  const [selectedDoctor, setSelectedDoctor]     = useState<string | null>(null)   // doctor name (display)
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null)   // doctor userId (API)
   const [showDoctorThread, setShowDoctorThread] = useState(false)
-  const [sentReplies, setSentReplies] = useState<Record<string, Array<{id: string; text: string; time: string}>>>({})
 
-  // ── Doctor notifications (live from API) ─────────────────────────────────
-  const [doctorNotifs, setDoctorNotifs]   = useState<any[]>([])
+  // ── Doctor messages (live from API) ──────────────────────────────────────
+  const [doctorMsgs, setDoctorMsgs]       = useState<any[]>([])
   const [doctorUnread, setDoctorUnread]   = useState(0)
   const [doctorLoading, setDoctorLoading] = useState(false)
   const [replyMsg, setReplyMsg]           = useState('')
   const [replySending, setReplySending]   = useState(false)
   const [replyToast, setReplyToast]       = useState('')
 
-  const fetchDoctorNotifs = useCallback(async () => {
+  const fetchDoctorMsgs = useCallback(async () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
     if (!token) return
     setDoctorLoading(true)
     try {
-      const r = await fetch('/api-proxy/receptionist/notifications', { headers: { Authorization: `Bearer ${token}` } })
+      const r = await fetch('/api-proxy/receptionist/messages', { headers: { Authorization: `Bearer ${token}` } })
       if (!r.ok) return
-      const d = await r.json()
-      const all: any[] = d.notifications || []
-      // Show DOCTOR, PATIENT_FLOW, and SYSTEM (check-in) notifications
-      const relevant = all.filter((n: any) => ['DOCTOR', 'PATIENT_FLOW', 'SYSTEM'].includes(n.type))
-      setDoctorNotifs(relevant)
-      setDoctorUnread(relevant.filter((n: any) => !n.isRead).length)
+      const msgs: any[] = await r.json()
+      const doctorRelated = msgs.filter((m: any) => m.fromUser?.role === 'DOCTOR' || m.toUser?.role === 'DOCTOR')
+      setDoctorMsgs(doctorRelated)
+      setDoctorUnread(doctorRelated.filter((m: any) => !m.isRead && m.fromUser?.role === 'DOCTOR').length)
     } catch {} finally { setDoctorLoading(false) }
   }, [])
 
   async function sendReplyToDoctor() {
-    if (!replyMsg.trim() || !selectedDoctor) return
+    if (!replyMsg.trim() || !selectedDoctorId) return
     const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
     if (!token) return
     setReplySending(true)
-    const nowStr = nowTime()
-    const localId = Date.now().toString()
     try {
-      await fetch('/api-proxy/receptionist/notifications/broadcast', {
+      await fetch('/api-proxy/receptionist/messages/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: `Reception → ${selectedDoctor}`, body: replyMsg.trim(), type: 'RECEPTION' }),
+        body: JSON.stringify({ toUserId: selectedDoctorId, body: replyMsg.trim(), subject: `Reply to ${selectedDoctor}` }),
       })
-      setSentReplies(prev => ({
-        ...prev,
-        [selectedDoctor]: [...(prev[selectedDoctor] || []), { id: localId, text: replyMsg.trim(), time: nowStr }],
-      }))
       setReplyMsg('')
       setReplyToast('Message sent!')
       setTimeout(() => setReplyToast(''), 3000)
+      await fetchDoctorMsgs()
     } catch {
       setReplyToast('Failed to send')
       setTimeout(() => setReplyToast(''), 3000)
     } finally { setReplySending(false) }
   }
 
-  async function markDoctorNotifsRead() {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-    if (!token) return
-    await fetch('/api-proxy/receptionist/notifications/mark-read', {
-      method: 'PUT', headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => {})
-    setDoctorNotifs(prev => prev.map(n => ({ ...n, isRead: true })))
+  function markDoctorMsgsRead() {
+    setDoctorMsgs(prev => prev.map((m: any) => ({ ...m, isRead: true })))
     setDoctorUnread(0)
   }
 
   useEffect(() => {
-    fetchDoctorNotifs()
-    const t = setInterval(fetchDoctorNotifs, 15000)
+    fetchDoctorMsgs()
+    const t = setInterval(fetchDoctorMsgs, 10000)
     return () => clearInterval(t)
-  }, [fetchDoctorNotifs])
+  }, [fetchDoctorMsgs])
 
   // Mark as read when doctors tab is opened
   useEffect(() => {
-    if (channel === 'doctors' && doctorUnread > 0) markDoctorNotifsRead()
+    if (channel === 'doctors' && doctorUnread > 0) markDoctorMsgsRead()
   }, [channel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function takeOver(id: string) {
@@ -392,35 +380,31 @@ export default function CommunicationsPage() {
 
   const totalUnread = emailConversations.reduce((s, c) => s + ((emailMessages[c.id] || []).some(m => !m.read) ? 1 : 0), 0)
 
-  // Group doctor notifications by title (doctor name) for threaded view
-  const doctorGroups = doctorNotifs.reduce((acc: Record<string, any[]>, n: any) => {
-    const name = n.title || 'Unknown'
-    if (!acc[name]) acc[name] = []
-    acc[name].push(n)
+  // Group doctor messages by doctor userId for threaded view
+  const doctorConvs = doctorMsgs.reduce((acc: Record<string, { name: string; userId: string; msgs: any[] }>, m: any) => {
+    const isFromDoctor = m.fromUser?.role === 'DOCTOR'
+    const doctorUserId = isFromDoctor ? m.fromUserId : m.toUserId
+    if (!doctorUserId) return acc
+    const doctorUser = isFromDoctor ? m.fromUser : m.toUser
+    const name = doctorUser ? `${doctorUser.firstName} ${doctorUser.lastName}` : 'Unknown Doctor'
+    if (!acc[doctorUserId]) acc[doctorUserId] = { name, userId: doctorUserId, msgs: [] }
+    acc[doctorUserId].msgs.push(m)
     return acc
   }, {})
-  const doctorList = Object.entries(doctorGroups).map(([name, notifs]) => {
-    const last = notifs[notifs.length - 1]
-    const unread = notifs.filter((n: any) => !n.isRead).length
-    return { name, notifs, last, unread }
+  const doctorList = Object.values(doctorConvs).map(({ name, userId, msgs }) => {
+    const sorted = [...msgs].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    const last = sorted[sorted.length - 1]
+    const unread = msgs.filter((m: any) => !m.isRead && m.fromUser?.role === 'DOCTOR').length
+    return { name, userId, msgs: sorted, last, unread }
   }).sort((a, b) => new Date(b.last.createdAt).getTime() - new Date(a.last.createdAt).getTime())
 
-  const threadItems = selectedDoctor ? [
-    ...(doctorGroups[selectedDoctor] || []).map((n: any) => ({
-      id: n.id,
-      from: 'them' as const,
-      text: n.body || n.message || '',
-      time: new Date(n.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }),
-      ts: new Date(n.createdAt).getTime(),
-    })),
-    ...(sentReplies[selectedDoctor] || []).map(r => ({
-      id: r.id,
-      from: 'me' as const,
-      text: r.text,
-      time: r.time,
-      ts: parseInt(r.id),
-    })),
-  ].sort((a, b) => a.ts - b.ts) : []
+  const threadItems = selectedDoctorId ? (doctorConvs[selectedDoctorId]?.msgs || []).map((m: any) => ({
+    id: m.id,
+    from: m.fromUser?.role === 'DOCTOR' ? 'them' as const : 'me' as const,
+    text: m.body,
+    time: new Date(m.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }),
+    ts: new Date(m.createdAt).getTime(),
+  })).sort((a: any, b: any) => a.ts - b.ts) : []
 
   return (
     <div className="h-full flex flex-col bg-gray-50 dark:bg-transparent" style={{ minHeight: 0 }}>
@@ -672,13 +656,13 @@ export default function CommunicationsPage() {
             <div className={`w-full md:w-72 flex-shrink-0 flex flex-col bg-white dark:bg-white/5 border-r border-gray-100 dark:border-white/8 ${showDoctorThread ? 'hidden md:flex' : 'flex'}`}>
               <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ background: '#0f766e' }}>
                 <p className="flex-1 text-white font-bold text-sm">Doctor Messages</p>
-                <button onClick={fetchDoctorNotifs}
+                <button onClick={fetchDoctorMsgs}
                   className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/70">
                   <RefreshCw size={13} className={doctorLoading ? 'animate-spin' : ''} />
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto">
-                {doctorLoading && doctorNotifs.length === 0 ? (
+                {doctorLoading && doctorMsgs.length === 0 ? (
                   <div className="space-y-1 p-2">
                     {[1,2,3].map(i => <div key={i} className="h-16 bg-gray-100 dark:bg-white/5 rounded-xl animate-pulse" />)}
                   </div>
@@ -689,14 +673,14 @@ export default function CommunicationsPage() {
                     <p className="text-xs mt-1">Doctor messages will appear here</p>
                   </div>
                 ) : (
-                  doctorList.map(({ name, last, unread }) => {
+                  doctorList.map(({ name, userId, last, unread }) => {
                     const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
-                    const preview  = last.body || last.message || ''
+                    const preview  = last.body || ''
                     const timeStr  = new Date(last.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' })
                     return (
-                      <button key={name}
-                        onClick={() => { setSelectedDoctor(name); setShowDoctorThread(true) }}
-                        className={`w-full flex items-center gap-3 px-4 py-3 border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 text-left transition-colors ${selectedDoctor === name ? 'bg-teal-50 dark:bg-teal-900/20' : ''}`}>
+                      <button key={userId}
+                        onClick={() => { setSelectedDoctor(name); setSelectedDoctorId(userId); setShowDoctorThread(true) }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 text-left transition-colors ${selectedDoctorId === userId ? 'bg-teal-50 dark:bg-teal-900/20' : ''}`}>
                         <div className="relative flex-shrink-0">
                           <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm"
                             style={{ background: '#0f766e' }}>
@@ -737,7 +721,7 @@ export default function CommunicationsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-gray-800 dark:text-white text-sm truncate">{selectedDoctor}</p>
-                      <p className="text-[10px] text-gray-400">{(doctorGroups[selectedDoctor] || []).length} messages · auto-refreshes every 15s</p>
+                      <p className="text-[10px] text-gray-400">{threadItems.length} messages · auto-refreshes every 10s</p>
                     </div>
                   </div>
 

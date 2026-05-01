@@ -110,7 +110,12 @@ router.get('/appointments', requireAuth, async (req, res) => {
   const end   = new Date(endDate   + 'T23:59:59+03:00')
 
   const where: any = { startAt: { gte: start, lte: end } }
-  if (doctorId)  where.doctorId  = doctorId
+  // Doctors see only their own appointments
+  if (req.user!.role === 'DOCTOR' && req.user!.doctorId) {
+    where.doctorId = req.user!.doctorId
+  } else if (doctorId) {
+    where.doctorId = doctorId
+  }
   if (status)    where.status    = status
   if (patientId) where.patientId = patientId
 

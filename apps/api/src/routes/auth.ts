@@ -23,12 +23,19 @@ const totpSchema = z.object({
   token: z.string().length(6),
 })
 
-function signAccess(user: { id: string; email: string; role: string; firstName: string; lastName: string }) {
+function signAccess(user: { id: string; email: string; role: string; firstName: string; lastName: string; doctorId?: string }) {
   return jwt.sign(
-    { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName },
+    { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName,
+      ...(user.doctorId ? { doctorId: user.doctorId } : {}) },
     process.env.JWT_SECRET!,
     { expiresIn: (process.env.JWT_EXPIRES_IN || '15m') as jwt.SignOptions['expiresIn'] },
   )
+}
+
+async function getSignPayload(user: { id: string; email: string; role: string; firstName: string; lastName: string }) {
+  if (user.role !== 'DOCTOR') return user
+  const doctor = await prisma.doctor.findUnique({ where: { userId: user.id }, select: { id: true } })
+  return { ...user, doctorId: doctor?.id }
 }
 
 function signRefresh(userId: string) {
@@ -107,7 +114,8 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
     return
   }
 
-  const accessToken = signAccess(user)
+  const payload = await getSignPayload(user)
+  const accessToken = signAccess(payload)
   const refreshToken = signRefresh(user.id)
   setRefreshCookie(res, refreshToken)
 
@@ -116,7 +124,8 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
     : null
   res.json({
     accessToken,
-    user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName, avatarR2Key: user.avatarR2Key, avatarUrl },
+    user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName, avatarR2Key: user.avatarR2Key, avatarUrl,
+      ...(payload.doctorId ? { doctorId: payload.doctorId } : {}) },
   })
 })
 
@@ -179,13 +188,15 @@ router.get('/google/callback', async (req, res) => {
 
     await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } })
 
-    const accessToken  = signAccess(user)
+    const googlePayload = await getSignPayload(user)
+    const accessToken  = signAccess(googlePayload)
     const refreshToken = signRefresh(user.id)
     setRefreshCookie(res, refreshToken)
 
     // Redirect to frontend callback page with token
     const userData = encodeURIComponent(JSON.stringify({
       id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName,
+      ...(googlePayload.doctorId ? { doctorId: googlePayload.doctorId } : {}),
     }))
     res.redirect(`${appUrl}/auth/callback?token=${accessToken}&user=${userData}`)
   } catch (e: any) {
@@ -216,10 +227,12 @@ router.post('/2fa/validate', authLimiter, validate(totpSchema), async (req, res)
   const delta = totp.validate({ token: req.body.token, window: 1 })
   if (delta === null) { res.status(401).json({ error: 'Invalid authentication code' }); return }
 
-  const accessToken = signAccess(user)
+  const tfaPayload = await getSignPayload(user)
+  const accessToken = signAccess(tfaPayload)
   const refreshToken = signRefresh(user.id)
   setRefreshCookie(res, refreshToken)
-  res.json({ accessToken, user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName } })
+  res.json({ accessToken, user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName,
+    ...(tfaPayload.doctorId ? { doctorId: tfaPayload.doctorId } : {}) } })
 })
 
 // POST /auth/refresh
@@ -230,7 +243,8 @@ router.post('/refresh', async (req, res) => {
     const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as { id: string }
     const user = await prisma.user.findUnique({ where: { id: payload.id } })
     if (!user || !user.isActive) { res.status(401).json({ error: 'User not found' }); return }
-    const accessToken = signAccess(user)
+    const refreshPayload = await getSignPayload(user)
+    const accessToken = signAccess(refreshPayload)
     const newRefresh = signRefresh(user.id)
     setRefreshCookie(res, newRefresh)
     res.json({ accessToken })

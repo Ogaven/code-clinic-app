@@ -8,6 +8,7 @@ export interface AuthUser {
   role: string
   firstName: string
   lastName: string
+  doctorId?: string
 }
 
 declare global {

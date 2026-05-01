@@ -269,10 +269,26 @@ router.get('/messages', requireAuth, async (req, res) => {
           { toRole: role },
         ],
       },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
+      orderBy: { createdAt: 'asc' },
+      take: 200,
     })
-    res.json(msgs)
+
+    // Enrich with sender/recipient names
+    const userIds = [...new Set([
+      ...msgs.map((m: any) => m.fromUserId),
+      ...msgs.map((m: any) => m.toUserId).filter(Boolean),
+    ])] as string[]
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, firstName: true, lastName: true, role: true },
+    })
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]))
+
+    res.json(msgs.map((m: any) => ({
+      ...m,
+      fromUser: userMap[m.fromUserId] || null,
+      toUser:   m.toUserId ? (userMap[m.toUserId] || null) : null,
+    })))
   } catch {
     res.status(500).json({ error: 'Failed to fetch messages' })
   }
