@@ -27,8 +27,11 @@ function AppleIcon({ color }: { color: string }) {
 }
 
 const ROLE_REDIRECTS: Record<string, string> = {
-  ACCOUNTS: '/accounts/dashboard', RECEPTIONIST: '/receptionist/dashboard',
-  DOCTOR: '/doctor/dashboard', ADMIN: '/dashboard', DEVELOPER: '/developer/dashboard',
+  ACCOUNTS:     '/accounts/dashboard',
+  RECEPTIONIST: '/receptionist/dashboard',
+  DOCTOR:       '/doctor/dashboard',
+  ADMIN:        '/admin/dashboard',
+  DEVELOPER:    '/admin/dashboard',
 }
 
 export default function LoginPage() {
@@ -86,7 +89,7 @@ export default function LoginPage() {
       localStorage.setItem('cc_token', data.accessToken)
       localStorage.setItem('cc_user', JSON.stringify(data.user))
       setAuthCookie(data.accessToken)
-      router.push(ROLE_REDIRECTS[data.user?.role] || '/dashboard')
+      router.push(ROLE_REDIRECTS[data.user?.role] ?? '/receptionist/dashboard')
     } catch {
       setError('Cannot reach server. Please try again.')
     } finally { setLoad(false) }
