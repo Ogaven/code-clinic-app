@@ -31,6 +31,9 @@ const ROUTE_ROLE: Array<[string, string]> = [
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // Let login and root through unconditionally — they handle their own auth state
+  if (pathname === '/login' || pathname === '/') return NextResponse.next()
+
   const token = request.cookies.get('cc_token')?.value
   if (!token) {
     const loginUrl = new URL('/login', request.url)

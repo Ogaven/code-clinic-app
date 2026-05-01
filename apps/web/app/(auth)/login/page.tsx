@@ -26,13 +26,6 @@ function AppleIcon({ color }: { color: string }) {
   )
 }
 
-const ROLE_REDIRECTS: Record<string, string> = {
-  RECEPTIONIST: '/receptionist/dashboard',
-  ADMIN:        '/admin/dashboard',
-  DOCTOR:       '/doctor/dashboard',
-  ACCOUNTS:     '/accounts/dashboard',
-  DEVELOPER:    '/developer/dashboard',
-}
 
 export default function LoginPage() {
   const router = useRouter()
@@ -89,7 +82,16 @@ export default function LoginPage() {
       localStorage.setItem('cc_token', data.accessToken)
       localStorage.setItem('cc_user', JSON.stringify(data.user))
       setAuthCookie(data.accessToken)
-      router.push(ROLE_REDIRECTS[data.user?.role] ?? '/receptionist/dashboard')
+      const ROLE_HOME: Record<string, string> = {
+        RECEPTIONIST: '/receptionist/dashboard',
+        ADMIN:        '/admin/dashboard',
+        DOCTOR:       '/doctor/dashboard',
+        ACCOUNTS:     '/accounts/dashboard',
+        DEVELOPER:    '/developer/dashboard',
+      }
+      const home = ROLE_HOME[data.user.role]
+      if (!home) throw new Error('Unknown role: ' + data.user.role)
+      window.location.href = home
     } catch {
       setError('Cannot reach server. Please try again.')
     } finally { setLoad(false) }
