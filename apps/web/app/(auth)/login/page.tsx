@@ -77,6 +77,7 @@ export default function LoginPage() {
         credentials: 'include',
       })
       const data = await res.json()
+      console.log('LOGIN RESPONSE:', data)
       if (!res.ok) { setError(data.error || 'Invalid credentials.'); return }
       if (data.requiresTwoFactor) { sessionStorage.setItem('cc_temp_token', data.tempToken); router.push('/2fa'); return }
       localStorage.setItem('cc_token', data.accessToken)
