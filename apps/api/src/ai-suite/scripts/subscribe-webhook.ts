@@ -1,7 +1,12 @@
 import 'dotenv/config'
 
-const PHONE_NUMBER_ID = '2534405426961300'
+const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID
 const TOKEN = process.env.WHATSAPP_TOKEN
+
+if (!PHONE_NUMBER_ID) {
+  console.error('ERROR: WHATSAPP_PHONE_NUMBER_ID is not set in environment')
+  process.exit(1)
+}
 
 if (!TOKEN) {
   console.error('ERROR: WHATSAPP_TOKEN is not set in environment')
