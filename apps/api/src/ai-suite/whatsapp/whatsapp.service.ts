@@ -223,6 +223,8 @@ export async function sendWhatsAppMessage(to: string, body: string): Promise<voi
     text: { body },
   }
 
+  console.log('[WA SEND]', { phoneNumberId, to, url })
+
   const response = await fetch(url, {
     method:  'POST',
     headers: {
@@ -232,10 +234,10 @@ export async function sendWhatsAppMessage(to: string, body: string): Promise<voi
     body: JSON.stringify(payload),
   })
 
+  const responseText = await response.text()
+  console.log('[WA RESPONSE]', response.status, responseText)
+
   if (!response.ok) {
-    const error = await response.text()
-    console.error(`[WhatsApp] Failed to send message to ${to}:`, error)
-  } else {
-    console.log(`[WhatsApp] Message sent to ${to}`)
+    console.error(`[WhatsApp] Failed to send message to ${to}:`, responseText)
   }
 }
