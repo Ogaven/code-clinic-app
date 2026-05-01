@@ -26,7 +26,7 @@ export default function AdminDashboardPage() {
   }, [])
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 min-h-full">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white font-[Plus_Jakarta_Sans]">
           Welcome back, {name}

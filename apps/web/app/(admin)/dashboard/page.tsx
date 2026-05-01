@@ -329,7 +329,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI CARDS ── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3" style={{ paddingTop: 58 }}>
         {[
           { title: "Today's Appointments", value: '24',        sub: '5 pending', trend: { v: 12, up: true },  icon: Calendar,    color: '#29ABE2', bg: 'linear-gradient(135deg,#E0F7FF,#BDEFFF)', cardClass: 'stat-card-cyan' },
           { title: 'Monthly Revenue',       value: 'UGX 31.2M', sub: '+8% vs last month', trend: { v: 8, up: true }, icon: DollarSign, color: '#059669', bg: 'linear-gradient(135deg,#D1FAE5,#A7F3D0)', cardClass: 'stat-card-green' },
