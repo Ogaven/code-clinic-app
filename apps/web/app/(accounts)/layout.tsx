@@ -2,19 +2,11 @@
 
 import Sidebar from '@/components/layout/Sidebar'
 import TopBar from '@/components/layout/TopBar'
-import SarahChatbot from '@/components/SarahChatbot'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Menu, X } from 'lucide-react'
 
 const pageTitles: Record<string, string> = {
-  '/dashboard':                   'Dashboard',
-  '/scheduling':                  'Scheduling',
-  '/appointments':                'Appointments',
-  '/patients':                    'Patients',
-  '/stocks':                      'Stocks & Inventory',
-  '/employees':                   'Staff List',
-  '/accounts':                    'Accounts',
   '/accounts/dashboard':          'Dashboard',
   '/accounts/chart-of-accounts':  'Chart of Accounts',
   '/accounts/invoices':           'Sales & Income',
@@ -26,46 +18,38 @@ const pageTitles: Record<string, string> = {
   '/accounts/receivables':        'Patient Balances',
   '/accounts/bills':              'Bills',
   '/accounts/payables':           'Supplier Balances',
-  '/accounts/payroll':            'Salary Expenses',
-  '/accounts/payroll/staff':      'Staff Records',
-  '/accounts/reports':            'Reports',
   '/accounts/reports/pl':         'Profit & Loss',
   '/accounts/reports/balance':    'Balance Sheet',
   '/accounts/reports/cashflow':   'Cash Flow',
   '/accounts/reports/tax':        'Tax Report',
   '/accounts/reports/monthly':    'Monthly Summary',
   '/accounts/reports/annual':     'Annual Summary',
+  '/accounts/payroll':            'Salary Expenses',
+  '/accounts/payroll/staff':      'Staff Records',
+  '/stocks':                      'Stocks & Inventory',
+  '/settings':                    'Settings',
+  '/support':                     'Support',
   '/ai-suite':                    'Agent Control',
   '/ai-suite/inbox':              'Inbox',
   '/ai-suite/calls':              'Call Logs',
   '/ai-suite/voice-studio':       'Voice Studio',
   '/ai-suite/knowledge-base':     'Knowledge Base',
   '/ai-suite/settings':           'AI Settings',
-  '/ai-suite/recordings':         'Call Recordings',
-  '/ai-suite/agent-config':       'Agent Config',
-  '/settings':                    'Settings',
-  '/support':                     'Customer Support',
 }
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function AccountsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router   = useRouter()
-  const [user, setUser]       = useState<any>(null)
-  const [dark, setDark]       = useState(false)
-  const [mobileOpen, setMob]  = useState(false)
+  const [user, setUser]      = useState<any>(null)
+  const [dark, setDark]      = useState(false)
+  const [mobileOpen, setMob] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
     if (!stored) { router.push('/login'); return }
     const u = JSON.parse(stored)
-    if (u.role === 'RECEPTIONIST') { router.replace('/receptionist/dashboard'); return }
-    if (u.role === 'DOCTOR')       { router.replace('/doctor/dashboard'); return }
-    if (u.role === 'DEVELOPER')    { router.replace('/developer/dashboard'); return }
-    // Accounts users can only access /accounts/*, /stocks, /settings, /support
-    if (u.role === 'ACCOUNTS') {
-      const allowed = ['/accounts', '/stocks', '/settings', '/support']
-      const ok = allowed.some(p => pathname === p || pathname.startsWith(p + '/'))
-      if (!ok) { router.replace('/accounts/dashboard'); return }
+    if (u.role !== 'ACCOUNTS' && u.role !== 'ADMIN') {
+      router.replace('/login'); return
     }
     setUser(u)
     const isDark = localStorage.getItem('cc_theme') === 'dark'
@@ -79,24 +63,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return () => window.removeEventListener('cc-theme', onTheme)
   }, [])
 
-  // Close mobile sidebar when route changes
   useEffect(() => { setMob(false) }, [pathname])
 
-  // Exact match first, then prefix match for dynamic routes (e.g. /patients/[id])
   const title = pageTitles[pathname]
-    || (pathname.startsWith('/patients/') ? 'Patient Profile' : null)
     || Object.entries(pageTitles).find(([k]) => pathname.startsWith(k + '/'))?.[1]
-    || 'Dashboard'
+    || 'Accounts'
 
   return (
     <div className={`flex h-screen overflow-hidden transition-colors duration-300 ${dark ? 'bg-transparent' : 'bg-clinic-bg'}`}>
 
-      {/* Mobile sidebar overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setMob(false)} />
           <div className="absolute left-0 top-0 h-full z-50">
-            <Sidebar role={user?.role} dark={dark} />
+            <Sidebar role="ACCOUNTS" dark={dark} />
           </div>
           <button onClick={() => setMob(false)}
             className="absolute top-4 right-4 z-50 w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center">
@@ -105,13 +85,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       )}
 
-      {/* Desktop sidebar (hidden on mobile) */}
       <div className="hidden lg:block">
-        <Sidebar role={user?.role} dark={dark} />
+        <Sidebar role="ACCOUNTS" dark={dark} />
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile top bar with hamburger */}
         <div className="flex lg:hidden items-center gap-3 px-4 h-14 border-b flex-shrink-0"
           style={{ background: dark ? 'rgba(10,18,60,0.95)' : 'white', borderColor: dark ? 'rgba(255,255,255,0.08)' : '#E5E7EB' }}>
           <button onClick={() => setMob(true)}
@@ -128,7 +106,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         </div>
 
-        {/* Desktop top bar */}
         <div className="hidden lg:block">
           <TopBar title={title} user={user} dark={dark} onThemeToggle={(d) => setDark(d)} />
         </div>
@@ -137,7 +114,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {children}
         </main>
       </div>
-      <SarahChatbot />
     </div>
   )
 }

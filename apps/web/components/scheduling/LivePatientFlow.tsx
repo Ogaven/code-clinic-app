@@ -83,6 +83,7 @@ interface LivePatientFlowProps {
   doctorId?: string
   refreshInterval?: number
   patientBasePath?: string
+  readOnly?: boolean
 }
 
 function fmt(dateStr?: string) {
@@ -223,7 +224,7 @@ function DailyReport({ appointments, onClose }: { appointments: Appointment[]; o
   )
 }
 
-export default function LivePatientFlow({ doctorId, refreshInterval = 30000, patientBasePath = '/patients' }: LivePatientFlowProps) {
+export default function LivePatientFlow({ doctorId, refreshInterval = 30000, patientBasePath = '/patients', readOnly = false }: LivePatientFlowProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading]           = useState(true)
   const [advancing, setAdvancing]       = useState<string | null>(null)
@@ -372,8 +373,8 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000, pat
                             </div>
                           </div>
                         </Link>
-                        {/* Advance button */}
-                        {stage.next && (
+                        {/* Advance button — hidden in readOnly mode */}
+                        {stage.next && !readOnly && (
                           <div className="px-2.5 pb-2.5">
                             <button
                               onClick={() => advance(appt.id, stage.next)}
@@ -385,6 +386,16 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000, pat
                                 : <><ChevronRight size={10} />{stage.nextLabel}</>
                               }
                             </button>
+                          </div>
+                        )}
+                        {/* View Billing — shown for checkout stage in readOnly mode */}
+                        {stage.key === 'CHECKOUT' && readOnly && (
+                          <div className="px-2.5 pb-2.5">
+                            <Link href="/accounts/live-checkout"
+                              className="w-full flex items-center justify-center gap-0.5 py-1.5 rounded-lg text-[10px] font-bold text-white min-h-[32px] hover:opacity-90 transition-all"
+                              style={{ background: '#8B5CF6' }}>
+                              <ChevronRight size={10} /> View Billing
+                            </Link>
                           </div>
                         )}
                       </div>

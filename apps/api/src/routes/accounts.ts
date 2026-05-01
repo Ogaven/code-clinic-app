@@ -21,12 +21,19 @@ router.get('/dashboard', requireAuth, async (_req: Request, res: Response) => {
   try {
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const yearStart  = new Date(now.getFullYear(), 0, 1)
 
     // Revenue this month (paid invoices)
     const monthRevAgg = await prisma.payment.aggregate({
       _sum: { amountUGX: true },
       where: { paidAt: { gte: monthStart } },
+    })
+
+    // Revenue today
+    const todayRevAgg = await prisma.payment.aggregate({
+      _sum: { amountUGX: true },
+      where: { paidAt: { gte: todayStart } },
     })
 
     // Revenue this year
@@ -96,6 +103,7 @@ router.get('/dashboard', requireAuth, async (_req: Request, res: Response) => {
     const combined = trend.map((t, i) => ({ ...t, expenses: expenseTrend[i].expenses }))
 
     res.json(serialise({
+      todayRevenue:  Number(todayRevAgg._sum.amountUGX  || 0),
       monthRevenue:  Number(monthRevAgg._sum.amountUGX  || 0),
       yearRevenue:   Number(yearRevAgg._sum.amountUGX   || 0),
       outstandingDebt: Number(debtAgg._sum.totalUGX     || 0),

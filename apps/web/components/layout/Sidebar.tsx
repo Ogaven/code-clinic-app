@@ -10,6 +10,8 @@ import {
   Bot, Settings, HeadphonesIcon,
   ChevronLeft, ChevronRight, BookOpen, Package,
   ListChecks, Inbox, Phone, Mic,
+  ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
+  Activity, Calendar, ArrowLeftRight, FileCheck,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -65,12 +67,47 @@ const accountsNav: NavGroup[] = [
   {
     label: 'FINANCE',
     items: [
-      { label: 'Accounts',  href: '/accounts/dashboard', icon: Wallet },
-      { label: 'Sales',     href: '/accounts/invoices',  icon: Receipt },
-      { label: 'Expenses',  href: '/accounts/expenses',  icon: ShoppingBag },
-      { label: 'Payroll',   href: '/accounts/payroll',   icon: CreditCard },
-      { label: 'Stocks',    href: '/stocks',             icon: Package },
-      { label: 'Reports',   href: '/accounts/reports',   icon: FileBarChart },
+      { label: 'Dashboard',            href: '/accounts/dashboard',          icon: LayoutDashboard },
+      { label: 'Chart of Accounts',    href: '/accounts/chart-of-accounts',  icon: BookOpen },
+      { label: 'Sales & Income',       href: '/accounts/invoices',           icon: Receipt },
+      { label: 'Expenses',             href: '/accounts/expenses',           icon: ShoppingBag },
+      { label: 'Bank Reconciliation',  href: '/accounts/reconciliation',     icon: ArrowLeftRight },
+      { label: 'Journal Entries',      href: '/accounts/journal',            icon: FileText },
+      { label: 'General Ledger',       href: '/accounts/ledger',             icon: Layers },
+      { label: 'Stocks & Inventory',   href: '/stocks',                      icon: Package },
+      { label: 'Live Checkout',        href: '/accounts/live-checkout',      icon: ShoppingCart },
+    ],
+  },
+  {
+    label: 'RECEIVABLES',
+    items: [
+      { label: 'Invoices',          href: '/accounts/invoices',    icon: FileCheck },
+      { label: 'Patient Balances',  href: '/accounts/receivables', icon: Users },
+    ],
+  },
+  {
+    label: 'PAYABLES',
+    items: [
+      { label: 'Bills',              href: '/accounts/bills',    icon: FileText },
+      { label: 'Supplier Balances',  href: '/accounts/payables', icon: Building2 },
+    ],
+  },
+  {
+    label: 'REPORTS',
+    items: [
+      { label: 'Profit & Loss',    href: '/accounts/reports/pl',       icon: TrendingUp },
+      { label: 'Balance Sheet',    href: '/accounts/reports/balance',  icon: Scale },
+      { label: 'Cash Flow',        href: '/accounts/reports/cashflow', icon: Activity },
+      { label: 'Tax Report',       href: '/accounts/reports/tax',      icon: FileBarChart },
+      { label: 'Monthly Summary',  href: '/accounts/reports/monthly',  icon: Calendar },
+      { label: 'Annual Summary',   href: '/accounts/reports/annual',   icon: CalendarDays },
+    ],
+  },
+  {
+    label: 'PAYROLL',
+    items: [
+      { label: 'Salary Expenses',  href: '/accounts/payroll',  icon: CreditCard },
+      { label: 'Staff Records',    href: '/employees',         icon: UserCog },
     ],
   },
   {
@@ -154,8 +191,7 @@ export default function Sidebar({ role = 'ADMIN', dark = false }: { role?: strin
               const hasSub = !!item.sub
               const active =
                 pathname === item.href ||
-                (item.href !== '/dashboard' && pathname.startsWith(item.href + '/')) ||
-                (item.href === '/accounts/dashboard' && pathname.startsWith('/accounts'))
+                (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'))
               const showSub = !collapsed && hasSub && active
 
               return (
