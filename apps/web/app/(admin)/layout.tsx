@@ -12,7 +12,6 @@ const pageTitles: Record<string, string> = {
   '/scheduling':             'Scheduling',
   '/appointments':           'Appointments',
   '/patients':               'Patients',
-  '/treatments':             'Treatments',
   '/stocks':                 'Stocks',
   '/employees':              'Staff List',
   '/accounts':               'Accounts',
@@ -36,7 +35,6 @@ const pageTitles: Record<string, string> = {
   '/crm/website-visitors':   'Website Visitors',
   '/settings':               'Settings',
   '/support':                'Customer Support',
-  '/analytics':              'Analytics',
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -2,19 +2,17 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
-  LayoutDashboard, Users, CalendarDays, BarChart2,
-  Settings, Stethoscope, UserCheck, DollarSign,
+  LayoutDashboard, Users, CalendarDays,
+  Settings, UserCheck, DollarSign,
 } from 'lucide-react'
 
 const QUICK_LINKS = [
-  { label: 'Full Dashboard',  href: '/dashboard',        icon: LayoutDashboard },
-  { label: 'Scheduling',      href: '/scheduling',       icon: CalendarDays },
-  { label: 'Patients',        href: '/patients',         icon: Users },
-  { label: 'Staff',           href: '/employees',        icon: UserCheck },
-  { label: 'Treatments',      href: '/treatments',       icon: Stethoscope },
+  { label: 'Full Dashboard',  href: '/dashboard',          icon: LayoutDashboard },
+  { label: 'Scheduling',      href: '/scheduling',         icon: CalendarDays },
+  { label: 'Patients',        href: '/patients',           icon: Users },
+  { label: 'Staff',           href: '/employees',          icon: UserCheck },
   { label: 'Accounts',        href: '/accounts/dashboard', icon: DollarSign },
-  { label: 'Analytics',       href: '/analytics',        icon: BarChart2 },
-  { label: 'Settings',        href: '/settings',         icon: Settings },
+  { label: 'Settings',        href: '/settings',           icon: Settings },
 ]
 
 export default function AdminDashboardPage() {

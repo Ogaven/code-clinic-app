@@ -328,14 +328,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Analytics link ── */}
-      <div className="flex justify-end" style={{ paddingTop: 58 }}>
-        <a href="/analytics" className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
-          style={{ background: 'linear-gradient(135deg,#7C3AED,#A855F7)', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
-          📊 View Full Analytics
-        </a>
-      </div>
-
       {/* ── KPI CARDS ── */}
       <div className="grid grid-cols-3 gap-3">
         {[
@@ -479,9 +471,6 @@ export default function DashboardPage() {
                   <p className="font-bold text-clinic-navy dark:text-white text-sm" style={{ fontFamily:'Plus Jakarta Sans' }}>Patient Flow Today</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">Journey through appointment stages</p>
                 </div>
-                <a href="/analytics" className="text-[10px] font-semibold text-clinic-blue hover:underline flex items-center gap-0.5">
-                  Full analytics <ChevronRight size={10}/>
-                </a>
               </div>
               <PatientFlowMini data={flowData} />
             </div>
