@@ -20,6 +20,8 @@ router.get('/webhook', (req, res) => {
 
 // ── POST /ai-suite/webhook — inbound messages from Meta ──────────────────────
 router.post('/webhook', async (req: Request, res: Response) => {
+  console.log('[WEBHOOK RECEIVED]', JSON.stringify(req.body, null, 2))
+
   // Always acknowledge immediately so Meta doesn't retry
   res.sendStatus(200)
 
@@ -57,6 +59,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
               continue
           }
 
+          console.log('[AGENT CALL]', { phone: from, message: text })
           await processInbound(from, text)
         }
       }
