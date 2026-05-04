@@ -7,7 +7,7 @@ const prisma = new PrismaClient()
 
 const GRAPH_API_VERSION = 'v18.0'
 
-export async function processInbound(from: string, text: string): Promise<void> {
+export async function processInbound(from: string, text: string, wamid: string): Promise<void> {
   try {
     // ── 1. Identify patient by phone number ──────────────────────────────────
     const patient = await prisma.patient.findUnique({
@@ -55,7 +55,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
       await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: greeting },
       })
-      await sendWhatsAppMessage(from, greeting)
+      await sendWhatsAppMessage(from, greeting, wamid)
       return
     }
 
@@ -122,7 +122,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, reply)
+          await sendWhatsAppMessage(from, reply, wamid)
           return
         }
 
@@ -153,7 +153,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, reply)
+          await sendWhatsAppMessage(from, reply, wamid)
           return
         }
 
@@ -179,7 +179,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, reply)
+          await sendWhatsAppMessage(from, reply, wamid)
           return
         }
       }
@@ -198,7 +198,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
     })
 
     // ── 9. Deliver Sarah's reply via Meta Graph API ───────────────────────────
-    await sendWhatsAppMessage(from, agentReply)
+    await sendWhatsAppMessage(from, agentReply, wamid)
 
   } catch (err) {
     console.error('[WhatsApp] processInbound error:', err)
@@ -206,7 +206,7 @@ export async function processInbound(from: string, text: string): Promise<void> 
 }
 
 // Exported so schedulers (reminder, followup) can send outbound WhatsApp messages
-export async function sendWhatsAppMessage(to: string, body: string): Promise<void> {
+export async function sendWhatsAppMessage(to: string, body: string, replyToMessageId?: string): Promise<void> {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
   const token         = process.env.WHATSAPP_TOKEN
 
@@ -216,10 +216,11 @@ export async function sendWhatsAppMessage(to: string, body: string): Promise<voi
   }
 
   const url     = `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`
-  const payload = {
+  const payload: Record<string, unknown> = {
     messaging_product: 'whatsapp',
     to,
     type: 'text',
+    ...(replyToMessageId ? { context: { message_id: replyToMessageId } } : {}),
     text: { body },
   }
 

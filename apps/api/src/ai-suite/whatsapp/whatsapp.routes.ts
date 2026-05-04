@@ -59,8 +59,8 @@ router.post('/webhook', async (req: Request, res: Response) => {
               continue
           }
 
-          console.log('[AGENT CALL]', { phone: from, message: text })
-          await processInbound(from, text)
+          console.log('[AGENT CALL]', { phone: from, message: text, wamid: msg.id })
+          await processInbound(from, text, msg.id)
         }
       }
     }
