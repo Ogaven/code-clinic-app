@@ -54,7 +54,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 // ─── WhatsApp token diagnostic (temporary) ───────────────────────────────────
-router.get('/test-whatsapp', requireAuth, async (req, res) => {
+router.get('/test-whatsapp', async (req, res) => {
   const token   = process.env.WHATSAPP_TOKEN
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
 
