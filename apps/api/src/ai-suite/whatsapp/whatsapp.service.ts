@@ -5,7 +5,7 @@ import { setBookingState } from '../booking/booking.state'
 
 const prisma = new PrismaClient()
 
-const GRAPH_API_VERSION = 'v18.0'
+const GRAPH_API_VERSION = 'v19.0'
 
 export async function processInbound(from: string, text: string, wamid: string): Promise<void> {
   try {
