@@ -152,36 +152,45 @@ export default function AccountsDashboardPage() {
   const [now,  setNow]        = useState(new Date())
   const [data, setData]       = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [qbConnected, setQbConnected] = useState(false)
-  const [qbModal, setQbModal]         = useState(false)
-  const [toast, setToast]             = useState('')
+  const [qbStatus, setQbStatus] = useState<{ connected: boolean; companyName?: string } | null>(null)
+  const [toast, setToast]       = useState('')
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
     if (stored) setUser(JSON.parse(stored))
-    setQbConnected(localStorage.getItem('cc_qb_connected') === 'true')
 
-    const tick = setInterval(() => setNow(new Date()), 60000)
-
+    const tick  = setInterval(() => setNow(new Date()), 60000)
     const token = localStorage.getItem('cc_token')
+
     if (token) {
       fetch('/api-proxy/accounts/dashboard', { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.json())
         .then(d => { if (!d.error) setData(d) })
         .catch(() => {})
         .finally(() => setLoading(false))
+
+      fetch('/api-proxy/accounts/quickbooks/status', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(setQbStatus)
+        .catch(() => setQbStatus({ connected: false }))
     } else {
       setLoading(false)
     }
 
+    // Show toast if returning from OAuth
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('qb') === 'connected') {
+      setToast('QuickBooks connected successfully!')
+      setTimeout(() => setToast(''), 4000)
+      window.history.replaceState({}, '', '/accounts/dashboard')
+    } else if (params.get('qb') === 'error') {
+      setToast('QuickBooks connection failed — please try again.')
+      setTimeout(() => setToast(''), 5000)
+      window.history.replaceState({}, '', '/accounts/dashboard')
+    }
+
     return () => clearInterval(tick)
   }, [])
-
-  function handleQbConnect() {
-    setQbModal(false)
-    setToast('QuickBooks integration coming soon — contact your developer to activate')
-    setTimeout(() => setToast(''), 4000)
-  }
 
   const greeting    = getGreeting()
   const name        = user?.firstName || 'Accounts'
@@ -237,13 +246,6 @@ export default function AccountsDashboardPage() {
         </div>
       )}
 
-      {/* QuickBooks modal */}
-      {qbModal && (
-        <QuickBooksModal
-          onClose={() => setQbModal(false)}
-          onConnect={handleQbConnect}
-        />
-      )}
 
       {/* ── TOP ROW ── */}
       <div className="relative flex items-end gap-4" style={{ marginBottom: -50 }}>
@@ -257,18 +259,18 @@ export default function AccountsDashboardPage() {
               <p className="text-gray-400 dark:text-blue-300 text-xs mt-0.5">{dateStr}</p>
             </div>
             {/* QuickBooks button */}
-            {qbConnected ? (
+            {qbStatus?.connected ? (
               <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-400 border border-green-200 dark:border-green-800 flex-shrink-0">
                 <CheckCircle size={13} className="text-green-500" />
-                QuickBooks Connected
+                {qbStatus.companyName || 'QuickBooks'} Connected
               </div>
             ) : (
-              <button onClick={() => setQbModal(true)}
+              <a href="/api-proxy/accounts/quickbooks/connect"
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white flex-shrink-0 transition-all hover:-translate-y-0.5 hover:shadow-md"
                 style={{ background: 'linear-gradient(135deg,#2CA01C,#4DB629)', boxShadow: '0 4px 12px rgba(44,160,28,0.3)' }}>
                 <span className="text-xs font-black">QB</span>
                 Connect QuickBooks
-              </button>
+              </a>
             )}
           </div>
         </div>
