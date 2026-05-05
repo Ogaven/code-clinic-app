@@ -129,6 +129,44 @@ app.get('/health', async (_req, res) => {
   })
 })
 
+// ─── WhatsApp token diagnostic (temporary — remove after use) ─
+app.get('/test-whatsapp', async (req, res) => {
+  const token   = process.env.WHATSAPP_TOKEN
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
+
+  const infoRes = await fetch(
+    `https://graph.facebook.com/v19.0/${phoneId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  const info = await infoRes.json()
+
+  const sendRes = await fetch(
+    `https://graph.facebook.com/v19.0/${phoneId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to:   '256758194632',
+        type: 'text',
+        text: { body: 'Test from Sarah' },
+      }),
+    }
+  )
+  const sendResult = await sendRes.json()
+
+  res.json({
+    tokenLength: token?.length,
+    tokenStart:  token?.substring(0, 15),
+    phoneId,
+    phoneInfo:   info,
+    sendResult,
+  })
+})
+
 // ─── Routes ───────────────────────────────────────────────────
 app.use('/auth',         authRouter)
 app.use('/employees',    employeesRouter)
