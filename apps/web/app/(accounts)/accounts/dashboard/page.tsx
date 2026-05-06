@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import {
   TrendingUp, TrendingDown, DollarSign, FileText, ShoppingBag, AlertCircle,
-  ChevronRight, X, CheckCircle,
+  ChevronRight, CheckCircle,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -61,48 +61,15 @@ function AnalogClock() {
   )
 }
 
-// ── QuickBooks Modal ──────────────────────────────────────────────────────────
-function QuickBooksModal({ onClose, onConnect }: { onClose: () => void; onConnect: () => void }) {
+// ── QuickBooks Logo ───────────────────────────────────────────────────────────
+function QBLogo({ size = 20 }: { size?: number }) {
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-[#0e2045] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-md overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-sm"
-              style={{ background: 'linear-gradient(135deg,#2CA01C,#4DB629)' }}>QB</div>
-            <div>
-              <h3 className="text-sm font-bold text-gray-800 dark:text-white">QuickBooks Online</h3>
-              <p className="text-[10px] text-gray-400">Intuit Financial Software</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-gray-100 dark:hover:bg-white/8">
-            <X size={16} className="text-gray-400" />
-          </button>
-        </div>
-        <div className="px-6 py-6">
-          <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-            Connect your QuickBooks account to sync your financial data automatically — invoices, payments, expenses, and payroll in real time.
-          </p>
-          <div className="space-y-2 mb-6">
-            {['Auto-sync invoices & payments', 'Expense categorisation', 'Payroll tax calculations', 'Financial reports in QuickBooks'].map(f => (
-              <div key={f} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                <CheckCircle size={14} className="text-green-500 flex-shrink-0" />
-                {f}
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={onConnect}
-            className="w-full py-3 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
-            style={{ background: 'linear-gradient(135deg,#2CA01C,#4DB629)', boxShadow: '0 4px 12px rgba(44,160,28,0.35)' }}>
-            Connect with QuickBooks
-          </button>
-          <p className="text-center text-[10px] text-gray-400 mt-3">
-            QuickBooks integration coming soon — contact your developer to activate
-          </p>
-        </div>
-      </div>
-    </div>
+    <svg width={size} height={size} viewBox="0 0 88 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="44" cy="44" r="44" fill="white"/>
+      <circle cx="44" cy="44" r="38" fill="#2CA01C"/>
+      <text x="44" y="58" textAnchor="middle" fill="white"
+        fontSize="34" fontFamily="Arial, sans-serif" fontWeight="bold" letterSpacing="-3">qb</text>
+    </svg>
   )
 }
 
@@ -266,9 +233,9 @@ export default function AccountsDashboardPage() {
               </div>
             ) : (
               <a href="/api-proxy/accounts/quickbooks/connect"
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white flex-shrink-0 transition-all hover:-translate-y-0.5 hover:shadow-md"
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-white flex-shrink-0 transition-all hover:-translate-y-0.5 hover:shadow-md"
                 style={{ background: 'linear-gradient(135deg,#2CA01C,#4DB629)', boxShadow: '0 4px 12px rgba(44,160,28,0.3)' }}>
-                <span className="text-xs font-black">QB</span>
+                <QBLogo size={22} />
                 Connect QuickBooks
               </a>
             )}

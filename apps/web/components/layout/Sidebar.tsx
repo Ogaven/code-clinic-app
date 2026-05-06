@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, BookOpen, Package,
   ListChecks, Inbox, Phone, Mic,
   ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
-  Activity, Calendar, ArrowLeftRight, FileCheck,
+  Activity, ArrowLeftRight, FileCheck,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -99,8 +99,6 @@ const accountsNav: NavGroup[] = [
       { label: 'Balance Sheet',    href: '/accounts/reports/balance',  icon: Scale },
       { label: 'Cash Flow',        href: '/accounts/reports/cashflow', icon: Activity },
       { label: 'Tax Report',       href: '/accounts/reports/tax',      icon: FileBarChart },
-      { label: 'Monthly Summary',  href: '/accounts/reports/monthly',  icon: Calendar },
-      { label: 'Annual Summary',   href: '/accounts/reports/annual',   icon: CalendarDays },
     ],
   },
   {
@@ -119,7 +117,6 @@ const accountsNav: NavGroup[] = [
   {
     items: [
       { label: 'Settings', href: '/settings', icon: Settings },
-      { label: 'Support',  href: '/support',  icon: HeadphonesIcon },
     ],
   },
 ]
