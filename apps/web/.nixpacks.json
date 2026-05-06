@@ -1,7 +1,0 @@
-{
-  "phases": {
-    "build": {
-      "cmds": ["pnpm run build"]
-    }
-  }
-}
