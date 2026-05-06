@@ -1,3 +1,4 @@
+// Railway cache bust: 2026-05-06
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
