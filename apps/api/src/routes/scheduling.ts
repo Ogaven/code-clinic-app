@@ -1,6 +1,8 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { PrismaClient } from '@prisma/client'
+import multer from 'multer'
+import * as XLSX from 'xlsx'
 import { requireAuth } from '../middleware/auth'
 import { clinicalStaff } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
@@ -8,6 +10,8 @@ import { auditLog } from '../middleware/audit'
 import { syncAppointmentToGCal } from '../services/gcal'
 import { sendAppointmentNotification } from '../ai-suite/notifications/notification.service'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
 const STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
 
@@ -497,6 +501,189 @@ router.post('/doctors/:id/block-time', requireAuth, async (req, res) => {
 router.delete('/doctors/:id/block-time/:blockId', requireAuth, async (req, res) => {
   await prisma.blockedTime.delete({ where: { id: req.params.blockId } })
   res.json({ message: 'Block removed' })
+})
+
+// ─── Working Hours ─────────────────────────────────────────────────────────────
+const DEFAULT_WORKING_HOURS = [
+  { dayOfWeek: 0, isOpen: false, openTime: '07:00', closeTime: '18:00', breaks: [] },
+  { dayOfWeek: 1, isOpen: true,  openTime: '07:00', closeTime: '18:00', breaks: [] },
+  { dayOfWeek: 2, isOpen: true,  openTime: '07:00', closeTime: '18:00', breaks: [] },
+  { dayOfWeek: 3, isOpen: true,  openTime: '07:00', closeTime: '18:00', breaks: [] },
+  { dayOfWeek: 4, isOpen: true,  openTime: '07:00', closeTime: '18:00', breaks: [] },
+  { dayOfWeek: 5, isOpen: true,  openTime: '07:00', closeTime: '18:00', breaks: [] },
+  { dayOfWeek: 6, isOpen: true,  openTime: '07:00', closeTime: '14:00', breaks: [] },
+]
+
+router.get('/working-hours', requireAuth, async (req, res) => {
+  try {
+    const rows = await prisma.workingHours.findMany({ orderBy: { dayOfWeek: 'asc' } })
+    if (rows.length === 0) { res.json(DEFAULT_WORKING_HOURS); return }
+    res.json(rows)
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
+})
+
+router.put('/working-hours', requireAuth, async (req, res) => {
+  try {
+    const days: Array<{ dayOfWeek: number; isOpen: boolean; openTime: string; closeTime: string; breaks: any[] }> = req.body
+    const results = await Promise.all(days.map(d =>
+      prisma.workingHours.upsert({
+        where:  { dayOfWeek: d.dayOfWeek },
+        create: { dayOfWeek: d.dayOfWeek, isOpen: d.isOpen, openTime: d.openTime, closeTime: d.closeTime, breaks: d.breaks },
+        update: { isOpen: d.isOpen, openTime: d.openTime, closeTime: d.closeTime, breaks: d.breaks },
+      })
+    ))
+    res.json(results)
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── Doctor Schedule ───────────────────────────────────────────────────────────
+router.get('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
+  try {
+    const rows = await prisma.doctorSchedule.findMany({
+      where:   { doctorId: req.params.doctorId },
+      orderBy: { dayOfWeek: 'asc' },
+    })
+    res.json(rows)
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
+})
+
+router.put('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
+  try {
+    const { doctorId } = req.params
+    const days: Array<{ dayOfWeek: number; isOpen: boolean; openTime?: string; closeTime?: string; breaks?: any[]; slots?: string[] }> = req.body
+    if (!days || days.length === 0) {
+      await prisma.doctorSchedule.deleteMany({ where: { doctorId } })
+      res.json([]); return
+    }
+    const results = await Promise.all(days.map(d =>
+      prisma.doctorSchedule.upsert({
+        where:  { doctorId_dayOfWeek: { doctorId, dayOfWeek: d.dayOfWeek } },
+        create: { doctorId, dayOfWeek: d.dayOfWeek, isOpen: d.isOpen, openTime: d.openTime, closeTime: d.closeTime, breaks: d.breaks ?? undefined, slots: d.slots ?? undefined },
+        update: { isOpen: d.isOpen, openTime: d.openTime, closeTime: d.closeTime, breaks: d.breaks ?? undefined, slots: d.slots ?? undefined },
+      })
+    ))
+    res.json(results)
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
+})
+
+router.delete('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
+  try {
+    await prisma.doctorSchedule.deleteMany({ where: { doctorId: req.params.doctorId } })
+    res.json({ cleared: true })
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── Special Days ──────────────────────────────────────────────────────────────
+router.get('/special-days', requireAuth, async (req, res) => {
+  try {
+    const year  = parseInt((req.query.year as string) || String(new Date().getFullYear()))
+    const start = new Date(`${year}-01-01T00:00:00.000Z`)
+    const end   = new Date(`${year}-12-31T23:59:59.999Z`)
+    const days  = await prisma.specialDay.findMany({
+      where:   { date: { gte: start, lte: end } },
+      orderBy: { date: 'asc' },
+    })
+    res.json(days)
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
+})
+
+router.post('/special-days', requireAuth, async (req, res) => {
+  try {
+    const { date, type, openTime, closeTime, note } = req.body
+    const d = await prisma.specialDay.upsert({
+      where:  { date: new Date(date) },
+      create: { date: new Date(date), type, openTime: openTime || null, closeTime: closeTime || null, note: note || null },
+      update: { type, openTime: openTime || null, closeTime: closeTime || null, note: note || null },
+    })
+    res.status(201).json(d)
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
+})
+
+router.delete('/special-days/:id', requireAuth, async (req, res) => {
+  try {
+    await prisma.specialDay.delete({ where: { id: req.params.id } })
+    res.json({ deleted: true })
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── Import Appointments ───────────────────────────────────────────────────────
+router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('file'), async (req, res) => {
+  if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
+
+  try {
+    const wb   = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true })
+    const ws   = wb.Sheets[wb.SheetNames[0]]
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { raw: false, defval: '' })
+
+    let imported = 0, skipped = 0
+    const errors: string[] = []
+
+    // Cache doctors once
+    const allDoctors = await prisma.doctor.findMany({
+      where:   { isActive: true },
+      include: { user: { select: { firstName: true, lastName: true } } },
+    })
+
+    for (const row of rows) {
+      try {
+        const patientName = String(row.patient_name ?? row['Patient Name'] ?? '').trim()
+        const phone       = String(row.phone        ?? row['Phone']        ?? '').trim()
+        const dateStr     = String(row.date         ?? row['Date']         ?? row['date (YYYY-MM-DD)'] ?? '').trim()
+        const timeStr     = String(row.time         ?? row['Time']         ?? row['time (HH:MM)']      ?? '').trim()
+        const doctorName  = String(row.doctor       ?? row['Doctor']       ?? '').trim()
+        const serviceName = String(row.service      ?? row['Service']      ?? '').trim()
+        const notesTxt    = String(row.notes        ?? row['Notes']        ?? '').trim()
+        const emailTxt    = String(row.email        ?? row['Email']        ?? '').trim()
+
+        if (!patientName || !phone || !dateStr || !timeStr) {
+          skipped++; errors.push(`Row skipped: missing name, phone, date or time`); continue
+        }
+
+        // Find/create patient
+        let patient = await prisma.patient.findFirst({ where: { phone } })
+        if (!patient) {
+          const parts = patientName.split(' ')
+          patient = await prisma.patient.create({
+            data: { firstName: parts[0] || patientName, lastName: parts.slice(1).join(' ') || '.', phone, email: emailTxt || undefined },
+          })
+        }
+
+        // Find service
+        const service = serviceName
+          ? await prisma.service.findFirst({ where: { name: { contains: serviceName, mode: 'insensitive' }, isActive: true } })
+          : await prisma.service.findFirst({ where: { isActive: true } })
+        if (!service) { skipped++; errors.push(`Row skipped: service "${serviceName}" not found`); continue }
+
+        // Find doctor
+        const doctor = doctorName
+          ? allDoctors.find(d => `${d.user.firstName} ${d.user.lastName}`.toLowerCase().includes(doctorName.toLowerCase()))
+          : allDoctors[0]
+        if (!doctor) { skipped++; errors.push(`Row skipped: doctor "${doctorName}" not found`); continue }
+
+        // Parse datetime (EAT = UTC+3)
+        const startAt = new Date(`${dateStr}T${timeStr.length === 5 ? timeStr : timeStr.slice(0, 5)}:00+03:00`)
+        if (isNaN(startAt.getTime())) { skipped++; errors.push(`Row skipped: invalid date/time "${dateStr} ${timeStr}"`); continue }
+        const endAt = new Date(startAt.getTime() + service.durationMins * 60_000)
+
+        // Duplicate check
+        const dup = await prisma.appointment.findFirst({
+          where: { doctorId: doctor.id, startAt, status: { not: 'CANCELLED' } },
+        })
+        if (dup) { skipped++; continue }
+
+        await prisma.appointment.create({
+          data: { patientId: patient.id, doctorId: doctor.id, serviceId: service.id, startAt, endAt, notes: notesTxt || undefined, createdById: req.user!.id },
+        })
+        imported++
+      } catch (rowErr: any) {
+        skipped++; errors.push(`Row error: ${rowErr.message}`)
+      }
+    }
+
+    res.json({ imported, skipped, errors: errors.slice(0, 20) })
+  } catch (e: any) {
+    res.status(500).json({ error: `Failed to parse file: ${e.message}` })
+  }
 })
 
 export default router

@@ -108,6 +108,7 @@ model Doctor {
 
   appointments   Appointment[]
   blockedTimes   BlockedTime[]
+  schedules      DoctorSchedule[]
 
   @@map("doctors")
 }
@@ -122,6 +123,49 @@ model BlockedTime {
   createdAt DateTime @default(now())
 
   @@map("blocked_times")
+}
+
+model WorkingHours {
+  id        String   @id @default(cuid())
+  dayOfWeek Int      // 0=Sun, 1=Mon ... 6=Sat
+  isOpen    Boolean  @default(true)
+  openTime  String
+  closeTime String
+  breaks    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dayOfWeek])
+  @@map("working_hours")
+}
+
+model DoctorSchedule {
+  id        String   @id @default(cuid())
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek Int
+  isOpen    Boolean  @default(true)
+  openTime  String?
+  closeTime String?
+  breaks    Json?
+  slots     Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([doctorId, dayOfWeek])
+  @@map("doctor_schedules")
+}
+
+model SpecialDay {
+  id        String   @id @default(cuid())
+  date      DateTime @unique
+  type      String   // "DAY_OFF" | "SPECIAL_WORKING"
+  openTime  String?
+  closeTime String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@map("special_days")
 }
 
 model Patient {
