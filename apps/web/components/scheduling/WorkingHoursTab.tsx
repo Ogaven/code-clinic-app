@@ -83,6 +83,7 @@ export default function WorkingHoursTab() {
     setSaving(true)
     try {
       const r = await fetch(`${API}/scheduling/working-hours`, { method: 'PUT', headers: hdr(), body: JSON.stringify(days) })
+      if (r.ok) window.dispatchEvent(new CustomEvent('workingHoursUpdated'))
       flash(r.ok ? 'Working hours saved' : 'Failed to save', r.ok)
     } catch { flash('Network error', false) }
     finally { setSaving(false) }

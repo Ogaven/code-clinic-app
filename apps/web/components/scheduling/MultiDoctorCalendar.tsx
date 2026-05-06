@@ -240,6 +240,15 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
         {columns.map(({ doctor, appointments }) => {
           const count = appointments.filter((a) => a.status !== 'CANCELLED').length
           const init  = doctor.firstName[0] + doctor.lastName[0]
+          let hoursLabel: string | null = null
+          try {
+            if (doctor.workingHours) {
+              const raw = JSON.parse(doctor.workingHours)
+              const s = raw.start ?? raw['1']?.start
+              const e = raw.end   ?? raw['1']?.end
+              if (s && e) hoursLabel = `${s} – ${e}`
+            }
+          } catch {}
           return (
             <div key={doctor.id} className="flex-1 min-w-[130px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 flex items-center gap-2">
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
@@ -249,6 +258,7 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-bold text-clinic-navy dark:text-white truncate">Dr. {doctor.firstName}</div>
                 <div className="text-[10px] text-gray-400 truncate">{doctor.specialisation || 'General'}</div>
+                {hoursLabel && <div className="text-[10px] text-gray-300 dark:text-gray-600 truncate">{hoursLabel}</div>}
               </div>
               {count > 0 && (
                 <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded-full"
@@ -327,11 +337,12 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
 }
 
 // ─── Week View ────────────────────────────────────────────────────────────────
-function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment }: {
-  weekDates:          Date[]
-  appointments:       Appointment[]
-  onBookSlot?:        (docId: string, at: Date) => void
+function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, workingHours }: {
+  weekDates:           Date[]
+  appointments:        Appointment[]
+  onBookSlot?:         (docId: string, at: Date) => void
   onClickAppointment?: (a: Appointment) => void
+  workingHours?:       any[]
 }) {
   const today  = new Date()
   const TIME_W = 56
@@ -352,8 +363,10 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment }: {
         {weekDates.map((date) => {
           const isToday  = sameDay(date, today)
           const dayCount = appointments.filter((a) => sameDay(new Date(a.startAt), date) && a.status !== 'CANCELLED').length
+          const wh       = workingHours?.find(w => w.dayOfWeek === date.getDay())
+          const isClosed = wh ? !wh.isOpen : false
           return (
-            <div key={date.toISOString()} className="flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 text-center">
+            <div key={date.toISOString()} className={cn('flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 text-center', isClosed && 'opacity-50')}>
               <div className={cn('text-[11px] font-semibold uppercase', isToday ? 'text-clinic-blue' : 'text-gray-400')}>
                 {date.toLocaleDateString('en-UG', { weekday: 'short' })}
               </div>
@@ -377,9 +390,11 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment }: {
         {weekDates.map((date) => {
           const isToday  = sameDay(date, today)
           const dayAppts = appointments.filter((a) => sameDay(new Date(a.startAt), date) && a.status !== 'CANCELLED')
+          const wh       = workingHours?.find(w => w.dayOfWeek === date.getDay())
+          const isClosed = wh ? !wh.isOpen : false
           return (
             <div key={date.toISOString()}
-              className={cn('flex-1 min-w-[100px] border-r border-gray-100 dark:border-white/10 relative', isToday && 'bg-blue-50/15 dark:bg-blue-900/10')}
+              className={cn('flex-1 min-w-[100px] border-r border-gray-100 dark:border-white/10 relative', isToday && 'bg-blue-50/15 dark:bg-blue-900/10', isClosed && 'opacity-40 bg-gray-100 dark:bg-white/3')}
               style={{ height: `${timeSlots.length * SLOT_HEIGHT}px` }}>
               {timeSlots.map((slot, i) => (
                 <div key={slot}
@@ -483,7 +498,8 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   const [removeBlock, setRemoveBlock] = useState<{ doctorId: string; blockId: string } | null>(null)
   const dragStateRef = useRef<{ doctorId: string; startIdx: number; endIdx: number } | null>(null)
   const dateRef      = useRef(date)
-  const [dragOverlay, setDragOverlay] = useState<{ doctorId: string; startIdx: number; endIdx: number } | null>(null)
+  const [dragOverlay,   setDragOverlay]   = useState<{ doctorId: string; startIdx: number; endIdx: number } | null>(null)
+  const [workingHours,  setWorkingHours]  = useState<any[]>([])
 
   useEffect(() => { dateRef.current = date }, [date])
 
@@ -492,6 +508,22 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
     return { Authorization: `Bearer ${token}` }
   }
+
+  function fetchWorkingHours() {
+    fetch(`${API}/scheduling/working-hours`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setWorkingHours(d) })
+      .catch(() => {})
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchWorkingHours() }, [])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    window.addEventListener('workingHoursUpdated', fetchWorkingHours)
+    return () => window.removeEventListener('workingHoursUpdated', fetchWorkingHours)
+  }, [])
 
   // ─── Drag-to-block global mouseup ────────────────────────────────────────────
   useEffect(() => {
@@ -681,14 +713,6 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           </div>
         )}
 
-        {/* Block Time button — doctors view only */}
-        {view === 'doctors' && (
-          <button onClick={() => setBlockModal({ doctorId: columns[0]?.doctor.id ?? '', date: toDateStr(date), startTime: '09:00', endTime: '10:00', reason: '', repeat: 'none' })}
-            className="flex items-center gap-1.5 px-3 h-8 rounded-xl text-xs font-semibold text-white bg-red-400 hover:bg-red-500 transition-colors flex-shrink-0">
-            <Lock size={11} /> Block
-          </button>
-        )}
-
         {/* View toggle */}
         <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-white/10 rounded-xl p-0.5">
           {(['doctors','week','month'] as ViewMode[]).map((v) => (
@@ -726,6 +750,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           appointments={weekAppts}
           onBookSlot={onBookSlot}
           onClickAppointment={onClickAppointment}
+          workingHours={workingHours}
         />
       )}
       {view === 'month' && (

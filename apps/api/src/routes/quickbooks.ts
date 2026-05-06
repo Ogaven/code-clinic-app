@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
+import jwt from 'jsonwebtoken'
 import { requireAuth } from '../middleware/auth'
 
 const router = Router()
@@ -48,11 +49,14 @@ function qbQuery(qbo: any, query: string): Promise<any> {
 }
 
 // ── GET /accounts/quickbooks/connect ─────────────────────────────────────────
-router.get('/connect', requireAuth, (req, res) => {
+// No requireAuth — browser navigates here directly; token passed as query param
+// and embedded in OAuth state so the callback can identify the user.
+router.get('/connect', (req, res) => {
+  const token = (req.query.token as string) || ''
   const oauthClient = getOAuthClient()
   const authUri = oauthClient.authorizeUri({
     scope: ['com.intuit.quickbooks.accounting', 'com.intuit.quickbooks.payment'],
-    state: 'codeclinic-qb',
+    state: `codeclinic-qb|${token}`,
   })
   res.redirect(authUri)
 })
@@ -61,17 +65,30 @@ router.get('/connect', requireAuth, (req, res) => {
 router.get('/callback', async (req, res) => {
   const webApp = (process.env.APP_URL || 'http://localhost:3000').split(',')[0].trim()
   try {
+    // Extract user token embedded in OAuth state by /connect
+    const state     = (req.query.state as string) || ''
+    const userToken = state.split('|')[1] || ''
+
+    let connectedByUserId: string | undefined
+    if (userToken) {
+      try {
+        const decoded = jwt.verify(userToken, process.env.JWT_SECRET!) as any
+        connectedByUserId = decoded.id || decoded.userId
+      } catch { /* token invalid or expired — connection still succeeds */ }
+    }
+
     const oauthClient = getOAuthClient()
     const authResponse = await oauthClient.createToken(req.url)
-    const tokens = authResponse.getJson()
+    const tokens  = authResponse.getJson()
     const realmId = req.query.realmId as string
 
     const payload = JSON.stringify({
-      access_token:  tokens.access_token,
-      refresh_token: tokens.refresh_token,
+      access_token:   tokens.access_token,
+      refresh_token:  tokens.refresh_token,
       realmId,
-      expires_in:    tokens.expires_in,
-      connected_at:  new Date().toISOString(),
+      expires_in:     tokens.expires_in,
+      connected_at:   new Date().toISOString(),
+      connected_by:   connectedByUserId,
     })
 
     await prisma.appSetting.upsert({

@@ -232,12 +232,16 @@ export default function AccountsDashboardPage() {
                 {qbStatus.companyName || 'QuickBooks'} Connected
               </div>
             ) : (
-              <a href="/api-proxy/accounts/quickbooks/connect"
+              <button
+                onClick={() => {
+                  const token = localStorage.getItem('cc_token')
+                  window.location.href = `/api-proxy/accounts/quickbooks/connect?token=${token}`
+                }}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-white flex-shrink-0 transition-all hover:-translate-y-0.5 hover:shadow-md"
                 style={{ background: 'linear-gradient(135deg,#2CA01C,#4DB629)', boxShadow: '0 4px 12px rgba(44,160,28,0.3)' }}>
                 <QBLogo size={22} />
                 Connect QuickBooks
-              </a>
+              </button>
             )}
           </div>
         </div>
