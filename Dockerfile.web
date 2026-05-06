@@ -16,8 +16,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN mkdir -p apps/web/.next/standalone apps/web/.next/static && \
-    pnpm --filter web build || true
+RUN pnpm --filter web build
 
 # ── Runtime ───────────────────────────────────────────────────
 FROM node:20-alpine AS runner

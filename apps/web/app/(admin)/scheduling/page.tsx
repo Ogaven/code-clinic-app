@@ -1,34 +1,40 @@
 'use client'
 
 import { useState } from 'react'
-import { CalendarDays, List, Users, Clock, UserCog, Star, Upload, Plug } from 'lucide-react'
+import { CalendarDays, Users, Stethoscope, Plug, Settings, X, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MultiDoctorCalendar  from '@/components/scheduling/MultiDoctorCalendar'
 import BookingDrawer        from '@/components/scheduling/BookingDrawer'
 import AppointmentModal     from '@/components/scheduling/AppointmentModal'
-import AppointmentsListTab  from '@/components/scheduling/AppointmentsListTab'
 import DoctorsTab           from '@/components/scheduling/DoctorsTab'
+import ServicesTab          from '@/components/scheduling/ServicesTab'
 import WorkingHoursTab      from '@/components/scheduling/WorkingHoursTab'
 import ProvidersScheduleTab from '@/components/scheduling/ProvidersScheduleTab'
 import SpecialDaysTab       from '@/components/scheduling/SpecialDaysTab'
 import ImportTab            from '@/components/scheduling/ImportTab'
 import ConnectionsTab       from '@/components/scheduling/ConnectionsTab'
 
-type Tab = 'calendar' | 'appointments' | 'doctors' | 'working-hours' | 'providers-schedule' | 'special-days' | 'import' | 'connections'
+type Tab = 'calendar' | 'doctors' | 'services' | 'connections' | 'settings'
+type SettingsSub = 'working-hours' | 'doctors-schedule' | 'special-days'
 
 const TABS: { key: Tab; label: string; Icon: React.ElementType }[] = [
-  { key: 'calendar',           label: 'Calendar',           Icon: CalendarDays },
-  { key: 'appointments',       label: 'Appointments',       Icon: List         },
-  { key: 'doctors',            label: 'Doctors',            Icon: Users        },
-  { key: 'working-hours',      label: 'Working Hours',      Icon: Clock        },
-  { key: 'providers-schedule', label: 'Providers Schedule', Icon: UserCog      },
-  { key: 'special-days',       label: 'Special Days',       Icon: Star         },
-  { key: 'import',             label: 'Import',             Icon: Upload       },
-  { key: 'connections',        label: 'Connections',        Icon: Plug         },
+  { key: 'calendar',    label: 'Calendar',    Icon: CalendarDays },
+  { key: 'doctors',     label: 'Doctors',     Icon: Users        },
+  { key: 'services',    label: 'Services',    Icon: Stethoscope  },
+  { key: 'connections', label: 'Connections', Icon: Plug         },
+  { key: 'settings',    label: 'Settings',    Icon: Settings     },
+]
+
+const SETTINGS_SUBS: { key: SettingsSub; label: string }[] = [
+  { key: 'working-hours',    label: 'Working Hours'    },
+  { key: 'doctors-schedule', label: 'Doctors Schedule' },
+  { key: 'special-days',     label: 'Special Days'     },
 ]
 
 export default function SchedulingPage() {
   const [tab,             setTab]             = useState<Tab>('calendar')
+  const [settingsSub,     setSettingsSub]     = useState<SettingsSub>('working-hours')
+  const [importOpen,      setImportOpen]      = useState(false)
   const [drawerOpen,      setDrawerOpen]      = useState(false)
   const [prefillDoctorId, setPrefillDoctorId] = useState<string | undefined>()
   const [prefillStartAt,  setPrefillStartAt]  = useState<Date | undefined>()
@@ -59,12 +65,20 @@ export default function SchedulingPage() {
         ))}
 
         {tab === 'calendar' && (
-          <button
-            onClick={() => { setPrefillDoctorId(undefined); setPrefillStartAt(undefined); setDrawerOpen(true) }}
-            className="ml-auto mb-1 flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
-            style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 12px rgba(41,171,226,0.3)' }}>
-            + Book Appointment
-          </button>
+          <div className="ml-auto flex items-center gap-2 mb-1 flex-shrink-0">
+            <button
+              onClick={() => setImportOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
+              <Upload size={13} />
+              Import
+            </button>
+            <button
+              onClick={() => { setPrefillDoctorId(undefined); setPrefillStartAt(undefined); setDrawerOpen(true) }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
+              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 12px rgba(41,171,226,0.3)' }}>
+              + Book Appointment
+            </button>
+          </div>
         )}
       </div>
 
@@ -77,13 +91,31 @@ export default function SchedulingPage() {
             onClickAppointment={setSelectedAppt}
           />
         )}
-        {tab === 'appointments'       && <AppointmentsListTab />}
-        {tab === 'doctors'            && <DoctorsTab />}
-        {tab === 'working-hours'      && <WorkingHoursTab />}
-        {tab === 'providers-schedule' && <ProvidersScheduleTab />}
-        {tab === 'special-days'       && <SpecialDaysTab />}
-        {tab === 'import'             && <ImportTab />}
-        {tab === 'connections'        && <ConnectionsTab />}
+        {tab === 'doctors'     && <DoctorsTab />}
+        {tab === 'services'    && <ServicesTab />}
+        {tab === 'connections' && <ConnectionsTab />}
+        {tab === 'settings' && (
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="flex-shrink-0 flex gap-1 border-b border-gray-100 dark:border-white/8 px-4 bg-white dark:bg-white/3">
+              {SETTINGS_SUBS.map(({ key, label }) => (
+                <button key={key} onClick={() => setSettingsSub(key)}
+                  className={cn(
+                    'px-3 py-2 text-xs font-semibold border-b-2 transition-all -mb-px whitespace-nowrap',
+                    settingsSub === key
+                      ? 'border-cyan-500 text-cyan-600 dark:text-cyan-400'
+                      : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300',
+                  )}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 overflow-hidden">
+              {settingsSub === 'working-hours'    && <WorkingHoursTab />}
+              {settingsSub === 'doctors-schedule' && <ProvidersScheduleTab />}
+              {settingsSub === 'special-days'     && <SpecialDaysTab />}
+            </div>
+          </div>
+        )}
       </div>
 
       <BookingDrawer
@@ -101,6 +133,22 @@ export default function SchedulingPage() {
           onStatusChange={() => { setRefreshKey(k => k + 1); setSelectedAppt(null) }}
           userRole="ADMIN"
         />
+      )}
+
+      {importOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#0f1729] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-100 dark:border-white/10">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/8 flex-shrink-0">
+              <h2 className="font-black text-gray-800 dark:text-white">Import Appointments</h2>
+              <button onClick={() => setImportOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
+                <X size={16} className="text-gray-400" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <ImportTab />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
