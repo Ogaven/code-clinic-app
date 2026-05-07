@@ -344,11 +344,18 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
   onClickAppointment?: (a: Appointment) => void
   workingHours?:       any[]
 }) {
-  const today  = new Date()
-  const TIME_W = 56
+  const today      = new Date()
+  const TIME_W     = 56
+  const closedDays = new Set(workingHours?.filter(w => !w.isOpen).map(w => w.dayOfWeek) ?? [])
+  const [closedToast, setClosedToast] = useState(false)
 
   function handleClick(date: Date, slot: string) {
     if (!onBookSlot) return
+    if (closedDays.has(date.getDay())) {
+      setClosedToast(true)
+      setTimeout(() => setClosedToast(false), 2500)
+      return
+    }
     const [h, m] = slot.split(':').map(Number)
     const d = new Date(date)
     d.setHours(h, m, 0, 0)
@@ -357,26 +364,31 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
 
   return (
     <div className="flex-1 overflow-auto">
+      {closedToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold text-white shadow-xl bg-red-500 pointer-events-none">
+          🚫 This day is closed
+        </div>
+      )}
       {/* Day headers */}
       <div className="flex sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-white/10 shadow-sm">
         <div className="flex-shrink-0 border-r border-gray-100 dark:border-white/10" style={{ width: TIME_W }} />
         {weekDates.map((date) => {
           const isToday  = sameDay(date, today)
           const dayCount = appointments.filter((a) => sameDay(new Date(a.startAt), date) && a.status !== 'CANCELLED').length
-          const wh       = workingHours?.find(w => w.dayOfWeek === date.getDay())
-          const isClosed = wh ? !wh.isOpen : false
+          const isClosed = closedDays.has(date.getDay())
           return (
-            <div key={date.toISOString()} className={cn('flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 text-center', isClosed && 'opacity-50')}>
-              <div className={cn('text-[11px] font-semibold uppercase', isToday ? 'text-clinic-blue' : 'text-gray-400')}>
+            <div key={date.toISOString()} className={cn('flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 text-center', isClosed && 'bg-red-50/60 dark:bg-red-900/10')}>
+              <div className={cn('text-[11px] font-semibold uppercase flex items-center justify-center gap-1', isToday ? 'text-clinic-blue' : isClosed ? 'text-red-400' : 'text-gray-400')}>
                 {date.toLocaleDateString('en-UG', { weekday: 'short' })}
+                {isClosed && <span className="text-[9px] font-bold text-red-500 bg-red-100 dark:bg-red-900/30 px-1 py-0.5 rounded-full">CLOSED</span>}
               </div>
               <div className={cn(
                 'text-lg font-bold mx-auto w-9 h-9 flex items-center justify-center rounded-full mt-0.5',
-                isToday ? 'bg-clinic-navy text-white' : 'text-clinic-navy dark:text-white',
+                isToday ? 'bg-clinic-navy text-white' : isClosed ? 'text-red-400 opacity-60' : 'text-clinic-navy dark:text-white',
               )}>
                 {date.getDate()}
               </div>
-              {dayCount > 0 && (
+              {dayCount > 0 && !isClosed && (
                 <div className="text-[10px] font-semibold text-clinic-blue">{dayCount} apt</div>
               )}
             </div>
@@ -390,18 +402,17 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
         {weekDates.map((date) => {
           const isToday  = sameDay(date, today)
           const dayAppts = appointments.filter((a) => sameDay(new Date(a.startAt), date) && a.status !== 'CANCELLED')
-          const wh       = workingHours?.find(w => w.dayOfWeek === date.getDay())
-          const isClosed = wh ? !wh.isOpen : false
+          const isClosed = closedDays.has(date.getDay())
           return (
             <div key={date.toISOString()}
-              className={cn('flex-1 min-w-[100px] border-r border-gray-100 dark:border-white/10 relative', isToday && 'bg-blue-50/15 dark:bg-blue-900/10', isClosed && 'opacity-40 bg-gray-100 dark:bg-white/3')}
+              className={cn('flex-1 min-w-[100px] border-r border-gray-100 dark:border-white/10 relative', isToday && 'bg-blue-50/15 dark:bg-blue-900/10')}
               style={{ height: `${timeSlots.length * SLOT_HEIGHT}px` }}>
               {timeSlots.map((slot, i) => (
                 <div key={slot}
-                  className={`absolute left-0 right-0 transition-colors group${onBookSlot ? ' hover:bg-blue-50/40 cursor-pointer' : ''}`}
+                  className={`absolute left-0 right-0 transition-colors group${onBookSlot && !isClosed ? ' hover:bg-blue-50/40 cursor-pointer' : ''}`}
                   style={{ top: `${i * SLOT_HEIGHT}px`, height: `${SLOT_HEIGHT}px`, borderBottom: '1px solid #F5F5F7' }}
                   onClick={() => handleClick(date, slot)}>
-                  {onBookSlot && (
+                  {onBookSlot && !isClosed && (
                     <span className="absolute inset-0 flex items-center justify-center text-[10px] text-clinic-blue opacity-0 group-hover:opacity-100 font-semibold pointer-events-none">
                       + Book
                     </span>
@@ -410,6 +421,15 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
               ))}
               {dayAppts.map((a) => <ApptBlock key={a.id} appt={a} onClick={() => onClickAppointment?.(a)} />)}
               {isToday && <NowLine />}
+              {isClosed && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none"
+                  style={{ background: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(239,68,68,0.04) 10px, rgba(239,68,68,0.04) 20px)' }}>
+                  <div className="flex flex-col items-center gap-1 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl px-4 py-2 shadow-sm">
+                    <span className="text-lg">🚫</span>
+                    <span className="text-xs font-bold text-red-500">Closed</span>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
@@ -419,14 +439,16 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
 }
 
 // ─── Month View ───────────────────────────────────────────────────────────────
-function MonthView({ year, month, appointments, onDateClick }: {
-  year:        number
-  month:       number
-  appointments: Appointment[]
-  onDateClick:  (date: Date) => void
+function MonthView({ year, month, appointments, onDateClick, workingHours }: {
+  year:          number
+  month:         number
+  appointments:  Appointment[]
+  onDateClick:   (date: Date) => void
+  workingHours?: any[]
 }) {
-  const today = new Date()
-  const grid  = getMonthGrid(year, month)
+  const today      = new Date()
+  const grid       = getMonthGrid(year, month)
+  const closedDays = new Set(workingHours?.filter(w => !w.isOpen).map(w => w.dayOfWeek) ?? [])
 
   return (
     <div className="flex-1 overflow-auto p-3">
@@ -441,18 +463,20 @@ function MonthView({ year, month, appointments, onDateClick }: {
           const isToday   = sameDay(date, today)
           const inMonth   = date.getMonth() === month
           const dayAppts  = appointments.filter((a) => sameDay(new Date(a.startAt), date))
+          const isClosed  = inMonth && closedDays.has(date.getDay())
           return (
             <div key={date.toISOString()}
               onClick={() => onDateClick(date)}
               className={cn(
-                'rounded-xl p-2 min-h-[90px] cursor-pointer transition-all border',
+                'rounded-xl p-2 min-h-[90px] cursor-pointer transition-all border relative overflow-hidden',
                 isToday   ? 'bg-blue-50 dark:bg-blue-900/20 border-clinic-blue/30 shadow-sm' :
                 !inMonth  ? 'bg-gray-50/50 dark:bg-white/3 border-gray-100 dark:border-white/5 opacity-40' :
+                isClosed  ? 'bg-red-50/40 dark:bg-red-900/10 border-red-100 dark:border-red-800/20' :
                 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 hover:border-clinic-blue/30 hover:shadow-sm',
               )}>
               <div className={cn(
                 'text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full mb-1.5',
-                isToday ? 'bg-clinic-navy text-white' : 'text-gray-700 dark:text-gray-300',
+                isToday ? 'bg-clinic-navy text-white' : isClosed ? 'text-red-400' : 'text-gray-700 dark:text-gray-300',
               )}>
                 {date.getDate()}
               </div>
@@ -464,6 +488,11 @@ function MonthView({ year, month, appointments, onDateClick }: {
               ))}
               {dayAppts.length > 3 && (
                 <div className="text-[10px] text-gray-400 font-medium mt-0.5">+{dayAppts.length - 3} more</div>
+              )}
+              {isClosed && (
+                <div className="absolute bottom-0 left-0 right-0 text-center text-[8px] font-bold text-red-400 bg-red-50 dark:bg-red-900/10 py-0.5">
+                  CLOSED
+                </div>
               )}
             </div>
           )
@@ -759,6 +788,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           month={date.getMonth()}
           appointments={monthAppts}
           onDateClick={(d) => { setDate(d); setView('doctors') }}
+          workingHours={workingHours}
         />
       )}
 
