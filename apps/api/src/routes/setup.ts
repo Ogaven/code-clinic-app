@@ -232,7 +232,8 @@ router.post('/seed-production', async (req, res) => {
       { firstName: 'Joseph',   lastName: 'Tumwine',  phone: '+256700100008', gender: 'MALE',   dob: new Date('1975-12-25') },
     ]
     for (const p of patientDefs) {
-      await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: { ...p, gender: p.gender as Gender } })
+      if (!await prisma.patient.findFirst({ where: { phone: p.phone } }))
+        await prisma.patient.create({ data: { ...p, gender: p.gender as Gender } })
     }
     log(`${patientDefs.length} demo patients upserted`)
 
@@ -273,10 +274,8 @@ router.post('/seed-production', async (req, res) => {
         })
         if (!existing) {
           try {
-            await prisma.appointment.upsert({
-              where: { doctorId_startAt: { doctorId: doctor.id, startAt } },
-              update: { status: slot.status },
-              create: { patientId: patient.id, doctorId: doctor.id, serviceId: service.id, startAt, endAt, status: slot.status, createdById: adminUser.id },
+            await prisma.appointment.create({
+              data: { patientId: patient.id, doctorId: doctor.id, serviceId: service.id, startAt, endAt, status: slot.status, createdById: adminUser.id },
             })
             apptCount++
           } catch { /* skip conflict */ }
@@ -290,11 +289,8 @@ router.post('/seed-production', async (req, res) => {
     const stevenDoc  = stevenUser ? await prisma.doctor.findFirst({ where: { userId: stevenUser.id } }) : null
     if (stevenDoc && adminUser) {
       // Ensure Grace Atuhaire exists
-      await prisma.patient.upsert({
-        where:  { phone: '+256700100009' },
-        update: {},
-        create: { firstName: 'Grace', lastName: 'Atuhaire', phone: '+256700100009', gender: 'FEMALE' as Gender, dob: new Date('1992-06-20') },
-      })
+      if (!await prisma.patient.findFirst({ where: { phone: '+256700100009' } }))
+        await prisma.patient.create({ data: { firstName: 'Grace', lastName: 'Atuhaire', phone: '+256700100009', gender: 'FEMALE' as Gender, dob: new Date('1992-06-20') } })
 
       const stevenSlots = [
         { phone: '+256700100009', h: 8,  m: 0,  status: 'ARRIVED'       as const }, // Grace Atuhaire
@@ -315,11 +311,12 @@ router.post('/seed-production', async (req, res) => {
         startAt.setHours(slot.h, slot.m, 0, 0)
         const endAt = new Date(startAt.getTime() + consultService.durationMins * 60000)
         try {
-          await prisma.appointment.upsert({
-            where: { doctorId_startAt: { doctorId: stevenDoc.id, startAt } },
-            update: { status: slot.status },
-            create: { patientId: patient.id, doctorId: stevenDoc.id, serviceId: consultService.id, startAt, endAt, status: slot.status, createdById: adminUser.id },
-          })
+          const existingStevenAppt = await prisma.appointment.findFirst({ where: { doctorId: stevenDoc.id, startAt } })
+          if (existingStevenAppt) {
+            await prisma.appointment.update({ where: { id: existingStevenAppt.id }, data: { status: slot.status } })
+          } else {
+            await prisma.appointment.create({ data: { patientId: patient.id, doctorId: stevenDoc.id, serviceId: consultService.id, startAt, endAt, status: slot.status, createdById: adminUser.id } })
+          }
           stevenApptCount++
         } catch { /* skip if unique conflict */ }
       }
@@ -474,7 +471,8 @@ router.post('/seed-production', async (req, res) => {
       { firstName: 'Yvonne',    lastName: 'Naluwooza', phone: '+256701200025', email: 'y.naluwooza@gmail.com',     gender: 'FEMALE', dob: new Date('2002-01-23'), address: 'Kireka, Wakiso',        district: 'Wakiso'  },
     ]
     for (const p of extraPatients) {
-      await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: { ...p, gender: p.gender as Gender } })
+      if (!await prisma.patient.findFirst({ where: { phone: p.phone } }))
+        await prisma.patient.create({ data: { ...p, gender: p.gender as Gender } })
     }
     log(`${extraPatients.length} extended demo patients upserted`)
 
@@ -578,11 +576,10 @@ router.post('/seed-production', async (req, res) => {
         const startAt = dayOffset(slot.d, slot.h, slot.m)
         const endAt   = new Date(startAt.getTime() + service.durationMins * 60000)
         try {
-          const appt = await prisma.appointment.upsert({
-            where: { doctorId_startAt: { doctorId: doctor.id, startAt } },
-            update: { status: slot.status },
-            create: { patientId: patient.id, doctorId: doctor.id, serviceId: service.id, startAt, endAt, status: slot.status, createdById: adminU.id },
-          })
+          const existingHistAppt = await prisma.appointment.findFirst({ where: { doctorId: doctor.id, startAt } })
+          const appt = existingHistAppt
+            ? await prisma.appointment.update({ where: { id: existingHistAppt.id }, data: { status: slot.status } })
+            : await prisma.appointment.create({ data: { patientId: patient.id, doctorId: doctor.id, serviceId: service.id, startAt, endAt, status: slot.status, createdById: adminU.id } })
           createdAppts.push({ id: appt.id, amount: slot.amount, paid: slot.paid, status: slot.status })
           histCount++
         } catch { /* skip conflicts */ }

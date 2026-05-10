@@ -56,11 +56,17 @@ router.post('/seed', requireAuth, adminOnly, async (_req, res) => {
     ]
     const createdPatients: { id: string; firstName: string }[] = []
     for (const p of patientsData) {
-      const pat = await prisma.patient.upsert({
-        where:  { phone: p.phone },
-        update: { firstName: p.firstName, lastName: p.lastName, address: p.address, district: p.district, nextOfKinName: p.nextOfKinName, nextOfKinPhone: p.nextOfKinPhone, nextOfKinRelation: p.nextOfKinRelation, allergies: p.allergies || undefined, medicalHistory: p.medicalHistory || undefined },
-        create: { firstName: p.firstName, lastName: p.lastName, phone: p.phone, email: p.email ?? undefined, gender: p.gender as Gender, dob: p.dob, address: p.address, district: p.district, nextOfKinName: p.nextOfKinName, nextOfKinPhone: p.nextOfKinPhone, nextOfKinRelation: p.nextOfKinRelation, allergies: p.allergies || undefined, medicalHistory: p.medicalHistory || undefined },
-      })
+      let pat = await prisma.patient.findFirst({ where: { phone: p.phone } })
+      if (pat) {
+        pat = await prisma.patient.update({
+          where: { id: pat.id },
+          data:  { firstName: p.firstName, lastName: p.lastName, address: p.address, district: p.district, nextOfKinName: p.nextOfKinName, nextOfKinPhone: p.nextOfKinPhone, nextOfKinRelation: p.nextOfKinRelation, allergies: p.allergies || undefined, medicalHistory: p.medicalHistory || undefined },
+        })
+      } else {
+        pat = await prisma.patient.create({
+          data: { firstName: p.firstName, lastName: p.lastName, phone: p.phone, email: p.email ?? undefined, gender: p.gender as Gender, dob: p.dob, address: p.address, district: p.district, nextOfKinName: p.nextOfKinName, nextOfKinPhone: p.nextOfKinPhone, nextOfKinRelation: p.nextOfKinRelation, allergies: p.allergies || undefined, medicalHistory: p.medicalHistory || undefined },
+        })
+      }
       createdPatients.push({ id: pat.id, firstName: p.firstName })
     }
     results.push(`${patientsData.length} patients upserted`)
@@ -112,11 +118,12 @@ router.post('/seed', requireAuth, adminOnly, async (_req, res) => {
         const service = allServices.find(s => s.id === a.serviceId) ?? allServices[0]
         const endAt   = new Date(a.startAt.getTime() + service.durationMins * 60_000)
         try {
-          await prisma.appointment.upsert({
-            where:  { doctorId_startAt: { doctorId: a.doctorId, startAt: a.startAt } },
-            update: { status: a.status as AppointmentStatus },
-            create: { patientId: a.patientId, doctorId: a.doctorId, serviceId: a.serviceId, startAt: a.startAt, endAt, status: a.status as AppointmentStatus, createdById: adminUser?.id },
-          })
+          const existingAppt = await prisma.appointment.findFirst({ where: { doctorId: a.doctorId, startAt: a.startAt } })
+          if (existingAppt) {
+            await prisma.appointment.update({ where: { id: existingAppt.id }, data: { status: a.status as AppointmentStatus } })
+          } else {
+            await prisma.appointment.create({ data: { patientId: a.patientId, doctorId: a.doctorId, serviceId: a.serviceId, startAt: a.startAt, endAt, status: a.status as AppointmentStatus, createdById: adminUser?.id } })
+          }
           apptCreated++
         } catch { /* skip duplicates */ }
       }
