@@ -211,7 +211,7 @@ function TimeCol({ width }: { width: number }) {
 }
 
 // ─── Doctors View ─────────────────────────────────────────────────────────────
-function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay }: {
+function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay, workingHours }: {
   columns:             DoctorCol[]
   dateStr:             string
   onBookSlot?:         (docId: string, at: Date) => void
@@ -220,12 +220,22 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
   onSlotDragStart?:    (doctorId: string, slotIdx: number) => void
   onSlotDragMove?:     (doctorId: string, slotIdx: number) => void
   dragOverlay?:        { doctorId: string; startIdx: number; endIdx: number } | null
+  workingHours?:       any[]
 }) {
-  const today   = toDateStr(new Date()) === dateStr
-  const TIME_W  = 56
+  const today      = toDateStr(new Date()) === dateStr
+  const TIME_W     = 56
+  const closedDays = new Set(workingHours?.filter(w => !w.isOpen).map(w => w.dayOfWeek) ?? [])
+  const dayOfWeek  = new Date(dateStr + 'T12:00:00').getDay()
+  const isClosed   = closedDays.has(dayOfWeek)
+  const [closedToast, setClosedToast] = useState(false)
 
   function handleClick(docId: string, slot: string) {
     if (!onBookSlot) return
+    if (isClosed) {
+      setClosedToast(true)
+      setTimeout(() => setClosedToast(false), 2500)
+      return
+    }
     const [h, m] = slot.split(':').map(Number)
     const d = new Date(dateStr + 'T00:00:00')
     d.setHours(h, m, 0, 0)
@@ -234,6 +244,17 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
 
   return (
     <div className="flex-1 overflow-auto">
+      {closedToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold text-white shadow-xl bg-red-500 pointer-events-none">
+          🚫 This day is closed
+        </div>
+      )}
+      {isClosed && (
+        <div className="flex-shrink-0 flex items-center justify-center gap-2 py-2.5 bg-red-50 dark:bg-red-900/10 border-b border-red-100 dark:border-red-800/20">
+          <span>🚫</span>
+          <span className="text-sm font-bold text-red-500">This day is closed — no new bookings can be made</span>
+        </div>
+      )}
       {/* Doctor headers */}
       <div className="flex sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-white/10 shadow-sm">
         <div className="flex-shrink-0 border-r border-gray-100 dark:border-white/10" style={{ width: TIME_W }} />
@@ -296,12 +317,12 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
               {/* Slot rows */}
               {timeSlots.map((slot, i) => (
                 <div key={slot}
-                  className={`absolute left-0 right-0 transition-colors group${onBookSlot ? ' hover:bg-blue-50/40 cursor-pointer' : ''}`}
+                  className={`absolute left-0 right-0 transition-colors group${onBookSlot && !isClosed ? ' hover:bg-blue-50/40 cursor-pointer' : ''}`}
                   style={{ top: `${i * SLOT_HEIGHT}px`, height: `${SLOT_HEIGHT}px`, borderBottom: '1px solid #F5F5F7' }}
-                  onMouseDown={e => { e.preventDefault(); onSlotDragStart?.(doctor.id, i) }}
-                  onMouseEnter={e => { if (e.buttons === 1) onSlotDragMove?.(doctor.id, i) }}
+                  onMouseDown={e => { if (!isClosed) { e.preventDefault(); onSlotDragStart?.(doctor.id, i) } }}
+                  onMouseEnter={e => { if (e.buttons === 1 && !isClosed) onSlotDragMove?.(doctor.id, i) }}
                   onClick={() => handleClick(doctor.id, slot)}>
-                  {onBookSlot && (
+                  {onBookSlot && !isClosed && (
                     <span className="absolute inset-0 flex items-center justify-center text-[10px] text-clinic-blue opacity-0 group-hover:opacity-100 font-semibold pointer-events-none">
                       + Book
                     </span>
@@ -328,6 +349,16 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
               ))}
               {/* Now line */}
               {today && <NowLine />}
+              {/* Closed day overlay */}
+              {isClosed && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none"
+                  style={{ background: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(239,68,68,0.04) 10px, rgba(239,68,68,0.04) 20px)' }}>
+                  <div className="flex flex-col items-center gap-1 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl px-4 py-2 shadow-sm">
+                    <span className="text-lg">🚫</span>
+                    <span className="text-xs font-bold text-red-500">Closed</span>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
@@ -452,12 +483,12 @@ function MonthView({ year, month, appointments, onDateClick, workingHours }: {
 
   return (
     <div className="flex-1 overflow-auto p-3">
-      <div className="grid grid-cols-6 gap-1 mb-1">
-        {['Mon','Tue','Wed','Thu','Fri','Sat'].map((d) => (
-          <div key={d} className="text-center text-xs font-bold text-gray-400 py-1">{d}</div>
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d) => (
+          <div key={d} className={cn('text-center text-xs font-bold py-1', d === 'Sun' ? 'text-red-300' : 'text-gray-400')}>{d}</div>
         ))}
       </div>
-      <div className="grid grid-cols-6 gap-1">
+      <div className="grid grid-cols-7 gap-1">
         {grid.flat().map((date, i) => {
           if (!date) return <div key={`e${i}`} className="rounded-xl bg-gray-50/50 dark:bg-white/3 min-h-[90px]" />
           const isToday   = sameDay(date, today)
@@ -771,6 +802,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           onSlotDragStart={handleSlotDragStart}
           onSlotDragMove={handleSlotDragMove}
           dragOverlay={dragOverlay}
+          workingHours={workingHours}
         />
       )}
       {view === 'week' && (
