@@ -109,8 +109,6 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
     if (!firstName || !lastName || !phone) {
       res.status(400).json({ error: 'firstName, lastName and phone are required' }); return
     }
-    const existing = await prisma.patient.findFirst({ where: { phone } })
-    if (existing) { res.status(409).json({ error: 'A patient with this phone number already exists' }); return }
     const medHistory = Array.isArray(medicalHistory) ? medicalHistory.join(', ') : (medicalHistory ?? undefined)
     const patient = await prisma.patient.create({
       data: {

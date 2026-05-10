@@ -171,11 +171,6 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
   const start = new Date(startAt)
   const end   = new Date(start.getTime() + service.durationMins * 60_000)
 
-  const conflict = await prisma.appointment.findFirst({
-    where: { doctorId, status: { notIn: ['CANCELLED'] }, startAt: { lt: end }, endAt: { gt: start } },
-  })
-  if (conflict) { res.status(409).json({ error: 'This time slot is already booked for this doctor' }); return }
-
   const blocked = await prisma.blockedTime.findFirst({
     where: { doctorId, startAt: { lt: end }, endAt: { gt: start } },
   })

@@ -207,7 +207,6 @@ model Patient {
   aiConversations       AiConversation[]
   aiScheduledMessages   AiScheduledMessage[]
 
-  @@unique([phone])
   @@index([isActive, createdAt])
   @@index([lastName, firstName])
   @@map("patients")
@@ -258,7 +257,6 @@ model Appointment {
   invoice     Invoice?
   feedback    PatientFeedback?
 
-  @@unique([doctorId, startAt])
   @@index([doctorId, startAt])
   @@index([patientId, startAt])
   @@index([status, startAt])

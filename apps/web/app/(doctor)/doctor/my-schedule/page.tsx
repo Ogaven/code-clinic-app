@@ -97,19 +97,23 @@ export default function MySchedulePage() {
     setLoading(true)
     try {
       const u = JSON.parse(localStorage.getItem('cc_user') || '{}')
-      const dr = await fetch('/api-proxy/doctors', { headers: { Authorization: `Bearer ${token}` } })
+      // doctorId is stored in cc_user during login for DOCTOR-role users
+      const myDoctorId = u.doctorId as string | undefined
+      // Fetch doctor record (needed for block-time endpoint)
+      const dr   = await fetch('/api-proxy/doctors', { headers: { Authorization: `Bearer ${token}` } })
       const docs = await dr.json()
-      const me = Array.isArray(docs) ? docs.find((d: any) => d.userId === u.id) : null
+      const me   = Array.isArray(docs) ? (docs.find((d: any) => d.id === myDoctorId) ?? null) : null
       setDoctor(me)
-      if (!me) return
+      if (!myDoctorId) return
       const { start, end } = getRange()
       const s = start.toISOString().slice(0, 10)
       const e = end.toISOString().slice(0, 10)
-      const r = await fetch(`/api-proxy/scheduling/appointments?startDate=${s}&endDate=${e}`, {
+      const r = await fetch(`/api-proxy/scheduling/appointments?startDate=${s}&endDate=${e}&doctorId=${myDoctorId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const all = await r.json()
-      setAppts(Array.isArray(all) ? all.filter((a: any) => a.doctorId === me.id) : [])
+      // Backend already filters by DOCTOR role via JWT; no client-side filter needed
+      setAppts(Array.isArray(all) ? all : [])
     } catch {} finally { setLoading(false) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, anchor, view])
