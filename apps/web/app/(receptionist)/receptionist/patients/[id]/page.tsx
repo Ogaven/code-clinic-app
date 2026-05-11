@@ -1010,9 +1010,14 @@ export default function PatientDetailPage() {
           </div>
 
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-black text-gray-800 dark:text-white truncate">
-              {patient.firstName} {patient.lastName}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-black text-gray-800 dark:text-white truncate">
+                {patient.firstName} {patient.lastName}
+              </h1>
+              {patient.patientId && (
+                <span className="text-xs font-mono text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/20 px-2 py-0.5 rounded-lg flex-shrink-0">{patient.patientId}</span>
+              )}
+            </div>
             <p className="text-xs text-gray-400 dark:text-white/40">
               {patient.gender || 'N/A'}{age ? ` · ${age} yrs` : ''} · {patient.phone}
               {patient._count?.appointments > 0 && ` · ${patient._count.appointments} visits`}

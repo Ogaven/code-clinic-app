@@ -1446,6 +1446,9 @@ export default function PatientProfilePage() {
               <div className="mb-2">
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl font-bold text-clinic-navy dark:text-white">{patient.firstName} {patient.lastName}</h1>
+                  {patient.patientId && (
+                    <span className="text-xs font-mono text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/20 px-2 py-0.5 rounded-lg">{patient.patientId}</span>
+                  )}
                   <button onClick={openEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-clinic-blue hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Edit patient">
                     <Edit size={15} />
                   </button>

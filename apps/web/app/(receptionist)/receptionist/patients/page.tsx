@@ -26,7 +26,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
 }
 
 interface Patient {
-  id: string; firstName: string; lastName: string; phone: string
+  id: string; patientId?: string; firstName: string; lastName: string; phone: string
   email?: string; gender?: string; dob?: string; isActive: boolean
   createdAt: string; _count?: { appointments: number }
   avatarUrl?: string
@@ -75,7 +75,8 @@ export default function PatientsPage() {
     let list = patients
     if (search) list = list.filter(p =>
       `${p.firstName ?? ''} ${p.lastName ?? ''}`.toLowerCase().includes(search.toLowerCase()) ||
-      (p.phone ?? '').includes(search) || (p.email || '').toLowerCase().includes(search.toLowerCase())
+      (p.phone ?? '').includes(search) || (p.email || '').toLowerCase().includes(search.toLowerCase()) ||
+      (p.patientId || '').toLowerCase().includes(search.toLowerCase())
     )
     if (filter === 'new') {
       const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
@@ -293,7 +294,7 @@ export default function PatientsPage() {
           <div className="relative mb-3">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, phone, or email..."
+              placeholder="Search by name, phone, email, or CC-XXXX..."
               className="w-full pl-8 pr-4 py-2 text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl dark:text-white dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all" />
           </div>
 
@@ -379,9 +380,7 @@ export default function PatientsPage() {
                           </div>
                           <div>
                             <p className="font-semibold text-gray-800 dark:text-white">{p.firstName || ''} {p.lastName || ''}</p>
-                            <p className="text-[11px] text-gray-400 dark:text-white/40">
-                              {p.dob ? `${new Date().getFullYear() - new Date(p.dob).getFullYear()} yrs` : 'Age N/A'}
-                            </p>
+                            <p className="text-[11px] font-mono text-cyan-600 dark:text-cyan-400">{p.patientId || '—'}</p>
                           </div>
                         </div>
                       </td>

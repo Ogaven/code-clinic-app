@@ -6,6 +6,7 @@ import { clinicalStaff } from '../middleware/rbac'
 import { auditLog } from '../middleware/audit'
 import { validate } from '../middleware/validate'
 import { getPublicUrl } from '../services/storage/r2'
+import { formatPatientId } from '../lib/utils'
 import multer from 'multer'
 import { uploadAvatar, deleteFile } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
@@ -44,14 +45,19 @@ router.get('/', requireAuth, async (req, res) => {
     const offset   = Number(req.query.offset) || 0
 
     // Build search where clause
-    const searchWhere: any = q ? {
-      OR: [
-        { firstName: { contains: q } },
-        { lastName:  { contains: q } },
-        { phone:     { contains: q } },
-        { email:     { contains: q } },
-      ],
-    } : {}
+    const ccMatch = q ? /^CC-(\d+)$/i.exec(q.trim()) : null
+    const searchWhere: any = q ? (
+      ccMatch
+        ? { patientNumber: parseInt(ccMatch[1], 10) }
+        : {
+            OR: [
+              { firstName: { contains: q } },
+              { lastName:  { contains: q } },
+              { phone:     { contains: q } },
+              { email:     { contains: q } },
+            ],
+          }
+    ) : {}
 
     // Build filter clause
     const filterWhere: any = {}
@@ -92,6 +98,7 @@ router.get('/', requireAuth, async (req, res) => {
     ])
     const withUrls = patients.map((p) => ({
       ...p,
+      patientId: formatPatientId(p.patientNumber),
       accountBalance: Number(p.accountBalance),
       avatarUrl: p.avatarR2Key ? getPublicUrl(p.avatarR2Key) : null,
     }))
@@ -119,7 +126,7 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
         allergies, medicalHistory: medHistory,
       },
     })
-    res.status(201).json({ ...patient, accountBalance: Number(patient.accountBalance) })
+    res.status(201).json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })
   } catch { res.status(500).json({ error: 'Failed to create patient' }) }
 })
 
@@ -144,6 +151,7 @@ router.get('/:id', requireAuth, async (req, res) => {
     const avatarUrl = patient.avatarR2Key ? getPublicUrl(patient.avatarR2Key) : null
     res.json({
       ...patient,
+      patientId: formatPatientId(patient.patientNumber),
       accountBalance: Number(patient.accountBalance),
       avatarUrl,
       invoices: patient.invoices.map(i => ({ ...i, totalUGX: Number(i.totalUGX), subtotalUGX: Number(i.subtotalUGX), vatUGX: Number(i.vatUGX), paidUGX: Number(i.paidUGX) })),
@@ -180,7 +188,7 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
         allergies, medicalHistory,
       },
     })
-    res.json({ ...patient, accountBalance: Number(patient.accountBalance) })
+    res.json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })
   } catch { res.status(500).json({ error: 'Failed to update patient' }) }
 })
 

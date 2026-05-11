@@ -170,6 +170,7 @@ model SpecialDay {
 
 model Patient {
   id                    String   @id @default(uuid())
+  patientNumber         Int      @default(autoincrement())
   firstName             String
   lastName              String
   phone                 String

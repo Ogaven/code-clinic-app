@@ -28,7 +28,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
 
 // ── Types ────────────────────────────────────────────────────────
 interface Patient {
-  id: string; firstName: string; lastName: string; phone: string
+  id: string; patientId?: string; firstName: string; lastName: string; phone: string
   email?: string; gender?: string; dob?: string; isActive: boolean
   accountBalance: number; createdAt: string
   _count?: { appointments: number; treatmentPlans?: number }
@@ -225,7 +225,7 @@ export default function PatientsPage() {
     setExporting(true)
     const headers = ['ID', 'First Name', 'Last Name', 'Phone', 'Email', 'Gender', 'Date of Birth', 'Appointments', 'Balance', 'Registered']
     const rows = patients.map(p => [
-      patientCode(p.id), p.firstName, p.lastName, p.phone, p.email || '', p.gender || '',
+      (p.patientId ?? patientCode(p.id)), p.firstName, p.lastName, p.phone, p.email || '', p.gender || '',
       p.dob ? new Date(p.dob).toLocaleDateString() : '',
       p._count?.appointments || 0, p.accountBalance || 0,
       new Date(p.createdAt).toLocaleDateString(),
@@ -302,7 +302,7 @@ export default function PatientsPage() {
           <div className="relative mb-3">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, phone, or email..."
+              placeholder="Search by name, phone, email, or CC-XXXX..."
               className="w-full pl-8 pr-4 py-2 text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl dark:text-white dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all" />
           </div>
 
@@ -369,7 +369,7 @@ export default function PatientsPage() {
                           )}
                           <div>
                             <p className="font-semibold text-gray-800 dark:text-white">{p.firstName} {p.lastName}</p>
-                            <p className="text-[11px] font-mono text-cyan-600 dark:text-cyan-400">{patientCode(p.id)}</p>
+                            <p className="text-[11px] font-mono text-cyan-600 dark:text-cyan-400">{p.patientId ?? patientCode(p.id)}</p>
                           </div>
                         </div>
                       </td>
@@ -462,7 +462,7 @@ export default function PatientsPage() {
 
                   <div>
                     <h2 className="text-lg font-black text-gray-800 dark:text-white">{selected.firstName} {selected.lastName}</h2>
-                    <p className="text-xs font-mono text-cyan-600 dark:text-cyan-400">{patientCode(selected.id)}</p>
+                    <p className="text-xs font-mono text-cyan-600 dark:text-cyan-400">{selected.patientId ?? patientCode(selected.id)}</p>
                     <p className="text-sm text-gray-400 dark:text-white/40 mt-0.5">
                       {GENDER_LABELS[selected.gender || ''] || 'N/A'} · {selected.dob ? new Date().getFullYear() - new Date(selected.dob).getFullYear() + ' yrs' : 'Age N/A'}
                     </p>

@@ -7,6 +7,7 @@ import { requireAuth } from '../middleware/auth'
 import { clinicalStaff } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
+import { formatPatientId } from '../lib/utils'
 import { syncAppointmentToGCal } from '../services/gcal'
 import { sendAppointmentNotification } from '../ai-suite/notifications/notification.service'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
@@ -150,7 +151,11 @@ router.get('/appointments/:id', requireAuth, async (req, res) => {
     },
   })
   if (!appt) { res.status(404).json({ error: 'Appointment not found' }); return }
-  res.json({ ...appt, service: { ...appt.service, priceUGX: Number(appt.service.priceUGX) } })
+  res.json({
+    ...appt,
+    patient: { ...appt.patient, patientId: formatPatientId(appt.patient.patientNumber) },
+    service: { ...appt.service, priceUGX: Number(appt.service.priceUGX) },
+  })
 })
 
 // ─── Create appointment ───────────────────────────────────────────────────────
