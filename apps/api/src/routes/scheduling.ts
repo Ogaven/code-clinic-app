@@ -111,8 +111,8 @@ router.get('/appointments', requireAuth, async (req, res) => {
   const status    = req.query.status    as string | undefined
   const patientId = req.query.patientId as string | undefined
 
-  const start = new Date(startDate + 'T00:00:00+03:00')
-  const end   = new Date(endDate   + 'T23:59:59+03:00')
+  const start = startDate.includes('T') ? new Date(startDate) : new Date(startDate + 'T00:00:00+03:00')
+  const end   = endDate.includes('T')   ? new Date(endDate)   : new Date(endDate   + 'T23:59:59+03:00')
 
   const where: any = { startAt: { gte: start, lte: end } }
   // Doctors see only their own appointments

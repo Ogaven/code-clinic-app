@@ -55,10 +55,44 @@ function ugandaDateStr(date: Date): string {
 }
 
 function getUgandaDateBounds(date: Date) {
-  const dayStr = ugandaDateStr(date)
-  const startOfDay = new Date(dayStr + 'T00:00:00+03:00')
-  const endOfDay   = new Date(dayStr + 'T23:59:59+03:00')
-  return { startOfDay, endOfDay }
+  const str = ugandaDateStr(date)
+  return { start: str + 'T00:00:00+03:00', end: str + 'T23:59:59+03:00' }
+}
+
+function groupOverlapping(appts: any[]): Record<string, { colIndex: number; totalCols: number }> {
+  const sorted = [...appts].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+  const columns: any[][] = []
+  for (const appt of sorted) {
+    const apptStart = new Date(appt.startAt)
+    let placed = false
+    for (let col = 0; col < columns.length; col++) {
+      const last    = columns[col][columns[col].length - 1]
+      const lastEnd = new Date(last.endAt || new Date(new Date(last.startAt).getTime() + 3600000).toISOString())
+      if (lastEnd <= apptStart) { columns[col].push(appt); placed = true; break }
+    }
+    if (!placed) columns.push([appt])
+  }
+  const result: Record<string, { colIndex: number; totalCols: number }> = {}
+  columns.forEach((col, colIndex) => {
+    col.forEach(appt => { result[appt.id] = { colIndex, totalCols: columns.length } })
+  })
+  return result
+}
+
+async function fetchWithRetry(url: string, options: RequestInit, retries = 3): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, options)
+      if ((res.status === 502 || res.status === 503) && i < retries - 1) {
+        await new Promise(r => setTimeout(r, 2000)); continue
+      }
+      return res
+    } catch (e) {
+      if (i === retries - 1) throw e
+      await new Promise(r => setTimeout(r, 2000))
+    }
+  }
+  throw new Error('All retries failed')
 }
 
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 7) // 7am – 7pm
@@ -88,7 +122,8 @@ export default function MySchedulePage() {
   const [blockEnd, setBlockEnd]     = useState('13:00')
   const [blockReason, setBlockReason] = useState('Lunch Break')
   const [blockSaving, setBlockSaving] = useState(false)
-  const [toast, setToast]     = useState('')
+  const [toast, setToast]       = useState('')
+  const [connecting, setConnecting] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
@@ -120,15 +155,17 @@ export default function MySchedulePage() {
       setDoctor(me)
       if (!myDoctorId) return
       const { start, end } = getRange()
-      const { startOfDay } = getUgandaDateBounds(start)
-      const { endOfDay }   = getUgandaDateBounds(end)
-      const r = await fetch(`/api-proxy/scheduling/appointments?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}&doctorId=${myDoctorId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const { start: startStr } = getUgandaDateBounds(start)
+      const { end: endStr }     = getUgandaDateBounds(end)
+      setConnecting(true)
+      const r = await fetchWithRetry(
+        `/api-proxy/scheduling/appointments?startDate=${encodeURIComponent(startStr)}&endDate=${encodeURIComponent(endStr)}&doctorId=${myDoctorId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      setConnecting(false)
       const all = await r.json()
-      // Backend already filters by DOCTOR role via JWT; no client-side filter needed
       setAppts(Array.isArray(all) ? all : [])
-    } catch {} finally { setLoading(false) }
+    } catch { setConnecting(false) } finally { setLoading(false) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, anchor, view])
 
@@ -227,7 +264,10 @@ export default function MySchedulePage() {
           <ChevronRight size={16} />
         </button>
 
-        <h2 className="flex-1 text-sm font-bold text-gray-800 dark:text-white truncate text-center px-1 min-w-0">{headerLabel}</h2>
+        <h2 className="flex-1 text-sm font-bold text-gray-800 dark:text-white truncate text-center px-1 min-w-0">
+          {headerLabel}
+          {connecting && <span className="ml-2 text-[10px] font-normal text-blue-500 animate-pulse">Connecting…</span>}
+        </h2>
 
         {/* Block time */}
         <button onClick={() => setBlockOpen(true)}
@@ -266,27 +306,32 @@ export default function MySchedulePage() {
                 )
               })()}
 
-              {/* Appointments */}
+              {/* Appointments — side-by-side when overlapping */}
               <div className="absolute left-16 right-3" style={{ top: 0 }}>
-                {dayAppts.map(a => {
-                  const top = timeToTop(a.startAt)
-                  const height = durationToHeight(a.startAt, a.endAt || new Date(new Date(a.startAt).getTime() + 3600000).toISOString())
-                  const cfg = STATUS_CFG[a.status] || { label: a.status, color: '#6B7280', bg: '#F3F4F6' }
-                  return (
-                    <Link href={`/doctor/patients/${a.patient?.id}`} key={a.id}
-                      className="absolute left-0 right-0 rounded-xl overflow-hidden border-l-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                      style={{ top, height: height - 3, borderLeftColor: a.service?.colour || '#29ABE2', background: (a.service?.colour || '#29ABE2') + '18' }}>
-                      <div className="px-2.5 py-1.5 h-full flex flex-col justify-center">
-                        <p className="text-xs font-bold text-gray-800 dark:text-white truncate">{a.patient?.firstName} {a.patient?.lastName}</p>
-                        {height > 36 && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{a.service?.name}</p>}
-                        {height > 52 && <p className="text-[10px] text-gray-400">{fmt(a.startAt)} – {a.endAt ? fmt(a.endAt) : ''}</p>}
-                        {height > 64 && (
-                          <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
-                        )}
-                      </div>
-                    </Link>
-                  )
-                })}
+                {(() => {
+                  const layout = groupOverlapping(dayAppts)
+                  return dayAppts.map(a => {
+                    const top    = timeToTop(a.startAt)
+                    const height = durationToHeight(a.startAt, a.endAt || new Date(new Date(a.startAt).getTime() + 3600000).toISOString())
+                    const cfg    = STATUS_CFG[a.status] || { label: a.status, color: '#6B7280', bg: '#F3F4F6' }
+                    const { colIndex, totalCols } = layout[a.id] || { colIndex: 0, totalCols: 1 }
+                    const pct    = 100 / totalCols
+                    return (
+                      <Link href={`/doctor/patients/${a.patient?.id}`} key={a.id}
+                        className="absolute rounded-xl overflow-hidden border-l-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                        style={{ top, height: height - 3, left: `${colIndex * pct}%`, width: `${pct}%`, borderLeftColor: a.service?.colour || '#29ABE2', background: (a.service?.colour || '#29ABE2') + '18' }}>
+                        <div className="px-2.5 py-1.5 h-full flex flex-col justify-center">
+                          <p className="text-xs font-bold text-gray-800 dark:text-white truncate">{a.patient?.firstName} {a.patient?.lastName}</p>
+                          {height > 36 && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{a.service?.name}</p>}
+                          {height > 52 && <p className="text-[10px] text-gray-400">{fmt(a.startAt)} – {a.endAt ? fmt(a.endAt) : ''}</p>}
+                          {height > 64 && (
+                            <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
+                          )}
+                        </div>
+                      </Link>
+                    )
+                  })
+                })()}
               </div>
             </div>
           </div>

@@ -38,7 +38,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 // GET /patients
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const q        = req.query.q        as string | undefined
+    const q        = (req.query.q || req.query.search) as string | undefined
     const filter   = req.query.filter   as string | undefined
     const sortBy   = req.query.sortBy   as string | undefined
     const limit    = Math.min(Number(req.query.limit) || 50, 500)

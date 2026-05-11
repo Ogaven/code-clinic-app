@@ -487,10 +487,13 @@ function PerioChartTab({ patientId, token }: { patientId: string; token: string 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) { alert('Voice scribe requires Chrome or Edge browser'); return }
     const rec = new SpeechRecognition()
-    rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US'
+    rec.continuous = false; rec.interimResults = false; rec.lang = 'en-US'
     rec.onresult = (e: any) => {
-      const t = Array.from(e.results).map((r: any) => r[0].transcript).join(' ')
-      setTranscript(t)
+      let final = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript
+      }
+      if (final) setTranscript((prev: string) => prev + (prev ? ' ' : '') + final)
     }
     rec.onend = () => setIsRecording(false)
     recognitionRef.current = rec

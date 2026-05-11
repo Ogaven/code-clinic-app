@@ -79,6 +79,22 @@ const timeSlots = Array.from({ length: (HOUR_END - HOUR_START) * 2 }, (_, i) => 
   return `${String(h).padStart(2, '0')}:${m}`
 })
 
+async function fetchWithRetry(url: string, options: RequestInit, retries = 3): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, options)
+      if ((res.status === 502 || res.status === 503) && i < retries - 1) {
+        await new Promise(r => setTimeout(r, 2000)); continue
+      }
+      return res
+    } catch (e) {
+      if (i === retries - 1) throw e
+      await new Promise(r => setTimeout(r, 2000))
+    }
+  }
+  throw new Error('All retries failed')
+}
+
 const STATUS_RING: Record<string, string> = {
   PENDING:        '#94A3B8', // slate
   CONFIRMED:      '#3B82F6', // blue
@@ -654,7 +670,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     setLoading(true)
     setError(null)
     try {
-      const res  = await fetch(`${API}/scheduling/calendar?date=${toDateStr(d)}`, { headers: authHeaders() })
+      const res  = await fetchWithRetry(`${API}/scheduling/calendar?date=${toDateStr(d)}`, { headers: authHeaders() })
       if (res.status === 401) { window.location.href = '/login'; return }
       if (!res.ok) { setError(`API error ${res.status}`); return }
       const data = await res.json()
@@ -669,7 +685,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     const week = getWeekDates(anchor)
     const s = toDateStr(week[0]), e = toDateStr(week[5])
     try {
-      const res  = await fetch(`${API}/scheduling/appointments?startDate=${s}&endDate=${e}`, { headers: authHeaders() })
+      const res  = await fetchWithRetry(`${API}/scheduling/appointments?startDate=${s}&endDate=${e}`, { headers: authHeaders() })
       if (res.status === 401) { window.location.href = '/login'; return }
       if (!res.ok) { setError(`API error ${res.status}`); return }
       const data = await res.json()
