@@ -879,3 +879,18 @@ model AiScheduledMessage {
   @@index([sent, scheduledFor])
   @@map("ai_scheduled_messages")
 }
+
+model StockItem {
+  id           String   @id @default(cuid())
+  name         String
+  category     String   @default("Other")
+  quantity     Float    @default(0)
+  unit         String   @default("pieces")
+  reorderLevel Float    @default(10)
+  unitCost     Float    @default(0)
+  supplier     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("stock_items")
+}

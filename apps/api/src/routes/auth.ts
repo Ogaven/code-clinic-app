@@ -28,7 +28,7 @@ function signAccess(user: { id: string; email: string; role: string; firstName: 
     { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName,
       ...(user.doctorId ? { doctorId: user.doctorId } : {}) },
     process.env.JWT_SECRET!,
-    { expiresIn: (process.env.JWT_EXPIRES_IN || '15m') as jwt.SignOptions['expiresIn'] },
+    { expiresIn: (process.env.JWT_EXPIRES_IN || '24h') as jwt.SignOptions['expiresIn'] },
   )
 }
 
@@ -41,7 +41,7 @@ async function getSignPayload(user: { id: string; email: string; role: string; f
 }
 
 function signRefresh(userId: string) {
-  return jwt.sign({ id: userId }, process.env.JWT_REFRESH_SECRET!, { expiresIn: '7d' })
+  return jwt.sign({ id: userId }, process.env.JWT_REFRESH_SECRET!, { expiresIn: '30d' })
 }
 
 function setRefreshCookie(res: any, token: string) {
@@ -49,7 +49,7 @@ function setRefreshCookie(res: any, token: string) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
     path: '/auth/refresh',
   })
 }

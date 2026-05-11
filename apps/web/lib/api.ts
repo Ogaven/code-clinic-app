@@ -6,7 +6,7 @@ const API_URL = '/api-proxy'
 // Next.js middleware can read it server-side to guard protected routes.
 export function setAuthCookie(token: string) {
   if (typeof document === 'undefined') return
-  document.cookie = `cc_token=${token}; path=/; SameSite=Lax; max-age=900`
+  document.cookie = `cc_token=${token}; path=/; SameSite=Lax; max-age=86400`
 }
 export function clearAuthCookie() {
   if (typeof document === 'undefined') return

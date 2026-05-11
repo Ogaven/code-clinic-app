@@ -10,7 +10,7 @@ const GRAPH_API_VERSION = 'v19.0'
 export async function processInbound(from: string, text: string, wamid: string): Promise<void> {
   try {
     // ── 1. Identify patient by phone number ──────────────────────────────────
-    const patient = await prisma.patient.findUnique({
+    const patient = await prisma.patient.findFirst({
       where: { phone: from },
     })
 

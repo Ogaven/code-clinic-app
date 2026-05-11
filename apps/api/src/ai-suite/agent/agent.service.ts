@@ -120,7 +120,7 @@ async function buildContext(
 
   // Run all independent queries in parallel
   const [patient, dbMessages, menu, kbResults] = await Promise.all([
-    prisma.patient.findUnique({
+    prisma.patient.findFirst({
       where: { phone: from },
       select: { id: true, firstName: true, lastName: true, phone: true, email: true, createdAt: true },
     }),
@@ -351,7 +351,7 @@ async function handleIdleBookIntent(
   }
 
   // RESCHEDULE or CANCEL — need to find their upcoming appointment
-  const patient = await prisma.patient.findUnique({ where: { phone: from } })
+  const patient = await prisma.patient.findFirst({ where: { phone: from } })
   if (!patient) {
     return `I don't have any upcoming appointments on record for this number. Would you like to book a new one instead? 😊`
   }
@@ -496,7 +496,7 @@ async function handleAwaitingSlotConfirmation(
       return formatConfirmation(updated)
     } else {
       // New booking — look up patient by phone
-      const patient = await prisma.patient.findUnique({ where: { phone: from } })
+      const patient = await prisma.patient.findFirst({ where: { phone: from } })
       const appt    = await createAppointment(
         patient?.id ?? null,
         slot.doctorId,

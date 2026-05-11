@@ -34,6 +34,7 @@ import setupRouter from './routes/setup'
 import clinicalRouter from './routes/clinical'
 import previsitRouter from './routes/previsit'
 import quickbooksRouter from './routes/quickbooks'
+import stocksRouter from './routes/stocks'
 
 // AI Suite routers
 import aiSuiteRouter     from './ai-suite/whatsapp/whatsapp.routes'
@@ -137,6 +138,7 @@ app.use('/scheduling',   schedulingRouter)
 app.use('/patients',     patientsRouter)
 app.use('/doctors',      doctorsRouter)
 app.use('/services',     servicesRouter)
+app.use('/stocks',       stocksRouter)
 app.use('/accounts',            accountsRouter)
 app.use('/accounts/quickbooks', quickbooksRouter)
 app.use('/ai',           aiRouter)

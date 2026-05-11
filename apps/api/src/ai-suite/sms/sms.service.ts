@@ -48,7 +48,7 @@ export async function sendSMS(to: string, message: string): Promise<void> {
 export async function processInboundSMS(from: string, text: string): Promise<void> {
   try {
     // ── 1. Identify patient by phone ─────────────────────────────────────────
-    const patient = await prisma.patient.findUnique({
+    const patient = await prisma.patient.findFirst({
       where: { phone: from },
     })
 

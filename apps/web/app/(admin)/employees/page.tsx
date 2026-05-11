@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Shield, CheckCircle, XCircle, Mail, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Shield, CheckCircle, XCircle, Mail, Pencil, UserX, UserCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
 
@@ -37,6 +37,16 @@ export default function EmployeesPage() {
     setEditing(null)
   }
 
+  async function handleToggleActive(emp: Employee) {
+    const newStatus = !emp.isActive
+    await fetch(`/api-proxy/employees/${emp.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ isActive: newStatus }),
+    })
+    setEmployees(es => es.map(e => e.id === emp.id ? { ...e, isActive: newStatus } : e))
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -60,14 +70,30 @@ export default function EmployeesPage() {
             </div>
           ))
         ) : employees.map(emp => (
-          <div key={emp.id} className="relative bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 shadow-sm p-5 flex flex-col items-center text-center hover:shadow-md dark:hover:bg-white/8 transition-shadow group">
+          <div key={emp.id} className={cn(
+            'relative rounded-xl border shadow-sm p-5 flex flex-col items-center text-center hover:shadow-md transition-shadow group',
+            emp.isActive
+              ? 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 dark:hover:bg-white/8'
+              : 'bg-gray-50 dark:bg-white/3 border-gray-200 dark:border-white/5 opacity-70',
+          )}>
 
-            {/* Edit button — appears on hover */}
+            {/* Action buttons — appear on hover */}
             <button
               onClick={() => setEditing(emp)}
               className="absolute top-3 right-3 w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-clinic-blue hover:text-white text-gray-500 dark:text-gray-300"
               title="Edit member">
               <Pencil size={13} />
+            </button>
+            <button
+              onClick={() => handleToggleActive(emp)}
+              className={cn(
+                'absolute top-3 left-3 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 dark:text-gray-300',
+                emp.isActive
+                  ? 'bg-gray-100 dark:bg-white/10 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30'
+                  : 'bg-green-100 dark:bg-green-900/20 hover:bg-green-200 hover:text-green-700',
+              )}
+              title={emp.isActive ? 'Deactivate' : 'Reactivate'}>
+              {emp.isActive ? <UserX size={13} /> : <UserCheck size={13} />}
             </button>
 
             <AvatarUpload
