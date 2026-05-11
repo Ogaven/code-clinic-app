@@ -14,22 +14,19 @@ const ROLE_MAP: Record<string, string> = {
 
 export default function WelcomePage() {
   const router = useRouter()
-  const [show, setShow] = useState(false)
+  // Card is visible immediately — no waiting for async checks
+  const [show] = useState(true)
 
   useEffect(() => {
-    // If already logged in, silently redirect to the right dashboard
+    // Only redirect if the user is already logged in
     try {
       const raw = localStorage.getItem('cc_user')
       const tok = localStorage.getItem('cc_token')
       if (raw && tok) {
         const u = JSON.parse(raw)
         router.replace(ROLE_MAP[u.role] || '/login')
-        return
       }
     } catch {}
-
-    // Not logged in — animate the card in
-    setTimeout(() => setShow(true), 60)
   }, [router])
 
   return (

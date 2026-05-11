@@ -28,11 +28,14 @@ const ROUTE_ROLE: Array<[string, string]> = [
   ['/developer',    'DEVELOPER'],
 ]
 
+const PUBLIC_PATHS = ['/', '/login', '/setup']
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Let login and root through unconditionally — they handle their own auth state
-  if (pathname === '/login' || pathname === '/') return NextResponse.next()
+  // Public routes — never redirect, let the page handle its own auth state
+  if (PUBLIC_PATHS.some(p => pathname === p)) return NextResponse.next()
+  if (pathname.startsWith('/auth/')) return NextResponse.next()
 
   const token = request.cookies.get('cc_token')?.value
   if (!token) {
