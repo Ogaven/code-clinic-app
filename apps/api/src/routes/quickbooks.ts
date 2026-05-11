@@ -55,8 +55,8 @@ router.get('/connect', (req, res) => {
   const token = (req.query.token as string) || ''
   const oauthClient = getOAuthClient()
   const authUri = oauthClient.authorizeUri({
-    scope: ['com.intuit.quickbooks.accounting', 'com.intuit.quickbooks.payment'],
-    state: `codeclinic-qb|${token}`,
+    scope: [OAuthClient.scopes.Accounting],
+    state: `codeclinic-qb|${token || ''}`,
   })
   res.redirect(authUri)
 })
@@ -64,6 +64,11 @@ router.get('/connect', (req, res) => {
 // ── GET /accounts/quickbooks/callback ────────────────────────────────────────
 router.get('/callback', async (req, res) => {
   const webApp = (process.env.APP_URL || 'http://localhost:3000').split(',')[0].trim()
+  console.log('[QB CALLBACK] Starting...', {
+    code:    req.query.code    ? 'present' : 'missing',
+    realmId: req.query.realmId,
+    state:   req.query.state,
+  })
   try {
     // Extract user token embedded in OAuth state by /connect
     const state     = (req.query.state as string) || ''
@@ -82,13 +87,19 @@ router.get('/callback', async (req, res) => {
     const tokens  = authResponse.getJson()
     const realmId = req.query.realmId as string
 
-    const payload = JSON.stringify({
-      access_token:   tokens.access_token,
-      refresh_token:  tokens.refresh_token,
+    console.log('[QB TOKEN EXCHANGE] Success:', {
+      hasAccessToken:  !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
       realmId,
-      expires_in:     tokens.expires_in,
-      connected_at:   new Date().toISOString(),
-      connected_by:   connectedByUserId,
+    })
+
+    const payload = JSON.stringify({
+      access_token:  tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      realmId,
+      expires_in:    tokens.expires_in,
+      connected_at:  new Date().toISOString(),
+      connected_by:  connectedByUserId,
     })
 
     await prisma.appSetting.upsert({
@@ -96,6 +107,27 @@ router.get('/callback', async (req, res) => {
       update: { value: payload },
       create: { key: 'quickbooks_tokens', value: payload },
     })
+
+    console.log('[QB SAVED] Tokens stored in AppSetting')
+
+    // Fetch and cache basic company info in the background
+    try {
+      const qbo     = await getQBClient()
+      const setting = await prisma.appSetting.findUnique({ where: { key: 'quickbooks_tokens' } })
+      const saved   = JSON.parse(setting!.value)
+      qbo.getCompanyInfo(saved.realmId, async (err: any, info: any) => {
+        if (!err && info) {
+          await prisma.appSetting.upsert({
+            where:  { key: 'quickbooks_company' },
+            create: { key: 'quickbooks_company', value: JSON.stringify(info) },
+            update: { value: JSON.stringify(info) },
+          })
+          console.log('[QB COMPANY]', info.CompanyName)
+        }
+      })
+    } catch (e) {
+      console.warn('[QB COMPANY FETCH] Failed:', e)
+    }
 
     res.redirect(`${webApp}/accounts/dashboard?qb=connected`)
   } catch (err) {
@@ -106,15 +138,33 @@ router.get('/callback', async (req, res) => {
 
 // ── GET /accounts/quickbooks/status ──────────────────────────────────────────
 router.get('/status', requireAuth, async (req, res) => {
+  console.log('[QB STATUS] Checking connection...')
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: 'quickbooks_tokens' } })
+    console.log('[QB STATUS] Setting found:', !!setting)
     if (!setting) return res.json({ connected: false })
 
     const tokens = JSON.parse(setting.value)
-    const qbo    = await getQBClient()
 
+    // Return cached company info if available — avoids blocking QB API call on every status check
+    const companySetting = await prisma.appSetting.findUnique({ where: { key: 'quickbooks_company' } })
+    if (companySetting) {
+      const info = JSON.parse(companySetting.value)
+      return res.json({
+        connected:   true,
+        companyName: info?.CompanyName ?? info?.QueryResponse?.CompanyInfo?.[0]?.CompanyName,
+        realmId:     tokens.realmId,
+        connectedAt: tokens.connected_at,
+      })
+    }
+
+    // Fallback: live QB call
+    const qbo = await getQBClient()
     qbo.getCompanyInfo(tokens.realmId, (err: any, info: any) => {
-      if (err) return res.json({ connected: false })
+      if (err) {
+        console.error('[QB STATUS] getCompanyInfo error:', err)
+        return res.json({ connected: false })
+      }
       res.json({
         connected:   true,
         companyName: info?.CompanyName,
@@ -122,7 +172,8 @@ router.get('/status', requireAuth, async (req, res) => {
         connectedAt: tokens.connected_at,
       })
     })
-  } catch {
+  } catch (err) {
+    console.error('[QB STATUS] Error:', err)
     res.json({ connected: false })
   }
 })

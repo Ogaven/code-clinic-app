@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { getAgentReply } from '../agent/agent.service'
+import { getWebsiteAgentReply } from './website.agent'
 import { isAgentEnabled } from '../takeover/takeover.service'
 
 const router = Router()
@@ -19,7 +19,6 @@ router.post('/message', async (req, res) => {
       where:   { phoneNumber: sessionId, channel: 'WEBSITE', status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
     })
-    const isNewConversation = !conversation
     if (!conversation) {
       conversation = await prisma.aiConversation.create({
         data: { channel: 'WEBSITE', phoneNumber: sessionId, status: 'ACTIVE', agentEnabled: true },
@@ -36,10 +35,7 @@ router.post('/message', async (req, res) => {
     if (!agentOn) {
       reply = 'Our team has taken over this conversation. A staff member will respond shortly.'
     } else {
-      reply = await getAgentReply(conversation.id, sessionId, message)
-      if (isNewConversation) {
-        reply = `Hi there! 😊 I'm Sarah from Code Clinic — How may I brighten your smile today?\n\n${reply}`
-      }
+      reply = await getWebsiteAgentReply(conversation.id, sessionId, message)
       await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: reply },
       })
