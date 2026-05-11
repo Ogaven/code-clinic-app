@@ -165,7 +165,7 @@ export default function SpecialDaysTab() {
               )}
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Note (optional)</p>
-                <input value={modalNote} onChange={e => setModalNote(e.target.value)} placeholder="e.g. Public Holiday" className="w-full px-2.5 py-1.5 text-xs border border-gray-200 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/10 text-gray-700 dark:text-gray-200 focus:outline-none" />
+                <input value={modalNote} onChange={e => setModalNote(e.target.value)} placeholder="e.g. Public Holiday" className="w-full px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none" />
               </div>
             </div>
             <div className="flex items-center gap-2 px-5 pb-5">

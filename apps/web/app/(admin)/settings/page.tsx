@@ -128,7 +128,7 @@ export default function SettingsPage() {
 
   const initials   = getInitials(user.firstName, user.lastName)
   const roleColor  = roleColors[user.role] || '#1A237E'
-  const inputCls   = "w-full px-4 py-3 rounded-xl text-sm border border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue focus:bg-white dark:focus:bg-white/10 transition-all"
+  const inputCls   = "w-full px-4 py-3 rounded-xl text-sm border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue focus:bg-white dark:focus:bg-gray-600 transition-all"
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">

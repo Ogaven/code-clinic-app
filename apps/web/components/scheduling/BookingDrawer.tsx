@@ -137,7 +137,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
   // Group services by category
   const categories = [...new Set(services.map((s) => s.category || 'General'))].sort()
 
-  const inputCls = "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue focus:bg-white dark:focus:bg-white/10 transition-all"
+  const inputCls = "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue focus:bg-white dark:focus:bg-gray-600 transition-all"
 
   return (
     <>

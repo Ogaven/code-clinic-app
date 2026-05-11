@@ -187,7 +187,7 @@ export default function DoctorMessagesPage() {
           onKeyDown={handleKey}
           rows={1}
           placeholder="Message reception…"
-          className="flex-1 px-4 py-2.5 text-sm bg-gray-100 dark:bg-white/8 border border-gray-200 dark:border-white/10 rounded-2xl resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none dark:text-white placeholder-gray-400 max-h-[120px] overflow-y-auto"
+          className="flex-1 px-4 py-2.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 rounded-2xl resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none placeholder-gray-400 dark:placeholder-gray-400 max-h-[120px] overflow-y-auto"
           style={{ fontSize: 16 }}
         />
         <button onClick={send} disabled={sending || !compose.trim()}
