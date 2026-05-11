@@ -205,7 +205,8 @@ async function seed() {
     { firstName: 'Brian',    lastName: 'Wasswa',   phone: '+256700123456', gender: 'MALE',   dob: new Date('1997-02-28') },
   ]
   for (const p of patientsData) {
-    await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: { ...p, gender: p.gender as Gender } })
+    if (!await prisma.patient.findFirst({ where: { phone: p.phone } }))
+      await prisma.patient.create({ data: { ...p, gender: p.gender as Gender } })
   }
   console.log('[startup] Demo patients created.')
 
@@ -272,7 +273,8 @@ export async function seedDemoData() {
   ]
   const upsertedPatients: any[] = []
   for (const p of patientList) {
-    const pt = await prisma.patient.upsert({ where: { phone: p.phone }, update: {}, create: { ...p, gender: p.gender as Gender } })
+    let pt = await prisma.patient.findFirst({ where: { phone: p.phone } })
+    if (!pt) pt = await prisma.patient.create({ data: { ...p, gender: p.gender as Gender } })
     upsertedPatients.push(pt)
   }
   console.log(`[startup] ${upsertedPatients.length} patients upserted.`)

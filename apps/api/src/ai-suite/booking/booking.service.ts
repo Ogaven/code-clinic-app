@@ -193,7 +193,7 @@ export async function createAppointment(
   // Appointment.patientId is non-nullable — find or create patient from phone
   let resolvedPatientId = patientId
   if (!resolvedPatientId) {
-    let patient = await prisma.patient.findUnique({ where: { phone } })
+    let patient = await prisma.patient.findFirst({ where: { phone } })
     if (!patient) {
       patient = await prisma.patient.create({
         data: { firstName: 'New', lastName: 'Patient', phone },

@@ -17,11 +17,8 @@ export async function triggerLeadNurture(
   const [firstName, ...rest] = name.trim().split(/\s+/)
   const lastName = rest.length > 0 ? rest.join(' ') : firstName
 
-  const patient = await prisma.patient.upsert({
-    where:  { phone },
-    update: {},
-    create: { phone, firstName, lastName },
-  })
+  let patient = await prisma.patient.findFirst({ where: { phone } })
+  if (!patient) patient = await prisma.patient.create({ data: { phone, firstName, lastName } })
 
   let conversation = await prisma.aiConversation.findFirst({
     where:   { phoneNumber: phone, channel: 'WHATSAPP', status: 'ACTIVE' },
@@ -71,7 +68,7 @@ export async function scheduleFollowUpSequence(
   name:      string,
   quizTopic: string,
 ): Promise<void> {
-  const patient = await prisma.patient.findUnique({ where: { phone } })
+  const patient = await prisma.patient.findFirst({ where: { phone } })
   if (!patient) {
     console.warn(`[LeadNurture] Patient not found for ${phone} — skipping follow-up schedule`)
     return

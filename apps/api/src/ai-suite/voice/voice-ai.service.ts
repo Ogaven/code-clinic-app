@@ -68,7 +68,7 @@ export async function startVoiceConversation(
   direction:    'inbound' | 'outbound',
 ): Promise<{ greeting: string; audioBuffer: Buffer | null }> {
   // ── 1. Resolve patient ─────────────────────────────────────────────────────
-  const patient = await prisma.patient.findUnique({ where: { phone: patientPhone } })
+  const patient = await prisma.patient.findFirst({ where: { phone: patientPhone } })
 
   // ── 2. Find or create VOICE conversation ──────────────────────────────────
   let conversation = await prisma.aiConversation.findFirst({
