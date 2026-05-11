@@ -754,7 +754,7 @@ export default function CommunicationsPage() {
                         onChange={e => setReplyMsg(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') sendReplyToDoctor() }}
                         placeholder={`Message ${selectedDoctor}…`}
-                        className="w-full px-4 py-2.5 text-sm bg-gray-100 dark:bg-white/8 border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-teal-500 focus:outline-none dark:text-white placeholder-gray-400"
+                        className="w-full px-4 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-teal-500 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500"
                         style={{ fontSize: 16 }}
                       />
                     </div>
@@ -863,7 +863,7 @@ export default function CommunicationsPage() {
                       value={emailReply} onChange={e => setEmailReply(e.target.value)}
                       placeholder="Write your reply..."
                       rows={3}
-                      className="w-full px-4 py-3 text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl resize-none outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 dark:text-white dark:placeholder-white/30 transition-all"
+                      className="w-full px-4 py-3 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 rounded-xl resize-none outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 placeholder-gray-400 dark:placeholder-gray-500 transition-all"
                     />
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex gap-2">
@@ -993,7 +993,7 @@ export default function CommunicationsPage() {
                     onChange={e => setInternalMsg(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendInternal() } }}
                     placeholder={`Message #${internalChan}...`}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-sm dark:text-white dark:placeholder-white/30 outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-white/10 text-sm placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
                   />
                   <button onClick={sendInternal} disabled={!internalMsg.trim()}
                     className="w-10 h-10 rounded-xl flex items-center justify-center text-white transition-all hover:scale-105 disabled:opacity-40"

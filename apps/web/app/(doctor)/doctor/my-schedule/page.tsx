@@ -48,12 +48,26 @@ function addDays(d: Date, n: number) {
   return dt
 }
 
+const EAT_OFFSET = 3 * 60 * 60 * 1000 // Uganda UTC+3
+
+function ugandaDateStr(date: Date): string {
+  return new Date(date.getTime() + EAT_OFFSET).toISOString().slice(0, 10)
+}
+
+function getUgandaDateBounds(date: Date) {
+  const dayStr = ugandaDateStr(date)
+  const startOfDay = new Date(dayStr + 'T00:00:00+03:00')
+  const endOfDay   = new Date(dayStr + 'T23:59:59+03:00')
+  return { startOfDay, endOfDay }
+}
+
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 7) // 7am – 7pm
 const SLOT_H = 52
 
 function timeToTop(dateStr: string) {
-  const d = new Date(dateStr)
-  const h = d.getHours() + d.getMinutes() / 60
+  const ugandaMs = new Date(dateStr).getTime() + EAT_OFFSET
+  const ug = new Date(ugandaMs)
+  const h = ug.getUTCHours() + ug.getUTCMinutes() / 60
   return Math.max(0, (h - 7) * SLOT_H)
 }
 
@@ -106,9 +120,9 @@ export default function MySchedulePage() {
       setDoctor(me)
       if (!myDoctorId) return
       const { start, end } = getRange()
-      const s = start.toISOString().slice(0, 10)
-      const e = end.toISOString().slice(0, 10)
-      const r = await fetch(`/api-proxy/scheduling/appointments?startDate=${s}&endDate=${e}&doctorId=${myDoctorId}`, {
+      const { startOfDay } = getUgandaDateBounds(start)
+      const { endOfDay }   = getUgandaDateBounds(end)
+      const r = await fetch(`/api-proxy/scheduling/appointments?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}&doctorId=${myDoctorId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const all = await r.json()
@@ -162,10 +176,10 @@ export default function MySchedulePage() {
       ? `${fmtDate(startOfWeek(anchor))} – ${fmtDate(addDays(startOfWeek(anchor), 6))}`
       : anchor.toLocaleDateString('en-UG', { month: 'long', year: 'numeric' })
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = ugandaDateStr(new Date())
 
   // Day view appointments
-  const dayAppts = appts.filter(a => a.startAt.slice(0, 10) === anchor.toISOString().slice(0, 10))
+  const dayAppts = appts.filter(a => ugandaDateStr(new Date(a.startAt)) === ugandaDateStr(anchor))
 
   // Week view days
   const weekDays = view === 'week' ? Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor), i)) : []
@@ -241,7 +255,7 @@ export default function MySchedulePage() {
               ))}
 
               {/* Current time indicator */}
-              {anchor.toISOString().slice(0, 10) === todayStr && (() => {
+              {ugandaDateStr(anchor) === todayStr && (() => {
                 const now = new Date()
                 const top = timeToTop(now.toISOString())
                 return (
@@ -285,7 +299,7 @@ export default function MySchedulePage() {
             <div className="flex border-b border-gray-100 dark:border-white/8 flex-shrink-0">
               <div className="w-14 flex-shrink-0" />
               {weekDays.map((d, i) => {
-                const isToday = d.toISOString().slice(0, 10) === todayStr
+                const isToday = ugandaDateStr(d) === todayStr
                 return (
                   <div key={i} className="flex-1 text-center py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5"
                     onClick={() => { setAnchor(d); setView('day') }}>
@@ -315,8 +329,8 @@ export default function MySchedulePage() {
                 </div>
                 {/* Day columns */}
                 {weekDays.map((d, i) => {
-                  const ds = d.toISOString().slice(0, 10)
-                  const dayA = appts.filter(a => a.startAt.slice(0, 10) === ds)
+                  const ds = ugandaDateStr(d)
+                  const dayA = appts.filter(a => ugandaDateStr(new Date(a.startAt)) === ds)
                   const isToday = ds === todayStr
                   return (
                     <div key={i} className="flex-1 relative border-l border-gray-100 dark:border-white/[0.06]"
@@ -365,8 +379,8 @@ export default function MySchedulePage() {
             <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
               {monthDays.map((d, i) => {
                 if (!d) return <div key={`empty-${i}`} className="h-16 sm:h-24 rounded-xl" />
-                const ds = d.toISOString().slice(0, 10)
-                const dayA = appts.filter(a => a.startAt.slice(0, 10) === ds)
+                const ds = ugandaDateStr(d)
+                const dayA = appts.filter(a => ugandaDateStr(new Date(a.startAt)) === ds)
                 const isToday = ds === todayStr
                 return (
                   <div key={ds}

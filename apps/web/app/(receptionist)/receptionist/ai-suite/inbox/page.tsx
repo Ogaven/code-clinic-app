@@ -243,9 +243,7 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
           placeholder="Type a message"
           rows={1}
-          className={cn('flex-1 px-4 py-2.5 rounded-2xl text-sm outline-none resize-none min-h-[44px] max-h-[120px]',
-            dark ? 'text-white placeholder-white/30' : 'text-gray-800 placeholder-gray-400 shadow-sm')}
-          style={{ background: dark ? '#2A3942' : '#fff' }}
+          className="flex-1 px-4 py-2.5 rounded-2xl text-sm outline-none resize-none min-h-[44px] max-h-[120px] bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
         />
         <button onClick={send} disabled={sending || (!reply.trim() && !attachment)}
           className={cn('p-2.5 rounded-full flex items-center justify-center transition-all flex-shrink-0', reply.trim() || attachment ? 'hover:-translate-y-0.5 hover:scale-105' : 'opacity-40')}
