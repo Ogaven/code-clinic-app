@@ -36,6 +36,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
   const [selDoctor,   setSelDoctor]   = useState<Doctor | null>(null)
   const [selDate,     setSelDate]     = useState('')
   const [selTime,     setSelTime]     = useState('09:00')
+  const [selDuration, setSelDuration] = useState(30)
   const [notes,       setNotes]       = useState('')
   const [showNewPt,   setShowNewPt]   = useState(false)
 
@@ -71,6 +72,9 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
       }
     }).catch(() => {})
   }, [open])
+
+  // Sync duration when service changes
+  useEffect(() => { if (selService) setSelDuration(selService.durationMins) }, [selService])
 
   // Patient search
   useEffect(() => {
@@ -114,9 +118,10 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
     setLoading(true)
     try {
       const startAt = new Date(`${selDate}T${selTime}:00+03:00`).toISOString()
+      const endAt   = new Date(new Date(startAt).getTime() + selDuration * 60000).toISOString()
       const res  = await fetch(`${API}/scheduling/appointments`, {
         method: 'POST', headers,
-        body: JSON.stringify({ patientId: selPatient.id, doctorId: selDoctor.id, serviceId: selService.id, startAt, notes }),
+        body: JSON.stringify({ patientId: selPatient.id, doctorId: selDoctor.id, serviceId: selService.id, startAt, endAt, notes }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Booking failed'); return }
@@ -297,6 +302,24 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
             <div className="grid grid-cols-2 gap-3">
               <input type="date" value={selDate} onChange={(e) => setSelDate(e.target.value)} className={inputCls} />
               <input type="time" value={selTime} onChange={(e) => setSelTime(e.target.value)} step="1800" className={inputCls} />
+            </div>
+          </div>
+
+          {/* ── Duration ── */}
+          <div>
+            <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Duration</label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {[10, 15, 20, 30, 45, 60, 90, 120].map((mins) => (
+                <button key={mins} onClick={() => setSelDuration(mins)}
+                  className={cn(
+                    'py-2 rounded-xl border-2 text-xs font-semibold transition-all',
+                    selDuration === mins
+                      ? 'border-clinic-blue bg-blue-50 dark:bg-blue-900/20 text-clinic-blue'
+                      : 'border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-white/20',
+                  )}>
+                  {mins < 60 ? `${mins}m` : `${mins / 60}h`}
+                </button>
+              ))}
             </div>
           </div>
 
