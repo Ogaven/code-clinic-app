@@ -482,25 +482,35 @@ function PerioChartTab({ patientId, token }: { patientId: string; token: string 
   }
 
   const startVoiceScribe = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognition) { alert('Voice scribe requires Chrome or Edge browser'); return }
-    const rec = new SpeechRecognition()
-    rec.continuous = false; rec.interimResults = false; rec.lang = 'en-US'
-    rec.onresult = (e: any) => {
-      let final = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) final += e.results[i][0].transcript
-      }
-      if (final) setTranscript((prev: string) => prev + (prev ? ' ' : '') + final)
+    if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+      alert('Voice recognition not supported on this browser'); return
     }
-    rec.onend = () => setIsRecording(false)
-    recognitionRef.current = rec
-    rec.start()
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const recognition = new SR()
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+    recognition.lang = 'en-US'
+    let resultReceived = false
+    recognition.onresult = (event: any) => {
+      if (resultReceived) return
+      resultReceived = true
+      const t = event.results[0][0].transcript
+      setTranscript((prev: string) => {
+        const sep = prev && !prev.endsWith(' ') ? ' ' : ''
+        return prev + sep + t
+      })
+    }
+    recognition.onerror = () => setIsRecording(false)
+    recognition.onend = () => setIsRecording(false)
+    recognitionRef.current = recognition
     setIsRecording(true)
+    recognition.start()
+    setTimeout(() => { try { recognition.stop() } catch {} }, 10000)
   }
 
   const stopVoiceScribe = () => {
-    recognitionRef.current?.stop()
+    try { recognitionRef.current?.stop() } catch {}
     setIsRecording(false)
   }
 
@@ -547,8 +557,8 @@ function PerioChartTab({ patientId, token }: { patientId: string; token: string 
       {/* Controls */}
       <div className="flex flex-wrap gap-2 items-center">
         <button onClick={isRecording ? stopVoiceScribe : startVoiceScribe}
-          className={cn('flex items-center gap-2 px-3 py-2 text-sm font-medium text-white rounded-lg', isRecording ? 'bg-red-600 animate-pulse' : 'bg-blue-600')}>
-          {isRecording ? <MicOff size={14} /> : <Mic size={14} />} {isRecording ? 'Stop Scribe' : 'AI Scribe'}
+          className={cn('flex items-center gap-2 px-3 py-2 text-sm font-medium text-white rounded-lg', isRecording ? 'bg-red-500 animate-pulse' : 'bg-blue-600')}>
+          {isRecording ? '🔴 Recording... tap to stop' : '🎤 Dictate Note'}
         </button>
         {transcript && <span className="text-sm text-slate-600 dark:text-slate-300 flex-1 truncate">{transcript}</span>}
         <button onClick={handleAISummary} disabled={isAnalyzing}

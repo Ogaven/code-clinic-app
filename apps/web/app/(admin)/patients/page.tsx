@@ -82,6 +82,10 @@ export default function PatientsPage() {
   const [toast,            setToast]            = useState<{ msg: string; type: 'ok'|'err' } | null>(null)
   const [importing,        setImporting]        = useState(false)
   const [exporting,        setExporting]        = useState(false)
+  const [showSheetModal,   setShowSheetModal]   = useState(false)
+  const [sheetUrl,         setSheetUrl]         = useState('')
+  const [sheetImporting,   setSheetImporting]   = useState(false)
+  const [sheetResult,      setSheetResult]      = useState<{ imported: number; skipped: number; total: number; errors?: string[] } | null>(null)
   const [uploadingAvatar,  setUploadingAvatar]  = useState(false)
   const [avatarPreview,    setAvatarPreview]    = useState<string | null>(null)
   const [form,             setForm]             = useState(EMPTY_FORM)
@@ -245,6 +249,22 @@ export default function PatientsPage() {
     setTimeout(() => setToast(null), 3500)
   }
 
+  async function handleSheetImport() {
+    if (!sheetUrl.trim()) return
+    setSheetImporting(true); setSheetResult(null)
+    try {
+      const res = await fetch('/api-proxy/patients/import-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ sheetUrl }),
+      })
+      const data = await res.json()
+      setSheetResult(data)
+      if (data.imported > 0) { fetchPatients(); showToast(`Imported ${data.imported} patients`, 'ok') }
+    } catch { setSheetResult({ imported: 0, skipped: 0, total: 0, errors: ['Network error'] }) }
+    finally { setSheetImporting(false) }
+  }
+
   const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
   const activeAvatarSrc = avatarPreview || selected?.avatarUrl || null
 
@@ -283,6 +303,12 @@ export default function PatientsPage() {
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50">
                 <Upload size={13} />
                 {importing ? 'Importing...' : 'Import CSV'}
+              </button>
+              <button
+                onClick={() => { setShowSheetModal(true); setSheetResult(null); setSheetUrl('') }}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-all">
+                <ExternalLink size={13} />
+                Sheets
               </button>
               <button
                 onClick={exportCSV} disabled={exporting}
@@ -687,6 +713,52 @@ export default function PatientsPage() {
                   {saving ? 'Adding...' : 'Add Patient'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Google Sheets Import Modal ────────────────────────── */}
+      {showSheetModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-black text-gray-800 dark:text-white">Import from Google Sheets</h2>
+              <button onClick={() => setShowSheetModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
+                <X size={16} className="text-gray-400" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-white/50 mb-4 leading-relaxed">
+              Make sure your Google Sheet is shared publicly (Anyone with link can view).<br />
+              Expected columns: <strong>First Name, Last Name, Phone, Email, DOB, Gender, Address</strong>
+            </p>
+            <input
+              value={sheetUrl}
+              onChange={e => setSheetUrl(e.target.value)}
+              placeholder="Paste Google Sheets URL here..."
+              className={inputCls}
+            />
+            {sheetResult && (
+              <div className={cn(
+                'mt-3 p-3 rounded-xl text-sm',
+                sheetResult.imported > 0 ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400',
+              )}>
+                <p className="font-bold">✅ {sheetResult.imported} imported, {sheetResult.skipped} skipped of {sheetResult.total} rows</p>
+                {sheetResult.errors?.slice(0, 3).map((e, i) => (
+                  <p key={i} className="text-xs mt-0.5 opacity-70">{e}</p>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setShowSheetModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                Close
+              </button>
+              <button onClick={handleSheetImport} disabled={sheetImporting || !sheetUrl.trim()}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-60"
+                style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+                {sheetImporting ? 'Importing...' : 'Import Patients'}
+              </button>
             </div>
           </div>
         </div>

@@ -29,6 +29,19 @@ const createPatientSchema = z.object({
 
 const updatePatientSchema = createPatientSchema.partial()
 
+function parseCSVLine(line: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let inQuotes = false
+  for (const char of line) {
+    if (char === '"') { inQuotes = !inQuotes }
+    else if (char === ',' && !inQuotes) { result.push(current); current = '' }
+    else { current += char }
+  }
+  result.push(current)
+  return result
+}
+
 const router = Router()
 const prisma = new PrismaClient()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
@@ -132,6 +145,60 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
     })
     res.status(201).json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })
   } catch { res.status(500).json({ error: 'Failed to create patient' }) }
+})
+
+// POST /patients/import-sheet — import from public Google Sheet
+router.post('/import-sheet', requireAuth, async (req, res) => {
+  try {
+    const { sheetUrl } = req.body
+    if (!sheetUrl) { res.status(400).json({ error: 'Sheet URL required' }); return }
+    const match = (sheetUrl as string).match(/\/d\/([a-zA-Z0-9-_]+)/)
+    if (!match) { res.status(400).json({ error: 'Invalid Google Sheets URL' }); return }
+    const sheetId = match[1]
+    const csvUrl  = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
+    const response = await fetch(csvUrl)
+    if (!response.ok) {
+      res.status(400).json({ error: 'Could not access sheet. Make sure it is shared publicly (Anyone with link can view)' }); return
+    }
+    const csvText = await response.text()
+    const lines   = csvText.trim().split('\n')
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''))
+    let imported = 0, skipped = 0
+    const errors: string[] = []
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        const values = parseCSVLine(lines[i])
+        const row: Record<string, string> = {}
+        headers.forEach((h, idx) => { row[h] = values[idx]?.trim() || '' })
+        const firstName = row['first name'] || row['firstname'] || row['first_name'] || row['name']?.split(' ')[0] || ''
+        const lastName  = row['last name']  || row['lastname']  || row['last_name']  || row['name']?.split(' ').slice(1).join(' ') || ''
+        const phone     = row['phone'] || row['phone number'] || row['contact'] || row['tel'] || ''
+        const email     = row['email'] || row['email address'] || ''
+        const dob       = row['dob'] || row['date of birth'] || row['birth date'] || ''
+        const gender    = row['gender'] || row['sex'] || ''
+        const address   = row['address'] || row['location'] || ''
+        if (!firstName || !phone) { skipped++; errors.push(`Row ${i + 1}: missing name or phone`); continue }
+        const existing = await prisma.patient.findFirst({ where: { phone } })
+        if (existing) { skipped++; continue }
+        let genderEnum: 'MALE' | 'FEMALE' | undefined
+        if (gender.toLowerCase().startsWith('m')) genderEnum = 'MALE'
+        if (gender.toLowerCase().startsWith('f')) genderEnum = 'FEMALE'
+        await prisma.patient.create({
+          data: {
+            firstName,
+            lastName: lastName || firstName,
+            phone,
+            email:   email   || undefined,
+            dob:     dob     ? new Date(dob) : undefined,
+            gender:  genderEnum,
+            address: address || undefined,
+          },
+        })
+        imported++
+      } catch (err: any) { errors.push(`Row ${i + 1}: ${err.message}`); skipped++ }
+    }
+    res.json({ imported, skipped, total: lines.length - 1, errors: errors.slice(0, 10) })
+  } catch (err: any) { res.status(500).json({ error: err.message }) }
 })
 
 // GET /patients/:id
