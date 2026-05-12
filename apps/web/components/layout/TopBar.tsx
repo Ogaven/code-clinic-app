@@ -207,37 +207,6 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
               <ChevronDown size={13} className="hidden md:block" style={{ color: iconCl }} />
             </button>
 
-            {profileOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
-                <div className="absolute right-0 mt-2 w-52 rounded-2xl shadow-xl z-50 overflow-hidden py-1"
-                  style={{ background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
-                  <div className="px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
-                    <p className="font-bold text-sm" style={{ color: titleC }}>{user.firstName} {user.lastName}</p>
-                    <p className="text-[11px]" style={{ color: roleColor }}>{roleLabels[user.role]}</p>
-                  </div>
-                  <button onClick={() => { router.push('/settings'); setProfileOpen(false) }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
-                    style={{ color: dark ? '#C8D8F0' : '#374151' }}>
-                    <span className="text-base">👤</span> Edit Profile
-                  </button>
-                  <button onClick={() => { router.push('/settings'); setProfileOpen(false) }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
-                    style={{ color: dark ? '#C8D8F0' : '#374151' }}>
-                    <span className="text-base">🔑</span> Change Password
-                  </button>
-                  <div className="my-1" style={{ borderTop: `1px solid ${bdr}` }} />
-                  <button onClick={() => {
-                    localStorage.removeItem('cc_token')
-                    localStorage.removeItem('cc_user')
-                    document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
-                    window.location.href = '/login'
-                  }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-red-500/10 transition-colors text-red-400">
-                    <span className="text-base">🚪</span> Sign Out
-                  </button>
-                </div>
-              </>
-            )}
           </div>
         )}
       </div>
@@ -305,6 +274,39 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
         </>
       )}
     </header>
+
+      {/* Profile dropdown — outside <header> to escape its stacking context */}
+      {profileOpen && user && (
+        <>
+          <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setProfileOpen(false)} />
+          <div className="fixed rounded-2xl shadow-xl overflow-hidden py-1"
+            style={{ top: 64, right: 16, width: 208, zIndex: 9999, background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
+            <div className="px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
+              <p className="font-bold text-sm" style={{ color: titleC }}>{user.firstName} {user.lastName}</p>
+              <p className="text-[11px]" style={{ color: roleColor }}>{roleLabels[user.role]}</p>
+            </div>
+            <button onClick={() => { router.push('/settings'); setProfileOpen(false) }}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
+              style={{ color: dark ? '#C8D8F0' : '#374151' }}>
+              <span className="text-base">👤</span> Edit Profile
+            </button>
+            <button onClick={() => { router.push('/settings'); setProfileOpen(false) }}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
+              style={{ color: dark ? '#C8D8F0' : '#374151' }}>
+              <span className="text-base">🔑</span> Change Password
+            </button>
+            <div className="my-1" style={{ borderTop: `1px solid ${bdr}` }} />
+            <button onClick={() => {
+              localStorage.removeItem('cc_token')
+              localStorage.removeItem('cc_user')
+              document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
+              window.location.href = '/login'
+            }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-red-500/10 transition-colors text-red-400">
+              <span className="text-base">🚪</span> Sign Out
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Notification dropdown — outside <header> to escape its stacking context */}
       {notifOpen && (

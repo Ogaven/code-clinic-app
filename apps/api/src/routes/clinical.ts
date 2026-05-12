@@ -477,12 +477,12 @@ router.get('/analytics/dental-dashboard', requireAuth, async (req, res) => {
   try {
     const today = new Date(); today.setHours(0, 0, 0, 0)
 
-    const [recentActivity, treatmentPlans, chartsToday, treatmentsCompleted] = await Promise.all([
-      // Last 10 dental chart update activities
+    const [rawActivity, treatmentPlans, chartsToday, treatmentsCompleted] = await Promise.all([
+      // Last 20 dental chart update activities (deduplicated to 10 unique patients below)
       prisma.patientActivity.findMany({
         where: { action: 'Dental chart updated' },
         orderBy: { createdAt: 'desc' },
-        take: 10,
+        take: 20,
         include: { patient: { select: { id: true, firstName: true, lastName: true } } },
       }),
       // All treatment plans for pipeline
@@ -498,6 +498,14 @@ router.get('/analytics/dental-dashboard', requireAuth, async (req, res) => {
         where: { action: { startsWith: 'Treatment completed' }, createdAt: { gte: today } },
       }),
     ])
+
+    // Deduplicate activity: one entry per patient (most recent)
+    const seenPatients = new Set<string>()
+    const recentActivity = rawActivity.filter(a => {
+      if (seenPatients.has(a.patientId)) return false
+      seenPatients.add(a.patientId)
+      return true
+    }).slice(0, 10)
 
     // Pipeline: group by status, sum UGX
     const pipeline: Record<string, { count: number; totalUGX: number }> = {}

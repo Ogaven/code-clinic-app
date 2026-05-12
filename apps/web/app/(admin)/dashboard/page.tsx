@@ -632,7 +632,14 @@ export default function DashboardPage() {
                 </a>
               </div>
               <div className="divide-y divide-gray-50 dark:divide-white/5">
-                {dentalData.recentActivity.slice(0, 5).map((a: any, i: number) => (
+                {(() => {
+                  const seen = new Set<string>()
+                  return dentalData.recentActivity.filter((a: any) => {
+                    if (seen.has(a.patientId)) return false
+                    seen.add(a.patientId)
+                    return true
+                  }).slice(0, 5)
+                })().map((a: any, i: number) => (
                   <a key={i} href={`/patients/${a.patientId}?tab=dental`}
                     className="flex items-center justify-between px-4 py-2.5 hover:bg-blue-50/30 dark:hover:bg-white/5 transition-colors">
                     <div>
