@@ -59,7 +59,7 @@ export default function PatientsPage() {
 
   // Add patient form
   const [form, setForm] = useState({
-    firstName: '', lastName: '', phone: '', email: '', gender: 'FEMALE', dob: '',
+    firstName: '', lastName: '', phone: '', email: '', gender: '', dob: '',
     address: '', district: '',
     nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '',
     allergies: '',
@@ -123,13 +123,24 @@ export default function PatientsPage() {
     if (!form.firstName || !form.lastName || !form.phone) { setError('Name and phone are required'); return }
     setSaving(true); setError('')
     try {
+      const payload: any = { firstName: form.firstName, lastName: form.lastName, phone: form.phone }
+      if (form.email)             payload.email             = form.email
+      if (form.gender)            payload.gender            = form.gender
+      if (form.dob)               payload.dob               = form.dob
+      if (form.address)           payload.address           = form.address
+      if (form.district)          payload.district          = form.district
+      if (form.nextOfKinName)     payload.nextOfKinName     = form.nextOfKinName
+      if (form.nextOfKinPhone)    payload.nextOfKinPhone    = form.nextOfKinPhone
+      if (form.nextOfKinRelation) payload.nextOfKinRelation = form.nextOfKinRelation
+      if (form.allergies)         payload.allergies         = form.allergies
+      if (form.medicalHistory.length > 0) payload.medicalHistory = form.medicalHistory
       const res = await fetch(`${API}/patients`, {
         method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       })
       if (res.ok) {
         fetchPatients(); setShowAdd(false)
-        setForm({ firstName: '', lastName: '', phone: '', email: '', gender: 'FEMALE', dob: '', address: '', district: '', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '', allergies: '', medicalHistory: [] })
+        setForm({ firstName: '', lastName: '', phone: '', email: '', gender: '', dob: '', address: '', district: '', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '', allergies: '', medicalHistory: [] })
         showToast('Patient added successfully', 'ok')
       } else { const d = await res.json(); setError(d.error || 'Failed to add patient') }
     } catch { setError('Network error') } finally { setSaving(false) }
@@ -544,6 +555,7 @@ export default function PatientsPage() {
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Gender</label>
                   <select value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))} className={inputCls}>
+                    <option value="" className="dark:bg-gray-800">Not specified</option>
                     <option value="FEMALE" className="dark:bg-gray-800">Female</option>
                     <option value="MALE" className="dark:bg-gray-800">Male</option>
                     <option value="OTHER" className="dark:bg-gray-800">Other</option>

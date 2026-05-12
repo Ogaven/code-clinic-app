@@ -9,7 +9,7 @@ import {
   MessageSquare, Settings, HelpCircle, Download,
   Bell, UserCircle, LogOut,
   ChevronLeft, ChevronRight, Menu, X,
-  Sun, Moon, CalendarCheck,
+  Sun, Moon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import DoctorChatbot from '@/components/DoctorChatbot'
@@ -26,7 +26,6 @@ function applyTheme(t: Theme) {
 
 const NAV_MAIN = [
   { label: 'Dashboard',      href: '/doctor/dashboard',    icon: LayoutDashboard },
-  { label: 'My Schedule',    href: '/doctor/my-schedule',  icon: CalendarCheck },
   { label: 'Appointments',   href: '/doctor/schedule',     icon: CalendarDays },
   { label: 'My Patients',    href: '/doctor/patients',     icon: Users },
   { label: 'Patient Flow',   href: '/doctor/flow',         icon: Activity },
@@ -346,11 +345,11 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#0d1526] border-t border-gray-100 dark:border-white/[0.06] flex z-40"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {[
-          { label: 'Home',      href: '/doctor/dashboard',   emoji: '🏠' },
-          { label: 'Schedule',  href: '/doctor/my-schedule', emoji: '📅' },
-          { label: 'Calendar',  href: '/doctor/schedule',    emoji: '🗓' },
-          { label: 'Patients',  href: '/doctor/patients',    emoji: '👥' },
-          { label: 'More',      href: '#',                   emoji: '☰', isMenu: true },
+          { label: 'Home',         href: '/doctor/dashboard', emoji: '🏠' },
+          { label: 'Appointments', href: '/doctor/schedule',  emoji: '🗓' },
+          { label: 'Patients',     href: '/doctor/patients',  emoji: '👥' },
+          { label: 'Messages',     href: '/doctor/messages',  emoji: '💬' },
+          { label: 'More',         href: '#',                 emoji: '☰', isMenu: true },
         ].map(({ label, href, emoji, isMenu }) => {
           const active = !isMenu && (pathname === href || pathname.startsWith(href + '/'))
           return isMenu ? (

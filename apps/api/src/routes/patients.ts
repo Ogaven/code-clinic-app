@@ -11,21 +11,19 @@ import multer from 'multer'
 import { uploadAvatar, deleteFile } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
 
-const ugandaPhone = z.string().regex(/^\+?[0-9]{9,15}$/, 'Invalid phone number')
-
 const createPatientSchema = z.object({
-  firstName:          z.string().min(1).max(100),
-  lastName:           z.string().min(1).max(100),
-  phone:              ugandaPhone,
+  firstName:          z.string().min(1),
+  lastName:           z.string().min(1),
+  phone:              z.string().min(1),
   email:              z.string().email().optional().or(z.literal('')),
   gender:             z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
-  dob:                z.string().datetime({ offset: true }).optional().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
-  address:            z.string().max(255).optional(),
-  district:           z.string().max(100).optional(),
-  nextOfKinName:      z.string().max(100).optional(),
-  nextOfKinPhone:     ugandaPhone.optional(),
-  nextOfKinRelation:  z.string().max(50).optional(),
-  allergies:          z.string().max(500).optional(),
+  dob:                z.string().optional().or(z.literal('')),
+  address:            z.string().optional().or(z.literal('')),
+  district:           z.string().optional().or(z.literal('')),
+  nextOfKinName:      z.string().optional().or(z.literal('')),
+  nextOfKinPhone:     z.string().optional().or(z.literal('')),
+  nextOfKinRelation:  z.string().optional().or(z.literal('')),
+  allergies:          z.string().optional().or(z.literal('')),
   medicalHistory:     z.union([z.string(), z.array(z.string())]).optional(),
 })
 
@@ -119,11 +117,17 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
     const medHistory = Array.isArray(medicalHistory) ? medicalHistory.join(', ') : (medicalHistory ?? undefined)
     const patient = await prisma.patient.create({
       data: {
-        firstName, lastName, phone, email, gender,
-        dob: dob ? new Date(dob) : undefined,
-        address, district,
-        nextOfKinName, nextOfKinPhone, nextOfKinRelation,
-        allergies, medicalHistory: medHistory,
+        firstName, lastName, phone,
+        email:             email             || undefined,
+        gender:            gender            || undefined,
+        dob:               dob               ? new Date(dob) : undefined,
+        address:           address           || undefined,
+        district:          district          || undefined,
+        nextOfKinName:     nextOfKinName     || undefined,
+        nextOfKinPhone:    nextOfKinPhone    || undefined,
+        nextOfKinRelation: nextOfKinRelation || undefined,
+        allergies:         allergies         || undefined,
+        medicalHistory:    medHistory        || undefined,
       },
     })
     res.status(201).json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })
