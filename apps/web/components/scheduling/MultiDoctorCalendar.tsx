@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw, X, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -133,44 +133,88 @@ function NowLine() {
   )
 }
 
-// ─── Appointment block ────────────────────────────────────────────────────────
-function ApptBlock({ appt, onClick }: { appt: Appointment; onClick: () => void }) {
-  const top    = timeToTop(appt.startAt)
-  const height = durationToHeight(appt.service.durationMins)
-  const colour = appt.service.colour || '#29ABE2'
-  const ring   = STATUS_RING[appt.status] || '#9CA3AF'
-  const short  = height < SLOT_HEIGHT
+// ─── Overlap layout ───────────────────────────────────────────────────────────
+function groupOverlapping(appts: Appointment[]) {
+  if (!appts.length) return [] as Array<Appointment & { colIndex: number; totalCols: number }>
+  const sorted = [...appts].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+  const colEndTimes: number[] = []
+  const result: Array<Appointment & { colIndex: number; totalCols: number }> = sorted.map(appt => {
+    const start = new Date(appt.startAt).getTime()
+    const end   = start + appt.service.durationMins * 60000
+    let col = colEndTimes.findIndex(e => e <= start)
+    if (col === -1) col = colEndTimes.length
+    colEndTimes[col] = end
+    return { ...appt, colIndex: col, totalCols: 0 }
+  })
+  for (let i = 0; i < result.length; i++) {
+    const aStart = new Date(result[i].startAt).getTime()
+    const aEnd   = aStart + result[i].service.durationMins * 60000
+    let maxCol = result[i].colIndex
+    for (let j = 0; j < result.length; j++) {
+      if (i === j) continue
+      const bStart = new Date(result[j].startAt).getTime()
+      const bEnd   = bStart + result[j].service.durationMins * 60000
+      if (aStart < bEnd && aEnd > bStart) maxCol = Math.max(maxCol, result[j].colIndex)
+    }
+    result[i] = { ...result[i], totalCols: maxCol + 1 }
+  }
+  return result
+}
 
-  const isPulsing = STATUS_PULSE.has(appt.status)
+// ─── Appointment block ────────────────────────────────────────────────────────
+function ApptBlock({ appt, colIndex, totalCols, onClick, resizingEndAt, onResizeStart, onResizeTouchStart }: {
+  appt: Appointment
+  colIndex: number
+  totalCols: number
+  onClick: () => void
+  resizingEndAt?: string
+  onResizeStart?: (e: React.MouseEvent) => void
+  onResizeTouchStart?: (e: React.TouchEvent) => void
+}) {
+  const top           = timeToTop(appt.startAt)
+  const effectiveMins = resizingEndAt
+    ? (new Date(resizingEndAt).getTime() - new Date(appt.startAt).getTime()) / 60000
+    : appt.service.durationMins
+  const height     = durationToHeight(effectiveMins)
+  const colour     = appt.service.colour || '#29ABE2'
+  const ring       = STATUS_RING[appt.status] || '#9CA3AF'
+  const short      = height < SLOT_HEIGHT
+  const isPulsing  = STATUS_PULSE.has(appt.status)
+  const isResizing = !!resizingEndAt
+
+  const pct   = 100 / Math.max(1, totalCols)
+  const left  = `calc(${colIndex * pct}% + 2px)`
+  const width = `calc(${pct}% - 4px)`
 
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick() }}
-      className="absolute left-1 right-1 rounded-lg text-left overflow-hidden transition-all hover:scale-[1.02] hover:shadow-lg z-10"
+      className={cn(
+        'absolute rounded-lg text-left overflow-hidden transition-all z-10',
+        isResizing ? 'opacity-80' : 'hover:scale-[1.02] hover:shadow-lg',
+      )}
       style={{
-        top: `${top}px`, height: `${height}px`,
+        top:        `${top}px`,
+        height:     `${height}px`,
+        left,
+        width,
         background: colour + '22',
-        border: `1px solid ${colour}30`,
-        borderLeft: `3px solid ${colour}`,
+        border:     isResizing ? '2px dashed rgba(255,255,255,0.8)' : `1px solid ${colour}30`,
+        borderLeft: isResizing ? '2px dashed rgba(255,255,255,0.8)' : `3px solid ${colour}`,
       }}
     >
       <div className="px-1.5 py-1 h-full flex flex-col">
-        <div className="flex items-center gap-1 min-w-0">
-          <div
-            className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', isPulsing && 'animate-pulse')}
-            style={{ background: ring }}
-          />
-          <span className="text-[11px] font-bold truncate" style={{ color: colour }}>
-            {appt.patient.firstName} {appt.patient.lastName}
-          </span>
-        </div>
+        <span className="text-[11px] font-bold truncate" style={{ color: colour }}>
+          {appt.patient.firstName} {appt.patient.lastName}
+        </span>
         {!short && (
           <>
             <span className="text-[10px] text-gray-500 truncate mt-0.5">{appt.service.name}</span>
             <div className="flex items-center gap-1 mt-auto">
               <span className="text-[10px] text-gray-400">{fmtTime(appt.startAt)}</span>
-              {appt.status !== 'PENDING' && appt.status !== 'CONFIRMED' && (
-                <span className="text-[9px] font-bold px-1 rounded" style={{ background: ring + '30', color: ring }}>
+              {appt.status !== 'CONFIRMED' && (
+                <span className={cn('text-[9px] font-bold px-1 rounded', isPulsing && 'animate-pulse')}
+                  style={{ background: ring + '30', color: ring }}>
                   {appt.status.replace('_', ' ')}
                 </span>
               )}
@@ -178,6 +222,27 @@ function ApptBlock({ appt, onClick }: { appt: Appointment; onClick: () => void }
           </>
         )}
       </div>
+
+      {/* Resize handle — visible on hover */}
+      {(onResizeStart || onResizeTouchStart) && (
+        <div
+          className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
+          style={{ backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '0 0 6px 6px' }}
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onResizeStart?.(e) }}
+          onTouchStart={(e) => { e.stopPropagation(); onResizeTouchStart?.(e) }}
+        >
+          <div className="w-8 h-0.5 bg-white/60 rounded" />
+        </div>
+      )}
+
+      {/* End-time tooltip while dragging */}
+      {isResizing && (
+        <div className="absolute bottom-4 right-1 text-[10px] bg-black/70 text-white px-1.5 py-0.5 rounded font-mono pointer-events-none">
+          {new Date(resizingEndAt!).toLocaleTimeString('en-US', {
+            hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
+          })}
+        </div>
+      )}
     </button>
   )
 }
@@ -227,16 +292,19 @@ function TimeCol({ width }: { width: number }) {
 }
 
 // ─── Doctors View ─────────────────────────────────────────────────────────────
-function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay, workingHours }: {
-  columns:             DoctorCol[]
-  dateStr:             string
-  onBookSlot?:         (docId: string, at: Date) => void
-  onClickAppointment?: (a: Appointment) => void
-  onBlockClick?:       (doctorId: string, blockId: string) => void
-  onSlotDragStart?:    (doctorId: string, slotIdx: number) => void
-  onSlotDragMove?:     (doctorId: string, slotIdx: number) => void
-  dragOverlay?:        { doctorId: string; startIdx: number; endIdx: number } | null
-  workingHours?:       any[]
+function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay, workingHours, resizing, onApptResizeStart, onApptResizeTouchStart }: {
+  columns:                  DoctorCol[]
+  dateStr:                  string
+  onBookSlot?:              (docId: string, at: Date) => void
+  onClickAppointment?:      (a: Appointment) => void
+  onBlockClick?:            (doctorId: string, blockId: string) => void
+  onSlotDragStart?:         (doctorId: string, slotIdx: number) => void
+  onSlotDragMove?:          (doctorId: string, slotIdx: number) => void
+  dragOverlay?:             { doctorId: string; startIdx: number; endIdx: number } | null
+  workingHours?:            any[]
+  resizing?:                { apptId: string; originalEndAt: string; currentEndAt: string } | null
+  onApptResizeStart?:       (e: React.MouseEvent, appt: Appointment) => void
+  onApptResizeTouchStart?:  (e: React.TouchEvent, appt: Appointment) => void
 }) {
   const today      = toDateStr(new Date()) === dateStr
   const TIME_W     = 56
@@ -360,8 +428,17 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
                   onRemove={onBlockClick ? () => onBlockClick(doctor.id, b.id) : undefined} />
               ))}
               {/* Appointments */}
-              {appointments.filter((a) => a.status !== 'CANCELLED').map((a) => (
-                <ApptBlock key={a.id} appt={a} onClick={() => onClickAppointment?.(a)} />
+              {groupOverlapping(appointments.filter((a) => a.status !== 'CANCELLED')).map((a) => (
+                <ApptBlock
+                  key={a.id}
+                  appt={a}
+                  colIndex={a.colIndex}
+                  totalCols={a.totalCols}
+                  onClick={() => onClickAppointment?.(a)}
+                  resizingEndAt={resizing?.apptId === a.id ? resizing.currentEndAt : undefined}
+                  onResizeStart={onApptResizeStart ? (e) => onApptResizeStart(e, a) : undefined}
+                  onResizeTouchStart={onApptResizeTouchStart ? (e) => onApptResizeTouchStart(e, a) : undefined}
+                />
               ))}
               {/* Now line */}
               {today && <NowLine />}
@@ -466,7 +543,9 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
                   )}
                 </div>
               ))}
-              {dayAppts.map((a) => <ApptBlock key={a.id} appt={a} onClick={() => onClickAppointment?.(a)} />)}
+              {groupOverlapping(dayAppts).map((a) => (
+                <ApptBlock key={a.id} appt={a} colIndex={a.colIndex} totalCols={a.totalCols} onClick={() => onClickAppointment?.(a)} />
+              ))}
               {isToday && <NowLine />}
               {isClosed && (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none"
@@ -576,6 +655,11 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   const dateRef      = useRef(date)
   const [dragOverlay,   setDragOverlay]   = useState<{ doctorId: string; startIdx: number; endIdx: number } | null>(null)
   const [workingHours,  setWorkingHours]  = useState<any[]>([])
+  const [resizing, setResizing] = useState<{
+    apptId: string
+    originalEndAt: string
+    currentEndAt: string
+  } | null>(null)
 
   useEffect(() => { dateRef.current = date }, [date])
 
@@ -626,6 +710,81 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     if (!dragStateRef.current || dragStateRef.current.doctorId !== doctorId) return
     dragStateRef.current.endIdx = slotIdx
     setDragOverlay({ doctorId, startIdx: dragStateRef.current.startIdx, endIdx: slotIdx })
+  }
+
+  // ─── Resize appointment ───────────────────────────────────────────────────────
+  function handleResizeStart(e: React.MouseEvent, appt: Appointment) {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const startY      = e.clientY
+    const originalEnd = new Date(appt.endAt)
+    const PIXELS_PER_MIN = SLOT_HEIGHT / 30
+    let latestEndAt = appt.endAt
+
+    function onMouseMove(moveEvent: MouseEvent) {
+      const deltaY       = moveEvent.clientY - startY
+      const deltaMinutes = Math.round(deltaY / PIXELS_PER_MIN / 15) * 15
+      const newEnd       = new Date(originalEnd.getTime() + deltaMinutes * 60000)
+      const minEnd       = new Date(new Date(appt.startAt).getTime() + 10 * 60000)
+      if (newEnd < minEnd) return
+      latestEndAt = newEnd.toISOString()
+      setResizing({ apptId: appt.id, originalEndAt: appt.endAt, currentEndAt: latestEndAt })
+    }
+
+    async function onMouseUp() {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      if (latestEndAt === appt.endAt) { setResizing(null); return }
+      const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+      await fetch(`${API}/scheduling/appointments/${appt.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ endAt: latestEndAt }),
+      })
+      setResizing(null)
+      fetchDay(dateRef.current)
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }
+
+  function handleResizeTouchStart(e: React.TouchEvent, appt: Appointment) {
+    e.stopPropagation()
+    const touch       = e.touches[0]
+    const startY      = touch.clientY
+    const originalEnd = new Date(appt.endAt)
+    const PIXELS_PER_MIN = SLOT_HEIGHT / 30
+    let latestEndAt = appt.endAt
+
+    function onTouchMove(moveEvent: TouchEvent) {
+      const t            = moveEvent.touches[0]
+      const deltaY       = t.clientY - startY
+      const deltaMinutes = Math.round(deltaY / PIXELS_PER_MIN / 15) * 15
+      const newEnd       = new Date(originalEnd.getTime() + deltaMinutes * 60000)
+      const minEnd       = new Date(new Date(appt.startAt).getTime() + 10 * 60000)
+      if (newEnd < minEnd) return
+      latestEndAt = newEnd.toISOString()
+      setResizing({ apptId: appt.id, originalEndAt: appt.endAt, currentEndAt: latestEndAt })
+    }
+
+    async function onTouchEnd() {
+      document.removeEventListener('touchmove', onTouchMove)
+      document.removeEventListener('touchend', onTouchEnd)
+      if (latestEndAt === appt.endAt) { setResizing(null); return }
+      const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+      await fetch(`${API}/scheduling/appointments/${appt.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ endAt: latestEndAt }),
+      })
+      setResizing(null)
+      fetchDay(dateRef.current)
+    }
+
+    document.addEventListener('touchmove', onTouchMove, { passive: true })
+    document.addEventListener('touchend', onTouchEnd)
   }
 
   // ─── Create blocked time ──────────────────────────────────────────────────────
@@ -819,6 +978,9 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           onSlotDragMove={handleSlotDragMove}
           dragOverlay={dragOverlay}
           workingHours={workingHours}
+          resizing={resizing}
+          onApptResizeStart={handleResizeStart}
+          onApptResizeTouchStart={handleResizeTouchStart}
         />
       )}
       {view === 'week' && (

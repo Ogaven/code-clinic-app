@@ -224,6 +224,7 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
 const rescheduleSchema = z.object({
   startAt:     z.string().datetime().optional(),
   scheduledAt: z.string().datetime().optional(),
+  endAt:       z.string().datetime().optional(),
   doctorId:    z.string().uuid().optional(),
   serviceId:   z.string().uuid().optional(),
   notes:       z.string().optional(),
@@ -266,6 +267,11 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
       },
     })
     if (conflict) { res.status(409).json({ error: 'Time slot conflict — doctor already booked' }); return }
+  } else if (req.body.endAt) {
+    // Drag-to-resize: only endAt changed, enforce 10-minute minimum
+    const newEnd = new Date(req.body.endAt)
+    const minEnd = new Date(start.getTime() + 10 * 60_000)
+    end = newEnd < minEnd ? minEnd : newEnd
   }
 
   const updated = await prisma.appointment.update({
