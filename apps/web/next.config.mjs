@@ -3,13 +3,6 @@
 const nextConfig = {
   output: 'standalone',
 
-  async redirects() {
-    return [
-      { source: '/privacy', destination: '/privacy.html', permanent: false },
-      { source: '/terms',   destination: '/terms.html',   permanent: false },
-    ]
-  },
-
   typescript: {
     ignoreBuildErrors: true,
   },

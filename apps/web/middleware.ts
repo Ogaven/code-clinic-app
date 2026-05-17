@@ -28,7 +28,7 @@ const ROUTE_ROLE: Array<[string, string]> = [
   ['/developer',    'DEVELOPER'],
 ]
 
-const PUBLIC_PATHS = ['/', '/login', '/setup']
+const PUBLIC_PATHS = ['/', '/login', '/setup', '/privacy.html', '/terms.html', '/privacy', '/terms']
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
