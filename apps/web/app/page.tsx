@@ -32,6 +32,10 @@ export default function WelcomePage() {
   return (
     <div className="min-h-screen w-screen flex flex-col"
       style={{ background: 'linear-gradient(145deg,#020818 0%,#060e3a 30%,#0d1b6e 65%,#1565C0 100%)' }}>
+    <div style={{ background: '#1A237E', color: 'white', textAlign: 'center', padding: '8px', fontSize: '13px', width: '100%' }}>
+      <a href="/privacy.html" style={{ color: '#29ABE2', marginRight: '16px' }}>Privacy Policy</a>
+      <a href="/terms.html" style={{ color: '#29ABE2' }}>Terms of Service</a>
+    </div>
     <div className="flex-1 relative flex items-center justify-center overflow-hidden">
 
       {/* Dot grid */}
@@ -94,11 +98,6 @@ export default function WelcomePage() {
       </div>
     </div>
 
-      <footer style={{ position: 'fixed', bottom: 0, left: 0, right: 0, textAlign: 'center', padding: '16px', fontSize: '13px', color: '#94A3B8', zIndex: 40 }}>
-        <a href="/privacy.html" style={{ color: 'rgba(147,197,253,0.8)', textDecoration: 'none' }}>Privacy Policy</a>
-        {' · '}
-        <a href="/terms.html" style={{ color: 'rgba(147,197,253,0.8)', textDecoration: 'none' }}>Terms of Service</a>
-      </footer>
     </div>
   )
 }
