@@ -30,8 +30,9 @@ export default function WelcomePage() {
   }, [router])
 
   return (
-    <div className="h-screen w-screen overflow-hidden relative flex items-center justify-center"
+    <div className="min-h-screen w-screen flex flex-col"
       style={{ background: 'linear-gradient(145deg,#020818 0%,#060e3a 30%,#0d1b6e 65%,#1565C0 100%)' }}>
+    <div className="flex-1 relative flex items-center justify-center overflow-hidden">
 
       {/* Dot grid */}
       <div className="absolute inset-0 pointer-events-none"
@@ -87,16 +88,17 @@ export default function WelcomePage() {
                 Sign Up
               </button>
             </div>
-            <div className="flex items-center justify-center gap-3 mt-6">
-              <p className="text-[11px] text-blue-300/40">©2026 elyrac Ai</p>
-              <span className="text-blue-300/20 text-[11px]">·</span>
-              <a href="/privacy" className="text-[11px] text-blue-300/40 hover:text-blue-300/70 transition-colors">Privacy Policy</a>
-              <span className="text-blue-300/20 text-[11px]">·</span>
-              <a href="/terms" className="text-[11px] text-blue-300/40 hover:text-blue-300/70 transition-colors">Terms</a>
-            </div>
+            <p className="text-center text-[11px] text-blue-300/40 mt-6">©2026 elyrac Ai</p>
           </div>
         </div>
       </div>
+    </div>
+
+      <footer style={{ textAlign: 'center', padding: '20px', fontSize: '14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <a href="/privacy" style={{ color: 'rgba(147,197,253,0.8)', textDecoration: 'none', marginRight: '4px' }}>Privacy Policy</a>
+        {' · '}
+        <a href="/terms" style={{ color: 'rgba(147,197,253,0.8)', textDecoration: 'none', marginLeft: '4px' }}>Terms of Service</a>
+      </footer>
     </div>
   )
 }
