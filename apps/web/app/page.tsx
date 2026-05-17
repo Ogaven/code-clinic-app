@@ -94,10 +94,10 @@ export default function WelcomePage() {
       </div>
     </div>
 
-      <footer style={{ textAlign: 'center', padding: '20px', fontSize: '14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        <a href="/privacy" style={{ color: 'rgba(147,197,253,0.8)', textDecoration: 'none', marginRight: '4px' }}>Privacy Policy</a>
+      <footer style={{ position: 'fixed', bottom: 0, left: 0, right: 0, textAlign: 'center', padding: '16px', fontSize: '13px', color: '#94A3B8', zIndex: 40 }}>
+        <a href="/privacy.html" style={{ color: 'rgba(147,197,253,0.8)', textDecoration: 'none' }}>Privacy Policy</a>
         {' · '}
-        <a href="/terms" style={{ color: 'rgba(147,197,253,0.8)', textDecoration: 'none', marginLeft: '4px' }}>Terms of Service</a>
+        <a href="/terms.html" style={{ color: 'rgba(147,197,253,0.8)', textDecoration: 'none' }}>Terms of Service</a>
       </footer>
     </div>
   )

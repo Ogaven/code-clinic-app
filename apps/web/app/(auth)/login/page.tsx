@@ -230,6 +230,12 @@ export default function LoginPage() {
           <p className="text-lg mb-0.5">💙</p><p className="text-xs font-bold text-white">Pain-free dentistry<br/>is our promise</p>
         </div>
       </div>
+
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, textAlign: 'center', padding: '16px', fontSize: '13px', color: '#94A3B8', zIndex: 40 }}>
+        <a href="/privacy.html" style={{ color: '#29ABE2', textDecoration: 'none' }}>Privacy Policy</a>
+        {' · '}
+        <a href="/terms.html" style={{ color: '#29ABE2', textDecoration: 'none' }}>Terms of Service</a>
+      </div>
     </div>
   )
 }
