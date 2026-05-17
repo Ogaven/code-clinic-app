@@ -87,7 +87,13 @@ export default function WelcomePage() {
                 Sign Up
               </button>
             </div>
-            <p className="text-center text-[11px] text-blue-300/40 mt-6">©2026 elyrac Ai</p>
+            <div className="flex items-center justify-center gap-3 mt-6">
+              <p className="text-[11px] text-blue-300/40">©2026 elyrac Ai</p>
+              <span className="text-blue-300/20 text-[11px]">·</span>
+              <a href="/privacy" className="text-[11px] text-blue-300/40 hover:text-blue-300/70 transition-colors">Privacy Policy</a>
+              <span className="text-blue-300/20 text-[11px]">·</span>
+              <a href="/terms" className="text-[11px] text-blue-300/40 hover:text-blue-300/70 transition-colors">Terms</a>
+            </div>
           </div>
         </div>
       </div>
