@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 
 export const metadata = {
@@ -9,21 +10,21 @@ export default function PrivacyPage() {
   return (
     <div className="min-h-screen bg-[#F8FAFF] dark:bg-[#0A0F1E]">
       {/* Header */}
-      <header className="border-b border-[#E2E8F0] dark:border-[#1A2744] bg-white dark:bg-[#0D1B2A]">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/login" className="flex items-center gap-3 group">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#1A237E] to-[#29ABE2] flex items-center justify-center">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="white"/>
-              </svg>
-            </div>
-            <span className="font-semibold text-[#1A237E] dark:text-[#29ABE2] text-lg tracking-tight">
-              Code Clinic
-            </span>
+      <header className="bg-gradient-to-r from-[#1A237E] to-[#0D47A1]">
+        <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
+          <Link href="/login">
+            <Image
+              src="/logo.png"
+              alt="Code Clinic"
+              width={160}
+              height={54}
+              className="h-12 w-auto"
+              style={{ filter: 'brightness(0) invert(1)' }}
+            />
           </Link>
           <Link
             href="/terms"
-            className="text-sm text-[#64748B] dark:text-[#94A3B8] hover:text-[#1A237E] dark:hover:text-[#29ABE2] transition-colors"
+            className="text-sm text-white/70 hover:text-white transition-colors"
           >
             Terms of Service →
           </Link>
