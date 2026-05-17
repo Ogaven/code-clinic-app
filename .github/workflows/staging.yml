@@ -1,0 +1,24 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [staging]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to staging server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 161.35.67.60
+          username: root
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /var/www/codeclinic
+            git fetch origin
+            git reset --hard origin/staging
+            NODE_OPTIONS="--max-old-space-size=2048" pnpm --filter web build
+            NODE_OPTIONS="--max-old-space-size=2048" pnpm --filter api build
+            pm2 restart all
+            pm2 save
