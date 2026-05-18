@@ -137,6 +137,27 @@ router.get('/connections/facebook/status', requireAuth, async (_req, res) => {
   })
 })
 
+// Manual token connection — for admins who already have a Page Access Token
+router.post('/connections/facebook/manual', requireAuth, async (req, res) => {
+  const { pageAccessToken, pageId } = req.body as { pageAccessToken?: string; pageId?: string }
+  if (!pageAccessToken) return res.status(400).json({ error: 'pageAccessToken required' })
+
+  // Try to resolve the page name from the Graph API; fall back to pageId or 'Connected'
+  let pageName = pageId || 'Connected'
+  try {
+    const r = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${pageAccessToken}`)
+    const d = await r.json() as { name?: string }
+    if (d.name) pageName = d.name
+  } catch {}
+
+  const config = await getConfig()
+  await prisma.aiAgentConfig.update({
+    where: { id: config.id },
+    data: { facebookPageAccessToken: pageAccessToken, facebookPageName: pageName },
+  })
+  res.json({ connected: true, pageName })
+})
+
 router.delete('/connections/facebook', requireAuth, async (_req, res) => {
   const config = await getConfig()
   await prisma.aiAgentConfig.update({
@@ -224,6 +245,30 @@ router.get('/connections/instagram/callback', async (req, res) => {
 router.get('/connections/instagram/status', requireAuth, async (_req, res) => {
   const config = await getConfig()
   res.json({ connected: !!config.instagramAccessToken, accountName: config.instagramAccountName || null })
+})
+
+// Manual token connection — for admins who already have an Instagram Access Token
+router.post('/connections/instagram/manual', requireAuth, async (req, res) => {
+  const { accessToken, instagramAccountId } = req.body as { accessToken?: string; instagramAccountId?: string }
+  if (!accessToken) return res.status(400).json({ error: 'accessToken required' })
+
+  // Try to resolve the Instagram username; fall back to accountId or 'Connected'
+  let accountName = instagramAccountId || 'Connected'
+  try {
+    const id = instagramAccountId
+    if (id) {
+      const r = await fetch(`https://graph.facebook.com/v19.0/${id}?fields=username&access_token=${accessToken}`)
+      const d = await r.json() as { username?: string }
+      if (d.username) accountName = '@' + d.username
+    }
+  } catch {}
+
+  const config = await getConfig()
+  await prisma.aiAgentConfig.update({
+    where: { id: config.id },
+    data: { instagramAccessToken: accessToken, instagramAccountName: accountName },
+  })
+  res.json({ connected: true, accountName })
 })
 
 router.delete('/connections/instagram', requireAuth, async (_req, res) => {

@@ -1083,6 +1083,10 @@ function WhatsAppPanel({ onManage }: { onManage: (n: WaNumber) => void }) {
 function FacebookSection({ toast }: { toast: (m: string) => void }) {
   const [status,        setStatus]        = useState<{ connected: boolean; pageName: string | null } | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [showManual,    setShowManual]    = useState(false)
+  const [pageToken,     setPageToken]     = useState('')
+  const [pageId,        setPageId]        = useState('')
+  const [saving,        setSaving]        = useState(false)
 
   useEffect(() => {
     fetch(`${API}/ai-suite/connections/facebook/status`, { headers: authH() })
@@ -1101,6 +1105,25 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
           .then(r => r.json()).then(d => { setStatus(d); if (d.connected) toast('Facebook connected') }).catch(() => {})
       }
     }, 1000)
+  }
+
+  async function connectManual(e: React.FormEvent) {
+    e.preventDefault()
+    if (!pageToken.trim()) return
+    setSaving(true)
+    try {
+      const r = await fetch(`${API}/ai-suite/connections/facebook/manual`, {
+        method: 'POST',
+        headers: { ...authH(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageAccessToken: pageToken.trim(), pageId: pageId.trim() }),
+      })
+      if (!r.ok) throw new Error(await r.text())
+      const d = await r.json()
+      setStatus({ connected: true, pageName: d.pageName })
+      setShowManual(false); setPageToken(''); setPageId('')
+      toast('Facebook connected')
+    } catch { toast('Failed to connect — check the token and try again') }
+    finally { setSaving(false) }
   }
 
   async function disconnect() {
@@ -1136,6 +1159,25 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
               style={{ background: '#1877F2' }}>
               <Facebook size={14} /> Connect with Facebook <ExternalLink size={12} className="opacity-70" />
             </button>
+            <button onClick={() => setShowManual(v => !v)}
+              className="text-xs text-blue-500 dark:text-blue-400 hover:underline underline-offset-2 block">
+              {showManual ? 'Cancel' : 'Connect with Page Token'}
+            </button>
+            {showManual && (
+              <form onSubmit={connectManual} className="space-y-2 p-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                <input
+                  type="text" placeholder="Page Access Token" value={pageToken} onChange={e => setPageToken(e.target.value)} required
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500/40" />
+                <input
+                  type="text" placeholder="Facebook Page ID (optional)" value={pageId} onChange={e => setPageId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500/40" />
+                <button type="submit" disabled={saving || !pageToken.trim()}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-60 transition-all"
+                  style={{ background: '#1877F2' }}>
+                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Facebook size={13} />} Connect
+                </button>
+              </form>
+            )}
           </div>
         )}
       </div>
@@ -1146,6 +1188,10 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
 function InstagramSection({ toast }: { toast: (m: string) => void }) {
   const [status,        setStatus]        = useState<{ connected: boolean; accountName: string | null } | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [showManual,    setShowManual]    = useState(false)
+  const [igToken,       setIgToken]       = useState('')
+  const [igAccountId,   setIgAccountId]   = useState('')
+  const [saving,        setSaving]        = useState(false)
 
   useEffect(() => {
     fetch(`${API}/ai-suite/connections/instagram/status`, { headers: authH() })
@@ -1164,6 +1210,25 @@ function InstagramSection({ toast }: { toast: (m: string) => void }) {
           .then(r => r.json()).then(d => { setStatus(d); if (d.connected) toast('Instagram connected') }).catch(() => {})
       }
     }, 1000)
+  }
+
+  async function connectManual(e: React.FormEvent) {
+    e.preventDefault()
+    if (!igToken.trim()) return
+    setSaving(true)
+    try {
+      const r = await fetch(`${API}/ai-suite/connections/instagram/manual`, {
+        method: 'POST',
+        headers: { ...authH(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: igToken.trim(), instagramAccountId: igAccountId.trim() }),
+      })
+      if (!r.ok) throw new Error(await r.text())
+      const d = await r.json()
+      setStatus({ connected: true, accountName: d.accountName })
+      setShowManual(false); setIgToken(''); setIgAccountId('')
+      toast('Instagram connected')
+    } catch { toast('Failed to connect — check the token and try again') }
+    finally { setSaving(false) }
   }
 
   async function disconnect() {
@@ -1198,6 +1263,25 @@ function InstagramSection({ toast }: { toast: (m: string) => void }) {
               style={{ background: 'linear-gradient(135deg,#E4405F,#833AB4,#F77737)' }}>
               <Instagram size={14} /> Connect with Instagram <ExternalLink size={12} className="opacity-70" />
             </button>
+            <button onClick={() => setShowManual(v => !v)}
+              className="text-xs text-blue-500 dark:text-blue-400 hover:underline underline-offset-2 block">
+              {showManual ? 'Cancel' : 'Connect with Access Token'}
+            </button>
+            {showManual && (
+              <form onSubmit={connectManual} className="space-y-2 p-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                <input
+                  type="text" placeholder="Instagram Access Token" value={igToken} onChange={e => setIgToken(e.target.value)} required
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-pink-500/40" />
+                <input
+                  type="text" placeholder="Instagram Account ID (optional)" value={igAccountId} onChange={e => setIgAccountId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-pink-500/40" />
+                <button type="submit" disabled={saving || !igToken.trim()}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-60 transition-all"
+                  style={{ background: 'linear-gradient(135deg,#E4405F,#833AB4)' }}>
+                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Instagram size={13} />} Connect
+                </button>
+              </form>
+            )}
           </div>
         )}
       </div>
