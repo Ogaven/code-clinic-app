@@ -1089,9 +1089,11 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
       .then(r => r.json()).then(setStatus).catch(() => {})
   }, [])
 
-  function connect() {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : ''
-    const w = window.open(`${API}/ai-suite/connections/facebook/oauth?token=${token}`, '_blank', 'width=600,height=700')
+  async function connect() {
+    const r = await fetch(`${API}/ai-suite/connections/facebook/generate-state`, { headers: authH() })
+    if (!r.ok) { toast('Session error — please log in again'); return }
+    const { state } = await r.json()
+    const w = window.open(`${API}/ai-suite/connections/facebook/oauth?state=${state}`, '_blank', 'width=600,height=700')
     const t = setInterval(() => {
       if (w?.closed) {
         clearInterval(t)
@@ -1150,9 +1152,11 @@ function InstagramSection({ toast }: { toast: (m: string) => void }) {
       .then(r => r.json()).then(setStatus).catch(() => {})
   }, [])
 
-  function connect() {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : ''
-    const w = window.open(`${API}/ai-suite/connections/instagram/oauth?token=${token}`, '_blank', 'width=600,height=700')
+  async function connect() {
+    const r = await fetch(`${API}/ai-suite/connections/instagram/generate-state`, { headers: authH() })
+    if (!r.ok) { toast('Session error — please log in again'); return }
+    const { state } = await r.json()
+    const w = window.open(`${API}/ai-suite/connections/instagram/oauth?state=${state}`, '_blank', 'width=600,height=700')
     const t = setInterval(() => {
       if (w?.closed) {
         clearInterval(t)

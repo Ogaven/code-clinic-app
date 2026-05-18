@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
+import { randomBytes } from 'crypto'
 import { requireAuth } from '../../middleware/auth'
 
 const router = Router()
@@ -51,18 +52,45 @@ router.patch('/connections/whatsapp', requireAuth, async (req, res) => {
   res.json({ connected: true, phoneNumberId: updated.waPhoneNumberId?.slice(0, 6) + '…' })
 })
 
-// Middleware: read JWT from ?token= query param (browser redirects can't set headers)
-function tokenFromQuery(req: any, _res: any, next: any) {
-  if (req.query.token && !req.headers.authorization) {
-    req.headers.authorization = `Bearer ${req.query.token}`
-  }
-  next()
-}
-
 // ── Facebook OAuth ─────────────────────────────────────────────────────────────
-router.get('/connections/facebook/oauth', tokenFromQuery, requireAuth, (_req, res) => {
-  const appId      = process.env.FACEBOOK_APP_ID
-  const apiBase    = process.env.API_URL || 'https://api-production-4c43.up.railway.app'
+
+// Step 1: frontend calls this (with auth headers) to get a short-lived state token.
+// Avoids putting the user's JWT in a popup URL where it may be expired or stale.
+router.get('/connections/facebook/generate-state', requireAuth, async (_req, res) => {
+  const state  = randomBytes(24).toString('hex')
+  const expiry = Date.now() + 15 * 60 * 1000 // 15 minutes
+  const value  = JSON.stringify({ state, expiry })
+  await prisma.$executeRaw`
+    INSERT INTO app_settings (key, value, "updatedAt")
+    VALUES ('fb_oauth_state', ${value}, NOW())
+    ON CONFLICT (key) DO UPDATE SET value = ${value}, "updatedAt" = NOW()
+  `
+  res.json({ state })
+})
+
+// Step 2: popup opens this URL with ?state=<token>. Validates state from DB, then
+// redirects to Facebook. No JWT needed here — state token proves auth from step 1.
+router.get('/connections/facebook/oauth', async (req, res) => {
+  const { state } = req.query as { state?: string }
+  if (!state) return res.status(400).send('Missing OAuth state. Please close this window and try again.')
+
+  try {
+    const rows = await prisma.$queryRaw<{ value: string }[]>`
+      SELECT value FROM app_settings WHERE key = 'fb_oauth_state' LIMIT 1
+    `
+    if (!rows.length) return res.status(401).send('OAuth session not found. Please close this window and try again.')
+    const stored = JSON.parse(rows[0].value) as { state: string; expiry: number }
+    if (stored.state !== state || Date.now() > stored.expiry) {
+      return res.status(401).send('OAuth session expired or invalid. Please close this window and try again.')
+    }
+    // Single-use — delete after validating
+    await prisma.$executeRaw`DELETE FROM app_settings WHERE key = 'fb_oauth_state'`
+  } catch {
+    return res.status(500).send('Server error validating OAuth session. Please try again.')
+  }
+
+  const appId       = process.env.FACEBOOK_APP_ID
+  const apiBase     = process.env.API_URL || 'https://api.codeclinicemr.com'
   const callbackUrl = encodeURIComponent(`${apiBase}/ai-suite/connections/facebook/callback`)
   if (!appId) return res.status(503).json({ error: 'FACEBOOK_APP_ID not configured' })
   const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${callbackUrl}&scope=pages_messaging,pages_read_engagement,pages_manage_metadata&response_type=code`
@@ -75,7 +103,7 @@ router.get('/connections/facebook/callback', async (req, res) => {
   try {
     const appId     = process.env.FACEBOOK_APP_ID || ''
     const appSecret = process.env.FACEBOOK_APP_SECRET || ''
-    const apiBase   = process.env.API_URL || 'https://api-production-4c43.up.railway.app'
+    const apiBase   = process.env.API_URL || 'https://api.codeclinicemr.com'
     const callback  = encodeURIComponent(`${apiBase}/ai-suite/connections/facebook/callback`)
 
     const tokenRes  = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?client_id=${appId}&redirect_uri=${callback}&client_secret=${appSecret}&code=${code}`)
@@ -119,10 +147,40 @@ router.delete('/connections/facebook', requireAuth, async (_req, res) => {
 })
 
 // ── Instagram OAuth ────────────────────────────────────────────────────────────
-router.get('/connections/instagram/oauth', tokenFromQuery, requireAuth, (_req, res) => {
-  const appId     = process.env.FACEBOOK_APP_ID
-  const apiBase   = process.env.API_URL || 'https://api-production-4c43.up.railway.app'
-  const callback  = encodeURIComponent(`${apiBase}/ai-suite/connections/instagram/callback`)
+
+router.get('/connections/instagram/generate-state', requireAuth, async (_req, res) => {
+  const state  = randomBytes(24).toString('hex')
+  const expiry = Date.now() + 15 * 60 * 1000
+  const value  = JSON.stringify({ state, expiry })
+  await prisma.$executeRaw`
+    INSERT INTO app_settings (key, value, "updatedAt")
+    VALUES ('ig_oauth_state', ${value}, NOW())
+    ON CONFLICT (key) DO UPDATE SET value = ${value}, "updatedAt" = NOW()
+  `
+  res.json({ state })
+})
+
+router.get('/connections/instagram/oauth', async (req, res) => {
+  const { state } = req.query as { state?: string }
+  if (!state) return res.status(400).send('Missing OAuth state. Please close this window and try again.')
+
+  try {
+    const rows = await prisma.$queryRaw<{ value: string }[]>`
+      SELECT value FROM app_settings WHERE key = 'ig_oauth_state' LIMIT 1
+    `
+    if (!rows.length) return res.status(401).send('OAuth session not found. Please close this window and try again.')
+    const stored = JSON.parse(rows[0].value) as { state: string; expiry: number }
+    if (stored.state !== state || Date.now() > stored.expiry) {
+      return res.status(401).send('OAuth session expired or invalid. Please close this window and try again.')
+    }
+    await prisma.$executeRaw`DELETE FROM app_settings WHERE key = 'ig_oauth_state'`
+  } catch {
+    return res.status(500).send('Server error validating OAuth session. Please try again.')
+  }
+
+  const appId    = process.env.FACEBOOK_APP_ID
+  const apiBase  = process.env.API_URL || 'https://api.codeclinicemr.com'
+  const callback = encodeURIComponent(`${apiBase}/ai-suite/connections/instagram/callback`)
   if (!appId) return res.status(503).json({ error: 'FACEBOOK_APP_ID not configured' })
   const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${callback}&scope=instagram_basic,instagram_manage_messages,pages_show_list&response_type=code`
   res.redirect(oauthUrl)
@@ -134,7 +192,7 @@ router.get('/connections/instagram/callback', async (req, res) => {
   try {
     const appId     = process.env.FACEBOOK_APP_ID || ''
     const appSecret = process.env.FACEBOOK_APP_SECRET || ''
-    const apiBase   = process.env.API_URL || 'https://api-production-4c43.up.railway.app'
+    const apiBase   = process.env.API_URL || 'https://api.codeclinicemr.com'
     const callback  = encodeURIComponent(`${apiBase}/ai-suite/connections/instagram/callback`)
 
     const tokenRes  = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?client_id=${appId}&redirect_uri=${callback}&client_secret=${appSecret}&code=${code}`)
