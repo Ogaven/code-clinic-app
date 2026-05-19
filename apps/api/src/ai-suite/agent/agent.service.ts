@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { PrismaClient } from '@prisma/client'
 import {
   getAvailableSlots,
   getServices,
@@ -15,8 +14,7 @@ import {
   clearBookingState,
   type BookingStateEntry,
 } from '../booking/booking.state'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 const SARAH_SYSTEM_PROMPT = `You are Sarah, a warm and friendly member of the front desk team at Code Clinic dental clinic in Kampala, Uganda.
 

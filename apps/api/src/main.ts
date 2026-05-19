@@ -6,12 +6,10 @@ import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import path from 'path'
 import fs from 'fs'
-import { PrismaClient } from '@prisma/client'
 import { generalLimiter } from './middleware/rateLimit'
 import { runStartup } from './startup'
 import { logger } from './lib/logger'
-
-const healthPrisma = new PrismaClient()
+import { prisma } from './lib/prisma'
 
 // Routes
 import authRouter from './routes/auth'
@@ -107,7 +105,7 @@ app.use('/uploads', express.static(uploadsDir))
 const startTime = Date.now()
 app.get('/health', async (_req, res) => {
   let dbOk = true
-  try { await healthPrisma.$queryRaw`SELECT 1` } catch { dbOk = false }
+  try { await prisma.$queryRaw`SELECT 1` } catch { dbOk = false }
 
   // Probe optional services
   const emailOk   = !!(process.env.SMTP_HOST || process.env.SENDGRID_API_KEY)
@@ -263,13 +261,13 @@ runStartup().then(() => {
 // ─── Graceful shutdown ───────────────────────────────────────
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received — shutting down gracefully')
-  await healthPrisma.$disconnect()
+  await prisma.$disconnect()
   process.exit(0)
 })
 
 process.on('SIGINT', async () => {
   logger.info('SIGINT received — shutting down')
-  await healthPrisma.$disconnect()
+  await prisma.$disconnect()
   process.exit(0)
 })
 

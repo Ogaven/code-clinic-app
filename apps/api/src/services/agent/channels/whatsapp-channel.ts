@@ -1,8 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { PrismaClient } from '@prisma/client'
 import { runAgent } from '../unified-agent'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../../lib/prisma'
 
 // ── In-memory session store (Redis-upgradeable) ────────────────
 // Key: phone number → { history, lastActive }

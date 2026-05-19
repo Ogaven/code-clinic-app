@@ -1,10 +1,10 @@
 import { Router } from 'express'
-import { PrismaClient, AppointmentStatus } from '@prisma/client'
+import { AppointmentStatus } from '@prisma/client'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireAuth } from '../middleware/auth'
+import { prisma } from '../lib/prisma'
 
 const router  = Router()
-const prisma  = new PrismaClient()
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 function kampalaDay(offsetDays = 0) {

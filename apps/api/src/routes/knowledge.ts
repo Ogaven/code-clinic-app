@@ -1,5 +1,4 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import multer from 'multer'
 import { requireAuth } from '../middleware/auth'
 import { uploadFile, getSignedDownloadUrl } from '../services/storage/r2'
@@ -12,9 +11,9 @@ import {
   searchKnowledge,
   deleteKnowledgeDocument,
 } from '../services/knowledge/rag'
+import { prisma } from '../lib/prisma'
 
 const router  = Router()
-const prisma  = new PrismaClient()
 const upload  = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
 // ── GET /knowledge — list all knowledge base documents ────────

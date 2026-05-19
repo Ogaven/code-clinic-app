@@ -1,10 +1,9 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { getAgentReply } from '../agent/agent.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
+import { prisma } from '../../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 const GRAPH_VERSION = 'v18.0'
 

@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { logger } from '../lib/logger'
-
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 
 const AUDIT_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE']
 

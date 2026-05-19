@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client'
 import { getAgentReply } from '../agent/agent.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 // ── Phone number normalisation (Uganda) ───────────────────────────────────────
 

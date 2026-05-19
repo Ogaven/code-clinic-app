@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '../middleware/auth'
 import { clinicalStaff } from '../middleware/rbac'
 import { auditLog } from '../middleware/audit'
@@ -10,6 +9,7 @@ import { formatPatientId } from '../lib/utils'
 import multer from 'multer'
 import { uploadAvatar, deleteFile } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
+import { prisma } from '../lib/prisma'
 
 const createPatientSchema = z.object({
   firstName:          z.string().min(1),
@@ -43,7 +43,6 @@ function parseCSVLine(line: string): string[] {
 }
 
 const router = Router()
-const prisma = new PrismaClient()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
 
 // GET /patients

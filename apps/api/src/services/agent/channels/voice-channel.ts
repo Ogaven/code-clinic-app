@@ -1,10 +1,8 @@
-import { PrismaClient } from '@prisma/client'
 import { runAgent } from '../unified-agent'
 import { sendMissedCallWhatsApp } from './whatsapp-channel'
 import { uploadFile } from '../../storage/r2'
 import { transcribeAudio } from '../../knowledge/rag'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../../lib/prisma'
 
 // ── TTS: Generate voice response ───────────────────────────────
 

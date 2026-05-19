@@ -1,9 +1,8 @@
 import { execSync } from 'child_process'
 import path from 'path'
-import { PrismaClient, Gender } from '@prisma/client'
+import { Gender } from '@prisma/client'
 import bcrypt from 'bcryptjs'
-
-const prisma = new PrismaClient()
+import { prisma } from './lib/prisma'
 const DB_DIR = path.resolve(__dirname, '../../../packages/database')
 const PRISMA_BIN = path.join(DB_DIR, 'node_modules/.bin/prisma')
 

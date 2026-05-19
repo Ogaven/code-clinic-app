@@ -1,14 +1,13 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import multer from 'multer'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly } from '../middleware/rbac'
 import { uploadAvatar, getPublicUrl } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
+import { prisma } from '../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } })
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp']
 

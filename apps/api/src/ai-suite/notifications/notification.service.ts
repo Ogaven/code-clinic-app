@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 export type NotificationType = 'booked' | 'rescheduled' | 'cancelled' | 'reminder'
 

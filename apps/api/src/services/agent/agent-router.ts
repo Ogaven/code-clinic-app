@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client'
 import { loadPatientContext, findRecentMissedOutbound } from './agent-memory'
 import { AgentContext } from './agent-prompt'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 // ── Route inbound/outbound context ─────────────────────────────
 

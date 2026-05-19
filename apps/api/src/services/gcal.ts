@@ -1,7 +1,5 @@
 import { google } from 'googleapis'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 const GCAL_KEY       = 'gcal_tokens'
 const SYNC_TOKEN_KEY = 'gcal_sync_token'
 

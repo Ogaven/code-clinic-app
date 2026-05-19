@@ -1,10 +1,9 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { getWebsiteAgentReply } from './website.agent'
 import { isAgentEnabled } from '../takeover/takeover.service'
+import { prisma } from '../../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // ── POST /ai-suite/website/message ────────────────────────────────────────────
 

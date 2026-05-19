@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 import { sendSMS } from '../sms/sms.service'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 // ── checkAndSendFollowups ─────────────────────────────────────────────────────
 // Runs every hour. Finds COMPLETED appointments from 23–25 hours ago and sends a

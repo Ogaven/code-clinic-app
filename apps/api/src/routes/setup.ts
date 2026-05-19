@@ -4,13 +4,13 @@
  * Protected by SEED_SECRET env var — delete or disable after first use.
  */
 import { Router } from 'express'
-import { PrismaClient, Gender, AppointmentStatus } from '@prisma/client'
+import { Gender, AppointmentStatus } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { execSync } from 'child_process'
 import path from 'path'
+import { prisma } from '../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // Resolve monorepo root and schema path
 // __dirname in compiled output: <root>/apps/api/dist/routes

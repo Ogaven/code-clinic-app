@@ -1,9 +1,7 @@
-import { PrismaClient } from '@prisma/client'
 import { getAgentReply } from '../agent/agent.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { setBookingState } from '../booking/booking.state'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 const GRAPH_API_VERSION = 'v19.0'
 

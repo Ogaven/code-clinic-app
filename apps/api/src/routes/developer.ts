@@ -1,10 +1,10 @@
 import { Router } from 'express'
-import { PrismaClient, Gender, AppointmentStatus } from '@prisma/client'
+import { Gender, AppointmentStatus } from '@prisma/client'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly } from '../middleware/rbac'
+import { prisma } from '../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 router.get('/', requireAuth, (_req, res) => res.json({ message: 'Developer endpoints' }))
 

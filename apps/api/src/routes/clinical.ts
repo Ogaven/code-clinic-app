@@ -1,13 +1,12 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '../middleware/auth'
 import { doctorOrAdmin, clinicalStaff } from '../middleware/rbac'
 import Anthropic from '@anthropic-ai/sdk'
 import multer from 'multer'
 import { uploadAvatar, getPublicUrl } from '../services/storage/r2'
+import { prisma } from '../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })

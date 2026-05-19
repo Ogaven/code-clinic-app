@@ -1,13 +1,12 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '../middleware/auth'
 import { handleWhatsAppWebhook } from '../services/agent/channels/whatsapp-channel'
 import { handleInboundCall, triggerOutboundCall, handleRecordingComplete } from '../services/agent/channels/voice-channel'
 import { runAgent } from '../services/agent/unified-agent'
 // import { runReminderJob, runFollowupJob, runDebtJob, processQueue } from '../services/agent/scheduler' // disabled
+import { prisma } from '../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // ════════════════════════════════════════════
 // WHATSAPP

@@ -1,9 +1,7 @@
-import { PrismaClient } from '@prisma/client'
 import OpenAI from 'openai'
 import Anthropic from '@anthropic-ai/sdk'
 import fs from 'fs'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 // Lazy-init OpenAI client — only if API key is set
 function getOpenAI(): OpenAI {

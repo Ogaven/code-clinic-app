@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import multer from 'multer'
 import * as XLSX from 'xlsx'
 import { requireAuth } from '../middleware/auth'
@@ -11,6 +11,7 @@ import { formatPatientId } from '../lib/utils'
 import { syncAppointmentToGCal } from '../services/gcal'
 import { sendAppointmentNotification } from '../ai-suite/notifications/notification.service'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { prisma } from '../lib/prisma'
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
@@ -56,7 +57,6 @@ async function notifyStaff(
 }
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // ─── Calendar (day) ─────────────────────────────────────────────────────────
 // GET /scheduling/calendar?date=YYYY-MM-DD

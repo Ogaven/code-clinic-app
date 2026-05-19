@@ -1,9 +1,8 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '../middleware/auth'
+import { prisma } from '../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 function kampalaDay(offsetDays = 0) {
   const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))

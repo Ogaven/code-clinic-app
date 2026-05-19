@@ -1,12 +1,12 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import multer from 'multer'
 import { makeOutboundCall, formatToE164, isSipConnected } from './sip.service'
 import { startVoiceConversation } from './voice-ai.service'
 import { sendSMS } from '../sms/sms.service'
 
+import { prisma } from '../../lib/prisma'
+
 const router = Router()
-const prisma = new PrismaClient()
 const upload = multer({ storage: multer.memoryStorage() })
 
 // ── POST /ai-suite/voice/call ─────────────────────────────────────────────────

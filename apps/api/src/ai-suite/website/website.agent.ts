@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { PrismaClient } from '@prisma/client'
 import {
   getAvailableSlots,
   getServices,
@@ -8,8 +7,7 @@ import {
   rescheduleAppointment as rescheduleAppt,
   cancelAppointment as cancelAppt,
 } from '../booking/booking.service'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 // ── Tool definitions ───────────────────────────────────────────────────────────
 

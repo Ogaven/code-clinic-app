@@ -1,13 +1,12 @@
 import { Router, Request, Response, NextFunction } from 'express'
 import { google } from 'googleapis'
-import { PrismaClient } from '@prisma/client'
 import { randomUUID } from 'crypto'
 import { requireAuth } from '../middleware/auth'
 import { clinicalStaff } from '../middleware/rbac'
 import { processIncrementalSync } from '../services/gcal'
+import { prisma } from '../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // ─── OAuth2 client factory ────────────────────────────────────
 function getRedirectUri() {

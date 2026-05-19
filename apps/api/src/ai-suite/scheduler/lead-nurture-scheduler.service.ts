@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 // ── checkAndSendLeadNurtureMessages ──────────────────────────────────────────
 // Runs every hour. Finds LEADNURTURE messages whose scheduledFor has passed and

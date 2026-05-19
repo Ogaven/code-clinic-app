@@ -4,15 +4,14 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import * as OTPAuth from 'otpauth'
 import QRCode from 'qrcode'
-import { PrismaClient } from '@prisma/client'
 import { validate } from '../middleware/validate'
 import { requireAuth } from '../middleware/auth'
 import { authLimiter } from '../middleware/rateLimit'
 import { getPublicUrl } from '../services/storage/r2'
 import { blacklistToken } from '../lib/tokenBlacklist'
+import { prisma } from '../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 const loginSchema = z.object({
   email: z.string().email(),

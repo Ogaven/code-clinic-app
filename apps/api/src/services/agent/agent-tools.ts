@@ -1,8 +1,8 @@
-import { PrismaClient } from '@prisma/client'
 import Anthropic from '@anthropic-ai/sdk'
 import crypto from 'crypto'
 import { searchKnowledge } from '../knowledge/rag'
 import nodemailer from 'nodemailer'
+import { prisma } from '../../lib/prisma'
 
 async function sendEmail(opts: { to: string; subject: string; text: string }) {
   try {
@@ -36,8 +36,6 @@ async function sendSMS(to: string, message: string): Promise<void> {
     console.warn(`[SMS] Failed for ${to}:`, err.message)
   }
 }
-
-const prisma = new PrismaClient()
 
 // ── Encryption helpers (medical notes) ─────────────────────────
 

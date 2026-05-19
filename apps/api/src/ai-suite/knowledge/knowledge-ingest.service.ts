@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client'
 import { uploadFile } from '../../services/storage/r2'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 // ── Chunking ──────────────────────────────────────────────────────────────────
 // Breaks at the last sentence boundary within maxChars, falling back to a hard

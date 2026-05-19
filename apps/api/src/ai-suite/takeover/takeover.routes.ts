@@ -1,9 +1,8 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { takeoverConversation, handbackConversation } from './takeover.service'
+import { prisma } from '../../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 
 // POST /ai-suite/takeover/:conversationId
 // Staff member takes over a conversation — Sarah goes silent.

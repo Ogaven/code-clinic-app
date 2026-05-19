@@ -1,10 +1,9 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import multer from 'multer'
 import { ingestText, ingestUrl, ingestFile } from './knowledge-ingest.service'
+import { prisma } from '../../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
 // ── GET /ai-suite/knowledge ───────────────────────────────────────────────────

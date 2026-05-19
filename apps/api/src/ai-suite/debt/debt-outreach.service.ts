@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
-
-const prisma = new PrismaClient()
+import { prisma } from '../../lib/prisma'
 
 // ── triggerDebtOutreach ───────────────────────────────────────────────────────
 // Sends a single warm debt-reminder WhatsApp message to a patient.
