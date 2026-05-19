@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { cn, formatUGX, formatPhone, getInitials } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
+import TimelineTab from '@/components/patients/TimelineTab'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ interface ToothState {
   history?: { date: string; changeType: string; item: string; oldStatus?: string; newStatus: string }[]
 }
 
-type ActiveTab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity'
+type ActiveTab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline'
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -1343,7 +1344,7 @@ export default function PatientProfilePage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const tp = searchParams.get('tab') as ActiveTab | null
-    const valid: ActiveTab[] = ['overview','appointments','dental','perio','treatment','notes','billing','documents','activity']
+    const valid: ActiveTab[] = ['overview','appointments','dental','perio','treatment','notes','billing','documents','activity','timeline']
     return tp && valid.includes(tp) ? tp : 'overview'
   })
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
@@ -1424,6 +1425,7 @@ export default function PatientProfilePage() {
     { key: 'billing', label: 'Billing', icon: DollarSign },
     { key: 'documents', label: 'Documents', icon: Folder },
     { key: 'activity', label: 'Activity', icon: Clock },
+    { key: 'timeline', label: 'Timeline', icon: Activity },
   ]
 
   const renderTab = () => {
@@ -1437,6 +1439,7 @@ export default function PatientProfilePage() {
       case 'billing': return <BillingTab patient={patient} token={token} />
       case 'documents': return <DocumentsTab patientId={id!} token={token} />
       case 'activity': return <ActivityTab patientId={id!} token={token} />
+      case 'timeline': return <TimelineTab patientId={id!} />
     }
   }
 

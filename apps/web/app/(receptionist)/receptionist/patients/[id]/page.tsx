@@ -9,8 +9,9 @@ import {
   Clock, ChevronRight, Receipt, Download, Upload, Star, Brain, Camera, Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import TimelineTab from '@/components/patients/TimelineTab'
 
-type Tab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity'
+type Tab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline'
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'overview',      label: 'Overview',        icon: User       },
@@ -22,6 +23,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'billing',       label: 'Billing',         icon: DollarSign },
   { key: 'documents',     label: 'Documents',       icon: Folder     },
   { key: 'activity',      label: 'Activity',        icon: Clock      },
+  { key: 'timeline',      label: 'Timeline',        icon: Activity   },
 ]
 
 const STATUS_CFG: Record<string, { label: string; cls: string }> = {
@@ -1062,6 +1064,7 @@ export default function PatientDetailPage() {
         {tab === 'billing'      && <BillingTab patientId={id} />}
         {tab === 'documents'    && <DocumentsTab patientId={id} />}
         {tab === 'activity'     && <ActivityTab patientId={id} />}
+        {tab === 'timeline'     && <TimelineTab patientId={id} />}
       </div>
     </div>
   )

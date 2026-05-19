@@ -229,6 +229,77 @@ router.get('/:id', requireAuth, async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to fetch patient' }) }
 })
 
+// GET /patients/:id/timeline
+router.get('/:id/timeline', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const patient = await prisma.patient.findUnique({
+      where: { id },
+      select: { phone: true, createdAt: true },
+    })
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+
+    const [appointments, invoices, conversations] = await Promise.all([
+      prisma.appointment.findMany({
+        where: { patientId: id },
+        include: {
+          service: { select: { name: true, colour: true } },
+          doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+        },
+        orderBy: { startAt: 'desc' },
+      }),
+      prisma.invoice.findMany({
+        where: { patientId: id },
+        select: { totalUGX: true, paidUGX: true, status: true },
+      }),
+      prisma.aiConversation.findMany({
+        where: { phoneNumber: patient.phone },
+        include: {
+          messages: { orderBy: { createdAt: 'asc' }, take: 50 },
+          _count:   { select: { messages: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
+    ])
+
+    const totalBilled  = invoices.reduce((s, i) => s + Number(i.totalUGX), 0)
+    const totalPaid    = invoices.reduce((s, i) => s + Number(i.paidUGX),   0)
+    const outstanding  = totalBilled - totalPaid
+
+    const now = new Date()
+    const lastCompleted = appointments.find(
+      a => a.status === 'COMPLETED' && new Date(a.startAt) <= now,
+    )
+    let patientStatus = 'NEW_LEAD'
+    if (lastCompleted) {
+      const days = (now.getTime() - new Date(lastCompleted.startAt).getTime()) / 86_400_000
+      if      (days <= 90)  patientStatus = 'ACTIVE'
+      else if (days <= 365) patientStatus = 'LAPSED'
+      else                  patientStatus = 'DORMANT'
+    } else if (appointments.some(a => new Date(a.startAt) > now)) {
+      patientStatus = 'UPCOMING'
+    }
+
+    res.json({
+      appointments,
+      financial: { totalBilled, totalPaid, outstanding, invoiceCount: invoices.length },
+      conversations: conversations.map(c => ({
+        id:           c.id,
+        channel:      c.channel,
+        phoneNumber:  c.phoneNumber,
+        status:       c.status,
+        agentEnabled: c.agentEnabled,
+        createdAt:    c.createdAt,
+        updatedAt:    c.updatedAt,
+        messageCount: c._count.messages,
+        messages:     c.messages,
+      })),
+      patientStatus,
+    })
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch timeline' }) }
+})
+
 // GET /patients/:id/activity
 router.get('/:id/activity', requireAuth, async (req, res) => {
   try {
