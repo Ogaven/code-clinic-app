@@ -1344,8 +1344,8 @@ export default function PatientProfilePage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const tp = searchParams.get('tab') as ActiveTab | null
-    const valid: ActiveTab[] = ['overview','appointments','dental','perio','treatment','notes','billing','documents','activity','timeline']
-    return tp && valid.includes(tp) ? tp : 'overview'
+    const valid: ActiveTab[] = ['timeline','overview','appointments','dental','perio','treatment','notes','billing','documents','activity']
+    return tp && valid.includes(tp) ? tp : 'timeline'
   })
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cc_user') || '{}') : {}
@@ -1416,16 +1416,15 @@ export default function PatientProfilePage() {
   )
 
   const tabs: { key: ActiveTab; label: string; icon: React.ElementType }[] = [
-    { key: 'overview', label: 'Overview', icon: User },
-    { key: 'appointments', label: 'Appointments', icon: Calendar },
-    { key: 'dental', label: 'Dental Chart', icon: Activity },
-    { key: 'perio', label: 'Perio Chart', icon: FileText },
-    { key: 'treatment', label: 'Treatment Plan', icon: CheckCircle },
-    { key: 'notes', label: 'Notes', icon: FileText },
-    { key: 'billing', label: 'Billing', icon: DollarSign },
-    { key: 'documents', label: 'Documents', icon: Folder },
-    { key: 'activity', label: 'Activity', icon: Clock },
-    { key: 'timeline', label: 'Timeline', icon: Activity },
+    { key: 'timeline',     label: 'Timeline',       icon: Activity   },
+    { key: 'overview',     label: 'Overview',        icon: User       },
+    { key: 'appointments', label: 'Appointments',    icon: Calendar   },
+    { key: 'dental',       label: 'Dental Chart',    icon: Activity   },
+    { key: 'perio',        label: 'Perio Chart',     icon: FileText   },
+    { key: 'treatment',    label: 'Treatment Plan',  icon: CheckCircle },
+    { key: 'notes',        label: 'Notes',           icon: FileText   },
+    { key: 'billing',      label: 'Billing',         icon: DollarSign },
+    { key: 'documents',    label: 'Documents',       icon: Folder     },
   ]
 
   const renderTab = () => {

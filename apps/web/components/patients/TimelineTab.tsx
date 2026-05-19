@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import {
   Calendar, MessageSquare, FileText, Loader2,
-  ChevronDown, ChevronUp, Plus,
+  ChevronDown, ChevronUp, Plus, Mic, MicOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -83,10 +83,14 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
   const [data,        setData]        = useState<any>(null)
   const [notes,       setNotes]       = useState<any[]>([])
   const [loading,     setLoading]     = useState(true)
-  const [noteText,    setNoteText]    = useState('')
-  const [savingNote,  setSavingNote]  = useState(false)
-  const [expanded,    setExpanded]    = useState<Set<string>>(new Set())
-  const [showAllPast, setShowAllPast] = useState(false)
+  const [noteText,     setNoteText]    = useState('')
+  const [savingNote,   setSavingNote]  = useState(false)
+  const [isRecording,  setIsRecording] = useState(false)
+  const [expanded,     setExpanded]    = useState<Set<string>>(new Set())
+  const [showAllPast,  setShowAllPast] = useState(false)
+  const recognitionRef  = useRef<any>(null)
+  const isRecordingRef  = useRef(false)
+  const accumulatedRef  = useRef('')
 
   useEffect(() => {
     const token = localStorage.getItem('cc_token')
@@ -117,6 +121,47 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
       setNotes(prev => [note, ...prev])
       setNoteText('')
     } catch {/* ignore */} finally { setSavingNote(false) }
+  }
+
+  const startRecording = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) { alert('Voice recording requires Chrome or Edge'); return }
+    accumulatedRef.current = noteText
+    isRecordingRef.current = true
+    setIsRecording(true)
+
+    function createAndStart() {
+      if (!isRecordingRef.current) return
+      const rec = new SR()
+      rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US'
+      rec.onresult = (e: any) => {
+        let interim = ''
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) { accumulatedRef.current += e.results[i][0].transcript + ' ' }
+          else { interim += e.results[i][0].transcript }
+        }
+        setNoteText(accumulatedRef.current + interim)
+      }
+      rec.onerror = (e: any) => {
+        if (e.error === 'no-speech' || e.error === 'aborted') return
+        isRecordingRef.current = false
+        setIsRecording(false)
+      }
+      rec.onend = () => {
+        if (isRecordingRef.current) { setTimeout(createAndStart, 150) }
+        else { setIsRecording(false) }
+      }
+      recognitionRef.current = rec
+      try { rec.start() } catch {/* ignore */}
+    }
+
+    createAndStart()
+  }
+
+  const stopRecording = () => {
+    isRecordingRef.current = false
+    recognitionRef.current?.stop()
+    setIsRecording(false)
   }
 
   const toggleConv = (id: string) =>
@@ -312,17 +357,30 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
 
         {/* Add note form */}
         <div className="mb-4 bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/10 rounded-xl p-3">
+          <div className="mb-2">
+            {isRecording ? (
+              <button onClick={stopRecording}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-red-500 rounded-lg animate-pulse">
+                <MicOff size={12} /> Stop Recording
+              </button>
+            ) : (
+              <button onClick={startRecording}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+                <Mic size={12} /> Dictate Note
+              </button>
+            )}
+          </div>
           <textarea
             value={noteText}
             onChange={e => setNoteText(e.target.value)}
-            placeholder="Add a staff note…"
+            placeholder={isRecording ? 'Transcribing… Speak now.' : 'Add a staff note…'}
             rows={3}
             className="w-full text-sm bg-transparent dark:text-white resize-none outline-none placeholder:text-slate-400"
           />
           <div className="flex justify-end mt-2 border-t border-slate-100 dark:border-white/10 pt-2">
             <button
               onClick={saveNote}
-              disabled={!noteText.trim() || savingNote}
+              disabled={!noteText.trim() || savingNote || isRecording}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
               {savingNote
                 ? <Loader2 size={12} className="animate-spin" />
