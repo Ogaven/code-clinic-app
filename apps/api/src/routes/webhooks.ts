@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { processSocialMessage } from '../ai-suite/facebook/facebook.routes'
 
 const router = Router()
 
@@ -15,10 +16,26 @@ router.get('/facebook', (req, res) => {
   res.status(403).json({ error: 'Verification failed' })
 })
 
-// POST /webhooks/facebook — receive Facebook Messenger events
-router.post('/facebook', (req, res) => {
+// POST /webhooks/facebook — receive Facebook Messenger events from Meta
+router.post('/facebook', async (req, res) => {
   res.sendStatus(200) // Acknowledge immediately so Meta doesn't retry
-  console.log('[Webhooks] Facebook event received:', JSON.stringify(req.body))
+
+  try {
+    const body = req.body as any
+    if (body.object !== 'page') return
+
+    for (const entry of body.entry ?? []) {
+      for (const event of entry.messaging ?? []) {
+        if (!event.message?.text) continue
+        const senderId = String(event.sender.id)
+        const text     = String(event.message.text)
+        console.log(`[Webhooks] Facebook message from ${senderId}: ${text}`)
+        await processSocialMessage(senderId, text, 'FACEBOOK')
+      }
+    }
+  } catch (err) {
+    console.error('[Webhooks] Facebook processing error:', err)
+  }
 })
 
 export default router

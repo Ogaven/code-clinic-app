@@ -5,7 +5,7 @@ import { prisma } from '../../lib/prisma'
 
 const router = Router()
 
-const GRAPH_VERSION = 'v18.0'
+const GRAPH_VERSION = 'v24.0'
 
 // ── Facebook Messenger ────────────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ router.post('/instagram/webhook', async (req, res) => {
 
 // ── Shared processor ──────────────────────────────────────────────────────────
 
-async function processSocialMessage(
+export async function processSocialMessage(
   senderId: string,
   text:     string,
   channel:  'FACEBOOK' | 'INSTAGRAM',
@@ -128,12 +128,14 @@ export async function sendSocialReply(
   text:        string,
   channel:     'FACEBOOK' | 'INSTAGRAM',
 ): Promise<void> {
+  // Token is stored in DB via OAuth or manual form; fall back to env var
+  const config = await prisma.aiAgentConfig.findFirst()
   const token = channel === 'FACEBOOK'
-    ? process.env.FACEBOOK_PAGE_ACCESS_TOKEN
-    : process.env.INSTAGRAM_ACCESS_TOKEN
+    ? (config?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || null)
+    : (config?.instagramAccessToken    || process.env.INSTAGRAM_ACCESS_TOKEN     || null)
 
   if (!token) {
-    console.warn(`[${channel}] Access token not set — reply not sent`)
+    console.warn(`[${channel}] No page access token configured — reply not sent`)
     return
   }
 
