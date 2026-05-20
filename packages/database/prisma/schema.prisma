@@ -692,6 +692,7 @@ model TreatmentPlan {
   patientId   String
   patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
   serviceId   String?
+  stage       String   @default("Consulted")
   status      String   @default("Planned")
   toothNumber String?
   quantity    Int      @default(1)
@@ -703,6 +704,7 @@ model TreatmentPlan {
   updatedAt   DateTime @updatedAt
 
   @@index([patientId])
+  @@index([stage])
   @@map("treatment_plans")
 }
 

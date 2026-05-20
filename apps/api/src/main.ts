@@ -22,6 +22,7 @@ import accountsRouter from './routes/accounts'
 import aiRouter from './routes/ai'
 import crmRouter from './routes/crm'
 import campaignsRouter, { runScheduledCampaigns } from './routes/campaigns'
+import pipelineRouter from './routes/pipeline'
 import developerRouter from './routes/developer'
 import integrationsRouter from './routes/integrations'
 import receptionistRouter from './routes/receptionist'
@@ -144,6 +145,7 @@ app.use('/accounts/quickbooks', quickbooksRouter)
 app.use('/ai',           aiRouter)
 app.use('/crm',          crmRouter)
 app.use('/campaigns',    campaignsRouter)
+app.use('/pipeline',     pipelineRouter)
 app.use('/developer',    developerRouter)
 app.use('/integrations', integrationsRouter)
 app.use('/api/integrations', integrationsRouter)  // alias for OAuth callbacks configured with /api/ prefix
