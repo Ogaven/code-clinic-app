@@ -25,6 +25,7 @@ const createPatientSchema = z.object({
   nextOfKinRelation:  z.string().optional().or(z.literal('')),
   allergies:          z.string().optional().or(z.literal('')),
   medicalHistory:     z.union([z.string(), z.array(z.string())]).optional(),
+  referralSource:     z.string().optional().or(z.literal('')),
 })
 
 const updatePatientSchema = createPatientSchema.partial()
@@ -320,6 +321,7 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
     const {
       firstName, lastName, phone, email, gender, dob, address, district, isActive,
       nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
+      referralSource,
     } = req.body
     const patient = await prisma.patient.update({
       where: { id: req.params.id },
@@ -329,10 +331,42 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
         address, district, isActive,
         nextOfKinName, nextOfKinPhone, nextOfKinRelation,
         allergies, medicalHistory,
+        referralSource: referralSource || null,
       },
     })
     res.json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })
   } catch { res.status(500).json({ error: 'Failed to update patient' }) }
+})
+
+// GET /patients/referral-stats — aggregate referral source data for the Referrals page
+router.get('/referral-stats', requireAuth, async (_req, res) => {
+  try {
+    const now = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    const patients = await prisma.patient.findMany({
+      select: {
+        referralSource: true,
+        createdAt:      true,
+        invoices:       { select: { paidUGX: true } },
+      },
+    })
+
+    const statsMap: Record<string, { count: number; revenue: number; thisMonth: number }> = {}
+    for (const p of patients) {
+      const src = p.referralSource || 'Unknown'
+      if (!statsMap[src]) statsMap[src] = { count: 0, revenue: 0, thisMonth: 0 }
+      statsMap[src].count++
+      statsMap[src].revenue += p.invoices.reduce((s, inv) => s + inv.paidUGX, 0)
+      if (new Date(p.createdAt) >= startOfMonth) statsMap[src].thisMonth++
+    }
+
+    const stats = Object.entries(statsMap)
+      .map(([source, d]) => ({ source, ...d }))
+      .sort((a, b) => b.count - a.count)
+
+    res.json({ stats })
+  } catch { res.status(500).json({ error: 'Failed to fetch referral stats' }) }
 })
 
 // POST /patients/:id/avatar

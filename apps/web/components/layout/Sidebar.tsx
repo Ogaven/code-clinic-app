@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, BookOpen, Package,
   ListChecks, Inbox, Phone, Mic,
   ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
-  Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban,
+  Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -55,6 +55,7 @@ const adminNav: NavGroup[] = [
       { label: 'AI Suite',            href: '/ai-suite',            icon: Bot,      sub: AI_SUITE_SUB },
       { label: 'Campaigns',           href: '/campaigns',           icon: Megaphone },
       { label: 'Treatment Pipeline',  href: '/treatment-pipeline',  icon: Kanban },
+      { label: 'Referrals',           href: '/referrals',           icon: Share2 },
     ],
   },
   {

@@ -194,6 +194,7 @@ model Patient {
   accountBalance        Int      @default(0)
   isActive              Boolean  @default(true)
   referredBy            String?
+  referralSource        String?
   nextOfKinName         String?
   nextOfKinPhone        String?
   nextOfKinRelation     String?

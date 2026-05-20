@@ -1278,6 +1278,7 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
           { label: 'Address', value: patient.address || '—' },
           { label: 'District', value: patient.district || '—' },
           { label: 'Referred By', value: patient.referredBy || '—' },
+          { label: 'How They Found Us', value: patient.referralSource || '—' },
           { label: 'Patient Since', value: new Date(patient.createdAt).toLocaleDateString('en-UG', { year: 'numeric', month: 'long' }) },
         ].map(({ label, value }) => (
           <div key={label}>
@@ -1365,6 +1366,7 @@ export default function PatientProfilePage() {
       nextOfKinName: patient.nextOfKinName || '',
       nextOfKinPhone: patient.nextOfKinPhone || '',
       nextOfKinRelation: patient.nextOfKinRelation || '',
+      referralSource: patient.referralSource || '',
     })
     setEditOpen(true)
   }
@@ -1581,6 +1583,21 @@ export default function PatientProfilePage() {
                   <input value={editForm.district} onChange={e => setEditForm((f: any) => ({ ...f, district: e.target.value }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">How did they find us?</label>
+                <select value={editForm.referralSource} onChange={e => setEditForm((f: any) => ({ ...f, referralSource: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                  <option value="">Not specified</option>
+                  <option value="Google Search">Google Search</option>
+                  <option value="Google Maps">Google Maps</option>
+                  <option value="WhatsApp">WhatsApp</option>
+                  <option value="Instagram">Instagram</option>
+                  <option value="Facebook">Facebook</option>
+                  <option value="Patient Referral">Patient Referral</option>
+                  <option value="Walk-in">Walk-in</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
               <div className="border-t dark:border-white/10 pt-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-blue-500 mb-3">Next of Kin</p>

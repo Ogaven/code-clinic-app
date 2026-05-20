@@ -45,6 +45,7 @@ const pageTitles: Record<string, string> = {
   '/ai-suite/agent-config':       'Agent Config',
   '/campaigns':                   'Campaigns',
   '/treatment-pipeline':          'Treatment Pipeline',
+  '/referrals':                   'Referral Sources',
   '/settings':                    'Settings',
   '/support':                     'Customer Support',
 }
