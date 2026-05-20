@@ -21,7 +21,7 @@ import servicesRouter from './routes/services'
 import accountsRouter from './routes/accounts'
 import aiRouter from './routes/ai'
 import crmRouter from './routes/crm'
-import campaignsRouter from './routes/campaigns'
+import campaignsRouter, { runScheduledCampaigns } from './routes/campaigns'
 import developerRouter from './routes/developer'
 import integrationsRouter from './routes/integrations'
 import receptionistRouter from './routes/receptionist'
@@ -246,6 +246,12 @@ runStartup().then(() => {
   setInterval(() => {
     updatePatientStatuses().catch(err => console.error('[PatientStatus] Scheduler error:', err))
   }, TWENTY_FOUR_HOURS)
+
+  // Scheduled campaigns — check every 5 minutes
+  const FIVE_MINUTES = 5 * 60 * 1000
+  setInterval(() => {
+    runScheduledCampaigns().catch(err => console.error('[Campaign] Scheduler error:', err))
+  }, FIVE_MINUTES)
 
   // Run once 2 minutes after startup (gives DB time to settle after migrations)
   setTimeout(() => {
