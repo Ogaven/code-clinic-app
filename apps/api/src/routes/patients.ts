@@ -82,6 +82,8 @@ router.get('/', requireAuth, async (req, res) => {
       filterWhere.gender = 'MALE'
     } else if (filter === 'female') {
       filterWhere.gender = 'FEMALE'
+    } else if (['NEW_LEAD','UPCOMING','ACTIVE','DUE_RECALL','LAPSED','DORMANT','BALANCE_OWING'].includes(filter || '')) {
+      filterWhere.status = filter
     } else if (filter === 'this_month') {
       const now = new Date()
       const start = new Date(now.getFullYear(), now.getMonth(), 1)

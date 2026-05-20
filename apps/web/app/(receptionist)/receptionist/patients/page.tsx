@@ -27,9 +27,19 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
 
 interface Patient {
   id: string; patientId?: string; firstName: string; lastName: string; phone: string
-  email?: string; gender?: string; dob?: string; isActive: boolean
+  email?: string; gender?: string; dob?: string; isActive: boolean; status?: string
   createdAt: string; _count?: { appointments: number }
   avatarUrl?: string
+}
+
+const STATUS_BADGES: Record<string, { label: string; pill: string }> = {
+  NEW_LEAD:      { label: 'New Lead',    pill: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' },
+  UPCOMING:      { label: 'Upcoming',    pill: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' },
+  ACTIVE:        { label: 'Active',      pill: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' },
+  DUE_RECALL:    { label: 'Due Recall',  pill: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
+  LAPSED:        { label: 'Lapsed',      pill: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' },
+  DORMANT:       { label: 'Dormant',     pill: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
+  BALANCE_OWING: { label: 'Balance Due', pill: 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400' },
 }
 
 const COLORS = ['#29ABE2','#9B59B6','#2ECC71','#E8A838','#E74C3C','#1ABC9C','#F39C12','#3498DB']
@@ -51,7 +61,7 @@ export default function PatientsPage() {
   const [selected, setSelected]   = useState<Patient | null>(null)
   const [appts, setAppts]         = useState<any[]>([])
   const [showAdd, setShowAdd]     = useState(false)
-  const [filter, setFilter]       = useState<'all' | 'new' | 'active'>('all')
+  const [filter, setFilter]       = useState<'all' | 'new' | 'active' | 'NEW_LEAD' | 'UPCOMING' | 'ACTIVE' | 'DUE_RECALL' | 'LAPSED' | 'DORMANT' | 'BALANCE_OWING'>('all')
   const [toast, setToast]         = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [importing, setImporting] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -87,6 +97,8 @@ export default function PatientsPage() {
       list = list.filter(p => { try { return new Date(p.createdAt) > weekAgo } catch { return false } })
     } else if (filter === 'active') {
       list = list.filter(p => (p._count?.appointments || 0) > 1)
+    } else if (['NEW_LEAD','UPCOMING','ACTIVE','DUE_RECALL','LAPSED','DORMANT','BALANCE_OWING'].includes(filter)) {
+      list = list.filter(p => p.status === filter)
     }
     setFiltered(list)
   }, [patients, search, filter])
@@ -340,12 +352,24 @@ export default function PatientsPage() {
           </div>
 
           {/* Filters */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {(['all', 'new', 'active'] as const).map(f => (
               <button key={f} onClick={() => setFilter(f)}
                 className={cn('px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all',
                   filter === f ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/12')}>
                 {f === 'all' ? 'All' : f === 'new' ? 'New (7d)' : 'Returning'}
+              </button>
+            ))}
+          </div>
+          {/* Patient status filters */}
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {(Object.entries(STATUS_BADGES) as [string, { label: string; pill: string }][]).map(([key, { label, pill }]) => (
+              <button key={key} onClick={() => setFilter(key as typeof filter)}
+                className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border',
+                  filter === key
+                    ? cn(pill, 'ring-2 ring-offset-1 ring-current border-transparent')
+                    : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 border-transparent hover:bg-gray-200 dark:hover:bg-white/12')}>
+                {label}
               </button>
             ))}
           </div>
@@ -445,9 +469,13 @@ export default function PatientsPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {(p._count?.appointments || 0) > 1 && (
+                          {p.status && STATUS_BADGES[p.status] ? (
+                            <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', STATUS_BADGES[p.status].pill)}>
+                              {STATUS_BADGES[p.status].label}
+                            </span>
+                          ) : (p._count?.appointments || 0) > 1 ? (
                             <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded-full">Returning</span>
-                          )}
+                          ) : null}
                           <ChevronRight size={14} className="text-gray-300 dark:text-white/20" />
                         </div>
                       </td>

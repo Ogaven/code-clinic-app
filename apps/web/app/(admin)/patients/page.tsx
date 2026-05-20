@@ -29,10 +29,20 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
 // ── Types ────────────────────────────────────────────────────────
 interface Patient {
   id: string; patientId?: string; firstName: string; lastName: string; phone: string
-  email?: string; gender?: string; dob?: string; isActive: boolean
+  email?: string; gender?: string; dob?: string; isActive: boolean; status?: string
   accountBalance: number; createdAt: string
   _count?: { appointments: number; treatmentPlans?: number }
   avatarUrl?: string | null
+}
+
+const STATUS_BADGES: Record<string, { label: string; pill: string }> = {
+  NEW_LEAD:      { label: 'New Lead',    pill: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' },
+  UPCOMING:      { label: 'Upcoming',    pill: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' },
+  ACTIVE:        { label: 'Active',      pill: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' },
+  DUE_RECALL:    { label: 'Due Recall',  pill: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
+  LAPSED:        { label: 'Lapsed',      pill: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' },
+  DORMANT:       { label: 'Dormant',     pill: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
+  BALANCE_OWING: { label: 'Balance Due', pill: 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400' },
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -78,7 +88,7 @@ export default function PatientsPage() {
   const [selected,         setSelected]         = useState<Patient | null>(null)
   const [appts,            setAppts]            = useState<any[]>([])
   const [showAdd,          setShowAdd]          = useState(false)
-  const [activeFilter,     setActiveFilter]     = useState<'all'|'new_today'|'this_month'|'has_balance'|'has_plan'|'male'|'female'>('all')
+  const [activeFilter,     setActiveFilter]     = useState<'all'|'new_today'|'this_month'|'has_balance'|'has_plan'|'male'|'female'|'NEW_LEAD'|'UPCOMING'|'ACTIVE'|'DUE_RECALL'|'LAPSED'|'DORMANT'|'BALANCE_OWING'>('all')
   const [toast,            setToast]            = useState<{ msg: string; type: 'ok'|'err' } | null>(null)
   const [importing,        setImporting]        = useState(false)
   const [exporting,        setExporting]        = useState(false)
@@ -352,6 +362,18 @@ export default function PatientsPage() {
               </button>
             ))}
           </div>
+          {/* Patient status filters */}
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {(Object.entries(STATUS_BADGES) as [string, { label: string; pill: string }][]).map(([key, { label, pill }]) => (
+              <button key={key} onClick={() => setActiveFilter(key as typeof activeFilter)}
+                className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border',
+                  activeFilter === key
+                    ? cn(pill, 'ring-2 ring-offset-1 ring-current border-transparent')
+                    : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 border-transparent hover:bg-gray-200 dark:hover:bg-white/12')}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* List */}
@@ -411,12 +433,18 @@ export default function PatientsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full',
-                          p.isActive
-                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-500')}>
-                          {p.isActive ? 'Active' : 'Inactive'}
-                        </span>
+                        {p.status && STATUS_BADGES[p.status] ? (
+                          <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', STATUS_BADGES[p.status].pill)}>
+                            {STATUS_BADGES[p.status].label}
+                          </span>
+                        ) : (
+                          <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full',
+                            p.isActive
+                              ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-500')}>
+                            {p.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

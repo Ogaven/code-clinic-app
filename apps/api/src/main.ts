@@ -54,6 +54,7 @@ import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
 import { checkAndSendReminders }           from './ai-suite/scheduler/reminder.service'
 import { checkAndSendFollowups }           from './ai-suite/scheduler/followup.service'
 import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
+import { updatePatientStatuses }           from './ai-suite/scheduler/patient-status.service'
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
 
 // Lock process timezone to EAT (UTC+3) — must be set before any Date operations.
@@ -241,12 +242,17 @@ runStartup().then(() => {
   setInterval(() => {
     checkAndSendLeadNurtureMessages().catch(err => console.error('[LeadNurture] Scheduler error:', err))
   }, ONE_HOUR)
+  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000
+  setInterval(() => {
+    updatePatientStatuses().catch(err => console.error('[PatientStatus] Scheduler error:', err))
+  }, TWENTY_FOUR_HOURS)
 
   // Run once 2 minutes after startup (gives DB time to settle after migrations)
   setTimeout(() => {
     checkAndSendReminders().catch(err => console.error('[Reminder] Initial run error:', err))
     checkAndSendFollowups().catch(err => console.error('[Followup] Initial run error:', err))
     checkAndSendLeadNurtureMessages().catch(err => console.error('[LeadNurture] Initial run error:', err))
+    updatePatientStatuses().catch(err => console.error('[PatientStatus] Initial run error:', err))
   }, 2 * 60 * 1000)
 
   app.listen(PORT, () => {
