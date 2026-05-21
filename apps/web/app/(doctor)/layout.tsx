@@ -127,10 +127,9 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     if (!raw) { router.replace('/login'); return }
     const u = JSON.parse(raw)
 
-    if (u.role !== 'DOCTOR') {
+    if (u.role !== 'DOCTOR' && u.role !== 'RECEPTIONIST') {
       const roleMap: Record<string, string> = {
         ADMIN: '/dashboard', DEVELOPER: '/developer/dashboard',
-        RECEPTIONIST: '/receptionist/dashboard',
         ACCOUNTS: '/accounts/dashboard',
       }
       router.replace(roleMap[u.role] || '/login')

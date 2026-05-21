@@ -35,6 +35,7 @@ import previsitRouter from './routes/previsit'
 import quickbooksRouter from './routes/quickbooks'
 import stocksRouter from './routes/stocks'
 import webhooksRouter from './routes/webhooks'
+import auditRouter from './routes/audit'
 
 // AI Suite routers
 import aiSuiteRouter     from './ai-suite/whatsapp/whatsapp.routes'
@@ -156,6 +157,7 @@ app.use('/knowledge',    knowledgeRouter)
 app.use('/setup',        setupRouter)
 app.use('/clinical',     clinicalRouter)
 app.use('/pre-visit',    previsitRouter)
+app.use('/audit-logs',   auditRouter)
 
 // ─── Webhooks (Meta, etc.) ────────────────────────────────────
 // GET  /webhooks/facebook — Meta webhook verification

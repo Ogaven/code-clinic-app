@@ -20,12 +20,12 @@ const ROLE_HOME: Record<string, string> = {
   DEVELOPER:    '/developer/dashboard',
 }
 
-const ROUTE_ROLE: Array<[string, string]> = [
-  ['/receptionist', 'RECEPTIONIST'],
-  ['/admin',        'ADMIN'],
-  ['/doctor',       'DOCTOR'],
-  ['/accounts',     'ACCOUNTS'],
-  ['/developer',    'DEVELOPER'],
+const ROUTE_ROLE: Array<[string, string[]]> = [
+  ['/receptionist', ['RECEPTIONIST', 'DOCTOR']],
+  ['/admin',        ['ADMIN']],
+  ['/doctor',       ['DOCTOR', 'RECEPTIONIST']],
+  ['/accounts',     ['ACCOUNTS', 'ADMIN']],
+  ['/developer',    ['DEVELOPER']],
 ]
 
 const PUBLIC_PATHS = ['/', '/login', '/setup', '/privacy.html', '/terms.html', '/privacy', '/terms']
@@ -48,7 +48,7 @@ export function middleware(request: NextRequest) {
   const home = role ? (ROLE_HOME[role] ?? '/login') : '/login'
 
   for (const [prefix, required] of ROUTE_ROLE) {
-    if (pathname.startsWith(prefix) && role !== required) {
+    if (pathname.startsWith(prefix) && !required.includes(role || '')) {
       return NextResponse.redirect(new URL(home, request.url))
     }
   }

@@ -150,9 +150,12 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
 })
 
 // POST /patients/import-sheet — import from public Google Sheet
+// Body:
+//   { sheetUrl, previewOnly?: true }                       → returns { headers, rows (first 5) }
+//   { sheetUrl, columnMap: { firstName, lastName, phone, email, dob, gender, address } }  → imports
 router.post('/import-sheet', requireAuth, async (req, res) => {
   try {
-    const { sheetUrl } = req.body
+    const { sheetUrl, previewOnly, columnMap } = req.body
     if (!sheetUrl) { res.status(400).json({ error: 'Sheet URL required' }); return }
     const match = (sheetUrl as string).match(/\/d\/([a-zA-Z0-9-_]+)/)
     if (!match) { res.status(400).json({ error: 'Invalid Google Sheets URL' }); return }
@@ -164,42 +167,89 @@ router.post('/import-sheet', requireAuth, async (req, res) => {
     }
     const csvText = await response.text()
     const lines   = csvText.trim().split('\n')
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''))
-    let imported = 0, skipped = 0
-    const errors: string[] = []
-    for (let i = 1; i < lines.length; i++) {
-      try {
-        const values = parseCSVLine(lines[i])
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''))
+
+    // Preview mode: return headers + first 5 data rows
+    if (previewOnly) {
+      const rows = lines.slice(1, 6).map(line => {
+        const values = parseCSVLine(line)
         const row: Record<string, string> = {}
         headers.forEach((h, idx) => { row[h] = values[idx]?.trim() || '' })
-        const firstName = row['first name'] || row['firstname'] || row['first_name'] || row['name']?.split(' ')[0] || ''
-        const lastName  = row['last name']  || row['lastname']  || row['last_name']  || row['name']?.split(' ').slice(1).join(' ') || ''
-        const phone     = row['phone'] || row['phone number'] || row['contact'] || row['tel'] || ''
-        const email     = row['email'] || row['email address'] || ''
-        const dob       = row['dob'] || row['date of birth'] || row['birth date'] || ''
-        const gender    = row['gender'] || row['sex'] || ''
-        const address   = row['address'] || row['location'] || ''
+        return row
+      })
+      res.json({ headers, rows })
+      return
+    }
+
+    // Build field extractor using explicit columnMap if provided, else fall back to auto-detect
+    const cm = columnMap as Record<string, string> | undefined
+    const getField = (row: Record<string, string>, field: string, fallbacks: string[]): string => {
+      if (cm?.[field]) return row[cm[field]] || ''
+      for (const key of fallbacks) {
+        const val = row[key] ?? row[key.toLowerCase()] ?? ''
+        if (val) return val
+      }
+      return ''
+    }
+
+    let created = 0, updated = 0, skipped = 0
+    const errors: string[] = []
+
+    for (let i = 1; i < lines.length; i++) {
+      if (!lines[i].trim()) continue
+      try {
+        const values = parseCSVLine(lines[i])
+        const rawRow: Record<string, string> = {}
+        headers.forEach((h, idx) => { rawRow[h] = values[idx]?.trim() || '' })
+        // Also store lowercase-keyed version for auto-detect fallback
+        const row: Record<string, string> = {}
+        Object.entries(rawRow).forEach(([k, v]) => { row[k.toLowerCase()] = v; row[k] = v })
+
+        const firstName = getField(row, 'firstName', ['first name', 'firstname', 'first_name']) || row['name']?.split(' ')[0] || ''
+        const lastName  = getField(row, 'lastName',  ['last name', 'lastname', 'last_name'])   || row['name']?.split(' ').slice(1).join(' ') || ''
+        const phone     = getField(row, 'phone',     ['phone', 'phone number', 'contact', 'tel', 'mobile'])
+        const email     = getField(row, 'email',     ['email', 'email address'])
+        const dob       = getField(row, 'dob',       ['dob', 'date of birth', 'birth date', 'birthdate'])
+        const gender    = getField(row, 'gender',    ['gender', 'sex'])
+        const address   = getField(row, 'address',   ['address', 'location'])
+
         if (!firstName || !phone) { skipped++; errors.push(`Row ${i + 1}: missing name or phone`); continue }
-        const existing = await prisma.patient.findFirst({ where: { phone } })
-        if (existing) { skipped++; continue }
+
         let genderEnum: 'MALE' | 'FEMALE' | undefined
         if (gender.toLowerCase().startsWith('m')) genderEnum = 'MALE'
         if (gender.toLowerCase().startsWith('f')) genderEnum = 'FEMALE'
-        await prisma.patient.create({
-          data: {
-            firstName,
-            lastName: lastName || firstName,
-            phone,
-            email:   email   || undefined,
-            dob:     dob     ? new Date(dob) : undefined,
-            gender:  genderEnum,
-            address: address || undefined,
-          },
-        })
-        imported++
+
+        const existing = await prisma.patient.findFirst({ where: { phone } })
+        if (existing) {
+          await prisma.patient.update({
+            where: { id: existing.id },
+            data: {
+              firstName,
+              lastName: lastName || existing.lastName,
+              email:   email   || existing.email   || undefined,
+              dob:     dob     ? new Date(dob)      : existing.dob   || undefined,
+              gender:  genderEnum                  ?? existing.gender ?? undefined,
+              address: address || existing.address || undefined,
+            },
+          })
+          updated++
+        } else {
+          await prisma.patient.create({
+            data: {
+              firstName,
+              lastName: lastName || firstName,
+              phone,
+              email:   email   || undefined,
+              dob:     dob     ? new Date(dob) : undefined,
+              gender:  genderEnum,
+              address: address || undefined,
+            },
+          })
+          created++
+        }
       } catch (err: any) { errors.push(`Row ${i + 1}: ${err.message}`); skipped++ }
     }
-    res.json({ imported, skipped, total: lines.length - 1, errors: errors.slice(0, 10) })
+    res.json({ created, updated, skipped, total: lines.length - 1, errors: errors.slice(0, 10) })
   } catch (err: any) { res.status(500).json({ error: err.message }) }
 })
 
