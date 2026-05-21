@@ -36,7 +36,7 @@ interface Patient {
 }
 
 const STATUS_BADGES: Record<string, { label: string; pill: string }> = {
-  NEW_LEAD:      { label: 'New Lead',    pill: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' },
+  NEW_LEAD:      { label: 'New Patient', pill: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' },
   UPCOMING:      { label: 'Upcoming',    pill: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' },
   ACTIVE:        { label: 'Active',      pill: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' },
   DUE_RECALL:    { label: 'Due Recall',  pill: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },

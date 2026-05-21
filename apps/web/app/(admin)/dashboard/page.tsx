@@ -299,7 +299,7 @@ function AnalyticCard({ label, value, sub, up, icon, color, href }: {
 // ── Status colours for pie ───────────────────────────────────────────────────
 const STATUS_PIE: Record<string, { color: string; label: string }> = {
   ACTIVE:       { color: '#10B981', label: 'Active' },
-  NEW_LEAD:     { color: '#29ABE2', label: 'New Lead' },
+  NEW_LEAD:     { color: '#29ABE2', label: 'New Patient' },
   DUE_RECALL:   { color: '#F59E0B', label: 'Due Recall' },
   LAPSED:       { color: '#EF4444', label: 'Lapsed' },
   DORMANT:      { color: '#6B7280', label: 'Dormant' },

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 
-const API_BASE = 'https://api-production-4c43.up.railway.app'
+const API_BASE = 'https://api.codeclinicemr.com'
 
 function getSessionId() {
   const k = 'cc_wid_session'

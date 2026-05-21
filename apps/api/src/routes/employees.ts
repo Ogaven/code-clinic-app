@@ -127,6 +127,23 @@ router.patch('/:id', requireAuth, adminOnly, auditLog('employees'), async (req, 
   res.json(user)
 })
 
+// PATCH /employees/:id/doctor — update doctor specialisation/colour
+router.patch('/:id/doctor', requireAuth, adminOnly, async (req, res) => {
+  const { specialisation, colour } = req.body
+  try {
+    const doctor = await prisma.doctor.findFirst({ where: { userId: req.params.id } })
+    if (!doctor) { res.status(404).json({ error: 'Doctor record not found' }); return }
+    const updated = await prisma.doctor.update({
+      where: { id: doctor.id },
+      data: {
+        ...(specialisation !== undefined && { specialisation }),
+        ...(colour         !== undefined && { colour }),
+      },
+    })
+    res.json({ specialisation: updated.specialisation, colour: updated.colour })
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
+})
+
 // POST /employees/:id/avatar — upload profile photo
 router.post('/:id/avatar', requireAuth, uploadLimiter,
   upload.single('avatar'),

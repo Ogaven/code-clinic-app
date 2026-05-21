@@ -11,7 +11,7 @@ const PATIENT_STATUS: Record<string, { label: string; cls: string }> = {
   ACTIVE:   { label: 'Active',    cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
   LAPSED:   { label: 'Lapsed',    cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
   DORMANT:  { label: 'Dormant',   cls: 'bg-slate-100 text-slate-600 dark:bg-slate-900/30 dark:text-slate-400' },
-  NEW_LEAD: { label: 'New Lead',  cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  NEW_LEAD: { label: 'New Patient',  cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
   UPCOMING: { label: 'Upcoming',  cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
 }
 

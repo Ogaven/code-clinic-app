@@ -1465,10 +1465,10 @@ const EMBED_CODE = `<!-- Code Clinic Chat Widget -->
   window.CodeClinicChatConfig = {
     clinicId: 'codeclinic',
     primaryColor: '#29ABE2',
-    avatarUrl: 'https://codeclinic-production-73f628.up.railway.app/sarah.jpg'
+    avatarUrl: 'https://api.codeclinicemr.com/sarah.jpg'
   };
 </script>
-<script src="https://codeclinic-production-73f628.up.railway.app/chatbot-widget.js" async></script>`
+<script src="https://api.codeclinicemr.com/chatbot-widget.js" async></script>`
 
 function WebsiteChatbotSection() {
   const [copied, setCopied] = useState(false)

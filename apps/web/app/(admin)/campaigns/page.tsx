@@ -5,7 +5,7 @@ import { Megaphone, Send, Clock, Users, CheckCircle2, AlertCircle, RefreshCw, X,
 
 const SEGMENTS = [
   { value: 'ALL',           label: 'All Patients' },
-  { value: 'NEW_LEAD',      label: 'New Lead' },
+  { value: 'NEW_LEAD',      label: 'New Patient' },
   { value: 'UPCOMING',      label: 'Upcoming' },
   { value: 'ACTIVE',        label: 'Active' },
   { value: 'DUE_RECALL',    label: 'Due Recall' },

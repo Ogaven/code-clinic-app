@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, Smartphone, Apple, MonitorSmartphone, Wifi, Bell, Zap, Shield, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const APP_URL = 'https://codeclinic-production-73f628.up.railway.app'
+const APP_URL = 'https://codeclinicemr.com'
 const QR_URL  = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(APP_URL)}&bgcolor=ffffff&color=1A237E&margin=10`
 
 const BENEFITS = [
@@ -77,7 +77,7 @@ export default function DoctorDownloadPage() {
           {tab === 'ios' ? (
             <ol className="space-y-4">
               {[
-                { step: '1', title: 'Open in Safari', desc: 'Open this URL in Safari (not Chrome): codeclinic-production-73f628.up.railway.app' },
+                { step: '1', title: 'Open in Safari', desc: 'Open this URL in Safari (not Chrome): codeclinicemr.com' },
                 { step: '2', title: 'Tap the Share button', desc: 'Tap the Share icon at the bottom of the screen — it looks like a box with an arrow pointing up.' },
                 { step: '3', title: 'Add to Home Screen', desc: 'Scroll down in the share sheet and tap "Add to Home Screen".' },
                 { step: '4', title: 'Name & confirm', desc: 'Leave the name as "Code Clinic" and tap "Add" in the top-right corner.' },
@@ -97,7 +97,7 @@ export default function DoctorDownloadPage() {
           ) : (
             <ol className="space-y-4">
               {[
-                { step: '1', title: 'Open in Chrome', desc: 'Open this URL in Chrome on Android: codeclinic-production-73f628.up.railway.app' },
+                { step: '1', title: 'Open in Chrome', desc: 'Open this URL in Chrome on Android: codeclinicemr.com' },
                 { step: '2', title: 'Tap the three-dot menu', desc: 'Tap the ⋮ menu in the top-right corner of Chrome.' },
                 { step: '3', title: 'Add to Home screen', desc: 'Tap "Add to Home screen" from the menu.' },
                 { step: '4', title: 'Confirm installation', desc: 'A prompt appears — tap "Add". The app installs like a native app.' },

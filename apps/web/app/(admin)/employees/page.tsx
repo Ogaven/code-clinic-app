@@ -274,11 +274,12 @@ function EditEmployeeModal({ employee, onClose, onSaved, token }: {
   employee: Employee; onClose: () => void; onSaved: (e: Employee) => void; token: string | null
 }) {
   const [form, setForm] = useState({
-    firstName: employee.firstName,
-    lastName:  employee.lastName,
-    phone:     employee.phone || '',
-    role:      employee.role,
-    isActive:  employee.isActive,
+    firstName:      employee.firstName,
+    lastName:       employee.lastName,
+    phone:          employee.phone || '',
+    role:           employee.role,
+    isActive:       employee.isActive,
+    specialisation: employee.doctor?.specialisation || '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
@@ -305,7 +306,17 @@ function EditEmployeeModal({ employee, onClose, onSaved, token }: {
         if (!r2.ok) { setError((await r2.json()).error || 'Role update failed'); return }
       }
 
-      onSaved({ ...employee, ...form })
+      // Update doctor specialisation if applicable
+      const isDoctor = form.role === 'DOCTOR' || (form.role !== 'DOCTOR' && employee.role === 'DOCTOR')
+      if (isDoctor && form.specialisation !== (employee.doctor?.specialisation || '')) {
+        await fetch(`/api-proxy/employees/${employee.id}/doctor`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ specialisation: form.specialisation }),
+        })
+      }
+
+      onSaved({ ...employee, ...form, doctor: employee.doctor ? { ...employee.doctor, specialisation: form.specialisation } : undefined })
     } catch { setError('Network error') } finally { setLoading(false) }
   }
 
@@ -349,6 +360,19 @@ function EditEmployeeModal({ employee, onClose, onSaved, token }: {
                 ))}
               </select>
             </div>
+
+            {(form.role === 'DOCTOR' || employee.role === 'DOCTOR') && (
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Specialisation</label>
+                <select value={form.specialisation} onChange={e => setForm(f => ({ ...f, specialisation: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-blue">
+                  <option value="">— Select specialisation —</option>
+                  {['General Dentistry','Orthodontics','Oral Surgery','Periodontics','Endodontics','Paediatric Dentistry','Prosthodontics','Restorative Dentistry','Oral-Systemic Health'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="flex items-center justify-between py-3 px-4 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
               <div>
