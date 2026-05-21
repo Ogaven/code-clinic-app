@@ -43,7 +43,7 @@ export default function ReferralsPage() {
       const r = await fetch(`${API}/patients/referral-stats`, { headers: authH as any })
       const d = await r.json()
       setStats(Array.isArray(d.stats) ? d.stats : [])
-    } catch { /* silent */ }
+    } catch (e) { console.error('[referrals] fetch failed:', e) }
     setLoading(false)
   }, [])
 
@@ -53,10 +53,9 @@ export default function ReferralsPage() {
   const totalThisMonth = stats.reduce((s, x) => s + x.thisMonth, 0)
   const totalRevenue   = stats.reduce((s, x) => s + x.revenue, 0)
 
-  // Filter chart to this month only, exclude Unknown/empty
   const chartData = stats
-    .filter(s => s.source !== 'Unknown' && s.thisMonth > 0)
-    .map(s => ({ name: s.source, count: s.thisMonth, color: SOURCE_COLORS[s.source] || '#6B7280' }))
+    .filter(s => s.source !== 'Unknown' && s.count > 0)
+    .map(s => ({ name: s.source, count: s.count, color: SOURCE_COLORS[s.source] || '#6B7280' }))
     .sort((a, b) => b.count - a.count)
 
   return (
@@ -69,10 +68,10 @@ export default function ReferralsPage() {
         <MetricCard label="Revenue Generated" value={fmtUGX(totalRevenue)} icon={<Share2 size={18} />} color="#5B21B6" loading={loading} />
       </div>
 
-      {/* Bar chart — this month */}
+      {/* Bar chart — all time */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5">
-        <h2 className="text-sm font-bold text-slate-700 mb-1">New Patients by Source — This Month</h2>
-        <p className="text-xs text-slate-400 mb-4">Where new patients are coming from</p>
+        <h2 className="text-sm font-bold text-slate-700 mb-1">Patients by Referral Source — All Time</h2>
+        <p className="text-xs text-slate-400 mb-4">Where patients are coming from</p>
         {loading ? (
           <div className="h-52 flex items-center justify-center text-gray-300 gap-2">
             <RefreshCw size={18} className="animate-spin" /> Loading…
@@ -80,7 +79,7 @@ export default function ReferralsPage() {
         ) : chartData.length === 0 ? (
           <div className="h-52 flex flex-col items-center justify-center text-gray-300">
             <Share2 size={32} className="mb-2 opacity-30" />
-            <p className="text-sm">No referral data this month</p>
+            <p className="text-sm">No referral data yet</p>
             <p className="text-xs mt-1">Update patient profiles with "How did they find us?"</p>
           </div>
         ) : (
@@ -89,7 +88,7 @@ export default function ReferralsPage() {
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
               <Tooltip
-                formatter={(v: number) => [`${v} patients`, 'New patients']}
+                formatter={(v: number) => [`${v} patients`, 'Total patients']}
                 contentStyle={{ borderRadius: 8, fontSize: 12 }}
               />
               <Bar dataKey="count" radius={[6, 6, 0, 0]}>
