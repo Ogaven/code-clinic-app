@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth } from '../middleware/auth'
-import { clinicalStaff } from '../middleware/rbac'
+import { clinicalStaff, adminOnly } from '../middleware/rbac'
 import { auditLog } from '../middleware/audit'
 import { validate } from '../middleware/validate'
 import { getPublicUrl } from '../services/storage/r2'
@@ -26,6 +26,8 @@ const createPatientSchema = z.object({
   allergies:          z.string().optional().or(z.literal('')),
   medicalHistory:     z.union([z.string(), z.array(z.string())]).optional(),
   referralSource:     z.string().optional().or(z.literal('')),
+  importSource:       z.string().optional(),
+  status:             z.enum(['NEW_LEAD','UPCOMING','ACTIVE','DUE_RECALL','LAPSED','DORMANT','BALANCE_OWING']).optional(),
 })
 
 const updatePatientSchema = createPatientSchema.partial()
@@ -125,6 +127,7 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
     const {
       firstName, lastName, phone, email, gender, dob, address, district,
       nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
+      importSource,
     } = req.body
     if (!firstName || !lastName || !phone) {
       res.status(400).json({ error: 'firstName, lastName and phone are required' }); return
@@ -143,6 +146,7 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
         nextOfKinRelation: nextOfKinRelation || undefined,
         allergies:         allergies         || undefined,
         medicalHistory:    medHistory        || undefined,
+        ...(importSource ? { importSource, status: 'ACTIVE' as any } : {}),
       },
     })
     res.status(201).json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })
@@ -239,10 +243,12 @@ router.post('/import-sheet', requireAuth, async (req, res) => {
               firstName,
               lastName: lastName || firstName,
               phone,
-              email:   email   || undefined,
-              dob:     dob     ? new Date(dob) : undefined,
-              gender:  genderEnum,
-              address: address || undefined,
+              email:    email   || undefined,
+              dob:      dob     ? new Date(dob) : undefined,
+              gender:   genderEnum,
+              address:  address || undefined,
+              status:   'ACTIVE' as any,
+              importSource: 'SHEET',
             },
           })
           created++
@@ -251,6 +257,18 @@ router.post('/import-sheet', requireAuth, async (req, res) => {
     }
     res.json({ created, updated, skipped, total: lines.length - 1, errors: errors.slice(0, 10) })
   } catch (err: any) { res.status(500).json({ error: err.message }) }
+})
+
+// POST /patients/bulk-delete — admin only
+router.post('/bulk-delete', requireAuth, adminOnly, async (req, res) => {
+  try {
+    const { patientIds } = req.body
+    if (!Array.isArray(patientIds) || patientIds.length === 0) {
+      res.status(400).json({ error: 'patientIds array required' }); return
+    }
+    const result = await prisma.patient.deleteMany({ where: { id: { in: patientIds } } })
+    res.json({ deleted: result.count })
+  } catch (e: any) { res.status(500).json({ error: e.message }) }
 })
 
 // GET /patients/:id
@@ -289,7 +307,7 @@ router.get('/:id/timeline', requireAuth, async (req, res) => {
 
     const patient = await prisma.patient.findUnique({
       where: { id },
-      select: { phone: true, createdAt: true },
+      select: { phone: true, createdAt: true, status: true, importSource: true },
     })
     if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
 
@@ -324,7 +342,8 @@ router.get('/:id/timeline', requireAuth, async (req, res) => {
     const lastCompleted = appointments.find(
       a => a.status === 'COMPLETED' && new Date(a.startAt) <= now,
     )
-    let patientStatus = 'NEW_LEAD'
+    // Imported patients default to ACTIVE if no appointment history yet
+    let patientStatus: string = patient.importSource ? 'ACTIVE' : 'NEW_LEAD'
     if (lastCompleted) {
       const days = (now.getTime() - new Date(lastCompleted.startAt).getTime()) / 86_400_000
       if      (days <= 90)  patientStatus = 'ACTIVE'
@@ -349,6 +368,7 @@ router.get('/:id/timeline', requireAuth, async (req, res) => {
         messages:     c.messages,
       })),
       patientStatus,
+      savedStatus: patient.status,  // stored DB status for the override dropdown
     })
   } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch timeline' }) }
 })
@@ -371,7 +391,7 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
     const {
       firstName, lastName, phone, email, gender, dob, address, district, isActive,
       nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
-      referralSource,
+      referralSource, status,
     } = req.body
     const patient = await prisma.patient.update({
       where: { id: req.params.id },
@@ -382,6 +402,7 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
         nextOfKinName, nextOfKinPhone, nextOfKinRelation,
         allergies, medicalHistory,
         referralSource: referralSource || null,
+        ...(status ? { status: status as any } : {}),
       },
     })
     res.json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })

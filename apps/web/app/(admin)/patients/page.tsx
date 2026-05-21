@@ -104,6 +104,9 @@ export default function PatientsPage() {
   const [form,             setForm]             = useState(EMPTY_FORM)
   const [saving,           setSaving]           = useState(false)
   const [formError,        setFormError]        = useState('')
+  const [selectedIds,         setSelectedIds]         = useState<Set<string>>(new Set())
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [bulkDeleting,        setBulkDeleting]        = useState(false)
 
   const csvInputRef    = useRef<HTMLInputElement>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
@@ -213,12 +216,13 @@ export default function PatientsPage() {
           const obj: Record<string, string> = {}
           headers.forEach((h, i) => { obj[h] = vals[i] || '' })
           const payload = {
-            firstName: obj.firstname || obj['first name'] || obj.name?.split(' ')[0] || '',
-            lastName:  obj.lastname  || obj['last name']  || obj.name?.split(' ')[1] || '',
-            phone:     obj.phone     || obj.telephone     || obj.mobile || '',
-            email:     obj.email     || '',
-            gender:    (obj.gender   || 'FEMALE').toUpperCase(),
-            dob:       obj.dob       || obj['date of birth'] || '',
+            firstName:   obj.firstname || obj['first name'] || obj.name?.split(' ')[0] || '',
+            lastName:    obj.lastname  || obj['last name']  || obj.name?.split(' ')[1] || '',
+            phone:       obj.phone     || obj.telephone     || obj.mobile || '',
+            email:       obj.email     || '',
+            gender:      (obj.gender   || 'FEMALE').toUpperCase(),
+            dob:         obj.dob       || obj['date of birth'] || '',
+            importSource: 'CSV',
           }
           if (!payload.firstName || !payload.phone) { failed++; continue }
           try {
@@ -260,6 +264,40 @@ export default function PatientsPage() {
   function showToast(msg: string, type: 'ok'|'err') {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3500)
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds(selectedIds.size === patients.length && patients.length > 0
+      ? new Set()
+      : new Set(patients.map(p => p.id)))
+  }
+
+  async function handleBulkDelete() {
+    setBulkDeleting(true)
+    try {
+      const res = await fetch(`${API}/patients/bulk-delete`, {
+        method: 'POST',
+        headers: { ...authH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientIds: Array.from(selectedIds) }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        showToast(`${data.deleted} patient${data.deleted !== 1 ? 's' : ''} deleted successfully`, 'ok')
+        setSelectedIds(new Set())
+        setShowBulkDeleteModal(false)
+        if (selected && selectedIds.has(selected.id)) setSelected(null)
+        fetchPatients()
+      } else { showToast(data.error || 'Delete failed', 'err') }
+    } catch { showToast('Network error', 'err') }
+    finally { setBulkDeleting(false) }
   }
 
   async function handleSheetPreview() {
@@ -344,30 +382,41 @@ export default function PatientsPage() {
               <p className="text-xs text-gray-400 dark:text-white/40">{total} total</p>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
-              <button
-                onClick={() => csvInputRef.current?.click()} disabled={importing}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50">
-                <Upload size={13} />
-                {importing ? 'Importing...' : 'Import CSV'}
-              </button>
-              <button
-                onClick={() => { setShowSheetModal(true); setSheetResult(null); setSheetUrl('') }}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-all">
-                <ExternalLink size={13} />
-                Sheets
-              </button>
-              <button
-                onClick={exportCSV} disabled={exporting}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50">
-                <Download size={13} />
-                Export
-              </button>
-              <button onClick={() => setShowAdd(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
-                style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-                <Plus size={13} /> <span className="hidden sm:inline">Add Patient</span><span className="sm:hidden">Add</span>
-              </button>
+              {selectedIds.size > 0 ? (
+                <button
+                  onClick={() => setShowBulkDeleteModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all">
+                  <X size={13} />
+                  Delete Selected ({selectedIds.size})
+                </button>
+              ) : (
+                <>
+                  <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
+                  <button
+                    onClick={() => csvInputRef.current?.click()} disabled={importing}
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50">
+                    <Upload size={13} />
+                    {importing ? 'Importing...' : 'Import CSV'}
+                  </button>
+                  <button
+                    onClick={() => { setShowSheetModal(true); setSheetResult(null); setSheetUrl('') }}
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-all">
+                    <ExternalLink size={13} />
+                    Sheets
+                  </button>
+                  <button
+                    onClick={exportCSV} disabled={exporting}
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50">
+                    <Download size={13} />
+                    Export
+                  </button>
+                  <button onClick={() => setShowAdd(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                    style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+                    <Plus size={13} /> <span className="hidden sm:inline">Add Patient</span><span className="sm:hidden">Add</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -429,6 +478,14 @@ export default function PatientsPage() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-gray-50 dark:bg-[#0e1f4d] z-10 border-b border-gray-100 dark:border-white/8">
                   <tr>
+                    <th className="w-9 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded accent-cyan-500 cursor-pointer"
+                        checked={selectedIds.size === patients.length && patients.length > 0}
+                        onChange={toggleSelectAll}
+                      />
+                    </th>
                     <th className="text-left px-5 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Patient</th>
                     <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Phone</th>
                     <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden md:table-cell">Balance</th>
@@ -437,12 +494,21 @@ export default function PatientsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-white/5">
                   {patients.map(p => (
-                    <tr key={p.id} onClick={() => selectPatient(p)}
+                    <tr key={p.id}
                       className={cn(
-                        'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
-                        selected?.id === p.id && 'bg-cyan-50 dark:bg-cyan-900/20 border-l-4 border-l-cyan-500',
+                        'hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
+                        selectedIds.has(p.id) && 'bg-red-50/40 dark:bg-red-900/10',
+                        selected?.id === p.id && !selectedIds.has(p.id) && 'bg-cyan-50 dark:bg-cyan-900/20 border-l-4 border-l-cyan-500',
                       )}>
-                      <td className="px-5 py-3">
+                      <td className="w-9 px-3 py-3" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded accent-red-500 cursor-pointer"
+                          checked={selectedIds.has(p.id)}
+                          onChange={() => toggleSelect(p.id)}
+                        />
+                      </td>
+                      <td className="px-5 py-3 cursor-pointer" onClick={() => selectPatient(p)}>
                         <div className="flex items-center gap-3">
                           {p.avatarUrl ? (
                             <img src={p.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
@@ -458,18 +524,18 @@ export default function PatientsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 cursor-pointer" onClick={() => selectPatient(p)}>
                         <div className="flex items-center gap-1.5 text-gray-700 dark:text-white/70">
                           <Phone size={11} className="text-cyan-500 flex-shrink-0" />
                           <span className="text-xs">{p.phone}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
+                      <td className="px-4 py-3 hidden md:table-cell cursor-pointer" onClick={() => selectPatient(p)}>
                         <span className={cn('text-xs font-semibold', p.accountBalance > 0 ? 'text-red-600' : 'text-gray-400')}>
                           {p.accountBalance > 0 ? formatUGX(p.accountBalance) : '—'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right cursor-pointer" onClick={() => selectPatient(p)}>
                         {p.status && STATUS_BADGES[p.status] ? (
                           <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', STATUS_BADGES[p.status].pill)}>
                             {STATUS_BADGES[p.status].label}
@@ -634,6 +700,38 @@ export default function PatientsPage() {
                   </div>
                 )
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk Delete Confirmation Modal ───────────────────── */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
+                <X size={18} className="text-red-600" />
+              </div>
+              <h2 className="text-base font-black text-gray-800 dark:text-white">Delete Patients</h2>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-white/60 mb-6 leading-relaxed">
+              Are you sure you want to delete <strong>{selectedIds.size} patient{selectedIds.size !== 1 ? 's' : ''}</strong>?
+              This will permanently remove their records, appointments, invoices, and all related data. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowBulkDeleteModal(false)}
+                disabled={bulkDeleting}
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60">
+                {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size} Patient${selectedIds.size !== 1 ? 's' : ''}`}
+              </button>
             </div>
           </div>
         </div>

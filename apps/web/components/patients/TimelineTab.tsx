@@ -80,14 +80,16 @@ function ApptRow({ a }: { a: any }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function TimelineTab({ patientId }: { patientId: string }) {
-  const [data,        setData]        = useState<any>(null)
-  const [notes,       setNotes]       = useState<any[]>([])
-  const [loading,     setLoading]     = useState(true)
+  const [data,         setData]        = useState<any>(null)
+  const [notes,        setNotes]       = useState<any[]>([])
+  const [loading,      setLoading]     = useState(true)
   const [noteText,     setNoteText]    = useState('')
   const [savingNote,   setSavingNote]  = useState(false)
   const [isRecording,  setIsRecording] = useState(false)
   const [expanded,     setExpanded]    = useState<Set<string>>(new Set())
   const [showAllPast,  setShowAllPast] = useState(false)
+  const [overrideStatus,  setOverrideStatus]  = useState('')
+  const [savingStatus,    setSavingStatus]    = useState(false)
   const recognitionRef  = useRef<any>(null)
   const isRecordingRef  = useRef(false)
   const accumulatedRef  = useRef('')
@@ -101,6 +103,7 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
     ])
       .then(([tl, ns]) => {
         setData(tl)
+        setOverrideStatus(tl.savedStatus || tl.patientStatus || '')
         setNotes(Array.isArray(ns) ? ns : [])
       })
       .catch(() => {})
@@ -164,6 +167,20 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
     setIsRecording(false)
   }
 
+  const saveStatusOverride = async (newStatus: string) => {
+    setSavingStatus(true)
+    const token = localStorage.getItem('cc_token')
+    try {
+      await fetch(`/api-proxy/patients/${patientId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      setOverrideStatus(newStatus)
+      setData((d: any) => d ? { ...d, savedStatus: newStatus, patientStatus: newStatus } : d)
+    } catch {/* ignore */} finally { setSavingStatus(false) }
+  }
+
   const toggleConv = (id: string) =>
     setExpanded(prev => {
       const s = new Set(prev)
@@ -181,8 +198,9 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
     <div className="text-center py-12 text-sm text-slate-400">Could not load timeline.</div>
   )
 
-  const { appointments = [], financial, conversations = [], patientStatus } = data
-  const statusCfg = PATIENT_STATUS[patientStatus] || PATIENT_STATUS.NEW_LEAD
+  const { appointments = [], financial, conversations = [] } = data
+  const displayStatus = overrideStatus || data.patientStatus || 'NEW_LEAD'
+  const statusCfg = PATIENT_STATUS[displayStatus] || PATIENT_STATUS.NEW_LEAD
 
   const now      = new Date()
   const upcoming = (appointments as any[]).filter(
@@ -196,14 +214,28 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
   return (
     <div className="space-y-7">
 
-      {/* ── Status badge ── */}
-      <div className="flex items-center gap-3">
+      {/* ── Status badge + override ── */}
+      <div className="flex items-center flex-wrap gap-3">
         <span className={cn('text-xs font-bold px-3 py-1.5 rounded-full', statusCfg.cls)}>
           {statusCfg.label}
         </span>
         <span className="text-xs text-slate-400">
           {appointments.length} appointment{appointments.length !== 1 ? 's' : ''} total
         </span>
+        <div className="flex items-center gap-1.5 ml-auto">
+          <label className="text-xs text-slate-400">Override:</label>
+          <select
+            value={overrideStatus}
+            onChange={e => saveStatusOverride(e.target.value)}
+            disabled={savingStatus}
+            className="text-xs py-1 px-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {Object.entries(PATIENT_STATUS).map(([key, cfg]) => (
+              <option key={key} value={key}>{cfg.label}</option>
+            ))}
+          </select>
+          {savingStatus && <span className="text-xs text-slate-400">Saving…</span>}
+        </div>
       </div>
 
       {/* ── Financial summary ── */}

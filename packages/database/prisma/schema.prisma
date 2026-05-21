@@ -201,6 +201,7 @@ model Patient {
   allergies             String?
   medicalHistory        String?
   status                PatientStatus @default(NEW_LEAD)
+  importSource          String?       // "SHEET" | "CSV" — set on bulk import, null for manual registrations
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
