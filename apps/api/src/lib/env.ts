@@ -11,7 +11,7 @@ const envSchema = z.object({
   // Auth
   JWT_SECRET:         z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
-  JWT_EXPIRES_IN:     z.string().default('15m'),
+  JWT_EXPIRES_IN:     z.string().default('12h'),
 
   // App
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

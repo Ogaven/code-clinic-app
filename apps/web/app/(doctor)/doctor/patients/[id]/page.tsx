@@ -43,6 +43,12 @@ const quadrant2 = ['21','22','23','24','25','26','27','28']
 const quadrant3 = ['31','32','33','34','35','36','37','38']
 const quadrant4 = ['48','47','46','45','44','43','42','41']
 
+// Pediatric (primary) teeth — ISO 5-digit notation, 20 teeth total
+const childQ1 = ['55','54','53','52','51']
+const childQ2 = ['61','62','63','64','65']
+const childQ3 = ['71','72','73','74','75']
+const childQ4 = ['85','84','83','82','81']
+
 const conditionTools: ToothCondition[] = [
   'Missing','Implant','Root Canal','Crown','Fracture','To be Extracted',
   'Impacted','Mobile','Supraerupted','Bridge Abutment','Pontic','Denture',
@@ -165,6 +171,7 @@ function DentalChartTab({ patientId, token }: { patientId: string; token: string
   const [isProcessing, setIsProcessing] = useState(false)
   const [savedAiSummary, setSavedAiSummary] = useState('')
   const [services, setServices] = useState<any[]>([])
+  const [chartMode, setChartMode] = useState<'adult' | 'child'>('adult')
 
   useEffect(() => {
     fetch(`/api-proxy/clinical/patients/${patientId}/dental-chart`, { headers: { Authorization: `Bearer ${token}` } })
@@ -282,23 +289,38 @@ function DentalChartTab({ patientId, token }: { patientId: string; token: string
     </div>
   )
 
+  const q1 = chartMode === 'adult' ? quadrant1 : childQ1
+  const q2 = chartMode === 'adult' ? quadrant2 : childQ2
+  const q3 = chartMode === 'adult' ? quadrant3 : childQ3
+  const q4 = chartMode === 'adult' ? quadrant4 : childQ4
+
   return (
     <div className="flex flex-col h-full">
       {/* Chart + Inspector */}
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Chart */}
         <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-white/3 overflow-auto min-h-[200px]">
+          {/* Adult / Child toggle */}
+          <div className="flex items-center gap-1 mb-3 self-start bg-slate-200 dark:bg-white/10 rounded-lg p-0.5">
+            {(['adult','child'] as const).map(mode => (
+              <button key={mode} onClick={() => { setChartMode(mode); setSelectedTooth(null) }}
+                className={cn('px-3 py-1 text-xs font-semibold rounded-md transition-colors',
+                  chartMode === mode ? 'bg-white dark:bg-gray-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700')}>
+                {mode === 'adult' ? 'Adult (32)' : 'Child — Primary (20)'}
+              </button>
+            ))}
+          </div>
           <div className="overflow-x-auto w-full">
             <div className="flex items-center justify-center min-w-max mx-auto">
-              {renderQuadrant(quadrant1, false, true)}
+              {renderQuadrant(q1, false, true)}
               <div className="w-px h-14 bg-slate-300 mx-1" />
-              {renderQuadrant(quadrant2, true, true)}
+              {renderQuadrant(q2, true, true)}
             </div>
             <div className="border-t my-2 border-slate-300 min-w-max" />
             <div className="flex items-center justify-center min-w-max mx-auto">
-              {renderQuadrant(quadrant4, false, false)}
+              {renderQuadrant(q4, false, false)}
               <div className="w-px h-14 bg-slate-300 mx-1" />
-              {renderQuadrant(quadrant3, true, false)}
+              {renderQuadrant(q3, true, false)}
             </div>
           </div>
         </div>
@@ -714,7 +736,15 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Cost per unit (UGX)</label>
-              <input type="number" value={form.costPerUnit} onChange={e => setForm(f => ({ ...f, costPerUnit: Number(e.target.value) }))} className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5" />
+              <input
+                type="text" inputMode="numeric"
+                value={form.costPerUnit > 0 ? form.costPerUnit.toLocaleString('en-US') : ''}
+                onChange={e => {
+                  const raw = e.target.value.replace(/[^0-9]/g, '')
+                  setForm(f => ({ ...f, costPerUnit: raw ? parseInt(raw, 10) : 0 }))
+                }}
+                placeholder="e.g. 35,000"
+                className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5" />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Discount %</label>

@@ -6,7 +6,7 @@ const API_URL = '/api-proxy'
 // Next.js middleware can read it server-side to guard protected routes.
 export function setAuthCookie(token: string) {
   if (typeof document === 'undefined') return
-  document.cookie = `cc_token=${token}; path=/; SameSite=Lax; max-age=86400`
+  document.cookie = `cc_token=${token}; path=/; SameSite=Lax; max-age=43200`
 }
 export function clearAuthCookie() {
   if (typeof document === 'undefined') return
@@ -57,19 +57,36 @@ export async function apiFetch<T = any>(
   path: string,
   options: RequestInit & { token?: string } = {},
 ): Promise<T> {
-  const { token, ...rest } = options
+  const { token: optToken, ...rest } = options
+  const lsToken = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  const activeToken = optToken || lsToken
 
-  const headers: Record<string, string> = {
+  const buildHeaders = (tok: string | null): Record<string, string> => ({
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
     ...(rest.headers as Record<string, string>),
-  }
+  })
 
-  const res = await fetch(`${API_URL}${path}`, {
+  let res = await fetch(`${API_URL}${path}`, {
     ...rest,
-    headers,
+    headers: buildHeaders(activeToken),
     credentials: 'include',
   })
+
+  if (res.status === 401) {
+    const fresh = await refreshToken()
+    if (fresh) {
+      res = await fetch(`${API_URL}${path}`, {
+        ...rest,
+        headers: buildHeaders(fresh),
+        credentials: 'include',
+      })
+    } else if (typeof window !== 'undefined') {
+      clearAuthCookie()
+      window.location.replace('/login')
+      throw new Error('Session expired')
+    }
+  }
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: res.statusText }))

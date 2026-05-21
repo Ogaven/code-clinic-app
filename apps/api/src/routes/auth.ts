@@ -10,6 +10,7 @@ import { authLimiter } from '../middleware/rateLimit'
 import { getPublicUrl } from '../services/storage/r2'
 import { blacklistToken } from '../lib/tokenBlacklist'
 import { prisma } from '../lib/prisma'
+import { env } from '../lib/env'
 
 const router = Router()
 
@@ -27,7 +28,7 @@ function signAccess(user: { id: string; email: string; role: string; firstName: 
     { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName,
       ...(user.doctorId ? { doctorId: user.doctorId } : {}) },
     process.env.JWT_SECRET!,
-    { expiresIn: (process.env.JWT_EXPIRES_IN || '24h') as jwt.SignOptions['expiresIn'] },
+    { expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
   )
 }
 

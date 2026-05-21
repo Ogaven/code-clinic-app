@@ -429,6 +429,7 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
 function DentalTab({ patientId }: { patientId: string }) {
   const [chart, setChart] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [chartMode, setChartMode] = useState<'adult' | 'child'>('adult')
   const API = '/api-proxy'
 
   useEffect(() => {
@@ -437,8 +438,13 @@ function DentalTab({ patientId }: { patientId: string }) {
       .then(r => r.json()).then(setChart).catch(() => {}).finally(() => setLoading(false))
   }, [patientId])
 
-  const teeth = ['18','17','16','15','14','13','12','11','21','22','23','24','25','26','27','28',
-                  '48','47','46','45','44','43','42','41','31','32','33','34','35','36','37','38']
+  const adultUpper = ['18','17','16','15','14','13','12','11','21','22','23','24','25','26','27','28']
+  const adultLower = ['48','47','46','45','44','43','42','41','31','32','33','34','35','36','37','38']
+  const childUpper = ['55','54','53','52','51','61','62','63','64','65']
+  const childLower = ['85','84','83','82','81','71','72','73','74','75']
+
+  const upperRow = chartMode === 'adult' ? adultUpper : childUpper
+  const lowerRow = chartMode === 'adult' ? adultLower : childLower
 
   const SURFACE_COLORS: Record<string, string> = {
     Healthy: '#fff', Caries: '#F87171', 'Planned Treatment': '#FCD34D',
@@ -452,15 +458,29 @@ function DentalTab({ patientId }: { patientId: string }) {
   return (
     <div className="space-y-4">
       <Card className="p-5">
-        <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-4">Dental Chart (Read-only)</h3>
-        <p className="text-xs text-gray-400 dark:text-white/40 mb-4">Chart edits are done by the dentist. This is a view-only reference.</p>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-gray-800 dark:text-white">Dental Chart (Read-only)</h3>
+            <p className="text-xs text-gray-400 dark:text-white/40">Chart edits are done by the dentist.</p>
+          </div>
+          {/* Adult / Child toggle */}
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/10 rounded-lg p-0.5">
+            {(['adult','child'] as const).map(mode => (
+              <button key={mode} onClick={() => setChartMode(mode)}
+                className={cn('px-3 py-1 text-xs font-semibold rounded-md transition-colors',
+                  chartMode === mode ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400')}>
+                {mode === 'adult' ? 'Adult' : 'Child'}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Simple tooth grid */}
         <div className="overflow-x-auto">
           <div className="min-w-max">
             {/* Upper arch */}
             <div className="flex gap-1 mb-2">
-              {['18','17','16','15','14','13','12','11'].map(t => {
+              {upperRow.map(t => {
                 const td = teethData[t] || {}
                 const conditions = td.conditions || []
                 const missing = conditions.some((c: any) => c.condition === 'Missing')
@@ -475,43 +495,11 @@ function DentalTab({ patientId }: { patientId: string }) {
                   </div>
                 )
               })}
-              <div className="w-2" />
-              {['21','22','23','24','25','26','27','28'].map(t => {
-                const td = teethData[t] || {}
-                const conditions = td.conditions || []
-                const missing = conditions.some((c: any) => c.condition === 'Missing')
-                return (
-                  <div key={t} className="flex flex-col items-center gap-0.5">
-                    <span className="text-[8px] text-gray-400">{t}</span>
-                    <div className={cn('w-8 h-8 rounded-lg border-2 flex items-center justify-center text-[8px] font-bold',
-                      missing ? 'border-dashed border-gray-300 bg-gray-50 dark:bg-white/5 text-gray-300' : 'border-gray-200 dark:border-white/10 bg-white dark:bg-white/5')}>
-                      {missing ? '×' : conditions.length > 0 ? '!' : ''}
-                    </div>
-                    <div className="w-1 h-3 bg-gray-200 dark:bg-white/10 rounded-full" />
-                  </div>
-                )
-              })}
             </div>
 
             {/* Lower arch */}
             <div className="flex gap-1 mt-1">
-              {['48','47','46','45','44','43','42','41'].map(t => {
-                const td = teethData[t] || {}
-                const conditions = td.conditions || []
-                const missing = conditions.some((c: any) => c.condition === 'Missing')
-                return (
-                  <div key={t} className="flex flex-col items-center gap-0.5">
-                    <div className="w-1 h-3 bg-gray-200 dark:bg-white/10 rounded-full" />
-                    <div className={cn('w-8 h-8 rounded-lg border-2 flex items-center justify-center text-[8px] font-bold',
-                      missing ? 'border-dashed border-gray-300 bg-gray-50 dark:bg-white/5 text-gray-300' : 'border-gray-200 dark:border-white/10 bg-white dark:bg-white/5')}>
-                      {missing ? '×' : conditions.length > 0 ? '!' : ''}
-                    </div>
-                    <span className="text-[8px] text-gray-400">{t}</span>
-                  </div>
-                )
-              })}
-              <div className="w-2" />
-              {['31','32','33','34','35','36','37','38'].map(t => {
+              {lowerRow.map(t => {
                 const td = teethData[t] || {}
                 const conditions = td.conditions || []
                 const missing = conditions.some((c: any) => c.condition === 'Missing')
