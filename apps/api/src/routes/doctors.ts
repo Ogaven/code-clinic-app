@@ -207,20 +207,27 @@ router.get('/my-patients', requireAuth, async (req, res) => {
       byPatient.get(pid)!.appts.push(a)
     }
 
+    // Statuses that represent a patient who actually attended
+    const VISITED = ['COMPLETED', 'SESSION_COMPLETE', 'DEPARTED']
+    const ACTIVE  = ['IN_OPERATORY', 'WITH_PROVIDER', 'WAITING', 'ARRIVED', 'CHECKED_IN', 'IN_CHAIR', 'READY_CHECKOUT']
+
     const rows = []
     for (const { patient, appts } of byPatient.values()) {
-      const completed = appts.filter(a => a.status === 'COMPLETED')
+      const visited = appts.filter(a => VISITED.includes(a.status))
 
-      const pastAppts = appts
-        .filter(a => new Date(a.startAt) < now && a.status !== 'CANCELLED')
-        .sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())
+      // lastSeen: most recent visited appointment, falling back to any past non-cancelled
+      const lastVisited = visited.sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())[0]
+      const lastPast = !lastVisited
+        ? appts
+            .filter(a => new Date(a.startAt) < now && a.status !== 'CANCELLED')
+            .sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())[0]
+        : null
 
       const futureAppts = appts
         .filter(a => new Date(a.startAt) >= now && !['CANCELLED', 'NO_SHOW'].includes(a.status))
         .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
 
-      const activeStatuses = ['IN_OPERATORY', 'WITH_PROVIDER', 'WAITING', 'ARRIVED', 'CHECKED_IN', 'IN_CHAIR']
-      const activeAppt = appts.find(a => activeStatuses.includes(a.status))
+      const activeAppt = appts.find(a => ACTIVE.includes(a.status))
 
       rows.push({
         id:              patient.id,
@@ -228,8 +235,8 @@ router.get('/my-patients', requireAuth, async (req, res) => {
         lastName:        patient.lastName,
         phone:           patient.phone  || '—',
         gender:          patient.gender || '',
-        totalVisits:     completed.length,
-        lastSeen:        pastAppts[0]?.startAt ?? null,
+        totalVisits:     visited.length,
+        lastSeen:        (lastVisited ?? lastPast)?.startAt ?? null,
         nextAppt:        futureAppts[0]?.startAt ?? null,
         nextApptService: futureAppts[0]?.service?.name ?? '',
         activePlan:      activeAppt ? (activeAppt.service?.name ?? 'Active') : null,

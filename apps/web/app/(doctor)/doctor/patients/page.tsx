@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Search, Users, CalendarDays, Activity, Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -11,6 +11,12 @@ function fmtDate(s: string) {
 function fmtTime(s: string) {
   return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
+type TabFilter = 'today' | 'yesterday' | 'week' | 'all'
+
+function sameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
 function fmtLastSeen(s: string | null): string {
   if (!s) return 'Never'
   const days = Math.floor((Date.now() - new Date(s).getTime()) / 86_400_000)
@@ -56,6 +62,7 @@ export default function DoctorPatientsPage() {
   const [patients, setPatients]   = useState<PatientRow[]>([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
+  const [tab, setTab]             = useState<TabFilter>('today')
   const [addOpen, setAddOpen]     = useState(false)
   const [form, setForm]           = useState<AddPatientForm>(BLANK_FORM)
   const [saving, setSaving]       = useState(false)
@@ -76,13 +83,39 @@ export default function DoctorPatientsPage() {
   useEffect(() => { fetchPatients() }, [fetchPatients])
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return patients
+    const now = new Date()
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1)
+    // Monday of current week
+    const weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7))
+    weekStart.setHours(0, 0, 0, 0)
+
+    let base = patients
+    if (tab === 'today') {
+      base = patients.filter(p => {
+        const ls = p.lastSeen ? new Date(p.lastSeen) : null
+        const na = p.nextAppt  ? new Date(p.nextAppt)  : null
+        return (ls && sameDay(ls, now)) || (na && sameDay(na, now))
+      })
+    } else if (tab === 'yesterday') {
+      base = patients.filter(p => {
+        const ls = p.lastSeen ? new Date(p.lastSeen) : null
+        return ls && sameDay(ls, yesterday)
+      })
+    } else if (tab === 'week') {
+      base = patients.filter(p => {
+        const ls = p.lastSeen ? new Date(p.lastSeen) : null
+        const na = p.nextAppt  ? new Date(p.nextAppt)  : null
+        return (ls && ls >= weekStart && ls <= now) || (na && na >= weekStart)
+      })
+    }
+
+    if (!search.trim()) return base
     const q = search.toLowerCase()
-    return patients.filter(p =>
+    return base.filter(p =>
       `${p.firstName} ${p.lastName}`.toLowerCase().includes(q) ||
       p.phone.includes(q)
     )
-  }, [patients, search])
+  }, [patients, search, tab])
 
   function setField(k: keyof AddPatientForm, v: string) {
     setForm(f => ({ ...f, [k]: v }))
@@ -163,6 +196,29 @@ export default function DoctorPatientsPage() {
         />
       </div>
 
+      {/* Filter tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        {([
+          { key: 'today',     label: 'Today'      },
+          { key: 'yesterday', label: 'Yesterday'  },
+          { key: 'week',      label: 'This Week'  },
+          { key: 'all',       label: 'All'        },
+        ] as const).map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              'flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all min-h-[36px]',
+              tab === t.key
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-white/10 hover:border-blue-300 hover:text-blue-600'
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {/* Patient list */}
       <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
         {loading ? (
@@ -172,7 +228,7 @@ export default function DoctorPatientsPage() {
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center text-gray-400">
             <Users size={36} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm">{search ? 'No patients match your search' : 'No patients found for your appointments'}</p>
+            <p className="text-sm">{search ? 'No patients match your search' : tab === 'today' ? 'No patients seen or scheduled today' : tab === 'yesterday' ? 'No patients seen yesterday' : tab === 'week' ? 'No patients seen this week' : 'No patients found for your appointments'}</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-50 dark:divide-white/[0.04]">
