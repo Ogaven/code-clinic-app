@@ -4,7 +4,7 @@ import { Component, useEffect, useRef, useState } from 'react'
 import {
   Search, Plus, Phone, Mail, Calendar, ChevronRight, X, User,
   Upload, Download, FileText, ExternalLink,
-  CheckCircle2, AlertCircle,
+  CheckCircle2, AlertCircle, Trash2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -65,6 +65,9 @@ export default function PatientsPage() {
   const [toast, setToast]         = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [importing, setImporting] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [selectedIds, setSelectedIds]           = useState<Set<string>>(new Set())
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [bulkDeleting, setBulkDeleting]         = useState(false)
   const [showSheetModal, setShowSheetModal] = useState(false)
   const [sheetUrl,       setSheetUrl]       = useState('')
   const [sheetImporting, setSheetImporting] = useState(false)
@@ -251,6 +254,46 @@ export default function PatientsPage() {
     setTimeout(() => setToast(null), 3500)
   }
 
+  function toggleSelect(id: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filtered.map(p => p.id)))
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return
+    setBulkDeleting(true)
+    try {
+      const res = await fetch(`${API}/patients/bulk-delete`, {
+        method: 'POST',
+        headers: { ...authH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientIds: Array.from(selectedIds) }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        showToast(`Deleted ${data.deleted} patient${data.deleted !== 1 ? 's' : ''}`, 'ok')
+        setSelectedIds(new Set())
+        setShowBulkDeleteModal(false)
+        fetchPatients()
+      } else {
+        const d = await res.json().catch(() => ({}))
+        showToast(d.error || 'Delete failed', 'err')
+      }
+    } catch { showToast('Network error', 'err') }
+    finally { setBulkDeleting(false) }
+  }
+
   async function handleSheetImport() {
     if (!sheetUrl.trim()) return
     setSheetImporting(true); setSheetResult(null)
@@ -295,6 +338,15 @@ export default function PatientsPage() {
               <p className="text-xs text-gray-400 dark:text-white/40">{filtered.length} of {patients.length} shown</p>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Bulk delete button */}
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={() => setShowBulkDeleteModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-red-500 hover:bg-red-600 text-white transition-all">
+                  <Trash2 size={13} />
+                  Delete Selected ({selectedIds.size})
+                </button>
+              )}
               {/* Import CSV */}
               <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
               <button
@@ -394,6 +446,13 @@ export default function PatientsPage() {
                   <div key={p.id}
                     onClick={() => router.push(`/receptionist/patients/${p.id}`)}
                     className="flex items-center gap-3 px-4 py-3.5 cursor-pointer active:bg-gray-50 dark:active:bg-white/5 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(p.id)}
+                      onClick={e => toggleSelect(p.id, e)}
+                      onChange={() => {}}
+                      className="w-4 h-4 rounded border-gray-300 text-cyan-500 flex-shrink-0 cursor-pointer"
+                    />
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                       style={{ background: avatarColor(`${p.firstName || ''}${p.lastName || ''}`) }}>
                       {(p.firstName || '?')[0]}{(p.lastName || '')[0]}
@@ -421,6 +480,14 @@ export default function PatientsPage() {
               <table className="hidden sm:table w-full text-sm">
                 <thead className="sticky top-0 bg-gray-50 dark:bg-[#0e1f4d] z-10 border-b border-gray-100 dark:border-white/8">
                   <tr>
+                    <th className="px-4 py-3 w-8">
+                      <input
+                        type="checkbox"
+                        checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded border-gray-300 text-cyan-500 cursor-pointer"
+                      />
+                    </th>
                     <th className="text-left px-5 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Patient</th>
                     <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide">Phone</th>
                     <th className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wide hidden md:table-cell">Email</th>
@@ -436,7 +503,16 @@ export default function PatientsPage() {
                       className={cn(
                         'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
                         selected?.id === p.id && 'bg-cyan-50 dark:bg-cyan-900/20 border-l-4 border-l-cyan-500',
+                        selectedIds.has(p.id) && 'bg-cyan-50/50 dark:bg-cyan-900/10',
                       )}>
+                      <td className="px-4 py-3 w-8" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(p.id)}
+                          onChange={e => { e.stopPropagation(); toggleSelect(p.id, e as any) }}
+                          className="w-4 h-4 rounded border-gray-300 text-cyan-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
@@ -573,6 +649,33 @@ export default function PatientsPage() {
                   </div>
                 )
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk Delete Confirmation Modal ────────────────────── */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl max-w-sm w-full p-6 animate-fade-in">
+            <h2 className="text-lg font-black text-gray-800 dark:text-white mb-2">
+              Delete {selectedIds.size} Patient{selectedIds.size !== 1 ? 's' : ''}?
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-white/50 mb-5">
+              This action cannot be undone. All data for the selected patients will be permanently removed.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowBulkDeleteModal(false)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-60">
+                {bulkDeleting ? 'Deleting...' : 'Delete'}
+              </button>
             </div>
           </div>
         </div>

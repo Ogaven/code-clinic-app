@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Search, Users, CalendarDays, Activity, Plus, X } from 'lucide-react'
+import { ArrowLeft, Search, Users, CalendarDays, Activity, Plus, X, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 function fmtDate(s: string) {
@@ -67,6 +67,9 @@ export default function DoctorPatientsPage() {
   const [form, setForm]           = useState<AddPatientForm>(BLANK_FORM)
   const [saving, setSaving]       = useState(false)
   const [toast, setToast]         = useState('')
+  const [selectedIds, setSelectedIds]               = useState<Set<string>>(new Set())
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [bulkDeleting, setBulkDeleting]             = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
@@ -116,6 +119,50 @@ export default function DoctorPatientsPage() {
       p.phone.includes(q)
     )
   }, [patients, search, tab])
+
+  function toggleSelect(id: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filtered.map(p => p.id)))
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return
+    setBulkDeleting(true)
+    try {
+      const res = await fetch('/api-proxy/patients/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ patientIds: Array.from(selectedIds) }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setToast(`Deleted ${data.deleted} patient${data.deleted !== 1 ? 's' : ''}`)
+        setTimeout(() => setToast(''), 3000)
+        setSelectedIds(new Set())
+        setShowBulkDeleteModal(false)
+        fetchPatients()
+      } else {
+        const d = await res.json().catch(() => ({}))
+        setToast(d.error || 'Delete failed')
+        setTimeout(() => setToast(''), 4000)
+      }
+    } catch {
+      setToast('Network error')
+      setTimeout(() => setToast(''), 4000)
+    } finally { setBulkDeleting(false) }
+  }
 
   function setField(k: keyof AddPatientForm, v: string) {
     setForm(f => ({ ...f, [k]: v }))
@@ -176,12 +223,21 @@ export default function DoctorPatientsPage() {
             {loading ? 'Loading…' : `${filtered.length} patient${filtered.length !== 1 ? 's' : ''} seen`}
           </p>
         </div>
-        <button onClick={() => setAddOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white transition-colors min-h-[44px] shadow-sm">
-          <Plus size={14} />
-          <span className="hidden sm:inline">Add Patient</span>
-          <span className="sm:hidden">Add</span>
-        </button>
+        {selectedIds.size > 0 ? (
+          <button
+            onClick={() => setShowBulkDeleteModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-red-500 hover:bg-red-600 text-white transition-colors min-h-[44px] shadow-sm">
+            <Trash2 size={14} />
+            Delete ({selectedIds.size})
+          </button>
+        ) : (
+          <button onClick={() => setAddOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white transition-colors min-h-[44px] shadow-sm">
+            <Plus size={14} />
+            <span className="hidden sm:inline">Add Patient</span>
+            <span className="sm:hidden">Add</span>
+          </button>
+        )}
       </div>
 
       {/* Search */}
@@ -219,6 +275,21 @@ export default function DoctorPatientsPage() {
         ))}
       </div>
 
+      {/* Select All bar — shown when patients exist */}
+      {!loading && filtered.length > 0 && (
+        <div className="flex items-center gap-2 px-1">
+          <input
+            type="checkbox"
+            checked={selectedIds.size === filtered.length}
+            onChange={toggleSelectAll}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
+          />
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select all'}
+          </span>
+        </div>
+      )}
+
       {/* Patient list */}
       <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
         {loading ? (
@@ -233,7 +304,20 @@ export default function DoctorPatientsPage() {
         ) : (
           <div className="divide-y divide-gray-50 dark:divide-white/[0.04]">
             {filtered.map(p => (
-              <div key={p.id} className="flex items-start gap-3 sm:gap-4 px-4 sm:px-5 py-4 hover:bg-blue-50/20 dark:hover:bg-white/[0.03] transition-colors">
+              <div key={p.id} className={cn(
+                'flex items-start gap-3 sm:gap-4 px-4 sm:px-5 py-4 hover:bg-blue-50/20 dark:hover:bg-white/[0.03] transition-colors',
+                selectedIds.has(p.id) && 'bg-blue-50/40 dark:bg-blue-900/10',
+              )}>
+
+                {/* Checkbox */}
+                <div className="flex-shrink-0 pt-3" onClick={e => toggleSelect(p.id, e)}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(p.id)}
+                    onChange={() => {}}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
+                  />
+                </div>
 
                 {/* Avatar */}
                 <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900/40 dark:to-blue-800/40 flex items-center justify-center flex-shrink-0 font-bold text-blue-600 dark:text-blue-300 text-sm">
@@ -287,6 +371,33 @@ export default function DoctorPatientsPage() {
           </div>
         )}
       </div>
+
+      {/* ── Bulk Delete Confirmation Modal ───────────────────────────────────── */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl max-w-sm w-full p-6 animate-fade-in">
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-2">
+              Delete {selectedIds.size} Patient{selectedIds.size !== 1 ? 's' : ''}?
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+              This action cannot be undone. All data for the selected patients will be permanently removed.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowBulkDeleteModal(false)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors min-h-[44px]">
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-60 min-h-[44px]">
+                {bulkDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Add Patient Modal (bottom sheet on mobile) ──────────────────────── */}
       {addOpen && (
