@@ -180,6 +180,74 @@ router.post('/:id/avatar', requireAuth, uploadLimiter, upload.single('avatar'), 
   }
 })
 
+// GET /doctors/my-patients
+// Returns every patient this doctor has EVER had an appointment with.
+// Includes: completed visit count, last-seen date, next future appointment.
+router.get('/my-patients', requireAuth, async (req, res) => {
+  try {
+    const doctor = await prisma.doctor.findFirst({ where: { userId: req.user!.id } })
+    if (!doctor) { res.status(404).json({ error: 'Doctor not found' }); return }
+
+    const appointments = await prisma.appointment.findMany({
+      where: { doctorId: doctor.id },
+      select: {
+        id: true, startAt: true, status: true,
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, gender: true } },
+        service: { select: { name: true } },
+      },
+      orderBy: { startAt: 'desc' },
+    })
+
+    const now = new Date()
+    const byPatient = new Map<string, { patient: any; appts: typeof appointments }>()
+    for (const a of appointments) {
+      if (!a.patient?.id) continue
+      const pid = a.patient.id
+      if (!byPatient.has(pid)) byPatient.set(pid, { patient: a.patient, appts: [] })
+      byPatient.get(pid)!.appts.push(a)
+    }
+
+    const rows = []
+    for (const { patient, appts } of byPatient.values()) {
+      const completed = appts.filter(a => a.status === 'COMPLETED')
+
+      const pastAppts = appts
+        .filter(a => new Date(a.startAt) < now && a.status !== 'CANCELLED')
+        .sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())
+
+      const futureAppts = appts
+        .filter(a => new Date(a.startAt) >= now && !['CANCELLED', 'NO_SHOW'].includes(a.status))
+        .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+
+      const activeStatuses = ['IN_OPERATORY', 'WITH_PROVIDER', 'WAITING', 'ARRIVED', 'CHECKED_IN', 'IN_CHAIR']
+      const activeAppt = appts.find(a => activeStatuses.includes(a.status))
+
+      rows.push({
+        id:              patient.id,
+        firstName:       patient.firstName,
+        lastName:        patient.lastName,
+        phone:           patient.phone  || '—',
+        gender:          patient.gender || '',
+        totalVisits:     completed.length,
+        lastSeen:        pastAppts[0]?.startAt ?? null,
+        nextAppt:        futureAppts[0]?.startAt ?? null,
+        nextApptService: futureAppts[0]?.service?.name ?? '',
+        activePlan:      activeAppt ? (activeAppt.service?.name ?? 'Active') : null,
+      })
+    }
+
+    rows.sort((a, b) => {
+      if (a.lastSeen && b.lastSeen) return new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime()
+      return a.lastSeen ? -1 : b.lastSeen ? 1 : 0
+    })
+
+    res.json(rows)
+  } catch (e) {
+    console.error('[my-patients]', e)
+    res.status(500).json({ error: 'Failed to fetch patients' })
+  }
+})
+
 // ─── Check In / Check Out ────────────────────────────────────────────────────
 
 // POST /doctors/check-in

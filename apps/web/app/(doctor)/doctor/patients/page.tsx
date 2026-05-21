@@ -11,6 +11,15 @@ function fmtDate(s: string) {
 function fmtTime(s: string) {
   return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
+function fmtLastSeen(s: string | null): string {
+  if (!s) return 'Never'
+  const days = Math.floor((Date.now() - new Date(s).getTime()) / 86_400_000)
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  if (days < 30)  return `${days}d ago`
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`
+  return fmtDate(s)
+}
 
 interface PatientRow {
   id: string
@@ -18,7 +27,7 @@ interface PatientRow {
   lastName: string
   phone: string
   gender: string
-  lastVisit: string
+  lastSeen: string | null
   nextAppt: string | null
   nextApptService: string
   activePlan: string | null
@@ -58,55 +67,9 @@ export default function DoctorPatientsPage() {
     if (!token) return
     setLoading(true)
     try {
-      const u = JSON.parse(localStorage.getItem('cc_user') || '{}')
-      const docRes = await fetch('/api-proxy/doctors', { headers: { Authorization: `Bearer ${token}` } })
-      const docs   = await docRes.json()
-      const me     = Array.isArray(docs) ? docs.find((d: any) => d.userId === u.id) : null
-      if (!me) return
-
-      const apptRes  = await fetch(`/api-proxy/scheduling/appointments?limit=500`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const apptData = await apptRes.json()
-      const appts: any[] = Array.isArray(apptData) ? apptData : []
-      const myAppts = appts.filter((a: any) => a.doctorId === me.id)
-      const now = Date.now()
-
-      const byPatient = new Map<string, any[]>()
-      for (const a of myAppts) {
-        if (!a.patient?.id) continue
-        const pid = a.patient.id
-        if (!byPatient.has(pid)) byPatient.set(pid, [])
-        byPatient.get(pid)!.push(a)
-      }
-
-      const rows: PatientRow[] = []
-      for (const [, apptList] of byPatient.entries()) {
-        const sorted = apptList.sort((a: any, b: any) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
-        const past   = sorted.filter((a: any) => new Date(a.startAt).getTime() < now)
-        const future = sorted.filter((a: any) => new Date(a.startAt).getTime() >= now)
-        const last   = past[past.length - 1] || sorted[0]
-        const next   = future[0] || null
-        const p      = last.patient
-        const activePlan = apptList.some((a: any) => ['IN_OPERATORY','WITH_PROVIDER','WAITING','ARRIVED'].includes(a.status))
-          ? (last.service?.name || 'Active') : null
-
-        rows.push({
-          id:              p.id,
-          firstName:       p.firstName || '',
-          lastName:        p.lastName  || '',
-          phone:           p.phone     || '—',
-          gender:          p.gender    || '',
-          lastVisit:       last.startAt,
-          nextAppt:        next ? next.startAt : null,
-          nextApptService: next?.service?.name || '',
-          activePlan,
-          totalVisits:     past.length,
-        })
-      }
-
-      rows.sort((a, b) => new Date(b.lastVisit).getTime() - new Date(a.lastVisit).getTime())
-      setPatients(rows)
+      const res  = await fetch('/api-proxy/doctors/my-patients', { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      setPatients(Array.isArray(data) ? data : [])
     } catch (e) { console.error(e) } finally { setLoading(false) }
   }, [token])
 
@@ -242,7 +205,7 @@ export default function DoctorPatientsPage() {
                     </span>
                     <span className="flex items-center gap-1 text-[10px] text-gray-400">
                       <CalendarDays size={10} className="text-gray-300" />
-                      Last: {fmtDate(p.lastVisit)}
+                      Last: {fmtLastSeen(p.lastSeen)}
                     </span>
                     {p.nextAppt && (
                       <span className="flex items-center gap-1 text-[10px] text-blue-500 font-semibold">
