@@ -9,7 +9,8 @@ router.get('/facebook', (req, res) => {
   const token     = req.query['hub.verify_token']
   const challenge = req.query['hub.challenge']
 
-  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+  const expected = process.env.FACEBOOK_VERIFY_TOKEN ?? process.env.WHATSAPP_VERIFY_TOKEN ?? 'codeclinic-facebook-2026'
+  if (mode === 'subscribe' && token === expected) {
     console.log('[Webhooks] Facebook webhook verified')
     return res.status(200).send(challenge)
   }

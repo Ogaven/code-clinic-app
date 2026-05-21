@@ -109,8 +109,14 @@ router.get('/connections/facebook/callback', async (req, res) => {
     const tokenData = await tokenRes.json() as { access_token?: string; error?: any }
     if (!tokenData.access_token) throw new Error(JSON.stringify(tokenData.error))
 
-    // Get page list
-    const pagesRes  = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${tokenData.access_token}`)
+    // Exchange short-lived user token for long-lived user token (60-day expiry)
+    // Page tokens derived from a long-lived user token are also long-lived (~60 days)
+    const llRes  = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${tokenData.access_token}`)
+    const llData = await llRes.json() as { access_token?: string }
+    const longLivedUserToken = llData.access_token || tokenData.access_token
+
+    // Get page list using the long-lived user token — page tokens will also be long-lived
+    const pagesRes  = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedUserToken}`)
     const pagesData = await pagesRes.json() as { data?: Array<{ id: string; name: string; access_token: string }> }
     const page      = pagesData.data?.[0]
 
@@ -118,7 +124,7 @@ router.get('/connections/facebook/callback', async (req, res) => {
     await prisma.aiAgentConfig.update({
       where: { id: config.id },
       data: {
-        facebookPageAccessToken: page?.access_token || tokenData.access_token,
+        facebookPageAccessToken: page?.access_token || longLivedUserToken,
         facebookPageName:        page?.name || 'Connected',
       },
     })
@@ -141,10 +147,22 @@ router.post('/connections/facebook/manual', requireAuth, async (req, res) => {
   const { pageAccessToken, pageId } = req.body as { pageAccessToken?: string; pageId?: string }
   if (!pageAccessToken) return res.status(400).json({ error: 'pageAccessToken required' })
 
+  // Try to exchange for a long-lived token if a short-lived one was pasted
+  const appId     = process.env.FACEBOOK_APP_ID || ''
+  const appSecret = process.env.FACEBOOK_APP_SECRET || ''
+  let finalToken = pageAccessToken
+  if (appId && appSecret) {
+    try {
+      const llRes  = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${pageAccessToken}`)
+      const llData = await llRes.json() as { access_token?: string }
+      if (llData.access_token) finalToken = llData.access_token
+    } catch {}
+  }
+
   // Try to resolve the page name from the Graph API; fall back to pageId or 'Connected'
   let pageName = pageId || 'Connected'
   try {
-    const r = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${pageAccessToken}`)
+    const r = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${finalToken}`)
     const d = await r.json() as { name?: string }
     if (d.name) pageName = d.name
   } catch {}
@@ -152,9 +170,9 @@ router.post('/connections/facebook/manual', requireAuth, async (req, res) => {
   const config = await getConfig()
   await prisma.aiAgentConfig.update({
     where: { id: config.id },
-    data: { facebookPageAccessToken: pageAccessToken, facebookPageName: pageName },
+    data: { facebookPageAccessToken: finalToken, facebookPageName: pageName },
   })
-  res.json({ connected: true, pageName })
+  res.json({ connected: true, pageName, tokenUpgraded: finalToken !== pageAccessToken })
 })
 
 router.delete('/connections/facebook', requireAuth, async (_req, res) => {
