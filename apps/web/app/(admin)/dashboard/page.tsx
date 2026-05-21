@@ -2,18 +2,35 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import {
   TrendingUp, TrendingDown, Users, Calendar, DollarSign,
-  ChevronRight, Activity, Clock, AlertCircle,
+  ChevronRight, Activity, Clock, AlertCircle, Bot,
+  UserX, Megaphone, AlertTriangle, CreditCard, Kanban,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, BarChart, Bar,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell,
 } from 'recharts'
 import { cn, formatUGX, getGreeting } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
 import LivePatientFlow from '@/components/scheduling/LivePatientFlow'
+
+// ── Dashboard analytics types ───────────────────────────────────────────────
+interface DashMetrics {
+  activeThisMonth: number; activeLastMonth: number
+  newPatientsThisMonth: number; topReferralSource: string | null
+  noShowRate: number; noShowCount: number; totalWeekAppts: number
+  revenueCollected: number; revenueBilled: number; collectionRate: number
+  unscheduledTreatmentValue: number; lapsedCount: number
+}
+interface DashCharts {
+  revenueTrend:    { month: string; revenue: number }[]
+  statusBreakdown: { status: string; count: number }[]
+  aiPerformance:   { conversationsHandled: number; appointmentsBooked: number; messagesSent: number }
+}
+interface DashData { metrics: DashMetrics; charts: DashCharts }
 
 // ── Analog Clock ────────────────────────────────────────────────────────────
 function AnalogClock() {
@@ -257,8 +274,42 @@ function PatientFlowMini({ data }: { data: { stage: string; count: number; pct: 
   )
 }
 
+// ── Analytic metric card ────────────────────────────────────────────────────
+function AnalyticCard({ label, value, sub, up, icon, color, href }: {
+  label: string; value: string; sub: string; up: boolean
+  icon: React.ReactNode; color: string; href?: string
+}) {
+  return (
+    <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-3 shadow-sm flex flex-col gap-1"
+      onClick={href ? () => window.location.href = href : undefined}
+      style={href ? { cursor: 'pointer' } : {}}>
+      <div className="flex items-start justify-between">
+        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-gray-400 leading-tight">{label}</p>
+        <span style={{ color }}>{icon}</span>
+      </div>
+      <p className="text-xl font-black leading-tight" style={{ color }}>{value}</p>
+      <div className={cn('flex items-center gap-1 text-[10px] font-semibold', up ? 'text-emerald-600' : 'text-red-500')}>
+        {up ? <TrendingUp size={9}/> : <TrendingDown size={9}/>}
+        <span className="truncate">{sub}</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Status colours for pie ───────────────────────────────────────────────────
+const STATUS_PIE: Record<string, { color: string; label: string }> = {
+  ACTIVE:       { color: '#10B981', label: 'Active' },
+  NEW_LEAD:     { color: '#29ABE2', label: 'New Lead' },
+  DUE_RECALL:   { color: '#F59E0B', label: 'Due Recall' },
+  LAPSED:       { color: '#EF4444', label: 'Lapsed' },
+  DORMANT:      { color: '#6B7280', label: 'Dormant' },
+  BALANCE_OWING:{ color: '#8B5CF6', label: 'Balance Owing' },
+  UPCOMING:     { color: '#3B82F6', label: 'Upcoming' },
+}
+
 // ── Main Dashboard ──────────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const router = useRouter()
   const [user, setUser]             = useState<any>(null)
   const [now,  setNow]              = useState(new Date())
   const [flowData, setFlowData]     = useState<{ stage: string; count: number; pct: number }[]>([])
@@ -268,6 +319,7 @@ export default function DashboardPage() {
     chartsToday: number
     treatmentsCompleted: number
   } | null>(null)
+  const [dashData, setDashData]     = useState<DashData | null>(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
@@ -288,6 +340,13 @@ export default function DashboardPage() {
         headers: { Authorization: `Bearer ${token}` },
       }).then((r) => r.json()).then((d) => {
         if (d && !d.error) setDentalData(d)
+      }).catch(() => {})
+
+      // Fetch new dashboard analytics
+      fetch('/api-proxy/clinical/analytics/dashboard', {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((r) => r.json()).then((d) => {
+        if (d?.metrics) setDashData(d)
       }).catch(() => {})
     }
 
@@ -328,12 +387,211 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* ── ANALYTICS METRICS ROW ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3" style={{ paddingTop: 58 }}>
+        {/* 1. Active patients */}
+        {(() => {
+          const m = dashData?.metrics
+          const cur = m?.activeThisMonth ?? 0
+          const prev = m?.activeLastMonth ?? 1
+          const pct = prev > 0 ? Math.round(((cur - prev) / prev) * 100) : 0
+          const up = pct >= 0
+          return (
+            <AnalyticCard
+              label="Active Patients"
+              value={m ? cur.toString() : '—'}
+              sub={m ? `${up ? '+' : ''}${pct}% vs last month` : 'vs last month'}
+              up={up} icon={<Users size={15}/>} color="#1A237E"
+            />
+          )
+        })()}
+
+        {/* 2. New patients */}
+        {(() => {
+          const m = dashData?.metrics
+          return (
+            <AnalyticCard
+              label="New Patients"
+              value={m ? m.newPatientsThisMonth.toString() : '—'}
+              sub={m?.topReferralSource ? `via ${m.topReferralSource}` : 'this month'}
+              up={true} icon={<TrendingUp size={15}/>} color="#059669"
+            />
+          )
+        })()}
+
+        {/* 3. No-show rate */}
+        {(() => {
+          const m = dashData?.metrics
+          const bad = (m?.noShowRate ?? 0) > 10
+          return (
+            <AnalyticCard
+              label="No-show Rate"
+              value={m ? `${m.noShowRate}%` : '—'}
+              sub={m ? `${m.noShowCount} of ${m.totalWeekAppts} this week` : 'this week'}
+              up={!bad} icon={<AlertTriangle size={15}/>} color={bad ? '#DC2626' : '#F59E0B'}
+            />
+          )
+        })()}
+
+        {/* 4. Collection rate */}
+        {(() => {
+          const m = dashData?.metrics
+          const good = (m?.collectionRate ?? 0) >= 80
+          return (
+            <AnalyticCard
+              label="Collection Rate"
+              value={m ? `${m.collectionRate}%` : '—'}
+              sub={m ? `${formatUGX(m.revenueCollected)} collected` : 'vs billed'}
+              up={good} icon={<CreditCard size={15}/>} color={good ? '#059669' : '#F59E0B'}
+            />
+          )
+        })()}
+
+        {/* 5. Unscheduled treatment value */}
+        {(() => {
+          const m = dashData?.metrics
+          const v = m?.unscheduledTreatmentValue ?? 0
+          return (
+            <AnalyticCard
+              label="Unscheduled Value"
+              value={m ? formatUGX(v) : '—'}
+              sub="accepted, not booked"
+              up={false} icon={<Kanban size={15}/>} color="#92400E"
+              href="/treatment-pipeline"
+            />
+          )
+        })()}
+
+        {/* 6. Lapsed patients + recall button */}
+        {(() => {
+          const m = dashData?.metrics
+          return (
+            <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-3 shadow-sm flex flex-col gap-1.5">
+              <div className="flex items-start justify-between">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-gray-400 leading-tight">Lapsed Patients</p>
+                <UserX size={15} color="#EF4444"/>
+              </div>
+              <p className="text-xl font-black" style={{ color: '#EF4444' }}>{m ? m.lapsedCount : '—'}</p>
+              <button
+                onClick={() => router.push('/campaigns?segment=LAPSED')}
+                className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-lg text-white mt-auto"
+                style={{ background: 'linear-gradient(135deg,#EF4444,#DC2626)' }}
+              >
+                <Megaphone size={11}/> Send Recall
+              </button>
+            </div>
+          )
+        })()}
+      </div>
+
+      {/* ── ANALYTICS CHARTS ROW ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+
+        {/* Revenue trend — 6 months */}
+        <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-gray-400 mb-0.5">Revenue Trend</p>
+          <p className="text-xs font-semibold text-clinic-navy dark:text-white mb-3">Last 6 months</p>
+          {!dashData ? (
+            <div className="h-[130px] flex items-center justify-center">
+              <div className="w-full h-full bg-gray-50 dark:bg-white/5 rounded-xl animate-pulse"/>
+            </div>
+          ) : dashData.charts.revenueTrend.length === 0 ? (
+            <div className="h-[130px] flex items-center justify-center text-xs text-gray-300">No payment data yet</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={130}>
+              <BarChart data={dashData.charts.revenueTrend} margin={{ top:0, right:0, left:0, bottom:0 }}>
+                <XAxis dataKey="month" tick={{ fontSize:10, fill:'#9CA3AF' }} axisLine={false} tickLine={false}/>
+                <YAxis hide/>
+                <Tooltip formatter={(v: number) => [formatUGX(v), 'Revenue']} contentStyle={{ borderRadius:8, fontSize:11 }}/>
+                <Bar dataKey="revenue" radius={[4,4,0,0]}>
+                  {dashData.charts.revenueTrend.map((_,i,arr) => (
+                    <Cell key={i} fill={i === arr.length - 1 ? '#1A237E' : '#29ABE2'}/>
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Patient status donut */}
+        <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-gray-400 mb-0.5">Patient Breakdown</p>
+          <p className="text-xs font-semibold text-clinic-navy dark:text-white mb-2">By status</p>
+          {!dashData ? (
+            <div className="h-[130px] bg-gray-50 dark:bg-white/5 rounded-xl animate-pulse"/>
+          ) : (
+            <div className="flex items-center gap-3">
+              <ResponsiveContainer width="50%" height={130}>
+                <PieChart>
+                  <Pie
+                    data={dashData.charts.statusBreakdown.map(s => ({
+                      name:  STATUS_PIE[s.status]?.label ?? s.status,
+                      value: s.count,
+                      color: STATUS_PIE[s.status]?.color ?? '#D1D5DB',
+                    }))}
+                    cx="50%" cy="50%" innerRadius={32} outerRadius={52}
+                    dataKey="value" paddingAngle={2}
+                  >
+                    {dashData.charts.statusBreakdown.map((s, i) => (
+                      <Cell key={i} fill={STATUS_PIE[s.status]?.color ?? '#D1D5DB'}/>
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v: number, n: string) => [v, n]} contentStyle={{ borderRadius:8, fontSize:11 }}/>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex-1 space-y-1 overflow-hidden">
+                {dashData.charts.statusBreakdown
+                  .sort((a,b) => b.count - a.count)
+                  .slice(0,5)
+                  .map(s => (
+                  <div key={s.status} className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STATUS_PIE[s.status]?.color ?? '#D1D5DB' }}/>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate flex-1">{STATUS_PIE[s.status]?.label ?? s.status}</span>
+                    <span className="text-[10px] font-bold text-gray-700 dark:text-white flex-shrink-0">{s.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* AI Agent performance */}
+        <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Bot size={15} color="#1A237E"/>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-gray-400">AI Agent</p>
+              <p className="text-xs font-semibold text-clinic-navy dark:text-white">This month</p>
+            </div>
+          </div>
+          {!dashData ? (
+            <div className="space-y-2">
+              {[1,2,3].map(i => <div key={i} className="h-10 bg-gray-50 dark:bg-white/5 rounded-xl animate-pulse"/>)}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {[
+                { label: 'Conversations', value: dashData.charts.aiPerformance.conversationsHandled, color: '#1A237E' },
+                { label: 'Bookings by AI', value: dashData.charts.aiPerformance.appointmentsBooked,  color: '#059669' },
+                { label: 'Messages Sent',  value: dashData.charts.aiPerformance.messagesSent,        color: '#7C3AED' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="flex items-center justify-between px-3 py-2 rounded-xl"
+                  style={{ background: color + '12' }}>
+                  <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">{label}</span>
+                  <span className="text-sm font-black" style={{ color }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ── KPI CARDS ── */}
-      <div className="grid grid-cols-3 gap-3" style={{ paddingTop: 58 }}>
+      <div className="grid grid-cols-3 gap-3">
         {[
-          { title: "Today's Appointments", value: '24',        sub: '5 pending', trend: { v: 12, up: true },  icon: Calendar,    color: '#29ABE2', bg: 'linear-gradient(135deg,#E0F7FF,#BDEFFF)', cardClass: 'stat-card-cyan' },
-          { title: 'Monthly Revenue',       value: 'UGX 31.2M', sub: '+8% vs last month', trend: { v: 8, up: true }, icon: DollarSign, color: '#059669', bg: 'linear-gradient(135deg,#D1FAE5,#A7F3D0)', cardClass: 'stat-card-green' },
-          { title: 'Active Patients',       value: '790',       sub: '62 new this month', trend: { v: 5, up: true }, icon: Users,      color: '#7C3AED', bg: 'linear-gradient(135deg,#EDE9FE,#DDD6FE)', cardClass: 'stat-card-purple' },
+          { title: "Today's Appointments", value: '24',        sub: '5 pending',          trend: { v: 12, up: true }, icon: Calendar,    color: '#29ABE2', bg: 'linear-gradient(135deg,#E0F7FF,#BDEFFF)', cardClass: 'stat-card-cyan' },
+          { title: 'Monthly Revenue',       value: 'UGX 31.2M', sub: '+8% vs last month', trend: { v: 8,  up: true }, icon: DollarSign,  color: '#059669', bg: 'linear-gradient(135deg,#D1FAE5,#A7F3D0)', cardClass: 'stat-card-green' },
+          { title: 'Active Patients',       value: '790',       sub: '62 new this month',  trend: { v: 5,  up: true }, icon: Users,       color: '#7C3AED', bg: 'linear-gradient(135deg,#EDE9FE,#DDD6FE)', cardClass: 'stat-card-purple' },
         ].map((k, i) => (
           <div key={i} className={cn('bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-all', k.cardClass)}>
             <div className="flex items-start justify-between mb-2">

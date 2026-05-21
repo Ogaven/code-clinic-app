@@ -526,4 +526,117 @@ router.get('/analytics/dental-dashboard', requireAuth, async (req, res) => {
   }
 })
 
+// GET /clinical/analytics/dashboard
+// One-request aggregation of all metrics and chart data for the main dashboard.
+router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
+  try {
+    const now          = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const startOfLast  = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const endOfLast    = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
+
+    const weekStart = new Date(now)
+    const dow = weekStart.getDay()
+    weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1))
+    weekStart.setHours(0, 0, 0, 0)
+
+    const [
+      activeThisMonthRows,
+      activeLastMonthRows,
+      newThisMonth,
+      noShowWeek,
+      totalWeekAppts,
+      collectedThisMonth,
+      billedThisMonth,
+      unscheduledPlans,
+      lapsedCount,
+      statusCounts,
+      agentConversations,
+      aiBooked,
+      messagesSent,
+    ] = await Promise.all([
+      prisma.appointment.findMany({
+        where:    { startAt: { gte: startOfMonth }, status: { notIn: ['CANCELLED'] } },
+        select:   { patientId: true },
+        distinct: ['patientId'],
+      }),
+      prisma.appointment.findMany({
+        where:    { startAt: { gte: startOfLast, lte: endOfLast }, status: { notIn: ['CANCELLED'] } },
+        select:   { patientId: true },
+        distinct: ['patientId'],
+      }),
+      prisma.patient.findMany({
+        where:  { createdAt: { gte: startOfMonth } },
+        select: { referralSource: true },
+      }),
+      prisma.appointment.count({ where: { startAt: { gte: weekStart }, status: 'NO_SHOW' } }),
+      prisma.appointment.count({ where: { startAt: { gte: weekStart } } }),
+      prisma.payment.aggregate({ _sum: { amountUGX: true }, where: { paidAt: { gte: startOfMonth } } }),
+      prisma.invoice.aggregate({  _sum: { totalUGX:  true }, where: { createdAt: { gte: startOfMonth } } }),
+      prisma.treatmentPlan.findMany({
+        where:  { stage: 'Accepted & Unscheduled' },
+        select: { costPerUnit: true, quantity: true, discount: true },
+      }),
+      prisma.patient.count({ where: { status: 'LAPSED' } }),
+      prisma.patient.groupBy({ by: ['status'], _count: { _all: true } }),
+      prisma.agentLog.count({ where: { createdAt: { gte: startOfMonth } } }),
+      prisma.agentLog.count({ where: { createdAt: { gte: startOfMonth }, outcome: 'BOOKED' } }),
+      prisma.nurtureLog.count({ where: { createdAt: { gte: startOfMonth }, status: { in: ['SENT', 'DELIVERED'] } } }),
+    ])
+
+    const sourceMap: Record<string, number> = {}
+    newThisMonth.forEach(p => {
+      const s = p.referralSource || 'Unknown'
+      sourceMap[s] = (sourceMap[s] || 0) + 1
+    })
+    const topReferralSource = Object.entries(sourceMap).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+
+    const collected        = Number(collectedThisMonth._sum.amountUGX) || 0
+    const billed           = Number(billedThisMonth._sum.totalUGX)     || 0
+    const collectionRate   = billed > 0 ? Math.round((collected / billed) * 100) : 0
+    const noShowRate       = totalWeekAppts > 0 ? Math.round((noShowWeek / totalWeekAppts) * 100) : 0
+    const unscheduledValue = unscheduledPlans.reduce(
+      (s, p) => s + Number(p.costPerUnit) * p.quantity - Number(p.discount), 0,
+    )
+
+    const revenueTrendRaw = await prisma.$queryRaw<{ month: string; revenue: bigint }[]>`
+      SELECT TO_CHAR(DATE_TRUNC('month', "paidAt"), 'Mon') AS month,
+             SUM("amountUGX")                              AS revenue
+      FROM   payments
+      WHERE  "paidAt" >= NOW() - INTERVAL '6 months'
+      GROUP  BY DATE_TRUNC('month', "paidAt"), TO_CHAR(DATE_TRUNC('month', "paidAt"), 'Mon')
+      ORDER  BY DATE_TRUNC('month', "paidAt")
+    `
+
+    res.json({
+      metrics: {
+        activeThisMonth:           activeThisMonthRows.length,
+        activeLastMonth:           activeLastMonthRows.length,
+        newPatientsThisMonth:      newThisMonth.length,
+        topReferralSource,
+        noShowRate,
+        noShowCount:               noShowWeek,
+        totalWeekAppts,
+        revenueCollected:          collected,
+        revenueBilled:             billed,
+        collectionRate,
+        unscheduledTreatmentValue: unscheduledValue,
+        lapsedCount,
+      },
+      charts: {
+        revenueTrend:    revenueTrendRaw.map(r => ({ month: r.month, revenue: Number(r.revenue) })),
+        statusBreakdown: statusCounts.map(s => ({ status: s.status, count: s._count._all })),
+        aiPerformance: {
+          conversationsHandled: agentConversations,
+          appointmentsBooked:   aiBooked,
+          messagesSent,
+        },
+      },
+    })
+  } catch (e) {
+    console.error('[Dashboard Analytics]', e)
+    res.status(500).json({ error: 'Failed to fetch dashboard analytics' })
+  }
+})
+
 export default router
