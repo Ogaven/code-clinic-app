@@ -120,8 +120,15 @@ router.get('/connections/facebook/callback', async (req, res) => {
     const pagesData = await pagesRes.json() as { data?: Array<{ id: string; name: string; access_token: string }> }
     const page      = pagesData.data?.[0]
 
-    const pageToken = page?.access_token || longLivedUserToken
-    const pageId    = page?.id
+    if (!page) {
+      // This means the OAuth user has no pages or didn't grant page permissions.
+      // Storing a user token as the page token will break /me/messages sends.
+      console.error('[Facebook OAuth] /me/accounts returned no pages — cannot get page token:', JSON.stringify(pagesData))
+      throw new Error('No Facebook pages found. Make sure you are logging in as an admin of the Code Clinic page and approve all requested permissions.')
+    }
+
+    const pageToken = page.access_token
+    const pageId    = page.id
 
     const config = await getConfig()
     await prisma.aiAgentConfig.update({
