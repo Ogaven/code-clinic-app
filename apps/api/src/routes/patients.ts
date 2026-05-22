@@ -161,27 +161,37 @@ router.post('/import-sheet', requireAuth, async (req, res) => {
   try {
     const { sheetUrl, previewOnly, columnMap } = req.body
     if (!sheetUrl) { res.status(400).json({ error: 'Sheet URL required' }); return }
-    const match = (sheetUrl as string).match(/\/d\/([a-zA-Z0-9-_]+)/)
-    if (!match) { res.status(400).json({ error: 'Invalid Google Sheets URL' }); return }
+    // Extract sheet ID from any Google Sheets URL format
+    const match = (sheetUrl as string).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+    if (!match) { res.status(400).json({ error: 'Invalid Google Sheets URL. Expected: https://docs.google.com/spreadsheets/d/{ID}/...' }); return }
     const sheetId = match[1]
     const csvUrl  = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
-    const response = await fetch(csvUrl)
+    const response = await fetch(csvUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CodeClinic/1.0)' },
+      redirect: 'follow',
+    })
     if (!response.ok) {
-      res.status(400).json({ error: 'Could not access sheet. Make sure it is shared publicly (Anyone with link can view)' }); return
+      res.status(400).json({ error: 'Could not access sheet. Make sure it is shared publicly (Anyone with link → can view)' }); return
     }
     const csvText = await response.text()
+    // Google returns HTML login/error page when sheet is private or doesn't exist
+    if (csvText.trimStart().startsWith('<!DOCTYPE') || csvText.trimStart().startsWith('<html')) {
+      res.status(400).json({ error: 'Sheet is not publicly accessible. Open the sheet → Share → Anyone with the link → Viewer.' }); return
+    }
     const lines   = csvText.trim().split('\n')
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''))
+    if (lines.length < 2) { res.status(400).json({ error: 'Sheet appears to be empty or has no data rows' }); return }
+    const headers = parseCSVLine(lines[0]).map(h => h.trim())
 
-    // Preview mode: return headers + first 5 data rows
+    // Preview mode: return headers + first 5 data rows + total row count
     if (previewOnly) {
-      const rows = lines.slice(1, 6).map(line => {
+      const dataLines = lines.slice(1).filter(l => l.trim())
+      const rows = dataLines.slice(0, 5).map(line => {
         const values = parseCSVLine(line)
         const row: Record<string, string> = {}
         headers.forEach((h, idx) => { row[h] = values[idx]?.trim() || '' })
         return row
       })
-      res.json({ headers, rows })
+      res.json({ headers, rows, total: dataLines.length })
       return
     }
 

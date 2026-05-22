@@ -71,7 +71,10 @@ export default function PatientsPage() {
   const [showSheetModal, setShowSheetModal] = useState(false)
   const [sheetUrl,       setSheetUrl]       = useState('')
   const [sheetImporting, setSheetImporting] = useState(false)
-  const [sheetResult,    setSheetResult]    = useState<{ imported: number; skipped: number; total: number; errors?: string[] } | null>(null)
+  const [sheetStep,      setSheetStep]      = useState<'url' | 'preview' | 'results'>('url')
+  const [sheetPreview,   setSheetPreview]   = useState<{ headers: string[]; rows: Record<string, string>[]; total: number } | null>(null)
+  const [columnMap,      setColumnMap]      = useState<Record<string, string>>({})
+  const [sheetResult,    setSheetResult]    = useState<{ created: number; updated: number; skipped: number; total: number; errors?: string[] } | null>(null)
   const csvInputRef               = useRef<HTMLInputElement>(null)
 
   // Add patient form
@@ -294,20 +297,53 @@ export default function PatientsPage() {
     finally { setBulkDeleting(false) }
   }
 
-  async function handleSheetImport() {
+  async function handleSheetPreview() {
     if (!sheetUrl.trim()) return
-    setSheetImporting(true); setSheetResult(null)
+    setSheetImporting(true)
     try {
-      const token = localStorage.getItem('cc_token')
       const res = await fetch('/api-proxy/patients/import-sheet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ sheetUrl }),
+        body: JSON.stringify({ sheetUrl, previewOnly: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) { showToast(data.error || 'Failed to fetch sheet', 'err'); return }
+      // Auto-detect column mapping from header names
+      const known: Record<string, string[]> = {
+        firstName: ['first name', 'firstname', 'first_name', 'name'],
+        lastName:  ['last name', 'lastname', 'last_name'],
+        phone:     ['phone', 'phone number', 'mobile', 'tel', 'contact'],
+        email:     ['email', 'email address'],
+        dob:       ['dob', 'date of birth', 'birth date', 'birthdate'],
+        gender:    ['gender', 'sex'],
+        address:   ['address', 'location'],
+      }
+      const autoMap: Record<string, string> = {}
+      for (const [field, variants] of Object.entries(known)) {
+        const match = data.headers.find((h: string) => variants.includes(h.toLowerCase()))
+        if (match) autoMap[field] = match
+      }
+      setColumnMap(autoMap)
+      setSheetPreview({ headers: data.headers, rows: data.rows, total: data.total ?? data.rows?.length ?? 0 })
+      setSheetStep('preview')
+    } catch { showToast('Network error', 'err') }
+    finally { setSheetImporting(false) }
+  }
+
+  async function handleSheetImport() {
+    setSheetImporting(true); setSheetResult(null)
+    try {
+      const res = await fetch('/api-proxy/patients/import-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ sheetUrl, columnMap }),
       })
       const data = await res.json()
       setSheetResult(data)
-      if (data.imported > 0) { fetchPatients(); showToast(`Imported ${data.imported} patients`, 'ok') }
-    } catch { setSheetResult({ imported: 0, skipped: 0, total: 0, errors: ['Network error'] }) }
+      setSheetStep('results')
+      const count = (data.created || 0) + (data.updated || 0)
+      if (count > 0) { fetchPatients(); showToast(`${data.created} created, ${data.updated} updated`, 'ok') }
+    } catch { setSheetResult({ created: 0, updated: 0, skipped: 0, total: 0, errors: ['Network error'] }) }
     finally { setSheetImporting(false) }
   }
 
@@ -820,49 +856,179 @@ export default function PatientsPage() {
           </div>
         </div>
       )}
-      {/* ── Google Sheets Import Modal ────────────────────────── */}
+      {/* ── Google Sheets Import Modal (3-step wizard) ───────── */}
       {showSheetModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-md p-6 animate-fade-in">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-black text-gray-800 dark:text-white">Import from Google Sheets</h2>
-              <button onClick={() => setShowSheetModal(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-2xl p-6">
+            {/* Header + step indicator */}
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-black text-gray-800 dark:text-white">Import from Google Sheets</h2>
+                <div className="flex gap-2 mt-1">
+                  {(['url', 'preview', 'results'] as const).map((s, i) => (
+                    <span key={s} className={cn(
+                      'text-xs px-2 py-0.5 rounded-full font-medium transition-colors',
+                      sheetStep === s
+                        ? 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300'
+                        : 'text-gray-400 dark:text-gray-600',
+                    )}>
+                      {i + 1}. {s === 'url' ? 'Sheet URL' : s === 'preview' ? 'Map Columns' : 'Results'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowSheetModal(false); setSheetStep('url'); setSheetPreview(null); setSheetResult(null) }}
+                className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors"
+              >
                 <X size={16} className="text-gray-400" />
               </button>
             </div>
-            <p className="text-xs text-gray-500 dark:text-white/50 mb-4 leading-relaxed">
-              Make sure your Google Sheet is shared publicly (Anyone with link can view).<br />
-              Expected columns: <strong>First Name, Last Name, Phone, Email, DOB, Gender, Address</strong>
-            </p>
-            <input
-              value={sheetUrl}
-              onChange={e => setSheetUrl(e.target.value)}
-              placeholder="Paste Google Sheets URL here..."
-              className={inputCls}
-            />
-            {sheetResult && (
-              <div className={cn(
-                'mt-3 p-3 rounded-xl text-sm',
-                sheetResult.imported > 0 ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400',
-              )}>
-                <p className="font-bold">✅ {sheetResult.imported} imported, {sheetResult.skipped} skipped of {sheetResult.total} rows</p>
-                {sheetResult.errors?.slice(0, 3).map((e, i) => (
-                  <p key={i} className="text-xs mt-0.5 opacity-70">{e}</p>
-                ))}
-              </div>
+
+            {/* Step 1: URL */}
+            {sheetStep === 'url' && (
+              <>
+                <p className="text-xs text-gray-500 dark:text-white/50 mb-4 leading-relaxed">
+                  Make sure your Google Sheet is shared publicly (Anyone with link can view).
+                  We&apos;ll fetch a preview so you can confirm the column mapping before importing.
+                </p>
+                <input
+                  value={sheetUrl}
+                  onChange={e => setSheetUrl(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSheetPreview() }}
+                  placeholder="Paste Google Sheets URL here..."
+                  className={inputCls}
+                />
+                <div className="flex gap-3 mt-4">
+                  <button onClick={() => setShowSheetModal(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                    Cancel
+                  </button>
+                  <button onClick={handleSheetPreview} disabled={sheetImporting || !sheetUrl.trim()}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+                    {sheetImporting ? 'Fetching...' : 'Fetch Preview →'}
+                  </button>
+                </div>
+              </>
             )}
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowSheetModal(false)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                Close
-              </button>
-              <button onClick={handleSheetImport} disabled={sheetImporting || !sheetUrl.trim()}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-60"
-                style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-                {sheetImporting ? 'Importing...' : 'Import Patients'}
-              </button>
-            </div>
+
+            {/* Step 2: Column mapping + 5-row preview */}
+            {sheetStep === 'preview' && sheetPreview && (
+              <>
+                <div className="mb-4">
+                  <h3 className="text-sm font-bold text-gray-700 dark:text-white/80 mb-1">Column Mapping</h3>
+                  <p className="text-xs text-gray-400 mb-3">
+                    Map sheet columns to patient fields. <strong>First Name</strong> and <strong>Phone</strong> are required.
+                    Existing patients matched by phone will be updated, new ones created.
+                    {sheetPreview.total > 0 && (
+                      <span className="ml-1 text-cyan-600 dark:text-cyan-400 font-semibold">
+                        {sheetPreview.rows.length} rows previewed, {sheetPreview.total} total to import.
+                      </span>
+                    )}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      ['firstName', 'First Name *'],
+                      ['lastName',  'Last Name'],
+                      ['phone',     'Phone *'],
+                      ['email',     'Email'],
+                      ['dob',       'Date of Birth'],
+                      ['gender',    'Gender'],
+                      ['address',   'Address'],
+                    ] as [string, string][]).map(([field, label]) => (
+                      <div key={field}>
+                        <label className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">{label}</label>
+                        <select
+                          value={columnMap[field] || ''}
+                          onChange={e => setColumnMap(m => ({ ...m, [field]: e.target.value }))}
+                          className="w-full text-xs py-1.5 px-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                        >
+                          <option value="">— Not mapped —</option>
+                          {sheetPreview.headers.map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* 5-row data preview table */}
+                <div className="mb-4">
+                  <h3 className="text-sm font-bold text-gray-700 dark:text-white/80 mb-2">Data Preview (first 5 rows)</h3>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-600">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 dark:bg-gray-700/50">
+                          {sheetPreview.headers.map(h => (
+                            <th key={h} className="px-3 py-2 text-left text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                        {sheetPreview.rows.map((row, i) => (
+                          <tr key={i}>
+                            {sheetPreview.headers.map(h => (
+                              <td key={h} className="px-3 py-1.5 text-gray-600 dark:text-gray-300 whitespace-nowrap">{row[h] || ''}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setSheetStep('url')}
+                    className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                    ← Back
+                  </button>
+                  <button
+                    onClick={handleSheetImport}
+                    disabled={sheetImporting || !columnMap['firstName'] || !columnMap['phone']}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+                    {sheetImporting ? 'Importing...' : 'Import Patients →'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Step 3: Results */}
+            {sheetStep === 'results' && sheetResult && (
+              <>
+                <div className="py-4 text-center">
+                  <div className="text-4xl mb-3">✅</div>
+                  <h3 className="text-base font-black text-gray-800 dark:text-white mb-4">Import Complete</h3>
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3">
+                      <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{sheetResult.created}</div>
+                      <div className="text-xs text-emerald-600/70 dark:text-emerald-400/70 font-medium">Created</div>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3">
+                      <div className="text-2xl font-black text-blue-600 dark:text-blue-400">{sheetResult.updated}</div>
+                      <div className="text-xs text-blue-600/70 dark:text-blue-400/70 font-medium">Updated</div>
+                    </div>
+                    <div className="bg-gray-100 dark:bg-gray-700/40 rounded-xl p-3">
+                      <div className="text-2xl font-black text-gray-500 dark:text-gray-400">{sheetResult.skipped}</div>
+                      <div className="text-xs text-gray-400 font-medium">Skipped</div>
+                    </div>
+                  </div>
+                  {sheetResult.errors && sheetResult.errors.length > 0 && (
+                    <div className="text-left bg-red-50 dark:bg-red-900/20 rounded-xl p-3 mb-4">
+                      {sheetResult.errors.slice(0, 5).map((e, i) => (
+                        <p key={i} className="text-xs text-red-600 dark:text-red-400">{e}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => { setShowSheetModal(false); setSheetStep('url'); setSheetPreview(null); setSheetResult(null); setSheetUrl('') }}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold text-white"
+                  style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+                  Done
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
