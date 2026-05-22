@@ -120,14 +120,44 @@ router.get('/connections/facebook/callback', async (req, res) => {
     const pagesData = await pagesRes.json() as { data?: Array<{ id: string; name: string; access_token: string }> }
     const page      = pagesData.data?.[0]
 
+    const pageToken = page?.access_token || longLivedUserToken
+    const pageId    = page?.id
+
     const config = await getConfig()
     await prisma.aiAgentConfig.update({
       where: { id: config.id },
       data: {
-        facebookPageAccessToken: page?.access_token || longLivedUserToken,
+        facebookPageAccessToken: pageToken,
         facebookPageName:        page?.name || 'Connected',
       },
     })
+
+    // Re-subscribe the webhook so Facebook resumes forwarding messages.
+    // Must be called each time the token rotates — without this, Meta stops delivering events.
+    if (pageId) {
+      try {
+        const subRes = await fetch(
+          `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps`,
+          {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              subscribed_fields: ['messages', 'messaging_postbacks', 'messaging_referrals'],
+              access_token: pageToken,
+            }),
+          },
+        )
+        const subData = await subRes.json() as { success?: boolean; error?: any }
+        if (subData.success) {
+          console.log(`[Facebook] Webhook re-subscribed for page ${pageId}`)
+        } else {
+          console.error('[Facebook] Webhook subscription failed:', JSON.stringify(subData.error))
+        }
+      } catch (subErr) {
+        console.error('[Facebook] Webhook subscription error:', subErr)
+      }
+    }
+
     res.send('<script>window.close()</script><p>Facebook connected! You can close this window.</p>')
   } catch (err: any) {
     res.status(500).send(`Error: ${err.message}`)
