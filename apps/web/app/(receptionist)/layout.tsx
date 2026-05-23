@@ -9,7 +9,7 @@ import {
   Bot, BarChart2, Settings, HelpCircle, Bell, Search,
   ChevronLeft, ChevronRight, ChevronDown, LogOut, User, Lock, Download,
   Sun, Moon, Monitor, X, Send, AlertCircle, Zap, CheckCircle2, Clock,
-  Phone, Mic, BookOpen, Inbox,
+  Phone, Mic, BookOpen, Inbox, UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -21,6 +21,7 @@ const navTop: NavItem[] = [
   { label: 'Scheduling',   href: '/receptionist/scheduling',   icon: CalendarDays },
   { label: 'Appointments', href: '/receptionist/appointments', icon: ListChecks },
   { label: 'Patients',   href: '/receptionist/patients',     icon: Users },
+  { label: 'Leads',      href: '/receptionist/leads',        icon: UserPlus },
   { label: 'Live Flow',  href: '/receptionist/flow',         icon: Zap },
   {
     label: 'AI Suite',   href: '/receptionist/ai-suite',     icon: Bot,

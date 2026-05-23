@@ -36,6 +36,24 @@ export async function processInbound(from: string, text: string, wamid: string):
       })
     }
 
+    // ── 2b. Create or update Lead for unknown contacts ───────────────────────
+    if (!patient) {
+      const existingLead = await prisma.lead.findFirst({
+        where:   { phone: from, status: { notIn: ['CONVERTED', 'LOST'] } },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (!existingLead) {
+        await prisma.lead.create({
+          data: { phone: from, source: 'WHATSAPP', status: 'NEW', stage: 'NEW', lastMessage: text },
+        })
+      } else {
+        await prisma.lead.update({
+          where: { id: existingLead.id },
+          data:  { lastMessage: text },
+        })
+      }
+    }
+
     // ── 3. Save inbound message before calling the agent ─────────────────────
     await prisma.aiMessage.create({
       data: {

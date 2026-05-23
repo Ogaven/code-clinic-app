@@ -95,9 +95,27 @@ export async function processSocialMessage(
       where:   { phoneNumber: senderId, channel, status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
     })
+    const isNew = !conversation
     if (!conversation) {
       conversation = await prisma.aiConversation.create({
         data: { channel, phoneNumber: senderId, status: 'ACTIVE', agentEnabled: true },
+      })
+    }
+
+    // Create or update Lead for this social contact
+    const source = channel // 'FACEBOOK' | 'INSTAGRAM'
+    const existingLead = await prisma.lead.findFirst({
+      where:   { phone: senderId, status: { notIn: ['CONVERTED', 'LOST'] } },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!existingLead) {
+      await prisma.lead.create({
+        data: { phone: senderId, source, status: 'NEW', stage: 'NEW', lastMessage: text },
+      })
+    } else {
+      await prisma.lead.update({
+        where: { id: existingLead.id },
+        data:  { lastMessage: text },
       })
     }
 

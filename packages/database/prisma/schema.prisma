@@ -353,22 +353,27 @@ model StaffPayroll {
 }
 
 model Lead {
-  id          String   @id @default(uuid())
-  name        String
+  id          String   @id @default(cuid())
+  name        String?
   phone       String?
   email       String?
-  source      String   @default("WALK_IN")
-  stage       String   @default("NEW")
+  source      String   // WHATSAPP, FACEBOOK, WEBSITE, INSTAGRAM, WALKIN, OTHER
+  stage       String   @default("NEW")   // kept for quiz/nurture compat
+  status      String   @default("NEW")   // NEW, CONTACTED, QUALIFIED, CONVERTED, LOST
   score       Int      @default(0)
   assignedTo  String?
   quizId      String?
   quizAnswers String?  // JSON string
   notes       String?
+  lastMessage String?
+  convertedToPatientId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   nurtureLogs NurtureLog[]
 
+  @@index([source])
+  @@index([status])
   @@map("leads")
 }
 
