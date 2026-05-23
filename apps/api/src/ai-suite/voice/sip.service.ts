@@ -1,4 +1,16 @@
+import * as dgram         from 'dgram'
+import { spawn }          from 'child_process'
+import { writeFileSync, unlinkSync } from 'fs'
+import { join }           from 'path'
+import { tmpdir }         from 'os'
 import { startVoiceConversation } from './voice-ai.service'
+import {
+  decodePCMUBuffer, encodePCMUBuffer, silencePCMU,
+  upsample8to16k, downsample16to8k,
+  int16ToLE, leToInt16,
+} from './audio-codec'
+import { createConvAISession, getOrCreateAgentId } from './elevenlabs-conv-ai.service'
+import { prisma } from '../../lib/prisma'
 
 // ── drachtio-srf ──────────────────────────────────────────────────────────────
 // drachtio-srf connects to a drachtio-server process which handles SIP signaling.
@@ -10,30 +22,21 @@ import { startVoiceConversation } from './voice-ai.service'
 //       ↕  TCP management (port 9022)
 //   This Node.js process (drachtio-srf)
 //
-// On Railway: run drachtio-server as a sidecar service and set DRACHTIO_HOST to
-// its private hostname. Set SIP_HOST to the Roke trunk IP in drachtio-server's
-// config, not here (this service only talks to drachtio-server, not the trunk).
+// RTP media flow (bidirectional via ElevenLabs ConvAI):
+//   Caller audio  → dgram UDP recv (port 20000) → PCMU decode → 8→16kHz → EL ConvAI WS
+//   EL ConvAI TTS → PCM 16kHz → 16→8kHz → PCMU encode → dgram UDP send → Caller
 
-// Process-level safety net: drachtio-srf creates an internal TCP socket for the
-// management connection. If DNS resolution fails (ENOTFOUND), that socket can
-// emit 'error' before drachtio forwards it to the Srf instance — Node.js would
-// crash the entire process with "Unhandled 'error' event".
-//
-// IMPORTANT: only suppress when DRACHTIO_HOST is actually configured. Checking
-// bare ENOTFOUND without this guard would silence DNS errors from unrelated
-// services (email, SMS, etc.) and flood logs when SIP is disabled.
+// Process-level safety net for drachtio ENOTFOUND errors before drachtio
+// forwards them to the Srf instance — Node.js would crash otherwise.
 process.on('uncaughtException', (err: Error & { code?: string }) => {
   if (process.env.DRACHTIO_HOST &&
       (err.message?.includes('drachtio') || err.code === 'ENOTFOUND')) {
     console.warn('[SIP] Suppressed drachtio connection error:', err.message)
     return
   }
-  // Re-throw everything else — don't swallow real application errors.
   throw err
 })
 
-// drachtio-srf is an optional dependency. Loaded lazily so the server starts
-// normally when the package is not installed — SIP calls just won't connect.
 function loadSrf(): any {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -43,45 +46,33 @@ function loadSrf(): any {
   }
 }
 
-let srf: any = null
-let connected = false
+let srf: any        = null
+let connected       = false
 let _reconnectDelay = 5_000
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
 // ── connectSrf ────────────────────────────────────────────────────────────────
-// Creates a fresh Srf instance and attempts to connect. Listeners are attached
-// synchronously BEFORE srf.connect() so no event can fire without a handler.
-// On error: silences the stale instance (removeAllListeners), logs once, and
-// schedules one retry with exponential backoff (5s → 10s → … → 60s max).
-
 function connectSrf(host: string, port: number, secret: string): void {
-  // Silence and discard the previous instance so its internal retry loop
-  // cannot fire more error events after we've already handled the disconnect.
   if (srf) {
     try { srf.removeAllListeners() } catch { /* ignore */ }
     srf = null
   }
 
   const Srf = loadSrf()
-  if (!Srf) return  // should not happen — checked in initializeSIP
+  if (!Srf) return
 
   srf = new Srf()
 
-  // Attach ALL listeners synchronously before calling srf.connect() so there is
-  // never a window where an event can fire without a registered handler.
   srf.on('connect', (_err: Error | null, hostport: string) => {
     connected = true
-    _reconnectDelay = 5_000  // reset backoff on successful connect
+    _reconnectDelay = 5_000
     if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null }
     console.log(`[SIP] Connected to drachtio-server at ${hostport}`)
   })
 
   srf.on('error', (err: Error) => {
-    // Act on the first error only — removeAllListeners() silences this instance
-    // so drachtio's internal retry loop cannot spam further events.
     connected = false
     console.error(`[SIP] drachtio error: ${err.message} — reconnecting in ${_reconnectDelay / 1000}s`)
-
     try { srf.removeAllListeners() } catch { /* ignore */ }
 
     if (!_reconnectTimer) {
@@ -93,7 +84,6 @@ function connectSrf(host: string, port: number, secret: string): void {
     }
   })
 
-  // Inbound call handler — Roke trunk will INVITE us for calls to 256205477000/1
   srf.invite((req: any, res: any) => {
     handleInboundCall(req, res).catch(err =>
       console.error('[SIP] Inbound call handler error:', err.message)
@@ -116,13 +106,8 @@ function connectSrf(host: string, port: number, secret: string): void {
 }
 
 // ── initializeSIP ─────────────────────────────────────────────────────────────
-// Call once from main.ts after startup.
-// If DRACHTIO_HOST is not configured, returns immediately — no Srf instance is
-// created and no connection is attempted. SIP calls will simply be unavailable.
-
 export function initializeSIP(): void {
   const drachtioHost = process.env.DRACHTIO_HOST
-
   if (!drachtioHost) {
     console.log('[SIP] DRACHTIO_HOST not configured — voice calls disabled')
     return
@@ -134,33 +119,268 @@ export function initializeSIP(): void {
     return
   }
 
-  const drachtioPort   = parseInt(process.env.DRACHTIO_PORT ?? '9022', 10)
-  const drachtioSecret = process.env.DRACHTIO_SECRET ?? 'cymru'
+  const drachtioPort   = parseInt(process.env.DRACHTIO_PORT   ?? '9022', 10)
+  const drachtioSecret = process.env.DRACHTIO_SECRET           ?? 'cymru'
 
   connectSrf(drachtioHost, drachtioPort, drachtioSecret)
 }
 
 // ── formatToE164 ──────────────────────────────────────────────────────────────
-
 export function formatToE164(phone: string): string {
   const cleaned = phone.replace(/[\s\-().+]/g, '')
-  if (cleaned.startsWith('256'))    return cleaned               // already 256XXXXXXXXX
-  if (cleaned.startsWith('0'))      return `256${cleaned.slice(1)}` // 07X… → 256 7X…
-  if (/^[74]/.test(cleaned))        return `256${cleaned}`       // 7X… / 4X… → 256…
+  if (cleaned.startsWith('256'))   return cleaned
+  if (cleaned.startsWith('0'))     return `256${cleaned.slice(1)}`
+  if (/^[74]/.test(cleaned))       return `256${cleaned}`
   return cleaned
 }
 
-// ── makeOutboundCall ──────────────────────────────────────────────────────────
-// Fires a SIP INVITE via drachtio. Calls onConnected() when the remote answers
-// and onHangup() when the call ends or times out (30 s no-answer).
+// ── buildLocalSdp ─────────────────────────────────────────────────────────────
+// G.711 PCMU sendrecv — tells Roke to also send the caller's audio stream so
+// we can pipe it into ElevenLabs ConvAI for real-time STT.
+function buildLocalSdp(): string {
+  const externalIp = process.env.SIP_EXTERNAL_IP || '165.22.81.15'
+  const rtpPort    = parseInt(process.env.SIP_RTP_PORT || '20000', 10)
 
+  return [
+    'v=0',
+    `o=- ${Date.now()} 1 IN IP4 ${externalIp}`,
+    's=Code Clinic Voice',
+    `c=IN IP4 ${externalIp}`,
+    't=0 0',
+    `m=audio ${rtpPort} RTP/AVP 0`,
+    'a=rtpmap:0 PCMU/8000',
+    'a=ptime:20',
+    'a=sendrecv',
+  ].join('\r\n')
+}
+
+// ── buildRtpPacket ────────────────────────────────────────────────────────────
+// Minimal 12-byte RTP header + PCMU payload (no CSRC, no extension).
+function buildRtpPacket(pcmu: Buffer, seq: number, ts: number, ssrc: number): Buffer {
+  const hdr = Buffer.allocUnsafe(12)
+  hdr[0] = 0x80                    // V=2, P=0, X=0, CC=0
+  hdr[1] = 0x00                    // M=0, PT=0 (PCMU)
+  hdr.writeUInt16BE(seq  & 0xFFFF, 2)
+  hdr.writeUInt32BE(ts   >>> 0,    4)
+  hdr.writeUInt32BE(ssrc >>> 0,    8)
+  return Buffer.concat([hdr, pcmu])
+}
+
+// ── parseRemoteSdp ────────────────────────────────────────────────────────────
+function parseRemoteSdp(sdp: string): { ip: string; port: number } | null {
+  const port = parseInt(sdp.match(/m=audio (\d+)/)?.[1] ?? '0', 10)
+  const ip   = sdp.match(/c=IN IP4 ([\d.]+)/)?.[1] ?? ''
+  return ip && port ? { ip, port } : null
+}
+
+// ── startBidirectionalVoiceCall ───────────────────────────────────────────────
+// Full real-time AI voice conversation using ElevenLabs ConvAI:
+//
+//   1. Opens a dgram UDP socket on SIP_RTP_PORT to receive/send RTP
+//   2. Connects to ElevenLabs ConvAI WebSocket
+//   3. Bridges audio bidirectionally every 20ms
+//   4. ConvAI calls our /ai-suite/voice/llm endpoint (Claude + all 16 tools)
+//
+// Falls back to one-way greeting mode if ConvAI is unavailable.
+
+async function startBidirectionalVoiceCall(
+  dialog:      any,
+  callId:      string,
+  callerPhone: string,
+): Promise<void> {
+  const remoteEndp = parseRemoteSdp((dialog.remote?.sdp ?? '') as string)
+
+  if (!remoteEndp) {
+    console.warn('[SIP] Invalid remote SDP — cannot start bidirectional call')
+    try { dialog.destroy() } catch { /* ignore */ }
+    return
+  }
+
+  const { ip: remoteIp, port: remotePort } = remoteEndp
+  const localPort = parseInt(process.env.SIP_RTP_PORT ?? '20000', 10)
+
+  console.log(`[SIP] Bidirectional RTP: 0.0.0.0:${localPort} ↔ ${remoteIp}:${remotePort}`)
+
+  // ── Resolve ElevenLabs agent ─────────────────────────────────────────────
+  const apiKey = process.env.ELEVENLABS_API_KEY
+  if (!apiKey) {
+    console.warn('[SIP] ELEVENLABS_API_KEY not set — falling back to greeting-only mode')
+    return fallbackGreeting(dialog, callId, callerPhone)
+  }
+
+  const voiceId = (await prisma.appSetting.findUnique({ where: { key: 'voice_elevenlabs_id' } }))?.value
+               ?? process.env.ELEVENLABS_VOICE_ID
+               ?? '21m00Tcm4TlvDq8ikWAM'
+
+  const apiUrl  = process.env.APP_URL?.split(',')[0]?.trim() ?? 'https://api.codeclinic.ug'
+  const agentId = await getOrCreateAgentId(prisma, apiKey, voiceId, apiUrl)
+
+  if (!agentId) {
+    console.warn('[SIP] No ElevenLabs agent ID — falling back to greeting-only mode')
+    return fallbackGreeting(dialog, callId, callerPhone)
+  }
+
+  console.log(`[SIP] ConvAI agent_id=${agentId}`)
+
+  // ── RTP send state ───────────────────────────────────────────────────────
+  let   seqNum    = Math.floor(Math.random() * 0xFFFF)
+  let   timestamp = Math.floor(Math.random() * 0xFFFFFFFF)
+  const ssrc      = Math.floor(Math.random() * 0xFFFFFFFF)
+
+  const outChunks: Buffer[] = []   // queue of 160-byte PCMU packets to send
+
+  // ── dgram UDP socket ─────────────────────────────────────────────────────
+  const socket = dgram.createSocket('udp4')
+  let   socketClosed = false
+
+  const safeCloseSocket = () => {
+    if (!socketClosed) { socketClosed = true; try { socket.close() } catch { /* */ } }
+  }
+
+  let rtpTimer: ReturnType<typeof setInterval> | null = null
+
+  // ── ElevenLabs ConvAI session ─────────────────────────────────────────────
+  const convAI = createConvAISession({
+    agentId,
+    apiKey,
+    callMeta: { caller_phone: callerPhone, call_id: callId },
+
+    onAgentAudio(pcm16kLE: Buffer) {
+      // Agent TTS audio arrives as PCM 16kHz LE → downsample → PCMU → queue
+      const pcm16k = leToInt16(pcm16kLE)
+      const pcm8k  = downsample16to8k(pcm16k)
+
+      for (let i = 0; i < pcm8k.length; i += 160) {
+        const slice = pcm8k.slice(i, Math.min(i + 160, pcm8k.length))
+        // Pad last short chunk with silence
+        const chunk = slice.length === 160
+          ? slice
+          : (() => { const p = new Int16Array(160); p.set(slice); return p })()
+        outChunks.push(encodePCMUBuffer(chunk))
+      }
+    },
+
+    onClose() {
+      console.log('[SIP] ConvAI session closed — ending call')
+      if (rtpTimer) { clearInterval(rtpTimer); rtpTimer = null }
+      safeCloseSocket()
+      try { dialog.destroy() } catch { /* ignore */ }
+    },
+
+    onError(err) {
+      console.error('[SIP] ConvAI error:', err.message)
+    },
+  })
+
+  // ── Receive incoming caller RTP → forward to ConvAI ──────────────────────
+  socket.on('message', (packet: Buffer) => {
+    if (packet.length < 12) return
+    const csrcCount    = packet[0] & 0x0F
+    const payloadType  = packet[1] & 0x7F
+    const payloadStart = 12 + csrcCount * 4
+    if (payloadType !== 0 || packet.length <= payloadStart) return  // only PCMU (PT=0)
+
+    const pcmuPayload = packet.subarray(payloadStart)
+    const pcm8k       = decodePCMUBuffer(pcmuPayload)
+    const pcm16k      = upsample8to16k(pcm8k)
+    convAI.sendCallerAudio(int16ToLE(pcm16k))
+  })
+
+  socket.on('error', (err) => {
+    if (!socketClosed) console.error('[SIP] RTP socket error:', err.message)
+  })
+
+  // ── Bind → start 20ms RTP send loop ──────────────────────────────────────
+  socket.bind(localPort, '0.0.0.0', () => {
+    console.log(`[SIP] RTP socket bound on 0.0.0.0:${localPort}`)
+
+    rtpTimer = setInterval(() => {
+      if (socketClosed) return
+      const pcmu   = outChunks.shift() ?? silencePCMU(160)
+      const packet = buildRtpPacket(pcmu, seqNum, timestamp, ssrc)
+
+      socket.send(packet, remotePort, remoteIp, (err) => {
+        if (err && !socketClosed) console.error('[SIP] RTP send error:', err.message)
+      })
+
+      seqNum    = (seqNum + 1) & 0xFFFF
+      timestamp = (timestamp + 160) >>> 0
+    }, 20)
+  })
+
+  // ── Caller hangs up ───────────────────────────────────────────────────────
+  dialog.on('destroy', () => {
+    console.log('[SIP] Remote hung up — tearing down voice session')
+    if (rtpTimer) { clearInterval(rtpTimer); rtpTimer = null }
+    convAI.close()
+    safeCloseSocket()
+  })
+}
+
+// ── fallbackGreeting ──────────────────────────────────────────────────────────
+// One-way mode: generate greeting via ElevenLabs TTS → stream via ffmpeg → hang up.
+async function fallbackGreeting(dialog: any, callId: string, callerPhone: string): Promise<void> {
+  const { audioBuffer } = await startVoiceConversation(callId, callerPhone, 'inbound')
+  if (audioBuffer) {
+    await legacyStreamAudio(dialog, audioBuffer)
+  } else {
+    try { dialog.destroy() } catch { /* ignore */ }
+  }
+}
+
+// ── legacyStreamAudio ─────────────────────────────────────────────────────────
+// ffmpeg-based one-way audio stream (used as fallback when ConvAI unavailable).
+async function legacyStreamAudio(dialog: any, audioBuffer: Buffer): Promise<void> {
+  const remoteSdp  = (dialog.remote?.sdp ?? '') as string
+  const remoteEndp = parseRemoteSdp(remoteSdp)
+
+  if (!remoteEndp) {
+    console.warn('[SIP] legacyStreamAudio — invalid remote SDP')
+    try { dialog.destroy() } catch { /* ignore */ }
+    return
+  }
+
+  const { ip: remoteIp, port: remotePort } = remoteEndp
+  const tmpFile = join(tmpdir(), `voice-${Date.now()}.mp3`)
+  writeFileSync(tmpFile, audioBuffer)
+  console.log(`[SIP] Streaming greeting → ${remoteIp}:${remotePort}`)
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const ff = spawn('ffmpeg', [
+        '-re', '-i', tmpFile,
+        '-ar', '8000', '-ac', '1',
+        '-acodec', 'pcm_mulaw',
+        '-f', 'rtp', `rtp://${remoteIp}:${remotePort}`,
+      ])
+      ff.stderr.on('data', (c: Buffer) => {
+        const l = c.toString().trim(); if (l) console.log('[ffmpeg]', l)
+      })
+      ff.on('close', (code) => {
+        try { unlinkSync(tmpFile) } catch { /* */ }
+        code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`))
+      })
+      ff.on('error', (err) => {
+        try { unlinkSync(tmpFile) } catch { /* */ }
+        reject(err)
+      })
+    })
+    console.log('[SIP] Greeting complete — hanging up')
+    try { dialog.destroy() } catch { /* ignore */ }
+  } catch (err: any) {
+    console.error('[SIP] legacyStreamAudio failed:', err.message)
+    try { dialog.destroy() } catch { /* ignore */ }
+  }
+}
+
+// ── makeOutboundCall ──────────────────────────────────────────────────────────
 export async function makeOutboundCall(
   toNumber:    string,
-  onConnected: () => void,
+  onConnected: (dialog: any) => Promise<void>,
   onHangup:    () => void,
 ): Promise<void> {
   if (!connected || !srf) {
-    console.warn('[SIP] Not connected to drachtio-server — outbound call skipped')
+    console.warn('[SIP] Not connected — outbound call skipped')
     onHangup()
     return
   }
@@ -171,36 +391,21 @@ export async function makeOutboundCall(
   const e164     = formatToE164(toNumber)
   const sipUri   = `sip:${e164}@${sipHost}:${sipPort}`
 
-  // Minimal G.711A (PCMA, payload 8) SDP — drachtio-server fills in the real RTP IP/port
-  const localSdp = [
-    'v=0',
-    `o=- ${Date.now()} 1 IN IP4 0.0.0.0`,
-    's=Code Clinic Voice',
-    'c=IN IP4 0.0.0.0',
-    't=0 0',
-    'm=audio 0 RTP/AVP 8 0',
-    'a=rtpmap:8 PCMA/8000',
-    'a=rtpmap:0 PCMU/8000',
-    'a=fmtp:101 0-15',
-    'a=ptime:20',
-    'a=sendrecv',
-  ].join('\r\n')
-
-  // Guard against calling onHangup() twice (timer race + dialog destroy)
   let hungUp = false
-  const safeHangup = () => {
-    if (!hungUp) { hungUp = true; onHangup() }
-  }
+  const safeHangup = () => { if (!hungUp) { hungUp = true; onHangup() } }
 
-  // 30-second no-answer timeout — starts counting from when we send INVITE
   const noAnswerTimer = setTimeout(() => {
     console.log(`[SIP] No answer from ${e164} after 30s`)
     safeHangup()
   }, 30_000)
 
+  const sipUsername = process.env.SIP_USERNAME
+  const sipPassword = process.env.SIP_PASSWORD
+
   try {
     const dlg = await srf.createUAC(sipUri, {
-      localSdp,
+      localSdp: buildLocalSdp(),
+      ...(sipUsername && sipPassword ? { auth: { username: sipUsername, password: sipPassword } } : {}),
       headers: {
         From:            `<sip:${callerId}@${sipHost}>`,
         'X-Call-Reason': 'Code Clinic AI',
@@ -209,7 +414,10 @@ export async function makeOutboundCall(
 
     clearTimeout(noAnswerTimer)
     console.log(`[SIP] Outbound call connected to ${e164}`)
-    onConnected()
+
+    await onConnected(dlg).catch(err =>
+      console.error('[SIP] onConnected error:', err.message)
+    )
 
     dlg.on('destroy', () => {
       console.log(`[SIP] Call to ${e164} ended`)
@@ -223,23 +431,17 @@ export async function makeOutboundCall(
 }
 
 // ── handleInboundCall ─────────────────────────────────────────────────────────
-// drachtio calls this for every incoming SIP INVITE.
-
 export async function handleInboundCall(req: any, res: any): Promise<void> {
-  // Extract caller's number from the From header URI
-  const fromHeader = req.getParsedHeader('from') as { uri?: { user?: string } } | undefined
+  const fromHeader   = req.getParsedHeader('from') as { uri?: { user?: string } } | undefined
   const callerNumber = fromHeader?.uri?.user ?? 'unknown'
   const callId       = (req.get('call-id') as string | undefined) ?? `call-${Date.now()}`
 
   console.log(`[SIP] Inbound call from ${callerNumber}  call-id=${callId}`)
 
   try {
-    // Answer with G.711A — echo remote SDP for now (drachtio-server handles RTP)
-    const dialog = await srf.createUAS(req, res, {
-      localSdp: req.body as string,
-    })
+    const dialog = await srf.createUAS(req, res, { localSdp: buildLocalSdp() })
 
-    await startVoiceConversation(callId, callerNumber, 'inbound')
+    await startBidirectionalVoiceCall(dialog, callId, callerNumber)
 
     dialog.on('destroy', () => {
       console.log(`[SIP] Inbound call from ${callerNumber} ended`)
@@ -250,6 +452,13 @@ export async function handleInboundCall(req: any, res: any): Promise<void> {
   }
 }
 
-export function isSipConnected(): boolean {
-  return connected
+// ── Public exports ────────────────────────────────────────────────────────────
+
+export { startBidirectionalVoiceCall }
+
+export function isSipConnected(): boolean { return connected }
+
+// Legacy export — voice.routes.ts still imports this; kept for compatibility
+export async function streamAudioToCall(dialog: any, audioBuffer: Buffer): Promise<void> {
+  return legacyStreamAudio(dialog, audioBuffer)
 }

@@ -45,6 +45,7 @@ import aiKnowledgeRouter from './ai-suite/knowledge/knowledge.routes'
 import leadNurtureRouter from './ai-suite/lead-nurture/lead-nurture.routes'
 import debtRouter        from './ai-suite/debt/debt.routes'
 import voiceRouter       from './ai-suite/voice/voice.routes'
+import voiceLlmRouter   from './ai-suite/voice/voice-llm.routes'
 import agentControlRouter from './ai-suite/agent-control/agent-control.routes'
 import facebookRouter    from './ai-suite/facebook/facebook.routes'
 import configRouter      from './ai-suite/config/config.routes'
@@ -197,7 +198,11 @@ app.use('/ai-suite/debt',         debtRouter)
 //                   POST /ai-suite/voice/train
 //                   PUT  /ai-suite/voice/voices/:id/assign
 //                   DELETE /ai-suite/voice/voices/:id
+//                   GET  /ai-suite/voice/agent
+//                   POST /ai-suite/voice/agent/provision
 app.use('/ai-suite/voice',        voiceRouter)
+// Voice LLM:        POST /ai-suite/voice/llm  (ElevenLabs ConvAI custom LLM hook)
+app.use('/ai-suite/voice',        voiceLlmRouter)
 // Agent control:    GET  /ai-suite/agents
 //                   POST /ai-suite/agents/:name/toggle
 //                   GET/POST /ai-suite/agents/escalation

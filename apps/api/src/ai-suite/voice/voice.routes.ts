@@ -1,7 +1,8 @@
 import { Router } from 'express'
 import multer from 'multer'
-import { makeOutboundCall, formatToE164, isSipConnected } from './sip.service'
+import { makeOutboundCall, formatToE164, isSipConnected, streamAudioToCall, startBidirectionalVoiceCall } from './sip.service'
 import { startVoiceConversation } from './voice-ai.service'
+import { provisionCodeClinicAgent, getOrCreateAgentId } from './elevenlabs-conv-ai.service'
 import { sendSMS } from '../sms/sms.service'
 
 import { prisma } from '../../lib/prisma'
@@ -31,10 +32,11 @@ router.post('/call', async (req, res) => {
     // Fire and forget — route responds immediately
     makeOutboundCall(
       toNumber,
-      async () => {
-        // onConnected — start the AI voice session
-        await startVoiceConversation(callId, e164Number, 'outbound')
-          .catch(err => console.error('[Voice] startVoiceConversation error:', err.message))
+      async (dialog) => {
+        // onConnected — start full bidirectional AI conversation via ElevenLabs ConvAI.
+        // Falls back to one-way greeting if ConvAI is unavailable.
+        await startBidirectionalVoiceCall(dialog, callId, e164Number)
+          .catch(err => console.error('[Voice] startBidirectionalVoiceCall error:', err.message))
       },
       async () => {
         // onHangup — send SMS if call never connected (no-answer path)
@@ -193,7 +195,7 @@ router.post('/preview', async (req, res) => {
       headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text,
-        model_id: 'eleven_monolingual_v1',
+        model_id: 'eleven_turbo_v2_5',
         voice_settings: { stability, similarity_boost: similarityBoost },
       }),
     })
@@ -283,6 +285,60 @@ router.delete('/voices/:id', async (req, res) => {
 
     await prisma.voiceProfile.delete({ where: { id: req.params.id } })
     res.json({ success: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── GET /ai-suite/voice/agent ─────────────────────────────────────────────────
+// Returns the current ElevenLabs ConvAI agent config (id + whether it exists).
+
+router.get('/agent', async (_req, res) => {
+  try {
+    const apiKey  = process.env.ELEVENLABS_API_KEY
+    const row     = await prisma.appSetting.findUnique({ where: { key: 'voice_elevenlabs_agent_id' } })
+    const agentId = process.env.ELEVENLABS_AGENT_ID ?? row?.value ?? null
+
+    let agentDetails: any = null
+    if (agentId && apiKey) {
+      const upstream = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${agentId}`, {
+        headers: { 'xi-api-key': apiKey },
+      }).catch(() => null)
+      if (upstream?.ok) agentDetails = await upstream.json()
+    }
+
+    res.json({ agentId, agentDetails, apiKeySet: !!apiKey })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── POST /ai-suite/voice/agent/provision ─────────────────────────────────────
+// Creates (or re-creates) the ElevenLabs ConvAI agent for Code Clinic and
+// stores the agent_id in AppSettings.  Idempotent — safe to call multiple times.
+// Body: { apiUrl? }  — override the LLM endpoint URL
+
+router.post('/agent/provision', async (req, res) => {
+  try {
+    const apiKey = process.env.ELEVENLABS_API_KEY
+    if (!apiKey) return res.status(503).json({ error: 'ELEVENLABS_API_KEY not set' })
+
+    const voiceRow = await prisma.appSetting.findUnique({ where: { key: 'voice_elevenlabs_id' } })
+    const voiceId  = voiceRow?.value ?? process.env.ELEVENLABS_VOICE_ID ?? '21m00Tcm4TlvDq8ikWAM'
+
+    const apiUrl  = (req.body as any)?.apiUrl
+                 ?? process.env.APP_URL?.split(',')[0]?.trim()
+                 ?? 'https://api.codeclinic.ug'
+
+    const agentId = await provisionCodeClinicAgent(apiKey, voiceId, `${apiUrl}/ai-suite/voice/llm`)
+
+    await prisma.appSetting.upsert({
+      where:  { key: 'voice_elevenlabs_agent_id' },
+      update: { value: agentId },
+      create: { key: 'voice_elevenlabs_agent_id', value: agentId },
+    })
+
+    res.json({ success: true, agentId, llmEndpoint: `${apiUrl}/ai-suite/voice/llm` })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
   }
