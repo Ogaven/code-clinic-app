@@ -136,6 +136,14 @@ app.get('/health', async (_req, res) => {
 // ─── Routes ───────────────────────────────────────────────────
 app.use('/auth',         authRouter)
 app.use('/employees',    employeesRouter)
+
+// Google Calendar OAuth callback alias — Google redirects to this URL
+// (integrationsRouter handles /google-calendar/callback internally)
+app.get('/scheduling/google/callback', (req, res, next) => {
+  req.url = '/google-calendar/callback'
+  integrationsRouter(req, res, next)
+})
+
 app.use('/scheduling',   schedulingRouter)
 app.use('/patients',     patientsRouter)
 app.use('/doctors',      doctorsRouter)

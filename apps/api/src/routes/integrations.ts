@@ -12,8 +12,8 @@ const router = Router()
 function getRedirectUri() {
   if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI
   if (process.env.RAILWAY_PUBLIC_DOMAIN)
-    return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/integrations/google-calendar/callback`
-  return 'http://localhost:4000/api/integrations/google-calendar/callback'
+    return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/scheduling/google/callback`
+  return 'https://api.codeclinicemr.com/scheduling/google/callback'
 }
 
 function makeOAuth2Client() {
@@ -78,7 +78,7 @@ function getWebhookAddress(): string | null {
   if (process.env.GOOGLE_WEBHOOK_URL) return process.env.GOOGLE_WEBHOOK_URL
   if (process.env.RAILWAY_PUBLIC_DOMAIN)
     return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/integrations/google-calendar/webhook`
-  return null
+  return 'https://api.codeclinicemr.com/api/integrations/google-calendar/webhook'
 }
 
 async function loadChannel(): Promise<any | null> {
