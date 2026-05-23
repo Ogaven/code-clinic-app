@@ -45,6 +45,87 @@ function parseCSVLine(line: string): string[] {
   return result
 }
 
+const MONTH_MAP: Record<string, string> = {
+  jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
+  jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
+}
+
+function parseDob(raw: string): Date | null {
+  const s = raw?.trim()
+  if (!s) return null
+
+  // Excel serial date (4-5 digit number, e.g. 32831 = 1989-11-06)
+  if (/^\d{4,5}$/.test(s)) {
+    const serial = parseInt(s, 10)
+    // Excel epoch: Dec 30 1899 (accounts for Excel's 1900 leap year bug)
+    const d = new Date(Date.UTC(1899, 11, 30) + serial * 86400000)
+    if (!isNaN(d.getTime()) && d.getFullYear() > 1900 && d.getFullYear() < 2100) return d
+  }
+
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) {
+    const d = new Date(s)
+    if (!isNaN(d.getTime())) return d
+  }
+
+  // DD-MM-YYYY
+  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s)) {
+    const [day, mon, yr] = s.split('-')
+    const d = new Date(`${yr}-${mon.padStart(2,'0')}-${day.padStart(2,'0')}`)
+    if (!isNaN(d.getTime())) return d
+  }
+
+  // MM/DD/YYYY or DD/MM/YYYY — prefer DD/MM for Uganda; if first part > 12 it must be the day
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+    const [a, b, yr] = s.split('/')
+    const ai = parseInt(a), bi = parseInt(b)
+    if (ai > 12) {
+      // a must be day → DD/MM/YYYY
+      const d = new Date(`${yr}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`)
+      if (!isNaN(d.getTime())) return d
+    }
+    // Try MM/DD/YYYY (US)
+    const us = new Date(`${yr}-${a.padStart(2,'0')}-${b.padStart(2,'0')}`)
+    if (!isNaN(us.getTime()) && ai <= 12 && bi <= 31) return us
+    // Try DD/MM/YYYY (Uganda)
+    const ug = new Date(`${yr}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`)
+    if (!isNaN(ug.getTime())) return ug
+  }
+
+  // "Month DD, YYYY" or "Month DD YYYY"
+  const mdy = s.match(/^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})$/)
+  if (mdy) {
+    const mo = MONTH_MAP[mdy[1].toLowerCase().substring(0, 3)]
+    if (mo) {
+      const d = new Date(`${mdy[3]}-${mo}-${mdy[2].padStart(2,'0')}`)
+      if (!isNaN(d.getTime())) return d
+    }
+  }
+
+  // Last resort: native parse (handles many locale-specific formats)
+  const d = new Date(s)
+  if (!isNaN(d.getTime()) && d.getFullYear() > 1900 && d.getFullYear() < 2100) return d
+
+  return null
+}
+
+function normalizePhone(raw: string): string {
+  // Strip spaces, dashes, parentheses but keep leading +
+  const stripped = raw.trim()
+  const digits   = stripped.replace(/\D/g, '')
+  if (stripped.startsWith('+'))          return '+' + digits          // +256... → keep
+  if (digits.startsWith('256') && digits.length >= 12) return '+' + digits  // 256772... → +256772...
+  if (digits.startsWith('0')   && digits.length >= 9)  return '+256' + digits.slice(1)  // 0772... → +256772...
+  return stripped  // unknown format — leave unchanged
+}
+
+function cleanError(msg: string): string {
+  // Strip Prisma boilerplate — keep only the human-readable part
+  const lines = msg.split('\n')
+  const first = lines[0].replace(/^(PrismaClientKnownRequestError|PrismaClientValidationError):\s*/i, '')
+  return first.substring(0, 120)
+}
+
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
 
@@ -227,23 +308,27 @@ router.post('/import-sheet', requireAuth, async (req, res) => {
         const gender    = getField(row, 'gender',    ['gender', 'sex'])
         const address   = getField(row, 'address',   ['address', 'location'])
 
-        if (!firstName || !phone) { skipped++; errors.push(`Row ${i + 1}: missing name or phone`); continue }
+        const normalizedPhone = normalizePhone(phone)
+        if (!firstName || !normalizedPhone) { skipped++; errors.push(`Row ${i + 1}: missing first name or phone`); continue }
 
         let genderEnum: 'MALE' | 'FEMALE' | undefined
         if (gender.toLowerCase().startsWith('m')) genderEnum = 'MALE'
         if (gender.toLowerCase().startsWith('f')) genderEnum = 'FEMALE'
 
-        const existing = await prisma.patient.findFirst({ where: { phone } })
+        // parseDob returns null for invalid dates — never skip a row for bad DOB
+        const dobDate = parseDob(dob) ?? undefined
+
+        const existing = await prisma.patient.findFirst({ where: { phone: normalizedPhone } })
         if (existing) {
           await prisma.patient.update({
             where: { id: existing.id },
             data: {
               firstName,
               lastName: lastName || existing.lastName,
-              email:   email   || existing.email   || undefined,
-              dob:     dob     ? new Date(dob)      : existing.dob   || undefined,
-              gender:  genderEnum                  ?? existing.gender ?? undefined,
-              address: address || existing.address || undefined,
+              email:   email    || existing.email   || undefined,
+              dob:     dobDate  ?? existing.dob     ?? undefined,
+              gender:  genderEnum                   ?? existing.gender ?? undefined,
+              address: address  || existing.address || undefined,
             },
           })
           updated++
@@ -252,9 +337,9 @@ router.post('/import-sheet', requireAuth, async (req, res) => {
             data: {
               firstName,
               lastName: lastName || firstName,
-              phone,
+              phone:    normalizedPhone,
               email:    email   || undefined,
-              dob:      dob     ? new Date(dob) : undefined,
+              dob:      dobDate,
               gender:   genderEnum,
               address:  address || undefined,
               status:   'ACTIVE' as any,
@@ -263,9 +348,9 @@ router.post('/import-sheet', requireAuth, async (req, res) => {
           })
           created++
         }
-      } catch (err: any) { errors.push(`Row ${i + 1}: ${err.message}`); skipped++ }
+      } catch (err: any) { errors.push(`Row ${i + 1}: ${cleanError(err.message)}`); skipped++ }
     }
-    res.json({ created, updated, skipped, total: lines.length - 1, errors: errors.slice(0, 10) })
+    res.json({ created, updated, skipped, total: lines.length - 1, errors })
   } catch (err: any) { res.status(500).json({ error: err.message }) }
 })
 

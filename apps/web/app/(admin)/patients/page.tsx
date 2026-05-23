@@ -99,6 +99,7 @@ export default function PatientsPage() {
   const [sheetStep,        setSheetStep]        = useState<'url' | 'preview' | 'results'>('url')
   const [sheetPreview,     setSheetPreview]     = useState<{ headers: string[]; rows: Record<string, string>[] } | null>(null)
   const [columnMap,        setColumnMap]        = useState<Record<string, string>>({})
+  const [showSkipped,      setShowSkipped]      = useState(false)
   const [uploadingAvatar,  setUploadingAvatar]  = useState(false)
   const [avatarPreview,    setAvatarPreview]    = useState<string | null>(null)
   const [form,             setForm]             = useState(EMPTY_FORM)
@@ -883,7 +884,7 @@ export default function PatientsPage() {
       {/* ── Google Sheets Import Modal (3-step wizard) ───────── */}
       {showSheetModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-2xl p-6">
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-start justify-between mb-4">
               <div>
@@ -1014,9 +1015,12 @@ export default function PatientsPage() {
             {/* Step 3: Results */}
             {sheetStep === 'results' && sheetResult && (
               <>
-                <div className="py-4 text-center">
-                  <div className="text-4xl mb-3">✅</div>
-                  <h3 className="text-base font-black text-gray-800 dark:text-white mb-4">Import Complete</h3>
+                <div className="py-2 text-center">
+                  <div className="text-4xl mb-3">{sheetResult.skipped === sheetResult.total && sheetResult.total > 0 ? '⚠️' : '✅'}</div>
+                  <h3 className="text-base font-black text-gray-800 dark:text-white mb-1">Import Complete</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                    {sheetResult.created} created &nbsp;&middot;&nbsp; {sheetResult.updated} updated &nbsp;&middot;&nbsp; {sheetResult.skipped} skipped
+                  </p>
                   <div className="grid grid-cols-3 gap-3 mb-4">
                     <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3">
                       <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{sheetResult.created}</div>
@@ -1032,15 +1036,25 @@ export default function PatientsPage() {
                     </div>
                   </div>
                   {sheetResult.errors && sheetResult.errors.length > 0 && (
-                    <div className="text-left bg-red-50 dark:bg-red-900/20 rounded-xl p-3 mb-4">
-                      {sheetResult.errors.slice(0, 5).map((e, i) => (
-                        <p key={i} className="text-xs text-red-600 dark:text-red-400">{e}</p>
-                      ))}
+                    <div className="text-left mb-4">
+                      <button
+                        onClick={() => setShowSkipped(v => !v)}
+                        className="text-xs text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 font-medium underline-offset-2 underline transition-colors"
+                      >
+                        {showSkipped ? 'Hide details ▴' : `Show details ▾ (${sheetResult.errors.length} skipped row${sheetResult.errors.length !== 1 ? 's' : ''})`}
+                      </button>
+                      {showSkipped && (
+                        <div className="mt-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 max-h-40 overflow-y-auto">
+                          {sheetResult.errors.map((e, i) => (
+                            <p key={i} className="text-xs text-amber-700 dark:text-amber-400 py-0.5 border-b border-amber-100 dark:border-amber-800/30 last:border-0">{e}</p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
                 <button
-                  onClick={() => { setShowSheetModal(false); setSheetStep('url'); setSheetPreview(null); setSheetResult(null); setSheetUrl('') }}
+                  onClick={() => { setShowSheetModal(false); setSheetStep('url'); setSheetPreview(null); setSheetResult(null); setSheetUrl(''); setShowSkipped(false) }}
                   className="w-full py-2.5 rounded-xl text-sm font-bold text-white"
                   style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
                   Done
