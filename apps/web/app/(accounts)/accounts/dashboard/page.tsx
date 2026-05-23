@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import {
   TrendingUp, TrendingDown, DollarSign, FileText, ShoppingBag, AlertCircle,
-  ChevronRight, CheckCircle,
+  ChevronRight, CheckCircle, RefreshCw, Unplug,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -119,8 +119,11 @@ export default function AccountsDashboardPage() {
   const [now,  setNow]        = useState(new Date())
   const [data, setData]       = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [qbStatus, setQbStatus] = useState<{ connected: boolean; companyName?: string } | null>(null)
-  const [toast, setToast]       = useState('')
+  const [qbStatus, setQbStatus]         = useState<{ connected: boolean; companyName?: string } | null>(null)
+  const [toast, setToast]               = useState('')
+  const [syncing, setSyncing]           = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
@@ -158,6 +161,38 @@ export default function AccountsDashboardPage() {
 
     return () => clearInterval(tick)
   }, [])
+
+  async function handleSync() {
+    setSyncing(true)
+    try {
+      const token = localStorage.getItem('cc_token')
+      await fetch('/api-proxy/accounts/quickbooks/sync', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setToast('QuickBooks cache cleared — refreshing data…')
+      setTimeout(() => setToast(''), 3000)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function handleDisconnect() {
+    setDisconnecting(true)
+    try {
+      const token = localStorage.getItem('cc_token')
+      await fetch('/api-proxy/accounts/quickbooks/disconnect', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setQbStatus({ connected: false })
+      setShowDisconnectModal(false)
+      setToast('QuickBooks disconnected.')
+      setTimeout(() => setToast(''), 3000)
+    } finally {
+      setDisconnecting(false)
+    }
+  }
 
   const greeting    = getGreeting()
   const name        = user?.firstName || 'Accounts'
@@ -213,6 +248,36 @@ export default function AccountsDashboardPage() {
         </div>
       )}
 
+      {/* Disconnect confirmation modal */}
+      {showDisconnectModal && (
+        <div className="fixed inset-0 z-[99998] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <Unplug size={18} className="text-red-500" />
+              </div>
+              <p className="font-bold text-gray-800 dark:text-white text-sm">Disconnect QuickBooks?</p>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-5">
+              This will stop syncing data between Code Clinic and QuickBooks. Your existing records in QuickBooks will remain untouched.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDisconnectModal(false)}
+                className="flex-1 px-4 py-2 rounded-xl text-xs font-semibold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-200 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                className="flex-1 px-4 py-2 rounded-xl text-xs font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-60">
+                {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* ── TOP ROW ── */}
       <div className="relative flex items-end gap-4" style={{ marginBottom: -50 }}>
@@ -225,11 +290,27 @@ export default function AccountsDashboardPage() {
               </h2>
               <p className="text-gray-400 dark:text-blue-300 text-xs mt-0.5">{dateStr}</p>
             </div>
-            {/* QuickBooks button */}
+            {/* QuickBooks button group */}
             {qbStatus?.connected ? (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-400 border border-green-200 dark:border-green-800 flex-shrink-0">
-                <CheckCircle size={13} className="text-green-500" />
-                {qbStatus.companyName || 'QuickBooks'} Connected
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-400 border border-green-200 dark:border-green-800">
+                  <CheckCircle size={13} className="text-green-500" />
+                  {qbStatus.companyName || 'QuickBooks'} Connected
+                </div>
+                <button
+                  onClick={handleSync}
+                  disabled={syncing}
+                  title="Sync from QuickBooks"
+                  className="flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors disabled:opacity-60">
+                  <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
+                  {syncing ? 'Syncing…' : 'Sync'}
+                </button>
+                <button
+                  onClick={() => setShowDisconnectModal(true)}
+                  title="Disconnect QuickBooks"
+                  className="flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-100 transition-colors">
+                  <Unplug size={12} />
+                </button>
               </div>
             ) : (
               <button

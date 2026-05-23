@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth'
 import { requireRole } from '../middleware/rbac'
 import { generateInvoiceNumber, calculateNetPay } from '../services/accounts/ugandaTax'
 import { prisma } from '../lib/prisma'
+import { pushInvoiceToQB, pushPaymentToQB, pushExpenseToQB } from '../services/qbPush'
 
 const router = Router()
 
@@ -184,6 +185,9 @@ router.post('/invoices', requireAuth, async (req: Request, res: Response) => {
     })
 
     res.status(201).json(serialise(invoice))
+
+    // Fire-and-forget QB push (does not block response)
+    pushInvoiceToQB(invoice.id).catch(e => console.error('[QB] Invoice push error:', e))
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: 'Failed to create invoice' })
@@ -263,6 +267,9 @@ router.post('/payments', requireAuth, async (req: Request, res: Response) => {
     }
 
     res.status(201).json(serialise(payment))
+
+    // Fire-and-forget QB push
+    pushPaymentToQB(payment.id).catch(e => console.error('[QB] Payment push error:', e))
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: 'Failed to record payment' })
@@ -307,6 +314,9 @@ router.post('/expenses', requireAuth, requireRole('ADMIN', 'ACCOUNTS'), async (r
       },
     })
     res.status(201).json(serialise(expense))
+
+    // Fire-and-forget QB push
+    pushExpenseToQB(expense.id).catch(e => console.error('[QB] Expense push error:', e))
   } catch (e) {
     res.status(500).json({ error: 'Failed to create expense' })
   }

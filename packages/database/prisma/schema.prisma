@@ -293,6 +293,11 @@ model Invoice {
   status        InvoiceStatus @default(DRAFT)
   dueDate       DateTime?
   notes         String?
+  // QuickBooks sync
+  qbInvoiceId   String?
+  qbCustomerId  String?
+  qbSyncStatus  String?   // PENDING | SYNCED | FAILED
+  qbSyncedAt    DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -304,17 +309,18 @@ model Invoice {
 }
 
 model Payment {
-  id        String   @id @default(uuid())
-  invoiceId String
-  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
-  patientId String
-  patient   Patient  @relation(fields: [patientId], references: [id])
-  amountUGX Int
-  method    String   // CASH | MTN_MOMO | AIRTEL_MONEY | VISA | MASTERCARD | etc
-  reference String?
-  paidAt    DateTime @default(now())
-  notes     String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  amountUGX   Int
+  method      String   // CASH | MTN_MOMO | AIRTEL_MONEY | VISA | MASTERCARD | etc
+  reference   String?
+  paidAt      DateTime @default(now())
+  notes       String?
+  qbPaymentId String?  // QuickBooks payment ID
+  createdAt   DateTime @default(now())
 
   @@map("payments")
 }
@@ -328,6 +334,7 @@ model Expense {
   recordedById String
   recordedBy   User     @relation("RecordedBy", fields: [recordedById], references: [id])
   date         DateTime @default(now())
+  qbPurchaseId String?  // QuickBooks purchase ID
   createdAt    DateTime @default(now())
 
   @@map("expenses")
