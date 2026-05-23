@@ -11,6 +11,8 @@ interface SourceStat {
   thisMonth:  number
 }
 
+const NOT_RECORDED = 'Not Recorded'
+
 const SOURCE_COLORS: Record<string, string> = {
   'Google Search':   '#4285F4',
   'Google Maps':     '#34A853',
@@ -20,7 +22,7 @@ const SOURCE_COLORS: Record<string, string> = {
   'Patient Referral':'#F59E0B',
   'Walk-in':         '#8B5CF6',
   'Other':           '#6B7280',
-  'Unknown':         '#D1D5DB',
+  [NOT_RECORDED]:    '#D1D5DB',
 }
 
 function fmtUGX(n: number) {
@@ -53,8 +55,9 @@ export default function ReferralsPage() {
   const totalThisMonth = stats.reduce((s, x) => s + x.thisMonth, 0)
   const totalRevenue   = stats.reduce((s, x) => s + x.revenue, 0)
 
+  // Chart shows only named sources (Not Recorded isn't an acquisition channel)
   const chartData = stats
-    .filter(s => s.source !== 'Unknown' && s.count > 0)
+    .filter(s => s.source !== NOT_RECORDED && s.count > 0)
     .map(s => ({ name: s.source, count: s.count, color: SOURCE_COLORS[s.source] || '#6B7280' }))
     .sort((a, b) => b.count - a.count)
 
@@ -127,14 +130,19 @@ export default function ReferralsPage() {
             </thead>
             <tbody>
               {stats.map((row, i) => {
+                const isNotRecorded = row.source === NOT_RECORDED
                 const color = SOURCE_COLORS[row.source] || '#6B7280'
                 const pct = totalPatients > 0 ? Math.round((row.count / totalPatients) * 100) : 0
                 return (
-                  <tr key={row.source} className={i % 2 === 0 ? '' : 'bg-gray-50/50'}>
+                  <tr key={row.source} className={isNotRecorded ? 'border-t border-gray-200' : i % 2 === 0 ? '' : 'bg-gray-50/50'}>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
-                        <span className="font-medium text-slate-800">{row.source}</span>
+                        {isNotRecorded ? (
+                          <span className="text-xs font-medium text-gray-400 italic">{row.source}</span>
+                        ) : (
+                          <span className="font-medium text-slate-800">{row.source}</span>
+                        )}
                         <span className="text-[10px] text-slate-400 ml-1">{pct}%</span>
                       </div>
                     </td>
@@ -143,12 +151,22 @@ export default function ReferralsPage() {
                         {row.thisMonth > 0 ? `+${row.thisMonth}` : '—'}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-right font-semibold text-slate-700">{row.count}</td>
-                    <td className="px-5 py-3 text-right font-semibold" style={{ color: '#1A237E' }}>{fmtUGX(row.revenue)}</td>
+                    <td className={`px-5 py-3 text-right font-semibold ${isNotRecorded ? 'text-gray-400' : 'text-slate-700'}`}>{row.count}</td>
+                    <td className="px-5 py-3 text-right font-semibold" style={{ color: isNotRecorded ? '#9CA3AF' : '#1A237E' }}>{fmtUGX(row.revenue)}</td>
                   </tr>
                 )
               })}
             </tbody>
+            <tfoot>
+              <tr className="bg-gray-50 border-t-2 border-gray-200">
+                <td className="px-5 py-3 text-xs font-black uppercase tracking-widest text-gray-500">Total</td>
+                <td className="px-5 py-3 text-right font-black text-slate-700">
+                  {totalThisMonth > 0 ? `+${totalThisMonth}` : '—'}
+                </td>
+                <td className="px-5 py-3 text-right font-black text-slate-700">{totalPatients}</td>
+                <td className="px-5 py-3 text-right font-black" style={{ color: '#1A237E' }}>{fmtUGX(totalRevenue)}</td>
+              </tr>
+            </tfoot>
           </table>
         )}
       </div>

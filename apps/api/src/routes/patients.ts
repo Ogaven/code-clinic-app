@@ -380,18 +380,26 @@ router.get('/referral-stats', requireAuth, async (_req, res) => {
       },
     })
 
+    const NOT_RECORDED = 'Not Recorded'
     const statsMap: Record<string, { count: number; revenue: number; thisMonth: number }> = {}
     for (const p of patients) {
-      const src = p.referralSource || 'Unknown'
+      // NULL and empty-string both go to 'Not Recorded' — kept separate from named sources
+      const src = p.referralSource?.trim() || NOT_RECORDED
       if (!statsMap[src]) statsMap[src] = { count: 0, revenue: 0, thisMonth: 0 }
       statsMap[src].count++
       statsMap[src].revenue += p.invoices.reduce((s, inv) => s + Number(inv.paidUGX), 0)
       if (new Date(p.createdAt) >= startOfMonth) statsMap[src].thisMonth++
     }
 
-    const stats = Object.entries(statsMap)
+    // Named sources sorted by count descending; 'Not Recorded' always last
+    const named = Object.entries(statsMap)
+      .filter(([src]) => src !== NOT_RECORDED)
       .map(([source, d]) => ({ source, ...d }))
       .sort((a, b) => b.count - a.count)
+    const notRecorded = statsMap[NOT_RECORDED]
+    const stats = notRecorded
+      ? [...named, { source: NOT_RECORDED, ...notRecorded }]
+      : named
 
     res.json({ stats })
   } catch { res.status(500).json({ error: 'Failed to fetch referral stats' }) }
