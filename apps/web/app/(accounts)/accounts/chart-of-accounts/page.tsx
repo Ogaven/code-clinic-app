@@ -5,6 +5,16 @@ import { RefreshCw, AlertCircle } from 'lucide-react'
 const TABS = ['All', 'Asset', 'Liability', 'Income', 'Expense', 'Equity'] as const
 type Tab = typeof TABS[number]
 
+// QB Classification uses "Revenue" for income accounts — map our label accordingly
+const TAB_KEYWORDS: Record<Tab, string[]> = {
+  All:       [],
+  Asset:     ['asset'],
+  Liability: ['liability'],
+  Income:    ['income', 'revenue'],   // QB stores as "Revenue"
+  Expense:   ['expense'],
+  Equity:    ['equity'],
+}
+
 function QBConnect() {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -34,29 +44,62 @@ export default function ChartOfAccountsPage() {
   const [accounts, setAccounts]   = useState<any[]>([])
   const [loading, setLoading]     = useState(true)
   const [tab, setTab]             = useState<Tab>('All')
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   const tok = () => typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   async function load() {
     setLoading(true)
+    setFetchError(null)
     try {
-      const st = await fetch('/api-proxy/accounts/quickbooks/status', { headers: { Authorization: `Bearer ${tok()}` } }).then(r => r.json())
+      const st = await fetch('/api-proxy/accounts/quickbooks/status', {
+        headers: { Authorization: `Bearer ${tok()}` },
+      }).then(r => r.json())
       setConnected(st.connected)
       if (!st.connected) { setLoading(false); return }
-      const res = await fetch('/api-proxy/accounts/quickbooks/chart-of-accounts', { headers: { Authorization: `Bearer ${tok()}` } }).then(r => r.json())
-      setAccounts(res.data || [])
-    } catch {}
+
+      const raw = await fetch('/api-proxy/accounts/quickbooks/chart-of-accounts', {
+        headers: { Authorization: `Bearer ${tok()}` },
+      })
+      const res = await raw.json()
+      console.log('[Chart of Accounts] raw response:', res)
+
+      if (!raw.ok || res.error) {
+        setFetchError(res.error || `HTTP ${raw.status}`)
+      } else {
+        setAccounts(res.data || [])
+      }
+    } catch (e: any) {
+      console.error('[Chart of Accounts] fetch error:', e)
+      setFetchError(e?.message || 'Failed to load accounts')
+    }
     setLoading(false)
   }
 
   useEffect(() => { load() }, [])
 
-  const filtered = tab === 'All' ? accounts : accounts.filter(a =>
-    (a.Classification || a.AccountType || '').toLowerCase().includes(tab.toLowerCase())
-  )
+  const keywords = TAB_KEYWORDS[tab]
+  const filtered = tab === 'All'
+    ? accounts
+    : accounts.filter(a => {
+        const haystack = `${a.Classification || ''} ${a.AccountType || ''}`.toLowerCase()
+        return keywords.some(kw => haystack.includes(kw))
+      })
 
   if (connected === null || loading) return <Skeleton />
   if (!connected) return <QBConnect />
+
+  if (fetchError) return (
+    <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
+      <AlertCircle size={32} className="text-red-400" />
+      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Failed to load accounts</p>
+      <p className="text-xs text-gray-400 max-w-xs">{fetchError}</p>
+      <button onClick={load}
+        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-clinic-navy text-white hover:bg-blue-900 transition-colors">
+        <RefreshCw size={12} /> Retry
+      </button>
+    </div>
+  )
 
   return (
     <div className="space-y-4">

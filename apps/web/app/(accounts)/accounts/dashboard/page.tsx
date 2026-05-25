@@ -243,7 +243,7 @@ export default function AccountsDashboardPage() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed top-4 right-4 z-[99999] bg-amber-600 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold max-w-xs">
+        <div className="fixed top-4 right-4 z-50 bg-amber-600 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold max-w-xs">
           {toast}
         </div>
       )}
@@ -281,18 +281,17 @@ export default function AccountsDashboardPage() {
 
       {/* ── TOP ROW ── */}
       <div className="relative flex items-end gap-4" style={{ marginBottom: -50 }}>
-        {/* Greeting + QuickBooks */}
+        {/* Greeting — left column; QB buttons sit below greeting text, well left of the clock */}
         <div className="flex-1 pb-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-clinic-navy dark:text-white text-xl font-bold leading-tight" style={{ fontFamily: 'Plus Jakarta Sans' }}>
-                {greeting}, {name}! 👋
-              </h2>
-              <p className="text-gray-400 dark:text-blue-300 text-xs mt-0.5">{dateStr}</p>
-            </div>
-            {/* QuickBooks button group */}
+          <h2 className="text-clinic-navy dark:text-white text-xl font-bold leading-tight" style={{ fontFamily: 'Plus Jakarta Sans' }}>
+            {greeting}, {name}! 👋
+          </h2>
+          <p className="text-gray-400 dark:text-blue-300 text-xs mt-0.5">{dateStr}</p>
+
+          {/* QuickBooks controls — own row below greeting */}
+          <div className="mt-3 flex items-center gap-1.5 flex-wrap">
             {qbStatus?.connected ? (
-              <div className="flex items-center gap-1.5 flex-shrink-0">
+              <>
                 <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-400 border border-green-200 dark:border-green-800">
                   <CheckCircle size={13} className="text-green-500" />
                   {qbStatus.companyName || 'QuickBooks'} Connected
@@ -311,14 +310,14 @@ export default function AccountsDashboardPage() {
                   className="flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-100 transition-colors">
                   <Unplug size={12} />
                 </button>
-              </div>
+              </>
             ) : (
               <button
                 onClick={() => {
                   const token = localStorage.getItem('cc_token')
                   window.location.href = `/api-proxy/accounts/quickbooks/connect?token=${token}`
                 }}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-white flex-shrink-0 transition-all hover:-translate-y-0.5 hover:shadow-md"
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
                 style={{ background: 'linear-gradient(135deg,#2CA01C,#4DB629)', boxShadow: '0 4px 12px rgba(44,160,28,0.3)' }}>
                 <QBLogo size={22} />
                 Connect QuickBooks

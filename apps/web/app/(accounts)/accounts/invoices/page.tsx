@@ -94,8 +94,11 @@ export default function InvoicesPage() {
     try {
       const res  = await fetch('/api-proxy/accounts/quickbooks/invoices', { headers: { Authorization: `Bearer ${tok()}` } })
       const data = await res.json()
+      console.log('[QB Invoices] raw response:', data)
       setQbInvoices(data.data || [])
-    } catch {}
+    } catch (e) {
+      console.error('[QB Invoices] fetch error:', e)
+    }
     setQbLoading(false)
   }, [qbConnected])
 
