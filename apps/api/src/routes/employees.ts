@@ -188,6 +188,34 @@ router.post('/:id/avatar', requireAuth, uploadLimiter,
   },
 )
 
+// DELETE /employees/:id — hard delete (admin only, blocked if doctor has appointments)
+router.delete('/:id', requireAuth, adminOnly, auditLog('employees'), async (req, res) => {
+  const { id } = req.params
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: { doctor: { select: { id: true } } },
+    })
+    if (!user) { res.status(404).json({ error: 'Employee not found' }); return }
+
+    // Block deletion if doctor has appointments (preserves patient records)
+    if (user.doctor) {
+      const apptCount = await prisma.appointment.count({ where: { doctorId: user.doctor.id } })
+      if (apptCount > 0) {
+        res.status(409).json({
+          error: `This doctor has ${apptCount} appointment${apptCount === 1 ? '' : 's'} on record. Deactivate their account instead to preserve history.`,
+        })
+        return
+      }
+    }
+
+    await prisma.user.delete({ where: { id } })
+    res.json({ deleted: true })
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Delete failed' })
+  }
+})
+
 // DELETE /employees/:id/avatar
 router.delete('/:id/avatar', requireAuth, async (req, res) => {
   const { id } = req.params

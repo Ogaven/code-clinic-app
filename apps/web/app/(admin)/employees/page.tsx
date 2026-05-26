@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Shield, CheckCircle, XCircle, Mail, Pencil, UserX, UserCheck } from 'lucide-react'
+import { Plus, Shield, CheckCircle, XCircle, Mail, Pencil, UserX, UserCheck, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
 
@@ -20,10 +20,13 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 export default function EmployeesPage() {
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [showAdd, setShowAdd]     = useState(false)
-  const [editing, setEditing]     = useState<Employee | null>(null)
+  const [employees, setEmployees]     = useState<Employee[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [showAdd, setShowAdd]         = useState(false)
+  const [editing, setEditing]         = useState<Employee | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
+  const [deleteError, setDeleteError]   = useState<string | null>(null)
+  const [deleting, setDeleting]         = useState(false)
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   useEffect(() => {
@@ -45,6 +48,21 @@ export default function EmployeesPage() {
       body: JSON.stringify({ isActive: newStatus }),
     })
     setEmployees(es => es.map(e => e.id === emp.id ? { ...e, isActive: newStatus } : e))
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    setDeleting(true); setDeleteError(null)
+    try {
+      const res  = await fetch(`/api-proxy/employees/${deleteTarget.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (!res.ok) { setDeleteError(data.error || 'Delete failed'); return }
+      setEmployees(es => es.filter(e => e.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    } catch { setDeleteError('Network error') } finally { setDeleting(false) }
   }
 
   return (
@@ -83,6 +101,12 @@ export default function EmployeesPage() {
               className="absolute top-3 right-3 w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-clinic-blue hover:text-white text-gray-500 dark:text-gray-300"
               title="Edit member">
               <Pencil size={13} />
+            </button>
+            <button
+              onClick={() => { setDeleteTarget(emp); setDeleteError(null) }}
+              className="absolute top-3 right-11 w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 text-gray-500 dark:text-gray-300"
+              title="Delete member">
+              <Trash2 size={13} />
             </button>
             <button
               onClick={() => handleToggleActive(emp)}
@@ -164,6 +188,50 @@ export default function EmployeesPage() {
           onSaved={handleUpdated}
           token={token}
         />
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-40" onClick={() => { setDeleteTarget(null); setDeleteError(null) }} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl animate-fade-in p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
+                  <Trash2 size={18} className="text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white text-sm">Delete staff member?</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {deleteTarget.role === 'DOCTOR' ? 'Dr. ' : ''}{deleteTarget.firstName} {deleteTarget.lastName}
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 leading-relaxed">
+                This will permanently delete their account and cannot be undone.
+                {deleteTarget.role === 'DOCTOR' && ' If this doctor has appointments, deactivate instead.'}
+              </p>
+              {deleteError && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 text-red-700 dark:text-red-400 text-xs rounded-xl px-4 py-3 mb-4 leading-relaxed">
+                  {deleteError}
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setDeleteTarget(null); setDeleteError(null) }}
+                  className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 text-sm rounded-xl hover:bg-gray-50 dark:hover:bg-white/5">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl disabled:opacity-60 transition-colors">
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { ChevronLeft, ChevronRight, RefreshCw, X, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -291,6 +292,90 @@ function TimeCol({ width }: { width: number }) {
   )
 }
 
+// ─── Appointment Detail Modal ─────────────────────────────────────────────────
+function ApptDetailModal({ appt, onClose }: { appt: Appointment; onClose: () => void }) {
+  const colour   = appt.service.colour || '#29ABE2'
+  const initials = `${appt.patient.firstName[0] || ''}${appt.patient.lastName[0] || ''}`
+  const ring     = STATUS_RING[appt.status] || '#9CA3AF'
+  const dateLabel = new Date(appt.startAt).toLocaleDateString('en-UG', {
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-[#0e1f3d] rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in"
+        onClick={e => e.stopPropagation()}>
+
+        {/* Coloured header */}
+        <div className="px-5 py-4 flex items-center gap-3"
+          style={{ background: colour + '18', borderBottom: `2px solid ${colour}30` }}>
+          <div className="w-12 h-12 rounded-full flex items-center justify-center text-white text-base font-bold flex-shrink-0"
+            style={{ background: `linear-gradient(135deg,${colour},${colour}bb)` }}>
+            {initials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-gray-900 dark:text-white truncate text-sm">
+              {appt.patient.firstName} {appt.patient.lastName}
+            </p>
+            {appt.patient.phone ? (
+              <a href={`tel:${appt.patient.phone}`}
+                className="text-xs text-gray-400 hover:text-clinic-blue dark:hover:text-blue-400 transition-colors">
+                📞 {appt.patient.phone}
+              </a>
+            ) : (
+              <span className="text-xs text-gray-400">No phone on record</span>
+            )}
+          </div>
+          <button onClick={onClose}
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors flex-shrink-0">
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* Details */}
+        <div className="px-5 py-4 space-y-3">
+          {/* Service + Status */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full text-white"
+              style={{ background: colour }}>
+              {appt.service.name}
+            </span>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
+              style={{ background: ring + '20', color: ring }}>
+              {appt.status.replace(/_/g, ' ')}
+            </span>
+          </div>
+
+          {/* Date & Time */}
+          <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+            <span className="text-gray-400 text-base">📅</span>
+            <span className="font-medium">{dateLabel}</span>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
+            <span className="text-gray-500 dark:text-gray-400">{fmtTime(appt.startAt)} – {fmtTime(appt.endAt)}</span>
+          </div>
+
+          {/* Notes */}
+          {appt.notes && (
+            <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2.5 leading-relaxed">
+              💬 {appt.notes}
+            </div>
+          )}
+        </div>
+
+        {/* View Full Profile */}
+        <div className="px-5 pb-5">
+          <Link href={`/doctor/patients/${appt.patient.id}`}
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-90"
+            style={{ background: `linear-gradient(135deg,${colour},${colour}cc)` }}
+            onClick={onClose}>
+            View Full Profile →
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Doctors View ─────────────────────────────────────────────────────────────
 function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay, workingHours, resizing, onApptResizeStart, onApptResizeTouchStart }: {
   columns:                  DoctorCol[]
@@ -327,7 +412,7 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
   }
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto min-h-0">
       {closedToast && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold text-white shadow-xl bg-red-500 pointer-events-none">
           🚫 This day is closed
@@ -487,7 +572,7 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
   }
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto min-h-0">
       {closedToast && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold text-white shadow-xl bg-red-500 pointer-events-none">
           🚫 This day is closed
@@ -577,7 +662,7 @@ function MonthView({ year, month, appointments, onDateClick, workingHours }: {
   const closedDays = new Set(workingHours?.filter(w => !w.isOpen).map(w => w.dayOfWeek) ?? [])
 
   return (
-    <div className="flex-1 overflow-auto p-3">
+    <div className="flex-1 overflow-auto min-h-0 p-3">
       <div className="grid grid-cols-7 gap-1 mb-1">
         {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d) => (
           <div key={d} className={cn('text-center text-xs font-bold py-1', d === 'Sun' ? 'text-red-300' : 'text-gray-400')}>{d}</div>
@@ -660,6 +745,13 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     originalEndAt: string
     currentEndAt: string
   } | null>(null)
+  const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
+
+  // Internal appointment click — shows popup and forwards to external handler if provided
+  function handleApptClick(appt: Appointment) {
+    setSelectedAppt(appt)
+    onClickAppointment?.(appt)
+  }
 
   useEffect(() => { dateRef.current = date }, [date])
 
@@ -972,7 +1064,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           columns={columns}
           dateStr={toDateStr(date)}
           onBookSlot={onBookSlot}
-          onClickAppointment={onClickAppointment}
+          onClickAppointment={handleApptClick}
           onBlockClick={(doctorId, blockId) => setRemoveBlock({ doctorId, blockId })}
           onSlotDragStart={handleSlotDragStart}
           onSlotDragMove={handleSlotDragMove}
@@ -988,7 +1080,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           weekDates={getWeekDates(date)}
           appointments={weekAppts}
           onBookSlot={onBookSlot}
-          onClickAppointment={onClickAppointment}
+          onClickAppointment={handleApptClick}
           workingHours={workingHours}
         />
       )}
@@ -1022,6 +1114,11 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Appointment Detail Popup ─────────────────────────────────────────── */}
+      {selectedAppt && (
+        <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} />
       )}
 
       {/* ── Block Time Modal ──────────────────────────────────────────────────── */}

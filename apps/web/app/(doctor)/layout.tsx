@@ -270,7 +270,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       {/* ── Main ─────────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
-        <header className="h-14 flex items-center gap-2 px-4 bg-white dark:bg-[#0d1526]/80 dark:backdrop-blur-md border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0 z-20">
+        <header className="h-14 flex items-center gap-2 px-4 bg-white dark:bg-[#0d1526]/80 dark:backdrop-blur-md border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0 relative z-40">
 
           <button onClick={() => setDrawer(true)}
             className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors text-gray-500 dark:text-white/60">
