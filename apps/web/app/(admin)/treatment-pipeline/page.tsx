@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban } from 'lucide-react'
+import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,6 +74,7 @@ export default function TreatmentPipelinePage() {
   const [loading,  setLoading]  = useState(true)
   const [dragId,   setDragId]   = useState<string | null>(null)
   const [dropOver, setDropOver] = useState<string | null>(null)
+  const [movePlan, setMovePlan] = useState<Plan | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -97,6 +98,27 @@ export default function TreatmentPipelinePage() {
   }
 
   const handleDragEnd = () => { setDragId(null); setDropOver(null) }
+
+  // Move via modal (touch fallback)
+  async function handleMove(planId: string, targetStage: string) {
+    const plan = plans.find(p => p.id === planId)
+    if (!plan || plan.stage === targetStage) { setMovePlan(null); return }
+
+    // Optimistic update
+    setPlans(prev => prev.map(p => p.id === planId ? { ...p, stage: targetStage } : p))
+    setMovePlan(null)
+
+    try {
+      await fetch(`${API}/pipeline/treatment/${planId}/stage`, {
+        method:  'PATCH',
+        headers: authH as any,
+        body:    JSON.stringify({ stage: targetStage }),
+      })
+    } catch {
+      // Revert on failure
+      setPlans(prev => prev.map(p => p.id === planId ? { ...p, stage: plan.stage } : p))
+    }
+  }
 
   const handleDragOver = (e: React.DragEvent, stageId: string) => {
     e.preventDefault()
@@ -138,7 +160,7 @@ export default function TreatmentPipelinePage() {
     <div className="flex flex-col h-full gap-5">
 
       {/* ── Metrics strip ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 flex-shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-shrink-0">
         <MetricCard
           label="Presented This Month"
           value={metrics ? fmtUGX(metrics.totalPresentedMonth) : '—'}
@@ -187,8 +209,11 @@ export default function TreatmentPipelinePage() {
           <p className="text-xs mt-1 text-gray-300">Plans appear here once added from a patient's clinical tab</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-x-auto pb-4 -mx-1 px-1">
-          <div className="flex gap-3 h-full" style={{ minWidth: `${STAGES.length * 292}px` }}>
+        <div
+          className="flex-1 overflow-x-auto pb-4 -mx-1 px-1 scrollbar-hide"
+          style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+        >
+          <div className="flex flex-col sm:flex-row gap-3 sm:h-full">
             {STAGES.map(stage => {
               const stagePlans = plansByStage(stage.id)
               const total      = stageTotal(stage.id)
@@ -197,9 +222,8 @@ export default function TreatmentPipelinePage() {
               return (
                 <div
                   key={stage.id}
-                  className="flex flex-col rounded-2xl overflow-hidden flex-shrink-0 transition-all duration-150"
+                  className="flex flex-col rounded-2xl overflow-hidden w-full sm:flex-shrink-0 sm:w-[280px] transition-all duration-150"
                   style={{
-                    width:     280,
                     background: isOver ? '#F0F9FF' : '#F9FAFB',
                     border:    `1px solid ${isOver ? '#BAE6FD' : '#E5E7EB'}`,
                     boxShadow: isOver ? '0 0 0 2px #29ABE2' : 'none',
@@ -244,7 +268,7 @@ export default function TreatmentPipelinePage() {
                   </div>
 
                   {/* Cards */}
-                  <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                  <div className="sm:flex-1 sm:overflow-y-auto p-2 space-y-2">
                     {stagePlans.length === 0 && (
                       <div
                         className="h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-xs text-gray-300"
@@ -260,6 +284,7 @@ export default function TreatmentPipelinePage() {
                         isDragging={dragId === plan.id}
                         onDragStart={handleDragStart}
                         onDragEnd={handleDragEnd}
+                        onMove={() => setMovePlan(plan)}
                       />
                     ))}
                   </div>
@@ -268,6 +293,15 @@ export default function TreatmentPipelinePage() {
             })}
           </div>
         </div>
+      )}
+
+      {/* ── Move modal (touch fallback) ────────────────────────────────── */}
+      {movePlan && (
+        <MoveModal
+          plan={movePlan}
+          onMove={handleMove}
+          onClose={() => setMovePlan(null)}
+        />
       )}
     </div>
   )
@@ -280,11 +314,13 @@ function PlanCard({
   isDragging,
   onDragStart,
   onDragEnd,
+  onMove,
 }: {
   plan:        Plan
   isDragging:  boolean
   onDragStart: (e: React.DragEvent, id: string) => void
   onDragEnd:   () => void
+  onMove:      () => void
 }) {
   const borderColor = urgencyBorderColor(plan.daysSince, plan.stage)
   const urgentText  = plan.daysSince > 14
@@ -300,7 +336,6 @@ function PlanCard({
       onDragEnd={onDragEnd}
       className="bg-white rounded-xl p-3 select-none transition-all duration-150"
       style={{
-        borderLeft:  `3px solid ${borderColor}`,
         boxShadow:   isDragging
           ? '0 8px 20px rgba(0,0,0,0.15)'
           : '0 1px 3px rgba(0,0,0,0.06)',
@@ -312,10 +347,10 @@ function PlanCard({
     >
       {/* Patient */}
       <div className="flex items-start justify-between gap-1 mb-1">
-        <p className="text-xs font-bold text-gray-900 leading-tight">
+        <p className="text-sm font-bold text-gray-900 leading-tight">
           {plan.patient.firstName} {plan.patient.lastName}
         </p>
-        <span className="text-[10px] font-mono text-gray-400 flex-shrink-0">
+        <span className="text-[10px] font-mono text-gray-400 flex-shrink-0 mt-0.5">
           {fmtCC(plan.patient.patientNumber)}
         </span>
       </div>
@@ -333,12 +368,81 @@ function PlanCard({
         {fmtUGX(plan.value)}
       </p>
 
-      {/* Doctor + age */}
-      <div className="flex items-center justify-between">
+      {/* Doctor + days + Move button */}
+      <div className="flex items-center justify-between gap-1">
         <p className="text-[10px] text-gray-400 truncate flex-1">{plan.doctorName}</p>
-        <span className={`text-[10px] font-semibold flex-shrink-0 ml-1 ${urgentText}`}>
+        <span className={`text-[10px] font-semibold flex-shrink-0 ${urgentText}`}>
           {plan.daysSince}d
         </span>
+        <button
+          onClick={e => { e.stopPropagation(); onMove() }}
+          onDragStart={e => e.stopPropagation()}
+          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-gray-400 hover:text-clinic-blue hover:bg-blue-50 transition-colors flex-shrink-0"
+          title="Move to another stage"
+        >
+          <ArrowLeftRight size={10} />
+          <span className="hidden sm:inline">Move</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Move modal (touch / keyboard fallback) ────────────────────────────────────
+
+function MoveModal({
+  plan,
+  onMove,
+  onClose,
+}: {
+  plan:    Plan
+  onMove:  (planId: string, stage: string) => void
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between px-4 pt-4 pb-3 border-b border-gray-100">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-gray-900">Move to stage</p>
+            <p className="text-xs text-gray-500 truncate mt-0.5">
+              {plan.patient.firstName} {plan.patient.lastName} · {plan.treatmentName}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-3 w-7 h-7 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 transition-colors flex-shrink-0"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Stage list */}
+        <div className="p-3 space-y-1 max-h-[60vh] overflow-y-auto">
+          {STAGES.filter(s => s.id !== plan.stage).map(stage => (
+            <button
+              key={stage.id}
+              onClick={() => onMove(plan.id, stage.id)}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
+            >
+              <span
+                className="w-3 h-3 rounded-full flex-shrink-0"
+                style={{ background: stage.headerColor }}
+              />
+              <span className="text-sm font-medium text-gray-700">{stage.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Safe-area spacer on iOS */}
+        <div className="h-safe-bottom sm:hidden" style={{ height: 'env(safe-area-inset-bottom)' }} />
       </div>
     </div>
   )
