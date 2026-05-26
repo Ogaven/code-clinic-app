@@ -204,11 +204,13 @@ async function startBidirectionalVoiceCall(
 
   console.log(`[SIP] Bidirectional RTP: 0.0.0.0:${localPort} ↔ ${liveRemote.ip}:${liveRemote.port}`)
 
-  // Wire up re-INVITE updates so RTP starts flowing to the real address
+  // Wire up re-INVITE updates so RTP starts flowing to the real address.
+  // Registered BEFORE any await so we never miss a re-INVITE that arrives
+  // while getOrCreateAgentId is resolving.
   dialog.on('modify', (modReq: any) => {
     const newEndp = parseRemoteSdp((modReq.body as string | undefined) ?? '')
     if (newEndp && newEndp.ip !== '0.0.0.0' && newEndp.port > 0) {
-      console.log(`[SIP] re-INVITE — updating RTP destination to ${newEndp.ip}:${newEndp.port}`)
+      console.log(`[SIP] re-INVITE — updating RTP target to ${newEndp.ip}:${newEndp.port}`)
       liveRemote.ip   = newEndp.ip
       liveRemote.port = newEndp.port
     }
@@ -241,6 +243,10 @@ async function startBidirectionalVoiceCall(
   const ssrc      = Math.floor(Math.random() * 0xFFFFFFFF)
 
   const outChunks: Buffer[] = []   // queue of 160-byte PCMU packets to send
+
+  // Guard against double-destroy: set when the caller hangs up first so
+  // the ConvAI onClose callback doesn't try to destroy an already-gone dialog.
+  let callEnded = false
 
   // ── dgram UDP socket ─────────────────────────────────────────────────────
   const socket = dgram.createSocket('udp4')
@@ -277,7 +283,11 @@ async function startBidirectionalVoiceCall(
       console.log('[SIP] ConvAI session closed — ending call')
       if (rtpTimer) { clearInterval(rtpTimer); rtpTimer = null }
       safeCloseSocket()
-      try { dialog.destroy() } catch { /* ignore */ }
+      // Only destroy the dialog if the caller hasn't already hung up — otherwise
+      // drachtio throws "unable to find dialog" because the dialog is already gone.
+      if (!callEnded) {
+        try { dialog.destroy() } catch { /* ignore */ }
+      }
     },
 
     onError(err) {
@@ -286,7 +296,18 @@ async function startBidirectionalVoiceCall(
   })
 
   // ── Receive incoming caller RTP → forward to ConvAI ──────────────────────
-  socket.on('message', (packet: Buffer) => {
+  // rinfo carries the actual source IP:port of the UDP packet.  Roke may send
+  // c=IN IP4 0.0.0.0 in the initial INVITE SDP (delayed media / hold placeholder)
+  // but it still sends RTP from its real IP — we learn that real address here.
+  socket.on('message', (packet: Buffer, rinfo: dgram.RemoteInfo) => {
+    // Auto-learn real remote RTP target from first incoming packet
+    if ((liveRemote.ip === '0.0.0.0' || liveRemote.port === 0) &&
+        rinfo.address && rinfo.address !== '0.0.0.0' && rinfo.port > 0) {
+      console.log(`[SIP] Auto-learned RTP target from first packet: ${rinfo.address}:${rinfo.port}`)
+      liveRemote.ip   = rinfo.address
+      liveRemote.port = rinfo.port
+    }
+
     if (packet.length < 12) return
     const csrcCount    = packet[0] & 0x0F
     const payloadType  = packet[1] & 0x7F
@@ -307,17 +328,39 @@ async function startBidirectionalVoiceCall(
   socket.bind(localPort, '0.0.0.0', () => {
     console.log(`[SIP] RTP socket bound on 0.0.0.0:${localPort}`)
 
+    // Tracks whether we've started sending — used to flush stale queued audio
+    // the first time the real remote address becomes available.
+    let rtpSending = false
+
     rtpTimer = setInterval(() => {
       if (socketClosed) return
+
+      const canSend = liveRemote.port > 0 && liveRemote.ip !== '0.0.0.0'
+
+      if (!canSend) {
+        // Still waiting for real RTP target — keep consuming queue so it doesn't
+        // grow unbounded, but don't try to send anywhere yet.
+        outChunks.shift()   // discard instead of queue (stale when addr arrives)
+        seqNum    = (seqNum + 1) & 0xFFFF
+        timestamp = (timestamp + 160) >>> 0
+        return
+      }
+
+      if (!rtpSending) {
+        // First time we have a real remote address — flush any stale buffered
+        // audio that accumulated while we were waiting (it would sound like a
+        // replay of Sarah's greeting, possibly out of sync).
+        rtpSending = true
+        outChunks.length = 0
+        console.log(`[SIP] RTP target resolved — starting live send to ${liveRemote.ip}:${liveRemote.port}`)
+      }
+
       const pcmu   = outChunks.shift() ?? silencePCMU(160)
       const packet = buildRtpPacket(pcmu, seqNum, timestamp, ssrc)
 
-      // Use liveRemote — updated dynamically if Roke sends a re-INVITE
-      if (liveRemote.port > 0 && liveRemote.ip !== '0.0.0.0') {
-        socket.send(packet, liveRemote.port, liveRemote.ip, (err) => {
-          if (err && !socketClosed) console.error('[SIP] RTP send error:', err.message)
-        })
-      }
+      socket.send(packet, liveRemote.port, liveRemote.ip, (err) => {
+        if (err && !socketClosed) console.error('[SIP] RTP send error:', err.message)
+      })
 
       seqNum    = (seqNum + 1) & 0xFFFF
       timestamp = (timestamp + 160) >>> 0
@@ -327,6 +370,7 @@ async function startBidirectionalVoiceCall(
   // ── Caller hangs up ───────────────────────────────────────────────────────
   dialog.on('destroy', () => {
     console.log('[SIP] Remote hung up — tearing down voice session')
+    callEnded = true   // prevent onClose from calling dialog.destroy() again
     if (rtpTimer) { clearInterval(rtpTimer); rtpTimer = null }
     convAI.close()
     safeCloseSocket()
