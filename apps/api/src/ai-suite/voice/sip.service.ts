@@ -188,18 +188,31 @@ async function startBidirectionalVoiceCall(
   callId:      string,
   callerPhone: string,
 ): Promise<void> {
-  const remoteEndp = parseRemoteSdp((dialog.remote?.sdp ?? '') as string)
+  const offerSdp   = (dialog.remote?.sdp ?? '') as string
+  const remoteEndp = parseRemoteSdp(offerSdp)
 
-  if (!remoteEndp) {
-    console.warn('[SIP] Invalid remote SDP — cannot start bidirectional call')
-    try { dialog.destroy() } catch { /* ignore */ }
-    return
-  }
-
-  const { ip: remoteIp, port: remotePort } = remoteEndp
+  // If remote SDP has 0.0.0.0 as media IP, Roke will send a re-INVITE with the
+  // real IP after the ACK.  We start the session anyway and update liveRemote
+  // when the re-INVITE fires.  Until then RTP goes to 0.0.0.0 (silently dropped).
   const localPort = parseInt(process.env.SIP_RTP_PORT ?? '20000', 10)
 
-  console.log(`[SIP] Bidirectional RTP: 0.0.0.0:${localPort} ↔ ${remoteIp}:${remotePort}`)
+  // Mutable remote endpoint — updated on re-INVITE
+  const liveRemote = {
+    ip:   remoteEndp?.ip   ?? '0.0.0.0',
+    port: remoteEndp?.port ?? 0,
+  }
+
+  console.log(`[SIP] Bidirectional RTP: 0.0.0.0:${localPort} ↔ ${liveRemote.ip}:${liveRemote.port}`)
+
+  // Wire up re-INVITE updates so RTP starts flowing to the real address
+  dialog.on('modify', (modReq: any) => {
+    const newEndp = parseRemoteSdp((modReq.body as string | undefined) ?? '')
+    if (newEndp && newEndp.ip !== '0.0.0.0' && newEndp.port > 0) {
+      console.log(`[SIP] re-INVITE — updating RTP destination to ${newEndp.ip}:${newEndp.port}`)
+      liveRemote.ip   = newEndp.ip
+      liveRemote.port = newEndp.port
+    }
+  })
 
   // ── Resolve ElevenLabs agent ─────────────────────────────────────────────
   const apiKey = process.env.ELEVENLABS_API_KEY
@@ -299,9 +312,12 @@ async function startBidirectionalVoiceCall(
       const pcmu   = outChunks.shift() ?? silencePCMU(160)
       const packet = buildRtpPacket(pcmu, seqNum, timestamp, ssrc)
 
-      socket.send(packet, remotePort, remoteIp, (err) => {
-        if (err && !socketClosed) console.error('[SIP] RTP send error:', err.message)
-      })
+      // Use liveRemote — updated dynamically if Roke sends a re-INVITE
+      if (liveRemote.port > 0 && liveRemote.ip !== '0.0.0.0') {
+        socket.send(packet, liveRemote.port, liveRemote.ip, (err) => {
+          if (err && !socketClosed) console.error('[SIP] RTP send error:', err.message)
+        })
+      }
 
       seqNum    = (seqNum + 1) & 0xFFFF
       timestamp = (timestamp + 160) >>> 0
@@ -432,14 +448,44 @@ export async function makeOutboundCall(
 
 // ── handleInboundCall ─────────────────────────────────────────────────────────
 export async function handleInboundCall(req: any, res: any): Promise<void> {
-  const fromHeader   = req.getParsedHeader('from') as { uri?: { user?: string } } | undefined
-  const callerNumber = fromHeader?.uri?.user ?? 'unknown'
-  const callId       = (req.get('call-id') as string | undefined) ?? `call-${Date.now()}`
+  // Try multiple paths to extract the caller's E.164 number from the FROM header.
+  // Roke may send:  sip:+256701234567@...  or  sip:256701234567@...  or <sip:0701234567@...>
+  const fromHeader = req.getParsedHeader('from') as { uri?: { user?: string }; name?: string } | undefined
+  const fromUser   = fromHeader?.uri?.user ?? ''
+  const fromRaw    = (req.get('from') as string | undefined) ?? ''
+  // Log once per call so we can see the exact format Roke sends
+  console.log(`[SIP] FROM header raw="${fromRaw}"  parsed user="${fromUser}"`)
 
+  // Use parsed user if available, otherwise pull number out of the raw header string
+  const rawMatch   = fromRaw.match(/sip:([+\d]+)@/)
+  const callerNumber = fromUser || rawMatch?.[1] || 'unknown'
+
+  const callId = (req.get('call-id') as string | undefined) ?? `call-${Date.now()}`
   console.log(`[SIP] Inbound call from ${callerNumber}  call-id=${callId}`)
+
+  // Log the offer SDP so we can see Roke's media IP/port
+  const offerSdp = (req.body as string | undefined) ?? ''
+  console.log(`[SIP] Offer SDP snippet: ${offerSdp.slice(0, 200).replace(/\r\n/g, ' | ')}`)
 
   try {
     const dialog = await srf.createUAS(req, res, { localSdp: buildLocalSdp() })
+
+    // ── re-INVITE / UPDATE handler ────────────────────────────────────────────
+    // Some SIP providers (including Roke) send the initial INVITE with
+    // c=IN IP4 0.0.0.0 (hold/placeholder) and then send a re-INVITE with the
+    // real media IP once the call is established.  We handle this by watching
+    // for the 'modify' event on the dialog, which fires on re-INVITEs.
+    dialog.on('modify', (modReq: any, modRes: any) => {
+      try {
+        const newSdp     = (modReq.body as string | undefined) ?? ''
+        const newEndp    = parseRemoteSdp(newSdp)
+        console.log(`[SIP] re-INVITE received — new media endpoint: ${newEndp?.ip ?? '?'}:${newEndp?.port ?? '?'}`)
+        // Accept the re-INVITE with our same local SDP
+        modRes.send(200, { body: buildLocalSdp() })
+      } catch (e: any) {
+        console.error('[SIP] re-INVITE handling error:', e.message)
+      }
+    })
 
     await startBidirectionalVoiceCall(dialog, callId, callerNumber)
 
