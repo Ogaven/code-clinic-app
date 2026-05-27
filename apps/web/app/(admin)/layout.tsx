@@ -75,6 +75,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const isDark = localStorage.getItem('cc_theme') === 'dark'
     setDark(isDark)
     document.documentElement.classList.toggle('dark', isDark)
+
+    // Silently refresh avatar from the server in case cc_user is stale
+    const token = localStorage.getItem('cc_token')
+    if (token && !u.avatarUrl) {
+      fetch('/api-proxy/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data?.avatarUrl) {
+            setUser((prev: any) => prev ? { ...prev, avatarUrl: data.avatarUrl } : prev)
+            localStorage.setItem('cc_user', JSON.stringify({ ...u, avatarUrl: data.avatarUrl }))
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
+
+  // Keep TopBar avatar in sync whenever an avatar upload fires the event
+  useEffect(() => {
+    const onAvatarUpdate = (e: Event) => {
+      const url = (e as CustomEvent).detail as string
+      setUser((prev: any) => prev ? { ...prev, avatarUrl: url } : prev)
+    }
+    window.addEventListener('cc-avatar-updated', onAvatarUpdate)
+    return () => window.removeEventListener('cc-avatar-updated', onAvatarUpdate)
   }, [])
 
   useEffect(() => {

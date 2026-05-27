@@ -263,6 +263,23 @@ export default function ReceptionistLayout({ children }: { children: React.React
     refreshAvatar(JSON.parse(stored))
   }, [pathname])
 
+  // Immediately update avatar when an upload completes in the same tab
+  useEffect(() => {
+    const onAvatarUpdate = (e: Event) => {
+      const url = (e as CustomEvent).detail as string
+      setAvatarUrl(url)
+      // Keep cc_user consistent so route-change re-reads also see the new URL
+      try {
+        const stored = localStorage.getItem('cc_user')
+        if (stored) {
+          localStorage.setItem('cc_user', JSON.stringify({ ...JSON.parse(stored), avatarUrl: url }))
+        }
+      } catch {}
+    }
+    window.addEventListener('cc-avatar-updated', onAvatarUpdate)
+    return () => window.removeEventListener('cc-avatar-updated', onAvatarUpdate)
+  }, [])
+
   useEffect(() => {
     const ua = navigator.userAgent
     setIsIOS(/iPad|iPhone|iPod/.test(ua))

@@ -82,6 +82,20 @@ export default function AvatarUpload({
       const { avatarUrl } = await res.json()
       setPreview(avatarUrl)
       onUploaded?.(avatarUrl)
+
+      // If this upload is for the currently logged-in user, update cc_user in
+      // localStorage and broadcast so all layouts refresh their TopBar avatar.
+      try {
+        const stored = localStorage.getItem('cc_user')
+        if (stored) {
+          const current = JSON.parse(stored)
+          if (current.id === userId) {
+            localStorage.setItem('cc_user', JSON.stringify({ ...current, avatarUrl }))
+            localStorage.setItem('cc_avatar', avatarUrl)
+            window.dispatchEvent(new CustomEvent('cc-avatar-updated', { detail: avatarUrl }))
+          }
+        }
+      } catch {}
     } catch (err: any) {
       // On any failure: keep the preview and silently fall back to base64
       if (base64DataUrl) { onUploaded?.(base64DataUrl); return }
