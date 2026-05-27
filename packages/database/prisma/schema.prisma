@@ -331,8 +331,8 @@ model Expense {
   amountUGX    Int
   description  String
   receiptR2Key String?
-  recordedById String
-  recordedBy   User     @relation("RecordedBy", fields: [recordedById], references: [id])
+  recordedById String?
+  recordedBy   User?    @relation("RecordedBy", fields: [recordedById], references: [id])
   date         DateTime @default(now())
   qbPurchaseId String?  // QuickBooks purchase ID
   createdAt    DateTime @default(now())
@@ -727,8 +727,8 @@ model TreatmentNote {
   patientId String
   patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
   content   String
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

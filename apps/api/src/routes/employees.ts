@@ -209,7 +209,32 @@ router.delete('/:id', requireAuth, adminOnly, auditLog('employees'), async (req,
       }
     }
 
-    await prisma.user.delete({ where: { id } })
+    // Atomically nullify / remove all FK references to this user before deleting.
+    // Order: nullify shared records first, delete staff-only records, then remove the user.
+    // Doctor is deleted automatically via onDelete: Cascade on Doctor.userId.
+    await prisma.$transaction([
+      // Nullable FKs — set to null to preserve the parent record
+      prisma.expense.updateMany({ where: { recordedById: id }, data: { recordedById: null } }),
+      prisma.treatmentNote.updateMany({ where: { authorId: id }, data: { authorId: null } }),
+      prisma.appointment.updateMany({ where: { createdById: id }, data: { createdById: null } }),
+      prisma.auditLog.updateMany({ where: { userId: id }, data: { userId: null } }),
+      prisma.supportTicket.updateMany({ where: { userId: id }, data: { userId: null } }),
+
+      // Staff-only records — safe to delete with the user
+      prisma.staffPayroll.deleteMany({ where: { userId: id } }),
+      prisma.assistantMessage.deleteMany({ where: { userId: id } }),
+
+      // Finally remove the user (Doctor cascades automatically)
+      prisma.user.delete({ where: { id } }),
+    ])
+
+    // Best-effort R2 avatar cleanup (outside transaction — not critical)
+    if (user.avatarR2Key) {
+      deleteFile(user.avatarR2Key).catch((err) =>
+        console.error('[delete employee] avatar cleanup failed:', err),
+      )
+    }
+
     res.json({ deleted: true })
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Delete failed' })
