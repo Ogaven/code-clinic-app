@@ -141,7 +141,7 @@ function groupOverlapping(appts: Appointment[]) {
   const colEndTimes: number[] = []
   const result: Array<Appointment & { colIndex: number; totalCols: number }> = sorted.map(appt => {
     const start = new Date(appt.startAt).getTime()
-    const end   = start + appt.service.durationMins * 60000
+    const end   = new Date(appt.endAt).getTime()
     let col = colEndTimes.findIndex(e => e <= start)
     if (col === -1) col = colEndTimes.length
     colEndTimes[col] = end
@@ -149,12 +149,12 @@ function groupOverlapping(appts: Appointment[]) {
   })
   for (let i = 0; i < result.length; i++) {
     const aStart = new Date(result[i].startAt).getTime()
-    const aEnd   = aStart + result[i].service.durationMins * 60000
+    const aEnd   = new Date(result[i].endAt).getTime()
     let maxCol = result[i].colIndex
     for (let j = 0; j < result.length; j++) {
       if (i === j) continue
       const bStart = new Date(result[j].startAt).getTime()
-      const bEnd   = bStart + result[j].service.durationMins * 60000
+      const bEnd   = new Date(result[j].endAt).getTime()
       if (aStart < bEnd && aEnd > bStart) maxCol = Math.max(maxCol, result[j].colIndex)
     }
     result[i] = { ...result[i], totalCols: maxCol + 1 }
@@ -175,7 +175,7 @@ function ApptBlock({ appt, colIndex, totalCols, onClick, resizingEndAt, onResize
   const top           = timeToTop(appt.startAt)
   const effectiveMins = resizingEndAt
     ? (new Date(resizingEndAt).getTime() - new Date(appt.startAt).getTime()) / 60000
-    : appt.service.durationMins
+    : (new Date(appt.endAt).getTime()    - new Date(appt.startAt).getTime()) / 60000
   const height     = durationToHeight(effectiveMins)
   const colour     = appt.service.colour || '#29ABE2'
   const ring       = STATUS_RING[appt.status] || '#9CA3AF'
