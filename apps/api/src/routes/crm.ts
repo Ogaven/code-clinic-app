@@ -16,7 +16,7 @@ router.get('/leads', requireAuth, async (req: Request, res: Response) => {
     if (q) {
       where.OR = [
         { name:  { contains: String(q), mode: 'insensitive' } },
-        { phone: { contains: String(q) } },
+        { phone: { contains: String(q).replace(/[\s-]/g, '') } },
         { email: { contains: String(q), mode: 'insensitive' } },
       ]
     }

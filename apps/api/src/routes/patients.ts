@@ -145,10 +145,10 @@ router.get('/', requireAuth, async (req, res) => {
         ? { patientNumber: parseInt(ccMatch[1], 10) }
         : {
             OR: [
-              { firstName: { contains: q } },
-              { lastName:  { contains: q } },
-              { phone:     { contains: q } },
-              { email:     { contains: q } },
+              { firstName: { contains: q,                       mode: 'insensitive' } },
+              { lastName:  { contains: q,                       mode: 'insensitive' } },
+              { phone:     { contains: q.replace(/[\s-]/g, '')                      } },
+              { email:     { contains: q,                       mode: 'insensitive' } },
             ],
           }
     ) : {}
