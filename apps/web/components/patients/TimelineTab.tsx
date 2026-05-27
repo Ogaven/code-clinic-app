@@ -84,6 +84,7 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
   const [notes,        setNotes]       = useState<any[]>([])
   const [loading,      setLoading]     = useState(true)
   const [noteText,     setNoteText]    = useState('')
+  const [interimText,  setInterimText] = useState('')       // ghost text shown below textarea
   const [savingNote,   setSavingNote]  = useState(false)
   const [isRecording,  setIsRecording] = useState(false)
   const [expanded,     setExpanded]    = useState<Set<string>>(new Set())
@@ -92,7 +93,10 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
   const [savingStatus,    setSavingStatus]    = useState(false)
   const recognitionRef  = useRef<any>(null)
   const isRecordingRef  = useRef(false)
-  const accumulatedRef  = useRef('')
+  const finalTextRef    = useRef('')         // committed (final-only) text
+  const pendingFinalRef = useRef('')         // finals buffered for 300ms debounce
+  const lastFinalIdxRef = useRef(-1)         // last result index we've finalized
+  const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('cc_token')
@@ -129,31 +133,81 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
   const startRecording = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) { alert('Voice recording requires Chrome or Edge'); return }
-    accumulatedRef.current = noteText
-    isRecordingRef.current = true
+
+    // Snapshot current note text as the committed baseline
+    finalTextRef.current    = noteText
+    pendingFinalRef.current = ''
+    lastFinalIdxRef.current = -1
+    isRecordingRef.current  = true
     setIsRecording(true)
+    setInterimText('')
+
+    // Flush pending finals buffer → committed text, then clear
+    const flushPending = () => {
+      if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null }
+      if (pendingFinalRef.current) {
+        finalTextRef.current   += pendingFinalRef.current
+        pendingFinalRef.current = ''
+        setNoteText(finalTextRef.current)
+      }
+    }
 
     function createAndStart() {
       if (!isRecordingRef.current) return
       const rec = new SR()
-      rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US'
+      rec.continuous    = true
+      rec.interimResults = true
+      rec.lang          = 'en-US'
+
       rec.onresult = (e: any) => {
-        let interim = ''
+        let interimTranscript = ''
+
         for (let i = e.resultIndex; i < e.results.length; i++) {
-          if (e.results[i].isFinal) { accumulatedRef.current += e.results[i][0].transcript + ' ' }
-          else { interim += e.results[i][0].transcript }
+          const result = e.results[i]
+
+          if (result.isFinal) {
+            // Guard: skip if this result index was already processed
+            if (i > lastFinalIdxRef.current) {
+              lastFinalIdxRef.current  = i
+              pendingFinalRef.current += result[0].transcript + ' '
+            }
+          } else {
+            interimTranscript += result[0].transcript
+          }
         }
-        setNoteText(accumulatedRef.current + interim)
+
+        // Show interim ghost text immediately (not committed)
+        setInterimText(interimTranscript)
+
+        // Debounce the actual commit of finals — 300ms after the last final arrives
+        if (pendingFinalRef.current) {
+          if (debounceRef.current) clearTimeout(debounceRef.current)
+          debounceRef.current = setTimeout(() => {
+            finalTextRef.current   += pendingFinalRef.current
+            pendingFinalRef.current = ''
+            setNoteText(finalTextRef.current)
+            setInterimText('')
+          }, 300)
+        }
       }
+
       rec.onerror = (e: any) => {
         if (e.error === 'no-speech' || e.error === 'aborted') return
         isRecordingRef.current = false
         setIsRecording(false)
+        setInterimText('')
       }
+
       rec.onend = () => {
+        // Flush any buffered finals before the session restarts
+        flushPending()
+        // Reset per-session index — new session starts at resultIndex 0
+        lastFinalIdxRef.current = -1
+
         if (isRecordingRef.current) { setTimeout(createAndStart, 150) }
-        else { setIsRecording(false) }
+        else { setIsRecording(false); setInterimText('') }
       }
+
       recognitionRef.current = rec
       try { rec.start() } catch {/* ignore */}
     }
@@ -163,8 +217,16 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
 
   const stopRecording = () => {
     isRecordingRef.current = false
+    // Flush any debounced finals before stopping so no words are lost
+    if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null }
+    if (pendingFinalRef.current) {
+      finalTextRef.current   += pendingFinalRef.current
+      pendingFinalRef.current = ''
+      setNoteText(finalTextRef.current)
+    }
     recognitionRef.current?.stop()
     setIsRecording(false)
+    setInterimText('')
   }
 
   const saveStatusOverride = async (newStatus: string) => {
@@ -409,6 +471,12 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
             rows={3}
             className="w-full text-sm bg-transparent dark:text-white resize-none outline-none placeholder:text-slate-400"
           />
+          {/* Interim ghost text — shown while speaking, not yet committed */}
+          {isRecording && interimText && (
+            <p className="text-sm text-slate-400 dark:text-slate-500 italic mt-1 leading-snug select-none">
+              {interimText}
+            </p>
+          )}
           <div className="flex justify-end mt-2 border-t border-slate-100 dark:border-white/10 pt-2">
             <button
               onClick={saveNote}
