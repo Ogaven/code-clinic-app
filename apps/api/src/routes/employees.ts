@@ -188,6 +188,71 @@ router.post('/:id/avatar', requireAuth, uploadLimiter,
   },
 )
 
+// DELETE /employees/bulk — delete multiple staff members in one request (admin only)
+router.delete('/bulk', requireAuth, adminOnly, async (req, res) => {
+  const ids: unknown = req.body?.ids
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: 'ids must be a non-empty array' })
+    return
+  }
+
+  // Block self-deletion at the API layer
+  const callerId = req.user!.id
+  if ((ids as string[]).includes(callerId)) {
+    res.status(400).json({ error: 'You cannot delete your own account' })
+    return
+  }
+
+  const deletedIds: string[] = []
+  const errors: string[] = []
+
+  for (const id of ids as string[]) {
+    let displayName = String(id)
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id },
+        include: { doctor: { select: { id: true } } },
+      })
+      if (!user) continue  // already gone — treat as success
+
+      displayName = `${user.firstName} ${user.lastName}`
+
+      // Same guard as single delete: block if doctor has appointments
+      if (user.doctor) {
+        const apptCount = await prisma.appointment.count({ where: { doctorId: user.doctor.id } })
+        if (apptCount > 0) {
+          errors.push(
+            `${user.role === 'DOCTOR' ? 'Dr. ' : ''}${displayName} has ${apptCount} appointment${apptCount !== 1 ? 's' : ''} on record — deactivate instead`,
+          )
+          continue
+        }
+      }
+
+      // Atomically nullify all FK references, then delete
+      await prisma.$transaction([
+        prisma.expense.updateMany({ where: { recordedById: id }, data: { recordedById: null } }),
+        prisma.treatmentNote.updateMany({ where: { authorId: id }, data: { authorId: null } }),
+        prisma.appointment.updateMany({ where: { createdById: id }, data: { createdById: null } }),
+        prisma.auditLog.updateMany({ where: { userId: id }, data: { userId: null } }),
+        prisma.supportTicket.updateMany({ where: { userId: id }, data: { userId: null } }),
+        prisma.staffPayroll.deleteMany({ where: { userId: id } }),
+        prisma.assistantMessage.deleteMany({ where: { userId: id } }),
+        prisma.user.delete({ where: { id } }),
+      ])
+
+      if (user.avatarR2Key) {
+        deleteFile(user.avatarR2Key).catch(() => {})
+      }
+
+      deletedIds.push(id)
+    } catch (e: any) {
+      errors.push(`${displayName}: ${e.message || 'Delete failed'}`)
+    }
+  }
+
+  res.json({ deletedIds, errors })
+})
+
 // DELETE /employees/:id — hard delete (admin only, blocked if doctor has appointments)
 router.delete('/:id', requireAuth, adminOnly, auditLog('employees'), async (req, res) => {
   const { id } = req.params

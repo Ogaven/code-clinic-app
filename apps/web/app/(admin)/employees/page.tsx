@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Shield, CheckCircle, XCircle, Mail, Pencil, UserX, UserCheck, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
@@ -20,20 +20,54 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 export default function EmployeesPage() {
-  const [employees, setEmployees]     = useState<Employee[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [showAdd, setShowAdd]         = useState(false)
-  const [editing, setEditing]         = useState<Employee | null>(null)
+  const [employees, setEmployees]       = useState<Employee[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [showAdd, setShowAdd]           = useState(false)
+  const [editing, setEditing]           = useState<Employee | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
   const [deleteError, setDeleteError]   = useState<string | null>(null)
   const [deleting, setDeleting]         = useState(false)
+
+  // Bulk-delete state
+  const [myId, setMyId]                   = useState<string | null>(null)
+  const [selected, setSelected]           = useState<Set<string>>(new Set())
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false)
+  const [bulkDeleting, setBulkDeleting]   = useState(false)
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null)
+  const [bulkErrors, setBulkErrors]       = useState<string[]>([])
+  const selectAllRef                      = useRef<HTMLInputElement>(null)
+
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   useEffect(() => {
+    // Identify the logged-in user so we can block self-deletion
+    try {
+      const stored = localStorage.getItem('cc_user')
+      if (stored) setMyId(JSON.parse(stored).id ?? null)
+    } catch {}
+
     fetch(`/api-proxy/employees`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()).then(d => setEmployees(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLoading(false))
   }, [])
+
+  // Keep the "Select All" checkbox indeterminate when only some are selected
+  const selectable  = employees.filter(e => e.id !== myId)
+  const allSelected = selectable.length > 0 && selectable.every(e => selected.has(e.id))
+  const someSelected = selected.size > 0
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected && !allSelected
+    }
+  }, [someSelected, allSelected])
+
+  function toggleSelect(id: string) {
+    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+
+  function toggleSelectAll() {
+    setSelected(allSelected ? new Set() : new Set(selectable.map(e => e.id)))
+  }
 
   function handleUpdated(updated: Employee) {
     setEmployees(es => es.map(e => e.id === updated.id ? { ...e, ...updated } : e))
@@ -61,23 +95,77 @@ export default function EmployeesPage() {
       const data = await res.json()
       if (!res.ok) { setDeleteError(data.error || 'Delete failed'); return }
       setEmployees(es => es.filter(e => e.id !== deleteTarget.id))
+      setSelected(s => { const n = new Set(s); n.delete(deleteTarget.id); return n })
       setDeleteTarget(null)
     } catch { setDeleteError('Network error') } finally { setDeleting(false) }
   }
 
+  async function handleBulkDelete() {
+    setBulkDeleting(true); setBulkDeleteError(null); setBulkErrors([])
+    try {
+      const res = await fetch('/api-proxy/employees/bulk', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids: [...selected] }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setBulkDeleteError(data.error || 'Delete failed'); return }
+
+      if (data.deletedIds?.length > 0) {
+        setEmployees(es => es.filter(e => !data.deletedIds.includes(e.id)))
+        setSelected(s => { const n = new Set(s); data.deletedIds.forEach((id: string) => n.delete(id)); return n })
+      }
+
+      if (data.errors?.length > 0) {
+        setBulkErrors(data.errors)
+        // Keep modal open so the user sees which ones couldn't be deleted
+      } else {
+        setShowBulkConfirm(false)
+        setSelected(new Set())
+      }
+    } catch { setBulkDeleteError('Network error') } finally { setBulkDeleting(false) }
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">Staff List</h2>
-          <p className="text-sm text-gray-400 mt-0.5">{employees.length} team members</p>
+        <div className="flex items-center gap-3">
+          {!loading && selectable.length > 0 && (
+            <label className="flex items-center gap-2 cursor-pointer select-none" title="Select all staff">
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleSelectAll}
+                className="w-4 h-4 rounded accent-clinic-blue cursor-pointer"
+              />
+              <span className="text-sm text-gray-500 dark:text-gray-400">Select all</span>
+            </label>
+          )}
+          <div>
+            <h2 className="text-2xl font-bold text-clinic-navy dark:text-white">Staff List</h2>
+            <p className="text-sm text-gray-400 mt-0.5">{employees.length} team members</p>
+          </div>
         </div>
-        <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-clinic-blue text-white text-sm font-semibold rounded-lg hover:opacity-90">
-          <Plus size={16} /> Add Member
-        </button>
+
+        <div className="flex items-center gap-3">
+          {someSelected && (
+            <button
+              onClick={() => { setShowBulkConfirm(true); setBulkDeleteError(null); setBulkErrors([]) }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors">
+              <Trash2 size={15} />
+              Delete Selected ({selected.size})
+            </button>
+          )}
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-clinic-blue text-white text-sm font-semibold rounded-lg hover:opacity-90">
+            <Plus size={16} /> Add Member
+          </button>
+        </div>
       </div>
 
+      {/* ── Staff Grid ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {loading ? (
           Array.from({ length: 8 }).map((_, i) => (
@@ -87,92 +175,121 @@ export default function EmployeesPage() {
               <div className="h-3 bg-gray-100 dark:bg-white/5 rounded w-1/2 mx-auto" />
             </div>
           ))
-        ) : employees.map(emp => (
-          <div key={emp.id} className={cn(
-            'relative rounded-xl border shadow-sm p-5 flex flex-col items-center text-center hover:shadow-md transition-shadow group',
-            emp.isActive
-              ? 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 dark:hover:bg-white/8'
-              : 'bg-gray-50 dark:bg-white/3 border-gray-200 dark:border-white/5 opacity-70',
-          )}>
+        ) : employees.map(emp => {
+          const isSelf      = emp.id === myId
+          const isSelected  = selected.has(emp.id)
 
-            {/* Action buttons — appear on hover */}
-            <button
-              onClick={() => setEditing(emp)}
-              className="absolute top-3 right-3 w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-clinic-blue hover:text-white text-gray-500 dark:text-gray-300"
-              title="Edit member">
-              <Pencil size={13} />
-            </button>
-            <button
-              onClick={() => { setDeleteTarget(emp); setDeleteError(null) }}
-              className="absolute top-3 right-11 w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 text-gray-500 dark:text-gray-300"
-              title="Delete member">
-              <Trash2 size={13} />
-            </button>
-            <button
-              onClick={() => handleToggleActive(emp)}
-              className={cn(
-                'absolute top-3 left-3 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 dark:text-gray-300',
-                emp.isActive
-                  ? 'bg-gray-100 dark:bg-white/10 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30'
-                  : 'bg-green-100 dark:bg-green-900/20 hover:bg-green-200 hover:text-green-700',
+          return (
+            <div key={emp.id} className={cn(
+              'relative rounded-xl border shadow-sm p-5 flex flex-col items-center text-center hover:shadow-md transition-all group',
+              emp.isActive
+                ? 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 dark:hover:bg-white/8'
+                : 'bg-gray-50 dark:bg-white/3 border-gray-200 dark:border-white/5 opacity-70',
+              isSelected && 'ring-2 ring-clinic-blue border-clinic-blue',
+            )}>
+
+              {/* ── Top-left: checkbox (non-self) or shield (self) ─────────── */}
+              {isSelf ? (
+                <div className="absolute top-3 left-3 z-10" title="You — cannot delete yourself">
+                  <Shield size={14} className="text-clinic-blue opacity-60" />
+                </div>
+              ) : (
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleSelect(emp.id)}
+                  onClick={e => e.stopPropagation()}
+                  className="absolute top-3 left-3 z-10 w-4 h-4 rounded accent-clinic-blue cursor-pointer"
+                  title="Select for bulk delete"
+                />
               )}
-              title={emp.isActive ? 'Deactivate' : 'Reactivate'}>
-              {emp.isActive ? <UserX size={13} /> : <UserCheck size={13} />}
-            </button>
 
-            <AvatarUpload
-              userId={emp.id}
-              firstName={emp.firstName}
-              lastName={emp.lastName}
-              currentAvatarUrl={emp.avatarUrl}
-              colour={ROLE_COLOURS[emp.role]}
-              size="lg"
-              token={token || undefined}
-              onUploaded={(url) => setEmployees(es => es.map(e => e.id === emp.id ? { ...e, avatarUrl: url } : e))}
-            />
+              {/* ── Top-right: Edit + Delete (hover) ───────────────────────── */}
+              <button
+                onClick={() => setEditing(emp)}
+                className="absolute top-3 right-3 w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-clinic-blue hover:text-white text-gray-500 dark:text-gray-300"
+                title="Edit member">
+                <Pencil size={13} />
+              </button>
+              {!isSelf && (
+                <button
+                  onClick={() => { setDeleteTarget(emp); setDeleteError(null) }}
+                  className="absolute top-3 right-11 w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 text-gray-500 dark:text-gray-300"
+                  title="Delete member">
+                  <Trash2 size={13} />
+                </button>
+              )}
 
-            <h3 className="mt-3 font-bold text-clinic-navy dark:text-white text-sm">
-              {emp.role === 'DOCTOR' ? 'Dr. ' : ''}{emp.firstName} {emp.lastName}
-            </h3>
+              {/* ── Top-right-3rd: Toggle active (hover) ───────────────────── */}
+              <button
+                onClick={() => handleToggleActive(emp)}
+                className={cn(
+                  'absolute top-3 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 dark:text-gray-300',
+                  isSelf ? 'right-11' : 'right-20',
+                  emp.isActive
+                    ? 'bg-gray-100 dark:bg-white/10 hover:bg-amber-100 hover:text-amber-600 dark:hover:bg-amber-900/30'
+                    : 'bg-green-100 dark:bg-green-900/20 hover:bg-green-200 hover:text-green-700',
+                )}
+                title={emp.isActive ? 'Deactivate' : 'Reactivate'}>
+                {emp.isActive ? <UserX size={13} /> : <UserCheck size={13} />}
+              </button>
 
-            <span className="mt-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full text-white"
-              style={{ backgroundColor: ROLE_COLOURS[emp.role] }}>
-              {ROLE_LABELS[emp.role]}
-            </span>
+              <AvatarUpload
+                userId={emp.id}
+                firstName={emp.firstName}
+                lastName={emp.lastName}
+                currentAvatarUrl={emp.avatarUrl}
+                colour={ROLE_COLOURS[emp.role]}
+                size="lg"
+                token={token || undefined}
+                onUploaded={(url) => setEmployees(es => es.map(e => e.id === emp.id ? { ...e, avatarUrl: url } : e))}
+              />
 
-            {emp.doctor?.specialisation && (
-              <p className="text-xs text-gray-400 mt-1 leading-tight">{emp.doctor.specialisation}</p>
-            )}
+              <h3 className="mt-3 font-bold text-clinic-navy dark:text-white text-sm">
+                {emp.role === 'DOCTOR' ? 'Dr. ' : ''}{emp.firstName} {emp.lastName}
+                {isSelf && <span className="ml-1 text-[10px] font-normal text-gray-400">(you)</span>}
+              </h3>
 
-            <div className="flex items-center gap-1 mt-2 text-xs text-gray-400 dark:text-gray-500">
-              <Mail size={11} />
-              <span className="truncate max-w-[140px]">{emp.email}</span>
+              <span className="mt-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full text-white"
+                style={{ backgroundColor: ROLE_COLOURS[emp.role] }}>
+                {ROLE_LABELS[emp.role]}
+              </span>
+
+              {emp.doctor?.specialisation && (
+                <p className="text-xs text-gray-400 mt-1 leading-tight">{emp.doctor.specialisation}</p>
+              )}
+
+              <div className="flex items-center gap-1 mt-2 text-xs text-gray-400 dark:text-gray-500">
+                <Mail size={11} />
+                <span className="truncate max-w-[140px]">{emp.email}</span>
+              </div>
+
+              {/* Permission dots */}
+              <div className="flex items-center gap-1.5 mt-3">
+                {['Schedule', 'Patients', 'Finance', 'AI', 'Settings'].map((mod, i) => {
+                  const hasAccess = emp.role === 'ADMIN' ||
+                    (emp.role === 'DOCTOR' && i < 2) ||
+                    (emp.role === 'RECEPTIONIST' && i < 2) ||
+                    (emp.role === 'ACCOUNTS' && i === 2)
+                  return (
+                    <div key={mod} className={cn('w-2 h-2 rounded-full')}
+                      style={{ backgroundColor: hasAccess ? ROLE_COLOURS[emp.role] : '#E5E7EB' }}
+                      title={`${mod}: ${hasAccess ? 'Access' : 'No access'}`} />
+                  )
+                })}
+              </div>
+
+              <div className={cn('flex items-center gap-1 mt-3 text-xs font-medium',
+                emp.isActive ? 'text-green-600' : 'text-gray-400')}>
+                {emp.isActive ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                {emp.isActive ? 'Active' : 'Inactive'}
+              </div>
             </div>
-
-            {/* Permission dots */}
-            <div className="flex items-center gap-1.5 mt-3">
-              {['Schedule', 'Patients', 'Finance', 'AI', 'Settings'].map((mod, i) => {
-                const hasAccess = emp.role === 'ADMIN' ||
-                  (emp.role === 'DOCTOR' && i < 2) ||
-                  (emp.role === 'RECEPTIONIST' && i < 2) ||
-                  (emp.role === 'ACCOUNTS' && i === 2)
-                return (
-                  <div key={mod} className={cn('w-2 h-2 rounded-full')}
-                    style={{ backgroundColor: hasAccess ? ROLE_COLOURS[emp.role] : '#E5E7EB' }}
-                    title={`${mod}: ${hasAccess ? 'Access' : 'No access'}`} />
-                )
-              })}
-            </div>
-
-            <div className={cn('flex items-center gap-1 mt-3 text-xs font-medium',
-              emp.isActive ? 'text-green-600' : 'text-gray-400')}>
-              {emp.isActive ? <CheckCircle size={12} /> : <XCircle size={12} />}
-              {emp.isActive ? 'Active' : 'Inactive'}
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
+      {/* ── Add modal ──────────────────────────────────────────────────────── */}
       {showAdd && (
         <AddEmployeeModal
           onClose={() => setShowAdd(false)}
@@ -181,6 +298,7 @@ export default function EmployeesPage() {
         />
       )}
 
+      {/* ── Edit modal ─────────────────────────────────────────────────────── */}
       {editing && (
         <EditEmployeeModal
           employee={editing}
@@ -190,7 +308,7 @@ export default function EmployeesPage() {
         />
       )}
 
-      {/* Delete confirmation modal */}
+      {/* ── Single delete confirmation modal ───────────────────────────────── */}
       {deleteTarget && (
         <>
           <div className="fixed inset-0 bg-black/30 z-40" onClick={() => { setDeleteTarget(null); setDeleteError(null) }} />
@@ -228,6 +346,65 @@ export default function EmployeesPage() {
                   className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl disabled:opacity-60 transition-colors">
                   {deleting ? 'Deleting…' : 'Delete'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Bulk delete confirmation modal ─────────────────────────────────── */}
+      {showBulkConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-40"
+            onClick={() => { if (!bulkDeleting) { setShowBulkConfirm(false); setBulkErrors([]) } }} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl animate-fade-in p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
+                  <Trash2 size={18} className="text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white text-sm">
+                    Delete {selected.size} staff member{selected.size !== 1 ? 's' : ''}?
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">This action cannot be undone</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 leading-relaxed">
+                This will permanently delete{' '}
+                <strong>{selected.size} staff member{selected.size !== 1 ? 's' : ''}</strong>{' '}
+                and cannot be undone. Doctors with existing appointments will be skipped — deactivate them instead.
+              </p>
+
+              {bulkDeleteError && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 text-red-700 dark:text-red-400 text-xs rounded-xl px-4 py-3 mb-4 leading-relaxed">
+                  {bulkDeleteError}
+                </div>
+              )}
+
+              {bulkErrors.length > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 text-amber-700 dark:text-amber-400 text-xs rounded-xl px-4 py-3 mb-4 leading-relaxed space-y-1">
+                  <p className="font-semibold mb-1">Could not delete:</p>
+                  {bulkErrors.map((err, i) => <p key={i}>• {err}</p>)}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { if (!bulkDeleting) { setShowBulkConfirm(false); setBulkErrors([]) } }}
+                  disabled={bulkDeleting}
+                  className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 text-sm rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-60">
+                  {bulkErrors.length > 0 ? 'Close' : 'Cancel'}
+                </button>
+                {bulkErrors.length === 0 && (
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={bulkDeleting}
+                    className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl disabled:opacity-60 transition-colors">
+                    {bulkDeleting ? 'Deleting…' : `Delete ${selected.size}`}
+                  </button>
+                )}
               </div>
             </div>
           </div>
