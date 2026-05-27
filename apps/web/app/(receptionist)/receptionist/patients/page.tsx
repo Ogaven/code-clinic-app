@@ -218,9 +218,9 @@ export default function PatientsPage() {
     const headers = ['First Name', 'Last Name', 'Phone', 'Email', 'Gender', 'Date of Birth', 'Appointments', 'Registered']
     const rows = filtered.map(p => [
       p.firstName, p.lastName, p.phone, p.email || '', p.gender || '',
-      p.dob ? new Date(p.dob).toLocaleDateString() : '',
+      p.dob ? new Date(p.dob).toLocaleDateString('en-GB') : '',
       p._count?.appointments || 0,
-      new Date(p.createdAt).toLocaleDateString(),
+      new Date(p.createdAt).toLocaleDateString('en-GB'),
     ])
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -238,9 +238,9 @@ export default function PatientsPage() {
     const headers = ['First Name', 'Last Name', 'Phone', 'Email', 'Gender', 'Date of Birth', 'Appointments', 'Registered']
     const rows = filtered.map(p => [
       p.firstName, p.lastName, p.phone, p.email || '', p.gender || '',
-      p.dob ? new Date(p.dob).toLocaleDateString() : '',
+      p.dob ? new Date(p.dob).toLocaleDateString('en-GB') : '',
       p._count?.appointments || 0,
-      new Date(p.createdAt).toLocaleDateString(),
+      new Date(p.createdAt).toLocaleDateString('en-GB'),
     ])
     const tsv = [headers, ...rows].map(r => r.join('\t')).join('\n')
     const blob = new Blob([tsv], { type: 'application/vnd.ms-excel' })
@@ -755,7 +755,6 @@ export default function PatientsPage() {
                     <option value="" className="dark:bg-gray-800">Not specified</option>
                     <option value="FEMALE" className="dark:bg-gray-800">Female</option>
                     <option value="MALE" className="dark:bg-gray-800">Male</option>
-                    <option value="OTHER" className="dark:bg-gray-800">Other</option>
                   </select>
                 </div>
                 <div>

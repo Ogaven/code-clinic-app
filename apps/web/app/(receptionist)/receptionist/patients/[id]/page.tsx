@@ -138,7 +138,6 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
                 <select value={form.gender} onChange={e => setForm((f: any) => ({...f, gender: e.target.value}))} className={inputCls}>
                   <option value="FEMALE" className="dark:bg-gray-800">Female</option>
                   <option value="MALE" className="dark:bg-gray-800">Male</option>
-                  <option value="OTHER" className="dark:bg-gray-800">Other</option>
                 </select>
               </div>
               <div>

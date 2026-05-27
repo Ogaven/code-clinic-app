@@ -194,7 +194,6 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
                   className={cn(inputCls, 'text-xs py-2')}>
                   <option value="MALE">Male</option>
                   <option value="FEMALE">Female</option>
-                  <option value="OTHER">Other</option>
                 </select>
                 <button onClick={createPatient} disabled={creatingPt}
                   className="w-full py-2 bg-clinic-blue text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-1">

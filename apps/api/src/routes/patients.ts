@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth } from '../middleware/auth'
-import { clinicalStaff, adminOnly } from '../middleware/rbac'
+import { clinicalStaff, adminOnly, adminAndReceptionist } from '../middleware/rbac'
 import { auditLog } from '../middleware/audit'
 import { validate } from '../middleware/validate'
 import { getPublicUrl } from '../services/storage/r2'
@@ -16,7 +16,7 @@ const createPatientSchema = z.object({
   lastName:           z.string().min(1),
   phone:              z.string().min(1),
   email:              z.string().email().optional().or(z.literal('')),
-  gender:             z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
+  gender:             z.enum(['MALE', 'FEMALE', 'OTHER']).optional(), // OTHER kept for backward compat
   dob:                z.string().optional().or(z.literal('')),
   address:            z.string().optional().or(z.literal('')),
   district:           z.string().optional().or(z.literal('')),
@@ -354,16 +354,44 @@ router.post('/import-sheet', requireAuth, async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }) }
 })
 
-// POST /patients/bulk-delete — clinical staff (receptionist, doctor, admin)
-router.post('/bulk-delete', requireAuth, clinicalStaff, async (req, res) => {
+// POST /patients/bulk-delete — admin + receptionist only
+router.post('/bulk-delete', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const { patientIds } = req.body
     if (!Array.isArray(patientIds) || patientIds.length === 0) {
       res.status(400).json({ error: 'patientIds array required' }); return
     }
-    const result = await prisma.patient.deleteMany({ where: { id: { in: patientIds } } })
-    res.json({ deleted: result.count })
-  } catch (e: any) { res.status(500).json({ error: e.message }) }
+    const ids: string[] = patientIds
+    let deleted = 0
+    await prisma.$transaction(async (tx) => {
+      // Null out optional patient FKs
+      await tx.nurtureLog.updateMany({ where: { patientId: { in: ids } }, data: { patientId: null } })
+      await tx.agentLog.updateMany({ where: { patientId: { in: ids } }, data: { patientId: null } })
+      await tx.agentMemory.deleteMany({ where: { patientId: { in: ids } } })
+      await tx.aiConversation.updateMany({ where: { patientId: { in: ids } }, data: { patientId: null } })
+      // Required FKs — delete first
+      await tx.aiScheduledMessage.deleteMany({ where: { patientId: { in: ids } } })
+      await tx.outboundQueue.deleteMany({ where: { patientId: { in: ids } } })
+      // Appointments and their dependents
+      const apptIds = (await tx.appointment.findMany({ where: { patientId: { in: ids } }, select: { id: true } })).map(a => a.id)
+      if (apptIds.length > 0) {
+        await tx.patientFeedback.deleteMany({ where: { appointmentId: { in: apptIds } } })
+        await tx.invoice.updateMany({ where: { appointmentId: { in: apptIds } }, data: { appointmentId: null } })
+      }
+      await tx.patientFeedback.deleteMany({ where: { patientId: { in: ids } } })
+      await tx.appointment.deleteMany({ where: { patientId: { in: ids } } })
+      // Invoices and payments
+      await tx.payment.deleteMany({ where: { patientId: { in: ids } } })
+      await tx.invoice.deleteMany({ where: { patientId: { in: ids } } })
+      // Patient rows (TreatmentPlan/Note/DentalChart/PatientDocument/PatientActivity have onDelete:Cascade)
+      const result = await tx.patient.deleteMany({ where: { id: { in: ids } } })
+      deleted = result.count
+    })
+    res.json({ deleted })
+  } catch (e: any) {
+    console.error('[patients] bulk-delete error:', e)
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // GET /patients/referral-stats — MUST be before /:id to avoid Express matching as param
@@ -543,12 +571,38 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
   } catch { res.status(500).json({ error: 'Failed to update patient' }) }
 })
 
-// DELETE /patients/:id — clinical staff (receptionist, doctor, admin)
-router.delete('/:id', requireAuth, clinicalStaff, auditLog('patients'), async (req, res) => {
+// DELETE /patients/:id — admin + receptionist only
+router.delete('/:id', requireAuth, adminAndReceptionist, auditLog('patients'), async (req, res) => {
   try {
-    await prisma.patient.delete({ where: { id: req.params.id } })
+    const id = req.params.id
+    await prisma.$transaction(async (tx) => {
+      // Null out optional patient FKs
+      await tx.nurtureLog.updateMany({ where: { patientId: id }, data: { patientId: null } })
+      await tx.agentLog.updateMany({ where: { patientId: id }, data: { patientId: null } })
+      await tx.agentMemory.deleteMany({ where: { patientId: id } })
+      await tx.aiConversation.updateMany({ where: { patientId: id }, data: { patientId: null } })
+      // Required FKs — delete first
+      await tx.aiScheduledMessage.deleteMany({ where: { patientId: id } })
+      await tx.outboundQueue.deleteMany({ where: { patientId: id } })
+      // Appointments and their dependents
+      const apptIds = (await tx.appointment.findMany({ where: { patientId: id }, select: { id: true } })).map(a => a.id)
+      if (apptIds.length > 0) {
+        await tx.patientFeedback.deleteMany({ where: { appointmentId: { in: apptIds } } })
+        await tx.invoice.updateMany({ where: { appointmentId: { in: apptIds } }, data: { appointmentId: null } })
+      }
+      await tx.patientFeedback.deleteMany({ where: { patientId: id } })
+      await tx.appointment.deleteMany({ where: { patientId: id } })
+      // Invoices and payments
+      await tx.payment.deleteMany({ where: { patientId: id } })
+      await tx.invoice.deleteMany({ where: { patientId: id } })
+      // Patient row (TreatmentPlan/Note/DentalChart/PatientDocument/PatientActivity have onDelete:Cascade)
+      await tx.patient.delete({ where: { id } })
+    })
     res.json({ deleted: true })
-  } catch { res.status(500).json({ error: 'Failed to delete patient' }) }
+  } catch (e: any) {
+    console.error('[patients] delete error:', e)
+    res.status(500).json({ error: 'Failed to delete patient' })
+  }
 })
 
 // POST /patients/:id/avatar

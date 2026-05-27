@@ -24,5 +24,6 @@ export function requireRole(...roles: Role[]) {
 export const adminOnly = requireRole('ADMIN')
 export const doctorOrAdmin = requireRole('ADMIN', 'DOCTOR')
 export const clinicalStaff = requireRole('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+export const adminAndReceptionist = requireRole('ADMIN', 'RECEPTIONIST')
 export const accountsOrAdmin = requireRole('ADMIN', 'ACCOUNTS')
 export const developerOnly = requireRole('DEVELOPER')

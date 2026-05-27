@@ -75,9 +75,11 @@ const EMPTY_FORM = {
 
 // ── Page ─────────────────────────────────────────────────────────
 export default function PatientsPage() {
-  const API   = '/api-proxy'
-  const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-  const authH = { Authorization: `Bearer ${token}` }
+  const API      = '/api-proxy'
+  const token    = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  const authH    = { Authorization: `Bearer ${token}` }
+  const userRole = typeof window !== 'undefined' ? (JSON.parse(localStorage.getItem('cc_user') || '{}').role || '') : ''
+  const canDelete = userRole !== 'DOCTOR'
 
   const [patients,         setPatients]         = useState<Patient[]>([])
   const [loading,          setLoading]          = useState(true)
@@ -248,9 +250,9 @@ export default function PatientsPage() {
     const headers = ['ID', 'First Name', 'Last Name', 'Phone', 'Email', 'Gender', 'Date of Birth', 'Appointments', 'Balance', 'Registered']
     const rows = patients.map(p => [
       (p.patientId ?? patientCode(p.id)), p.firstName, p.lastName, p.phone, p.email || '', p.gender || '',
-      p.dob ? new Date(p.dob).toLocaleDateString() : '',
+      p.dob ? new Date(p.dob).toLocaleDateString('en-GB') : '',
       p._count?.appointments || 0, p.accountBalance || 0,
-      new Date(p.createdAt).toLocaleDateString(),
+      new Date(p.createdAt).toLocaleDateString('en-GB'),
     ])
     const csv  = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -383,7 +385,7 @@ export default function PatientsPage() {
               <p className="text-xs text-gray-400 dark:text-white/40">{total} total</p>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
-              {selectedIds.size > 0 ? (
+              {selectedIds.size > 0 && canDelete ? (
                 <button
                   onClick={() => setShowBulkDeleteModal(true)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all">
@@ -824,7 +826,6 @@ export default function PatientsPage() {
                   <select value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))} className={inputCls}>
                     <option value="FEMALE" className="dark:bg-gray-800">Female</option>
                     <option value="MALE" className="dark:bg-gray-800">Male</option>
-                    <option value="OTHER" className="dark:bg-gray-800">Other</option>
                   </select>
                 </div>
                 <div>

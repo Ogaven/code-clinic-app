@@ -1162,9 +1162,9 @@ function DocumentsTab({ patientId, token }: { patientId: string; token: string |
           dragOver ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10' : 'border-slate-200 dark:border-white/20 hover:border-slate-300')}>
         <Upload size={32} className="mx-auto text-slate-400 mb-2" />
         <p className="text-sm text-slate-600 dark:text-slate-300">{isUploading ? 'Uploading...' : 'Drop files here or click to browse'}</p>
-        <p className="text-xs text-slate-400 mt-1">PDF, JPG, PNG, DICOM — max 10MB</p>
+        <p className="text-xs text-slate-400 mt-1">JPG, PNG, BMP, GIF, WebP, PDF — max 10MB</p>
       </label>
-      <input id="doc-upload" type="file" className="hidden" onChange={e => handleFile(e.target.files)} />
+      <input id="doc-upload" type="file" accept="image/jpeg,image/png,image/bmp,image/gif,image/webp,application/pdf" className="hidden" onChange={e => handleFile(e.target.files)} />
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="space-y-2">
@@ -1593,7 +1593,6 @@ export default function PatientProfilePage() {
                     <option value="">Not specified</option>
                     <option value="MALE">Male</option>
                     <option value="FEMALE">Female</option>
-                    <option value="OTHER">Other</option>
                   </select>
                 </div>
                 <div>
