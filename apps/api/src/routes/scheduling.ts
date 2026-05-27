@@ -164,17 +164,22 @@ const createApptSchema = z.object({
   doctorId:  z.string().uuid(),
   serviceId: z.string().uuid(),
   startAt:   z.string().datetime(),
+  endAt:     z.string().datetime().optional(),   // client-selected duration; use when provided
   notes:     z.string().optional(),
 })
 
 router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSchema), auditLog('appointments'), async (req, res) => {
-  const { patientId, doctorId, serviceId, startAt, notes } = req.body
+  const { patientId, doctorId, serviceId, startAt, endAt: endAtStr, notes } = req.body
 
   const service = await prisma.service.findUnique({ where: { id: serviceId } })
   if (!service) { res.status(404).json({ error: 'Service not found' }); return }
 
   const start = new Date(startAt)
-  const end   = new Date(start.getTime() + service.durationMins * 60_000)
+  // Use the client-supplied endAt (user's duration choice) when present;
+  // fall back to the service default only when endAt is absent.
+  const end = endAtStr
+    ? new Date(endAtStr)
+    : new Date(start.getTime() + service.durationMins * 60_000)
 
   const blocked = await prisma.blockedTime.findFirst({
     where: { doctorId, startAt: { lt: end }, endAt: { gt: start } },
