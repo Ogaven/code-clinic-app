@@ -77,7 +77,8 @@ function ensureRtpSocket(): Promise<dgram.Socket> {
     })
 
     sock.bind(port, '0.0.0.0', () => {
-      console.log(`[SIP] Singleton RTP socket bound on 0.0.0.0:${port}`)
+      const rtpIp = process.env.PUBLIC_IP || process.env.SIP_EXTERNAL_IP || '165.22.81.15'
+      console.log(`[SIP] Singleton RTP socket bound on 0.0.0.0:${port} (advertising ${rtpIp})`)
       rtpSocket      = sock
       rtpSocketReady = true
       resolve(sock)
@@ -126,13 +127,14 @@ function connectSrf(host: string, port: number, secret: string): void {
 
   srf.invite((req: any, res: any) => {
     handleInboundCall(req, res).catch(err =>
-      console.error('[SIP] Inbound call handler error:', err.message)
+      console.error('[SIP] Inbound call handler error:', err?.message ?? String(err))
     )
   })
 
-  console.log(`[SIP] Connecting to drachtio-server at ${host}:${port}…`)
+  const publicIp = process.env.PUBLIC_IP || '165.22.81.15'
+  console.log(`[SIP] Connecting to drachtio-server at ${host}:${port}… (advertise ${publicIp})`)
   try {
-    srf.connect({ host, port, secret })
+    srf.connect({ host, port, secret, advertise: publicIp })
   } catch (err: any) {
     console.error('[SIP] srf.connect() threw synchronously:', err.message)
     if (!_reconnectTimer) {
@@ -184,7 +186,7 @@ export function formatToE164(phone: string): string {
 // G.711 PCMU sendrecv — tells Roke to also send the caller's audio stream so
 // we can pipe it into ElevenLabs ConvAI for real-time STT.
 function buildLocalSdp(): string {
-  const externalIp = process.env.SIP_EXTERNAL_IP || '165.22.81.15'
+  const externalIp = process.env.PUBLIC_IP || process.env.SIP_EXTERNAL_IP || '165.22.81.15'
   const rtpPort    = parseInt(process.env.SIP_RTP_PORT || '20000', 10)
 
   return [
@@ -577,7 +579,7 @@ export async function handleInboundCall(req: any, res: any): Promise<void> {
       console.log(`[SIP] Inbound call from ${callerNumber} ended`)
     })
   } catch (err: any) {
-    console.error(`[SIP] Failed to handle inbound call from ${callerNumber}:`, err.message)
+    console.error(`[SIP] Failed to handle inbound call from ${callerNumber}:`, err?.message ?? String(err))
     try { res.send(500) } catch { /* already responded */ }
   }
 }

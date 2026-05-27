@@ -84,6 +84,7 @@ export default function PatientsPage() {
   const [search,           setSearch]           = useState('')
   const [page,             setPage]             = useState(1)
   const [total,            setTotal]            = useState(0)
+  const [pageInput,        setPageInput]        = useState('1')
   const [selected,         setSelected]         = useState<Patient | null>(null)
   const [appts,            setAppts]            = useState<any[]>([])
   const [showAdd,          setShowAdd]          = useState(false)
@@ -131,7 +132,7 @@ export default function PatientsPage() {
   useEffect(() => { fetchPatients() }, []) // eslint-disable-line
 
   useEffect(() => {
-    const t = setTimeout(() => { setPage(1); fetchPatients(search, 1, activeFilter) }, 300)
+    const t = setTimeout(() => { setPage(1); setPageInput('1'); fetchPatients(search, 1, activeFilter) }, 300)
     return () => clearTimeout(t)
   }, [search, activeFilter]) // eslint-disable-line
 
@@ -310,7 +311,7 @@ export default function PatientsPage() {
         body: JSON.stringify({ sheetUrl, previewOnly: true }),
       })
       const data = await res.json()
-      if (!res.ok) { showToast(data.error || 'Failed to fetch sheet', 'error'); return }
+      if (!res.ok) { showToast(data.error || 'Failed to fetch sheet', 'err'); return }
       setSheetPreview(data)
       // Auto-detect column mapping
       const known: Record<string, string[]> = {
@@ -329,7 +330,7 @@ export default function PatientsPage() {
       }
       setColumnMap(autoMap)
       setSheetStep('preview')
-    } catch { showToast('Network error', 'error') }
+    } catch { showToast('Network error', 'err') }
     finally { setSheetImporting(false) }
   }
 
@@ -557,24 +558,72 @@ export default function PatientsPage() {
               {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 dark:border-white/8 bg-gray-50 dark:bg-white/[0.02]">
-                  <p className="text-xs text-gray-400">{(page-1)*limit+1}–{Math.min(page*limit,total)} of {total}</p>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => { const np = page - 1; setPage(np); fetchPatients(search, np) }} disabled={page === 1}
-                      className="p-1.5 rounded-lg border border-gray-200 dark:border-white/10 text-gray-400 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+                  <p className="text-xs text-gray-400 hidden sm:block">{(page-1)*limit+1}–{Math.min(page*limit,total)} of {total}</p>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {/* First « */}
+                    <button
+                      onClick={() => { setPage(1); setPageInput('1'); fetchPatients(search, 1, activeFilter) }}
+                      disabled={page === 1}
+                      title="First page"
+                      className="px-2 h-7 rounded-lg border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 text-xs font-bold disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+                      «
+                    </button>
+                    {/* Prev */}
+                    <button
+                      onClick={() => { const np = page - 1; setPage(np); setPageInput(String(np)); fetchPatients(search, np, activeFilter) }}
+                      disabled={page === 1}
+                      className="p-1.5 rounded-lg border border-gray-200 dark:border-white/10 text-gray-400 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
                       <ChevronLeft size={13} />
                     </button>
-                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map(n => (
-                      <button key={n} onClick={() => { setPage(n); fetchPatients(search, n) }}
-                        className={cn('w-7 h-7 rounded-lg text-xs font-semibold transition-colors',
-                          page === n
-                            ? 'bg-cyan-500 text-white'
-                            : 'border border-gray-200 dark:border-white/10 text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5')}>
-                        {n}
-                      </button>
-                    ))}
-                    <button onClick={() => { const np = page + 1; setPage(np); fetchPatients(search, np) }} disabled={page === totalPages}
-                      className="p-1.5 rounded-lg border border-gray-200 dark:border-white/10 text-gray-400 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+                    {/* Nearby page numbers (5 pages centred on current) */}
+                    {(() => {
+                      const half = 2
+                      const start = Math.max(1, Math.min(page - half, totalPages - half * 2))
+                      const end   = Math.min(totalPages, start + half * 2)
+                      return Array.from({ length: end - start + 1 }, (_, i) => start + i).map(n => (
+                        <button key={n}
+                          onClick={() => { setPage(n); setPageInput(String(n)); fetchPatients(search, n, activeFilter) }}
+                          className={cn('w-7 h-7 rounded-lg text-xs font-semibold transition-colors',
+                            page === n
+                              ? 'bg-cyan-500 text-white'
+                              : 'border border-gray-200 dark:border-white/10 text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5')}>
+                          {n}
+                        </button>
+                      ))
+                    })()}
+                    {/* Page jump input */}
+                    <div className="flex items-center gap-1 text-xs text-gray-400 px-1">
+                      <span className="hidden sm:inline">Page</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={totalPages}
+                        value={pageInput}
+                        onChange={e => setPageInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            const n = Math.max(1, Math.min(totalPages, parseInt(pageInput) || 1))
+                            setPage(n); setPageInput(String(n)); fetchPatients(search, n, activeFilter)
+                          }
+                        }}
+                        className="w-12 h-7 px-1.5 text-center text-xs border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span>of {totalPages}</span>
+                    </div>
+                    {/* Next */}
+                    <button
+                      onClick={() => { const np = page + 1; setPage(np); setPageInput(String(np)); fetchPatients(search, np, activeFilter) }}
+                      disabled={page === totalPages}
+                      className="p-1.5 rounded-lg border border-gray-200 dark:border-white/10 text-gray-400 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
                       <ChevronRight size={13} />
+                    </button>
+                    {/* Last » */}
+                    <button
+                      onClick={() => { setPage(totalPages); setPageInput(String(totalPages)); fetchPatients(search, totalPages, activeFilter) }}
+                      disabled={page === totalPages}
+                      title="Last page"
+                      className="px-2 h-7 rounded-lg border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 text-xs font-bold disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+                      »
                     </button>
                   </div>
                 </div>
