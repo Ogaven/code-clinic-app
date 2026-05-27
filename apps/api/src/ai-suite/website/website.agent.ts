@@ -3,18 +3,23 @@ import {
   getAvailableSlots,
   getServices,
   getDoctors,
-  createAppointment,
-  rescheduleAppointment as rescheduleAppt,
-  cancelAppointment as cancelAppt,
 } from '../booking/booking.service'
 import { prisma } from '../../lib/prisma'
+
+// Phrase that marks an escalation has already been sent in this conversation
+const ESCALATION_PHRASE = 'Please call or WhatsApp us on +256 709 740457 and our team will help you'
 
 // ── Tool definitions ───────────────────────────────────────────────────────────
 
 const TOOLS: Anthropic.Tool[] = [
   {
+    name: 'get_services',
+    description: 'Get all available dental services with real prices and durations, plus the list of doctors. Call this when a visitor asks about services, prices, treatments or doctors.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
     name: 'get_available_slots',
-    description: 'Check available appointment slots for a specific date. Use this before suggesting times or confirming a booking.',
+    description: 'Check available appointment slots for a specific date — useful for telling a visitor what times are generally open. Do NOT use this to actually book; use save_booking_request for that.',
     input_schema: {
       type: 'object',
       properties: {
@@ -26,69 +31,29 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'get_services',
-    description: 'Get all available dental services with real prices and durations, plus the list of doctors. Use this when a patient asks about services, prices, or doctors.',
-    input_schema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'book_appointment',
-    description: 'Book a new appointment. Only call this after confirming the patient name, phone number, service, date and time.',
+    name: 'save_booking_request',
+    description: 'Save a booking request for a website visitor. Call this as soon as you have their name and phone number (and optionally their preferred service/doctor/date). This creates a Lead so our team calls them back to confirm. Website visitors are NOT yet patients in the system — never try to look them up or book directly.',
     input_schema: {
       type: 'object',
       properties: {
-        patientName:  { type: 'string', description: 'Full name of the patient' },
-        patientPhone: { type: 'string', description: 'Patient phone number' },
-        serviceId:    { type: 'string', description: 'Service ID from get_services' },
-        doctorId:     { type: 'string', description: 'Optional doctor ID. First available assigned if omitted.' },
-        startAt:      { type: 'string', description: 'ISO datetime string for the appointment start time' },
-        notes:        { type: 'string', description: 'Optional notes for the appointment' },
+        visitorName:      { type: 'string', description: 'Full name of the visitor' },
+        visitorPhone:     { type: 'string', description: 'Phone number of the visitor' },
+        serviceRequested: { type: 'string', description: 'Service or treatment they want, e.g. "Tooth extraction", "Cleaning", "General checkup"' },
+        doctorPreference: { type: 'string', description: 'Preferred doctor name if mentioned, otherwise omit' },
+        preferredDate:    { type: 'string', description: 'Preferred date or time if mentioned, e.g. "Tuesday afternoon" or "2026-06-03"' },
       },
-      required: ['patientName', 'patientPhone', 'serviceId', 'startAt'],
-    },
-  },
-  {
-    name: 'reschedule_appointment',
-    description: 'Move an existing appointment to a new date/time.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        appointmentId: { type: 'string', description: 'ID of the appointment to reschedule' },
-        newStartAt:    { type: 'string', description: 'New ISO datetime string' },
-      },
-      required: ['appointmentId', 'newStartAt'],
-    },
-  },
-  {
-    name: 'cancel_appointment',
-    description: 'Cancel an existing appointment.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        appointmentId: { type: 'string', description: 'ID of the appointment to cancel' },
-      },
-      required: ['appointmentId'],
-    },
-  },
-  {
-    name: 'find_patient_appointments',
-    description: 'Look up upcoming appointments for a patient by phone number. Use this when a patient wants to check, reschedule or cancel.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        phone: { type: 'string', description: 'Patient phone number' },
-      },
-      required: ['phone'],
+      required: ['visitorName', 'visitorPhone'],
     },
   },
   {
     name: 'escalate_to_human',
-    description: 'Use this when the patient asks to speak to a human or doctor, has a complaint, reports an emergency, or when the issue cannot be resolved through chat. Creates a lead record so staff can follow up.',
+    description: 'Use this when the visitor explicitly asks to speak to a human or doctor, reports an emergency, makes a complaint, or when you genuinely cannot help after a couple of exchanges. Creates a lead record so staff can follow up. Only call this ONCE per conversation.',
     input_schema: {
       type: 'object',
       properties: {
-        patientName:    { type: 'string', description: 'Patient name if known, or "Unknown"' },
-        patientPhone:   { type: 'string', description: 'Patient phone number if known' },
-        conversationSummary: { type: 'string', description: 'Brief summary of what the patient needs and why they are being escalated' },
+        patientName:         { type: 'string', description: 'Visitor name if known, or "Unknown"' },
+        patientPhone:        { type: 'string', description: 'Visitor phone number if known' },
+        conversationSummary: { type: 'string', description: 'Brief summary of what the visitor needs and why they are being escalated' },
       },
       required: ['patientName', 'conversationSummary'],
     },
@@ -101,18 +66,33 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
   try {
     switch (name) {
 
+      case 'get_services': {
+        const [services, doctors] = await Promise.all([getServices(), getDoctors()])
+        return JSON.stringify({
+          services: services.map(s => ({
+            id:           s.id,
+            name:         s.name,
+            priceUGX:     s.priceUGX,
+            durationMins: s.durationMins,
+          })),
+          doctors: doctors.map(d => ({
+            id:             d.id,
+            name:           `Dr ${d.firstName} ${d.lastName}`,
+            specialisation: d.specialisation ?? null,
+          })),
+        })
+      }
+
       case 'get_available_slots': {
         const { date, serviceId, doctorId } = input as { date: string; serviceId?: string; doctorId?: string }
         const services = await getServices()
         const sid = serviceId || services[0]?.id
         if (!sid) return JSON.stringify({ error: 'No services configured in the system.' })
 
-        // Calculate how many days ahead to fetch to cover the requested date
         const requestedDate = new Date(date + 'T00:00:00+03:00')
         const daysUntil     = Math.max(0, Math.floor((requestedDate.getTime() - Date.now()) / 86_400_000))
         const slots         = await getAvailableSlots(sid, doctorId, Math.max(daysUntil + 2, 7))
 
-        // Filter to the requested date (in Kampala timezone)
         const targetStr = requestedDate.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
         const daySlots  = slots.filter(
           s => s.startAt.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) === targetStr
@@ -136,108 +116,31 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
         })
       }
 
-      case 'get_services': {
-        const [services, doctors] = await Promise.all([getServices(), getDoctors()])
-        return JSON.stringify({
-          services: services.map(s => ({
-            id:           s.id,
-            name:         s.name,
-            priceUGX:     s.priceUGX,
-            durationMins: s.durationMins,
-          })),
-          doctors: doctors.map(d => ({
-            id:             d.id,
-            name:           `Dr ${d.firstName} ${d.lastName}`,
-            specialisation: d.specialisation ?? null,
-          })),
-        })
-      }
-
-      case 'book_appointment': {
-        const { patientName, patientPhone, serviceId, doctorId, startAt, notes } = input as {
-          patientName: string; patientPhone: string; serviceId: string
-          doctorId?: string; startAt: string; notes?: string
+      case 'save_booking_request': {
+        const { visitorName, visitorPhone, serviceRequested, doctorPreference, preferredDate } = input as {
+          visitorName: string; visitorPhone: string; serviceRequested?: string
+          doctorPreference?: string; preferredDate?: string
         }
 
-        // Find or create patient with the correct name
-        let patient = await prisma.patient.findFirst({ where: { phone: patientPhone } })
-        if (!patient) {
-          const parts = patientName.trim().split(/\s+/)
-          patient = await prisma.patient.create({
-            data: { firstName: parts[0], lastName: parts.slice(1).join(' ') || parts[0], phone: patientPhone },
-          })
-        }
+        const noteParts: string[] = ['Booking request from website chatbot.']
+        if (serviceRequested) noteParts.push(`Service: ${serviceRequested}.`)
+        if (doctorPreference) noteParts.push(`Doctor preference: ${doctorPreference}.`)
+        if (preferredDate)    noteParts.push(`Preferred date/time: ${preferredDate}.`)
 
-        // Resolve doctor — use provided or first active
-        let resolvedDoctorId = doctorId
-        if (!resolvedDoctorId) {
-          const doc = await prisma.doctor.findFirst({ where: { isActive: true } })
-          if (!doc) return JSON.stringify({ error: 'No available doctors at this time.' })
-          resolvedDoctorId = doc.id
-        }
+        const notes = noteParts.join(' ')
 
-        const appt = await createAppointment(patient.id, resolvedDoctorId, serviceId, new Date(startAt), patientPhone)
-
-        if (notes) {
-          await prisma.appointment.update({ where: { id: appt.id }, data: { notes } })
-        }
-
-        return JSON.stringify({
-          success:       true,
-          appointmentId: appt.id,
-          patient:       patient.firstName,
-          service:       appt.service.name,
-          doctor:        `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`,
-          date:          appt.startAt.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' }),
-          time:          appt.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }),
-        })
-      }
-
-      case 'reschedule_appointment': {
-        const { appointmentId, newStartAt } = input as { appointmentId: string; newStartAt: string }
-        const updated = await rescheduleAppt(appointmentId, new Date(newStartAt))
-        return JSON.stringify({
-          success: true,
-          newDate: updated.startAt.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi' }),
-          newTime: updated.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }),
-          service: updated.service.name,
-          doctor:  `Dr ${updated.doctor.user.firstName} ${updated.doctor.user.lastName}`,
-        })
-      }
-
-      case 'cancel_appointment': {
-        const { appointmentId } = input as { appointmentId: string }
-        await cancelAppt(appointmentId)
-        return JSON.stringify({ success: true })
-      }
-
-      case 'find_patient_appointments': {
-        const { phone } = input as { phone: string }
-        const patient = await prisma.patient.findFirst({ where: { phone } })
-        if (!patient) return JSON.stringify({ found: false, message: 'No patient found with this phone number.' })
-
-        const appointments = await prisma.appointment.findMany({
-          where: { patientId: patient.id, startAt: { gte: new Date() }, status: { notIn: ['CANCELLED'] } },
-          include: {
-            service: { select: { name: true } },
-            doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+        await prisma.lead.create({
+          data: {
+            source:      'WEBSITE',
+            status:      'NEW',
+            name:        visitorName,
+            phone:       visitorPhone,
+            notes,
+            lastMessage: notes.slice(0, 200),
           },
-          orderBy: { startAt: 'asc' },
-          take: 5,
         })
 
-        return JSON.stringify({
-          found:       true,
-          patientName: patient.firstName,
-          appointments: appointments.map(a => ({
-            id:      a.id,
-            service: a.service.name,
-            doctor:  `Dr ${a.doctor.user.firstName} ${a.doctor.user.lastName}`,
-            date:    a.startAt.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi' }),
-            time:    a.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }),
-            status:  a.status,
-          })),
-        })
+        return JSON.stringify({ success: true, message: 'Booking request saved — team will call back to confirm.' })
       }
 
       case 'escalate_to_human': {
@@ -267,10 +170,20 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
 
 // ── System prompt ──────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(alreadyEscalated: boolean): string {
   const now = new Date().toLocaleString('en-UG', {
     timeZone: 'Africa/Nairobi', dateStyle: 'full', timeStyle: 'short',
   })
+
+  const escalationSection = alreadyEscalated
+    ? `=== ESCALATION ===
+You have ALREADY escalated this conversation and given the visitor the phone number. DO NOT say the escalation phrase again. Just continue helping them normally and answer any further questions they have.`
+    : `=== ESCALATION ===
+Escalate when: the visitor explicitly asks to speak to a human or doctor, reports an emergency, makes a complaint, or you genuinely cannot help after a couple of exchanges.
+Steps (do these ONCE per conversation — never repeat):
+1. Call the escalate_to_human tool with the visitor's details and a short summary.
+2. Then send exactly this — word for word, nothing added: "Please call or WhatsApp us on +256 709 740457 and our team will help you!"`
+
   return `You are Sarah, a warm and friendly receptionist at Code Clinic dental clinic in Kamwokya, Kampala, Uganda.
 
 === FORMATTING — ABSOLUTE RULES, NO EXCEPTIONS ===
@@ -292,10 +205,10 @@ REQUIRED — always write like this:
   Keep it short — 1 to 3 sentences is almost always enough.
 
 === GREETING ===
-The chat already showed the patient a welcome message. Do NOT greet them again or introduce yourself. Just respond naturally to what they said.
+The chat already showed the visitor a welcome message. Do NOT greet them again or introduce yourself. Just respond naturally to what they said.
 
 === PERSONA ===
-You are a human receptionist, not a robot. Never say you are AI or automated. If asked, say something like "I'm just one of the girls at the front desk 😄". Be warm, casual and friendly — like a real Ugandan front desk person. Use emojis occasionally 😊 but sparingly. Once you know the patient's name, use it.
+You are a human receptionist, not a robot. Never say you are AI or automated. If asked, say something like "I'm just one of the girls at the front desk 😄". Be warm, casual and friendly — like a real Ugandan front desk person. Use emojis occasionally 😊 but sparingly. Once you know the visitor's name, use it.
 
 === CLINIC INFO ===
 Name: Code Clinic
@@ -305,22 +218,32 @@ Email: dentist@codeclinic.ug
 Website: codeclinic.ug
 Hours: Monday to Friday 8am to 6pm, Saturday 9am to 2pm, Sunday closed
 
-=== TOOLS ===
-Call get_services when asked about services, prices or doctors — never guess.
-Call get_available_slots before confirming any time — never invent slots.
-Call find_patient_appointments when a patient wants to view, reschedule or cancel.
-Call book_appointment only after you have the patient's full name, phone, service and preferred date and time.
-After booking, confirm in one or two plain sentences — no lists.
-If a slot is unavailable, suggest alternatives in a natural sentence.
+=== WHO YOU ARE TALKING TO ===
+Visitors on this chat are members of the public who found us online. They are NOT registered patients in our system yet. NEVER say you "cannot find them in the database" or that they "don't exist in our records" — that would be confusing and rude. Treat them like a new walk-in calling for the first time.
+
+=== WHAT YOU CAN DO ===
+Answer questions about our services, prices, and doctors — use get_services for accurate info.
+Tell them generally when we have availability — use get_available_slots if they ask about a specific date.
+Collect their name and phone number for a booking request — use save_booking_request to log it as a Lead so our team calls them back to confirm.
+Give our location, hours, contact details.
+Escalate complex or urgent issues.
+
+=== WHAT YOU CANNOT DO ===
+You CANNOT look up whether someone is already a patient — do not try, do not mention it.
+You CANNOT book directly into the appointment system for website visitors — they are not in the system yet.
+You CANNOT access or modify existing appointment records for website visitors.
+
+=== BOOKING FLOW ===
+When a visitor wants an appointment:
+1. Ask for their name and phone number (and preferred service or doctor if they haven't said).
+2. Once you have their name and phone, call save_booking_request immediately.
+3. After the tool succeeds, reply with exactly this (adapt the name): "Perfect! I've noted your details, [name]. Our team will call you back to confirm your appointment. Alternatively you can call or WhatsApp us directly on +256 709 740457 😊"
+Do NOT ask them to log in, do NOT say you cannot find them, do NOT mention databases.
 
 === CONFIDENTIALITY ===
 Never share staff salaries, internal costs, other patients' data, admin credentials, API keys or backend details. If asked, say: "I'm not able to share that, but I can help with appointments or questions about our services! 😊"
 
-=== ESCALATION ===
-Escalate when: the patient asks to speak to a human or doctor, reports an emergency, makes a complaint, or you genuinely cannot resolve their issue after a couple of exchanges.
-Steps:
-First call the escalate_to_human tool with the patient's details and a short summary.
-Then send exactly this — word for word, nothing added: "Please call or WhatsApp us on +256 709 740457 and our team will help you!"
+${escalationSection}
 
 === CURRENT DATE AND TIME IN KAMPALA ===
 ${now}`
@@ -335,7 +258,7 @@ export async function getWebsiteAgentReply(
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    return `Hi! I've received your message and a team member will be with you shortly. For urgent matters please call us on 0741 087667 😊`
+    return `Hi! I've received your message and a team member will be with you shortly. For urgent matters please call us on +256 709 740457 😊`
   }
 
   // Load recent conversation history
@@ -355,6 +278,11 @@ export async function getWebsiteAgentReply(
     }
   }
 
+  // BUG 1 FIX: detect whether we already sent the escalation phrase in this conversation
+  const alreadyEscalated = dbMessages.some(
+    m => m.role === 'AGENT' && m.content.includes(ESCALATION_PHRASE)
+  )
+
   // Append current message if not already last
   const last = history[history.length - 1]
   if (!last || last.role !== 'user' || last.content !== latestMessage) {
@@ -372,7 +300,7 @@ export async function getWebsiteAgentReply(
       const response = await client.messages.create({
         model:      'claude-haiku-4-5-20251001',
         max_tokens: 600,
-        system:     buildSystemPrompt(),
+        system:     buildSystemPrompt(alreadyEscalated),
         tools:      TOOLS,
         messages:   currentMessages,
       })
@@ -403,9 +331,9 @@ export async function getWebsiteAgentReply(
       currentMessages.push({ role: 'user', content: toolResults })
     }
 
-    return `Let me get that sorted for you — if it's urgent please call us on 0741 087667 😊`
+    return `Let me get that sorted for you — if it's urgent please call or WhatsApp us on +256 709 740457 😊`
   } catch (err: any) {
     console.error('[WebsiteAgent] error:', err)
-    return `Sorry, I'm having a small issue right now. Please try again or call the clinic directly on 0741 087667 😊`
+    return `Sorry, I'm having a small issue right now. Please try again or call the clinic directly on +256 709 740457 😊`
   }
 }
