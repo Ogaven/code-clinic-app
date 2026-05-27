@@ -226,7 +226,8 @@ app.use('/ai-suite/website',      websiteRouter)
 // Embeddable <script src="https://api.../widget.js"> snippet
 app.get('/widget.js', (_req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
-  res.setHeader('Cache-Control', 'public, max-age=300')
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
+  res.setHeader('Pragma', 'no-cache')
   res.send(WIDGET_JS)
 })
 
