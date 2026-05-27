@@ -73,7 +73,7 @@ export default router
 
 export const WIDGET_JS = `
 (function () {
-  var API_BASE = 'https://api-production-4c43.up.railway.app';
+  var API_BASE = '${process.env.APP_URL?.split(',')[0]?.trim() || 'https://api.codeclinicemr.com'}';
   var script   = document.currentScript;
   var clinicName = (script && script.getAttribute('data-clinic-name')) || 'Code Clinic';
 
