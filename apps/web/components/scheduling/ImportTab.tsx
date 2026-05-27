@@ -196,8 +196,19 @@ export default function ImportTab() {
 
       {/* Excel notice */}
       {file && isXlsx && (
-        <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/15 border border-amber-100 dark:border-amber-800/30 text-xs text-amber-700 dark:text-amber-400 font-medium">
-          Excel file detected — column preview not available. Make sure the first sheet uses these headers: <span className="font-black">{CSV_HEADERS.join(', ')}</span>. The file will be processed on the server.
+        <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/15 border border-amber-100 dark:border-amber-800/30 text-xs text-amber-700 dark:text-amber-400">
+          <p className="font-black mb-2">Two formats supported:</p>
+          <ul className="space-y-1.5 font-medium">
+            <li className="flex items-start gap-1.5">
+              <span className="mt-0.5 flex-shrink-0">•</span>
+              <span><span className="font-black">SimplyBook export (.xls/.xlsx)</span> — upload directly, no changes needed</span>
+            </li>
+            <li className="flex items-start gap-1.5">
+              <span className="mt-0.5 flex-shrink-0">•</span>
+              <span><span className="font-black">Custom format</span> — first sheet must use headers: <span className="font-black">{CSV_HEADERS.join(', ')}</span></span>
+            </li>
+          </ul>
+          <p className="mt-2 text-amber-600 dark:text-amber-500">The file will be processed on the server.</p>
         </div>
       )}
 
