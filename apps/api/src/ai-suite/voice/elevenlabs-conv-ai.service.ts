@@ -199,7 +199,7 @@ Clinic details:
       },
       tts: {
         voice_id:                   voiceId,
-        model_id:                   'eleven_turbo_v2',  // lowest latency model accepted for English
+        model_id:                   'eleven_turbo_v2_5',  // fastest/cheapest model (replaces eleven_turbo_v2)
         optimize_streaming_latency: 4,
       },
       turn: {
