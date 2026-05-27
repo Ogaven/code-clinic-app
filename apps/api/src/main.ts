@@ -231,6 +231,49 @@ app.get('/widget.js', (_req, res) => {
   res.send(WIDGET_JS)
 })
 
+// Standalone HTML test page — no Next.js chunks, bypasses browser cache issues.
+// The Next.js /chatbot-widget route redirects here.
+app.get('/chatbot-widget-test', (_req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
+  res.setHeader('Pragma', 'no-cache')
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat with Code Clinic</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(135deg, #f0f4ff 0%, #e8f4fd 100%);
+      gap: 12px;
+      padding: 24px;
+      text-align: center;
+    }
+    .icon  { font-size: 48px; }
+    h1     { font-size: 22px; font-weight: 700; color: #0c1e50; }
+    p      { font-size: 15px; color: #555; max-width: 340px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="icon">🦷</div>
+  <h1>Code Clinic — Live Chat</h1>
+  <p>Click the green chat bubble in the bottom-right corner to start a conversation with Sarah, our AI assistant.</p>
+  <script
+    src="https://api.codeclinicemr.com/widget.js"
+    data-clinic-name="Code Clinic">
+  </script>
+</body>
+</html>`)
+})
+
 // ─── 404 ──────────────────────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({ error: 'Route not found' })
