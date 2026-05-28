@@ -5,7 +5,7 @@ import { join }           from 'path'
 import { tmpdir }         from 'os'
 import { startVoiceConversation } from './voice-ai.service'
 import {
-  decodePCMABuffer, encodePCMABuffer, silencePCMA,
+  decodePCMABuffer, decodePCMUBuffer, encodePCMABuffer, silencePCMA,
   upsample8to16k, downsample16to8k,
   int16ToLE, leToInt16,
 } from './audio-codec'
@@ -362,6 +362,7 @@ async function startBidirectionalVoiceCall(
   // rinfo carries the actual source IP:port of the UDP packet.  Roke may send
   // c=IN IP4 0.0.0.0 in the initial INVITE SDP but still sends RTP from its
   // real IP — we learn that address from the first incoming packet.
+  let pktCount = 0
   function callPacketHandler(packet: Buffer, rinfo: dgram.RemoteInfo) {
     // Auto-learn real remote RTP target from first incoming packet
     if ((liveRemote.ip === '0.0.0.0' || liveRemote.port === 0) &&
@@ -375,12 +376,18 @@ async function startBidirectionalVoiceCall(
     const csrcCount    = packet[0] & 0x0F
     const payloadType  = packet[1] & 0x7F
     const payloadStart = 12 + csrcCount * 4
-    if (payloadType === 101) return                                   // RFC 2833 DTMF — ignore
-    if (payloadType !== 8 || packet.length <= payloadStart) return   // only PCMA (PT=8)
+    if (payloadType === 101) return                                              // RFC 2833 DTMF — ignore
+    if (payloadType !== 8 && payloadType !== 0) return                          // accept PCMA (8) or PCMU (0) only
+    if (packet.length <= payloadStart) return
 
-    const pcmaPayload = packet.subarray(payloadStart)
-    const pcm8k       = decodePCMABuffer(pcmaPayload)
-    const pcm16k      = upsample8to16k(pcm8k)
+    pktCount++
+    if (pktCount % 50 === 0) {
+      console.log(`[SIP] RTP inbound: ${pktCount} packets received (PT=${payloadType})`)
+    }
+
+    const payload = packet.subarray(payloadStart)
+    const pcm8k   = payloadType === 8 ? decodePCMABuffer(payload) : decodePCMUBuffer(payload)
+    const pcm16k  = upsample8to16k(pcm8k)
     convAI.sendCallerAudio(int16ToLE(pcm16k))
   }
 
