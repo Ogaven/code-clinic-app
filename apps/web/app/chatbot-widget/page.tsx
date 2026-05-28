@@ -6,7 +6,7 @@ import Image from 'next/image'
 declare global {
   interface Window {
     CodeClinicChatConfig?: Record<string, unknown>
-    CodeClinicChat?: { open: () => void }
+    CodeClinicChat?: { open: () => void; sendMessage?: (msg: string) => void }
   }
 }
 
@@ -43,7 +43,16 @@ export default function ChatbotWidgetPage() {
   }, [])
 
   function openChat() {
-    window.CodeClinicChat?.open()
+    if (window.CodeClinicChat?.open) {
+      window.CodeClinicChat.open()
+    }
+  }
+
+  function openChatWithMessage(msg: string) {
+    if (window.CodeClinicChat?.open) {
+      window.CodeClinicChat.open()
+      window.CodeClinicChat.sendMessage?.(msg)
+    }
   }
 
   return (
@@ -99,13 +108,19 @@ export default function ChatbotWidgetPage() {
 
         {/* Feature pills */}
         <div className="flex flex-wrap justify-center gap-3 mt-12">
-          {['Book an appointment', 'Ask about services', 'Meet our doctors', 'Operating hours'].map(label => (
-            <span
+          {[
+            { label: 'Book an appointment',  msg: 'I want to book an appointment' },
+            { label: 'Ask about services',   msg: 'What services do you offer?' },
+            { label: 'Meet our doctors',     msg: 'Tell me about your doctors' },
+            { label: 'Operating hours',      msg: 'What are your operating hours?' },
+          ].map(({ label, msg }) => (
+            <button
               key={label}
-              className="px-4 py-2 rounded-full text-xs font-semibold text-white/70 border border-white/10 bg-white/5"
+              onClick={() => openChatWithMessage(msg)}
+              className="px-4 py-2 rounded-full text-xs font-semibold text-white/70 border border-white/10 bg-white/5 hover:bg-white/10 hover:text-white/90 transition-all cursor-pointer"
             >
               {label}
-            </span>
+            </button>
           ))}
         </div>
       </main>
