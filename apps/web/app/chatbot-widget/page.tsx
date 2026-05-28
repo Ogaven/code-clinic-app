@@ -15,18 +15,29 @@ export default function ChatbotWidgetPage() {
     window.CodeClinicChatConfig = {
       clinicId:     'codeclinic',
       primaryColor: '#29ABE2',
-      avatarUrl:    'https://api.codeclinicemr.com/sarah.jpg',
+      avatarUrl:    'https://codeclinicemr.com/sarah.jpg',
       autoOpen:     true,
     }
 
     const script = document.createElement('script')
     script.src   = 'https://api.codeclinicemr.com/widget.js'
     script.async = true
-    script.onload = () => {
-      // Fallback open in case widget doesn't honour autoOpen
-      setTimeout(() => window.CodeClinicChat?.open(), 800)
-    }
     document.body.appendChild(script)
+
+    function tryOpen() {
+      setTimeout(() => {
+        if (window.CodeClinicChat && window.CodeClinicChat.open) {
+          window.CodeClinicChat.open()
+        }
+      }, 1000)
+    }
+
+    // window 'load' may have already fired by the time useEffect runs
+    if (document.readyState === 'complete') {
+      tryOpen()
+    } else {
+      window.addEventListener('load', tryOpen, { once: true })
+    }
 
     return () => { script.remove() }
   }, [])
@@ -59,7 +70,7 @@ export default function ChatbotWidgetPage() {
         <div className="relative mb-8">
           <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-white/20 shadow-2xl shadow-cyan-500/30">
             <img
-              src="https://api.codeclinicemr.com/sarah.jpg"
+              src="/sarah.jpg"
               alt="Sarah"
               className="w-full h-full object-cover"
             />
