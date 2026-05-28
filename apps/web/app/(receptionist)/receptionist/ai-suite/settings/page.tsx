@@ -1522,11 +1522,11 @@ function WebsiteChatbotSection() {
           <div className="p-3 bg-gray-50 dark:bg-white/3 rounded-xl border border-gray-100 dark:border-white/5">
             <p className="text-xs font-semibold text-gray-700 dark:text-white/70 mb-1">Live Widget Page</p>
             <a
-              href="/chatbot-widget"
+              href="https://codeclinicemr.com/chatbot-widget"
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1 text-xs text-cyan-600 dark:text-cyan-400 hover:underline mt-0.5">
-              Open chatbot-widget <ExternalLink size={10} />
+              codeclinicemr.com/chatbot-widget <ExternalLink size={10} />
             </a>
           </div>
         </div>

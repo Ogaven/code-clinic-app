@@ -2,17 +2,6 @@
 const nextConfig = {
   output: 'standalone',
 
-  // Framework-level redirect — runs before any page is rendered, never cached.
-  async redirects() {
-    return [
-      {
-        source: '/chatbot-widget',
-        destination: 'https://api.codeclinicemr.com/chatbot-widget-test',
-        permanent: false, // 307 — preserves method
-      },
-    ]
-  },
-
   typescript: {
     ignoreBuildErrors: true,
   },
