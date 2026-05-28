@@ -72,7 +72,11 @@ export function createConvAISession(opts: ConvAIOptions): ConvAISession {
       conversation_initiation_client_data: {
         conversation_config_override: {
           tts: {
-            optimize_streaming_latency: 4,  // max latency optimisation for telephony
+            optimize_streaming_latency:  4,           // max latency optimisation for telephony
+            agent_output_audio_format:   'pcm_16000', // raw PCM so we can resample to 8kHz for RTP
+          },
+          asr: {
+            user_input_audio_format: 'pcm_16000',     // we send PCM 16kHz LE after upsampling
           },
         },
         ...(callMeta ? { custom_llm_extra_body: callMeta } : {}),
