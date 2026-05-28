@@ -75,6 +75,66 @@ export function silencePCMU(samples: number): Buffer {
   return Buffer.alloc(samples, PCMU_SILENCE)
 }
 
+// ── G.711 A-law (PCMA) encode/decode ────────────────────────────────────────
+// Reference: ITU-T G.711 / Sun Microsystems implementation (public domain).
+
+const PCMA_SEG_END = new Int16Array([0x1F, 0x3F, 0x7F, 0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF])
+
+export const PCMA_SILENCE = 0xD5  // pcmaEncode(0) — fills silent RTP packets
+
+export function pcmaEncode(sample: number): number {
+  let val = sample >> 3
+  let mask: number
+  if (val >= 0) {
+    mask = 0xD5
+  } else {
+    mask = 0x55
+    val  = -val - 1
+  }
+  if (val > 0xFFF) val = 0xFFF
+  let seg = 8
+  for (let i = 0; i < 8; i++) {
+    if (val <= PCMA_SEG_END[i]) { seg = i; break }
+  }
+  if (seg >= 8) return (0x7F ^ mask) & 0xFF
+  const mantissa = seg < 2 ? (val >> 1) & 0x0F : (val >> seg) & 0x0F
+  return (((seg << 4) | mantissa) ^ mask) & 0xFF
+}
+
+export function pcmaDecode(byte: number): number {
+  const a    = byte ^ 0x55
+  const sign = a & 0x80
+  const seg  = (a & 0x70) >> 4
+  let   t    = (a & 0x0F) << 4
+  if (seg === 0) {
+    t += 8
+  } else if (seg === 1) {
+    t += 0x108
+  } else {
+    t = (t + 0x108) << (seg - 1)
+  }
+  return sign ? t : -t
+}
+
+/** Decode a PCMA RTP payload (8kHz, 1-byte/sample) → Int16Array of 16-bit PCM */
+export function decodePCMABuffer(pcma: Buffer): Int16Array {
+  const out = new Int16Array(pcma.length)
+  for (let i = 0; i < pcma.length; i++) out[i] = pcmaDecode(pcma[i])
+  return out
+}
+
+/** Encode Int16Array of 16-bit PCM → PCMA Buffer (8kHz, 1-byte/sample) */
+export function encodePCMABuffer(pcm: Int16Array): Buffer {
+  const out = Buffer.allocUnsafe(pcm.length)
+  for (let i = 0; i < pcm.length; i++) out[i] = pcmaEncode(pcm[i])
+  return out
+}
+
+/** Generate a silence PCMA buffer of `samples` bytes */
+export function silencePCMA(samples: number): Buffer {
+  return Buffer.alloc(samples, PCMA_SILENCE)
+}
+
 // ── Resampling ───────────────────────────────────────────────────────────────
 
 /**

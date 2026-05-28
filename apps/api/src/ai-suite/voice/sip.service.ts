@@ -5,7 +5,7 @@ import { join }           from 'path'
 import { tmpdir }         from 'os'
 import { startVoiceConversation } from './voice-ai.service'
 import {
-  decodePCMUBuffer, encodePCMUBuffer, silencePCMU,
+  decodePCMABuffer, encodePCMABuffer, silencePCMA,
   upsample8to16k, downsample16to8k,
   int16ToLE, leToInt16,
 } from './audio-codec'
@@ -23,8 +23,8 @@ import { prisma } from '../../lib/prisma'
 //   This Node.js process (drachtio-srf)
 //
 // RTP media flow (bidirectional via ElevenLabs ConvAI):
-//   Caller audio  → dgram UDP recv (port 20000) → PCMU decode → 8→16kHz → EL ConvAI WS
-//   EL ConvAI TTS → PCM 16kHz → 16→8kHz → PCMU encode → dgram UDP send → Caller
+//   Caller audio  → dgram UDP recv (port 20000) → PCMA decode → 8→16kHz → EL ConvAI WS
+//   EL ConvAI TTS → PCM 16kHz → 16→8kHz → PCMA encode → dgram UDP send → Caller
 
 // Process-level safety net for drachtio ENOTFOUND errors before drachtio
 // forwards them to the Srf instance — Node.js would crash otherwise.
@@ -183,8 +183,9 @@ export function formatToE164(phone: string): string {
 }
 
 // ── buildLocalSdp ─────────────────────────────────────────────────────────────
-// G.711 PCMU sendrecv — tells Roke to also send the caller's audio stream so
-// we can pipe it into ElevenLabs ConvAI for real-time STT.
+// Offer PCMA (PT 8) first — Roke Telecom's preferred G.711 variant.
+// G.729 (PT 18) included to satisfy trunk requirements; telephone-event (PT 101)
+// for RFC 2833 DTMF.  We only decode/encode PCMA in the media path.
 function buildLocalSdp(): string {
   const externalIp = process.env.PUBLIC_IP || process.env.SIP_EXTERNAL_IP || '165.22.81.15'
   const rtpPort    = parseInt(process.env.SIP_RTP_PORT || '20000', 10)
@@ -195,8 +196,12 @@ function buildLocalSdp(): string {
     's=Code Clinic Voice',
     `c=IN IP4 ${externalIp}`,
     't=0 0',
-    `m=audio ${rtpPort} RTP/AVP 0`,
-    'a=rtpmap:0 PCMU/8000',
+    `m=audio ${rtpPort} RTP/AVP 8 18 101`,
+    'a=rtpmap:8 PCMA/8000',
+    'a=rtpmap:18 G729/8000',
+    'a=fmtp:18 annexb=no',
+    'a=rtpmap:101 telephone-event/8000',
+    'a=fmtp:101 0-16',
     'a=ptime:20',
     'a=sendrecv',
   ].join('\r\n')
@@ -207,7 +212,7 @@ function buildLocalSdp(): string {
 function buildRtpPacket(pcmu: Buffer, seq: number, ts: number, ssrc: number): Buffer {
   const hdr = Buffer.allocUnsafe(12)
   hdr[0] = 0x80                    // V=2, P=0, X=0, CC=0
-  hdr[1] = 0x00                    // M=0, PT=0 (PCMU)
+  hdr[1] = 0x08                    // M=0, PT=8 (PCMA)
   hdr.writeUInt16BE(seq  & 0xFFFF, 2)
   hdr.writeUInt32BE(ts   >>> 0,    4)
   hdr.writeUInt32BE(ssrc >>> 0,    8)
@@ -334,7 +339,7 @@ async function startBidirectionalVoiceCall(
         const chunk = slice.length === 160
           ? slice
           : (() => { const p = new Int16Array(160); p.set(slice); return p })()
-        outChunks.push(encodePCMUBuffer(chunk))
+        outChunks.push(encodePCMABuffer(chunk))
       }
     },
 
@@ -370,10 +375,11 @@ async function startBidirectionalVoiceCall(
     const csrcCount    = packet[0] & 0x0F
     const payloadType  = packet[1] & 0x7F
     const payloadStart = 12 + csrcCount * 4
-    if (payloadType !== 0 || packet.length <= payloadStart) return   // only PCMU (PT=0)
+    if (payloadType === 101) return                                   // RFC 2833 DTMF — ignore
+    if (payloadType !== 8 || packet.length <= payloadStart) return   // only PCMA (PT=8)
 
-    const pcmuPayload = packet.subarray(payloadStart)
-    const pcm8k       = decodePCMUBuffer(pcmuPayload)
+    const pcmaPayload = packet.subarray(payloadStart)
+    const pcm8k       = decodePCMABuffer(pcmaPayload)
     const pcm16k      = upsample8to16k(pcm8k)
     convAI.sendCallerAudio(int16ToLE(pcm16k))
   }
@@ -400,7 +406,7 @@ async function startBidirectionalVoiceCall(
       console.log(`[SIP] RTP live send started → ${liveRemote.ip}:${liveRemote.port}`)
     }
 
-    const pcmu   = outChunks.shift() ?? silencePCMU(160)
+    const pcmu   = outChunks.shift() ?? silencePCMA(160)
     const pkt    = buildRtpPacket(pcmu, seqNum, timestamp, ssrc)
     sock.send(pkt, liveRemote.port, liveRemote.ip, (err) => {
       if (err) console.error('[SIP] RTP send error:', err.message)
@@ -452,7 +458,7 @@ async function legacyStreamAudio(dialog: any, audioBuffer: Buffer): Promise<void
       const ff = spawn('ffmpeg', [
         '-re', '-i', tmpFile,
         '-ar', '8000', '-ac', '1',
-        '-acodec', 'pcm_mulaw',
+        '-acodec', 'pcm_alaw',
         '-f', 'rtp', `rtp://${remoteIp}:${remotePort}`,
       ])
       ff.stderr.on('data', (c: Buffer) => {
