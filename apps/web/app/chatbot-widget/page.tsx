@@ -6,17 +6,16 @@ import Image from 'next/image'
 declare global {
   interface Window {
     CodeClinicChatConfig?: Record<string, unknown>
-    CodeClinicChat?: { open: () => void; sendMessage?: (msg: string) => void }
   }
 }
 
 export default function ChatbotWidgetPage() {
+  // Load the widget script
   useEffect(() => {
     window.CodeClinicChatConfig = {
       clinicId:     'codeclinic',
       primaryColor: '#29ABE2',
       avatarUrl:    'https://codeclinicemr.com/sarah.jpg',
-      autoOpen:     true,
     }
 
     const script = document.createElement('script')
@@ -24,35 +23,21 @@ export default function ChatbotWidgetPage() {
     script.async = true
     document.body.appendChild(script)
 
-    function tryOpen() {
-      setTimeout(() => {
-        if (window.CodeClinicChat && window.CodeClinicChat.open) {
-          window.CodeClinicChat.open()
-        }
-      }, 1000)
-    }
-
-    // window 'load' may have already fired by the time useEffect runs
-    if (document.readyState === 'complete') {
-      tryOpen()
-    } else {
-      window.addEventListener('load', tryOpen, { once: true })
-    }
-
     return () => { script.remove() }
   }, [])
 
-  function openChat() {
-    if (window.CodeClinicChat?.open) {
-      window.CodeClinicChat.open()
-    }
-  }
+  // Auto-open after 2 seconds by clicking the widget's own button
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const btn = document.getElementById('cc-w-btn')
+      if (btn) btn.click()
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [])
 
-  function openChatWithMessage(msg: string) {
-    if (window.CodeClinicChat?.open) {
-      window.CodeClinicChat.open()
-      window.CodeClinicChat.sendMessage?.(msg)
-    }
+  function openChat() {
+    const btn = document.getElementById('cc-w-btn')
+    if (btn) btn.click()
   }
 
   return (
@@ -109,14 +94,14 @@ export default function ChatbotWidgetPage() {
         {/* Feature pills */}
         <div className="flex flex-wrap justify-center gap-3 mt-12">
           {[
-            { label: 'Book an appointment',  msg: 'I want to book an appointment' },
-            { label: 'Ask about services',   msg: 'What services do you offer?' },
-            { label: 'Meet our doctors',     msg: 'Tell me about your doctors' },
-            { label: 'Operating hours',      msg: 'What are your operating hours?' },
-          ].map(({ label, msg }) => (
+            'Book an appointment',
+            'Ask about services',
+            'Meet our doctors',
+            'Operating hours',
+          ].map(label => (
             <button
               key={label}
-              onClick={() => openChatWithMessage(msg)}
+              onClick={openChat}
               className="px-4 py-2 rounded-full text-xs font-semibold text-white/70 border border-white/10 bg-white/5 hover:bg-white/10 hover:text-white/90 transition-all cursor-pointer"
             >
               {label}
