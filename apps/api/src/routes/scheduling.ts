@@ -692,7 +692,7 @@ router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('f
       }))
     }
 
-    let imported = 0, skipped = 0
+    let imported = 0, skipped = 0, servicesCreated = 0
     const errors: string[] = []
 
     // Cache doctors once
@@ -722,17 +722,29 @@ router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('f
           })
         }
 
-        // Find service (fuzzy match on name, fall back to first active service)
-        const service = serviceName
+        // Find or auto-create service
+        let service = serviceName
           ? await prisma.service.findFirst({ where: { name: { contains: serviceName, mode: 'insensitive' }, isActive: true } })
           : await prisma.service.findFirst({ where: { isActive: true } })
-        if (!service) { skipped++; errors.push(`Row skipped: service "${serviceName}" not found`); continue }
+        if (!service && serviceName) {
+          try {
+            service = await prisma.service.create({
+              data: { name: serviceName, durationMins: 60, priceUGX: 0, isActive: true },
+            })
+            servicesCreated++
+          } catch {
+            // Unique constraint race — re-fetch
+            service = await prisma.service.findFirst({ where: { name: { contains: serviceName, mode: 'insensitive' } } })
+          }
+        }
+        if (!service) { skipped++; errors.push(`Row skipped: no services exist in the system`); continue }
 
-        // Find doctor (partial name match, fall back to first active doctor)
-        const doctor = doctorName
+        // Find doctor (partial name match); if unrecognised, fall back to first active doctor rather than skipping
+        let doctor = doctorName
           ? allDoctors.find(d => `${d.user.firstName} ${d.user.lastName}`.toLowerCase().includes(doctorName.toLowerCase()))
           : allDoctors[0]
-        if (!doctor) { skipped++; errors.push(`Row skipped: doctor "${doctorName}" not found`); continue }
+        if (!doctor) doctor = allDoctors[0]
+        if (!doctor) { skipped++; errors.push(`Row skipped: no doctors exist in the system`); continue }
 
         // Parse datetime (EAT = UTC+3); normalise time to HH:MM
         const timeNorm = timeStr.length >= 5 ? timeStr.slice(0, 5) : timeStr
@@ -768,6 +780,7 @@ router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('f
     res.json({
       imported,
       skipped,
+      servicesCreated,
       total:  rows.length,
       format: isSimplyBook ? 'simplybook' : 'standard',
       errors: errors.slice(0, 20),
