@@ -28,5 +28,5 @@ TONE: Warm, understanding, non-confrontational. They are valued patients.
 START WITH:
 "Hello, may I speak with ${options.patientName}?"
 [Wait for confirmation]
-"Hi ${options.patientName}! This is Zoe from Code Clinic. I hope you're keeping well — I'm reaching out regarding your account with us. We have an outstanding balance of UGX ${formatted} on your account. I wanted to check if you'd like to arrange payment or if there's anything I can help clarify?"`.trim()
+"Hi ${options.patientName}! This is Sarah from Code Clinic. I hope you're keeping well — I'm reaching out regarding your account with us. We have an outstanding balance of UGX ${formatted} on your account. I wanted to check if you'd like to arrange payment or if there's anything I can help clarify?"`.trim()
 }

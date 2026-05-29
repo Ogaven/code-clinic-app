@@ -46,15 +46,18 @@ const STATUS_NEXT: Record<string, { status: string; label: string; colour: strin
 }
 
 export default function AppointmentModal({ appointment, onClose, onStatusChange, userRole = 'ADMIN' }: Props) {
-  const [loading,     setLoading]     = useState<string | null>(null)
-  const [editMode,    setEditMode]    = useState(false)
-  const [doctors,     setDoctors]     = useState<any[]>([])
-  const [editDate,    setEditDate]    = useState('')
-  const [editTime,    setEditTime]    = useState('')
-  const [editDoctor,  setEditDoctor]  = useState('')
-  const [editNotes,   setEditNotes]   = useState('')
-  const [saving,      setSaving]      = useState(false)
-  const [saveError,   setSaveError]   = useState('')
+  const [loading,      setLoading]      = useState<string | null>(null)
+  const [editMode,     setEditMode]     = useState(false)
+  const [doctors,      setDoctors]      = useState<any[]>([])
+  const [services,     setServices]     = useState<any[]>([])
+  const [editDate,     setEditDate]     = useState('')
+  const [editTime,     setEditTime]     = useState('')
+  const [editDoctor,   setEditDoctor]   = useState('')
+  const [editService,  setEditService]  = useState('')
+  const [editDuration, setEditDuration] = useState(30)
+  const [editNotes,    setEditNotes]    = useState('')
+  const [saving,       setSaving]       = useState(false)
+  const [saveError,    setSaveError]    = useState('')
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   if (!appointment) return null
@@ -69,13 +72,18 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
     setEditDate(d.toISOString().slice(0, 10))
     setEditTime(`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)
     setEditDoctor(appointment!.doctor.id || '')
+    setEditService((appointment!.service as any).id || '')
+    const durMins = Math.round((new Date(appointment!.endAt).getTime() - new Date(appointment!.startAt).getTime()) / 60000)
+    setEditDuration(durMins > 0 ? durMins : 30)
     setEditNotes(appointment!.notes || '')
     setSaveError('')
     setEditMode(true)
-    if (doctors.length === 0) {
-      const res = await fetch('/api-proxy/doctors', { headers: { Authorization: `Bearer ${token}` } })
-      if (res.ok) { const d = await res.json(); setDoctors(Array.isArray(d) ? d : []) }
-    }
+    const [docRes, svcRes] = await Promise.all([
+      doctors.length === 0  ? fetch('/api-proxy/doctors',  { headers: { Authorization: `Bearer ${token}` } }) : Promise.resolve(null),
+      services.length === 0 ? fetch('/api-proxy/services', { headers: { Authorization: `Bearer ${token}` } }) : Promise.resolve(null),
+    ])
+    if (docRes?.ok) { const data = await docRes.json(); setDoctors(Array.isArray(data) ? data : []) }
+    if (svcRes?.ok) { const data = await svcRes.json(); setServices(Array.isArray(data) ? data : []) }
   }
 
   async function changeStatus(status: string) {
@@ -96,8 +104,10 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
     try {
       const [hh, mm] = editTime.split(':')
       const startAt = new Date(`${editDate}T${hh}:${mm}:00`)
-      const body: any = { startAt: startAt.toISOString(), notes: editNotes }
-      if (editDoctor) body.doctorId = editDoctor
+      const endAt   = new Date(startAt.getTime() + editDuration * 60000)
+      const body: any = { startAt: startAt.toISOString(), endAt: endAt.toISOString(), notes: editNotes }
+      if (editDoctor)  body.doctorId  = editDoctor
+      if (editService) body.serviceId = editService
       const res = await fetch(`/api-proxy/scheduling/appointments/${appointment!.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -255,6 +265,31 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                       <option key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}</option>
                     ))}
                   </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 block mb-1">Service</label>
+                  <select value={editService} onChange={e => setEditService(e.target.value)} className={inputCls}>
+                    <option value="">Keep current ({appointment.service.name})</option>
+                    {services.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 block mb-1">Duration</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[10, 15, 20, 30, 45, 60, 90, 120].map(mins => (
+                      <button key={mins} type="button" onClick={() => setEditDuration(mins)}
+                        className={cn('px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors',
+                          editDuration === mins
+                            ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
+                            : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                        {mins < 60 ? `${mins}m` : `${mins / 60}h`}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>

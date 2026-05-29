@@ -125,6 +125,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Booking failed'); return }
+      window.dispatchEvent(new Event('appointment-updated'))
       onBooked?.()
       handleClose()
     } catch { setError('Network error') } finally { setLoading(false) }

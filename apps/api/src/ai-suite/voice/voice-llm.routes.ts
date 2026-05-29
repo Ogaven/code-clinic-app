@@ -35,9 +35,11 @@ router.post('/llm', async (req, res) => {
       custom_llm_extra_body?: Record<string, string>
     }
 
-    // ── Extract caller phone and call ID from per-session metadata ──────────
-    const callerPhone = body.custom_llm_extra_body?.caller_phone ?? 'unknown'
-    const callId      = body.custom_llm_extra_body?.call_id      ?? `voice-${Date.now()}`
+    // ── Extract per-session metadata injected by sip.service / voice-channel ──
+    const callerPhone  = body.custom_llm_extra_body?.caller_phone  ?? 'unknown'
+    const callId       = body.custom_llm_extra_body?.call_id       ?? `voice-${Date.now()}`
+    const agentMode    = body.custom_llm_extra_body?.agent_mode    ?? 'INBOUND'
+    const queueItemId  = body.custom_llm_extra_body?.queue_item_id ?? undefined
 
     // ── Get the last user message (caller's speech) ─────────────────────────
     const messages  = body.messages ?? []
@@ -48,7 +50,7 @@ router.post('/llm', async (req, res) => {
       return res.json(openAiResponse('How can I help you today?', callId))
     }
 
-    console.log(`[VoiceLLM] call=${callId} phone=${callerPhone} → "${userText.slice(0, 80)}"`)
+    console.log(`[VoiceLLM] call=${callId} mode=${agentMode} phone=${callerPhone} → "${userText.slice(0, 80)}"`)
 
     // ── Look up or create conversation in DB ────────────────────────────────
     let conversation = await prisma.aiConversation.findFirst({
@@ -74,10 +76,11 @@ router.post('/llm', async (req, res) => {
 
     // ── Run Claude agent ────────────────────────────────────────────────────
     const agentResponse = await runAgent({
-      phoneNumber:     callerPhone,
-      channel:         'VOICE',
-      direction:       'INBOUND',
-      incomingMessage: userText,
+      phoneNumber:      callerPhone,
+      channel:          'VOICE',
+      direction:        agentMode === 'INBOUND' ? 'INBOUND' : 'OUTBOUND',
+      incomingMessage:  userText,
+      outboundQueueId:  queueItemId,
     })
 
     const replyText = agentResponse?.text ?? 'I\'m sorry, I didn\'t catch that. Could you repeat?'

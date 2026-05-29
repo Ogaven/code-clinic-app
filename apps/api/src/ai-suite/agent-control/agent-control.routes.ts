@@ -87,6 +87,34 @@ router.get('/agents/escalation', async (_req, res) => {
   }
 })
 
+// ── GET /ai-suite/agents/calling-enabled ─────────────────────────────────────
+// Must come before /:agentName/toggle to avoid route shadowing.
+
+router.get('/agents/calling-enabled', async (_req, res) => {
+  try {
+    const setting = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
+    res.json({ enabled: (setting?.value ?? 'false') === 'true' })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── POST /ai-suite/agents/calling-enabled ────────────────────────────────────
+
+router.post('/agents/calling-enabled', async (req, res) => {
+  try {
+    const { enabled } = req.body as { enabled: boolean }
+    await prisma.appSetting.upsert({
+      where:  { key: 'calling_agents_enabled' },
+      update: { value: String(!!enabled) },
+      create: { key: 'calling_agents_enabled', value: String(!!enabled) },
+    })
+    res.json({ enabled: !!enabled })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ── POST /ai-suite/agents/:agentName/toggle ───────────────────────────────────
 
 router.post('/agents/:agentName/toggle', async (req, res) => {

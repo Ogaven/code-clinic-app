@@ -23,5 +23,5 @@ GOAL:
 TONE: Warm, caring, like a friend checking in. Not clinical or robotic.
 
 START WITH:
-"Hello ${options.patientName}! This is Zoe from Code Clinic. I hope you're doing well — I'm just calling to check how you're feeling after your visit with ${options.doctorName} yesterday for your ${options.serviceName}. How are you feeling?"`.trim()
+"Hello ${options.patientName}! This is Sarah from Code Clinic. I hope you're doing well — I'm just calling to check how you're feeling after your visit with ${options.doctorName} yesterday for your ${options.serviceName}. How are you feeling?"`.trim()
 }

@@ -3,6 +3,7 @@ import { sendMissedCallWhatsApp } from './whatsapp-channel'
 import { uploadFile } from '../../storage/r2'
 import { transcribeAudio } from '../../knowledge/rag'
 import { prisma } from '../../../lib/prisma'
+import { makeOutboundCall, startBidirectionalVoiceCall, isSipConnected } from '../../../ai-suite/voice/sip.service'
 
 // ── TTS: Generate voice response ───────────────────────────────
 
@@ -89,11 +90,26 @@ export async function handleInboundCall(phoneNumber: string): Promise<string> {
 // ── Trigger outbound call ─────────────────────────────────────
 
 export async function triggerOutboundCall(queueItemId: string): Promise<void> {
+  // ── Master calling-agents guard ───────────────────────────────────────────
+  const callingEnabled = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
+  if (callingEnabled?.value === 'false') {
+    console.log(`[VOICE] Calling agents disabled — skipping queue item ${queueItemId}`)
+    return
+  }
+
   const queueItem = await prisma.outboundQueue.findUnique({
     where: { id: queueItemId },
     include: { patient: true },
   })
   if (!queueItem) throw new Error(`Queue item not found: ${queueItemId}`)
+
+  // ── Per-mode agent guard ──────────────────────────────────────────────────
+  const modeAgentKey = `agent_${queueItem.agentMode.toLowerCase()}-caller_enabled`
+  const modeEnabled  = await prisma.appSetting.findUnique({ where: { key: modeAgentKey } })
+  if (modeEnabled?.value === 'false') {
+    console.log(`[VOICE] ${queueItem.agentMode} caller disabled — skipping ${queueItem.patient.phone}`)
+    return
+  }
 
   // Increment attempts and mark as CALLING
   await prisma.outboundQueue.update({
@@ -105,105 +121,129 @@ export async function triggerOutboundCall(queueItemId: string): Promise<void> {
     },
   })
 
-  const apiKey   = process.env.AT_API_KEY
-  const username = process.env.AT_USERNAME
-  const callerID = process.env.AT_VOICE_NUMBER || process.env.ROKE_CALLER_ID
-
-  if (!apiKey || !username || apiKey === 'your-api-key') {
-    console.log(`[VOICE STUB] Would call ${queueItem.patient.phone} for ${queueItem.agentMode}`)
-    // In dev mode, mark as completed for testing
+  // ── SIP not available → stub ──────────────────────────────────────────────
+  if (!isSipConnected()) {
+    console.log(`[VOICE STUB] SIP not connected — skipping call to ${queueItem.patient.phone} for ${queueItem.agentMode}`)
     await prisma.outboundQueue.update({
       where: { id: queueItemId },
-      data: { status: 'COMPLETED', outcome: 'STUB_MODE' },
+      data: { status: 'COMPLETED', outcome: 'STUB_NO_SIP' },
     })
     return
   }
 
-  try {
-    const AfricasTalking = require('africastalking')
-    const at = AfricasTalking({ apiKey, username })
-    const voice = at.VOICE
+  const callId = `outbound-${queueItemId}-${Date.now()}`
+  const phone  = queueItem.patient.phone
+  const maxAttempts = 3
 
-    // Africa's Talking outbound call
-    // The call webhook URL will handle the conversation
-    const apiBaseUrl = process.env.API_URL || 'http://localhost:4000'
-    await voice.call({
-      callFrom: callerID,
-      callTo: [queueItem.patient.phone],
-    })
-
-    console.log(`[VOICE] Outbound call initiated to ${queueItem.patient.phone} (${queueItem.agentMode})`)
-
-    // AT will POST to /agent/voice/inbound when call connects
-    // The queue item ID needs to be tracked — store in a temp lookup
-    // For now, store in agent log
-    await prisma.agentLog.create({
-      data: {
-        patientId: queueItem.patientId,
-        type: `OUTBOUND_${queueItem.agentMode}`,
-        channel: 'VOICE',
-        outcome: 'CALLING',
-      },
-    })
-
-  } catch (err: any) {
-    console.error('[VOICE] Outbound call failed:', err.message)
-
-    const isLastAttempt = queueItem.attempts + 1 >= queueItem.attempts // simplified check
-    const maxAttempts = 3
-
-    if (queueItem.attempts + 1 >= maxAttempts) {
-      // Max attempts reached — send WhatsApp fallback
-      await prisma.outboundQueue.update({
-        where: { id: queueItemId },
-        data: { status: 'FAILED', outcome: 'MAX_ATTEMPTS_REACHED' },
-      })
-
-      // Get appointment details if it's a reminder
-      if (queueItem.appointmentId) {
-        const appt = await prisma.appointment.findUnique({
-          where: { id: queueItem.appointmentId },
-          include: {
-            doctor: { include: { user: { select: { firstName: true, lastName: true } } } },
-            service: { select: { name: true } },
-          },
-        })
-        if (appt) {
-          await sendMissedCallWhatsApp(
-            queueItem.patient.phone,
-            `${queueItem.patient.firstName} ${queueItem.patient.lastName}`,
-            `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`,
-            appt.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }),
-            appt.id
-          )
-        }
-      }
-    } else {
-      // Schedule retry in retryIntervalHours
-      const retryAt = new Date(Date.now() + 4 * 60 * 60 * 1000) // 4 hours
-      await prisma.outboundQueue.update({
-        where: { id: queueItemId },
-        data: {
-          status: 'PENDING',
-          scheduledFor: retryAt,
-          outcome: `Attempt ${queueItem.attempts + 1} failed: ${err.message.slice(0, 100)}`,
-        },
-      })
-    }
-
-    // Save NO_ANSWER memory
-    await prisma.agentMemory.create({
-      data: {
-        patientId: queueItem.patientId,
-        channel: 'VOICE',
-        phoneNumber: queueItem.patient.phone,
-        interactionType: queueItem.agentMode as any,
-        summary: `Outbound call attempted for ${queueItem.reason}. No answer.`,
-        outcome: 'NO_ANSWER',
-        agentMode: queueItem.agentMode,
-      },
-    })
+  // ── Build callMeta for ElevenLabs ConvAI ─────────────────────────────────
+  const callMeta: Record<string, string> = {
+    agent_mode:    queueItem.agentMode,
+    queue_item_id: queueItemId,
+    patient_name:  `${queueItem.patient.firstName} ${queueItem.patient.lastName}`,
   }
+
+  if (queueItem.appointmentId) {
+    const appt = await prisma.appointment.findUnique({
+      where: { id: queueItem.appointmentId },
+      include: {
+        doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+        service: { select: { name: true } },
+      },
+    })
+    if (appt) {
+      const timeStr = appt.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' })
+      callMeta.doctor_name  = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+      callMeta.service_name = appt.service.name
+      if (queueItem.agentMode === 'REMINDER') {
+        callMeta.appointment_date = appt.startAt.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long' })
+        callMeta.appointment_time = timeStr
+      } else if (queueItem.agentMode === 'FOLLOWUP') {
+        callMeta.visit_date = appt.startAt.toLocaleDateString('en-UG')
+      }
+    }
+  }
+
+  let callConnected = false
+
+  console.log(`[VOICE] Initiating ${queueItem.agentMode} SIP call to ${phone} (queue: ${queueItemId})`)
+
+  await makeOutboundCall(
+    phone,
+    async (dialog) => {
+      callConnected = true
+      await prisma.agentLog.create({
+        data: {
+          patientId: queueItem.patientId,
+          type:      `OUTBOUND_${queueItem.agentMode}`,
+          channel:   'VOICE',
+          outcome:   'IN_PROGRESS',
+          callSid:   callId,
+        },
+      }).catch(() => null)
+
+      await startBidirectionalVoiceCall(dialog, callId, phone, callMeta)
+
+      await prisma.outboundQueue.update({
+        where: { id: queueItemId },
+        data:  { status: 'COMPLETED', outcome: 'ANSWERED' },
+      }).catch(() => null)
+    },
+    async () => {
+      if (callConnected) return   // normal hangup after conversation — already marked COMPLETED
+
+      // No answer path
+      if (queueItem.attempts + 1 >= maxAttempts) {
+        await prisma.outboundQueue.update({
+          where: { id: queueItemId },
+          data:  { status: 'FAILED', outcome: 'MAX_ATTEMPTS_REACHED' },
+        }).catch(() => null)
+
+        if (queueItem.appointmentId) {
+          const appt = await prisma.appointment.findUnique({
+            where: { id: queueItem.appointmentId },
+            include: {
+              doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+              service: { select: { name: true } },
+            },
+          }).catch(() => null)
+          if (appt) {
+            await sendMissedCallWhatsApp(
+              phone,
+              `${queueItem.patient.firstName} ${queueItem.patient.lastName}`,
+              `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`,
+              appt.startAt.toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }),
+              appt.id,
+            ).catch(() => null)
+          }
+        }
+      } else {
+        const retryAt = new Date(Date.now() + 4 * 60 * 60 * 1000)
+        await prisma.outboundQueue.update({
+          where: { id: queueItemId },
+          data:  { status: 'PENDING', scheduledFor: retryAt, outcome: `Attempt ${queueItem.attempts + 1}: no answer` },
+        }).catch(() => null)
+      }
+
+      await prisma.agentMemory.create({
+        data: {
+          patientId:       queueItem.patientId,
+          channel:         'VOICE',
+          phoneNumber:     phone,
+          interactionType: queueItem.agentMode as any,
+          summary:         `Outbound call attempted for ${queueItem.reason}. No answer.`,
+          outcome:         'NO_ANSWER',
+          agentMode:       queueItem.agentMode,
+        },
+      }).catch(() => null)
+    },
+  ).catch(async (err: any) => {
+    console.error(`[VOICE] triggerOutboundCall SIP error for ${queueItemId}:`, err.message)
+    const retryAt = new Date(Date.now() + 4 * 60 * 60 * 1000)
+    await prisma.outboundQueue.update({
+      where: { id: queueItemId },
+      data:  { status: 'PENDING', scheduledFor: retryAt, outcome: `SIP error: ${err.message.slice(0, 100)}` },
+    }).catch(() => null)
+  })
 }
 
 // ── Handle call recording complete webhook ────────────────────

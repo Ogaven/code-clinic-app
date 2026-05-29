@@ -39,7 +39,7 @@ export async function runAgent(params: AgentRunParams): Promise<AgentRunResult> 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey || apiKey.startsWith('sk-ant-...') || apiKey === '') {
     return {
-      text: "Hello! I'm Zoe from Code Clinic. Our AI system is currently being configured. Please call us directly at 0205477000 and our team will be happy to help you!",
+      text: "Hello! I'm Sarah from Code Clinic. Our AI system is currently being configured. Please call us directly at 0205477000 and our team will be happy to help you!",
       escalated: false,
     }
   }

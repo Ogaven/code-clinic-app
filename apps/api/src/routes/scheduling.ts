@@ -262,7 +262,10 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
   let end   = existing.endAt
   if (rawStart) {
     start = new Date(rawStart)
-    end   = new Date(start.getTime() + service.durationMins * 60_000)
+    // Honour an explicit endAt (custom duration) when provided; otherwise fall back to service default
+    end   = req.body.endAt
+      ? new Date(req.body.endAt)
+      : new Date(start.getTime() + service.durationMins * 60_000)
 
     const conflict = await prisma.appointment.findFirst({
       where: {

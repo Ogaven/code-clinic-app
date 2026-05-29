@@ -25,7 +25,7 @@ GOAL:
 START WITH:
 "Hello, may I speak with ${options.patientName}?"
 [Wait for confirmation]
-"Hi ${options.patientName}! This is Zoe calling from Code Clinic. I'm just calling to confirm your appointment tomorrow with ${options.doctorName} at ${options.appointmentTime}. Will you be able to make it?"
+"Hi ${options.patientName}! This is Sarah calling from Code Clinic. I'm just calling to confirm your appointment tomorrow with ${options.doctorName} at ${options.appointmentTime}. Will you be able to make it?"
 
 IF NO ANSWER after 20 seconds: hang up. The system will send a WhatsApp follow-up automatically.`.trim()
 }

@@ -51,13 +51,15 @@ export default function AgentControlPage() {
     return h
   }
 
-  const [agents, setAgents]         = useState<Agent[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [toggling, setToggling]     = useState<string | null>(null)
-  const [escPhone, setEscPhone]     = useState('')
-  const [escTemplate, setEscTpl]    = useState('')
-  const [savingEsc, setSavingEsc]   = useState(false)
-  const [toast, setToast]           = useState<string | null>(null)
+  const [agents, setAgents]             = useState<Agent[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [toggling, setToggling]         = useState<string | null>(null)
+  const [escPhone, setEscPhone]         = useState('')
+  const [escTemplate, setEscTpl]        = useState('')
+  const [savingEsc, setSavingEsc]       = useState(false)
+  const [toast, setToast]               = useState<string | null>(null)
+  const [callingEnabled, setCallingEnabled]         = useState(false)
+  const [togglingCalling, setTogglingCalling]       = useState(false)
 
   // Sarah's config
   const [configTab,     setConfigTab]     = useState<'prompt' | 'escalation'>('prompt')
@@ -65,7 +67,26 @@ export default function AgentControlPage() {
   const [savingPrompt,  setSavingPrompt]  = useState(false)
   const [configOpen,    setConfigOpen]    = useState(true)
 
-  useEffect(() => { fetchAgents(); fetchEscalation(); fetchConfig() }, [])
+  useEffect(() => { fetchAgents(); fetchEscalation(); fetchConfig(); fetchCallingEnabled() }, [])
+
+  async function fetchCallingEnabled() {
+    try {
+      const res = await fetch(`${API}/ai-suite/agents/calling-enabled`, { headers: authH() })
+      if (res.ok) { const d = await res.json(); setCallingEnabled(d.enabled) }
+    } catch {}
+  }
+
+  async function toggleCallingEnabled() {
+    setTogglingCalling(true)
+    try {
+      const next = !callingEnabled
+      const res = await fetch(`${API}/ai-suite/agents/calling-enabled`, {
+        method: 'POST', headers: authH(true),
+        body: JSON.stringify({ enabled: next }),
+      })
+      if (res.ok) { setCallingEnabled(next); showToast(next ? 'Calling agents enabled' : 'Calling agents disabled') }
+    } catch { showToast('Failed to update') } finally { setTogglingCalling(false) }
+  }
 
   async function fetchAgents() {
     setLoading(true)
@@ -266,9 +287,34 @@ export default function AgentControlPage() {
           </div>
 
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-3 flex items-center gap-2">
-              <Phone size={10} /> Calling Agents
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 flex items-center gap-2">
+                <Phone size={10} /> Calling Agents
+              </p>
+              <div className="flex items-center gap-3">
+                <span className={cn(
+                  'text-xs font-bold',
+                  callingEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400',
+                )}>
+                  {callingEnabled ? 'Calls ON' : 'Calls OFF'}
+                </span>
+                <button onClick={toggleCallingEnabled} disabled={togglingCalling}
+                  className={cn(
+                    'relative w-11 h-[22px] rounded-full transition-all disabled:opacity-60',
+                    callingEnabled ? 'bg-emerald-500' : 'bg-red-400',
+                  )}>
+                  <span className={cn(
+                    'absolute top-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-all',
+                    callingEnabled ? 'left-[23px]' : 'left-[3px]',
+                  )} />
+                </button>
+              </div>
+            </div>
+            {!callingEnabled && (
+              <div className="mb-3 px-4 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/30 text-xs text-red-600 dark:text-red-400 font-medium flex items-center gap-2">
+                <AlertTriangle size={12} /> All outbound voice calls are currently disabled. Toggle above to re-enable.
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4 xl:grid-cols-3">
               {calling.map(a => (
                 <AgentCard key={a.name} agent={a} toggling={toggling === a.name} onToggle={() => toggleAgent(a.name)} />

@@ -163,7 +163,7 @@ function groupOverlapping(appts: Appointment[]) {
 }
 
 // ─── Appointment block ────────────────────────────────────────────────────────
-function ApptBlock({ appt, colIndex, totalCols, onClick, resizingEndAt, onResizeStart, onResizeTouchStart }: {
+function ApptBlock({ appt, colIndex, totalCols, onClick, resizingEndAt, onResizeStart, onResizeTouchStart, isDraggable }: {
   appt: Appointment
   colIndex: number
   totalCols: number
@@ -171,6 +171,7 @@ function ApptBlock({ appt, colIndex, totalCols, onClick, resizingEndAt, onResize
   resizingEndAt?: string
   onResizeStart?: (e: React.MouseEvent) => void
   onResizeTouchStart?: (e: React.TouchEvent) => void
+  isDraggable?: boolean
 }) {
   const top           = timeToTop(appt.startAt)
   const effectiveMins = resizingEndAt
@@ -190,6 +191,8 @@ function ApptBlock({ appt, colIndex, totalCols, onClick, resizingEndAt, onResize
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick() }}
+      draggable={isDraggable}
+      onDragStart={isDraggable ? (e) => { e.stopPropagation(); e.dataTransfer.setData('text/plain', appt.id); e.dataTransfer.effectAllowed = 'move' } : undefined}
       className={cn(
         'absolute rounded-lg text-left overflow-hidden transition-all z-10',
         isResizing ? 'opacity-80' : 'hover:scale-[1.02] hover:shadow-lg',
@@ -377,7 +380,7 @@ function ApptDetailModal({ appt, onClose }: { appt: Appointment; onClose: () => 
 }
 
 // ─── Doctors View ─────────────────────────────────────────────────────────────
-function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay, workingHours, resizing, onApptResizeStart, onApptResizeTouchStart }: {
+function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay, workingHours, resizing, onApptResizeStart, onApptResizeTouchStart, onApptDrop }: {
   columns:                  DoctorCol[]
   dateStr:                  string
   onBookSlot?:              (docId: string, at: Date) => void
@@ -390,6 +393,7 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
   resizing?:                { apptId: string; originalEndAt: string; currentEndAt: string } | null
   onApptResizeStart?:       (e: React.MouseEvent, appt: Appointment) => void
   onApptResizeTouchStart?:  (e: React.TouchEvent, appt: Appointment) => void
+  onApptDrop?:              (apptId: string, targetDoctorId: string, slotIdx: number) => void
 }) {
   const today      = toDateStr(new Date()) === dateStr
   const TIME_W     = 56
@@ -479,7 +483,16 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
           return (
             <div key={doctor.id}
               className="flex-1 min-w-[130px] border-r border-gray-100 dark:border-white/10 relative select-none"
-              style={{ height: `${total}px` }}>
+              style={{ height: `${total}px` }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault()
+                const apptId = e.dataTransfer.getData('text/plain')
+                if (!apptId || !onApptDrop) return
+                const rect = e.currentTarget.getBoundingClientRect()
+                const slotIdx = Math.max(0, Math.min(Math.floor((e.clientY - rect.top) / SLOT_HEIGHT), timeSlots.length - 1))
+                onApptDrop(apptId, doctor.id, slotIdx)
+              }}>
               {/* Out-of-hours shading */}
               {wTop > 0    && <div className="absolute left-0 right-0 bg-gray-50/80 dark:bg-white/3" style={{ top: 0, height: wTop }} />}
               {wBot < total && <div className="absolute left-0 right-0 bg-gray-50/80 dark:bg-white/3" style={{ top: wBot, height: total - wBot }} />}
@@ -523,6 +536,7 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
                   resizingEndAt={resizing?.apptId === a.id ? resizing.currentEndAt : undefined}
                   onResizeStart={onApptResizeStart ? (e) => onApptResizeStart(e, a) : undefined}
                   onResizeTouchStart={onApptResizeTouchStart ? (e) => onApptResizeTouchStart(e, a) : undefined}
+                  isDraggable={!!onApptDrop}
                 />
               ))}
               {/* Now line */}
@@ -777,6 +791,18 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     return () => window.removeEventListener('workingHoursUpdated', fetchWorkingHours)
   }, [])
 
+  // Immediate refresh when any component in this session creates/updates an appointment
+  useEffect(() => {
+    function onApptUpdated() {
+      if (view === 'doctors') fetchDay(dateRef.current)
+      else if (view === 'week') fetchWeek(dateRef.current)
+      else fetchMonth(dateRef.current)
+    }
+    window.addEventListener('appointment-updated', onApptUpdated)
+    return () => window.removeEventListener('appointment-updated', onApptUpdated)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, fetchDay, fetchWeek, fetchMonth])
+
   // ─── Drag-to-block global mouseup ────────────────────────────────────────────
   useEffect(() => {
     function onMouseUp() {
@@ -877,6 +903,54 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
 
     document.addEventListener('touchmove', onTouchMove, { passive: true })
     document.addEventListener('touchend', onTouchEnd)
+  }
+
+  // ─── Cancel block-time drag when an appointment drag starts ──────────────────
+  useEffect(() => {
+    function onDragStart() { dragStateRef.current = null; setDragOverlay(null) }
+    document.addEventListener('dragstart', onDragStart)
+    return () => document.removeEventListener('dragstart', onDragStart)
+  }, [])
+
+  // ─── Drag appointment to a different doctor column ────────────────────────────
+  async function handleApptDrop(apptId: string, targetDoctorId: string, slotIdx: number) {
+    let appt: Appointment | undefined
+    for (const col of columns) {
+      appt = col.appointments.find(a => a.id === apptId)
+      if (appt) break
+    }
+    if (!appt) return
+
+    const durationMs = new Date(appt.endAt).getTime() - new Date(appt.startAt).getTime()
+    const slot       = timeSlots[slotIdx]
+    const newStart   = new Date(`${toDateStr(dateRef.current)}T${slot}:00+03:00`)
+    const newEnd     = new Date(newStart.getTime() + durationMs)
+
+    // No-op: same doctor, same slot
+    if (appt.doctor.id === targetDoctorId &&
+        newStart.getTime() === new Date(appt.startAt).getTime()) return
+
+    // Frontend conflict guard — block drop onto an already-occupied slot
+    const targetCol = columns.find(c => c.doctor.id === targetDoctorId)
+    if (targetCol) {
+      const conflict = targetCol.appointments.find(a =>
+        a.id !== apptId &&
+        a.status !== 'CANCELLED' &&
+        new Date(a.startAt) < newEnd &&
+        new Date(a.endAt) > newStart,
+      )
+      if (conflict) return
+    }
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+    try {
+      const res = await fetch(`${API}/scheduling/appointments/${apptId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ doctorId: targetDoctorId, startAt: newStart.toISOString(), endAt: newEnd.toISOString() }),
+      })
+      if (res.ok) fetchDay(dateRef.current)
+    } catch { /* calendar refreshes on next 30s poll */ }
   }
 
   // ─── Create blocked time ──────────────────────────────────────────────────────
@@ -1073,6 +1147,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           resizing={resizing}
           onApptResizeStart={handleResizeStart}
           onApptResizeTouchStart={handleResizeTouchStart}
+          onApptDrop={handleApptDrop}
         />
       )}
       {view === 'week' && (
