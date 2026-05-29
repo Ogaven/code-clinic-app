@@ -814,7 +814,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     window.addEventListener('appointment-updated', onApptUpdated)
     return () => window.removeEventListener('appointment-updated', onApptUpdated)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, fetchDay, fetchWeek, fetchMonth])
+  }, [view])
 
   // ─── Drag-to-block global mouseup ────────────────────────────────────────────
   useEffect(() => {
