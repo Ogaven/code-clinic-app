@@ -111,6 +111,15 @@ const STATUS_RING: Record<string, string> = {
 // Pulse animation statuses (patient is actively in clinic)
 const STATUS_PULSE = new Set(['CHECKED_IN', 'IN_CHAIR', 'WITH_PROVIDER'])
 
+const STATUS_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  PENDING:     { label: 'Pending',     bg: '#FFF7ED', color: '#F97316' },
+  CONFIRMED:   { label: 'Confirmed',   bg: '#ECFDF5', color: '#10B981' },
+  CANCELLED:   { label: 'Cancelled',   bg: '#FEF2F2', color: '#EF4444' },
+  COMPLETED:   { label: 'Completed',   bg: '#EFF6FF', color: '#3B82F6' },
+  NO_SHOW:     { label: 'No Show',     bg: '#F9FAFB', color: '#9CA3AF' },
+  RESCHEDULED: { label: 'Rescheduled', bg: '#FEFCE8', color: '#EAB308' },
+}
+
 // ─── NowLine ──────────────────────────────────────────────────────────────────
 function NowLine() {
   const [top, setTop] = useState<number | null>(null)
@@ -178,11 +187,11 @@ function ApptBlock({ appt, colIndex, totalCols, onClick, resizingEndAt, onResize
     ? (new Date(resizingEndAt).getTime() - new Date(appt.startAt).getTime()) / 60000
     : (new Date(appt.endAt).getTime()    - new Date(appt.startAt).getTime()) / 60000
   const height     = durationToHeight(effectiveMins)
-  const colour     = appt.service.colour || '#29ABE2'
-  const ring       = STATUS_RING[appt.status] || '#9CA3AF'
-  const short      = height < SLOT_HEIGHT
-  const isPulsing  = STATUS_PULSE.has(appt.status)
-  const isResizing = !!resizingEndAt
+  const colour      = appt.service.colour || '#29ABE2'
+  const short       = height < SLOT_HEIGHT
+  const isResizing  = !!resizingEndAt
+  const isCancelled = appt.status === 'CANCELLED'
+  const badge       = STATUS_BADGE[appt.status]
 
   const pct   = 100 / Math.max(1, totalCols)
   const left  = `calc(${colIndex * pct}% + 2px)`
@@ -191,11 +200,11 @@ function ApptBlock({ appt, colIndex, totalCols, onClick, resizingEndAt, onResize
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick() }}
-      draggable={isDraggable}
-      onDragStart={isDraggable ? (e) => { e.stopPropagation(); e.dataTransfer.setData('text/plain', appt.id); e.dataTransfer.effectAllowed = 'move' } : undefined}
+      draggable={isDraggable && !isCancelled}
+      onDragStart={isDraggable && !isCancelled ? (e) => { e.stopPropagation(); e.dataTransfer.setData('text/plain', appt.id); e.dataTransfer.effectAllowed = 'move' } : undefined}
       className={cn(
         'absolute rounded-lg text-left overflow-hidden transition-all z-10',
-        isResizing ? 'opacity-80' : 'hover:scale-[1.02] hover:shadow-lg',
+        isResizing ? 'opacity-80' : isCancelled ? 'opacity-50 cursor-default' : 'hover:scale-[1.02] hover:shadow-lg',
       )}
       style={{
         top:        `${top}px`,
@@ -208,24 +217,22 @@ function ApptBlock({ appt, colIndex, totalCols, onClick, resizingEndAt, onResize
       }}
     >
       <div className="px-1.5 py-1 h-full flex flex-col">
-        <span className="text-[11px] font-bold truncate" style={{ color: colour }}>
+        <span className={cn('text-[11px] font-bold truncate', isCancelled && 'line-through')} style={{ color: colour }}>
           {appt.patient.firstName} {appt.patient.lastName}
         </span>
         {!short && (
           <>
             <span className="text-[10px] text-gray-500 truncate mt-0.5">{appt.service.name}</span>
-            <div className="flex items-center gap-1 mt-auto">
-              <span className="text-[10px] text-gray-400">{fmtTime(appt.startAt)}</span>
-              {appt.status !== 'CONFIRMED' && (
-                <span className={cn('text-[9px] font-bold px-1 rounded', isPulsing && 'animate-pulse')}
-                  style={{ background: ring + '30', color: ring }}>
-                  {appt.status.replace('_', ' ')}
-                </span>
-              )}
-            </div>
+            <span className="text-[10px] text-gray-400 mt-0.5">{fmtTime(appt.startAt)}</span>
           </>
         )}
       </div>
+      {!short && badge && !isResizing && (
+        <div className="absolute bottom-1 right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full pointer-events-none"
+          style={{ background: badge.bg, color: badge.color }}>
+          {badge.label}
+        </div>
+      )}
 
       {/* Resize handle — visible on hover */}
       {(onResizeStart || onResizeTouchStart) && (
@@ -348,6 +355,12 @@ function ApptDetailModal({ appt, onClose }: { appt: Appointment; onClose: () => 
               {appt.status.replace(/_/g, ' ')}
             </span>
           </div>
+
+          {appt.status === 'CANCELLED' && (
+            <div className="text-xs text-red-500 font-semibold bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2 flex items-center gap-2">
+              <span>🚫</span> This appointment was cancelled — editing is not available
+            </div>
+          )}
 
           {/* Date & Time */}
           <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
@@ -526,7 +539,7 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
                   onRemove={onBlockClick ? () => onBlockClick(doctor.id, b.id) : undefined} />
               ))}
               {/* Appointments */}
-              {groupOverlapping(appointments.filter((a) => a.status !== 'CANCELLED')).map((a) => (
+              {groupOverlapping(appointments).map((a) => (
                 <ApptBlock
                   key={a.id}
                   appt={a}
@@ -624,7 +637,7 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
         <TimeCol width={TIME_W} />
         {weekDates.map((date) => {
           const isToday  = sameDay(date, today)
-          const dayAppts = appointments.filter((a) => sameDay(new Date(a.startAt), date) && a.status !== 'CANCELLED')
+          const dayAppts = appointments.filter((a) => sameDay(new Date(a.startAt), date))
           const isClosed = closedDays.has(date.getDay())
           return (
             <div key={date.toISOString()}
@@ -764,7 +777,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   // Internal appointment click — shows popup and forwards to external handler if provided
   function handleApptClick(appt: Appointment) {
     setSelectedAppt(appt)
-    onClickAppointment?.(appt)
+    if (appt.status !== 'CANCELLED') onClickAppointment?.(appt)
   }
 
   useEffect(() => { dateRef.current = date }, [date])

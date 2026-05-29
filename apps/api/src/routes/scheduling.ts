@@ -67,7 +67,7 @@ router.get('/calendar', requireAuth, async (req, res) => {
 
   const [appointments, blockedTimes, doctors] = await Promise.all([
     prisma.appointment.findMany({
-      where: { startAt: { gte: date, lte: nextDay }, status: { not: 'CANCELLED' } },
+      where: { startAt: { gte: date, lte: nextDay } },
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, phone: true, avatarR2Key: true } },
         doctor:  { include: { user: { select: { id: true, firstName: true, lastName: true, avatarR2Key: true } } } },

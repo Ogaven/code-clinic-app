@@ -318,14 +318,14 @@ export default function MySchedulePage() {
                     const pct    = 100 / totalCols
                     return (
                       <Link href={`/doctor/patients/${a.patient?.id}`} key={a.id}
-                        className="absolute rounded-xl overflow-hidden border-l-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                        className={cn('absolute rounded-xl overflow-hidden border-l-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer', a.status === 'CANCELLED' && 'opacity-50')}
                         style={{ top, height: height - 3, left: `${colIndex * pct}%`, width: `${pct}%`, borderLeftColor: a.service?.colour || '#29ABE2', background: (a.service?.colour || '#29ABE2') + '18' }}>
-                        <div className="px-2.5 py-1.5 h-full flex flex-col justify-center">
-                          <p className="text-xs font-bold text-gray-800 dark:text-white truncate">{a.patient?.firstName} {a.patient?.lastName}</p>
+                        <div className="px-2.5 py-1.5 h-full flex flex-col justify-center relative">
+                          <p className={cn('text-xs font-bold text-gray-800 dark:text-white truncate', a.status === 'CANCELLED' && 'line-through')}>{a.patient?.firstName} {a.patient?.lastName}</p>
                           {height > 36 && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{a.service?.name}</p>}
                           {height > 52 && <p className="text-[10px] text-gray-400">{fmt(a.startAt)} – {a.endAt ? fmt(a.endAt) : ''}</p>}
-                          {height > 64 && (
-                            <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
+                          {height > 36 && (
+                            <span className="absolute bottom-1 right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full pointer-events-none" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
                           )}
                         </div>
                       </Link>
@@ -395,10 +395,10 @@ export default function MySchedulePage() {
                         const height = durationToHeight(a.startAt, a.endAt || new Date(new Date(a.startAt).getTime() + 3600000).toISOString())
                         return (
                           <Link href={`/doctor/patients/${a.patient?.id}`} key={a.id}
-                            className="absolute left-0.5 right-0.5 rounded-lg overflow-hidden border-l-2 shadow-sm hover:shadow-md transition-shadow"
+                            className={cn('absolute left-0.5 right-0.5 rounded-lg overflow-hidden border-l-2 shadow-sm hover:shadow-md transition-shadow', a.status === 'CANCELLED' && 'opacity-50')}
                             style={{ top, height: height - 2, borderLeftColor: a.service?.colour || '#29ABE2', background: (a.service?.colour || '#29ABE2') + '20' }}>
                             <div className="px-1.5 py-1">
-                              <p className="text-[9px] font-bold text-gray-800 dark:text-white truncate">{a.patient?.firstName} {a.patient?.lastName}</p>
+                              <p className={cn('text-[9px] font-bold text-gray-800 dark:text-white truncate', a.status === 'CANCELLED' && 'line-through')}>{a.patient?.firstName} {a.patient?.lastName}</p>
                               {height > 36 && <p className="text-[8px] text-gray-500 truncate">{a.service?.name}</p>}
                             </div>
                           </Link>
