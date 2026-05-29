@@ -237,9 +237,10 @@ function parseRemoteSdp(sdp: string): { ip: string; port: number } | null {
 // Falls back to one-way greeting mode if ConvAI is unavailable.
 
 async function startBidirectionalVoiceCall(
-  dialog:      any,
-  callId:      string,
-  callerPhone: string,
+  dialog:         any,
+  callId:         string,
+  callerPhone:    string,
+  extraCallMeta?: Record<string, string>,
 ): Promise<void> {
   const offerSdp   = (dialog.remote?.sdp ?? '') as string
   const remoteEndp = parseRemoteSdp(offerSdp)
@@ -327,7 +328,7 @@ async function startBidirectionalVoiceCall(
   const convAI = createConvAISession({
     agentId,
     apiKey,
-    callMeta: { caller_phone: callerPhone, call_id: callId },
+    callMeta: { caller_phone: callerPhone, call_id: callId, ...extraCallMeta },
 
     onAgentAudio(pcm16kLE: Buffer) {
       // Agent TTS audio arrives as PCM 16kHz LE → downsample → PCMU → queue
