@@ -514,7 +514,7 @@ export default function PatientsPage() {
                       <td className="px-5 py-3 cursor-pointer" onClick={() => selectPatient(p)}>
                         <div className="flex items-center gap-3">
                           {p.avatarUrl ? (
-                            <img src={p.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                            <img src={p.avatarUrl} alt="" loading="lazy" width={36} height={36} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
                           ) : (
                             <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                               style={{ background: avatarColor(`${p.firstName || ''}${p.lastName || ''}`) }}>

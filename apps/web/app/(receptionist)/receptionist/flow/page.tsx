@@ -130,7 +130,7 @@ function PatientCard({
         {/* Patient info row */}
         <div className="flex items-start gap-3 mb-3">
           {appt.patient?.avatarUrl ? (
-            <img src={appt.patient.avatarUrl} alt=""
+            <img src={appt.patient.avatarUrl} alt="" loading="lazy" width={36} height={36}
               className="w-9 h-9 rounded-xl object-cover flex-shrink-0 ring-2 ring-white dark:ring-white/10 shadow-sm" />
           ) : (
             <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-[13px] flex-shrink-0 shadow-sm"

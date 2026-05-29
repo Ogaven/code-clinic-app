@@ -1174,7 +1174,7 @@ function DocumentsTab({ patientId, token }: { patientId: string; token: string |
         {docs.map(doc => (
           <div key={doc.id} className="flex items-center bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl p-3 hover:shadow-sm">
             {doc.fileType.startsWith('image/') ? (
-              <img src={doc.fileUrl} alt={doc.fileName} className="w-12 h-12 object-cover rounded-lg flex-shrink-0" />
+              <img src={doc.fileUrl} alt={doc.fileName} loading="lazy" width={48} height={48} className="w-12 h-12 object-cover rounded-lg flex-shrink-0" />
             ) : (
               <div className="w-12 h-12 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
                 <FileText size={20} className="text-red-500" />

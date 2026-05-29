@@ -2,6 +2,9 @@
 const nextConfig = {
   output: 'standalone',
 
+  // Gzip/Brotli compression for all responses
+  compress: true,
+
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -20,6 +23,31 @@ const nextConfig = {
       // Local development
       { protocol: 'http',  hostname: 'localhost' },
     ],
+  },
+
+  async headers() {
+    return [
+      {
+        // Content-hashed static assets — safe to cache for 1 year
+        source: '/_next/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        // Public images and icons — cache for 7 days
+        source: '/:path(.*\\.(?:png|jpg|jpeg|svg|ico|webp|gif))',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=604800, stale-while-revalidate=86400',
+          },
+        ],
+      },
+    ]
   },
 }
 

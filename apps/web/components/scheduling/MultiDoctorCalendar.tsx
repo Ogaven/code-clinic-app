@@ -1145,6 +1145,23 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
         {loading && <div className="w-2 h-2 rounded-full bg-clinic-blue animate-pulse ml-1" />}
       </div>
 
+      {/* First-load skeleton — shown when fetching and no data yet */}
+      {loading && columns.length === 0 && view === 'doctors' && (
+        <div className="flex gap-3 overflow-x-auto pb-4 animate-pulse">
+          {[1, 2, 3].map((col) => (
+            <div key={col} className="flex-shrink-0 w-48 sm:w-56">
+              <div className="h-10 bg-gray-100 dark:bg-white/10 rounded-xl mb-3" />
+              <div className="space-y-3">
+                <div className="h-14 bg-gray-100 dark:bg-white/10 rounded-xl" />
+                <div className="h-20 bg-gray-100 dark:bg-white/10 rounded-xl" />
+                <div className="h-10 bg-gray-100 dark:bg-white/10 rounded-xl" />
+                <div className="h-16 bg-gray-100 dark:bg-white/10 rounded-xl" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Calendar views */}
       {view === 'doctors' && (
         <DoctorsView
