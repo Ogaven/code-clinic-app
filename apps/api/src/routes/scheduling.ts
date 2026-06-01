@@ -267,14 +267,17 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
       ? new Date(req.body.endAt)
       : new Date(start.getTime() + service.durationMins * 60_000)
 
-    const conflict = await prisma.appointment.findFirst({
-      where: {
-        id: { not: req.params.id },
-        doctorId, status: { notIn: ['CANCELLED'] },
-        startAt: { lt: end }, endAt: { gt: start },
-      },
-    })
-    if (conflict) { res.status(409).json({ error: 'Time slot conflict — doctor already booked' }); return }
+    const overlapSetting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
+    if (overlapSetting?.value !== 'true') {
+      const conflict = await prisma.appointment.findFirst({
+        where: {
+          id: { not: req.params.id },
+          doctorId, status: { notIn: ['CANCELLED'] },
+          startAt: { lt: end }, endAt: { gt: start },
+        },
+      })
+      if (conflict) { res.status(409).json({ error: 'Time slot conflict — doctor already booked' }); return }
+    }
   } else if (req.body.endAt) {
     // Drag-to-resize: only endAt changed, enforce 10-minute minimum
     const newEnd = new Date(req.body.endAt)
@@ -790,6 +793,33 @@ router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('f
     })
   } catch (e: any) {
     res.status(500).json({ error: `Failed to parse file: ${e.message}` })
+  }
+})
+
+// ─── Booking settings ────────────────────────────────────────────────────────
+// GET  /scheduling/booking-settings → { allowOverlapping: boolean }
+// POST /scheduling/booking-settings → { allowOverlapping: boolean }
+
+router.get('/booking-settings', requireAuth, async (_req, res) => {
+  try {
+    const setting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
+    res.json({ allowOverlapping: setting?.value === 'true' })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.post('/booking-settings', requireAuth, clinicalStaff, async (req, res) => {
+  try {
+    const { allowOverlapping } = req.body as { allowOverlapping: boolean }
+    await prisma.appSetting.upsert({
+      where:  { key: 'allow_overlapping_appointments' },
+      update: { value: String(!!allowOverlapping) },
+      create: { key: 'allow_overlapping_appointments', value: String(!!allowOverlapping) },
+    })
+    res.json({ allowOverlapping: !!allowOverlapping })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 

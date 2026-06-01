@@ -13,9 +13,10 @@ import ProvidersScheduleTab from '@/components/scheduling/ProvidersScheduleTab'
 import SpecialDaysTab       from '@/components/scheduling/SpecialDaysTab'
 import ImportTab            from '@/components/scheduling/ImportTab'
 import ConnectionsTab       from '@/components/scheduling/ConnectionsTab'
+import BookingSettingsTab   from '@/components/scheduling/BookingSettingsTab'
 
 type Tab = 'calendar' | 'doctors' | 'services' | 'connections' | 'settings'
-type SettingsSub = 'working-hours' | 'doctors-schedule' | 'special-days'
+type SettingsSub = 'working-hours' | 'doctors-schedule' | 'special-days' | 'booking'
 
 const TABS: { key: Tab; label: string; Icon: React.ElementType }[] = [
   { key: 'calendar',    label: 'Calendar',    Icon: CalendarDays },
@@ -29,6 +30,7 @@ const SETTINGS_SUBS: { key: SettingsSub; label: string }[] = [
   { key: 'working-hours',    label: 'Working Hours'    },
   { key: 'doctors-schedule', label: 'Doctors Schedule' },
   { key: 'special-days',     label: 'Special Days'     },
+  { key: 'booking',          label: 'Booking Rules'    },
 ]
 
 export default function AppointmentsPage() {
@@ -113,6 +115,7 @@ export default function AppointmentsPage() {
               {settingsSub === 'working-hours'    && <WorkingHoursTab />}
               {settingsSub === 'doctors-schedule' && <ProvidersScheduleTab />}
               {settingsSub === 'special-days'     && <SpecialDaysTab />}
+              {settingsSub === 'booking'          && <BookingSettingsTab />}
             </div>
           </div>
         )}

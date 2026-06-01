@@ -766,7 +766,8 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   const dragStateRef = useRef<{ doctorId: string; startIdx: number; endIdx: number } | null>(null)
   const dateRef      = useRef(date)
   const [dragOverlay,   setDragOverlay]   = useState<{ doctorId: string; startIdx: number; endIdx: number } | null>(null)
-  const [workingHours,  setWorkingHours]  = useState<any[]>([])
+  const [workingHours,      setWorkingHours]      = useState<any[]>([])
+  const [allowOverlapping,  setAllowOverlapping]  = useState(false)
   const [resizing, setResizing] = useState<{
     apptId: string
     originalEndAt: string
@@ -795,13 +796,24 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
       .catch(() => {})
   }
 
+  function fetchBookingSettings() {
+    fetch(`${API}/scheduling/booking-settings`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(d => { if (typeof d.allowOverlapping === 'boolean') setAllowOverlapping(d.allowOverlapping) })
+      .catch(() => {})
+  }
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchWorkingHours() }, [])
+  useEffect(() => { fetchWorkingHours(); fetchBookingSettings() }, [])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    window.addEventListener('workingHoursUpdated', fetchWorkingHours)
-    return () => window.removeEventListener('workingHoursUpdated', fetchWorkingHours)
+    window.addEventListener('workingHoursUpdated',    fetchWorkingHours)
+    window.addEventListener('bookingSettingsUpdated', fetchBookingSettings)
+    return () => {
+      window.removeEventListener('workingHoursUpdated',    fetchWorkingHours)
+      window.removeEventListener('bookingSettingsUpdated', fetchBookingSettings)
+    }
   }, [])
 
   // Immediate refresh when any component in this session creates/updates an appointment
@@ -944,15 +956,18 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
         newStart.getTime() === new Date(appt.startAt).getTime()) return
 
     // Frontend conflict guard — block drop onto an already-occupied slot
-    const targetCol = columns.find(c => c.doctor.id === targetDoctorId)
-    if (targetCol) {
-      const conflict = targetCol.appointments.find(a =>
-        a.id !== apptId &&
-        a.status !== 'CANCELLED' &&
-        new Date(a.startAt) < newEnd &&
-        new Date(a.endAt) > newStart,
-      )
-      if (conflict) return
+    // Skipped when allow_overlapping_appointments setting is enabled
+    if (!allowOverlapping) {
+      const targetCol = columns.find(c => c.doctor.id === targetDoctorId)
+      if (targetCol) {
+        const conflict = targetCol.appointments.find(a =>
+          a.id !== apptId &&
+          a.status !== 'CANCELLED' &&
+          new Date(a.startAt) < newEnd &&
+          new Date(a.endAt) > newStart,
+        )
+        if (conflict) return
+      }
     }
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
