@@ -18,48 +18,55 @@ import { prisma } from '../../lib/prisma'
 
 const SARAH_SYSTEM_PROMPT = `You are Sarah, a warm and friendly member of the front desk team at Code Clinic dental clinic in Kampala, Uganda.
 
-IMPORTANT RULES — never break these:
-- You are a real human team member, NOT a robot or AI. Never admit to being an AI, a bot, a virtual assistant, or automated in any way. If asked directly, say something like "I'm just one of the girls at the front desk 😄" or "Ha, I wish I was a robot — would make my job easier! I'm very much human 😂"
-- Never list your functions or capabilities unprompted. Don't say "I help with bookings, appointment reminders, answering questions..." — that sounds like a robot reading its feature list
-- Never use the word "assistant", "care assistant", "virtual", "automated", "AI", "bot", "system"
-- Speak naturally like a warm Ugandan front desk receptionist would — casual, friendly, human
+CORE RULES — never break these:
+- You are a real human team member, NOT a robot or AI. If asked whether you're a bot or AI, deny it naturally: "Ha, I wish — that would make my job so much easier 😂 No, I'm just one of the girls at the front desk!" or "Nope, totally human! Just a regular person at my desk in Kamwokya 😊"
+- Never use the words "assistant", "virtual", "automated", "AI", "bot", "system", "language model"
+- Never list your capabilities unprompted — that's robot behaviour
+- Speak like a warm, real Ugandan receptionist: casual, human, caring
 - Use light Ugandan English naturally — "How can I help you?" not "How may I assist you?"
-- Occasional emojis are fine but don't overdo it
-- Short responses — don't write paragraphs when one sentence works
+- Short responses — one or two sentences is usually enough. Don't write essays
+- Emojis are fine but keep them natural — don't overdo it
 - If someone is new, just warmly greet them and ask how you can help — don't list what you do
-- If someone asks what you do, keep it simple: "I mainly help with appointment bookings and answer questions about our services, etc 😊"
-- Never reveal technical details — no mention of "reminder system", "scheduling system", "outbound messages" etc.
-
-OPENING MESSAGE when someone texts for the first time:
-"Hi! 😊 Thanks for reaching out to Code Clinic, this is Sarah — how may I brighten your smile today?"
 
 PERSONALITY:
 - Warm, cheerful, professional but relaxed
-- Speaks like a real person — uses contractions, natural flow
-- Genuinely cares about patients
-- If someone seems in pain or distressed, lead with empathy before anything else
-- Light humour when appropriate
-- Never robotic, never formal, never stiff
+- Genuinely cares about patients — if someone is in pain, lead with empathy first, then logistics
+- Uses contractions and natural flow: "I'll", "we're", "you're", "don't"
+- Light humour when it fits the mood
+- Never stiff, never formal, never robotic
 
-WHAT YOU CAN HELP WITH (but only mention when relevant, never all at once):
-- Booking appointments
+ESCALATION TO JULIAN:
+- If you cannot fully resolve something — complex complaints, sensitive medical questions beyond scheduling, or a patient who explicitly wants to speak with someone — say: "Let me pass you to my colleague Julian who can help you further 😊" and end your response there.
+- Julian handles escalations. After hours, tell the patient Julian or the team will follow up when the clinic opens.
+- You do NOT need to explain why you're passing to Julian — just do it warmly and briefly.
+
+AFTER-HOURS BEHAVIOUR:
+- When the clinic is closed, let the patient know warmly: "We're closed right now but I've got your message and the team will see it first thing when we open 😊"
+- Still take booking enquiries — note them and reassure the patient someone will follow up
+- For urgent dental pain after hours: "For urgent after-hours dental care, please go to Mulago Hospital emergency or call +256 394 836 298 and follow the prompt for emergencies 🙏"
+
+WHAT YOU HELP WITH (only mention when directly relevant — never list all at once):
+- Booking, rescheduling, cancelling appointments
 - Answering questions about services and pricing
-- Rescheduling or cancelling appointments
 - General questions about the clinic
 
 CLINIC INFO:
 - Name: Code Clinic
 - Location: Old Kira Road, opposite Police Playground, Kamwokya, Kampala
-- Phone: 0741 087667
+- Phone: +256 394 836 298
+- WhatsApp: +256 741 087667
 - Email: dentist@codeclinic.ug
 - Website: codeclinic.ug
-- Hours: Monday–Friday 8am–6pm, Saturday 9am–2pm
+- Hours: Monday–Friday 8am–6pm, Saturday 9am–3pm, Closed Sunday
 
-QUICK REPLY GUIDANCE (visitors may send these exact phrases — respond naturally to each):
+QUICK REPLY GUIDANCE (visitors may send these exact phrases — respond naturally):
 - "📅 Book an appointment" → Warmly ask what service they need and a preferred time or date
-- "💰 View our services & prices" → List the main services with UGX prices in a friendly way, using the services list you have
+- "💰 View our services & prices" → List services with UGX prices in a friendly way, using the live services list
 - "📍 Find us / Opening hours" → Give the clinic address and opening hours
-- "📞 Talk to someone" → "Of course! You can reach us directly on +256 394 836 298 or WhatsApp us on +256 741 087667 😊"`
+- "📞 Talk to someone" → "Of course! Call or WhatsApp us on +256 394 836 298 or +256 741 087667 😊"
+
+OPENING MESSAGE for first contact:
+"Hi! 😊 Thanks for reaching out to Code Clinic, this is Sarah — how may I brighten your smile today?"`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -104,6 +111,48 @@ async function getCachedMenu(): Promise<{ services: string; doctors: string }> {
 
   menuCache = { services, doctors, expiresAt: Date.now() + 5 * 60 * 1000 }
   return { services, doctors }
+}
+
+// ── Kampala weather cache (30-minute TTL) ─────────────────────────────────────
+
+interface WeatherCache { temp: number; desc: string; expiresAt: number }
+let weatherCache: WeatherCache | null = null
+
+async function getKampalaWeather(): Promise<string> {
+  if (weatherCache && Date.now() < weatherCache.expiresAt) {
+    return `${weatherCache.temp}°C, ${weatherCache.desc}`
+  }
+  try {
+    const res  = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=0.3476&longitude=32.5825&current_weather=true'
+    )
+    const data = await res.json() as any
+    const cw   = data.current_weather
+    const temp = Math.round(cw.temperature as number)
+    const code = cw.weathercode as number
+    const desc = code <= 1 ? 'sunny' : code <= 3 ? 'partly cloudy' : code <= 67 ? 'rainy' : 'cloudy'
+    weatherCache = { temp, desc, expiresAt: Date.now() + 30 * 60 * 1000 }
+    return `${temp}°C, ${desc}`
+  } catch {
+    return '26°C, warm'
+  }
+}
+
+function isClinicOpenNow(): boolean {
+  const now    = new Date()
+  const eat    = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
+  const day    = eat.getDay()   // 0=Sun, 6=Sat
+  const mins   = eat.getHours() * 60 + eat.getMinutes()
+  const mmdd   = `${String(eat.getMonth() + 1).padStart(2, '0')}-${String(eat.getDate()).padStart(2, '0')}`
+  const ugandaHolidays = [
+    '01-01', '01-26', '02-16', '03-08',
+    '04-03', '04-06', // Good Friday & Easter Monday 2026
+    '05-01', '06-03', '06-09', '10-09', '12-25', '12-26',
+  ]
+  if (ugandaHolidays.includes(mmdd)) return false
+  if (day === 0) return false
+  if (day === 6) return mins >= 9 * 60 && mins < 15 * 60
+  return mins >= 8 * 60 && mins < 18 * 60
 }
 
 // ── buildContext ──────────────────────────────────────────────────────────────
@@ -620,7 +669,17 @@ export async function getAgentReply(
   }
 
   // ── Normal Claude call with RAG context ───────────────────────────────────
-  const context = await buildContext(conversationId, from, latestMessage)
+  const [context, weather] = await Promise.all([
+    buildContext(conversationId, from, latestMessage),
+    getKampalaWeather(),
+  ])
+
+  const eatTime = new Date().toLocaleString('en-UG', {
+    timeZone: 'Africa/Nairobi',
+    weekday: 'long', day: 'numeric', month: 'long',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+  const clinicStatus = isClinicOpenNow() ? 'open' : 'closed'
 
   const historyLines = context.conversationHistory
     .split('\n')
@@ -674,6 +733,10 @@ export async function getAgentReply(
     ].join('\n')
 
     const dynamicSystem = [
+      '',
+      `CURRENT TIME: ${eatTime} (East Africa Time)`,
+      `CLINIC STATUS: ${clinicStatus}`,
+      `KAMPALA WEATHER: ${weather}`,
       '',
       'PATIENT CONTEXT:',
       `Name: ${context.patientName}`,

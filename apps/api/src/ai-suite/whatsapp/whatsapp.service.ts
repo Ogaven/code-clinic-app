@@ -1,7 +1,27 @@
 import { getAgentReply } from '../agent/agent.service'
-import { isAgentEnabled } from '../takeover/takeover.service'
+import { isAgentEnabled, takeoverConversation } from '../takeover/takeover.service'
 import { setBookingState } from '../booking/booking.state'
+import { createEscalation, notifyJulian } from '../../services/agent/guards/escalation'
 import { prisma } from '../../lib/prisma'
+
+// ── Clinic hours check (EAT) ──────────────────────────────────────────────────
+
+function isClinicOpen(): boolean {
+  const now  = new Date()
+  const eat  = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
+  const day  = eat.getDay()
+  const mins = eat.getHours() * 60 + eat.getMinutes()
+  const mmdd = `${String(eat.getMonth() + 1).padStart(2, '0')}-${String(eat.getDate()).padStart(2, '0')}`
+  const ugandaHolidays = [
+    '01-01', '01-26', '02-16', '03-08',
+    '04-03', '04-06', // Good Friday & Easter Monday 2026
+    '05-01', '06-03', '06-09', '10-09', '12-25', '12-26',
+  ]
+  if (ugandaHolidays.includes(mmdd)) return false
+  if (day === 0) return false
+  if (day === 6) return mins >= 9 * 60 && mins < 15 * 60
+  return mins >= 8 * 60 && mins < 18 * 60
+}
 
 
 export async function processInbound(from: string, text: string, wamid: string): Promise<void> {
@@ -203,6 +223,31 @@ export async function processInbound(from: string, text: string, wamid: string):
     // ── 7. Get Sarah's reply from Claude ──────────────────────────────────────
     const agentReply = await getAgentReply(conversation.id, from, text)
 
+    // ── 7b. Escalation detection ──────────────────────────────────────────────
+    // If Sarah's reply indicates she's handing off to Julian, trigger the full
+    // escalation flow: create DB record, silence the bot, notify Julian.
+    const escalationPhrases = ['julian', 'pass you to', 'connect you with', 'hand you over', 'colleague']
+    const agentTriggeredEscalation = escalationPhrases.some(p => agentReply.toLowerCase().includes(p))
+
+    if (agentTriggeredEscalation) {
+      try {
+        await createEscalation({
+          patientId:   patient?.id,
+          phoneNumber: from,
+          channel:     'WHATSAPP',
+          reason:      `Sarah escalated to Julian — patient message: ${text.slice(0, 200)}`,
+          transcript:  text,
+        })
+        await takeoverConversation(conversation.id, 'auto-escalation')
+        if (isClinicOpen()) {
+          await notifyJulian(from, text)
+        }
+        console.log(`[WhatsApp] Escalated conversation ${conversation.id} to Julian (clinic ${isClinicOpen() ? 'open' : 'closed'})`)
+      } catch (err: any) {
+        console.error('[WhatsApp] Escalation flow error:', err.message)
+      }
+    }
+
     // ── 8. Persist Sarah's reply ──────────────────────────────────────────────
     await prisma.aiMessage.create({
       data: {
@@ -212,7 +257,7 @@ export async function processInbound(from: string, text: string, wamid: string):
       },
     })
 
-    // ── 9. Deliver Sarah's reply via Meta Graph API ───────────────────────────
+    // ── 9. Deliver Sarah's reply via Africa's Talking ─────────────────────────
     await sendWhatsAppMessage(from, agentReply, wamid)
 
   } catch (err) {

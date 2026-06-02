@@ -77,7 +77,26 @@ export async function createEscalation(params: {
 
 export function getSafeEscalationResponse(channel: 'VOICE' | 'WHATSAPP'): string {
   if (channel === 'WHATSAPP') {
-    return "I'm connecting you with our reception team right away. One moment please! 🙏\n\nYou can also reach us directly at 0205477000."
+    return "I'm connecting you with our reception team right away. One moment please! 🙏\n\nYou can also reach us directly at +256 394 836 298."
   }
   return "Let me connect you with our receptionist right away. Please hold for just a moment."
+}
+
+// ── Notify Julian via WhatsApp ─────────────────────────────────
+
+export async function notifyJulian(patientPhone: string, patientMessage: string): Promise<void> {
+  const julianPhone = process.env.JULIAN_PHONE || process.env.JULIAN_WHATSAPP || '+256741087667'
+  try {
+    // Dynamic import avoids circular dependency (whatsapp.service → escalation → whatsapp.service)
+    const { sendWhatsAppMessage } = await import('../../../ai-suite/whatsapp/whatsapp.service')
+    const body =
+      `Hi Julian 👋 A patient on WhatsApp needs your attention.\n\n` +
+      `📞 Phone: ${patientPhone}\n` +
+      `💬 Message: "${patientMessage.slice(0, 200)}"\n\n` +
+      `Please check the inbox and follow up. 🙏`
+    await sendWhatsAppMessage(julianPhone, body)
+    console.log(`[Escalation] Julian notified about ${patientPhone}`)
+  } catch (err: any) {
+    console.error('[Escalation] Failed to notify Julian:', err.message)
+  }
 }

@@ -16,10 +16,22 @@ const router = Router()
 router.post('/whatsapp/webhook', async (req, res) => {
   try {
     res.status(200).json({ received: true })
-    const body    = req.body
-    const rawFrom = body.from    || body.data?.from    || body.phoneNumber
-    const text    = body.text    || body.data?.text    || body.body?.message || body.message
-    const msgId   = body.id      || body.messageId     || body.data?.id     || ''
+    const body      = req.body
+    const rawFrom   = body.from    || body.data?.from    || body.phoneNumber
+    const rawText   = body.text    || body.data?.text    || body.body?.message || body.message
+    const mediaType = body.messageType || body.data?.messageType || ''
+    const msgId     = body.id      || body.messageId     || body.data?.id     || ''
+
+    // Map media messages to a text description Sarah can handle
+    const MEDIA_DESCRIPTIONS: Record<string, string> = {
+      Image:    '[Patient sent an image — Sarah cannot view images, please acknowledge and ask them to describe it]',
+      Audio:    '[Patient sent a voice note — Sarah cannot listen to audio, please acknowledge and ask them to type their message]',
+      Video:    '[Patient sent a video — Sarah cannot view videos, please acknowledge and ask them to describe what they need]',
+      Document: '[Patient sent a document — Sarah cannot read documents, please acknowledge and ask them to describe what they need]',
+      Sticker:  '[Patient sent a sticker]',
+    }
+    const text = rawText || MEDIA_DESCRIPTIONS[mediaType] || ''
+
     if (!rawFrom || !text) {
       console.warn('[WHATSAPP WEBHOOK] Missing from or text:', body)
       return
