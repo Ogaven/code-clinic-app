@@ -42,7 +42,7 @@ function updateSession(phone: string, session: Session) {
 export async function sendWhatsAppMessage(phone: string, message: string): Promise<void> {
   const apiKey    = process.env.AT_API_KEY
   const username  = process.env.AT_USERNAME
-  const waNumber  = process.env.AT_WHATSAPP_NUMBER
+  const waNumber  = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
 
   if (!apiKey || !username || apiKey === 'your-api-key') {
     console.log(`[WHATSAPP STUB] Would send to ${phone}:\n${message}`)
@@ -123,10 +123,10 @@ export async function handleWhatsAppWebhook(body: any): Promise<void> {
   cleanExpiredSessions()
 
   // Parse Africa's Talking webhook payload
-  // AT sends: { from, to, text, id, date } or nested under data
+  // AT WhatsApp sends: { from, body: { message }, messageId, waNumber }
   const from    = body.from    || body.data?.from    || body.phoneNumber
-  const text    = body.text    || body.data?.text    || body.message
-  const msgId   = body.id      || body.data?.id
+  const text    = body.text    || body.data?.text    || body.body?.message || body.message
+  const msgId   = body.id      || body.messageId     || body.data?.id
 
   if (!from || !text) {
     console.warn('[WHATSAPP WEBHOOK] Missing from or text:', body)
