@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
-import { handleWhatsAppWebhook } from '../services/agent/channels/whatsapp-channel'
+import { processInbound } from '../ai-suite/whatsapp/whatsapp.service'
 import { handleInboundCall, triggerOutboundCall, handleRecordingComplete } from '../services/agent/channels/voice-channel'
 import { runAgent } from '../services/agent/unified-agent'
 // import { runReminderJob, runFollowupJob, runDebtJob, processQueue } from '../services/agent/scheduler' // disabled
@@ -15,8 +15,22 @@ const router = Router()
 // POST /agent/whatsapp/webhook — Africa's Talking webhook (no auth)
 router.post('/whatsapp/webhook', async (req, res) => {
   try {
-    res.status(200).json({ received: true }) // Respond immediately to AT
-    await handleWhatsAppWebhook(req.body)    // Process async
+    res.status(200).json({ received: true })
+    const body    = req.body
+    const rawFrom = body.from    || body.data?.from    || body.phoneNumber
+    const text    = body.text    || body.data?.text    || body.body?.message || body.message
+    const msgId   = body.id      || body.messageId     || body.data?.id     || ''
+    if (!rawFrom || !text) {
+      console.warn('[WHATSAPP WEBHOOK] Missing from or text:', body)
+      return
+    }
+    // Normalise AT phone (e.g. "256741087667") to E.164 (+256741087667)
+    const digits = String(rawFrom).replace(/\D/g, '')
+    const from   = digits.startsWith('256')              ? `+${digits}`
+                 : digits.startsWith('0') && digits.length === 10 ? `+256${digits.slice(1)}`
+                 : digits.length === 9                   ? `+256${digits}`
+                 : `+${digits}`
+    await processInbound(from, text, msgId)
   } catch (err: any) {
     console.error('[WEBHOOK] WhatsApp error:', err.message)
   }

@@ -3,7 +3,6 @@ import { isAgentEnabled } from '../takeover/takeover.service'
 import { setBookingState } from '../booking/booking.state'
 import { prisma } from '../../lib/prisma'
 
-const GRAPH_API_VERSION = 'v19.0'
 
 export async function processInbound(from: string, text: string, wamid: string): Promise<void> {
   try {
@@ -222,39 +221,33 @@ export async function processInbound(from: string, text: string, wamid: string):
 }
 
 // Exported so schedulers (reminder, followup) can send outbound WhatsApp messages
-export async function sendWhatsAppMessage(to: string, body: string, replyToMessageId?: string): Promise<void> {
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-  const token         = process.env.WHATSAPP_TOKEN
+export async function sendWhatsAppMessage(to: string, body: string, _replyToMessageId?: string): Promise<void> {
+  const apiKey   = process.env.AT_API_KEY
+  const username = process.env.AT_USERNAME
+  const waNumber = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
 
-  if (!phoneNumberId || !token) {
-    console.error('[WhatsApp] Missing WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_TOKEN env vars')
+  if (!apiKey || !username) {
+    console.error('[WhatsApp] Missing AT_API_KEY or AT_USERNAME env vars')
     return
   }
 
-  const url     = `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`
-  const payload: Record<string, unknown> = {
-    messaging_product: 'whatsapp',
-    to,
-    type: 'text',
-    ...(replyToMessageId ? { context: { message_id: replyToMessageId } } : {}),
-    text: { body },
-  }
+  try {
+    const response = await fetch('https://api.africastalking.com/version1/messaging/whatsapp', {
+      method: 'POST',
+      headers: {
+        'apiKey':         apiKey,
+        'Content-Type':   'application/json',
+      },
+      body: JSON.stringify({ username, to, message: body, from: waNumber }),
+    })
 
-  console.log('[WA SEND]', { phoneNumberId, to, url })
-
-  const response = await fetch(url, {
-    method:  'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  })
-
-  const responseText = await response.text()
-  console.log('[WA RESPONSE]', response.status, responseText)
-
-  if (!response.ok) {
-    console.error(`[WhatsApp] Failed to send message to ${to}:`, responseText)
+    const responseText = await response.text()
+    if (!response.ok) {
+      console.error(`[WhatsApp] Send failed to ${to}:`, responseText)
+    } else {
+      console.log(`[WhatsApp] Sent to ${to}: ${body.slice(0, 60)}...`)
+    }
+  } catch (err: any) {
+    console.error('[WhatsApp] Error sending message:', err.message)
   }
 }
