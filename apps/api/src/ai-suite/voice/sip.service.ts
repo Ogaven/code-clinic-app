@@ -560,7 +560,8 @@ export async function handleInboundCall(req: any, res: any): Promise<void> {
   const rawMatch   = fromRaw.match(/sip:([+\d]+)@/)
   const callerNumber = fromUser || rawMatch?.[1] || 'unknown'
 
-  const callId = (req.get('call-id') as string | undefined) ?? `call-${Date.now()}`
+  const rawCallId = (req.get('call-id') as string | undefined) ?? `call-${Date.now()}`
+  const callId    = rawCallId.replace(/[^a-zA-Z0-9\-_.@]/g, '')
   console.log(`[SIP] Inbound call from ${callerNumber}  call-id=${callId}`)
 
   // Log the offer SDP so we can see Roke's media IP/port
