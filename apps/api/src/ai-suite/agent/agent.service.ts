@@ -173,9 +173,9 @@ async function buildContext(
     }),
     prisma.aiMessage.findMany({
       where: { conversationId },
-      orderBy: { createdAt: 'asc' },
-      take: 15,
-    }),
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    }).then(msgs => msgs.reverse()),
     getCachedMenu(),
     keyword
       ? prisma.aiKnowledgeBase.findMany({
