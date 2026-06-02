@@ -232,13 +232,18 @@ export async function sendWhatsAppMessage(to: string, body: string, _replyToMess
   }
 
   try {
-    const response = await fetch('https://api.africastalking.com/version1/messaging/whatsapp', {
+    const response = await fetch('https://chat.africastalking.com/whatsapp/send', {
       method: 'POST',
       headers: {
-        'apiKey':         apiKey,
-        'Content-Type':   'application/json',
+        'apiKey':       apiKey,
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ username, to, message: body, from: waNumber }),
+      body: JSON.stringify({
+        username,
+        waNumber,
+        phoneNumber: to,
+        body: { message: body },
+      }),
     })
 
     const responseText = await response.text()
