@@ -226,33 +226,18 @@ export async function sendWhatsAppMessage(to: string, body: string, _replyToMess
   const username = process.env.AT_USERNAME
   const waNumber = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
 
-  if (!apiKey || !username) {
-    console.error('[WhatsApp] Missing AT_API_KEY or AT_USERNAME env vars')
+  if (!apiKey || !username || !waNumber) {
+    console.error('[WhatsApp] Missing AT_API_KEY, AT_USERNAME, or WHATSAPP_PHONE_NUMBER env vars')
     return
   }
 
   try {
-    const response = await fetch('https://chat.africastalking.com/whatsapp/send', {
-      method: 'POST',
-      headers: {
-        'apiKey':       apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        username,
-        waNumber,
-        phoneNumber: to,
-        body: { message: body },
-      }),
-    })
-
-    const responseText = await response.text()
-    if (!response.ok) {
-      console.error(`[WhatsApp] Send failed to ${to}:`, responseText)
-    } else {
-      console.log(`[WhatsApp] Sent to ${to}: ${body.slice(0, 60)}...`)
-    }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const AfricasTalking = require('africastalking')
+    const at = AfricasTalking({ apiKey, username })
+    await at.WHATSAPP.sendMessage({ waNumber, phoneNumber: to, body: { message: body } })
+    console.log(`[WhatsApp] Sent to ${to}: ${body.slice(0, 60)}...`)
   } catch (err: any) {
-    console.error('[WhatsApp] Error sending message:', err.message)
+    console.error('[WhatsApp] Send failed to', to, ':', err.message || err)
   }
 }
