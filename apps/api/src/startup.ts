@@ -31,7 +31,7 @@ export async function runStartup() {
       console.log('[startup] Empty database — running full seed...')
       await seed()
       console.log('[startup] Seed complete.')
-    } else if (patientCount < 30 || apptCount < 30) {
+    } else if ((patientCount < 30 || apptCount < 30) && process.env.NODE_ENV !== 'production') {
       console.log(`[startup] Sparse data (${patientCount} patients, ${apptCount} appts) — running demo top-up...`)
       await seedDemoData()
       console.log('[startup] Demo top-up complete.')
@@ -213,7 +213,7 @@ async function seed() {
   console.log('   admin@codeclinic.ug     → CodeClinic2026!')
   console.log('   reception@codeclinic.ug → Staff@2024!')
   console.log('   accounts@codeclinic.ug  → Staff@2024!')
-  await seedDemoData()
+  if (process.env.NODE_ENV !== 'production') await seedDemoData()
 }
 
 export async function seedDemoData() {
