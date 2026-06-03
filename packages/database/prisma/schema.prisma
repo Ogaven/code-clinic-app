@@ -267,6 +267,7 @@ model Appointment {
   arrivedAt     DateTime?
   withProviderAt DateTime?
   departedAt    DateTime?
+  followUpSent  Boolean   @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

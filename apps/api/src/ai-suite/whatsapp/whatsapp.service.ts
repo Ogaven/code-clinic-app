@@ -246,6 +246,46 @@ export async function processInbound(from: string, text: string, wamid: string):
       }
     }
 
+    // ── 6b. Template button reply detection ──────────────────────────────────
+    // Patients tapping WhatsApp template buttons send the button label as text.
+    // Handle these warmly without calling Claude.
+    {
+      const bt = text.trim()
+      const btLower = bt.toLowerCase()
+      type ButtonHandler = () => Promise<string>
+      const buttonReplies: Record<string, ButtonHandler> = {
+        '😊 feeling great': async () => {
+          return `So glad to hear that! 🥳 Your health is our priority. Don't forget to book your next check-up — just reply BOOK when you're ready 😊`
+        },
+        '😐 could be better': async () => {
+          return `Oh, I'm sorry to hear that 😔 Can you tell me more about what you're experiencing? I'll make sure the doctor follows up with you right away.`
+        },
+        '📅 book appointment': async () => {
+          setBookingState(from, { state: 'AWAITING_SERVICE' })
+          return `Of course! 😊 What service are you looking for? We offer consultations, cleaning, fillings, extractions, braces, whitening and more.`
+        },
+        '📅 book now': async () => {
+          setBookingState(from, { state: 'AWAITING_SERVICE' })
+          return `Wonderful! 😊 Let's get you booked in. What service are you looking for?`
+        },
+        '❓ ask a question': async () => {
+          return `Of course, go ahead! 😊 I'm here to help.`
+        },
+        'not now': async () => {
+          return `No worries at all! 😊 We're here whenever you're ready. Take care!`
+        },
+      }
+      const buttonHandler = buttonReplies[btLower]
+      if (buttonHandler) {
+        const buttonResponse = await buttonHandler()
+        await prisma.aiMessage.create({
+          data: { conversationId: conversation.id, role: 'AGENT', content: buttonResponse },
+        })
+        await sendWhatsAppMessage(from, stripMarkdown(buttonResponse))
+        return
+      }
+    }
+
     // ── 7. Get Sarah's reply from Claude ──────────────────────────────────────
     const agentReply = await getAgentReply(conversation.id, from, text)
 
@@ -271,6 +311,39 @@ export async function processInbound(from: string, text: string, wamid: string):
         console.log(`[WhatsApp] Escalated conversation ${conversation.id} to Julian (clinic ${isClinicOpen() ? 'open' : 'closed'})`)
       } catch (err: any) {
         console.error('[WhatsApp] Escalation flow error:', err.message)
+      }
+    }
+
+    // ── 7c. Rating detection ─────────────────────────────────────────────────
+    // If patient sends a bare 1–5 number (or "X stars"), persist as PatientFeedback.
+    // Low scores (≤3) trigger an escalation to Julian.
+    if (patient) {
+      const ratingMatch = text.trim().match(/^([1-5])(?:\s*stars?)?$/i)
+      if (ratingMatch) {
+        const score = parseInt(ratingMatch[1])
+        try {
+          await prisma.patientFeedback.create({
+            data: { patientId: patient.id, rating: score, channel: 'WHATSAPP' },
+          })
+        } catch (err: any) {
+          console.error('[Feedback] Save failed:', err.message)
+        }
+        if (score <= 3) {
+          try {
+            await createEscalation({
+              patientId:  patient.id,
+              phoneNumber: from,
+              channel:    'WHATSAPP',
+              reason:     `Low rating: ${score}/5 stars`,
+              transcript: text,
+            })
+            if (isClinicOpen()) {
+              await notifyJulian(from, `⚠️ Patient gave ${score}/5 stars — needs follow-up call.`)
+            }
+          } catch (err: any) {
+            console.error('[Feedback] Escalation failed:', err.message)
+          }
+        }
       }
     }
 
@@ -341,4 +414,41 @@ export async function sendWhatsAppMessage(to: string, body: string, _replyToMess
   } catch (err: any) {
     console.error('[WhatsApp] Send failed to', to, ':', err.message || err)
   }
+}
+
+// Send a WhatsApp template message (for approved AT templates).
+// Falls back silently — callers should send plain text on catch if needed.
+export async function sendWhatsAppTemplate(
+  to: string,
+  templateName: string,
+  params: string[],
+): Promise<void> {
+  const apiKey   = process.env.AT_API_KEY
+  const username = process.env.AT_USERNAME
+  const waNumber = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
+
+  if (!apiKey || !username || !waNumber) {
+    console.error('[WhatsApp] Missing AT credentials for template send')
+    return
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const AfricasTalking = require('africastalking')
+  const at = AfricasTalking({ apiKey, username })
+  await at.WHATSAPP.sendMessage({
+    waNumber,
+    phoneNumber: to,
+    body: {
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: 'en' },
+        components: [{
+          type: 'body',
+          parameters: params.map(p => ({ type: 'text', text: p })),
+        }],
+      },
+    },
+  })
+  console.log(`[WhatsApp] Template '${templateName}' sent to ${to}`)
 }

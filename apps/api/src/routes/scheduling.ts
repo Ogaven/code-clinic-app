@@ -656,7 +656,13 @@ router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('f
   if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
 
   try {
-    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true })
+    // Strip UTF-8 BOM (EF BB BF) that Excel CSV exports prepend — without this, the
+    // first column header gets a stray ﻿ prefix and key-matching fails silently.
+    let fileBuffer = req.file.buffer
+    if (fileBuffer[0] === 0xEF && fileBuffer[1] === 0xBB && fileBuffer[2] === 0xBF) {
+      fileBuffer = fileBuffer.slice(3)
+    }
+    const wb = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true })
     const ws = wb.Sheets[wb.SheetNames[0]]
 
     // ── Detect format by scanning first 6 rows for SimplyBook header markers ──

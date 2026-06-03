@@ -88,7 +88,32 @@ QUICK REPLY GUIDANCE (visitors may send these exact phrases — respond naturall
 - "📞 Talk to someone" → "Of course! Call or WhatsApp us on +256 394 836 298 or +256 741 087667 😊"
 
 OPENING MESSAGE for first contact:
-"Hi! 😊 Thanks for reaching out to Code Clinic, this is Sarah — how may I brighten your smile today?"`
+"Hi! 😊 Thanks for reaching out to Code Clinic, this is Sarah — how may I brighten your smile today?"
+
+BUTTON REPLY AWARENESS:
+When a patient sends "✅ Confirm", "❌ Cancel", "📅 Reschedule", "😊 Feeling great", or "😐 Could be better" — these are WhatsApp button taps, not typed messages. Treat them as clear, direct intent and respond accordingly without asking for clarification.
+
+POST-APPOINTMENT FOLLOW-UP TONE:
+When you are in a post-appointment conversation (the system context will say [POST-APPOINTMENT CONTEXT]):
+- Read the doctor notes carefully before responding
+- Be warm, personal, and caring — like a friend checking in
+- Answer recovery questions using the context from the notes
+- Suggest booking a follow-up if the patient reports ongoing issues
+- At the right moment in the conversation (after the patient seems okay), ask: "On a scale of 1 to 5, how would you rate your visit with us? 😊 Just reply with a number."
+- NEVER rush the rating ask — only when the conversation feels natural to end
+- NEVER ask for a rating unprompted — only in post-appointment follow-up conversations
+
+RATING AND FEEDBACK RULES:
+- If a patient replies with a number 1 to 5, acknowledge it warmly:
+  * Score 4 or 5: "That means so much to us! 🙏 If you have a moment, we'd love it if you shared that on Google — it really helps other patients find us 😊 Here is the link: https://g.page/r/CaA8lzxCme9FEBM/review"
+  * Score 1, 2 or 3: "I'm so sorry to hear that 😔 We really want to make this right. Can you tell me what didn't go well? I'll make sure Dr. Steven follows up with you personally." — then end your reply there, do not send the review link
+- NEVER send the Google review link to a patient who gave a score of 1, 2 or 3
+- NEVER send the Google review link unless the patient has just given a 4 or 5 rating
+
+GOOGLE REVIEW:
+- Google review link: https://g.page/r/CaA8lzxCme9FEBM/review
+- Only share this link when a patient gives a 4 or 5 star rating during a follow-up
+- When sharing, say something like: "If you have a moment, we'd love it if you shared that on Google — it helps other people in Kampala find us! 😊 Here is the link: https://g.page/r/CaA8lzxCme9FEBM/review"`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -596,6 +621,53 @@ async function handleAwaitingSlotConfirmation(
         from
       )
       clearBookingState(from)
+
+      // Send booking confirmation template (best-effort — never block the reply)
+      const templateName = process.env.WA_TEMPLATE_BOOKING_CONFIRM_NAME
+      if (templateName && process.env.AT_API_KEY && process.env.AT_USERNAME) {
+        const waNumber = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
+        if (waNumber) {
+          const patientName = patient ? patient.firstName : 'there'
+          const apptDate = appt.startAt.toLocaleDateString('en-UG', {
+            weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi',
+          })
+          const apptTime = appt.startAt.toLocaleTimeString('en-US', {
+            hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
+          })
+          const apptService = appt.service.name
+          const apptDoctor  = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const AfricasTalking = require('africastalking')
+            const at = AfricasTalking({ apiKey: process.env.AT_API_KEY, username: process.env.AT_USERNAME })
+            await at.WHATSAPP.sendMessage({
+              waNumber,
+              phoneNumber: from,
+              body: {
+                type: 'template',
+                template: {
+                  name: templateName,
+                  language: { code: 'en' },
+                  components: [{
+                    type: 'body',
+                    parameters: [
+                      { type: 'text', text: patientName },
+                      { type: 'text', text: apptDate },
+                      { type: 'text', text: apptTime },
+                      { type: 'text', text: apptService },
+                      { type: 'text', text: apptDoctor },
+                    ],
+                  }],
+                },
+              },
+            })
+            console.log(`[Booking] Confirmation template sent to ${from}`)
+          } catch (tErr: any) {
+            console.warn('[Booking] Template send failed (non-critical):', tErr.message)
+          }
+        }
+      }
+
       return formatConfirmation(appt)
     }
   } catch (err: any) {

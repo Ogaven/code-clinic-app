@@ -1,4 +1,4 @@
-import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { sendSMS } from '../sms/sms.service'
 import { prisma } from '../../lib/prisma'
 
@@ -71,7 +71,25 @@ export async function checkAndSendReminders(): Promise<void> {
     // ── Send ──────────────────────────────────────────────────────────────────
     try {
       if (channel === 'WHATSAPP') {
-        await sendWhatsAppMessage(patient.phone, message)
+        const templateName = process.env.WA_TEMPLATE_REMINDER_NAME
+        if (templateName) {
+          // Try WhatsApp template (approved AT template with buttons)
+          try {
+            const doctor = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+            await sendWhatsAppTemplate(patient.phone, templateName, [
+              patient.firstName,
+              dayDate,
+              time,
+              appt.service.name,
+              doctor,
+            ])
+          } catch {
+            // Template not approved yet — fall back to plain text
+            await sendWhatsAppMessage(patient.phone, message)
+          }
+        } else {
+          await sendWhatsAppMessage(patient.phone, message)
+        }
       } else {
         await sendSMS(patient.phone, message)
       }

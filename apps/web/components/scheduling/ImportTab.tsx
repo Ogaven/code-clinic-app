@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { Upload, Download, FileSpreadsheet, Loader2, Check, X, AlertCircle, ChevronDown } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Upload, Download, FileSpreadsheet, Loader2, Check, X, AlertCircle, ChevronDown, Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ParsedRow { [key: string]: string }
@@ -86,6 +87,7 @@ function parseCSV(text: string): { headers: string[]; rows: ParsedRow[] } {
 
 export default function ImportTab() {
   const fileRef = useRef<HTMLInputElement>(null)
+  const router  = useRouter()
 
   const [file,       setFile]       = useState<File | null>(null)
   const [headers,    setHeaders]    = useState<string[]>([])
@@ -346,6 +348,16 @@ export default function ImportTab() {
               </div>
             )}
           </div>
+
+          {/* View Calendar CTA */}
+          {result.succeeded > 0 && (
+            <button
+              onClick={() => router.push('/scheduling/calendar')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-white text-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 14px rgba(41,171,226,0.25)' }}>
+              <Calendar size={14} /> View Calendar
+            </button>
+          )}
 
           {/* Warnings */}
           {warnings.length > 0 && (
