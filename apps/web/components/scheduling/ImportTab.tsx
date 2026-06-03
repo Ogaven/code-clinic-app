@@ -4,8 +4,27 @@ import { useState, useRef, useCallback } from 'react'
 import { Upload, Download, FileSpreadsheet, Loader2, Check, X, AlertCircle, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface ParsedRow    { [key: string]: string }
-interface ImportResult { imported: number; skipped: number; errors: string[] }
+interface ParsedRow { [key: string]: string }
+
+interface ImportRowResult {
+  rowNumber:       number
+  status:          'success' | 'partial' | 'error'
+  patientCreated?: boolean
+  appointmentId?:  string
+  error?:          string
+  warning?:        string
+  rawData:         Record<string, string>
+}
+
+interface ImportResult {
+  total:           number
+  succeeded:       number
+  partial:         number
+  failed:          number
+  servicesCreated: number
+  format:          string
+  results:         ImportRowResult[]
+}
 
 const API = '/api-proxy'
 function authToken() {
@@ -24,6 +43,20 @@ function downloadTemplate() {
   ]
   const blob = new Blob([rows.join('\n')], { type: 'text/csv' })
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'appointments_template.csv'; a.click()
+}
+
+function downloadErrorReport(results: ImportRowResult[]) {
+  const failed = results.filter(r => r.status === 'error')
+  if (failed.length === 0) return
+  const allKeys = Array.from(new Set(failed.flatMap(r => Object.keys(r.rawData))))
+  const header  = ['Row', 'Error', ...allKeys].join(',')
+  const dataRows = failed.map(r => {
+    const vals = [r.rowNumber, `"${(r.error ?? '').replace(/"/g, '""')}"`, ...allKeys.map(k => `"${(r.rawData[k] ?? '').replace(/"/g, '""')}"`)]
+    return vals.join(',')
+  })
+  const csv  = [header, ...dataRows].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'import_errors.csv'; a.click()
 }
 
 // Parse a CSV string into header array + row array (handles simple quoted fields)
@@ -70,16 +103,13 @@ export default function ImportTab() {
     const ext = f.name.split('.').pop()?.toLowerCase()
 
     if (ext === 'xlsx' || ext === 'xls') {
-      // For Excel files: no client-side preview, API will parse
       setIsXlsx(true); setHeaders([]); setPreview([])
-      // Build a default mapping assuming standard column names
       const autoMap: Record<string, string> = {}
       COL_KEYS.forEach((k, i) => { autoMap[k] = CSV_HEADERS[i] })
       setMapping(autoMap)
       return
     }
 
-    // CSV: parse for preview + column detection
     setIsXlsx(false)
     try {
       const text = await f.text()
@@ -87,8 +117,6 @@ export default function ImportTab() {
       if (hdr.length === 0) { setError('CSV appears empty or unreadable'); return }
       setHeaders(hdr)
       setPreview(rows.slice(0, 5))
-
-      // Auto-map
       const autoMap: Record<string, string> = {}
       COL_KEYS.forEach((key, i) => {
         const target = TARGET_COLS[i].toLowerCase()
@@ -112,13 +140,13 @@ export default function ImportTab() {
 
   async function runImport() {
     if (!file) return
-    setImporting(true); setProgress(20); setResult(null); setError(null)
+    setImporting(true); setProgress(10); setResult(null); setError(null)
 
     try {
       const form = new FormData()
       form.append('file', file)
 
-      setProgress(60)
+      setProgress(40)
       const r = await fetch(`${API}/scheduling/import-appointments`, {
         method:  'POST',
         headers: { Authorization: `Bearer ${authToken()}` },
@@ -138,6 +166,9 @@ export default function ImportTab() {
       setImporting(false)
     }
   }
+
+  const warnings = result?.results.filter(r => r.status === 'partial') ?? []
+  const errors   = result?.results.filter(r => r.status === 'error')   ?? []
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto overflow-y-auto h-full pb-10">
@@ -279,31 +310,81 @@ export default function ImportTab() {
 
       {/* Result */}
       {result && (
-        <div className="mt-5 p-5 rounded-2xl border border-gray-100 dark:border-white/8 bg-white dark:bg-white/5">
-          <div className="flex items-center gap-2 mb-3">
+        <div className="mt-5 p-5 rounded-2xl border border-gray-100 dark:border-white/8 bg-white dark:bg-white/5 space-y-4">
+
+          {/* Header */}
+          <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
               <Check size={16} className="text-emerald-500" />
             </div>
-            <p className="font-black text-gray-800 dark:text-white">Import complete</p>
+            <div>
+              <p className="font-black text-gray-800 dark:text-white">Import complete</p>
+              <p className="text-xs text-gray-400">{result.total} rows processed · {result.format === 'simplybook' ? 'SimplyBook format' : 'Standard format'}</p>
+            </div>
           </div>
-          <div className="flex gap-6 mb-3">
+
+          {/* Summary counts */}
+          <div className="flex gap-6">
             <div className="text-center">
-              <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{result.imported}</p>
+              <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{result.succeeded}</p>
               <p className="text-xs text-gray-400">Imported</p>
             </div>
+            {result.partial > 0 && (
+              <div className="text-center">
+                <p className="text-2xl font-black text-amber-500">{result.partial}</p>
+                <p className="text-xs text-gray-400">With warnings</p>
+              </div>
+            )}
             <div className="text-center">
-              <p className="text-2xl font-black text-amber-500">{result.skipped}</p>
-              <p className="text-xs text-gray-400">Skipped</p>
+              <p className="text-2xl font-black text-red-500">{result.failed}</p>
+              <p className="text-xs text-gray-400">Failed</p>
             </div>
+            {result.servicesCreated > 0 && (
+              <div className="text-center">
+                <p className="text-2xl font-black text-blue-500">{result.servicesCreated}</p>
+                <p className="text-xs text-gray-400">Services created</p>
+              </div>
+            )}
           </div>
-          {result.errors.length > 0 && (
-            <div className="space-y-1 mt-3">
-              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Warnings ({result.errors.length})</p>
-              {result.errors.map((e, i) => (
-                <p key={i} className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
-                  <AlertCircle size={11} className="flex-shrink-0 mt-0.5" /> {e}
+
+          {/* Warnings */}
+          {warnings.length > 0 && (
+            <div>
+              <p className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2">
+                Warnings ({warnings.length})
+              </p>
+              <div className="space-y-1">
+                {warnings.map(w => (
+                  <p key={w.rowNumber} className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
+                    <AlertCircle size={11} className="flex-shrink-0 mt-0.5" />
+                    <span><span className="font-bold">Row {w.rowNumber}:</span> {w.warning}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Errors */}
+          {errors.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-black text-red-500 uppercase tracking-wide">
+                  Failed rows ({errors.length})
                 </p>
-              ))}
+                <button
+                  onClick={() => downloadErrorReport(result.results)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/15 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors">
+                  <Download size={11} /> Download error report
+                </button>
+              </div>
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {errors.map(e => (
+                  <p key={e.rowNumber} className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
+                    <X size={11} className="flex-shrink-0 mt-0.5" />
+                    <span><span className="font-bold">Row {e.rowNumber}:</span> {e.error}</span>
+                  </p>
+                ))}
+              </div>
             </div>
           )}
         </div>

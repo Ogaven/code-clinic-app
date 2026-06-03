@@ -624,6 +624,34 @@ router.delete('/special-days/:id', requireAuth, async (req, res) => {
 })
 
 // ─── Import Appointments ───────────────────────────────────────────────────────
+
+interface ImportRowResult {
+  rowNumber:       number
+  status:          'success' | 'partial' | 'error'
+  patientCreated?: boolean
+  appointmentId?:  string
+  error?:          string
+  warning?:        string
+  rawData:         Record<string, string>
+}
+
+// Parse date string in any supported format → YYYY-MM-DD, or null if unparseable.
+// Formats: YYYY-MM-DD, DD-MM-YYYY, D-M-YYYY, DD/MM/YYYY, D/M/YYYY, MM/DD/YYYY
+function parseDateStr(raw: string): string | null {
+  if (!raw) return null
+  const s = raw.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const m = s.match(/^(\d{1,2})([\/-])(\d{1,2})\2(\d{4})$/)
+  if (!m) return null
+  const [, a, sep, b, y] = m
+  const na = parseInt(a), nb = parseInt(b)
+  if (na > 12) return `${y}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`   // must be DD-?-MM
+  if (nb > 12) return `${y}-${a.padStart(2,'0')}-${b.padStart(2,'0')}`   // must be MM-?-DD
+  // Ambiguous: use separator as hint — `-` → DD-MM (SimplyBook), `/` → MM/DD (US)
+  if (sep === '/') return `${y}-${a.padStart(2,'0')}-${b.padStart(2,'0')}`
+  return `${y}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`
+}
+
 router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('file'), async (req, res) => {
   if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
 
@@ -632,103 +660,111 @@ router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('f
     const ws = wb.Sheets[wb.SheetNames[0]]
 
     // ── Detect format by scanning first 6 rows for SimplyBook header markers ──
-    // SimplyBook exports have title rows before the actual header (row 3 = headers, row 4+ = data)
     const raw2d = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' })
     const SB_MARKERS = ['Client name', 'Service provider', 'Is cancelled']
     let headerRowIdx = -1
-
     for (let i = 0; i < Math.min(raw2d.length, 6); i++) {
       const cells = raw2d[i].map((c: any) => String(c).trim())
       if (SB_MARKERS.some(m => cells.includes(m))) { headerRowIdx = i; break }
     }
-
     const isSimplyBook = headerRowIdx >= 0
 
-    // ── Normalise all rows into a flat standard shape ─────────────────────────
+    // ── Normalise all rows ────────────────────────────────────────────────────
     type NormRow = {
       patient_name: string; phone: string; email: string
-      service: string;      doctor: string; date: string
-      time: string;         notes: string;  __cancelled: boolean
+      service: string; doctor: string; date: string
+      time: string; notes: string; __cancelled: boolean
+      __rawData: Record<string, string>
     }
 
     let rows: NormRow[]
 
     if (isSimplyBook) {
-      const headers = raw2d[headerRowIdx].map((c: any) => String(c).trim())
-      const get = (r: any[], h: string) => String(r[headers.indexOf(h)] ?? '').trim()
-
+      const sbHeaders = raw2d[headerRowIdx].map((c: any) => String(c).trim())
+      const get = (r: any[], h: string) => String(r[sbHeaders.indexOf(h)] ?? '').trim()
       rows = raw2d
         .slice(headerRowIdx + 1)
-        .filter(r => r.some((c: any) => String(c).trim() !== ''))   // drop blank rows
+        .filter(r => r.some((c: any) => String(c).trim() !== ''))
         .map(r => {
-          // Date: DD-MM-YYYY or D/M/YYYY → YYYY-MM-DD
-          const rawDate = get(r, 'Date')
-          const dm = rawDate.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
-          const date = dm
-            ? `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`
-            : rawDate
-
-          // Time: "HH:MM - HH:MM" → take the start time only
-          const time = get(r, 'Time').split(/\s*-\s*/)[0].trim()
-
+          const rawObj: Record<string, string> = {}
+          sbHeaders.forEach((h, i) => { rawObj[h] = String(r[i] ?? '').trim() })
           return {
             patient_name: get(r, 'Client name'),
             phone:        get(r, 'Client phone'),
             email:        get(r, 'Client email'),
             service:      get(r, 'Event'),
             doctor:       get(r, 'Service provider'),
-            date,
-            time,
+            date:         parseDateStr(get(r, 'Date')) ?? get(r, 'Date'),
+            time:         get(r, 'Time').split(/\s*-\s*/)[0].trim(),
             notes:        get(r, 'Code'),
             __cancelled:  get(r, 'Is cancelled').toLowerCase() === 'yes',
+            __rawData:    rawObj,
           }
         })
     } else {
-      // Standard format: first row is headers, column names may vary
-      rows = XLSX.utils.sheet_to_json<any>(ws, { raw: false, defval: '' }).map((r: any) => ({
-        patient_name: String(r.patient_name ?? r['Patient Name'] ?? '').trim(),
-        phone:        String(r.phone        ?? r['Phone']        ?? '').trim(),
-        email:        String(r.email        ?? r['Email']        ?? '').trim(),
-        service:      String(r.service      ?? r['Service']      ?? '').trim(),
-        doctor:       String(r.doctor       ?? r['Doctor']       ?? '').trim(),
-        date:         String(r.date         ?? r['Date']         ?? r['date (YYYY-MM-DD)'] ?? '').trim(),
-        time:         String(r.time         ?? r['Time']         ?? r['time (HH:MM)']      ?? '').trim(),
-        notes:        String(r.notes        ?? r['Notes']        ?? '').trim(),
-        __cancelled:  false,
-      }))
+      rows = XLSX.utils.sheet_to_json<any>(ws, { raw: false, defval: '' }).map((r: any) => {
+        const rawDate = String(r.date ?? r['Date'] ?? r['date (YYYY-MM-DD)'] ?? '').trim()
+        return {
+          patient_name: String(r.patient_name ?? r['Patient Name'] ?? '').trim(),
+          phone:        String(r.phone        ?? r['Phone']        ?? '').trim(),
+          email:        String(r.email        ?? r['Email']        ?? '').trim(),
+          service:      String(r.service      ?? r['Service']      ?? '').trim(),
+          doctor:       String(r.doctor       ?? r['Doctor']       ?? '').trim(),
+          date:         parseDateStr(rawDate) ?? rawDate,
+          time:         String(r.time         ?? r['Time']         ?? r['time (HH:MM)'] ?? '').trim(),
+          notes:        String(r.notes        ?? r['Notes']        ?? '').trim(),
+          __cancelled:  false,
+          __rawData:    r as Record<string, string>,
+        }
+      })
     }
 
-    let imported = 0, skipped = 0, servicesCreated = 0
-    const errors: string[] = []
+    let succeeded = 0, partial = 0, failed = 0, servicesCreated = 0
+    const results: ImportRowResult[] = []
 
-    // Cache doctors once
+    // Cache active doctors once for the entire batch
     const allDoctors = await prisma.doctor.findMany({
       where:   { isActive: true },
       include: { user: { select: { firstName: true, lastName: true } } },
     })
 
-    for (const row of rows) {
+    for (let idx = 0; idx < rows.length; idx++) {
+      const rowNumber = idx + 1
+      const row       = rows[idx]
+      const result: ImportRowResult = { rowNumber, status: 'error', rawData: row.__rawData }
+
       try {
-        // SimplyBook cancelled rows — count as skipped, no error message needed
-        if (row.__cancelled) { skipped++; continue }
+        // ── Cancelled rows: record and skip, don't create in DB ──────────────
+        if (row.__cancelled) {
+          result.error = 'Cancelled in source system — skipped'
+          results.push(result); failed++; continue
+        }
 
         const { patient_name: patientName, phone, email, service: serviceName,
                 doctor: doctorName, date: dateStr, time: timeStr, notes: notesTxt } = row
 
-        if (!patientName || !phone || !dateStr || !timeStr) {
-          skipped++; errors.push(`Row skipped: missing name, phone, date or time`); continue
+        if (!patientName || !phone) {
+          result.error = 'Missing required fields: patient name and phone number'
+          results.push(result); failed++; continue
+        }
+        if (!dateStr || !timeStr) {
+          result.error = 'Missing date or time'
+          results.push(result); failed++; continue
         }
 
-        // Find/create patient
+        // ── Patient ──────────────────────────────────────────────────────────
+        let patientCreated = false
         let patient = await prisma.patient.findFirst({ where: { phone } })
         if (!patient) {
           const parts = patientName.split(' ')
           patient = await prisma.patient.create({
             data: { firstName: parts[0] || patientName, lastName: parts.slice(1).join(' ') || '.', phone, email: email || undefined },
           })
+          patientCreated = true
         }
+        result.patientCreated = patientCreated
 
-        // Find or auto-create service
+        // ── Service ──────────────────────────────────────────────────────────
         let service = serviceName
           ? await prisma.service.findFirst({ where: { name: { contains: serviceName, mode: 'insensitive' }, isActive: true } })
           : await prisma.service.findFirst({ where: { isActive: true } })
@@ -739,57 +775,91 @@ router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('f
             })
             servicesCreated++
           } catch {
-            // Unique constraint race — re-fetch
             service = await prisma.service.findFirst({ where: { name: { contains: serviceName, mode: 'insensitive' } } })
           }
         }
-        if (!service) { skipped++; errors.push(`Row skipped: no services exist in the system`); continue }
+        if (!service) {
+          result.error = 'No services exist in the system — create at least one service first'
+          results.push(result); failed++; continue
+        }
 
-        // Find doctor (partial name match); if unrecognised, fall back to first active doctor rather than skipping
+        // ── Doctor ───────────────────────────────────────────────────────────
+        let doctorWarning: string | undefined
         let doctor = doctorName
-          ? allDoctors.find(d => `${d.user.firstName} ${d.user.lastName}`.toLowerCase().includes(doctorName.toLowerCase()))
+          ? allDoctors.find(d =>
+              `${d.user.firstName} ${d.user.lastName}`.toLowerCase().includes(doctorName.toLowerCase())
+            )
           : allDoctors[0]
-        if (!doctor) doctor = allDoctors[0]
-        if (!doctor) { skipped++; errors.push(`Row skipped: no doctors exist in the system`); continue }
+        if (!doctor && allDoctors.length > 0) {
+          doctor = allDoctors[0]
+          doctorWarning = `Doctor '${doctorName}' not found — assigned to ${doctor.user.firstName} ${doctor.user.lastName}`
+        }
+        if (!doctor) {
+          result.error = 'No doctors exist in the system'
+          results.push(result); failed++; continue
+        }
 
-        // Parse datetime (EAT = UTC+3); normalise time to HH:MM
+        // ── Parse datetime (EAT = UTC+3) ─────────────────────────────────────
         const timeNorm = timeStr.length >= 5 ? timeStr.slice(0, 5) : timeStr
         const startAt  = new Date(`${dateStr}T${timeNorm}:00+03:00`)
         if (isNaN(startAt.getTime())) {
-          skipped++; errors.push(`Row skipped: invalid date/time "${dateStr} ${timeStr}"`); continue
+          result.error = `Invalid date/time: '${dateStr} ${timeStr}'`
+          results.push(result); failed++; continue
         }
         const endAt = new Date(startAt.getTime() + service.durationMins * 60_000)
 
-        // Duplicate check — same doctor, same slot, not cancelled
+        // ── Duplicate check ──────────────────────────────────────────────────
         const dup = await prisma.appointment.findFirst({
           where: { doctorId: doctor.id, startAt, status: { not: 'CANCELLED' } },
         })
-        if (dup) { skipped++; continue }
+        if (dup) {
+          result.status        = 'error'
+          result.error         = `Duplicate: a ${dup.status} appointment already exists at this slot`
+          result.appointmentId = dup.id
+          results.push(result); failed++; continue
+        }
 
-        await prisma.appointment.create({
+        // ── Status: past → COMPLETED, future → CONFIRMED ─────────────────────
+        const apptStatus = startAt < new Date() ? 'COMPLETED' : 'CONFIRMED'
+
+        // ── Create appointment ────────────────────────────────────────────────
+        const appt = await prisma.appointment.create({
           data: {
             patientId:   patient.id,
             doctorId:    doctor.id,
             serviceId:   service.id,
             startAt,
             endAt,
+            status:      apptStatus,
             notes:       notesTxt || undefined,
             createdById: req.user!.id,
           },
         })
-        imported++
+        result.appointmentId = appt.id
+
+        if (doctorWarning) {
+          result.status  = 'partial'
+          result.warning = doctorWarning
+          results.push(result); partial++
+        } else {
+          result.status = 'success'
+          results.push(result); succeeded++
+        }
       } catch (rowErr: any) {
-        skipped++; errors.push(`Row error: ${rowErr.message}`)
+        result.status = 'error'
+        result.error  = rowErr.message ?? String(rowErr)
+        results.push(result); failed++
       }
     }
 
     res.json({
-      imported,
-      skipped,
+      total: rows.length,
+      succeeded,
+      partial,
+      failed,
       servicesCreated,
-      total:  rows.length,
-      format: isSimplyBook ? 'simplybook' : 'standard',
-      errors: errors.slice(0, 20),
+      format:  isSimplyBook ? 'simplybook' : 'standard',
+      results,
     })
   } catch (e: any) {
     res.status(500).json({ error: `Failed to parse file: ${e.message}` })

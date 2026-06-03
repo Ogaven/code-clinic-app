@@ -37,6 +37,7 @@ enum AppointmentStatus {
   CHECKED_IN
   IN_CHAIR
   READY_CHECKOUT
+  IMPORTED
 }
 
 enum InvoiceStatus {
