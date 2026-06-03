@@ -30,7 +30,43 @@ router.post('/whatsapp/webhook', async (req, res) => {
       Document: '[Patient sent a document — Sarah cannot read documents, please acknowledge and ask them to describe what they need]',
       Sticker:  '[Patient sent a sticker]',
     }
-    const text = rawText || MEDIA_DESCRIPTIONS[mediaType] || ''
+    let text = rawText || MEDIA_DESCRIPTIONS[mediaType] || ''
+
+    // Whisper transcription for voice notes
+    if ((mediaType === 'Audio' || mediaType === 'Voice') && process.env.OPENAI_API_KEY) {
+      const audioUrl = body.mediaUrl || body.audioUrl || body.media?.url
+      if (audioUrl) {
+        try {
+          const audioRes = await fetch(audioUrl)
+          const audioBuffer = await audioRes.arrayBuffer()
+          // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
+          const FormData = require('form-data') as any
+          const form = new FormData()
+          form.append('file', Buffer.from(audioBuffer), {
+            filename:    'voice.ogg',
+            contentType: 'audio/ogg',
+          })
+          form.append('model', 'whisper-1')
+          const formBuffer = await new Promise<Buffer>((resolve, reject) => {
+            const chunks: Buffer[] = []
+            form.on('data', (chunk: Buffer) => chunks.push(chunk))
+            form.on('end',  () => resolve(Buffer.concat(chunks)))
+            form.on('error', reject)
+          })
+          const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            method:  'POST',
+            headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, ...form.getHeaders() },
+            body:    formBuffer,
+          })
+          const whisperData = await whisperRes.json() as { text?: string }
+          if (whisperData.text) {
+            text = `[Voice note]: ${whisperData.text}`
+          }
+        } catch (err: any) {
+          console.warn('[WHISPER] AT transcription failed:', err.message)
+        }
+      }
+    }
 
     if (!rawFrom || !text) {
       console.warn('[WHATSAPP WEBHOOK] Missing from or text:', body)

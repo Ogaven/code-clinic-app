@@ -108,3 +108,46 @@ export async function checkAndSendFollowups(): Promise<void> {
     )
   }
 }
+
+// ── processAfterHoursQueue ────────────────────────────────────────────────────
+// Runs every hour. Finds MORNING_FOLLOWUP entries scheduled for <= now and sends
+// a warm "good morning" check-in to patients who messaged after hours.
+
+export async function processAfterHoursQueue(): Promise<void> {
+  const now = new Date()
+
+  const entries = await prisma.outboundQueue.findMany({
+    where: {
+      agentMode:    'MORNING_FOLLOWUP',
+      status:       'PENDING',
+      scheduledFor: { lte: now },
+    },
+    include: {
+      patient: { select: { id: true, firstName: true, phone: true } },
+    },
+    take: 50,
+  })
+
+  if (entries.length === 0) return
+  console.log(`[AfterHoursQueue] Processing ${entries.length} morning follow-up(s)`)
+
+  for (const entry of entries) {
+    const name    = entry.patient?.firstName || 'there'
+    const message = `Good morning ${name}! 😊 Code Clinic is now open. You messaged us last night — how can we help you today?`
+
+    try {
+      await sendWhatsAppMessage(entry.phoneNumber, message)
+      await prisma.outboundQueue.update({
+        where: { id: entry.id },
+        data:  { status: 'COMPLETED', outcome: 'Morning follow-up sent', lastAttempted: now },
+      })
+      console.log(`[AfterHoursQueue] Sent morning follow-up to ${entry.phoneNumber}`)
+    } catch (err: any) {
+      console.error(`[AfterHoursQueue] Send failed for ${entry.phoneNumber}:`, err.message)
+      await prisma.outboundQueue.update({
+        where: { id: entry.id },
+        data:  { attempts: { increment: 1 }, lastAttempted: now },
+      })
+    }
+  }
+}

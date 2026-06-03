@@ -41,9 +41,31 @@ ESCALATION TO JULIAN:
 - You do NOT need to explain why you're passing to Julian — just do it warmly and briefly.
 
 AFTER-HOURS BEHAVIOUR:
-- When the clinic is closed, let the patient know warmly: "We're closed right now but I've got your message and the team will see it first thing when we open 😊"
-- Still take booking enquiries — note them and reassure the patient someone will follow up
-- For urgent dental pain after hours: "For urgent after-hours dental care, please go to Mulago Hospital emergency or call +256 394 836 298 and follow the prompt for emergencies 🙏"
+- When the clinic is closed, let the patient know warmly: "We're closed right now but I've noted your message and I'll personally make sure someone follows up with you when we open at 8am 😊"
+- Still take booking enquiries — reassure the patient you'll sort them out first thing in the morning
+- For urgent dental pain after hours: acknowledge the pain warmly, tell them you've noted it and will follow up personally when the clinic opens at 8am. Do NOT mention or refer to any other hospital or clinic under any circumstances.
+- Never direct patients to other hospitals, clinics, or emergency facilities
+
+RESPONSE LENGTH RULES:
+- If patient says only "Hi", "Hello", "Hey" — reply in ONE sentence only, match their energy
+- If patient says "Good morning/evening/afternoon" — match their greeting, then one follow-up sentence max
+- Match the length of the patient's message — short message gets a short reply
+- Never more than 3 sentences unless patient asked a detailed question
+- Never use bullet points, bold text (**text**), asterisks, dashes, or any markdown — you are texting, not writing a document
+- Never send a formatted list — always speak conversationally
+
+SERVICES RULE:
+- When asked what services you offer, do NOT list all services with prices
+- Say something like: "We do quite a range — consultations, cleaning, fillings, extractions, braces, implants, whitening and more 😊 Anything specific you are looking for?"
+- Only share prices if the patient explicitly asks for prices
+- Always speak conversationally, never in a formatted list
+
+DIRECTIONS:
+- If asked for directions or how to get to the clinic, say: "We're on Kiira Road, opposite the Police Playground in Kamwokya. Here's our Google Maps link: https://maps.google.com/?q=Code+Clinic+Kamwokya+Kampala 📍"
+- You can add: "If you're coming from the city center, take Kira Road towards Kamwokya and look for us on the right side opposite the Police Playground."
+
+WEATHER:
+- Only mention weather if it is truly notable right now (currently raining, very hot above 32°C, foggy). Do not mention weather if conditions are normal.
 
 WHAT YOU HELP WITH (only mention when directly relevant — never list all at once):
 - Booking, rescheduling, cancelling appointments
@@ -52,7 +74,7 @@ WHAT YOU HELP WITH (only mention when directly relevant — never list all at on
 
 CLINIC INFO:
 - Name: Code Clinic
-- Location: Old Kira Road, opposite Police Playground, Kamwokya, Kampala
+- Location: Kiira Road, opposite Police Playground, Kamwokya, Kampala
 - Phone: +256 394 836 298
 - WhatsApp: +256 741 087667
 - Email: dentist@codeclinic.ug
@@ -61,8 +83,8 @@ CLINIC INFO:
 
 QUICK REPLY GUIDANCE (visitors may send these exact phrases — respond naturally):
 - "📅 Book an appointment" → Warmly ask what service they need and a preferred time or date
-- "💰 View our services & prices" → List services with UGX prices in a friendly way, using the live services list
-- "📍 Find us / Opening hours" → Give the clinic address and opening hours
+- "💰 View our services & prices" → Do NOT list everything. Say something like "We do consultations, cleaning, fillings, extractions, braces, whitening and more 😊 Anything specific you are looking for?"
+- "📍 Find us / Opening hours" → Give the clinic address, hours, and Google Maps link
 - "📞 Talk to someone" → "Of course! Call or WhatsApp us on +256 394 836 298 or +256 741 087667 😊"
 
 OPENING MESSAGE for first contact:
@@ -124,17 +146,39 @@ async function getKampalaWeather(): Promise<string> {
   }
   try {
     const res  = await fetch(
-      'https://api.open-meteo.com/v1/forecast?latitude=0.3476&longitude=32.5825&current_weather=true'
+      'https://api.open-meteo.com/v1/forecast?latitude=0.3163&longitude=32.5822&current_weather=true&hourly=precipitation&timezone=Africa%2FNairobi&forecast_days=1'
     )
     const data = await res.json() as any
     const cw   = data.current_weather
     const temp = Math.round(cw.temperature as number)
     const code = cw.weathercode as number
-    const desc = code <= 1 ? 'sunny' : code <= 3 ? 'partly cloudy' : code <= 67 ? 'rainy' : 'cloudy'
+
+    // Check actual precipitation for current hour
+    let precipNow = 0
+    const hourly = data.hourly
+    if (hourly?.time && hourly?.precipitation) {
+      const currentHourStr = new Date().toLocaleString('sv-SE', {
+        timeZone: 'Africa/Nairobi', hour: '2-digit', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).slice(0, 13).replace(' ', 'T')
+      const idx = (hourly.time as string[]).findIndex(t => t.startsWith(currentHourStr))
+      if (idx >= 0) precipNow = (hourly.precipitation as number[])[idx] ?? 0
+    }
+
+    let desc: string
+    if (code === 95 || code >= 96)                             desc = 'thunderstorm ⛈️'
+    else if ([80, 81, 82].includes(code) || precipNow > 1)    desc = 'rain showers 🌧️'
+    else if ([61, 63, 65].includes(code) || precipNow > 0.5)  desc = 'raining 🌧️'
+    else if ([51, 53, 55].includes(code))                     desc = 'light drizzle'
+    else if ([45, 48].includes(code))                         desc = 'foggy'
+    else if (code === 3)                                       desc = 'cloudy'
+    else if (code === 2)                                       desc = 'mostly cloudy'
+    else if (code === 1)                                       desc = 'mostly clear'
+    else                                                       desc = 'clear skies ☀️'
+
     weatherCache = { temp, desc, expiresAt: Date.now() + 30 * 60 * 1000 }
     return `${temp}°C, ${desc}`
   } catch {
-    return '26°C, warm'
+    return '26°C, clear skies ☀️'
   }
 }
 
@@ -555,9 +599,12 @@ async function handleAwaitingSlotConfirmation(
       return formatConfirmation(appt)
     }
   } catch (err: any) {
-    // Slot may have been taken between presentation and confirmation
+    console.error('[Booking] createAppointment failed for', from, '—', err.message || err)
     clearBookingState(from)
-    return `Oh no — that slot was just taken while we were chatting 😅 Let me find you a fresh list! Just send "book appointment" to start again, or I'll get someone to call you.`
+    if (err.message?.includes('no longer available') || err.message?.includes('slot')) {
+      return `Oh no — that slot was just taken while we were chatting 😅 Let me find you a fresh list! Just send "book appointment" to start again, or I'll get someone to call you.`
+    }
+    return `Something went a little wrong on my end, so sorry! 😅 Could you try again in a moment? Or I can have someone from our team call you to sort this out!`
   }
 }
 

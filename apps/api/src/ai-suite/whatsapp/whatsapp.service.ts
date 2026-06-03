@@ -4,6 +4,32 @@ import { setBookingState } from '../booking/booking.state'
 import { createEscalation, notifyJulian } from '../../services/agent/guards/escalation'
 import { prisma } from '../../lib/prisma'
 
+// ── Strip markdown from Sarah's replies before sending via WhatsApp ──────────
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/_{1,2}(.*?)_{1,2}/g, '$1')
+    .replace(/#{1,6}\s/g, '')
+    .replace(/`(.*?)`/g, '$1')
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+    .replace(/^\s*[-*]\s/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+// ── Next 8am EAT (UTC+3, no DST) ─────────────────────────────────────────────
+
+function getNext8amUTC(): Date {
+  // 8am EAT = 5am UTC
+  const now = new Date()
+  const today8am = new Date(now)
+  today8am.setUTCHours(5, 0, 0, 0)
+  if (now >= today8am) today8am.setUTCDate(today8am.getUTCDate() + 1)
+  return today8am
+}
+
 // ── Clinic hours check (EAT) ──────────────────────────────────────────────────
 
 function isClinicOpen(): boolean {
@@ -157,7 +183,7 @@ export async function processInbound(from: string, text: string, wamid: string):
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, reply, wamid)
+          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid)
           return
         }
 
@@ -188,7 +214,7 @@ export async function processInbound(from: string, text: string, wamid: string):
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, reply, wamid)
+          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid)
           return
         }
 
@@ -214,7 +240,7 @@ export async function processInbound(from: string, text: string, wamid: string):
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, reply, wamid)
+          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid)
           return
         }
       }
@@ -248,7 +274,37 @@ export async function processInbound(from: string, text: string, wamid: string):
       }
     }
 
-    // ── 8. Persist Sarah's reply ──────────────────────────────────────────────
+    // ── 8. After-hours follow-up queue ───────────────────────────────────────
+    // If clinic is closed and this is a known patient, queue a morning check-in
+    // so the team can proactively follow up when they open at 8am EAT.
+    if (!isClinicOpen() && patient) {
+      try {
+        const existing = await prisma.outboundQueue.findFirst({
+          where: {
+            patientId:  patient.id,
+            agentMode:  'MORNING_FOLLOWUP',
+            status:     'PENDING',
+            scheduledFor: { gt: new Date() },
+          },
+        })
+        if (!existing) {
+          await prisma.outboundQueue.create({
+            data: {
+              patientId:    patient.id,
+              phoneNumber:  from,
+              agentMode:    'MORNING_FOLLOWUP',
+              reason:       `After-hours message: ${text.slice(0, 200)}`,
+              scheduledFor: getNext8amUTC(),
+              status:       'PENDING',
+            },
+          })
+        }
+      } catch (err: any) {
+        console.error('[WhatsApp] After-hours queue error:', err.message)
+      }
+    }
+
+    // ── 9. Persist Sarah's reply ──────────────────────────────────────────────
     await prisma.aiMessage.create({
       data: {
         conversationId: conversation.id,
@@ -257,8 +313,8 @@ export async function processInbound(from: string, text: string, wamid: string):
       },
     })
 
-    // ── 9. Deliver Sarah's reply via Africa's Talking ─────────────────────────
-    await sendWhatsAppMessage(from, agentReply, wamid)
+    // ── 10. Deliver Sarah's reply via Africa's Talking ────────────────────────
+    await sendWhatsAppMessage(from, stripMarkdown(agentReply), wamid)
 
   } catch (err) {
     console.error('[WhatsApp] processInbound error:', err)

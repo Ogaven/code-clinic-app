@@ -55,7 +55,7 @@ import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
 import { checkAndSendReminders }           from './ai-suite/scheduler/reminder.service'
-import { checkAndSendFollowups }           from './ai-suite/scheduler/followup.service'
+import { checkAndSendFollowups, processAfterHoursQueue } from './ai-suite/scheduler/followup.service'
 import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
 import { updatePatientStatuses }           from './ai-suite/scheduler/patient-status.service'
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
@@ -299,6 +299,9 @@ runStartup().then(() => {
   }, ONE_HOUR)
   setInterval(() => {
     checkAndSendFollowups().catch(err => console.error('[Followup] Scheduler error:', err))
+  }, ONE_HOUR)
+  setInterval(() => {
+    processAfterHoursQueue().catch(err => console.error('[AfterHoursQueue] Scheduler error:', err))
   }, ONE_HOUR)
   setInterval(() => {
     checkAndSendLeadNurtureMessages().catch(err => console.error('[LeadNurture] Scheduler error:', err))
