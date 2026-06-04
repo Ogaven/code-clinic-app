@@ -622,6 +622,23 @@ async function handleAwaitingSlotConfirmation(
       )
       clearBookingState(from)
 
+      // Notify receptionists + admins in-app (fire-and-forget)
+      const patientName = patient ? `${patient.firstName} ${patient.lastName}`.trim() : 'New patient'
+      const docName     = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+      const apptDateStr = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+      const apptTimeStr = appt.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+      prisma.user.findMany({ where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true } })
+        .then(staff => Promise.all(staff.map(u => prisma.notification.create({
+          data: {
+            userId: u.id,
+            type:   'APPOINTMENT',
+            title:  'New Booking via WhatsApp',
+            body:   `${patientName} booked ${appt.service.name} with ${docName} on ${apptDateStr} at ${apptTimeStr}`,
+            href:   '/receptionist/scheduling',
+          },
+        }))))
+        .catch(() => {})
+
       // Send booking confirmation template (best-effort — never block the reply)
       const templateName = process.env.WA_TEMPLATE_BOOKING_CONFIRM_NAME
       if (templateName && process.env.AT_API_KEY && process.env.AT_USERNAME) {
