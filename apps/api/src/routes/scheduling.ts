@@ -103,13 +103,16 @@ router.get('/calendar', requireAuth, async (req, res) => {
 })
 
 // ─── Appointments list (range) ────────────────────────────────────────────────
-// GET /scheduling/appointments?startDate=&endDate=&doctorId=&status=&patientId=
+// GET /scheduling/appointments?startDate=&endDate=&doctorId=&status=&patientId=&search=&page=&limit=
 router.get('/appointments', requireAuth, async (req, res) => {
   const startDate = (req.query.startDate as string) || new Date().toISOString().slice(0, 10)
   const endDate   = (req.query.endDate as string)   || startDate
   const doctorId  = req.query.doctorId  as string | undefined
   const status    = req.query.status    as string | undefined
   const patientId = req.query.patientId as string | undefined
+  const search    = (req.query.search   as string)?.trim() || undefined
+  const page      = Math.max(1, parseInt((req.query.page  as string) || '1'))
+  const limit     = Math.max(0, parseInt((req.query.limit as string) || '0'))
 
   const start = startDate.includes('T') ? new Date(startDate) : new Date(startDate + 'T00:00:00+03:00')
   const end   = endDate.includes('T')   ? new Date(endDate)   : new Date(endDate   + 'T23:59:59+03:00')
@@ -123,21 +126,39 @@ router.get('/appointments', requireAuth, async (req, res) => {
   }
   if (status)    where.status    = status
   if (patientId) where.patientId = patientId
+  if (search) {
+    where.patient = {
+      OR: [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName:  { contains: search, mode: 'insensitive' } },
+        { phone:     { contains: search } },
+      ],
+    }
+  }
 
-  const appointments = await prisma.appointment.findMany({
-    where,
-    include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
-      doctor:  { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
-      service: { select: { id: true, name: true, colour: true, durationMins: true, priceUGX: true } },
-    },
-    orderBy: { startAt: 'asc' },
-  })
+  const includeSpec = {
+    patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+    doctor:  { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
+    service: { select: { id: true, name: true, colour: true, durationMins: true, priceUGX: true } },
+  }
+  const mapPrice = (a: any) => ({ ...a, service: { ...a.service, priceUGX: Number(a.service.priceUGX) } })
 
-  res.json(appointments.map((a) => ({
-    ...a,
-    service: { ...a.service, priceUGX: Number(a.service.priceUGX) },
-  })))
+  if (limit > 0) {
+    const [rows, total] = await Promise.all([
+      prisma.appointment.findMany({
+        where,
+        include: includeSpec,
+        orderBy: { startAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.appointment.count({ where }),
+    ])
+    res.json({ appointments: rows.map(mapPrice), total, page, limit })
+  } else {
+    const appointments = await prisma.appointment.findMany({ where, include: includeSpec, orderBy: { startAt: 'asc' } })
+    res.json(appointments.map(mapPrice))
+  }
 })
 
 // ─── Single appointment ───────────────────────────────────────────────────────
