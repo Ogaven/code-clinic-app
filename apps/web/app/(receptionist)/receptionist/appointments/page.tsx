@@ -128,8 +128,8 @@ export default function AppointmentsPage() {
   const router = useRouter()
 
   // Filters
-  const [startDate,    setStartDate]    = useState(todayStr)
-  const [endDate,      setEndDate]      = useState(() => plusDaysStr(30))
+  const [startDate,    setStartDate]    = useState(() => plusDaysStr(-90))
+  const [endDate,      setEndDate]      = useState(() => plusDaysStr(90))
   const [statusFilter, setStatusFilter] = useState('')
   const [searchInput,  setSearchInput]  = useState('')
   const [search,       setSearch]       = useState('')
@@ -401,7 +401,7 @@ export default function AppointmentsPage() {
                   className="flex items-start gap-3 px-4 py-4 cursor-pointer hover:bg-white dark:hover:bg-white/5 transition-colors">
                   <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-black"
                     style={{ background: appt.service.colour || '#29ABE2' }}>
-                    {appt.patient.firstName[0]}{appt.patient.lastName[0]}
+                    {(appt.patient.firstName || '?')[0]}{(appt.patient.lastName || '?')[0]}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -513,7 +513,7 @@ export default function AppointmentsPage() {
                 <div className="flex items-center gap-3 bg-gray-50 dark:bg-white/5 rounded-xl p-4">
                   <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-white text-sm font-black"
                     style={{ background: selected.service.colour || '#29ABE2' }}>
-                    {selected.patient.firstName[0]}{selected.patient.lastName[0]}
+                    {(selected.patient.firstName || '?')[0]}{(selected.patient.lastName || '?')[0]}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-gray-800 dark:text-white text-sm">

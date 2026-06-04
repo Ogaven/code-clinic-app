@@ -157,7 +157,9 @@ export default function ImportTab() {
       setProgress(100)
 
       if (r.ok) {
-        setResult(await r.json())
+        const data = await r.json()
+        setResult(data)
+        window.dispatchEvent(new Event('appointment-updated'))
       } else {
         const d = await r.json().catch(() => ({}))
         setError(d.error || 'Import failed')
