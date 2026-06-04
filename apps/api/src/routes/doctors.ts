@@ -144,6 +144,35 @@ router.patch('/:id', requireAuth, adminOnly, async (req, res) => {
   }
 })
 
+// DELETE /doctors/:id — permanently remove doctor, all their appointments, and user record (ADMIN only)
+router.delete('/:id', requireAuth, adminOnly, async (req, res) => {
+  try {
+    const doctor = await prisma.doctor.findUnique({
+      where: { id: req.params.id },
+      include: { user: { select: { id: true, firstName: true, lastName: true } } },
+    })
+    if (!doctor) { res.status(404).json({ error: 'Doctor not found' }); return }
+
+    let appointmentsDeleted = 0
+    await prisma.$transaction(async (tx) => {
+      const result = await tx.appointment.deleteMany({ where: { doctorId: req.params.id } })
+      appointmentsDeleted = result.count
+      await tx.blockedTime.deleteMany({ where: { doctorId: req.params.id } })
+      await tx.doctorSchedule.deleteMany({ where: { doctorId: req.params.id } })
+      await tx.doctorCheckIn.deleteMany({ where: { doctorId: req.params.id } })
+      await tx.doctor.delete({ where: { id: req.params.id } })
+      await tx.notification.deleteMany({ where: { userId: doctor.userId } })
+      await tx.user.delete({ where: { id: doctor.userId } })
+    })
+
+    res.json({ deleted: true, appointmentsDeleted, name: `Dr. ${doctor.user.firstName} ${doctor.user.lastName}` })
+  } catch (e: any) {
+    if (e.code === 'P2025') { res.status(404).json({ error: 'Doctor not found' }); return }
+    console.error('[DELETE /doctors]', e.message)
+    res.status(500).json({ error: e.message || 'Failed to delete doctor' })
+  }
+})
+
 // POST /doctors/:id/avatar — upload doctor profile photo (jpg/png → R2 or base64 fallback)
 router.post('/:id/avatar', requireAuth, uploadLimiter, upload.single('avatar'), async (req, res) => {
   try {

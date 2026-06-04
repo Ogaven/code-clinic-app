@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Loader2, Save, Camera, Check, X, Plus, Ban } from 'lucide-react'
+import { Loader2, Save, Camera, Check, X, Plus, Ban, Trash2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Doctor {
@@ -24,6 +24,16 @@ interface Service {
 interface BlockedTime { id: string; startAt: string; endAt: string; reason?: string }
 
 interface DaySchedule { active: boolean; start: string; end: string }
+
+function getUserRole(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const token = localStorage.getItem('cc_token')
+    if (!token) return null
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload.role ?? null
+  } catch { return null }
+}
 
 const DAYS    = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const COLOURS = ['#4A90D9','#E8A838','#9B59B6','#2ECC71','#E74C3C','#1ABC9C','#F39C12','#3498DB','#29ABE2','#E91E63']
@@ -57,10 +67,11 @@ function parseSchedule(workingDays: string, workingHours: string): DaySchedule[]
 }
 
 export default function DoctorsTab() {
-  const token   = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-  const authH   = { Authorization: `Bearer ${token}` }
-  const jsonH   = { ...authH, 'Content-Type': 'application/json' }
-  const API     = '/api-proxy'
+  const token    = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  const authH    = { Authorization: `Bearer ${token}` }
+  const jsonH    = { ...authH, 'Content-Type': 'application/json' }
+  const API      = '/api-proxy'
+  const userRole = getUserRole()
 
   const [doctors,   setDoctors]   = useState<Doctor[]>([])
   const [services,  setServices]  = useState<Service[]>([])
@@ -84,7 +95,11 @@ export default function DoctorsTab() {
   const [selectedServices, setSelectedServices] = useState<string[]>([])
   const [localAvatar,      setLocalAvatar]      = useState<string | null>(null)
 
-  // Block-time state
+  // Delete doctor state
+  const [deleteTarget,  setDeleteTarget]  = useState<Doctor | null>(null)
+  const [deleteCount,   setDeleteCount]   = useState<number | null>(null)
+  const [deleting,      setDeleting]      = useState(false)
+
   // Add doctor modal
   const [showAdd,   setShowAdd]   = useState(false)
   const [addSaving, setAddSaving] = useState(false)
@@ -265,6 +280,38 @@ export default function DoctorsTab() {
     } catch { showToast('Network error', false) }
   }
 
+  async function openDeleteConfirm(d: Doctor, e: React.MouseEvent) {
+    e.stopPropagation()
+    setDeleteTarget(d)
+    setDeleteCount(null)
+    try {
+      const params = new URLSearchParams({ doctorId: d.id, startDate: '2000-01-01', endDate: '2099-12-31', limit: '1' })
+      const res = await fetch(`${API}/scheduling/appointments?${params}`, { headers: authH })
+      if (res.ok) {
+        const data = await res.json()
+        setDeleteCount(typeof data.total === 'number' ? data.total : (Array.isArray(data) ? data.length : 0))
+      }
+    } catch { setDeleteCount(0) }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`${API}/doctors/${deleteTarget.id}`, { method: 'DELETE', headers: authH })
+      if (res.ok) {
+        showToast(`Dr. ${deleteTarget.firstName} ${deleteTarget.lastName} deleted`, true)
+        if (selected?.id === deleteTarget.id) setSelected(null)
+        setDeleteTarget(null)
+        fetchDoctors()
+      } else {
+        const d = await res.json().catch(() => ({}))
+        showToast(d.error || 'Delete failed', false)
+      }
+    } catch { showToast('Network error', false) }
+    finally { setDeleting(false) }
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-full">
       <Loader2 size={28} className="animate-spin text-clinic-blue" />
@@ -287,6 +334,42 @@ export default function DoctorsTab() {
         )}>
           {toast.ok ? <Check size={16} /> : <X size={16} />}
           {toast.msg}
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#0f1729] rounded-2xl shadow-2xl w-full max-w-sm border border-red-100 dark:border-red-900/30 overflow-hidden">
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-red-100 dark:border-red-900/20">
+              <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle size={15} className="text-red-500" />
+              </div>
+              <h3 className="font-black text-gray-800 dark:text-white">Delete Doctor</h3>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-700 dark:text-gray-200">
+                Delete <span className="font-bold">Dr. {deleteTarget.firstName} {deleteTarget.lastName}</span>?
+                This will permanently delete{' '}
+                <span className="font-bold text-red-500">
+                  {deleteCount === null ? '…' : `${deleteCount} appointment${deleteCount !== 1 ? 's' : ''}`}
+                </span>.{' '}
+                This cannot be undone.
+              </p>
+              <p className="text-xs text-gray-400">The doctor's user account and all their data will also be removed.</p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 pb-5">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-white/8 transition-colors disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={handleDelete} disabled={deleting || deleteCount === null}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 transition-all hover:-translate-y-0.5">
+                {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                {deleting ? 'Deleting…' : 'Delete Permanently'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -384,34 +467,44 @@ export default function DoctorsTab() {
         </div>
         <div className="p-2 space-y-1">
           {doctors.map(d => (
-            <button key={d.id} onClick={() => selectDoctor(d)}
-              className={cn(
-                'w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all',
-                selected?.id === d.id
-                  ? 'bg-white dark:bg-white/10 shadow-sm border border-clinic-blue/20 dark:border-clinic-blue/30'
-                  : 'hover:bg-white dark:hover:bg-white/5 hover:shadow-sm',
-              )}>
-              {d.avatarUrl ? (
-                <img src={d.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-2 ring-white dark:ring-white/10" />
-              ) : (
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
-                  style={{ background: d.colour }}>
-                  {d.firstName[0]}{d.lastName[0]}
+            <div key={d.id} className="relative group">
+              <button onClick={() => selectDoctor(d)}
+                className={cn(
+                  'w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all',
+                  selected?.id === d.id
+                    ? 'bg-white dark:bg-white/10 shadow-sm border border-clinic-blue/20 dark:border-clinic-blue/30'
+                    : 'hover:bg-white dark:hover:bg-white/5 hover:shadow-sm',
+                )}>
+                {d.avatarUrl ? (
+                  <img src={d.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-2 ring-white dark:ring-white/10" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+                    style={{ background: d.colour }}>
+                    {d.firstName[0]}{d.lastName[0]}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-clinic-navy dark:text-gray-100 truncate">Dr. {d.firstName} {d.lastName}</p>
+                  <p className="text-xs text-gray-400 truncate">{d.specialisation || 'General Dentistry'}</p>
+                  <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-0.5">
+                    {(() => {
+                      try {
+                        const days = JSON.parse(d.workingDays) as number[]
+                        return days.map(n => ['Su','Mo','Tu','We','Th','Fr','Sa'][n]).join(' · ')
+                      } catch { return 'Mon–Fri' }
+                    })()}
+                  </p>
                 </div>
+              </button>
+              {userRole === 'ADMIN' && (
+                <button
+                  onClick={e => openDeleteConfirm(d, e)}
+                  title="Delete doctor"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/20 text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all">
+                  <Trash2 size={13} />
+                </button>
               )}
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-clinic-navy dark:text-gray-100 truncate">Dr. {d.firstName} {d.lastName}</p>
-                <p className="text-xs text-gray-400 truncate">{d.specialisation || 'General Dentistry'}</p>
-                <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-0.5">
-                  {(() => {
-                    try {
-                      const days = JSON.parse(d.workingDays) as number[]
-                      return days.map(n => ['Su','Mo','Tu','We','Th','Fr','Sa'][n]).join(' · ')
-                    } catch { return 'Mon–Fri' }
-                  })()}
-                </p>
-              </div>
-            </button>
+            </div>
           ))}
         </div>
       </div>
