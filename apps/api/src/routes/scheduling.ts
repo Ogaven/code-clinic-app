@@ -983,4 +983,68 @@ router.post('/booking-settings', requireAuth, clinicalStaff, async (req, res) =>
   }
 })
 
+// ── Feedback summary ──────────────────────────────────────────────────────────
+router.get('/feedback/summary', requireAuth, async (req, res) => {
+  try {
+    const startDate = (req.query.startDate as string) || ''
+    const endDate   = (req.query.endDate   as string) || ''
+
+    const where: any = {}
+    if (startDate || endDate) {
+      where.submittedAt = {}
+      if (startDate) where.submittedAt.gte = new Date(startDate)
+      if (endDate) {
+        const end = new Date(endDate); end.setHours(23, 59, 59, 999)
+        where.submittedAt.lte = end
+      }
+    }
+
+    const feedback = await prisma.patientFeedback.findMany({
+      where,
+      include: {
+        patient: { select: { firstName: true, lastName: true } },
+        appointment: {
+          include: {
+            doctor: { include: { user: { select: { firstName: true, lastName: true } } } },
+          },
+        },
+      },
+      orderBy: { submittedAt: 'desc' },
+    })
+
+    const total     = feedback.length
+    const avgRating = total > 0 ? +(feedback.reduce((s, f) => s + f.rating, 0) / total).toFixed(1) : 0
+
+    const breakdown: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+    feedback.forEach(f => { breakdown[f.rating] = (breakdown[f.rating] || 0) + 1 })
+
+    const doctorMap = new Map<string, { name: string; total: number; count: number }>()
+    feedback.forEach(f => {
+      const doc = (f.appointment as any)?.doctor
+      if (!doc) return
+      const key  = doc.id as string
+      const name = `Dr. ${doc.user.firstName} ${doc.user.lastName}`
+      if (!doctorMap.has(key)) doctorMap.set(key, { name, total: 0, count: 0 })
+      const entry = doctorMap.get(key)!
+      entry.total += f.rating; entry.count += 1
+    })
+    const byDoctor = Array.from(doctorMap.values())
+      .map(d => ({ name: d.name, avgRating: +(d.total / d.count).toFixed(1), count: d.count }))
+      .sort((a, b) => b.avgRating - a.avgRating)
+
+    const recent = feedback.slice(0, 20).map(f => ({
+      id:          f.id,
+      patientName: `${f.patient.firstName} ${f.patient.lastName}`,
+      rating:      f.rating,
+      comment:     f.comment ?? null,
+      channel:     f.channel,
+      submittedAt: f.submittedAt,
+    }))
+
+    res.json({ totalReviews: total, avgRating, breakdown, byDoctor, recent })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 export default router
