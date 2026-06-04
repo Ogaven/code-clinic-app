@@ -352,7 +352,7 @@ export default function ImportTab() {
           {/* View Calendar CTA */}
           {result.succeeded > 0 && (
             <button
-              onClick={() => router.push('/scheduling/calendar')}
+              onClick={() => router.push('/receptionist/scheduling')}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-white text-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
               style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 14px rgba(41,171,226,0.25)' }}>
               <Calendar size={14} /> View Calendar
