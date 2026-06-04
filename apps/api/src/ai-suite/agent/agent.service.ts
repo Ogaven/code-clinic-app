@@ -6,6 +6,8 @@ import {
   createAppointment,
   rescheduleAppointment,
   cancelAppointment,
+  getNextAppointment,
+  confirmAppointment,
   type AvailableSlot,
 } from '../booking/booking.service'
 import {
@@ -292,7 +294,7 @@ async function buildContext(
 
 // ── Intent detection ──────────────────────────────────────────────────────────
 
-type Intent = 'BOOK' | 'RESCHEDULE' | 'CANCEL' | null
+type Intent = 'BOOK' | 'RESCHEDULE' | 'CANCEL' | 'CHECK' | 'CONFIRM' | null
 
 export function detectIntent(message: string): Intent {
   const lower = message.toLowerCase()
@@ -308,6 +310,18 @@ export function detectIntent(message: string): Intent {
     'different time', 'change the time', 'postpone',
   ]
   if (rescheduleWords.some(w => lower.includes(w))) return 'RESCHEDULE'
+
+  const confirmWords = [
+    'confirm my appointment', 'i confirm', 'yes i confirm', 'confirming my',
+    '✅ confirm',
+  ]
+  if (confirmWords.some(w => lower.includes(w))) return 'CONFIRM'
+
+  const checkWords = [
+    'my appointment', 'next appointment', 'when is my', 'do i have an appointment',
+    'appointment details', 'check my appointment', 'what time is my',
+  ]
+  if (checkWords.some(w => lower.includes(w))) return 'CHECK'
 
   const bookWords = [
     'book', 'appointment', 'schedule', 'come in', 'visit',
@@ -760,6 +774,40 @@ async function handleAwaitingCancelConfirmation(
   return `Just to confirm — do you want to *cancel* your appointment? Reply *yes* to cancel or *no* to keep it 😊`
 }
 
+// ── handleCheckAppointment ────────────────────────────────────────────────────
+
+async function handleCheckAppointment(from: string): Promise<string> {
+  const appt = await getNextAppointment(from)
+  if (!appt) {
+    return `I don't see any upcoming appointments for you right now 😊 Would you like to book one?`
+  }
+  const day = appt.startAt.toLocaleDateString('en-UG', {
+    weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
+  })
+  const time = appt.startAt.toLocaleTimeString('en-US', {
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
+  }).toLowerCase()
+  const doctor = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+  return `Your next appointment is on *${day}* at *${time}* with *${doctor}* for *${appt.service.name}* 😊 Anything else I can help you with?`
+}
+
+// ── handleConfirmAppointment ──────────────────────────────────────────────────
+
+async function handleConfirmAppointment(from: string): Promise<string> {
+  const appt = await getNextAppointment(from)
+  if (!appt) {
+    return `I don't see any upcoming appointments to confirm right now 😊 Would you like to book one?`
+  }
+  await confirmAppointment(appt.id)
+  const day = appt.startAt.toLocaleDateString('en-UG', {
+    weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
+  })
+  const time = appt.startAt.toLocaleTimeString('en-US', {
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
+  }).toLowerCase()
+  return `Perfect, you're confirmed! Your appointment on *${day}* at *${time}* is all set 😊 We look forward to seeing you!`
+}
+
 // ── getAgentReply — main entry point ─────────────────────────────────────────
 
 export async function getAgentReply(
@@ -799,6 +847,8 @@ export async function getAgentReply(
     case 'IDLE':
     default: {
       const intent = detectIntent(latestMessage)
+      if (intent === 'CHECK')   return handleCheckAppointment(from)
+      if (intent === 'CONFIRM') return handleConfirmAppointment(from)
       if (intent) return handleIdleBookIntent(from, intent)
       // fall through to normal Claude call
     }

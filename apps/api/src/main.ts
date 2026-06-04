@@ -55,7 +55,7 @@ import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
 import { checkAndSendReminders }           from './ai-suite/scheduler/reminder.service'
-import { checkAndSendFollowups, processAfterHoursQueue, checkAndSendPostAppointmentFollowups } from './ai-suite/scheduler/followup.service'
+import { checkAndSendFollowups, processAfterHoursQueue, checkAndSendPostAppointmentFollowups, checkAndSendMissedCallFollowups, checkAndSendReactivationMessages } from './ai-suite/scheduler/followup.service'
 import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
 import { updatePatientStatuses }           from './ai-suite/scheduler/patient-status.service'
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
@@ -309,10 +309,19 @@ runStartup().then(() => {
   setInterval(() => {
     checkAndSendLeadNurtureMessages().catch(err => console.error('[LeadNurture] Scheduler error:', err))
   }, ONE_HOUR)
+  // Missed call followup — every 30 minutes
+  const THIRTY_MINUTES = 30 * 60 * 1000
+  setInterval(() => {
+    checkAndSendMissedCallFollowups().catch(err => console.error('[MissedCallFollowup] Scheduler error:', err))
+  }, THIRTY_MINUTES)
+
   const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000
   setInterval(() => {
     updatePatientStatuses().catch(err => console.error('[PatientStatus] Scheduler error:', err))
   }, TWENTY_FOUR_HOURS)
+  setInterval(() => {
+    checkAndSendReactivationMessages().catch(err => console.error('[Reactivation] Scheduler error:', err))
+  }, ONE_HOUR)
 
   // Scheduled campaigns — check every 5 minutes
   const FIVE_MINUTES = 5 * 60 * 1000

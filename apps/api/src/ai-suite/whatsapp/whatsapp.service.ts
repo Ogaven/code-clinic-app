@@ -375,6 +375,36 @@ export async function processInbound(from: string, text: string, wamid: string):
       } catch (err: any) {
         console.error('[WhatsApp] After-hours queue error:', err.message)
       }
+
+      // If message is very short (< 5 words) it may indicate a missed-call attempt —
+      // queue a dedicated missed_call_followup template for morning delivery.
+      const wordCount = text.trim().split(/\s+/).filter(Boolean).length
+      if (wordCount < 5) {
+        try {
+          const existingMissed = await prisma.outboundQueue.findFirst({
+            where: {
+              patientId:  patient.id,
+              agentMode:  'MISSED_CALL_FOLLOWUP',
+              status:     'PENDING',
+              scheduledFor: { gt: new Date() },
+            },
+          })
+          if (!existingMissed) {
+            await prisma.outboundQueue.create({
+              data: {
+                patientId:    patient.id,
+                phoneNumber:  from,
+                agentMode:    'MISSED_CALL_FOLLOWUP',
+                reason:       `Short after-hours message: "${text.slice(0, 100)}"`,
+                scheduledFor: getNext8amUTC(),
+                status:       'PENDING',
+              },
+            })
+          }
+        } catch (err: any) {
+          console.error('[WhatsApp] Missed call queue error:', err.message)
+        }
+      }
     }
 
     // ── 9. Persist Sarah's reply ──────────────────────────────────────────────

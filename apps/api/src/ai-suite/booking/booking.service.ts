@@ -268,3 +268,35 @@ export async function cancelAppointment(appointmentId: string) {
     },
   })
 }
+
+// ── getNextAppointment ────────────────────────────────────────────────────────
+
+export async function getNextAppointment(phone: string) {
+  const patient = await prisma.patient.findFirst({ where: { phone } })
+  if (!patient) return null
+  return prisma.appointment.findFirst({
+    where: {
+      patientId: patient.id,
+      startAt:   { gt: new Date() },
+      status:    { notIn: ['CANCELLED'] },
+    },
+    orderBy: { startAt: 'asc' },
+    include: {
+      doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+      service: { select: { name: true } },
+    },
+  })
+}
+
+// ── confirmAppointment ────────────────────────────────────────────────────────
+
+export async function confirmAppointment(appointmentId: string) {
+  return prisma.appointment.update({
+    where: { id: appointmentId },
+    data:  { status: 'CONFIRMED' },
+    include: {
+      doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+      service: { select: { name: true } },
+    },
+  })
+}

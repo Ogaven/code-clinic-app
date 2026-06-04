@@ -2,6 +2,13 @@ import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.
 import { sendSMS } from '../sms/sms.service'
 import { prisma } from '../../lib/prisma'
 
+// EAT hour helper (UTC+3)
+function eatHour(): number {
+  return parseInt(
+    new Date().toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
+  )
+}
+
 // ── checkAndSendFollowups ─────────────────────────────────────────────────────
 // Runs every hour. Finds COMPLETED appointments from 23–25 hours ago and sends a
 // warm post-visit follow-up message if one hasn't been sent yet.
@@ -118,7 +125,7 @@ export async function processAfterHoursQueue(): Promise<void> {
 
   const entries = await prisma.outboundQueue.findMany({
     where: {
-      agentMode:    'MORNING_FOLLOWUP',
+      agentMode:    { in: ['MORNING_FOLLOWUP', 'MISSED_CALL_FOLLOWUP'] },
       status:       'PENDING',
       scheduledFor: { lte: now },
     },
@@ -132,11 +139,20 @@ export async function processAfterHoursQueue(): Promise<void> {
   console.log(`[AfterHoursQueue] Processing ${entries.length} morning follow-up(s)`)
 
   for (const entry of entries) {
-    const name    = entry.patient?.firstName || 'there'
-    const message = `Good morning ${name}! 😊 Code Clinic is now open. You messaged us last night — how can we help you today?`
+    const name = entry.patient?.firstName || 'there'
+
+    let templateName: string | undefined
+    let message: string
+
+    if (entry.agentMode === 'MISSED_CALL_FOLLOWUP') {
+      templateName = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
+      message = `Hi ${name}! 😊 We're now open at Code Clinic. We noticed your message last night — how can we help you today?`
+    } else {
+      templateName = process.env.WA_TEMPLATE_AFTER_HOURS_NAME
+      message = `Good morning ${name}! 😊 Code Clinic is now open. You messaged us last night — how can we help you today?`
+    }
 
     try {
-      const templateName = process.env.WA_TEMPLATE_AFTER_HOURS_NAME
       if (templateName) {
         try {
           await sendWhatsAppTemplate(entry.phoneNumber, templateName, [name])
@@ -252,6 +268,159 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
       console.log(`[PostApptFollowup] Sent to ${patient.firstName} ${patient.lastName} (${patient.phone})`)
     } catch (err: any) {
       console.error(`[PostApptFollowup] Failed for appointment ${appt.id}:`, err.message)
+    }
+  }
+}
+
+// ── checkAndSendMissedCallFollowups ───────────────────────────────────────────
+// Runs every 30 min. Finds voice agent calls < 10s in the last 30 min where the
+// caller has not booked, and sends the cc_missed_call_followup template.
+
+export async function checkAndSendMissedCallFollowups(): Promise<void> {
+  const now         = new Date()
+  const windowStart = new Date(now.getTime() - 35 * 60 * 1000)  // 35 min window (5 min buffer)
+
+  let shortCalls: any[]
+  try {
+    shortCalls = await prisma.agentLog.findMany({
+      where: {
+        channel:    'VOICE',
+        callSid:    { not: null },
+        durationSec: { lt: 10, not: null },
+        patientId:  { not: null },
+        createdAt:  { gte: windowStart },
+      },
+      include: {
+        patient: { select: { id: true, firstName: true, phone: true } },
+      },
+      take: 50,
+    })
+  } catch (err: any) {
+    console.error('[MissedCallFollowup] Query failed:', err.message)
+    return
+  }
+
+  if (shortCalls.length === 0) return
+  console.log(`[MissedCallFollowup] Found ${shortCalls.length} short call(s)`)
+
+  for (const call of shortCalls) {
+    const patient = call.patient
+    if (!patient?.phone) continue
+
+    // Dedup: already sent a missed call followup for this patient in last 24h
+    const alreadySent = await prisma.aiScheduledMessage.findFirst({
+      where: {
+        patientId:    patient.id,
+        templateType: 'MISSED_CALL',
+        sent:         true,
+        scheduledFor: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
+      },
+    })
+    if (alreadySent) continue
+
+    // Skip if patient booked after the call
+    const recentBooking = await prisma.appointment.findFirst({
+      where: {
+        patientId: patient.id,
+        createdAt: { gte: call.createdAt },
+      },
+    })
+    if (recentBooking) continue
+
+    const templateName = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
+    const firstName    = patient.firstName || 'there'
+    try {
+      try {
+        await sendWhatsAppTemplate(patient.phone, templateName, [firstName])
+      } catch {
+        await sendWhatsAppMessage(
+          patient.phone,
+          `Hi ${firstName}! 😊 We noticed you tried reaching us at Code Clinic earlier. Sorry we missed you! How can we help? Just reply here or call us on +256 394 836 298.`
+        )
+      }
+
+      await prisma.aiScheduledMessage.create({
+        data: {
+          patientId:    patient.id,
+          channel:      'WHATSAPP',
+          templateType: 'MISSED_CALL',
+          scheduledFor: now,
+          sent:         true,
+          content:      `Missed call followup sent to ${patient.phone}`,
+        },
+      })
+      console.log(`[MissedCallFollowup] Sent to ${patient.firstName} (${patient.phone})`)
+    } catch (err: any) {
+      console.error(`[MissedCallFollowup] Failed for ${patient.phone}:`, err.message)
+    }
+  }
+}
+
+// ── checkAndSendReactivationMessages ──────────────────────────────────────────
+// Runs daily at 10 AM EAT. Finds patients with no appointment in 90+ days and
+// sends the cc_patient_reactivation template to win them back.
+
+export async function checkAndSendReactivationMessages(): Promise<void> {
+  if (eatHour() < 10 || eatHour() >= 11) return  // only 10–11 AM EAT
+
+  const now          = new Date()
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+
+  // Patients who have had at least one appointment but none in the last 90 days
+  const dormantPatients = await prisma.patient.findMany({
+    where: {
+      isActive: true,
+      appointments: {
+        some: { startAt: { lt: ninetyDaysAgo } },
+        none: { startAt: { gte: ninetyDaysAgo } },
+      },
+    },
+    select: { id: true, firstName: true, phone: true },
+    take: 100,
+  })
+
+  if (dormantPatients.length === 0) return
+  console.log(`[Reactivation] Found ${dormantPatients.length} dormant patient(s)`)
+
+  for (const patient of dormantPatients) {
+    if (!patient.phone) continue
+
+    // Dedup: already sent reactivation in last 90 days
+    const alreadySent = await prisma.aiScheduledMessage.findFirst({
+      where: {
+        patientId:    patient.id,
+        templateType: 'REACTIVATION',
+        sent:         true,
+        scheduledFor: { gte: ninetyDaysAgo },
+      },
+    })
+    if (alreadySent) continue
+
+    const templateName = process.env.WA_TEMPLATE_REACTIVATION_NAME || 'cc_patient_reactivation'
+    const firstName    = patient.firstName || 'there'
+    try {
+      try {
+        await sendWhatsAppTemplate(patient.phone, templateName, [firstName])
+      } catch {
+        await sendWhatsAppMessage(
+          patient.phone,
+          `Hi ${firstName}! 😊 It's been a while since we've seen you at Code Clinic. We hope you're doing well! When you're ready for your next visit, we're here for you — just reply or call us on +256 394 836 298.`
+        )
+      }
+
+      await prisma.aiScheduledMessage.create({
+        data: {
+          patientId:    patient.id,
+          channel:      'WHATSAPP',
+          templateType: 'REACTIVATION',
+          scheduledFor: now,
+          sent:         true,
+          content:      `Reactivation message sent to ${patient.phone}`,
+        },
+      })
+      console.log(`[Reactivation] Sent to ${patient.firstName} (${patient.phone})`)
+    } catch (err: any) {
+      console.error(`[Reactivation] Failed for ${patient.phone}:`, err.message)
     }
   }
 }

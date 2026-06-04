@@ -304,6 +304,7 @@ export default function DoctorsTab() {
         if (selected?.id === deleteTarget.id) setSelected(null)
         setDeleteTarget(null)
         fetchDoctors()
+        window.dispatchEvent(new Event('doctor-updated'))
       } else {
         const d = await res.json().catch(() => ({}))
         showToast(d.error || 'Delete failed', false)

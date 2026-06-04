@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, RefreshCw, X, Lock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, X, Lock, GripVertical, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ function timeToTop(dateStr: string): number {
   return Math.max(0, (mins / 30) * SLOT_HEIGHT)
 }
 function durationToHeight(mins: number): number {
-  return Math.max((mins / 30) * SLOT_HEIGHT, SLOT_HEIGHT * 0.45)
+  return Math.max((mins / 30) * SLOT_HEIGHT, 60)
 }
 function fmtTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('en-UG', {
@@ -220,14 +220,10 @@ function ApptBlock({ appt, colIndex, totalCols, onClick, resizingEndAt, onResize
         <span className={cn('text-[11px] font-bold truncate', isCancelled && 'line-through')} style={{ color: colour }}>
           {appt.patient.firstName} {appt.patient.lastName}
         </span>
-        {!short && (
-          <>
-            <span className="text-[10px] text-gray-500 truncate mt-0.5">{appt.service.name}</span>
-            <span className="text-[10px] text-gray-400 mt-0.5">{fmtTime(appt.startAt)}</span>
-          </>
-        )}
+        <span className="text-[10px] text-gray-500 truncate mt-0.5">{appt.service.name}</span>
+        <span className="text-[10px] text-gray-400 mt-0.5">{fmtTime(appt.startAt)}</span>
       </div>
-      {!short && badge && !isResizing && (
+      {badge && !isResizing && (
         <div className="absolute bottom-1 right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full pointer-events-none"
           style={{ background: badge.bg, color: badge.color }}>
           {badge.label}
@@ -393,7 +389,7 @@ function ApptDetailModal({ appt, onClose }: { appt: Appointment; onClose: () => 
 }
 
 // ─── Doctors View ─────────────────────────────────────────────────────────────
-function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay, workingHours, resizing, onApptResizeStart, onApptResizeTouchStart, onApptDrop }: {
+function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay, workingHours, resizing, onApptResizeStart, onApptResizeTouchStart, onApptDrop, onReorderColumns }: {
   columns:                  DoctorCol[]
   dateStr:                  string
   onBookSlot?:              (docId: string, at: Date) => void
@@ -407,6 +403,7 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
   onApptResizeStart?:       (e: React.MouseEvent, appt: Appointment) => void
   onApptResizeTouchStart?:  (e: React.TouchEvent, appt: Appointment) => void
   onApptDrop?:              (apptId: string, targetDoctorId: string, slotIdx: number) => void
+  onReorderColumns?:        (newOrder: string[]) => void
 }) {
   const today      = toDateStr(new Date()) === dateStr
   const TIME_W     = 56
@@ -414,6 +411,8 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
   const dayOfWeek  = new Date(dateStr + 'T12:00:00').getDay()
   const isClosed   = closedDays.has(dayOfWeek)
   const [closedToast, setClosedToast] = useState(false)
+  const [dragOverDocId, setDragOverDocId] = useState<string | null>(null)
+  const dragDocIdRef = React.useRef<string | null>(null)
 
   function handleClick(docId: string, slot: string) {
     if (!onBookSlot) return
@@ -456,8 +455,39 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
               if (s && e) hoursLabel = `${s} – ${e}`
             }
           } catch {}
+          const isDragOver = dragOverDocId === doctor.id
           return (
-            <div key={doctor.id} className="flex-1 min-w-[130px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 flex items-center gap-2">
+            <div key={doctor.id}
+              className={cn(
+                'flex-1 min-w-[130px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 flex items-center gap-2 transition-colors',
+                isDragOver && 'bg-blue-50/60 dark:bg-blue-900/20 border-clinic-blue/40',
+                onReorderColumns && 'cursor-grab active:cursor-grabbing',
+              )}
+              draggable={!!onReorderColumns}
+              onDragStart={(e) => {
+                dragDocIdRef.current = doctor.id
+                e.dataTransfer.setData('cc_doctor_id', doctor.id)
+                e.dataTransfer.effectAllowed = 'move'
+              }}
+              onDragOver={(e) => { e.preventDefault(); setDragOverDocId(doctor.id) }}
+              onDragLeave={() => setDragOverDocId(null)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragOverDocId(null)
+                const fromId = e.dataTransfer.getData('cc_doctor_id')
+                if (!fromId || fromId === doctor.id || !onReorderColumns) return
+                const currentOrder = columns.map(c => c.doctor.id)
+                const fromIdx = currentOrder.indexOf(fromId)
+                const toIdx   = currentOrder.indexOf(doctor.id)
+                if (fromIdx === -1 || toIdx === -1) return
+                const newOrder = [...currentOrder]
+                newOrder.splice(fromIdx, 1)
+                newOrder.splice(toIdx, 0, fromId)
+                onReorderColumns(newOrder)
+              }}>
+              {onReorderColumns && (
+                <GripVertical size={12} className="text-gray-300 dark:text-gray-600 flex-shrink-0 -ml-0.5" />
+              )}
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                 style={{ background: `linear-gradient(135deg,${doctor.colour},${doctor.colour}aa)` }}>
                 {init}
@@ -538,20 +568,49 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
                 <BlockedBlock key={b.id} block={b}
                   onRemove={onBlockClick ? () => onBlockClick(doctor.id, b.id) : undefined} />
               ))}
-              {/* Appointments */}
-              {groupOverlapping(appointments).map((a) => (
-                <ApptBlock
-                  key={a.id}
-                  appt={a}
-                  colIndex={a.colIndex}
-                  totalCols={a.totalCols}
-                  onClick={() => onClickAppointment?.(a)}
-                  resizingEndAt={resizing?.apptId === a.id ? resizing.currentEndAt : undefined}
-                  onResizeStart={onApptResizeStart ? (e) => onApptResizeStart(e, a) : undefined}
-                  onResizeTouchStart={onApptResizeTouchStart ? (e) => onApptResizeTouchStart(e, a) : undefined}
-                  isDraggable={!!onApptDrop}
-                />
-              ))}
+              {/* Appointments — max 2 visible columns, +N pill for overflow */}
+              {(() => {
+                const grouped = groupOverlapping(appointments)
+                const visible = grouped.filter(a => a.colIndex < 2)
+                const hidden  = grouped.filter(a => a.colIndex >= 2)
+
+                // One "+N" chip per unique start-minute for hidden appointments
+                const seen = new Set<string>()
+                const pills: React.ReactElement[] = []
+                hidden.forEach(a => {
+                  const key = a.startAt.slice(0, 16)
+                  if (!seen.has(key)) {
+                    seen.add(key)
+                    const count = hidden.filter(h => h.startAt.slice(0, 16) === key).length
+                    pills.push(
+                      <div key={`more-${key}`}
+                        className="absolute z-20 right-1 text-[10px] font-bold text-white rounded-full px-1.5 py-0.5 shadow-sm pointer-events-none"
+                        style={{ top: timeToTop(a.startAt) + 2, background: '#64748B' }}>
+                        +{count}
+                      </div>
+                    )
+                  }
+                })
+
+                return (
+                  <>
+                    {visible.map((a) => (
+                      <ApptBlock
+                        key={a.id}
+                        appt={a}
+                        colIndex={a.colIndex}
+                        totalCols={Math.min(a.totalCols, 2)}
+                        onClick={() => onClickAppointment?.(a)}
+                        resizingEndAt={resizing?.apptId === a.id ? resizing.currentEndAt : undefined}
+                        onResizeStart={onApptResizeStart ? (e) => onApptResizeStart(e, a) : undefined}
+                        onResizeTouchStart={onApptResizeTouchStart ? (e) => onApptResizeTouchStart(e, a) : undefined}
+                        isDraggable={!!onApptDrop}
+                      />
+                    ))}
+                    {pills}
+                  </>
+                )
+              })()}
               {/* Now line */}
               {today && <NowLine />}
               {/* Closed day overlay */}
@@ -756,6 +815,33 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   const [lastFetched, setLastFetched] = useState<Date | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // ─── Column ordering (drag-to-reorder, persisted in localStorage) ─────────────
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem('cc_doctor_order') || '[]') } catch { return [] }
+  })
+
+  const orderedColumns = columnOrder.length > 0
+    ? [...columns].sort((a, b) => {
+        const ai = columnOrder.indexOf(a.doctor.id)
+        const bi = columnOrder.indexOf(b.doctor.id)
+        if (ai === -1 && bi === -1) return 0
+        if (ai === -1) return 1
+        if (bi === -1) return -1
+        return ai - bi
+      })
+    : columns
+
+  function handleReorderColumns(newOrder: string[]) {
+    setColumnOrder(newOrder)
+    localStorage.setItem('cc_doctor_order', JSON.stringify(newOrder))
+  }
+
+  function resetColumnOrder() {
+    setColumnOrder([])
+    localStorage.removeItem('cc_doctor_order')
+  }
+
   // ─── Block Time state ────────────────────────────────────────────────────────
   const [blockModal,  setBlockModal]  = useState<{
     doctorId: string; date: string; startTime: string; endTime: string; reason: string
@@ -825,6 +911,16 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     }
     window.addEventListener('appointment-updated', onApptUpdated)
     return () => window.removeEventListener('appointment-updated', onApptUpdated)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view])
+
+  // Refresh when a doctor is added or deleted (dispatched by DoctorsTab)
+  useEffect(() => {
+    function onDoctorUpdated() {
+      if (view === 'doctors') fetchDay(dateRef.current)
+    }
+    window.addEventListener('doctor-updated', onDoctorUpdated)
+    return () => window.removeEventListener('doctor-updated', onDoctorUpdated)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view])
 
@@ -1157,11 +1253,20 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           ))}
         </div>
 
+        {/* Reset column order (only shown when custom order is active) */}
+        {columnOrder.length > 0 && view === 'doctors' && (
+          <button onClick={resetColumnOrder}
+            title="Reset column order"
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+            <RotateCcw size={13} />
+          </button>
+        )}
+
         {loading && <div className="w-2 h-2 rounded-full bg-clinic-blue animate-pulse ml-1" />}
       </div>
 
       {/* First-load skeleton — shown when fetching and no data yet */}
-      {loading && columns.length === 0 && view === 'doctors' && (
+      {loading && orderedColumns.length === 0 && view === 'doctors' && (
         <div className="flex gap-3 overflow-x-auto pb-4 animate-pulse">
           {[1, 2, 3].map((col) => (
             <div key={col} className="flex-shrink-0 w-48 sm:w-56">
@@ -1180,7 +1285,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
       {/* Calendar views */}
       {view === 'doctors' && (
         <DoctorsView
-          columns={columns}
+          columns={orderedColumns}
           dateStr={toDateStr(date)}
           onBookSlot={onBookSlot}
           onClickAppointment={handleApptClick}
@@ -1193,6 +1298,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           onApptResizeStart={handleResizeStart}
           onApptResizeTouchStart={handleResizeTouchStart}
           onApptDrop={handleApptDrop}
+          onReorderColumns={handleReorderColumns}
         />
       )}
       {view === 'week' && (
@@ -1214,7 +1320,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
         />
       )}
 
-      {!loading && view === 'doctors' && columns.length === 0 && (
+      {!loading && view === 'doctors' && orderedColumns.length === 0 && (
         <div className="flex-1 flex items-center justify-center text-gray-400">
           <div className="text-center">
             <div className="text-5xl mb-3">📅</div>
@@ -1255,7 +1361,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
                 <label className="block text-xs font-semibold text-gray-500 mb-1">Doctor</label>
                 <select value={blockModal.doctorId} onChange={e => setBlockModal(m => m && ({ ...m, doctorId: e.target.value }))}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none">
-                  {columns.map(({ doctor }) => (
+                  {orderedColumns.map(({ doctor }) => (
                     <option key={doctor.id} value={doctor.id} className="dark:bg-gray-800">
                       Dr. {doctor.firstName} {doctor.lastName}
                     </option>
