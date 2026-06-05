@@ -59,8 +59,8 @@ export async function getAvailableSlots(
   }>
 
   if (doctorId) {
-    const d = await prisma.doctor.findUnique({
-      where: { id: doctorId },
+    const d = await prisma.doctor.findFirst({
+      where: { id: doctorId, isActive: true },
       include: { user: { select: { firstName: true, lastName: true } } },
     })
     doctors = d ? [d] : []

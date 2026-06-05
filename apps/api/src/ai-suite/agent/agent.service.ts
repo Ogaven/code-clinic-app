@@ -18,6 +18,21 @@ import {
 } from '../booking/booking.state'
 import { prisma } from '../../lib/prisma'
 
+function sanitizeForWhatsApp(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/_(.*?)_/g, '$1')
+    .replace(/`(.*?)`/g, '$1')
+    .replace(/~~(.*?)~~/g, '$1')
+    .replace(/#{1,6}\s/g, '')
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+    .replace(/^\s*[-*+]\s/gm, '• ')
+    .replace(/\s—\s/g, ' - ')
+    .replace(/—/g, '-')
+    .trim()
+}
+
 const SARAH_SYSTEM_PROMPT = `You are Sarah, a warm and friendly member of the front desk team at Code Clinic dental clinic in Kampala, Uganda.
 
 CORE RULES — never break these:
@@ -53,6 +68,7 @@ RESPONSE LENGTH RULES:
 - If patient says "Good morning/evening/afternoon" — match their greeting, then one follow-up sentence max
 - Match the length of the patient's message — short message gets a short reply
 - Never more than 3 sentences unless patient asked a detailed question
+- IMPORTANT: Never use markdown formatting. No asterisks, no bold, no italics, no em-dashes. Write in plain text only. Service names should be written naturally, not wrapped in asterisks.
 - Never use bullet points, bold text (**text**), asterisks, dashes, or any markdown — you are texting, not writing a document
 - Never send a formatted list — always speak conversationally
 
@@ -146,7 +162,7 @@ async function getCachedMenu(): Promise<{ services: string; doctors: string }> {
     }),
     prisma.doctor.findMany({
       include: { user: { select: { firstName: true, lastName: true } } },
-      where: { user: { isActive: true } },
+      where: { isActive: true, user: { isActive: true } },
     }),
   ])
 
@@ -342,15 +358,15 @@ function formatSlotLine(slot: AvailableSlot, index: number): string {
   const time = slot.startAt.toLocaleTimeString('en-US', {
     hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   }).toLowerCase()
-  return `${index + 1}. ${day} at ${time} — ${slot.doctorName}`
+  return `${index + 1}. ${day} at ${time} - ${slot.doctorName}`
 }
 
 function formatSlotsMessage(slots: AvailableSlot[], serviceName: string): string {
   if (slots.length === 0) {
-    return `I'm sorry, I couldn't find any available slots for *${serviceName}* in the next 7 days. Would you like me to look further ahead, or shall I have someone from the clinic call you to arrange a time? 😊`
+    return `I'm sorry, I couldn't find any available slots for ${serviceName} in the next 7 days. Would you like me to look further ahead, or shall I have someone from the clinic call you to arrange a time? 😊`
   }
   const lines = slots.slice(0, 5).map((s, i) => formatSlotLine(s, i)).join('\n')
-  return `I found these available slots for *${serviceName}* 😊\n\n${lines}\n\nJust reply with the number that works best for you!`
+  return `I found these available slots for ${serviceName} 😊\n\n${lines}\n\nJust reply with the number that works best for you!`
 }
 
 function formatConfirmation(appt: {
@@ -365,7 +381,7 @@ function formatConfirmation(appt: {
     hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   }).toLowerCase()
   const doctor = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
-  return `Perfect! You're all booked 🎉 *${day}* at *${time}* with *${doctor}* for *${appt.service.name}*. We'll send you a reminder the day before. See you then!`
+  return `Perfect! You're all booked 🎉 ${day} at ${time} with ${doctor} for ${appt.service.name}. We'll send you a reminder the day before. See you then!`
 }
 
 // ── Parse patient's slot choice (1/2/3 or "first"/"second" etc.) ──────────────
@@ -513,7 +529,7 @@ async function handleIdleBookIntent(
 
   if (intent === 'CANCEL') {
     setBookingState(from, { state: 'AWAITING_CANCEL_CONFIRMATION', appointmentId: upcoming.id })
-    return `I can see you have an appointment on *${apptDay}* at *${apptTime}* with *${apptDoctor}* for *${upcoming.service.name}*. Are you sure you want to cancel it? Just reply *yes* to confirm or *no* to keep it. 😊`
+    return `I can see you have an appointment on ${apptDay} at ${apptTime} with ${apptDoctor} for ${upcoming.service.name}. Are you sure you want to cancel it? Just reply yes to confirm or no to keep it. 😊`
   }
 
   // RESCHEDULE
@@ -522,7 +538,7 @@ async function handleIdleBookIntent(
     appointmentId: upcoming.id,
     serviceId:     upcoming.service.id,
   })
-  return `Sure! Your appointment is on *${apptDay}* at *${apptTime}* with *${apptDoctor}* for *${upcoming.service.name}*. What day or time would work better for you? 😊`
+  return `Sure! Your appointment is on ${apptDay} at ${apptTime} with ${apptDoctor} for ${upcoming.service.name}. What day or time would work better for you? 😊`
 }
 
 async function handleAwaitingService(from: string, message: string): Promise<string> {
@@ -535,7 +551,7 @@ async function handleAwaitingService(from: string, message: string): Promise<str
   }
 
   setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
-  return `Got it! *${service.name}* — great choice 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
+  return `Got it! ${service.name} - great choice 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
 }
 
 async function handleAwaitingDoctorPreference(
@@ -771,7 +787,7 @@ async function handleAwaitingCancelConfirmation(
     return `No problem at all! Your appointment is still on the books. See you then 😊`
   }
 
-  return `Just to confirm — do you want to *cancel* your appointment? Reply *yes* to cancel or *no* to keep it 😊`
+  return `Just to confirm - do you want to cancel your appointment? Reply yes to cancel or no to keep it 😊`
 }
 
 // ── handleCheckAppointment ────────────────────────────────────────────────────
@@ -788,7 +804,7 @@ async function handleCheckAppointment(from: string): Promise<string> {
     hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   }).toLowerCase()
   const doctor = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
-  return `Your next appointment is on *${day}* at *${time}* with *${doctor}* for *${appt.service.name}* 😊 Anything else I can help you with?`
+  return `Your next appointment is on ${day} at ${time} with ${doctor} for ${appt.service.name} 😊 Anything else I can help you with?`
 }
 
 // ── handleConfirmAppointment ──────────────────────────────────────────────────
@@ -805,7 +821,7 @@ async function handleConfirmAppointment(from: string): Promise<string> {
   const time = appt.startAt.toLocaleTimeString('en-US', {
     hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   }).toLowerCase()
-  return `Perfect, you're confirmed! Your appointment on *${day}* at *${time}* is all set 😊 We look forward to seeing you!`
+  return `Perfect, you're confirmed! Your appointment on ${day} at ${time} is all set 😊 We look forward to seeing you!`
 }
 
 // ── getAgentReply — main entry point ─────────────────────────────────────────
@@ -943,7 +959,7 @@ export async function getAgentReply(
     })
 
     const block = response.content[0]
-    if (block && block.type === 'text') return block.text
+    if (block && block.type === 'text') return sanitizeForWhatsApp(block.text)
 
     return `I'm here to help! Could you please rephrase that for me?`
   } catch (err) {
