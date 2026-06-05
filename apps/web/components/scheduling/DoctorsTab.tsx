@@ -25,16 +25,6 @@ interface BlockedTime { id: string; startAt: string; endAt: string; reason?: str
 
 interface DaySchedule { active: boolean; start: string; end: string }
 
-function getUserRole(): string | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const token = localStorage.getItem('cc_token')
-    if (!token) return null
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    return payload.role ?? null
-  } catch { return null }
-}
-
 const DAYS    = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const COLOURS = ['#4A90D9','#E8A838','#9B59B6','#2ECC71','#E74C3C','#1ABC9C','#F39C12','#3498DB','#29ABE2','#E91E63']
 const CATEGORIES = ['Consultation','Preventive','Restorative','Periodontal','Endodontics','Oral Surgery','Cosmetic','Orthodontics','Prosthodontics','Paediatric','General']
@@ -71,7 +61,6 @@ export default function DoctorsTab() {
   const authH    = { Authorization: `Bearer ${token}` }
   const jsonH    = { ...authH, 'Content-Type': 'application/json' }
   const API      = '/api-proxy'
-  const userRole = getUserRole()
 
   const [doctors,   setDoctors]   = useState<Doctor[]>([])
   const [services,  setServices]  = useState<Service[]>([])
@@ -497,14 +486,12 @@ export default function DoctorsTab() {
                   </p>
                 </div>
               </button>
-              {userRole === 'ADMIN' && (
-                <button
-                  onClick={e => openDeleteConfirm(d, e)}
-                  title="Delete doctor"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/20 text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all">
-                  <Trash2 size={13} />
-                </button>
-              )}
+              <button
+                onClick={e => openDeleteConfirm(d, e)}
+                title="Delete doctor"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/20 text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all">
+                <Trash2 size={13} />
+              </button>
             </div>
           ))}
         </div>
