@@ -41,11 +41,13 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
   const [showNewPt,   setShowNewPt]   = useState(false)
 
   // New patient form
-  const [newFirst,  setNewFirst]  = useState('')
-  const [newLast,   setNewLast]   = useState('')
-  const [newPhone,  setNewPhone]  = useState('')
-  const [newEmail,  setNewEmail]  = useState('')
-  const [newGender, setNewGender] = useState('MALE')
+  const [newFirst,    setNewFirst]    = useState('')
+  const [newLast,     setNewLast]     = useState('')
+  const [newPhone,    setNewPhone]    = useState('')
+  const [newEmail,    setNewEmail]    = useState('')
+  const [newGender,   setNewGender]   = useState('MALE')
+  const [newDob,      setNewDob]      = useState('')
+  const [newDistrict, setNewDistrict] = useState('')
   const [creatingPt, setCreatingPt] = useState(false)
 
   // On open — load services & doctors
@@ -96,14 +98,14 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
     try {
       const res  = await fetch(`${API}/patients`, {
         method: 'POST', headers,
-        body: JSON.stringify({ firstName: newFirst, lastName: newLast, phone: newPhone, email: newEmail || undefined, gender: newGender }),
+        body: JSON.stringify({ firstName: newFirst, lastName: newLast, phone: newPhone, email: newEmail || undefined, gender: newGender, dob: newDob || undefined, district: newDistrict || undefined }),
       })
       const data = await res.json()
       if (res.ok) {
         setSelPatient(data)
         setPatientQ(`${data.firstName} ${data.lastName}`)
         setShowNewPt(false)
-        setNewFirst(''); setNewLast(''); setNewPhone(''); setNewEmail('')
+        setNewFirst(''); setNewLast(''); setNewPhone(''); setNewEmail(''); setNewDob(''); setNewDistrict('')
         setError(null)
       } else { setError(data.error || 'Failed to create patient') }
     } catch { setError('Network error') } finally { setCreatingPt(false) }
@@ -137,6 +139,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
       setSelPatient(null); setSelService(null); setSelDoctor(null)
       setPatientQ(''); setPatients([]); setNotes(''); setError(null)
       setShowNewPt(false)
+      setNewFirst(''); setNewLast(''); setNewPhone(''); setNewEmail(''); setNewDob(''); setNewDistrict('')
     }, 300)
   }
 
@@ -177,24 +180,35 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
               </button>
             </div>
 
-            {/* New patient mini form */}
-            {showNewPt && (
+            {/* New patient mini form — shown when toggled or when search returns 0 results */}
+            {(showNewPt || (patientQ.length >= 2 && !searching && patients.length === 0 && !selPatient)) && (
               <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-2">
-                <p className="text-xs font-semibold text-clinic-navy">Quick Add Patient</p>
+                <p className="text-xs font-semibold text-clinic-navy">
+                  {patientQ.length >= 2 && !showNewPt && patients.length === 0
+                    ? `No patient found for "${patientQ}" — create new?`
+                    : 'Quick Add Patient'}
+                </p>
                 <div className="grid grid-cols-2 gap-2">
                   <input value={newFirst} onChange={(e) => setNewFirst(e.target.value)}
-                    placeholder="First name" className={cn(inputCls, 'text-xs py-2')} />
+                    placeholder="First name *" className={cn(inputCls, 'text-xs py-2')} />
                   <input value={newLast} onChange={(e) => setNewLast(e.target.value)}
-                    placeholder="Last name" className={cn(inputCls, 'text-xs py-2')} />
+                    placeholder="Last name *" className={cn(inputCls, 'text-xs py-2')} />
                 </div>
                 <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)}
-                  placeholder="+256..." className={cn(inputCls, 'text-xs py-2')} />
+                  placeholder="+256... (required)" className={cn(inputCls, 'text-xs py-2')} />
                 <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
                   placeholder="Email (optional)" className={cn(inputCls, 'text-xs py-2')} />
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={newDob} onChange={(e) => setNewDob(e.target.value)}
+                    type="date" placeholder="Date of birth" className={cn(inputCls, 'text-xs py-2')} />
+                  <input value={newDistrict} onChange={(e) => setNewDistrict(e.target.value)}
+                    placeholder="District (optional)" className={cn(inputCls, 'text-xs py-2')} />
+                </div>
                 <select value={newGender} onChange={(e) => setNewGender(e.target.value)}
                   className={cn(inputCls, 'text-xs py-2')}>
                   <option value="MALE">Male</option>
                   <option value="FEMALE">Female</option>
+                  <option value="OTHER">Other</option>
                 </select>
                 <button onClick={createPatient} disabled={creatingPt}
                   className="w-full py-2 bg-clinic-blue text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-1">

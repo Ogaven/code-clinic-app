@@ -62,7 +62,7 @@ export default function DoctorPatientsPage() {
   const [patients, setPatients]   = useState<PatientRow[]>([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
-  const [tab, setTab]             = useState<TabFilter>('today')
+  const [tab, setTab]             = useState<TabFilter>('all')
   const [addOpen, setAddOpen]     = useState(false)
   const [form, setForm]           = useState<AddPatientForm>(BLANK_FORM)
   const [saving, setSaving]       = useState(false)

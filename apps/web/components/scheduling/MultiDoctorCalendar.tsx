@@ -352,12 +352,6 @@ function ApptDetailModal({ appt, onClose }: { appt: Appointment; onClose: () => 
             </span>
           </div>
 
-          {appt.status === 'CANCELLED' && (
-            <div className="text-xs text-red-500 font-semibold bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2 flex items-center gap-2">
-              <span>🚫</span> This appointment was cancelled — editing is not available
-            </div>
-          )}
-
           {/* Date & Time */}
           <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
             <span className="text-gray-400 text-base">📅</span>
@@ -864,7 +858,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   // Internal appointment click — shows popup and forwards to external handler if provided
   function handleApptClick(appt: Appointment) {
     setSelectedAppt(appt)
-    if (appt.status !== 'CANCELLED') onClickAppointment?.(appt)
+    onClickAppointment?.(appt)
   }
 
   useEffect(() => { dateRef.current = date }, [date])
