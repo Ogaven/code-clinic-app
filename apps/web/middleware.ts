@@ -24,7 +24,7 @@ const ROUTE_ROLE: Array<[string, string[]]> = [
   ['/receptionist', ['RECEPTIONIST', 'DOCTOR']],
   ['/admin',        ['ADMIN']],
   ['/doctor',       ['DOCTOR', 'RECEPTIONIST']],
-  ['/accounts',     ['ACCOUNTS', 'ADMIN']],
+  ['/accounts',     ['ACCOUNTS', 'ADMIN', 'DOCTOR', 'RECEPTIONIST']],
   ['/developer',    ['DEVELOPER']],
 ]
 

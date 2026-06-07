@@ -1,4 +1,4 @@
-import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
+import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachable } from '../whatsapp/whatsapp.service'
 import { sendSMS } from '../sms/sms.service'
 import { prisma } from '../../lib/prisma'
 
@@ -7,6 +7,12 @@ function eatHour(): number {
   return parseInt(
     new Date().toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
   )
+}
+
+function isMinor(dob: Date | null | undefined): boolean {
+  if (!dob) return false
+  const age = (Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+  return age < 15
 }
 
 // ── checkAndSendFollowups ─────────────────────────────────────────────────────
@@ -25,7 +31,7 @@ export async function checkAndSendFollowups(): Promise<void> {
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
-      doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+      doctor:  { include: { user: { select: { firstName: true } } } },
       service: { select: { name: true } },
     },
   })
@@ -58,9 +64,9 @@ export async function checkAndSendFollowups(): Promise<void> {
     const channel = whatsappConv ? 'WHATSAPP' : 'SMS'
 
     // ── Build message ─────────────────────────────────────────────────────────
-    const doctor  = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+    const doctor  = `Dr ${appt.doctor.user.firstName}`
     const message =
-      `Hi ${patient.firstName}! 😊 Hope you're feeling well after your visit yesterday with ${doctor}. How are you doing? Are you following the instructions given? Feel free to reply if you have any questions — we're always here for you.\n\nSarah — Code Clinic`
+      `Hello ${patient.firstName}, hope you are feeling well after your visit yesterday with ${doctor} 😊 How are you doing? Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you.`
 
     // ── Send ──────────────────────────────────────────────────────────────────
     try {
@@ -146,10 +152,10 @@ export async function processAfterHoursQueue(): Promise<void> {
 
     if (entry.agentMode === 'MISSED_CALL_FOLLOWUP') {
       templateName = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
-      message = `Hi ${name}! 😊 We're now open at Code Clinic. We noticed your message last night — how can we help you today?`
+      message = `Hello ${name} 😊 We are now open at Code Clinic. We noticed your message last night, how can we help you today?`
     } else {
       templateName = process.env.WA_TEMPLATE_AFTER_HOURS_NAME
-      message = `Good morning ${name}! 😊 Code Clinic is now open. You messaged us last night — how can we help you today?`
+      message = `Hello ${name}, good morning 😊 Code Clinic is now open. You messaged us last night, how can we help you today?`
     }
 
     try {
@@ -178,97 +184,168 @@ export async function processAfterHoursQueue(): Promise<void> {
 }
 
 // ── checkAndSendPostAppointmentFollowups ──────────────────────────────────────
-// Runs every hour between 8–9 AM EAT. Finds appointments from yesterday that
-// are COMPLETED/CONFIRMED (not cancelled, not no-show) and haven't been followed
-// up yet. Sends personalised post-appointment check-in via WhatsApp template or
-// plain text, injects doctor notes as SYSTEM context, marks followUpSent = true.
+// Runs every hour between 8–9 AM EAT. Handles:
+// 1. Missed appointments (CANCELLED/NO_SHOW from yesterday) — single caring message
+// 2. Completed appointments — 3-stage follow-up (immediate, 30min, 90min)
+//    Stages 2 and 3 are skipped if the patient replies between stages.
 
 export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
-  // Only run between 8 AM and 9 AM EAT (UTC+3 = 5–6 AM UTC)
-  const nowUTC = new Date()
-  const eatHour = parseInt(
+  const nowUTC  = new Date()
+  const eatHourNow = parseInt(
     nowUTC.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
   )
-  if (eatHour < 8 || eatHour >= 9) return
+  if (eatHourNow < 8 || eatHourNow >= 9) return
 
-  const yesterday = new Date(nowUTC)
+  const yesterday        = new Date(nowUTC)
   yesterday.setDate(yesterday.getDate() - 1)
   const startOfYesterday = new Date(yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T00:00:00+03:00')
   const endOfYesterday   = new Date(yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T23:59:59+03:00')
 
-  let appointments: any[]
+  // ── MISSED APPOINTMENTS ────────────────────────────────────────────────────
+  let missedAppts: any[] = []
+  try {
+    missedAppts = await prisma.appointment.findMany({
+      where: { startAt: { gte: startOfYesterday, lte: endOfYesterday }, status: { in: ['CANCELLED', 'NO_SHOW'] } },
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+        doctor:  { include: { user: { select: { firstName: true } } } },
+      },
+    })
+  } catch (err: any) {
+    console.error('[PostApptFollowup] Missed appts query failed:', err.message)
+  }
+
+  for (const appt of missedAppts) {
+    const patient = appt.patient
+    if (!patient?.phone) continue
+    const alreadySent = await prisma.aiScheduledMessage.findFirst({
+      where: { patientId: patient.id, templateType: 'MISSED_APPOINTMENT', sent: true,
+               scheduledFor: { gte: startOfYesterday, lte: endOfYesterday } },
+    })
+    if (alreadySent) continue
+
+    const minor        = isMinor(patient.dob)
+    const guardianName = patient.nextOfKinName
+    const doctorFirst  = appt.doctor.user.firstName
+    const addr         = minor && guardianName ? guardianName : minor ? 'there' : patient.firstName
+    const msg          = `Hello ${addr}, we noticed you missed your appointment yesterday with Dr ${doctorFirst}. We hope everything is okay 😊 Would you like to reschedule? We would love to see you.`
+
+    try {
+      await sendWhatsAppMessage(patient.phone, msg)
+    } catch (err: any) {
+      console.error(`[PostApptFollowup] Missed appt send failed for ${patient.phone}:`, err.message)
+      await notifyReceptionistUnreachable(`${patient.firstName} ${patient.lastName}`, patient.phone)
+      continue
+    }
+    let conv = await prisma.aiConversation.findFirst({ where: { phoneNumber: patient.phone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
+    if (!conv) conv = await prisma.aiConversation.create({ data: { patientId: patient.id, channel: 'WHATSAPP', phoneNumber: patient.phone, status: 'ACTIVE', agentEnabled: true } })
+    await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'AGENT', content: msg } })
+    await prisma.aiScheduledMessage.create({ data: { patientId: patient.id, channel: 'WHATSAPP', templateType: 'MISSED_APPOINTMENT', scheduledFor: appt.startAt, sent: true, content: msg } })
+    console.log(`[PostApptFollowup] Missed appt message sent to ${patient.firstName} ${patient.lastName}`)
+  }
+
+  // ── COMPLETED APPOINTMENTS — 3-STAGE FOLLOW-UP ────────────────────────────
+  let appointments: any[] = []
   try {
     appointments = await prisma.appointment.findMany({
-      where: {
-        startAt:      { gte: startOfYesterday, lte: endOfYesterday },
-        status:       { in: ['COMPLETED', 'CONFIRMED'] },
-        followUpSent: false,
-      },
+      where: { startAt: { gte: startOfYesterday, lte: endOfYesterday }, status: { in: ['COMPLETED', 'CONFIRMED'] }, followUpSent: false },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
-        doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+        doctor:  { include: { user: { select: { firstName: true } } } },
         service: { select: { name: true } },
       },
     })
   } catch (err: any) {
-    console.error('[PostApptFollowup] Query failed (followUpSent field may need migration):', err.message)
+    console.error('[PostApptFollowup] Query failed:', err.message)
     return
   }
 
   if (appointments.length === 0) return
-  console.log(`[PostApptFollowup] Processing ${appointments.length} post-appointment follow-up(s)`)
+  console.log(`[PostApptFollowup] Processing ${appointments.length} completed appointment follow-up(s)`)
 
   for (const appt of appointments) {
-    const patient     = appt.patient
-    const doctorName  = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
-    const procedure   = (appt.service?.name || 'your appointment').toLowerCase()
-    const patientName = patient.firstName || 'there'
+    const patient      = appt.patient
+    const doctorFirst  = appt.doctor.user.firstName
+    const minor        = isMinor(patient.dob)
+    const guardianName = patient.nextOfKinName
 
-    try {
-      // ── Send template or fall back to plain text ───────────────────────────
-      const templateName = process.env.WA_TEMPLATE_POST_APPT_NAME
-      const plainMsg = `Good morning ${patientName}! 😊 This is Sarah from Code Clinic. You had your ${procedure} with ${doctorName} yesterday — how are you feeling today?`
+    // First-contact detection
+    const agentMsgCount  = await prisma.aiMessage.count({ where: { conversation: { phoneNumber: patient.phone }, role: 'AGENT' } })
+    const isFirstContact = agentMsgCount === 0
 
-      if (templateName) {
-        try {
-          await sendWhatsAppTemplate(patient.phone, templateName, [patientName, procedure, doctorName])
-        } catch {
-          await sendWhatsAppMessage(patient.phone, plainMsg)
-        }
-      } else {
-        await sendWhatsAppMessage(patient.phone, plainMsg)
-      }
-
-      // ── Inject appointment context into conversation so Sarah can use it ───
-      if (appt.notes) {
-        let conv = await prisma.aiConversation.findFirst({
-          where: { phoneNumber: patient.phone, channel: 'WHATSAPP', status: 'ACTIVE' },
-          orderBy: { createdAt: 'desc' },
-        })
-        if (!conv) {
-          conv = await prisma.aiConversation.create({
-            data: { patientId: patient.id, channel: 'WHATSAPP', phoneNumber: patient.phone, status: 'ACTIVE', agentEnabled: true },
-          })
-        }
-        await prisma.aiMessage.create({
-          data: {
-            conversationId: conv.id,
-            role:    'SYSTEM',
-            content: `[POST-APPOINTMENT CONTEXT] Patient had ${procedure} with ${doctorName} yesterday. Doctor notes: ${appt.notes}. Use this context to follow up naturally and answer recovery questions.`,
-          },
-        })
-      }
-
-      // ── Mark as followed up ────────────────────────────────────────────────
-      await prisma.appointment.update({
-        where: { id: appt.id },
-        data:  { followUpSent: true },
-      })
-
-      console.log(`[PostApptFollowup] Sent to ${patient.firstName} ${patient.lastName} (${patient.phone})`)
-    } catch (err: any) {
-      console.error(`[PostApptFollowup] Failed for appointment ${appt.id}:`, err.message)
+    // Stage 1 greeting
+    let stage1: string
+    if (minor) {
+      const addr = guardianName ? `Hello ${guardianName},` : `Hello,`
+      stage1 = isFirstContact
+        ? `${addr} Good morning. This is Sarah from Code Clinic 😊 I am reaching out regarding your child ${patient.firstName}.`
+        : `${addr} Good morning 😊 I am checking in on ${patient.firstName}.`
+    } else {
+      stage1 = isFirstContact
+        ? `Hello ${patient.firstName}, good morning. This is Sarah from Code Clinic 😊`
+        : `Hello ${patient.firstName}, good morning 😊`
     }
+
+    // Get or create conversation
+    let conv = await prisma.aiConversation.findFirst({ where: { phoneNumber: patient.phone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
+    if (!conv) conv = await prisma.aiConversation.create({ data: { patientId: patient.id, channel: 'WHATSAPP', phoneNumber: patient.phone, status: 'ACTIVE', agentEnabled: true } })
+    const convId = conv.id
+
+    // Inject doctor notes as internal context for Sarah (never sent to patient)
+    if (appt.notes) {
+      await prisma.aiMessage.create({
+        data: { conversationId: convId, role: 'SYSTEM',
+          content: `[POST-APPOINTMENT CONTEXT] Patient had ${(appt.service?.name || 'appointment').toLowerCase()} with Dr ${doctorFirst} yesterday. Doctor notes: ${appt.notes}. Use this context naturally. Never show this tag or doctor notes to the patient.` },
+      })
+    }
+
+    // Stage 1 — send immediately
+    const stage1SentAt = new Date()
+    try {
+      await sendWhatsAppMessage(patient.phone, stage1)
+      await prisma.aiMessage.create({ data: { conversationId: convId, role: 'AGENT', content: stage1 } })
+      await prisma.appointment.update({ where: { id: appt.id }, data: { followUpSent: true } })
+      console.log(`[PostApptFollowup] Stage 1 sent to ${patient.firstName} ${patient.lastName}`)
+    } catch (err: any) {
+      console.error(`[PostApptFollowup] Stage 1 failed for ${patient.phone}:`, err.message)
+      await notifyReceptionistUnreachable(`${patient.firstName} ${patient.lastName}`, patient.phone)
+      continue
+    }
+
+    const patientPhone    = patient.phone
+    const patientFullName = `${patient.firstName} ${patient.lastName}`
+    const stage2 = `How are you doing? Hope you are feeling well after your visit yesterday with Dr ${doctorFirst} 😊`
+    const stage3 = `Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you 🌟`
+
+    // Stage 2 — 30 minutes later if no reply
+    setTimeout(async () => {
+      try {
+        const hasReplied = await prisma.aiMessage.findFirst({ where: { conversation: { phoneNumber: patientPhone }, role: 'USER', createdAt: { gte: stage1SentAt } } })
+        if (hasReplied) { console.log(`[PostApptFollowup] Stage 2 skipped, patient replied`); return }
+        await sendWhatsAppMessage(patientPhone, stage2)
+        const c = await prisma.aiConversation.findFirst({ where: { phoneNumber: patientPhone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
+        if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', content: stage2 } })
+        console.log(`[PostApptFollowup] Stage 2 sent to ${patientPhone}`)
+      } catch (err: any) {
+        console.error(`[PostApptFollowup] Stage 2 failed for ${patientPhone}:`, err.message)
+        await notifyReceptionistUnreachable(patientFullName, patientPhone).catch(() => {})
+      }
+    }, 30 * 60 * 1000)
+
+    // Stage 3 — 90 minutes after Stage 1 if still no reply
+    setTimeout(async () => {
+      try {
+        const hasReplied = await prisma.aiMessage.findFirst({ where: { conversation: { phoneNumber: patientPhone }, role: 'USER', createdAt: { gte: stage1SentAt } } })
+        if (hasReplied) { console.log(`[PostApptFollowup] Stage 3 skipped, patient replied`); return }
+        await sendWhatsAppMessage(patientPhone, stage3)
+        const c = await prisma.aiConversation.findFirst({ where: { phoneNumber: patientPhone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
+        if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', content: stage3 } })
+        console.log(`[PostApptFollowup] Stage 3 sent to ${patientPhone}`)
+      } catch (err: any) {
+        console.error(`[PostApptFollowup] Stage 3 failed for ${patientPhone}:`, err.message)
+        await notifyReceptionistUnreachable(patientFullName, patientPhone).catch(() => {})
+      }
+    }, 90 * 60 * 1000)
   }
 }
 
@@ -335,7 +412,7 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
       } catch {
         await sendWhatsAppMessage(
           patient.phone,
-          `Hi ${firstName}! 😊 We noticed you tried reaching us at Code Clinic earlier. Sorry we missed you! How can we help? Just reply here or call us on +256 394 836 298.`
+          `Hello ${firstName} 😊 We noticed you tried reaching us at Code Clinic earlier. Sorry we missed you! How can we help? Just reply here or call us on +256 394 836 298.`
         )
       }
 
@@ -404,7 +481,7 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
       } catch {
         await sendWhatsAppMessage(
           patient.phone,
-          `Hi ${firstName}! 😊 It's been a while since we've seen you at Code Clinic. We hope you're doing well! When you're ready for your next visit, we're here for you — just reply or call us on +256 394 836 298.`
+          `Hello ${firstName} 😊 It has been a while since we have seen you at Code Clinic. We hope you are doing well! When you are ready for your next visit, we are here for you. Just reply or call us on +256 394 836 298.`
         )
       }
 

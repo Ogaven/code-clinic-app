@@ -117,7 +117,7 @@ export async function processInbound(from: string, text: string, wamid: string):
     // First-ever message from this number: send opening greeting, store it, return.
     // Their actual request will be processed on the next message.
     if (isNewConversation) {
-      const greeting = `Hi! 😊 Thanks for reaching out to Code Clinic, this is Sarah — how may I brighten your smile today?`
+      const greeting = `Hello 😊 Thanks for reaching out to Code Clinic, this is Sarah. How may I brighten your smile today?`
       await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: greeting },
       })
@@ -440,14 +440,29 @@ export async function sendWhatsAppMessage(to: string, body: string, _replyToMess
     return
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const AfricasTalking = require('africastalking')
+  const at = AfricasTalking({ apiKey, username })
+  await at.WHATSAPP.sendMessage({ waNumber, phoneNumber: to, body: { message: body } })
+  console.log(`[WhatsApp] Sent to ${to}: ${body.slice(0, 60)}...`)
+}
+
+export async function notifyReceptionistUnreachable(patientName: string, phone: string): Promise<void> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const AfricasTalking = require('africastalking')
-    const at = AfricasTalking({ apiKey, username })
-    await at.WHATSAPP.sendMessage({ waNumber, phoneNumber: to, body: { message: body } })
-    console.log(`[WhatsApp] Sent to ${to}: ${body.slice(0, 60)}...`)
-  } catch (err: any) {
-    console.error('[WhatsApp] Send failed to', to, ':', err.message || err)
+    const receptionists = await prisma.user.findMany({ where: { role: 'RECEPTIONIST', isActive: true } })
+    for (const r of receptionists) {
+      await prisma.notification.create({
+        data: {
+          userId: r.id,
+          title:  'Patient Unreachable on WhatsApp',
+          body:   `Patient ${patientName} (${phone}) could not be reached on WhatsApp. Please call them directly.`,
+          type:   'SYSTEM',
+          isRead: false,
+        },
+      })
+    }
+  } catch (e: any) {
+    console.error('[WhatsApp] Failed to notify receptionist:', e.message)
   }
 }
 
