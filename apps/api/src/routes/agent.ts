@@ -38,6 +38,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
 
     // ── Audio / Voice note → OGG→MP3 via FFmpeg → Claude transcription ───────
     if (mediaType === 'Audio' || mediaType === 'Voice') {
+      console.log('[Sarah Media]', mediaType, 'from', rawFrom)
       const audioUrl = body.mediaUrl || body.audioUrl || body.media?.url
       if (audioUrl) {
         try {
@@ -78,14 +79,17 @@ router.post('/whatsapp/webhook', async (req, res) => {
       }
     }
 
-    // ── Image → Claude vision → description for Sarah ────────────────────────
+    // ── Image → Claude vision → inline display + description for Sarah ─────────
     if (mediaType === 'Image') {
       const imageUrl = body.mediaUrl || body.imageUrl || body.media?.url
+      console.log('[Sarah Media]', 'Image', 'from', rawFrom)
       if (imageUrl) {
         try {
-          const dlRes     = await fetch(imageUrl)
-          const imgBuffer = await dlRes.arrayBuffer()
-          const base64    = Buffer.from(imgBuffer).toString('base64')
+          const dlRes    = await fetch(imageUrl)
+          const imgBuf   = await dlRes.arrayBuffer()
+          const base64   = Buffer.from(imgBuf).toString('base64')
+          const ct       = dlRes.headers.get('content-type') || 'image/jpeg'
+          const mimeType = ct.startsWith('image/') ? ct.split(';')[0].trim() : 'image/jpeg'
 
           const visionRes = await anthropic.messages.create({
             model:      'claude-sonnet-4-6',
@@ -93,14 +97,16 @@ router.post('/whatsapp/webhook', async (req, res) => {
             system:     'Describe what you see in this image in one or two plain sentences, focusing on any visible medical or dental concerns.',
             messages: [{
               role:    'user',
-              content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } }],
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              content: [{ type: 'image', source: { type: 'base64', media_type: mimeType as any, data: base64 } }],
             }],
           })
           const block       = visionRes.content[0]
           const description = block?.type === 'text' ? block.text.trim() : null
           if (description) {
             console.log('[Claude Vision] AT image described:', description.slice(0, 80))
-            text = `[Patient sent an image showing: ${description}]`
+            // Store base64 for inbox display + vision text for Sarah
+            text = `__MEDIA_IMAGE__:data:${mimeType};base64,${base64}__VISION__${description}`
           }
         } catch (err: any) {
           console.warn('[Claude Vision] AT image processing failed:', err.message)

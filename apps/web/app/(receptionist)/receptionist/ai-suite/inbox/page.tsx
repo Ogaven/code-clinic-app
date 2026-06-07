@@ -92,13 +92,30 @@ function convLabel(conv: Conversation, channel: ChannelKey): string {
 
 // ── Media bubble ───────────────────────────────────────────────────────────────
 function parseBubble(content: string) {
+  if (content.startsWith('__MEDIA_IMAGE__:'))                            return 'image'
   if (/\[Patient sent an image\]|\[image\]/i.test(content))              return 'image'
   if (/\[Patient sent an audio\]|\[audio\]|\[voice\]/i.test(content))   return 'audio'
   if (/\[Patient sent a video\]|\[video\]/i.test(content))              return 'video'
   if (/\[Patient sent a document\]|\[document\]|\[file\]/i.test(content)) return 'document'
   return null
 }
-function MediaBubble({ type }: { type: string }) {
+function MediaBubble({ type, content }: { type: string; content?: string }) {
+  if (type === 'image' && content?.startsWith('__MEDIA_IMAGE__:')) {
+    const visionIdx = content.indexOf('__VISION__')
+    const src = visionIdx !== -1 ? content.slice(16, visionIdx) : content.slice(16)
+    const description = visionIdx !== -1 ? content.slice(visionIdx + 10) : null
+    return (
+      <div className="flex flex-col gap-1">
+        <img
+          src={src}
+          alt={description || 'Patient image'}
+          className="max-w-[220px] max-h-[180px] rounded-lg object-cover"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+        />
+        {description && <span className="text-xs opacity-70 italic">{description}</span>}
+      </div>
+    )
+  }
   const cfg: Record<string, { Icon: any; label: string }> = {
     image:    { Icon: ImageIcon,  label: 'Image'      },
     audio:    { Icon: Music,      label: 'Voice note'  },
@@ -453,7 +470,7 @@ export default function InboxPage() {
                   style={isAgent
                     ? { background: '#d9fdd3', borderBottomRightRadius: 4, color: '#111' }
                     : { background: '#fff',    borderBottomLeftRadius:  4, color: '#111' }}>
-                  {media ? <MediaBubble type={media} /> : msg.content}
+                  {media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                   <div className="flex items-center justify-end gap-1 mt-0.5">
                     <span className="text-[10px] text-gray-400">{fmtFull(msg.createdAt)}</span>
                     {isAgent && <Check size={12} className="text-gray-400" />}
@@ -591,7 +608,7 @@ export default function InboxPage() {
                 <div className={cn('px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm',
                   isAgent ? 'rounded-tr-sm text-white' : 'rounded-tl-sm text-gray-800 bg-white border border-gray-100')}
                   style={isAgent ? { background: BUBBLE_BG[channel] } : undefined}>
-                  {media ? <MediaBubble type={media} /> : msg.content}
+                  {media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                 </div>
                 {showTime && <span className="text-[10px] text-gray-400 mt-0.5 px-1">{fmtFull(msg.createdAt)}</span>}
               </div>

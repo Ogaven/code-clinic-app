@@ -18,6 +18,15 @@ import {
 } from '../booking/booking.state'
 import { prisma } from '../../lib/prisma'
 
+function sanitizeForClaude(content: string): string {
+  if (content.startsWith('__MEDIA_IMAGE__:')) {
+    const visionIdx = content.indexOf('__VISION__')
+    if (visionIdx !== -1) return `[Patient sent an image. Description: ${content.slice(visionIdx + 10)}]`
+    return '[Patient sent an image]'
+  }
+  return content
+}
+
 function sanitizeForWhatsApp(text: string): string {
   return text
     .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -276,7 +285,7 @@ async function buildContext(
   const patientName = patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown patient'
 
   const conversationHistory = dbMessages
-    .map(m => (m.role === 'USER' ? `Patient: ${m.content}` : `Sarah: ${m.content}`))
+    .map(m => (m.role === 'USER' ? `Patient: ${sanitizeForClaude(m.content)}` : `Sarah: ${m.content}`))
     .join('\n')
 
   let appointments = 'none on record'
