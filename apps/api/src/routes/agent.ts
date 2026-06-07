@@ -1,4 +1,7 @@
 import { Router } from 'express'
+import Anthropic from '@anthropic-ai/sdk'
+import { execFileSync } from 'child_process'
+import * as fs from 'fs'
 import { requireAuth } from '../middleware/auth'
 import { processInbound } from '../ai-suite/whatsapp/whatsapp.service'
 import { handleInboundCall, triggerOutboundCall, handleRecordingComplete } from '../services/agent/channels/voice-channel'
@@ -6,7 +9,8 @@ import { runAgent } from '../services/agent/unified-agent'
 // import { runReminderJob, runFollowupJob, runDebtJob, processQueue } from '../services/agent/scheduler' // disabled
 import { prisma } from '../lib/prisma'
 
-const router = Router()
+const router    = Router()
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 // ════════════════════════════════════════════
 // WHATSAPP
@@ -22,48 +26,84 @@ router.post('/whatsapp/webhook', async (req, res) => {
     const mediaType = body.messageType || body.data?.messageType || ''
     const msgId     = body.id      || body.messageId     || body.data?.id     || ''
 
-    // Map media messages to a text description Sarah can handle
+    // Neutral fallbacks — used only when Claude processing fails
     const MEDIA_DESCRIPTIONS: Record<string, string> = {
-      Image:    '[Patient sent an image — Sarah cannot view images, please acknowledge and ask them to describe it]',
-      Audio:    '[Patient sent a voice note — Sarah cannot listen to audio, please acknowledge and ask them to type their message]',
-      Video:    '[Patient sent a video — Sarah cannot view videos, please acknowledge and ask them to describe what they need]',
-      Document: '[Patient sent a document — Sarah cannot read documents, please acknowledge and ask them to describe what they need]',
+      Image:    '[Patient sent an image]',
+      Audio:    '[Patient sent a voice note]',
+      Video:    '[Patient sent a video]',
+      Document: '[Patient sent a document]',
       Sticker:  '[Patient sent a sticker]',
     }
     let text = rawText || MEDIA_DESCRIPTIONS[mediaType] || ''
 
-    // Whisper transcription for voice notes
-    if ((mediaType === 'Audio' || mediaType === 'Voice') && process.env.OPENAI_API_KEY) {
+    // ── Audio / Voice note → OGG→MP3 via FFmpeg → Claude transcription ───────
+    if (mediaType === 'Audio' || mediaType === 'Voice') {
       const audioUrl = body.mediaUrl || body.audioUrl || body.media?.url
       if (audioUrl) {
         try {
-          const audioRes = await fetch(audioUrl)
-          const audioBuffer = await audioRes.arrayBuffer()
-          // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
-          const FormData = require('form-data') as any
-          const form = new FormData()
-          form.append('file', Buffer.from(audioBuffer), {
-            filename:    'voice.ogg',
-            contentType: 'audio/ogg',
-          })
-          form.append('model', 'whisper-1')
-          const formBuffer = await new Promise<Buffer>((resolve, reject) => {
-            const chunks: Buffer[] = []
-            form.on('data', (chunk: Buffer) => chunks.push(chunk))
-            form.on('end',  () => resolve(Buffer.concat(chunks)))
-            form.on('error', reject)
-          })
-          const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-            method:  'POST',
-            headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, ...form.getHeaders() },
-            body:    formBuffer,
-          })
-          const whisperData = await whisperRes.json() as { text?: string }
-          if (whisperData.text) {
-            text = `[Voice note]: ${whisperData.text}`
+          const dlRes     = await fetch(audioUrl)
+          const audioBuffer = await dlRes.arrayBuffer()
+          const ts        = Date.now()
+          const oggPath   = `/tmp/voice-${ts}.ogg`
+          const mp3Path   = `/tmp/voice-${ts}.mp3`
+          try {
+            fs.writeFileSync(oggPath, Buffer.from(audioBuffer))
+            execFileSync('ffmpeg', ['-y', '-i', oggPath, mp3Path], { stdio: 'ignore' })
+            const mp3Buffer = fs.readFileSync(mp3Path)
+            const base64    = mp3Buffer.toString('base64')
+
+            const claudeRes = await anthropic.messages.create({
+              model:      'claude-sonnet-4-6',
+              max_tokens: 300,
+              system:     'You are a transcription assistant. Transcribe the audio exactly as spoken. Return only the transcribed text with no preamble.',
+              messages: [{
+                role:    'user',
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                content: [{ type: 'document', source: { type: 'base64', media_type: 'audio/mpeg', data: base64 } } as any],
+              }],
+            })
+            const block         = claudeRes.content[0]
+            const transcription = block?.type === 'text' ? block.text.trim() : null
+            if (transcription) {
+              console.log('[Claude Audio] AT transcribed:', transcription.slice(0, 80))
+              text = `[Voice note transcribed]: ${transcription}`
+            }
+          } finally {
+            try { fs.unlinkSync(oggPath) } catch {}
+            try { fs.unlinkSync(mp3Path) } catch {}
           }
         } catch (err: any) {
-          console.warn('[WHISPER] AT transcription failed:', err.message)
+          console.warn('[Claude Audio] AT transcription failed:', err.message)
+        }
+      }
+    }
+
+    // ── Image → Claude vision → description for Sarah ────────────────────────
+    if (mediaType === 'Image') {
+      const imageUrl = body.mediaUrl || body.imageUrl || body.media?.url
+      if (imageUrl) {
+        try {
+          const dlRes     = await fetch(imageUrl)
+          const imgBuffer = await dlRes.arrayBuffer()
+          const base64    = Buffer.from(imgBuffer).toString('base64')
+
+          const visionRes = await anthropic.messages.create({
+            model:      'claude-sonnet-4-6',
+            max_tokens: 200,
+            system:     'Describe what you see in this image in one or two plain sentences, focusing on any visible medical or dental concerns.',
+            messages: [{
+              role:    'user',
+              content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } }],
+            }],
+          })
+          const block       = visionRes.content[0]
+          const description = block?.type === 'text' ? block.text.trim() : null
+          if (description) {
+            console.log('[Claude Vision] AT image described:', description.slice(0, 80))
+            text = `[Patient sent an image showing: ${description}]`
+          }
+        } catch (err: any) {
+          console.warn('[Claude Vision] AT image processing failed:', err.message)
         }
       }
     }
