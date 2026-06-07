@@ -541,6 +541,36 @@ router.delete('/doctors/:id/block-time/:blockId', requireAuth, async (req, res) 
   res.json({ message: 'Block removed' })
 })
 
+// Batch-create blocked times (used for recurring day-of-week blocks)
+router.post('/doctors/:id/block-time-batch', requireAuth, async (req, res) => {
+  const { slots } = req.body as { slots: Array<{ startAt: string; endAt: string; reason?: string }> }
+
+  const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id } })
+  if (!doctor) { res.status(404).json({ error: 'Doctor not found' }); return }
+
+  if (req.user!.role !== 'ADMIN' && req.user!.role !== 'RECEPTIONIST' && doctor.userId !== req.user!.id) {
+    res.status(403).json({ error: 'Not authorized' }); return
+  }
+
+  if (!Array.isArray(slots) || slots.length === 0) {
+    res.status(400).json({ error: 'slots array required' }); return
+  }
+
+  try {
+    const result = await prisma.blockedTime.createMany({
+      data: slots.map(s => ({
+        doctorId: req.params.id,
+        startAt:  new Date(s.startAt),
+        endAt:    new Date(s.endAt),
+        reason:   s.reason ?? null,
+      })),
+    })
+    res.status(201).json({ created: result.count })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ─── Working Hours ─────────────────────────────────────────────────────────────
 const DEFAULT_WORKING_HOURS = [
   { dayOfWeek: 0, isOpen: false, openTime: '07:00', closeTime: '18:00', breaks: [] },

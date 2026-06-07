@@ -839,7 +839,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   // ─── Block Time state ────────────────────────────────────────────────────────
   const [blockModal,  setBlockModal]  = useState<{
     doctorId: string; date: string; startTime: string; endTime: string; reason: string
-    repeat: 'none' | 'daily' | 'weekly'
+    isRecurring: boolean; recurringDays: string[]
   } | null>(null)
   const [blockSaving, setBlockSaving] = useState(false)
   const [removeBlock, setRemoveBlock] = useState<{ doctorId: string; blockId: string } | null>(null)
@@ -926,7 +926,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
         const s = Math.min(d.startIdx, d.endIdx)
         const e = Math.max(d.startIdx, d.endIdx)
         const endSlot = e + 1 < timeSlots.length ? timeSlots[e + 1] : timeSlots[e]
-        setBlockModal({ doctorId: d.doctorId, date: toDateStr(dateRef.current), startTime: timeSlots[s], endTime: endSlot, reason: '', repeat: 'none' })
+        setBlockModal({ doctorId: d.doctorId, date: toDateStr(dateRef.current), startTime: timeSlots[s], endTime: endSlot, reason: '', isRecurring: false, recurringDays: [] })
       }
       dragStateRef.current = null
       setDragOverlay(null)
@@ -1074,26 +1074,38 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   // ─── Create blocked time ──────────────────────────────────────────────────────
   async function createBlock() {
     if (!blockModal) return
+    const { doctorId, date: bDate, startTime, endTime, reason, isRecurring, recurringDays } = blockModal
+
+    if (isRecurring && recurringDays.length === 0) return // nothing selected
+
     setBlockSaving(true)
-    const { doctorId, date: bDate, startTime, endTime, reason, repeat } = blockModal
-    const datesToBlock: string[] = [bDate]
-    if (repeat === 'daily') {
-      for (let i = 1; i <= 6; i++) {
-        const d = new Date(bDate + 'T00:00:00'); d.setDate(d.getDate() + i); datesToBlock.push(toDateStr(d))
-      }
-    } else if (repeat === 'weekly') {
-      for (let i = 1; i <= 3; i++) {
-        const d = new Date(bDate + 'T00:00:00'); d.setDate(d.getDate() + i * 7); datesToBlock.push(toDateStr(d))
-      }
-    }
     try {
-      await Promise.all(datesToBlock.map(d =>
-        fetch(`${API}/scheduling/doctors/${doctorId}/block-time`, {
+      if (isRecurring) {
+        const DAY_MAP: Record<string, number> = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 }
+        const daysSet = recurringDays.includes('ALL')
+          ? new Set([0, 1, 2, 3, 4, 5, 6])
+          : new Set(recurringDays.map(d => DAY_MAP[d]))
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+        const slots: Array<{ startAt: string; endAt: string; reason: string }> = []
+        for (let i = 0; i < 365; i++) {
+          const d = new Date(today); d.setDate(today.getDate() + i)
+          if (daysSet.has(d.getDay())) {
+            const ds = toDateStr(d)
+            slots.push({ startAt: `${ds}T${startTime}:00+03:00`, endAt: `${ds}T${endTime}:00+03:00`, reason })
+          }
+        }
+        await fetch(`${API}/scheduling/doctors/${doctorId}/block-time-batch`, {
           method: 'POST',
           headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ startAt: `${d}T${startTime}:00+03:00`, endAt: `${d}T${endTime}:00+03:00`, reason }),
+          body: JSON.stringify({ slots }),
         })
-      ))
+      } else {
+        await fetch(`${API}/scheduling/doctors/${doctorId}/block-time`, {
+          method: 'POST',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ startAt: `${bDate}T${startTime}:00+03:00`, endAt: `${bDate}T${endTime}:00+03:00`, reason }),
+        })
+      }
       setBlockModal(null)
       fetchDay(dateRef.current)
     } finally { setBlockSaving(false) }
@@ -1256,6 +1268,25 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           </button>
         )}
 
+        {/* Block Time button — doctors view only */}
+        {view === 'doctors' && (
+          <button
+            onClick={() => setBlockModal({
+              doctorId: orderedColumns[0]?.doctor.id ?? '',
+              date: toDateStr(date),
+              startTime: '08:00',
+              endTime: '09:00',
+              reason: '',
+              isRecurring: false,
+              recurringDays: [],
+            })}
+            title="Block a time slot"
+            className="flex items-center gap-1.5 px-3 h-8 rounded-xl text-xs font-semibold text-gray-500 border border-gray-200 dark:border-gray-600 hover:border-red-300 hover:text-red-500 dark:hover:border-red-500/40 dark:hover:text-red-400 transition-colors">
+            <Lock size={11} />
+            <span className="hidden sm:inline">Block</span>
+          </button>
+        )}
+
         {loading && <div className="w-2 h-2 rounded-full bg-clinic-blue animate-pulse ml-1" />}
       </div>
 
@@ -1362,12 +1393,72 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
                   ))}
                 </select>
               </div>
-              {/* Date */}
+              {/* Type: One-time / Recurring */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Date</label>
-                <input type="date" value={blockModal.date} onChange={e => setBlockModal(m => m && ({ ...m, date: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none" />
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Type</label>
+                <div className="flex gap-2">
+                  <button onClick={() => setBlockModal(m => m && ({ ...m, isRecurring: false, recurringDays: [] }))}
+                    className={cn('flex-1 py-1.5 rounded-xl text-xs font-semibold border transition-colors',
+                      !blockModal.isRecurring
+                        ? 'bg-red-400 text-white border-red-400'
+                        : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-red-300')}>
+                    One-time
+                  </button>
+                  <button onClick={() => setBlockModal(m => m && ({ ...m, isRecurring: true }))}
+                    className={cn('flex-1 py-1.5 rounded-xl text-xs font-semibold border transition-colors',
+                      blockModal.isRecurring
+                        ? 'bg-red-400 text-white border-red-400'
+                        : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-red-300')}>
+                    Recurring
+                  </button>
+                </div>
               </div>
+              {/* One-time: date picker */}
+              {!blockModal.isRecurring && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">Date</label>
+                  <input type="date" value={blockModal.date} onChange={e => setBlockModal(m => m && ({ ...m, date: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none" />
+                </div>
+              )}
+              {/* Recurring: day-of-week checkboxes */}
+              {blockModal.isRecurring && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-2">
+                    Repeat on <span className="text-[10px] font-normal text-gray-400">(next 52 weeks)</span>
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['MON','TUE','WED','THU','FRI','SAT','SUN'] as const).map(day => {
+                      const active = blockModal.recurringDays.includes('ALL') || blockModal.recurringDays.includes(day)
+                      return (
+                        <button key={day}
+                          onClick={() => setBlockModal(m => {
+                            if (!m) return m
+                            const days = m.recurringDays.filter(x => x !== 'ALL')
+                            const next = days.includes(day) ? days.filter(x => x !== day) : [...days, day]
+                            return { ...m, recurringDays: next }
+                          })}
+                          className={cn('px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors',
+                            active
+                              ? 'bg-red-400 text-white border-red-400'
+                              : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-red-300')}>
+                          {day}
+                        </button>
+                      )
+                    })}
+                    <button
+                      onClick={() => setBlockModal(m => m && ({
+                        ...m, recurringDays: m.recurringDays.includes('ALL') ? [] : ['ALL'],
+                      }))}
+                      className={cn('px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors',
+                        blockModal.recurringDays.includes('ALL')
+                          ? 'bg-red-400 text-white border-red-400'
+                          : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-red-300')}>
+                      Every day
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* Start / End */}
               <div className="flex gap-2">
                 <div className="flex-1">
@@ -1385,27 +1476,12 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
                   </select>
                 </div>
               </div>
-              {/* Reason */}
+              {/* Reason / Label */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Reason (optional)</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">Label (optional)</label>
                 <input type="text" value={blockModal.reason} onChange={e => setBlockModal(m => m && ({ ...m, reason: e.target.value }))}
-                  placeholder="e.g. Lunch, Training, Meeting"
+                  placeholder="e.g. Team Meeting, Lunch, Training"
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none placeholder-gray-400" />
-              </div>
-              {/* Repeat */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Repeat</label>
-                <div className="flex gap-2">
-                  {(['none','daily','weekly'] as const).map(r => (
-                    <button key={r} onClick={() => setBlockModal(m => m && ({ ...m, repeat: r }))}
-                      className={cn('flex-1 py-1.5 rounded-xl text-xs font-semibold border transition-colors',
-                        blockModal.repeat === r
-                          ? 'bg-red-400 text-white border-red-400'
-                          : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-red-300')}>
-                      {r === 'none' ? 'Once' : r === 'daily' ? '7 Days' : '4 Weeks'}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
             <button onClick={createBlock} disabled={blockSaving}
