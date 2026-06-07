@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
+import { execFileSync } from 'child_process'
+import * as fs from 'fs'
 import { processInbound, sendWhatsAppMessage } from './whatsapp.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
@@ -114,34 +116,43 @@ router.post('/webhook', async (req: Request, res: Response) => {
             continue
           }
 
-          // ── Audio / Voice note → Claude audio understanding → Sarah flow ────────
+          // ── Audio / Voice note → OGG→MP3 via FFmpeg → Claude → Sarah flow ────
           if (msg.type === 'audio' && msg.audio?.id) {
             let handled = false
             try {
               const media = await downloadWhatsAppMedia(msg.audio.id)
               if (media) {
-                const base64   = Buffer.from(media.buffer).toString('base64')
-                // Strip codec params (e.g. "audio/ogg; codecs=opus" → "audio/ogg")
-                const mimeType = (media.mimeType || 'audio/ogg').split(';')[0].trim()
+                const ts      = Date.now()
+                const oggPath = `/tmp/voice-${ts}.ogg`
+                const mp3Path = `/tmp/voice-${ts}.mp3`
+                try {
+                  fs.writeFileSync(oggPath, Buffer.from(media.buffer))
+                  execFileSync('ffmpeg', ['-y', '-i', oggPath, mp3Path], { stdio: 'ignore' })
+                  const mp3Buffer = fs.readFileSync(mp3Path)
+                  const base64    = mp3Buffer.toString('base64')
 
-                const audioRes = await anthropic.messages.create({
-                  model:      'claude-sonnet-4-6',
-                  max_tokens: 300,
-                  system:     'You are a transcription assistant. Transcribe the audio exactly as spoken. Return only the transcribed text with no preamble.',
-                  messages: [{
-                    role:    'user',
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    content: [{ type: 'document', source: { type: 'base64', media_type: mimeType, data: base64 } } as any],
-                  }],
-                })
+                  const audioRes = await anthropic.messages.create({
+                    model:      'claude-sonnet-4-6',
+                    max_tokens: 300,
+                    system:     'You are a transcription assistant. Transcribe the audio exactly as spoken. Return only the transcribed text with no preamble.',
+                    messages: [{
+                      role:    'user',
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      content: [{ type: 'document', source: { type: 'base64', media_type: 'audio/mpeg', data: base64 } } as any],
+                    }],
+                  })
 
-                const block         = audioRes.content[0]
-                const transcription = block?.type === 'text' ? block.text.trim() : null
+                  const block         = audioRes.content[0]
+                  const transcription = block?.type === 'text' ? block.text.trim() : null
 
-                if (transcription) {
-                  console.log('[Claude Audio] Transcribed:', transcription.slice(0, 80))
-                  await processInbound(from, `[Voice note transcribed]: ${transcription}`, msg.id)
-                  handled = true
+                  if (transcription) {
+                    console.log('[Claude Audio] Transcribed:', transcription.slice(0, 80))
+                    await processInbound(from, `[Voice note transcribed]: ${transcription}`, msg.id)
+                    handled = true
+                  }
+                } finally {
+                  try { fs.unlinkSync(oggPath) } catch {}
+                  try { fs.unlinkSync(mp3Path) } catch {}
                 }
               }
             } catch (err) {
