@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
-import OpenAI from 'openai'
 import { processInbound, sendWhatsAppMessage } from './whatsapp.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 
-const router = Router()
+const router    = Router()
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 // ── Log conversation + send reply without going through full processInbound ──────
 async function sendDirectReply(from: string, inboundText: string, reply: string, wamid: string): Promise<void> {
@@ -114,43 +114,38 @@ router.post('/webhook', async (req: Request, res: Response) => {
             continue
           }
 
-          // ── Audio / Voice note → Whisper transcription → Sarah flow ────────
+          // ── Audio / Voice note → Claude audio understanding → Sarah flow ────────
           if (msg.type === 'audio' && msg.audio?.id) {
             let handled = false
             try {
               const media = await downloadWhatsAppMedia(msg.audio.id)
               if (media) {
-                // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
-                const FormDataLib = require('form-data') as any
-                const form = new FormDataLib()
-                form.append('file', Buffer.from(media.buffer), {
-                  filename: 'voice.ogg',
-                  contentType: media.mimeType || 'audio/ogg',
-                })
-                form.append('model', 'whisper-1')
+                const base64   = Buffer.from(media.buffer).toString('base64')
+                // Strip codec params (e.g. "audio/ogg; codecs=opus" → "audio/ogg")
+                const mimeType = (media.mimeType || 'audio/ogg').split(';')[0].trim()
 
-                const formBuffer = await new Promise<Buffer>((resolve, reject) => {
-                  const chunks: Buffer[] = []
-                  form.on('data', (chunk: Buffer) => chunks.push(chunk))
-                  form.on('end', () => resolve(Buffer.concat(chunks)))
-                  form.on('error', reject)
+                const audioRes = await anthropic.messages.create({
+                  model:      'claude-sonnet-4-6',
+                  max_tokens: 300,
+                  system:     'You are a transcription assistant. Transcribe the audio exactly as spoken. Return only the transcribed text with no preamble.',
+                  messages: [{
+                    role:    'user',
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    content: [{ type: 'document', source: { type: 'base64', media_type: mimeType, data: base64 } } as any],
+                  }],
                 })
 
-                const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-                  method:  'POST',
-                  headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, ...form.getHeaders() },
-                  body:    formBuffer,
-                })
-                const whisperData = await whisperRes.json() as { text?: string }
+                const block         = audioRes.content[0]
+                const transcription = block?.type === 'text' ? block.text.trim() : null
 
-                if (whisperData.text) {
-                  console.log('[Whisper] Transcribed:', whisperData.text.slice(0, 80))
-                  await processInbound(from, `[Voice note transcribed]: ${whisperData.text}`, msg.id)
+                if (transcription) {
+                  console.log('[Claude Audio] Transcribed:', transcription.slice(0, 80))
+                  await processInbound(from, `[Voice note transcribed]: ${transcription}`, msg.id)
                   handled = true
                 }
               }
             } catch (err) {
-              console.warn('[Whisper] Transcription failed:', err)
+              console.warn('[Claude Audio] Transcription failed:', err)
             }
 
             if (!handled) {
@@ -164,37 +159,35 @@ router.post('/webhook', async (req: Request, res: Response) => {
             continue
           }
 
-          // ── Image → GPT-4o vision → Sarah's direct response ─────────────────
+          // ── Image → Claude vision → Sarah's direct response ─────────────────
           if (msg.type === 'image' && msg.image?.id) {
             let handled = false
             try {
               const media = await downloadWhatsAppMedia(msg.image.id)
-              if (media && process.env.OPENAI_API_KEY) {
+              if (media) {
                 const base64   = Buffer.from(media.buffer).toString('base64')
                 const mimeType = (media.mimeType || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
 
-                const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-                const visionRes = await openai.chat.completions.create({
-                  model:      'gpt-4o',
+                const visionRes = await anthropic.messages.create({
+                  model:      'claude-sonnet-4-6',
                   max_tokens: 300,
+                  system:     'You are Sarah, a dental clinic assistant at Code Clinic in Kampala Uganda. A patient sent you an image. Look at it carefully. If it shows a dental concern (tooth pain, swelling, broken tooth, cavity, gum issue, etc), acknowledge what you see, show empathy, and suggest they book an appointment. If it is not dental related, respond warmly and ask how you can help. Keep response under 150 words, plain text, no markdown, no asterisks.',
                   messages: [{
-                    role:    'system',
-                    content: 'You are Sarah, a dental clinic assistant at Code Clinic in Kampala Uganda. A patient sent you an image. Look at it carefully. If it shows a dental concern (tooth pain, swelling, broken tooth, cavity, gum issue, etc), acknowledge what you see, show empathy, and suggest they book an appointment. If it is not dental related, respond warmly and ask how you can help. Keep response under 150 words, plain text, no markdown, no asterisks.',
-                  }, {
                     role:    'user',
-                    content: [{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } }],
+                    content: [{ type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } }],
                   }],
                 })
 
-                const reply = visionRes.choices[0]?.message?.content ?? null
+                const block = visionRes.content[0]
+                const reply = block?.type === 'text' ? block.text : null
                 if (reply) {
-                  console.log('[Vision] GPT-4o replied:', reply.slice(0, 80))
+                  console.log('[Claude Vision] replied:', reply.slice(0, 80))
                   await sendDirectReply(from, '[Patient sent an image]', reply, msg.id)
                   handled = true
                 }
               }
             } catch (err) {
-              console.warn('[Vision] GPT-4o failed:', err)
+              console.warn('[Claude Vision] failed:', err)
             }
 
             if (!handled) {
@@ -227,7 +220,6 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 }
 
                 if (extractedText) {
-                  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
                   const docRes = await anthropic.messages.create({
                     model:      'claude-sonnet-4-6',
                     max_tokens: 200,
