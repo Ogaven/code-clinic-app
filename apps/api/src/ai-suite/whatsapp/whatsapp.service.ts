@@ -107,6 +107,11 @@ export async function processInbound(from: string, text: string, wamid: string):
         content:        text,
       },
     })
+    // Bump updatedAt so inbox sorts this conversation to the top
+    await prisma.aiConversation.update({
+      where: { id: conversation.id },
+      data:  { updatedAt: new Date() },
+    })
 
     // ── 4. New conversation greeting ─────────────────────────────────────────
     // First-ever message from this number: send opening greeting, store it, return.

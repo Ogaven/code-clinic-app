@@ -21,6 +21,16 @@ router.post('/whatsapp/webhook', async (req, res) => {
   try {
     res.status(200).json({ received: true })
     const body      = req.body
+
+    // ── Delivery receipts (READ/DELIVERED) — silence, don't process ──────────
+    if (body.status && !body.from && !body.data?.from && !body.phoneNumber) {
+      console.log('[AT] Delivery receipt:', body.status, body.messageId || '')
+      return
+    }
+
+    // ── Log full payload so we can see exactly what AT sends for each type ───
+    console.log('[AT Webhook] Received:', JSON.stringify(body, null, 2))
+
     const rawFrom   = body.from    || body.data?.from    || body.phoneNumber
     const rawText   = body.text    || body.data?.text    || body.body?.message || body.message
     const mediaType = body.messageType || body.data?.messageType || ''
