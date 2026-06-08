@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import multer from 'multer'
 import { requireAuth } from '../middleware/auth'
-import { adminOnly } from '../middleware/rbac'
+import { adminOnly, allStaff } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { uploadFile, deleteFile, getPublicUrl } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
@@ -30,8 +30,8 @@ router.get('/', requireAuth, async (_req, res) => {
   } catch { res.status(500).json({ error: 'Failed to fetch services' }) }
 })
 
-// GET /services/all (includes inactive)
-router.get('/all', requireAuth, adminOnly, async (_req, res) => {
+// GET /services/all (all staff — includes inactive)
+router.get('/all', requireAuth, allStaff, async (_req, res) => {
   try {
     const services = await prisma.service.findMany({ orderBy: [{ category: 'asc' }, { name: 'asc' }] })
     res.json(services.map(withPhotoUrl))

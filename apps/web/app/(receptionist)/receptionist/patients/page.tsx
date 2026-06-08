@@ -61,6 +61,7 @@ export default function PatientsPage() {
   const [appts, setAppts]         = useState<any[]>([])
   const [showAdd, setShowAdd]     = useState(false)
   const [filter, setFilter]       = useState<'all' | 'new' | 'active' | 'NEW_LEAD' | 'UPCOMING' | 'ACTIVE' | 'DUE_RECALL' | 'LAPSED' | 'DORMANT' | 'BALANCE_OWING'>('all')
+  const [sortAZ, setSortAZ]       = useState(false)
   const [toast, setToast]         = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [importing, setImporting] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -106,8 +107,15 @@ export default function PatientsPage() {
     } else if (['NEW_LEAD','UPCOMING','ACTIVE','DUE_RECALL','LAPSED','DORMANT','BALANCE_OWING'].includes(filter)) {
       list = list.filter(p => p.status === filter)
     }
+    if (sortAZ) {
+      list = [...list].sort((a, b) => {
+        const la = (a.lastName ?? '').toLowerCase(), lb = (b.lastName ?? '').toLowerCase()
+        if (la !== lb) return la < lb ? -1 : 1
+        return (a.firstName ?? '').toLowerCase() < (b.firstName ?? '').toLowerCase() ? -1 : 1
+      })
+    }
     setFiltered(list)
-  }, [patients, search, filter])
+  }, [patients, search, filter, sortAZ])
 
   async function fetchPatients() {
     setLoading(true)
@@ -440,7 +448,7 @@ export default function PatientsPage() {
           </div>
 
           {/* Filters */}
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             {(['all', 'new', 'active'] as const).map(f => (
               <button key={f} onClick={() => setFilter(f)}
                 className={cn('px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all',
@@ -448,6 +456,11 @@ export default function PatientsPage() {
                 {f === 'all' ? 'All' : f === 'new' ? 'New (7d)' : 'Returning'}
               </button>
             ))}
+            <button onClick={() => setSortAZ(v => !v)}
+              className={cn('px-3 py-1 rounded-lg text-xs font-bold transition-all ml-auto',
+                sortAZ ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/12')}>
+              A–Z
+            </button>
           </div>
           {/* Patient status filters */}
           <div className="flex flex-wrap gap-1.5 mt-1.5">

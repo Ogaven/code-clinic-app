@@ -210,10 +210,27 @@ router.get('/patients/:id/treatment-notes', requireAuth, async (req, res) => {
     const notes = await prisma.treatmentNote.findMany({
       where: { patientId: req.params.id },
       orderBy: { createdAt: 'desc' },
+      include: { author: { select: { id: true, firstName: true, lastName: true } } },
     })
     res.json(notes)
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch notes' })
+  }
+})
+
+// PATCH /clinical/patients/:id/treatment-notes/:noteId/followup-status
+router.patch('/patients/:id/treatment-notes/:noteId/followup-status', requireAuth, async (req, res) => {
+  try {
+    const { status } = req.body
+    const allowed = ['NONE', 'CONTACT', 'CONTACTED', 'DO_NOT_CONTACT']
+    if (!allowed.includes(status)) { res.status(400).json({ error: 'Invalid status' }); return }
+    const note = await prisma.treatmentNote.update({
+      where: { id: req.params.noteId },
+      data:  { followUpStatus: status },
+    })
+    res.json(note)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update follow-up status' })
   }
 })
 

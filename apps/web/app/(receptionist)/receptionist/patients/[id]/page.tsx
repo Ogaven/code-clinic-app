@@ -668,16 +668,24 @@ function TreatmentTab({ patientId }: { patientId: string }) {
 }
 
 // ── Notes Tab ────────────────────────────────────────────────
+const FOLLOWUP_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  NONE:            { label: 'No Status',       color: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400' },
+  CONTACT:         { label: 'Contact',         color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  CONTACTED:       { label: 'Contacted',       color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  DO_NOT_CONTACT:  { label: 'Do Not Contact',  color: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' },
+}
+
 function NotesTab({ patientId }: { patientId: string }) {
   const [notes, setNotes]   = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [text, setText]     = useState('')
   const [saving, setSaving] = useState(false)
-  const API = '/api-proxy'
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
+  const API = '/api-proxy/clinical'
 
   const fetchNotes = useCallback(() => {
     const token = localStorage.getItem('cc_token')
-    fetch(`${API}/patients/${patientId}/notes`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${API}/patients/${patientId}/treatment-notes`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json()).then(j => { setNotes(Array.isArray(j) ? j : j.data || []); setLoading(false) })
       .catch(() => setLoading(false))
   }, [patientId])
@@ -689,14 +697,27 @@ function NotesTab({ patientId }: { patientId: string }) {
     setSaving(true)
     const token = localStorage.getItem('cc_token')
     try {
-      await fetch(`${API}/patients/${patientId}/notes`, {
+      await fetch(`${API}/patients/${patientId}/treatment-notes`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: text.trim(), type: 'RECEPTIONIST' }),
+        body: JSON.stringify({ content: text.trim() }),
       })
       setText('')
       fetchNotes()
     } finally { setSaving(false) }
+  }
+
+  async function updateFollowUpStatus(noteId: string, status: string) {
+    setUpdatingStatus(noteId + status)
+    const token = localStorage.getItem('cc_token')
+    try {
+      await fetch(`${API}/patients/${patientId}/treatment-notes/${noteId}/followup-status`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      setNotes(prev => prev.map(n => n.id === noteId ? { ...n, followUpStatus: status } : n))
+    } finally { setUpdatingStatus(null) }
   }
 
   if (loading) return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" /></div>
@@ -728,16 +749,34 @@ function NotesTab({ patientId }: { patientId: string }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {notes.map((n: any) => (
-            <Card key={n.id} className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-black text-cyan-500 uppercase tracking-wider">{n.type || 'Note'}</span>
-                <span className="text-xs text-gray-400">{new Date(n.createdAt).toLocaleString('en-UG', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
-              </div>
-              <p className="text-sm text-gray-700 dark:text-white/80 leading-relaxed">{n.content}</p>
-              {n.author && <p className="text-xs text-gray-400 mt-2">— {n.author.firstName} {n.author.lastName}</p>}
-            </Card>
-          ))}
+          {notes.map((n: any) => {
+            const fus = n.followUpStatus || 'NONE'
+            const statusInfo = FOLLOWUP_STATUS_LABELS[fus] || FOLLOWUP_STATUS_LABELS.NONE
+            return (
+              <Card key={n.id} className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-400">{new Date(n.createdAt).toLocaleString('en-UG', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusInfo.color}`}>{statusInfo.label}</span>
+                </div>
+                <p className="text-sm text-gray-700 dark:text-white/80 leading-relaxed mb-3">{n.content}</p>
+                {n.author && <p className="text-xs text-gray-400 mb-3">— {n.author.firstName} {n.author.lastName}</p>}
+                {/* Follow-up status buttons */}
+                <div className="flex flex-wrap gap-1.5 border-t border-gray-100 dark:border-white/8 pt-3">
+                  {(['CONTACT', 'CONTACTED', 'DO_NOT_CONTACT'] as const).map(s => (
+                    <button
+                      key={s}
+                      onClick={() => updateFollowUpStatus(n.id, fus === s ? 'NONE' : s)}
+                      disabled={updatingStatus !== null}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50 ${
+                        fus === s ? FOLLOWUP_STATUS_LABELS[s].color + ' ring-1 ring-current' : 'bg-gray-50 dark:bg-white/5 text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10'
+                      }`}>
+                      {FOLLOWUP_STATUS_LABELS[s].label}
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>

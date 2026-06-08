@@ -814,6 +814,13 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
 
 // ─── Notes Tab ────────────────────────────────────────────────────────────
 
+const DR_FOLLOWUP_LABELS: Record<string, { label: string; color: string }> = {
+  NONE:            { label: 'No Status',       color: 'bg-slate-100 text-slate-500' },
+  CONTACT:         { label: 'Contact',         color: 'bg-amber-100 text-amber-700' },
+  CONTACTED:       { label: 'Contacted',       color: 'bg-emerald-100 text-emerald-700' },
+  DO_NOT_CONTACT:  { label: 'Do Not Contact',  color: 'bg-red-100 text-red-600' },
+}
+
 function NotesTab({ patientId, token }: { patientId: string; token: string | null }) {
   const [notes, setNotes] = useState<any[]>([])
   const [content, setContent] = useState('')
@@ -821,6 +828,7 @@ function NotesTab({ patientId, token }: { patientId: string; token: string | nul
   const [isSaving, setIsSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
   const recognitionRef  = useRef<any>(null)
   const isRecordingRef  = useRef(false)
   const accumulatedRef  = useRef('')
@@ -830,6 +838,17 @@ function NotesTab({ patientId, token }: { patientId: string; token: string | nul
     fetch(`/api-proxy/clinical/patients/${patientId}/treatment-notes`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json()).then(d => setNotes(Array.isArray(d) ? d : [])).catch(() => {})
   }, [patientId, token])
+
+  const updateFollowUpStatus = async (noteId: string, status: string) => {
+    setUpdatingStatus(noteId + status)
+    try {
+      await fetch(`/api-proxy/clinical/patients/${patientId}/treatment-notes/${noteId}/followup-status`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      })
+      setNotes(prev => prev.map(n => n.id === noteId ? { ...n, followUpStatus: status } : n))
+    } finally { setUpdatingStatus(null) }
+  }
 
   const startRecording = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -939,34 +958,53 @@ function NotesTab({ patientId, token }: { patientId: string; token: string | nul
       {/* Notes list */}
       <div className="space-y-3">
         {notes.length === 0 && <p className="text-center py-8 text-sm text-slate-400">No notes recorded for this patient.</p>}
-        {notes.map(note => (
-          <div key={note.id} className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl p-4 group relative">
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <p className="text-xs font-semibold text-slate-500">{new Date(note.createdAt).toLocaleString('en-UG')}</p>
-              </div>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {note.authorId === user.id && (
-                  <button onClick={() => { setEditingId(note.id); setEditContent(note.content) }}
-                    className="p-1 text-slate-400 hover:text-blue-600"><Edit size={13} /></button>
-                )}
-                <button onClick={() => handleDelete(note.id)} className="p-1 text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>
-              </div>
-            </div>
-            {editingId === note.id ? (
-              <div>
-                <textarea value={editContent} onChange={e => setEditContent(e.target.value)}
-                  className="w-full text-sm border border-blue-300 rounded p-2 min-h-[80px] resize-none dark:bg-gray-800 dark:text-white" />
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => handleEdit(note.id)} className="px-3 py-1 text-xs text-white bg-blue-600 rounded">Save</button>
-                  <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-slate-600 bg-slate-100 rounded">Cancel</button>
+        {notes.map(note => {
+          const fus = note.followUpStatus || 'NONE'
+          const statusInfo = DR_FOLLOWUP_LABELS[fus] || DR_FOLLOWUP_LABELS.NONE
+          return (
+            <div key={note.id} className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl p-4 group relative">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-semibold text-slate-500">{new Date(note.createdAt).toLocaleString('en-UG')}</p>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusInfo.color}`}>{statusInfo.label}</span>
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {note.authorId === user.id && (
+                    <button onClick={() => { setEditingId(note.id); setEditContent(note.content) }}
+                      className="p-1 text-slate-400 hover:text-blue-600"><Edit size={13} /></button>
+                  )}
+                  <button onClick={() => handleDelete(note.id)} className="p-1 text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>
                 </div>
               </div>
-            ) : (
-              <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{note.content}</p>
-            )}
-          </div>
-        ))}
+              {editingId === note.id ? (
+                <div>
+                  <textarea value={editContent} onChange={e => setEditContent(e.target.value)}
+                    className="w-full text-sm border border-blue-300 rounded p-2 min-h-[80px] resize-none dark:bg-gray-800 dark:text-white" />
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={() => handleEdit(note.id)} className="px-3 py-1 text-xs text-white bg-blue-600 rounded">Save</button>
+                    <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-slate-600 bg-slate-100 rounded">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{note.content}</p>
+              )}
+              {/* Follow-up status buttons */}
+              <div className="flex flex-wrap gap-1.5 border-t border-slate-100 dark:border-white/8 pt-3 mt-3">
+                {(['CONTACT', 'CONTACTED', 'DO_NOT_CONTACT'] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => updateFollowUpStatus(note.id, fus === s ? 'NONE' : s)}
+                    disabled={updatingStatus !== null}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50 ${
+                      fus === s ? DR_FOLLOWUP_LABELS[s].color + ' ring-1 ring-current' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
+                    }`}>
+                    {DR_FOLLOWUP_LABELS[s].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

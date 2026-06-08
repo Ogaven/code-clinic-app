@@ -725,14 +725,15 @@ model TreatmentPlan {
 }
 
 model TreatmentNote {
-  id        String   @id @default(cuid())
-  patientId String
-  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  content   String
-  authorId  String?
-  author    User?    @relation(fields: [authorId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  patientId      String
+  patient        Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  content        String
+  followUpStatus String   @default("NONE") // NONE | CONTACT | CONTACTED | DO_NOT_CONTACT
+  authorId       String?
+  author         User?    @relation(fields: [authorId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([patientId])
   @@map("treatment_notes")

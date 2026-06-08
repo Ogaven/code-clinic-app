@@ -349,6 +349,82 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
   }
 }
 
+// ── checkAndSendAppointmentConfirmations ──────────────────────────────────────
+// Runs every hour between 9–10 AM EAT. Finds appointments scheduled for
+// TOMORROW with status SCHEDULED or CONFIRMED that haven't been sent a
+// confirmation request, and asks each patient to confirm via WhatsApp.
+
+export async function checkAndSendAppointmentConfirmations(): Promise<void> {
+  const nowUTC     = new Date()
+  const eatHourNow = parseInt(
+    nowUTC.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
+  )
+  if (eatHourNow < 9 || eatHourNow >= 10) return
+
+  const tomorrow        = new Date(nowUTC)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const startOfTomorrow = new Date(tomorrow.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T00:00:00+03:00')
+  const endOfTomorrow   = new Date(tomorrow.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T23:59:59+03:00')
+
+  let appointments: any[] = []
+  try {
+    appointments = await prisma.appointment.findMany({
+      where: {
+        startAt: { gte: startOfTomorrow, lte: endOfTomorrow },
+        status:  { in: ['PENDING', 'CONFIRMED'] },
+      },
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+        doctor:  { include: { user: { select: { firstName: true } } } },
+        service: { select: { name: true } },
+      },
+    })
+  } catch (err: any) {
+    console.error('[ApptConfirmation] Query failed:', err.message)
+    return
+  }
+
+  if (appointments.length === 0) return
+  console.log(`[ApptConfirmation] Processing ${appointments.length} appointment(s) for tomorrow`)
+
+  for (const appt of appointments) {
+    const patient = appt.patient
+    if (!patient?.phone) continue
+
+    const alreadySent = await prisma.aiScheduledMessage.findFirst({
+      where: {
+        patientId:    patient.id,
+        templateType: 'APPOINTMENT_CONFIRMATION',
+        sent:         true,
+        scheduledFor: { gte: startOfTomorrow, lte: endOfTomorrow },
+      },
+    })
+    if (alreadySent) continue
+
+    const minor        = isMinor(patient.dob)
+    const guardianName = patient.nextOfKinName
+    const doctorFirst  = appt.doctor.user.firstName
+    const addr         = minor && guardianName ? guardianName : minor ? 'there' : patient.firstName
+    const start        = new Date(appt.startAt)
+    const timeStr      = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
+    const serviceName  = appt.service?.name || 'appointment'
+    const msg          = `Hello ${addr}, this is a reminder from Code Clinic 😊 ${minor ? `${patient.firstName} has` : 'You have'} an appointment tomorrow at ${timeStr} with Dr ${doctorFirst} for ${serviceName}. Please reply YES to confirm or call 0205477000 to reschedule. Thank you!`
+
+    try {
+      await sendWhatsAppMessage(patient.phone, msg)
+    } catch (err: any) {
+      console.error(`[ApptConfirmation] Send failed for ${patient.phone}:`, err.message)
+      continue
+    }
+
+    let conv = await prisma.aiConversation.findFirst({ where: { phoneNumber: patient.phone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
+    if (!conv) conv = await prisma.aiConversation.create({ data: { patientId: patient.id, channel: 'WHATSAPP', phoneNumber: patient.phone, status: 'ACTIVE', agentEnabled: true } })
+    await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'AGENT', content: msg } })
+    await prisma.aiScheduledMessage.create({ data: { patientId: patient.id, channel: 'WHATSAPP', templateType: 'APPOINTMENT_CONFIRMATION', scheduledFor: appt.startAt, sent: true, content: msg } })
+    console.log(`[ApptConfirmation] Sent to ${patient.firstName} ${patient.lastName} for ${timeStr} appt`)
+  }
+}
+
 // ── checkAndSendMissedCallFollowups ───────────────────────────────────────────
 // Runs every 30 min. Finds voice agent calls < 10s in the last 30 min where the
 // caller has not booked, and sends the cc_missed_call_followup template.

@@ -38,6 +38,7 @@ import quickbooksRouter from './routes/quickbooks'
 import stocksRouter from './routes/stocks'
 import webhooksRouter from './routes/webhooks'
 import auditRouter from './routes/audit'
+import aiReportsRouter from './routes/ai-reports'
 
 // AI Suite routers
 import aiSuiteRouter     from './ai-suite/whatsapp/whatsapp.routes'
@@ -57,7 +58,7 @@ import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
 import { checkAndSendReminders }           from './ai-suite/scheduler/reminder.service'
-import { checkAndSendFollowups, processAfterHoursQueue, checkAndSendPostAppointmentFollowups, checkAndSendMissedCallFollowups, checkAndSendReactivationMessages } from './ai-suite/scheduler/followup.service'
+import { checkAndSendFollowups, processAfterHoursQueue, checkAndSendPostAppointmentFollowups, checkAndSendMissedCallFollowups, checkAndSendReactivationMessages, checkAndSendAppointmentConfirmations } from './ai-suite/scheduler/followup.service'
 import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
 import { updatePatientStatuses }           from './ai-suite/scheduler/patient-status.service'
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
@@ -171,6 +172,7 @@ app.use('/setup',        setupRouter)
 app.use('/clinical',     clinicalRouter)
 app.use('/pre-visit',    previsitRouter)
 app.use('/audit-logs',   auditRouter)
+app.use('/ai-suite',     aiReportsRouter)
 
 // ─── Webhooks (Meta, etc.) ────────────────────────────────────
 // GET  /webhooks/facebook — Meta webhook verification
@@ -325,6 +327,9 @@ runStartup().then(() => {
   }, TWENTY_FOUR_HOURS)
   setInterval(() => {
     checkAndSendReactivationMessages().catch(err => console.error('[Reactivation] Scheduler error:', err))
+  }, ONE_HOUR)
+  setInterval(() => {
+    checkAndSendAppointmentConfirmations().catch(err => console.error('[ApptConfirmation] Scheduler error:', err))
   }, ONE_HOUR)
 
   // Scheduled campaigns — check every 5 minutes

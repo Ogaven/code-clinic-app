@@ -3,7 +3,7 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import multer from 'multer'
 import { requireAuth } from '../middleware/auth'
-import { adminOnly } from '../middleware/rbac'
+import { adminOnly, allStaff } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
 import { uploadLimiter } from '../middleware/rateLimit'
@@ -31,8 +31,8 @@ const createEmployeeSchema = z.object({
   colour: z.string().optional(),
 })
 
-// GET /employees
-router.get('/', requireAuth, adminOnly, async (_req, res) => {
+// GET /employees (all staff can list employees)
+router.get('/', requireAuth, allStaff, async (_req, res) => {
   const employees = await prisma.user.findMany({
     where: { role: { not: 'ADMIN' } },
     select: {

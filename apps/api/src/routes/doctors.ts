@@ -2,7 +2,7 @@ import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import multer from 'multer'
 import { requireAuth } from '../middleware/auth'
-import { adminOnly } from '../middleware/rbac'
+import { adminOnly, allStaff } from '../middleware/rbac'
 import { uploadAvatar, getPublicUrl } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
 import { prisma } from '../lib/prisma'
@@ -85,8 +85,8 @@ router.get('/', requireAuth, async (_req, res) => {
   } catch { res.status(500).json({ error: 'Failed to fetch doctors' }) }
 })
 
-// GET /doctors/all (admin — includes inactive)
-router.get('/all', requireAuth, adminOnly, async (_req, res) => {
+// GET /doctors/all (all staff — includes inactive)
+router.get('/all', requireAuth, allStaff, async (_req, res) => {
   try {
     const doctors = await prisma.doctor.findMany({
       include: INCLUDE,

@@ -179,7 +179,7 @@ router.get('/', requireAuth, async (req, res) => {
 
     // Build order
     let orderBy: any = { createdAt: 'desc' }
-    if (sortBy === 'name')      orderBy = [{ firstName: 'asc' }, { lastName: 'asc' }]
+    if (sortBy === 'name')      orderBy = [{ lastName: 'asc' }, { firstName: 'asc' }]
     if (sortBy === 'balance')   orderBy = { accountBalance: 'desc' }
 
     const [patients, total] = await Promise.all([
