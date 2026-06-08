@@ -2,6 +2,7 @@ import { getAgentReply } from '../agent/agent.service'
 import { isAgentEnabled, takeoverConversation } from '../takeover/takeover.service'
 import { setBookingState } from '../booking/booking.state'
 import { createEscalation, notifyJulian } from '../../services/agent/guards/escalation'
+import { formatUgandaPhone } from '../sms/sms.service'
 import { prisma } from '../../lib/prisma'
 
 // ── Strip markdown from Sarah's replies before sending via WhatsApp ──────────
@@ -440,11 +441,12 @@ export async function sendWhatsAppMessage(to: string, body: string, _replyToMess
     return
   }
 
+  const normalizedTo = formatUgandaPhone(to)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const AfricasTalking = require('africastalking')
   const at = AfricasTalking({ apiKey, username })
-  await at.WHATSAPP.sendMessage({ waNumber, phoneNumber: to, body: { message: body } })
-  console.log(`[WhatsApp] Sent to ${to}: ${body.slice(0, 60)}...`)
+  await at.WHATSAPP.sendMessage({ waNumber, phoneNumber: normalizedTo, body: { message: body } })
+  console.log(`[WhatsApp] Sent to ${normalizedTo}: ${body.slice(0, 60)}...`)
 }
 
 export async function notifyReceptionistUnreachable(patientName: string, phone: string): Promise<void> {
@@ -482,12 +484,13 @@ export async function sendWhatsAppTemplate(
     return
   }
 
+  const normalizedTo = formatUgandaPhone(to)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const AfricasTalking = require('africastalking')
   const at = AfricasTalking({ apiKey, username })
   await at.WHATSAPP.sendMessage({
     waNumber,
-    phoneNumber: to,
+    phoneNumber: normalizedTo,
     body: {
       type: 'template',
       template: {
