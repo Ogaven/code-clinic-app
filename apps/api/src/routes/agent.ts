@@ -65,12 +65,17 @@ router.post('/whatsapp/webhook', async (req, res) => {
 
             const claudeRes = await anthropic.messages.create({
               model:      'claude-sonnet-4-6',
-              max_tokens: 300,
-              system:     'You are a transcription assistant. Transcribe the audio exactly as spoken. Return only the transcribed text with no preamble.',
+              max_tokens: 1024,
               messages: [{
                 role:    'user',
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                content: [{ type: 'document', source: { type: 'base64', media_type: 'audio/mpeg', data: base64 } } as any],
+                content: [
+                  {
+                    type: 'text',
+                    text: 'This is a voice note from a patient at Code Clinic dental clinic in Uganda. Please transcribe exactly what is said in the audio.',
+                  },
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  { type: 'document', source: { type: 'base64', media_type: 'audio/mpeg', data: base64 } } as any,
+                ],
               }],
             })
             const block         = claudeRes.content[0]
@@ -84,7 +89,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
             try { fs.unlinkSync(mp3Path) } catch {}
           }
         } catch (err: any) {
-          console.warn('[Claude Audio] AT transcription failed:', err.message)
+          console.error('[Claude Audio] AT transcription failed:', err?.message || err)
         }
       }
     }
@@ -119,7 +124,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
             text = `__MEDIA_IMAGE__:data:${mimeType};base64,${base64}__VISION__${description}`
           }
         } catch (err: any) {
-          console.warn('[Claude Vision] AT image processing failed:', err.message)
+          console.error('[Claude Vision] AT image processing failed:', err?.message || err)
         }
       }
     }

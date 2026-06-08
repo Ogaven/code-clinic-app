@@ -464,7 +464,7 @@ export async function notifyReceptionistUnreachable(patientName: string, phone: 
       })
     }
   } catch (e: any) {
-    console.error('[WhatsApp] Failed to notify receptionist:', e.message)
+    console.error('[WhatsApp] Failed to notify receptionist:', e?.message || JSON.stringify(e) || 'unknown error')
   }
 }
 

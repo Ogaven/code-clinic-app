@@ -77,7 +77,7 @@ router.post('/', async (req, res) => {
     console.log('[WebsiteLead] Sarah texted', normalized, 'from website popup')
 
   } catch (err: any) {
-    console.error('[WebsiteLead] Error:', err.message)
+    console.error('[WebsiteLead] Error:', err?.message || JSON.stringify(err) || 'unknown error')
   }
 })
 
