@@ -49,7 +49,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
     // ── Audio / Voice note → OGG→MP3 via FFmpeg → Claude transcription ───────
     if (mediaType === 'Audio' || mediaType === 'Voice') {
       console.log('[Sarah Media]', mediaType, 'from', rawFrom)
-      const audioUrl = body.url || body.mediaUrl || body.audioUrl || body.media?.url
+      const audioUrl = body.body?.url || body.url || body.mediaUrl || body.audioUrl
       console.log('[AT Audio] URL resolved:', audioUrl)
       if (audioUrl) {
         try {
@@ -111,7 +111,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
 
     // ── Image → Claude vision → inline display + description for Sarah ─────────
     if (mediaType === 'Image') {
-      const imageUrl = body.url || body.mediaUrl || body.imageUrl || body.media?.url
+      const imageUrl = body.body?.url || body.url || body.mediaUrl || body.imageUrl
       console.log('[Sarah Media]', 'Image', 'from', rawFrom)
       if (imageUrl) {
         try {
