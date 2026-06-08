@@ -28,6 +28,8 @@ import integrationsRouter from './routes/integrations'
 import receptionistRouter from './routes/receptionist'
 import assistantRouter from './routes/assistant'
 import agentRouter from './routes/agent'
+import websiteLeadRouter from './routes/website-lead'
+import websiteChatRouter from './routes/website-chat'
 import knowledgeRouter from './routes/knowledge'
 import setupRouter from './routes/setup'
 import clinicalRouter from './routes/clinical'
@@ -162,6 +164,8 @@ app.use('/api/integrations', integrationsRouter)  // alias for OAuth callbacks c
 app.use('/receptionist', receptionistRouter)
 app.use('/assistant',    assistantRouter)
 app.use('/agent',        agentRouter)
+app.use('/api/website-lead', websiteLeadRouter)
+app.use('/website-chat',     websiteChatRouter)
 app.use('/knowledge',    knowledgeRouter)
 app.use('/setup',        setupRouter)
 app.use('/clinical',     clinicalRouter)
