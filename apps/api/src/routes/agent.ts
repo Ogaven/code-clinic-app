@@ -74,28 +74,29 @@ router.post('/whatsapp/webhook', async (req, res) => {
             const mp3Buffer = fs.readFileSync(mp3Path)
             console.log('[AT Audio] MP3 size bytes:', mp3Buffer.length)
 
-            const base64 = mp3Buffer.toString('base64')
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const FormData   = require('form-data')
+            const formData   = new FormData()
+            formData.append('file', mp3Buffer, { filename: 'voice.mp3', contentType: 'audio/mpeg' })
+            formData.append('model', 'whisper-1')
+            formData.append('language', 'en')
 
-            const claudeRes = await anthropic.messages.create({
-              model:      'claude-sonnet-4-6',
-              max_tokens: 1024,
-              messages: [{
-                role:    'user',
-                content: [
-                  {
-                    type: 'text',
-                    text: 'This is a voice note from a patient at Code Clinic dental clinic in Uganda. Please transcribe exactly what is said in the audio.',
-                  },
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  { type: 'document', source: { type: 'base64', media_type: 'audio/mpeg', data: base64 } } as any,
-                ],
-              }],
+            const whisperRes  = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+              method:  'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                ...formData.getHeaders(),
+              },
+              body: formData,
             })
-            const block         = claudeRes.content[0]
-            const transcription = block?.type === 'text' ? block.text.trim() : null
-            if (transcription) {
-              console.log('[Claude Audio] AT transcribed:', transcription.slice(0, 80))
-              text = `[Voice note transcribed]: ${transcription}`
+            console.log('[Whisper] Response status:', whisperRes.status)
+            const whisperData = await whisperRes.json() as { text?: string; error?: { message: string } }
+            if (whisperData.error) console.error('[Whisper] API error:', whisperData.error.message)
+
+            const transcript = whisperData.text?.trim()
+            if (transcript) {
+              console.log('[Whisper] AT transcribed:', transcript.slice(0, 80))
+              text = `[Voice note transcribed]: ${transcript}`
             }
           } finally {
             try { fs.unlinkSync(oggPath) } catch {}
