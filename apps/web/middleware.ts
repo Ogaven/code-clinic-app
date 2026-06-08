@@ -35,7 +35,8 @@ export function middleware(request: NextRequest) {
 
   // Public routes — never redirect, let the page handle its own auth state
   if (PUBLIC_PATHS.some(p => pathname === p)) return NextResponse.next()
-  if (pathname.startsWith('/auth/')) return NextResponse.next()
+  if (pathname.startsWith('/auth/'))   return NextResponse.next()
+  if (pathname.startsWith('/widget/')) return NextResponse.next()
 
   const token = request.cookies.get('cc_token')?.value
   if (!token) {
