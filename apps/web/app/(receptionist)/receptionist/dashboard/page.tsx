@@ -838,6 +838,34 @@ export default function ReceptionistDashboard() {
         </div>
       </div>
 
+      {/* ── AI Suite Quick Links ──────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-4">
+        <Link href="/receptionist/ai-suite/followup-dashboard"
+          className="dark-pop bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all group">
+          <div className="flex items-start justify-between mb-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+              <CheckCircle2 size={18} className="text-white" />
+            </div>
+            <ChevronRight size={14} className="text-gray-300 dark:text-white/20 group-hover:text-cyan-500 transition-colors mt-1" />
+          </div>
+          <p className="text-sm font-black text-gray-800 dark:text-white">Follow-up Dashboard</p>
+          <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">AI follow-up activity</p>
+        </Link>
+        <Link href="/receptionist/ai-suite/confirmation-dashboard"
+          className="dark-pop bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all group">
+          <div className="flex items-start justify-between mb-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}>
+              <Calendar size={18} className="text-white" />
+            </div>
+            <ChevronRight size={14} className="text-gray-300 dark:text-white/20 group-hover:text-cyan-500 transition-colors mt-1" />
+          </div>
+          <p className="text-sm font-black text-gray-800 dark:text-white">Confirmation Dashboard</p>
+          <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Appointment confirmations</p>
+        </Link>
+      </div>
+
       {/* ── Live Patient Flow — full width, right after stats ─── */}
       <LivePatientFlow />
 

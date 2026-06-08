@@ -989,18 +989,24 @@ function NotesTab({ patientId, token }: { patientId: string; token: string | nul
                 <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{note.content}</p>
               )}
               {/* Follow-up status buttons */}
-              <div className="flex flex-wrap gap-1.5 border-t border-slate-100 dark:border-white/8 pt-3 mt-3">
-                {(['CONTACT', 'CONTACTED', 'DO_NOT_CONTACT'] as const).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => updateFollowUpStatus(note.id, fus === s ? 'NONE' : s)}
-                    disabled={updatingStatus !== null}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50 ${
-                      fus === s ? DR_FOLLOWUP_LABELS[s].color + ' ring-1 ring-current' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
-                    }`}>
-                    {DR_FOLLOWUP_LABELS[s].label}
-                  </button>
-                ))}
+              <div className="flex flex-wrap gap-2 border-t border-slate-100 dark:border-white/8 pt-3 mt-3">
+                {(['CONTACT', 'CONTACTED', 'DO_NOT_CONTACT'] as const).map(s => {
+                  const isActive = fus === s
+                  const SOLID: Record<string, string> = { CONTACT: '#3B82F6', CONTACTED: '#10B981', DO_NOT_CONTACT: '#EF4444' }
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => updateFollowUpStatus(note.id, fus === s ? 'NONE' : s)}
+                      disabled={updatingStatus !== null}
+                      style={isActive
+                        ? { background: SOLID[s], boxShadow: `0 2px 8px ${SOLID[s]}66` }
+                        : { border: `1.5px solid ${SOLID[s]}`, color: SOLID[s] }
+                      }
+                      className={`px-4 py-2 rounded-full text-xs font-bold transition-all disabled:opacity-50 ${isActive ? 'text-white' : 'bg-transparent'}`}>
+                      {DR_FOLLOWUP_LABELS[s].label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )

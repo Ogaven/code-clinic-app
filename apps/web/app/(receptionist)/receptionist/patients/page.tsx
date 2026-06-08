@@ -61,7 +61,7 @@ export default function PatientsPage() {
   const [appts, setAppts]         = useState<any[]>([])
   const [showAdd, setShowAdd]     = useState(false)
   const [filter, setFilter]       = useState<'all' | 'new' | 'active' | 'NEW_LEAD' | 'UPCOMING' | 'ACTIVE' | 'DUE_RECALL' | 'LAPSED' | 'DORMANT' | 'BALANCE_OWING'>('all')
-  const [sortAZ, setSortAZ]       = useState(false)
+  const [sortAZ, setSortAZ]       = useState(true)
   const [toast, setToast]         = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [importing, setImporting] = useState(false)
   const [exporting, setExporting] = useState(false)

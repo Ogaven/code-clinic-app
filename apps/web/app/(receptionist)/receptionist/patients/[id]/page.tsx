@@ -761,18 +761,24 @@ function NotesTab({ patientId }: { patientId: string }) {
                 <p className="text-sm text-gray-700 dark:text-white/80 leading-relaxed mb-3">{n.content}</p>
                 {n.author && <p className="text-xs text-gray-400 mb-3">— {n.author.firstName} {n.author.lastName}</p>}
                 {/* Follow-up status buttons */}
-                <div className="flex flex-wrap gap-1.5 border-t border-gray-100 dark:border-white/8 pt-3">
-                  {(['CONTACT', 'CONTACTED', 'DO_NOT_CONTACT'] as const).map(s => (
-                    <button
-                      key={s}
-                      onClick={() => updateFollowUpStatus(n.id, fus === s ? 'NONE' : s)}
-                      disabled={updatingStatus !== null}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50 ${
-                        fus === s ? FOLLOWUP_STATUS_LABELS[s].color + ' ring-1 ring-current' : 'bg-gray-50 dark:bg-white/5 text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10'
-                      }`}>
-                      {FOLLOWUP_STATUS_LABELS[s].label}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap gap-2 border-t border-gray-100 dark:border-white/8 pt-3">
+                  {(['CONTACT', 'CONTACTED', 'DO_NOT_CONTACT'] as const).map(s => {
+                    const isActive = fus === s
+                    const SOLID: Record<string, string> = { CONTACT: '#3B82F6', CONTACTED: '#10B981', DO_NOT_CONTACT: '#EF4444' }
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => updateFollowUpStatus(n.id, fus === s ? 'NONE' : s)}
+                        disabled={updatingStatus !== null}
+                        style={isActive
+                          ? { background: SOLID[s], boxShadow: `0 2px 8px ${SOLID[s]}66` }
+                          : { border: `1.5px solid ${SOLID[s]}`, color: SOLID[s] }
+                        }
+                        className={`px-4 py-2 rounded-full text-xs font-bold transition-all disabled:opacity-50 ${isActive ? 'text-white' : 'bg-transparent'}`}>
+                        {FOLLOWUP_STATUS_LABELS[s].label}
+                      </button>
+                    )
+                  })}
                 </div>
               </Card>
             )
