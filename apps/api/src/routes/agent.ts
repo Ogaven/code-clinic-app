@@ -50,18 +50,31 @@ router.post('/whatsapp/webhook', async (req, res) => {
     if (mediaType === 'Audio' || mediaType === 'Voice') {
       console.log('[Sarah Media]', mediaType, 'from', rawFrom)
       const audioUrl = body.url || body.mediaUrl || body.audioUrl || body.media?.url
+      console.log('[AT Audio] URL resolved:', audioUrl)
       if (audioUrl) {
         try {
-          const dlRes     = await fetch(audioUrl)
+          const dlRes = await fetch(audioUrl)
+          console.log('[AT Audio] Download status:', dlRes.status, dlRes.statusText)
+          console.log('[AT Audio] Content-Type:', dlRes.headers.get('content-type'))
+          console.log('[AT Audio] Content-Length:', dlRes.headers.get('content-length'))
+
           const audioBuffer = await dlRes.arrayBuffer()
-          const ts        = Date.now()
-          const oggPath   = `/tmp/voice-${ts}.ogg`
-          const mp3Path   = `/tmp/voice-${ts}.mp3`
+          console.log('[AT Audio] Buffer size bytes:', audioBuffer.byteLength)
+
+          const ts      = Date.now()
+          const oggPath = `/tmp/voice-${ts}.ogg`
+          const mp3Path = `/tmp/voice-${ts}.mp3`
           try {
             fs.writeFileSync(oggPath, Buffer.from(audioBuffer))
+            console.log('[AT Audio] Wrote OGG file:', oggPath)
+
             execFileSync('ffmpeg', ['-y', '-i', oggPath, mp3Path], { stdio: 'ignore' })
+            console.log('[AT Audio] FFmpeg conversion complete, reading MP3')
+
             const mp3Buffer = fs.readFileSync(mp3Path)
-            const base64    = mp3Buffer.toString('base64')
+            console.log('[AT Audio] MP3 size bytes:', mp3Buffer.length)
+
+            const base64 = mp3Buffer.toString('base64')
 
             const claudeRes = await anthropic.messages.create({
               model:      'claude-sonnet-4-6',
@@ -89,6 +102,8 @@ router.post('/whatsapp/webhook', async (req, res) => {
             try { fs.unlinkSync(mp3Path) } catch {}
           }
         } catch (err: any) {
+          console.error('[AT Audio] FULL ERROR:', err)
+          console.error('[AT Audio] Error stack:', err?.stack)
           console.error('[Claude Audio] AT transcription failed:', err?.message || err)
         }
       }
