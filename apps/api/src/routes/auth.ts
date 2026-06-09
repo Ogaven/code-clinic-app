@@ -23,20 +23,22 @@ const totpSchema = z.object({
   token: z.string().length(6),
 })
 
-function signAccess(user: { id: string; email: string; role: string; firstName: string; lastName: string; doctorId?: string }) {
+function signAccess(user: { id: string; email: string; role: string; firstName: string; lastName: string; doctorId?: string; permissions?: string }) {
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName,
-      ...(user.doctorId ? { doctorId: user.doctorId } : {}) },
+      ...(user.doctorId   ? { doctorId:    user.doctorId   } : {}),
+      ...(user.permissions !== undefined ? { permissions: user.permissions } : {}) },
     process.env.JWT_SECRET!,
     { expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
   )
 }
 
 async function getSignPayload(user: { id: string; email: string; role: string; firstName: string; lastName: string }) {
-  const base = { ...user, doctorId: undefined as string | undefined }
-  if (user.role !== 'DOCTOR') return base
-  const doctor = await prisma.doctor.findUnique({ where: { userId: user.id }, select: { id: true } })
-  base.doctorId = doctor?.id
+  const fullUser = await prisma.user.findUnique({ where: { id: user.id }, select: { permissions: true, doctor: { select: { id: true } } } })
+  const base: { id: string; email: string; role: string; firstName: string; lastName: string; doctorId?: string; permissions: string } = {
+    ...user, permissions: fullUser?.permissions || '{}',
+  }
+  if (user.role === 'DOCTOR') base.doctorId = fullUser?.doctor?.id
   return base
 }
 
@@ -78,7 +80,7 @@ router.post('/setup', async (req, res) => {
       update: { passwordHash: hash, firstName, lastName, role: 'ADMIN' },
       create: { email, passwordHash: hash, role: 'ADMIN', firstName, lastName, phone: '+256700000000' },
     })
-    const accessToken  = signAccess(user)
+    const accessToken  = signAccess({ ...user, permissions: user.permissions ?? undefined })
     const refreshToken = signRefresh(user.id)
     setRefreshCookie(res, refreshToken)
     res.json({ accessToken, user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName } })
@@ -127,6 +129,7 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   res.json({
     accessToken,
     user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName, avatarR2Key: user.avatarR2Key, avatarUrl,
+      permissions: payload.permissions || '{}',
       ...(payload.doctorId ? { doctorId: payload.doctorId } : {}) },
   })
 })
@@ -198,6 +201,7 @@ router.get('/google/callback', async (req, res) => {
     // Redirect to frontend callback page with token
     const userData = encodeURIComponent(JSON.stringify({
       id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName,
+      permissions: googlePayload.permissions || '{}',
       ...(googlePayload.doctorId ? { doctorId: googlePayload.doctorId } : {}),
     }))
     res.redirect(`${appUrl}/auth/callback?token=${accessToken}&user=${userData}`)
@@ -234,6 +238,7 @@ router.post('/2fa/validate', authLimiter, validate(totpSchema), async (req, res)
   const refreshToken = signRefresh(user.id)
   setRefreshCookie(res, refreshToken)
   res.json({ accessToken, user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName,
+    permissions: tfaPayload.permissions || '{}',
     ...(tfaPayload.doctorId ? { doctorId: tfaPayload.doctorId } : {}) } })
 })
 

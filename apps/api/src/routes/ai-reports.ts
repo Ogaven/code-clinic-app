@@ -1,7 +1,8 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
-import { clinicalStaff } from '../middleware/rbac'
+import { adminOnly, clinicalStaff } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
+import { checkAndSendAppointmentConfirmations } from '../ai-suite/scheduler/followup.service'
 
 const router = Router()
 
@@ -81,6 +82,16 @@ router.get('/confirmation-report', requireAuth, clinicalStaff, async (_req, res)
     res.json({ confirmations, upcomingAppts })
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch confirmation report' })
+  }
+})
+
+// POST /ai-suite/trigger/confirmations — manually trigger confirmation run (bypasses time gate)
+router.post('/trigger/confirmations', requireAuth, adminOnly, async (_req, res) => {
+  try {
+    checkAndSendAppointmentConfirmations(true).catch(e => console.error('[TriggerConfirmations]', e))
+    res.json({ message: 'Confirmation run triggered' })
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to trigger confirmations' })
   }
 })
 

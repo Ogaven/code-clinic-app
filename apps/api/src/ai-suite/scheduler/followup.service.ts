@@ -363,12 +363,12 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
 // TOMORROW with status SCHEDULED or CONFIRMED that haven't been sent a
 // confirmation request, and asks each patient to confirm via WhatsApp.
 
-export async function checkAndSendAppointmentConfirmations(): Promise<void> {
+export async function checkAndSendAppointmentConfirmations(forceRun = false): Promise<void> {
   const nowUTC     = new Date()
   const eatHourNow = parseInt(
     nowUTC.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
   )
-  if (eatHourNow < 9 || eatHourNow >= 10) return
+  if (!forceRun && (eatHourNow < 9 || eatHourNow >= 10)) return
 
   const tomorrow        = new Date(nowUTC)
   tomorrow.setDate(tomorrow.getDate() + 1)
@@ -416,8 +416,9 @@ export async function checkAndSendAppointmentConfirmations(): Promise<void> {
     const addr         = minor && guardianName ? guardianName : minor ? 'there' : patient.firstName
     const start        = new Date(appt.startAt)
     const timeStr      = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
-    const serviceName  = appt.service?.name || 'appointment'
-    const msg          = `Hello ${addr}, this is a reminder from Code Clinic 😊 ${minor ? `${patient.firstName} has` : 'You have'} an appointment tomorrow at ${timeStr} with Dr ${doctorFirst} for ${serviceName}. Please reply YES to confirm or call 0205477000 to reschedule. Thank you!`
+    const msg          = minor
+      ? `Hello ${addr}, this is Sarah from Code Clinic. ${patient.firstName} has an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
+      : `Hello ${patient.firstName}, this is Sarah from Code Clinic. You have an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
 
     try {
       await sendWhatsAppMessage(patient.phone, msg)
