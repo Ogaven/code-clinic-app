@@ -39,6 +39,7 @@ import stocksRouter from './routes/stocks'
 import webhooksRouter from './routes/webhooks'
 import auditRouter from './routes/audit'
 import aiReportsRouter from './routes/ai-reports'
+import permissionsRouter from './routes/permissions'
 
 // AI Suite routers
 import aiSuiteRouter     from './ai-suite/whatsapp/whatsapp.routes'
@@ -140,6 +141,7 @@ app.get('/health', async (_req, res) => {
 // ─── Routes ───────────────────────────────────────────────────
 app.use('/auth',         authRouter)
 app.use('/employees',    employeesRouter)
+app.use('/staff',        permissionsRouter)
 
 // Google Calendar OAuth callback alias — Google redirects to this URL
 // (integrationsRouter handles /google-calendar/callback internally)

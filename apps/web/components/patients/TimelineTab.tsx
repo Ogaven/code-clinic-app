@@ -247,6 +247,28 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
   const FU_SOLID: Record<string, string>  = { CONTACT: '#3B82F6', CONTACTED: '#10B981', DO_NOT_CONTACT: '#EF4444' }
   const FU_LABEL: Record<string, string>  = { CONTACT: 'Contact', CONTACTED: 'Contacted', DO_NOT_CONTACT: 'Do Not Contact' }
 
+  const topFUS = notes[0]?.followUpStatus || 'NONE'
+
+  const updateTopFollowUp = async (newStatus: string) => {
+    setUpdatingFU('top')
+    const token = localStorage.getItem('cc_token')
+    try {
+      const res = await fetch(`/api-proxy/clinical/patients/${patientId}/treatment-notes/followup-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setNotes(prev => {
+          const idx = prev.findIndex(n => n.id === updated.id)
+          if (idx >= 0) return prev.map(n => n.id === updated.id ? { ...n, followUpStatus: newStatus } : n)
+          return [updated, ...prev]
+        })
+      }
+    } catch {/* ignore */} finally { setUpdatingFU(null) }
+  }
+
   const updateFollowUpStatus = async (noteId: string, current: string, next: string) => {
     setUpdatingFU(noteId)
     const token = localStorage.getItem('cc_token')
@@ -294,6 +316,34 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
 
   return (
     <div className="space-y-7">
+
+      {/* ── Follow-up Status ── */}
+      <div className="bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/10 rounded-2xl p-4">
+        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Follow-up Status</p>
+        <div className="flex flex-wrap gap-2">
+          {(['CONTACT', 'CONTACTED', 'DO_NOT_CONTACT'] as const).map(s => {
+            const isActive = topFUS === s
+            return (
+              <button key={s}
+                onClick={() => updateTopFollowUp(topFUS === s ? 'NONE' : s)}
+                disabled={loading || updatingFU === 'top'}
+                style={isActive
+                  ? { background: FU_SOLID[s], boxShadow: `0 2px 8px ${FU_SOLID[s]}66` }
+                  : { border: `1.5px solid ${FU_SOLID[s]}`, color: FU_SOLID[s] }}
+                className={`px-5 py-2 rounded-full text-sm font-bold transition-all disabled:opacity-50 ${isActive ? 'text-white' : 'bg-transparent'}`}>
+                {FU_LABEL[s]}
+              </button>
+            )
+          })}
+          {topFUS !== 'NONE' && (
+            <button onClick={() => updateTopFollowUp('NONE')}
+              disabled={updatingFU === 'top'}
+              className="px-4 py-2 rounded-full text-sm font-bold text-slate-400 border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 transition-all disabled:opacity-50">
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* ── Status badge + override ── */}
       <div className="flex items-center flex-wrap gap-3">

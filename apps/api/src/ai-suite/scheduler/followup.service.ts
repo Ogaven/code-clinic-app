@@ -208,6 +208,16 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
   for (const appt of missedAppts) {
     const patient = appt.patient
     if (!patient?.phone) continue
+
+    const latestNote = await prisma.treatmentNote.findFirst({
+      where: { patientId: patient.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!latestNote || latestNote.followUpStatus !== 'CONTACT') {
+      console.log('[PostApptFollowup] Skipping', patient.firstName, '— status is', latestNote?.followUpStatus || 'none')
+      continue
+    }
+
     const alreadySent = await prisma.aiScheduledMessage.findFirst({
       where: { patientId: patient.id, templateType: 'MISSED_APPOINTMENT', sent: true,
                scheduledFor: { gte: startOfYesterday, lte: endOfYesterday } },
@@ -258,6 +268,15 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
     const doctorFirst  = appt.doctor.user.firstName
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
+
+    const latestNoteC = await prisma.treatmentNote.findFirst({
+      where: { patientId: patient.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!latestNoteC || latestNoteC.followUpStatus !== 'CONTACT') {
+      console.log('[PostApptFollowup] Skipping', patient.firstName, '— status is', latestNoteC?.followUpStatus || 'none')
+      continue
+    }
 
     // First-contact detection
     const agentMsgCount  = await prisma.aiMessage.count({ where: { conversation: { phoneNumber: patient.phone }, role: 'AGENT' } })

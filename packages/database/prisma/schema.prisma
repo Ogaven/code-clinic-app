@@ -86,6 +86,7 @@ model User {
   twoFactorSecret   String?
   twoFactorEnabled  Boolean   @default(false)
   isActive          Boolean   @default(true)
+  permissions       String?   @default("{}")
   lastLogin         DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

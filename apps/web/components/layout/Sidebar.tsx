@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, BookOpen, Package,
   ListChecks, Inbox, Phone, Mic,
   ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
-  Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2, ScrollText, UserPlus,
+  Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2, ScrollText, UserPlus, Shield,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -37,8 +37,9 @@ const adminNav: NavGroup[] = [
       { label: 'Scheduling',   href: '/scheduling',   icon: CalendarDays },
       { label: 'Appointments', href: '/appointments', icon: ListChecks },
       { label: 'Patients',     href: '/patients',     icon: Users },
-      { label: 'Staff List',   href: '/employees',    icon: UserCog },
-      { label: 'Audit Log',    href: '/audit-log',    icon: ScrollText },
+      { label: 'Staff List',        href: '/employees',             icon: UserCog },
+      { label: 'Staff Permissions', href: '/admin/staff/permissions', icon: Shield },
+      { label: 'Audit Log',         href: '/audit-log',              icon: ScrollText },
     ],
   },
   {

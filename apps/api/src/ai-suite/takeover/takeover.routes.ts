@@ -110,8 +110,8 @@ router.post('/conversations/:conversationId/send', async (req, res) => {
       const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
       await sendWhatsAppMessage(conversation.phoneNumber, text.trim())
     } else if (conversation.channel === 'SMS') {
-      const { sendSMS } = await import('../sms/sms.service')
-      await sendSMS(conversation.phoneNumber, text.trim())
+      const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
+      await sendWhatsAppMessage(conversation.phoneNumber, text.trim())
     } else if (conversation.channel === 'FACEBOOK' || conversation.channel === 'INSTAGRAM') {
       const { sendSocialReply } = await import('../facebook/facebook.routes')
       await sendSocialReply(conversation.phoneNumber, text.trim(), conversation.channel as 'FACEBOOK' | 'INSTAGRAM')
