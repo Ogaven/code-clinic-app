@@ -14,6 +14,10 @@ function isMinor(dob: Date | null | undefined): boolean {
   return age < 15
 }
 
+function toProper(s: string | null | undefined): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : ''
+}
+
 // ── checkAndSendFollowups ─────────────────────────────────────────────────────
 // Runs every hour. Finds COMPLETED appointments from 23–25 hours ago and sends a
 // warm post-visit follow-up message if one hasn't been sent yet.
@@ -57,10 +61,11 @@ export async function checkAndSendFollowups(): Promise<void> {
     if (alreadySent) continue
 
     // ── Build message ─────────────────────────────────────────────────────────
-    const channel = 'WHATSAPP'
-    const doctor  = `Dr ${appt.doctor.user.firstName}`
-    const message =
-      `Hello ${patient.firstName}, hope you are feeling well after your visit yesterday with ${doctor} 😊 How are you doing? Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you.`
+    const channel   = 'WHATSAPP'
+    const doctor    = `Dr ${appt.doctor.user.firstName}`
+    const greetName = toProper(patient.lastName || patient.firstName)
+    const message   =
+      `Hello ${greetName}, hope you are feeling well after your visit yesterday with ${doctor} 😊 How are you doing? Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you.`
 
     // ── Send ──────────────────────────────────────────────────────────────────
     try {
@@ -126,7 +131,7 @@ export async function processAfterHoursQueue(): Promise<void> {
       scheduledFor: { lte: now },
     },
     include: {
-      patient: { select: { id: true, firstName: true, phone: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
     },
     take: 50,
   })
@@ -135,7 +140,7 @@ export async function processAfterHoursQueue(): Promise<void> {
   console.log(`[AfterHoursQueue] Processing ${entries.length} morning follow-up(s)`)
 
   for (const entry of entries) {
-    const name = entry.patient?.firstName || 'there'
+    const name = toProper(entry.patient?.lastName || entry.patient?.firstName) || 'there'
 
     let templateName: string | undefined
     let message: string
@@ -227,7 +232,8 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
     const doctorFirst  = appt.doctor.user.firstName
-    const addr         = minor && guardianName ? guardianName : minor ? 'there' : patient.firstName
+    const greetName    = toProper(patient.lastName || patient.firstName)
+    const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
     const msg          = `Hello ${addr}, we noticed you missed your appointment yesterday with Dr ${doctorFirst}. We hope everything is okay 😊 Would you like to reschedule? We would love to see you.`
 
     try {
@@ -283,16 +289,17 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
     const isFirstContact = agentMsgCount === 0
 
     // Stage 1 greeting
+    const greetName = toProper(patient.lastName || patient.firstName)
     let stage1: string
     if (minor) {
       const addr = guardianName ? `Hello ${guardianName},` : `Hello,`
       stage1 = isFirstContact
-        ? `${addr} Good morning. This is Sarah from Code Clinic 😊 I am reaching out regarding your child ${patient.firstName}.`
-        : `${addr} Good morning 😊 I am checking in on ${patient.firstName}.`
+        ? `${addr} Good morning. This is Sarah from Code Clinic 😊 I am reaching out regarding your child ${greetName}.`
+        : `${addr} Good morning 😊 I am checking in on ${greetName}.`
     } else {
       stage1 = isFirstContact
-        ? `Hello ${patient.firstName}, good morning. This is Sarah from Code Clinic 😊`
-        : `Hello ${patient.firstName}, good morning 😊`
+        ? `Hello ${greetName}, good morning. This is Sarah from Code Clinic 😊`
+        : `Hello ${greetName}, good morning 😊`
     }
 
     // Get or create conversation
@@ -413,12 +420,13 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
     const doctorFirst  = appt.doctor.user.firstName
-    const addr         = minor && guardianName ? guardianName : minor ? 'there' : patient.firstName
+    const greetName    = toProper(patient.lastName || patient.firstName)
+    const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
     const start        = new Date(appt.startAt)
     const timeStr      = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
     const msg          = minor
-      ? `Hello ${addr}, this is Sarah from Code Clinic. ${patient.firstName} has an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
-      : `Hello ${patient.firstName}, this is Sarah from Code Clinic. You have an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
+      ? `Hello ${addr}, this is Sarah from Code Clinic. ${greetName} has an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
+      : `Hello ${greetName}, this is Sarah from Code Clinic. You have an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
 
     try {
       await sendWhatsAppMessage(patient.phone, msg)
@@ -454,7 +462,7 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
         createdAt:  { gte: windowStart },
       },
       include: {
-        patient: { select: { id: true, firstName: true, phone: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
       },
       take: 50,
     })
@@ -491,7 +499,7 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
     if (recentBooking) continue
 
     const templateName = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
-    const firstName    = patient.firstName || 'there'
+    const firstName    = toProper(patient.lastName || patient.firstName) || 'there'
     try {
       try {
         await sendWhatsAppTemplate(patient.phone, templateName, [firstName])
@@ -538,7 +546,7 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
         none: { startAt: { gte: ninetyDaysAgo } },
       },
     },
-    select: { id: true, firstName: true, phone: true },
+    select: { id: true, firstName: true, lastName: true, phone: true },
     take: 100,
   })
 
@@ -560,7 +568,7 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
     if (alreadySent) continue
 
     const templateName = process.env.WA_TEMPLATE_REACTIVATION_NAME || 'cc_patient_reactivation'
-    const firstName    = patient.firstName || 'there'
+    const firstName    = toProper(patient.lastName || patient.firstName) || 'there'
     try {
       try {
         await sendWhatsAppTemplate(patient.phone, templateName, [firstName])
