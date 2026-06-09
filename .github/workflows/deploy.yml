@@ -8,19 +8,27 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to server
+      - name: Deploy API to server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 165.22.81.15
           username: root
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
+            export NVM_DIR=/root/.nvm
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             cd /var/www/codeclinic
             git fetch origin
             git reset --hard origin/main
+            cd apps/api && npm run build && pm2 restart 0
+
+      - name: Deploy Web to server (zero-downtime)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 165.22.81.15
+          username: root
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
             export NVM_DIR=/root/.nvm
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            NODE_OPTIONS="--max-old-space-size=3072" pnpm --filter web build
-            pnpm --filter api build
-            pm2 restart all
-            pm2 save
+            bash /var/www/codeclinic/deploy-web.sh
