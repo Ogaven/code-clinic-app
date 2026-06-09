@@ -19,12 +19,14 @@ interface NavItem  { label: string; href: string; icon: React.ElementType; sub?:
 interface NavGroup { label?: string; items: NavItem[] }
 
 const AI_SUITE_SUB: NavItem[] = [
-  { label: 'Agent Control',  href: '/ai-suite',               icon: Bot },
-  { label: 'Inbox',          href: '/ai-suite/inbox',          icon: Inbox },
-  { label: 'Call Logs',      href: '/ai-suite/calls',          icon: Phone },
-  { label: 'Voice Studio',   href: '/ai-suite/voice-studio',   icon: Mic },
-  { label: 'Knowledge Base', href: '/ai-suite/knowledge-base', icon: BookOpen },
-  { label: 'Settings',       href: '/ai-suite/settings',       icon: Settings },
+  { label: 'Agent Control',          href: '/ai-suite',                        icon: Bot },
+  { label: 'Inbox',                  href: '/ai-suite/inbox',                  icon: Inbox },
+  { label: 'Call Logs',              href: '/ai-suite/calls',                  icon: Phone },
+  { label: 'Voice Studio',           href: '/ai-suite/voice-studio',           icon: Mic },
+  { label: 'Knowledge Base',         href: '/ai-suite/knowledge-base',         icon: BookOpen },
+  { label: 'Follow-up Dashboard',    href: '/ai-suite/followup-dashboard',     icon: ListChecks },
+  { label: 'Confirmation Dashboard', href: '/ai-suite/confirmation-dashboard', icon: CalendarDays },
+  { label: 'Settings',               href: '/ai-suite/settings',               icon: Settings },
 ]
 
 const adminNav: NavGroup[] = [

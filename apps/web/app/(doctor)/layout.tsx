@@ -9,7 +9,7 @@ import {
   MessageSquare, Settings, HelpCircle, Download,
   Bell, UserCircle, LogOut,
   ChevronLeft, ChevronRight, Menu, X,
-  Sun, Moon,
+  Sun, Moon, ListChecks, CheckCircle2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import DoctorChatbot from '@/components/DoctorChatbot'
@@ -25,11 +25,13 @@ function applyTheme(t: Theme) {
 }
 
 const NAV_MAIN = [
-  { label: 'Dashboard',      href: '/doctor/dashboard',    icon: LayoutDashboard },
-  { label: 'Appointments',   href: '/doctor/schedule',     icon: CalendarDays },
-  { label: 'My Patients',    href: '/doctor/patients',     icon: Users },
-  { label: 'Patient Flow',   href: '/doctor/flow',         icon: Activity },
-  { label: 'Communications', href: '/doctor/messages',     icon: MessageSquare, badge: true },
+  { label: 'Dashboard',              href: '/doctor/dashboard',                       icon: LayoutDashboard },
+  { label: 'Appointments',           href: '/doctor/schedule',                        icon: CalendarDays },
+  { label: 'My Patients',            href: '/doctor/patients',                        icon: Users },
+  { label: 'Patient Flow',           href: '/doctor/flow',                            icon: Activity },
+  { label: 'Communications',         href: '/doctor/messages',                        icon: MessageSquare, badge: true },
+  { label: 'Follow-up Dashboard',    href: '/doctor/ai-suite/followup-dashboard',     icon: CheckCircle2 },
+  { label: 'Confirmation Dashboard', href: '/doctor/ai-suite/confirmation-dashboard', icon: ListChecks },
 ]
 
 const NAV_BOTTOM = [

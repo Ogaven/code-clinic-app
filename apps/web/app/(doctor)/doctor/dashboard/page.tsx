@@ -266,6 +266,32 @@ export default function DoctorDashboardPage() {
         </Link>
       </div>
 
+      {/* ── AI Suite Quick Links ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3">
+        <Link href="/doctor/ai-suite/followup-dashboard"
+          className="flex items-center gap-3 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 bg-white dark:bg-white/5 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all hover:-translate-y-0.5 shadow-sm group">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>
+            <CheckCircle size={16} className="text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-gray-700 dark:text-gray-300">Follow-up Dashboard</p>
+            <p className="text-[10px] text-gray-400">AI follow-up activity</p>
+          </div>
+          <ChevronRight size={14} className="text-gray-300 dark:text-white/20 group-hover:text-emerald-500 transition-colors flex-shrink-0" />
+        </Link>
+        <Link href="/doctor/ai-suite/confirmation-dashboard"
+          className="flex items-center gap-3 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/30 bg-white dark:bg-white/5 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all hover:-translate-y-0.5 shadow-sm group">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg,#3b82f6,#2563eb)' }}>
+            <CalendarDays size={16} className="text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-gray-700 dark:text-gray-300">Confirmation Dashboard</p>
+            <p className="text-[10px] text-gray-400">Appointment confirmations</p>
+          </div>
+          <ChevronRight size={14} className="text-gray-300 dark:text-white/20 group-hover:text-blue-500 transition-colors flex-shrink-0" />
+        </Link>
+      </div>
+
       {/* ── LIVE PATIENT FLOW ───────────────────────────────────────────────── */}
       {doctor && <LivePatientFlow doctorId={doctor.id} refreshInterval={20000} patientBasePath="/doctor/patients" />}
 
