@@ -91,6 +91,7 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
   const [showAllPast,  setShowAllPast] = useState(false)
   const [overrideStatus,  setOverrideStatus]  = useState('')
   const [savingStatus,    setSavingStatus]    = useState(false)
+  const [updatingFU,      setUpdatingFU]      = useState<string | null>(null)
   const recognitionRef  = useRef<any>(null)
   const isRecordingRef  = useRef(false)
   const finalTextRef    = useRef('')         // committed (final-only) text
@@ -241,6 +242,24 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
       setOverrideStatus(newStatus)
       setData((d: any) => d ? { ...d, savedStatus: newStatus, patientStatus: newStatus } : d)
     } catch {/* ignore */} finally { setSavingStatus(false) }
+  }
+
+  const FU_SOLID: Record<string, string>  = { CONTACT: '#3B82F6', CONTACTED: '#10B981', DO_NOT_CONTACT: '#EF4444' }
+  const FU_LABEL: Record<string, string>  = { CONTACT: 'Contact', CONTACTED: 'Contacted', DO_NOT_CONTACT: 'Do Not Contact' }
+
+  const updateFollowUpStatus = async (noteId: string, current: string, next: string) => {
+    setUpdatingFU(noteId)
+    const token = localStorage.getItem('cc_token')
+    try {
+      const res = await fetch(`/api-proxy/clinical/patients/${patientId}/treatment-notes/${noteId}/followup-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: next }),
+      })
+      if (res.ok) {
+        setNotes(prev => prev.map(n => n.id === noteId ? { ...n, followUpStatus: next } : n))
+      }
+    } catch {/* ignore */} finally { setUpdatingFU(null) }
   }
 
   const toggleConv = (id: string) =>
@@ -495,25 +514,44 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
           {notes.length === 0 && (
             <p className="text-sm text-slate-400">No notes yet.</p>
           )}
-          {notes.map((note: any) => (
-            <div key={note.id}
-              className="border border-slate-100 dark:border-white/10 rounded-xl px-4 py-3">
-              <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
-                {note.content}
-              </p>
-              <p className="text-xs text-slate-400 mt-2">
-                {note.author
-                  ? `${note.author.firstName} ${note.author.lastName}`
-                  : 'Staff'} ·{' '}
-                {new Date(note.createdAt).toLocaleDateString('en-UG', {
-                  day: 'numeric', month: 'short', year: 'numeric',
-                })}{' '}
-                {new Date(note.createdAt).toLocaleTimeString('en-UG', {
-                  hour: '2-digit', minute: '2-digit',
-                })}
-              </p>
-            </div>
-          ))}
+          {notes.map((note: any) => {
+            const fus = note.followUpStatus || 'NONE'
+            return (
+              <div key={note.id}
+                className="border border-slate-100 dark:border-white/10 rounded-xl px-4 py-3">
+                <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                  {note.content}
+                </p>
+                <p className="text-xs text-slate-400 mt-2">
+                  {note.author
+                    ? `${note.author.firstName} ${note.author.lastName}`
+                    : 'Staff'} ·{' '}
+                  {new Date(note.createdAt).toLocaleDateString('en-UG', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                  })}{' '}
+                  {new Date(note.createdAt).toLocaleTimeString('en-UG', {
+                    hour: '2-digit', minute: '2-digit',
+                  })}
+                </p>
+                <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-white/8">
+                  {(['CONTACT', 'CONTACTED', 'DO_NOT_CONTACT'] as const).map(s => {
+                    const isActive = fus === s
+                    return (
+                      <button key={s}
+                        onClick={() => updateFollowUpStatus(note.id, fus, fus === s ? 'NONE' : s)}
+                        disabled={updatingFU !== null}
+                        style={isActive
+                          ? { background: FU_SOLID[s], boxShadow: `0 2px 8px ${FU_SOLID[s]}66` }
+                          : { border: `1.5px solid ${FU_SOLID[s]}`, color: FU_SOLID[s] }}
+                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all disabled:opacity-50 ${isActive ? 'text-white' : 'bg-transparent'}`}>
+                        {FU_LABEL[s]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </section>
 

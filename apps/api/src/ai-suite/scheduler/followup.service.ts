@@ -1,5 +1,4 @@
 import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachable } from '../whatsapp/whatsapp.service'
-import { sendSMS } from '../sms/sms.service'
 import { prisma } from '../../lib/prisma'
 
 // EAT hour helper (UTC+3)
@@ -57,24 +56,15 @@ export async function checkAndSendFollowups(): Promise<void> {
     })
     if (alreadySent) continue
 
-    // ── Determine channel ─────────────────────────────────────────────────────
-    const whatsappConv = await prisma.aiConversation.findFirst({
-      where: { phoneNumber: patient.phone, channel: 'WHATSAPP' },
-    })
-    const channel = whatsappConv ? 'WHATSAPP' : 'SMS'
-
     // ── Build message ─────────────────────────────────────────────────────────
+    const channel = 'WHATSAPP'
     const doctor  = `Dr ${appt.doctor.user.firstName}`
     const message =
       `Hello ${patient.firstName}, hope you are feeling well after your visit yesterday with ${doctor} 😊 How are you doing? Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you.`
 
     // ── Send ──────────────────────────────────────────────────────────────────
     try {
-      if (channel === 'WHATSAPP') {
-        await sendWhatsAppMessage(patient.phone, message)
-      } else {
-        await sendSMS(patient.phone, message)
-      }
+      await sendWhatsAppMessage(patient.phone, message)
     } catch (err: any) {
       console.error(`[Followup] Send failed for ${patient.phone}:`, err.message ?? err)
       continue

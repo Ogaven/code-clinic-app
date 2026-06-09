@@ -30,6 +30,7 @@ interface Patient {
   email?: string; gender?: string; dob?: string; isActive: boolean; status?: string
   createdAt: string; _count?: { appointments: number }
   avatarUrl?: string
+  treatmentNotes?: Array<{ id: string; followUpStatus: string }>
 }
 
 const STATUS_BADGES: Record<string, { label: string; pill: string }> = {
@@ -40,6 +41,16 @@ const STATUS_BADGES: Record<string, { label: string; pill: string }> = {
   DORMANT:       { label: 'Dormant',     pill: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
   BALANCE_OWING: { label: 'Balance Due', pill: 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400' },
 }
+
+const FOLLOWUP_PILL: Record<string, string> = {
+  CONTACT:        'bg-blue-100 text-blue-700',
+  CONTACTED:      'bg-emerald-100 text-emerald-700',
+  DO_NOT_CONTACT: 'bg-red-100 text-red-600',
+}
+const FOLLOWUP_LABEL: Record<string, string> = {
+  CONTACT: 'Contact', CONTACTED: 'Contacted', DO_NOT_CONTACT: 'Do Not Contact',
+}
+const FOLLOWUP_CYCLE = ['NONE', 'CONTACT', 'CONTACTED', 'DO_NOT_CONTACT']
 
 const COLORS = ['#29ABE2','#9B59B6','#2ECC71','#E8A838','#E74C3C','#1ABC9C','#F39C12','#3498DB']
 function avatarColor(name: string) {
@@ -73,6 +84,28 @@ export default function PatientsPage() {
   const [sheetImporting, setSheetImporting] = useState(false)
   const [sheetStep,      setSheetStep]      = useState<'url' | 'preview' | 'results'>('url')
   const [sheetPreview,   setSheetPreview]   = useState<{ headers: string[]; rows: Record<string, string>[]; total: number } | null>(null)
+  const [followUpUpdates, setFollowUpUpdates] = useState<Record<string, string>>({})
+
+  function getFollowUpStatus(p: Patient): string {
+    return followUpUpdates[p.id] ?? p.treatmentNotes?.[0]?.followUpStatus ?? 'NONE'
+  }
+
+  async function updateFollowUpStatus(e: React.MouseEvent, p: Patient) {
+    e.stopPropagation()
+    const current = getFollowUpStatus(p)
+    const idx  = FOLLOWUP_CYCLE.indexOf(current)
+    const next = FOLLOWUP_CYCLE[(idx + 1) % FOLLOWUP_CYCLE.length]
+    setFollowUpUpdates(prev => ({ ...prev, [p.id]: next }))
+    try {
+      await fetch(`${API}/clinical/patients/${p.id}/treatment-notes/followup-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authH },
+        body: JSON.stringify({ status: next }),
+      })
+    } catch {
+      setFollowUpUpdates(prev => ({ ...prev, [p.id]: current }))
+    }
+  }
   const [columnMap,      setColumnMap]      = useState<Record<string, string>>({})
   const [sheetResult,    setSheetResult]    = useState<{ created: number; updated: number; skipped: number; total: number; errors?: string[] } | null>(null)
   const [showSkipped,    setShowSkipped]    = useState(false)
@@ -516,6 +549,12 @@ export default function PatientsPage() {
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <Phone size={10} className="text-cyan-500 flex-shrink-0" />
                         <span className="text-xs text-gray-500 dark:text-white/50">{p.phone}</span>
+                        {getFollowUpStatus(p) !== 'NONE' && (
+                          <button onClick={e => updateFollowUpStatus(e, p)}
+                            className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', FOLLOWUP_PILL[getFollowUpStatus(p)])}>
+                            {FOLLOWUP_LABEL[getFollowUpStatus(p)]}
+                          </button>
+                        )}
                       </div>
                       {p.email && (
                         <p className="text-[11px] text-gray-400 dark:text-white/30 truncate mt-0.5">{p.email}</p>
@@ -592,7 +631,7 @@ export default function PatientsPage() {
                       <td className="px-4 py-3 hidden lg:table-cell">
                         <span className="text-xs font-bold text-gray-700 dark:text-white/70">{p._count?.appointments || 0}</span>
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2">
                           {p.status && STATUS_BADGES[p.status] ? (
                             <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', STATUS_BADGES[p.status].pill)}>
@@ -601,7 +640,13 @@ export default function PatientsPage() {
                           ) : (p._count?.appointments || 0) > 1 ? (
                             <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded-full">Returning</span>
                           ) : null}
-                          <ChevronRight size={14} className="text-gray-300 dark:text-white/20" />
+                          {getFollowUpStatus(p) !== 'NONE' && (
+                            <button onClick={e => updateFollowUpStatus(e, p)}
+                              className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full cursor-pointer', FOLLOWUP_PILL[getFollowUpStatus(p)])}>
+                              {FOLLOWUP_LABEL[getFollowUpStatus(p)]}
+                            </button>
+                          )}
+                          <ChevronRight size={14} className="text-gray-300 dark:text-white/20" onClick={() => router.push(`/receptionist/patients/${p.id}`)} />
                         </div>
                       </td>
                     </tr>

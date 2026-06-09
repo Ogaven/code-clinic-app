@@ -1,5 +1,4 @@
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
-import { sendSMS } from '../sms/sms.service'
 import { prisma } from '../../lib/prisma'
 
 // ── checkAndSendReminders ─────────────────────────────────────────────────────
@@ -47,51 +46,39 @@ export async function checkAndSendReminders(): Promise<void> {
     })
     if (alreadySent) continue
 
-    // ── Determine channel ─────────────────────────────────────────────────────
-    const whatsappConv = await prisma.aiConversation.findFirst({
-      where: { phoneNumber: patient.phone, channel: 'WHATSAPP' },
-    })
-    const channel = whatsappConv ? 'WHATSAPP' : 'SMS'
-
     // ── Build message ─────────────────────────────────────────────────────────
+    const channel = 'WHATSAPP'
     const time = appt.startAt.toLocaleTimeString('en-UG', {
       hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
     })
     const dayDate = appt.startAt.toLocaleDateString('en-UG', {
       weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi',
     })
-    const doctor  = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+    const doctor  = `Dr ${appt.doctor.user.firstName}`
     const message =
-      `Hi ${patient.firstName}! 👋 Just a reminder that you have an appointment tomorrow:\n\n` +
+      `Hello ${patient.firstName} 😊 Just a reminder that you have an appointment tomorrow:\n\n` +
       `📅 ${dayDate} at ${time}\n` +
-      `👨‍⚕️ ${doctor} — ${appt.service.name}\n` +
+      `👨‍⚕️ ${doctor}, ${appt.service.name}\n` +
       `📍 Code Clinic, Kamwokya\n\n` +
-      `Reply YES to confirm you'll be coming or NO if you need to reschedule.`
+      `Reply YES to confirm or NO to reschedule.`
 
     // ── Send ──────────────────────────────────────────────────────────────────
     try {
-      if (channel === 'WHATSAPP') {
-        const templateName = process.env.WA_TEMPLATE_REMINDER_NAME
-        if (templateName) {
-          // Try WhatsApp template (approved AT template with buttons)
-          try {
-            const doctor = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
-            await sendWhatsAppTemplate(patient.phone, templateName, [
-              patient.firstName,
-              dayDate,
-              time,
-              appt.service.name,
-              doctor,
-            ])
-          } catch {
-            // Template not approved yet — fall back to plain text
-            await sendWhatsAppMessage(patient.phone, message)
-          }
-        } else {
+      const templateName = process.env.WA_TEMPLATE_REMINDER_NAME
+      if (templateName) {
+        try {
+          await sendWhatsAppTemplate(patient.phone, templateName, [
+            patient.firstName,
+            dayDate,
+            time,
+            appt.service.name,
+            doctor,
+          ])
+        } catch {
           await sendWhatsAppMessage(patient.phone, message)
         }
       } else {
-        await sendSMS(patient.phone, message)
+        await sendWhatsAppMessage(patient.phone, message)
       }
     } catch (err: any) {
       console.error(`[Reminder] Send failed for ${patient.phone}:`, err.message ?? err)

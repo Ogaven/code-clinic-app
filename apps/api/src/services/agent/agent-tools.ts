@@ -19,22 +19,8 @@ async function sendEmail(opts: { to: string; subject: string; text: string }) {
 }
 
 async function sendSMS(to: string, message: string): Promise<void> {
-  const apiKey   = process.env.AT_API_KEY
-  const username = process.env.AT_USERNAME
-  const senderId = process.env.AT_SENDER_ID || 'CodeClinic'
-  if (!apiKey || !username || apiKey === 'your-key') {
-    console.log(`[SMS STUB] Would send to ${to}: ${message.slice(0, 60)}`)
-    return
-  }
-  try {
-    const AfricasTalking = require('africastalking')
-    const at  = AfricasTalking({ apiKey, username })
-    const sms = at.SMS
-    await sms.send({ to: [to], message, from: senderId })
-    console.log(`[SMS] Sent to ${to}`)
-  } catch (err: any) {
-    console.warn(`[SMS] Failed for ${to}:`, err.message)
-  }
+  const { sendWhatsAppMessage } = await import('../../ai-suite/whatsapp/whatsapp.service')
+  await sendWhatsAppMessage(to, message)
 }
 
 // ── Encryption helpers (medical notes) ─────────────────────────

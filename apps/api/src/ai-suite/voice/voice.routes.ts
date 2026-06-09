@@ -3,7 +3,7 @@ import multer from 'multer'
 import { makeOutboundCall, formatToE164, isSipConnected, streamAudioToCall, startBidirectionalVoiceCall } from './sip.service'
 import { startVoiceConversation } from './voice-ai.service'
 import { provisionCodeClinicAgent, getOrCreateAgentId } from './elevenlabs-conv-ai.service'
-import { sendSMS } from '../sms/sms.service'
+import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 
 import { prisma } from '../../lib/prisma'
 
@@ -47,10 +47,10 @@ router.post('/call', async (req, res) => {
         }).catch(() => null)
 
         if (!log) {
-          await sendSMS(
+          await sendWhatsAppMessage(
             toNumber,
-            `Hi! I tried calling you from Code Clinic but couldn't reach you. Feel free to reply here and I'll help you out 😊`,
-          ).catch(err => console.error('[Voice] SMS fallback error:', err.message))
+            `Hello! I tried calling you from Code Clinic but couldn't reach you. Feel free to reply here and I'll help you out 😊`,
+          ).catch((err: any) => console.error('[Voice] WA fallback error:', err.message))
         }
       },
     ).catch(err => console.error('[Voice] makeOutboundCall error:', err.message))
@@ -83,10 +83,10 @@ router.post('/no-answer-sms', async (req, res) => {
 
     const firstName = patientName ? patientName.trim().split(/\s+/)[0] : null
     const message   = firstName
-      ? `Hi ${firstName}! I tried calling you from Code Clinic but couldn't reach you. Feel free to reply here and I'll help you out 😊`
-      : `Hi! I tried calling you from Code Clinic but couldn't reach you. Feel free to reply here and I'll help you out 😊`
+      ? `Hello ${firstName} 😊 I tried calling you from Code Clinic but couldn't reach you. Feel free to reply here and I'll help you out.`
+      : `Hello 😊 I tried calling you from Code Clinic but couldn't reach you. Feel free to reply here and I'll help you out.`
 
-    await sendSMS(toNumber, message)
+    await sendWhatsAppMessage(toNumber, message)
 
     res.json({ success: true, message: 'SMS fallback sent' })
   } catch (err: any) {

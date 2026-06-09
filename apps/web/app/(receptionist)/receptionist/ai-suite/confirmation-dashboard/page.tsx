@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { RefreshCw, CalendarCheck, CheckCircle, Clock, XCircle } from 'lucide-react'
 
 const APPT_STATUS_STYLES: Record<string, string> = {
@@ -12,6 +13,7 @@ const APPT_STATUS_STYLES: Record<string, string> = {
 }
 
 export default function ConfirmationDashboardPage() {
+  const router = useRouter()
   const [data, setData]       = useState<{ confirmations: any[]; upcomingAppts: any[] } | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -79,7 +81,9 @@ export default function ConfirmationDashboardPage() {
         ) : (
           <div className="space-y-2">
             {data.upcomingAppts.map((a: any) => (
-              <div key={a.id} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl p-4 flex items-center gap-4">
+              <div key={a.id}
+                onClick={() => a.patient?.phone && router.push(`/receptionist/ai-suite/inbox?phone=${encodeURIComponent(a.patient.phone)}`)}
+                className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl p-4 flex items-center gap-4 cursor-pointer hover:border-cyan-200 dark:hover:border-cyan-700 transition-colors">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-semibold text-gray-900 dark:text-white">

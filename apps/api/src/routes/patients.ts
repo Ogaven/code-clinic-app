@@ -188,7 +188,10 @@ router.get('/', requireAuth, async (req, res) => {
         take: limit,
         skip: offset,
         orderBy,
-        include: { _count: { select: { appointments: true, treatmentPlans: true } } },
+        include: {
+          _count: { select: { appointments: true, treatmentPlans: true } },
+          treatmentNotes: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, followUpStatus: true } },
+        },
       }),
       prisma.patient.count({ where }),
     ])

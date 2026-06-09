@@ -234,6 +234,35 @@ router.patch('/patients/:id/treatment-notes/:noteId/followup-status', requireAut
   }
 })
 
+// POST /clinical/patients/:id/treatment-notes/followup-status
+// Creates a blank note if none exists, updates followUpStatus on the most recent note
+router.post('/patients/:id/treatment-notes/followup-status', requireAuth, async (req, res) => {
+  try {
+    const { status } = req.body
+    const allowed = ['NONE', 'CONTACT', 'CONTACTED', 'DO_NOT_CONTACT']
+    if (!allowed.includes(status)) { res.status(400).json({ error: 'Invalid status' }); return }
+
+    let note = await prisma.treatmentNote.findFirst({
+      where: { patientId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (!note) {
+      note = await prisma.treatmentNote.create({
+        data: { patientId: req.params.id, content: '', authorId: req.user!.id },
+      })
+    }
+
+    const updated = await prisma.treatmentNote.update({
+      where: { id: note.id },
+      data:  { followUpStatus: status },
+    })
+    res.json(updated)
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update follow-up status' })
+  }
+})
+
 // POST /clinical/patients/:id/treatment-notes
 router.post('/patients/:id/treatment-notes', requireAuth, doctorOrAdmin, async (req, res) => {
   try {

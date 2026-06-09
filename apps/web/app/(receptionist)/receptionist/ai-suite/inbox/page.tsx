@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Search, Send, Paperclip, Smile, X, Loader2,
   MessageSquare, Instagram, Facebook, Globe, Bot, UserCheck,
@@ -273,7 +274,9 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────────
-export default function InboxPage() {
+function InboxPage() {
+  const searchParams = useSearchParams()
+  const phoneParam   = searchParams.get('phone')
   const [channel,    setChannel]    = useState<ChannelKey>('WHATSAPP')
   const [convs,      setConvs]      = useState<Conversation[]>([])
   const [sel,        setSel]        = useState<Conversation | null>(null)
@@ -344,6 +347,13 @@ export default function InboxPage() {
     window.visualViewport?.addEventListener('resize', handler)
     return () => { window.visualViewport?.removeEventListener('resize', handler) }
   }, [])
+
+  useEffect(() => {
+    if (!phoneParam || sel || convs.length === 0) return
+    const normalized = phoneParam.replace(/[\s\-]/g, '')
+    const match = convs.find(c => c.phoneNumber?.replace(/[\s\-]/g, '') === normalized)
+    if (match) selectConv(match)
+  }, [convs, phoneParam])
 
   async function toggleTakeover() {
     if (!sel) return
@@ -682,5 +692,13 @@ export default function InboxPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function Page() {
+  return (
+    <Suspense>
+      <InboxPage />
+    </Suspense>
   )
 }

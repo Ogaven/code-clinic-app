@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { RefreshCw, MessageCircle, UserCheck, UserX, Phone, Clock } from 'lucide-react'
 
 const STATUS_STYLES: Record<string, string> = {
@@ -14,6 +15,7 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 export default function FollowupDashboardPage() {
+  const router = useRouter()
   const [data, setData]       = useState<{ messages: any[]; notes: any[] } | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -108,7 +110,9 @@ export default function FollowupDashboardPage() {
         ) : (
           <div className="space-y-2">
             {data.messages.map((m: any) => (
-              <div key={m.id} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl p-4 flex items-start gap-4">
+              <div key={m.id}
+                onClick={() => m.patient?.phone && router.push(`/receptionist/ai-suite/inbox?phone=${encodeURIComponent(m.patient.phone)}`)}
+                className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl p-4 flex items-start gap-4 cursor-pointer hover:border-cyan-200 dark:hover:border-cyan-700 transition-colors">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-semibold text-gray-900 dark:text-white">

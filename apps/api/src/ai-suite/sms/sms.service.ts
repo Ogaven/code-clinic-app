@@ -13,32 +13,11 @@ export function formatUgandaPhone(phone: string): string {
   return cleaned
 }
 
-// ── Send SMS via Africa's Talking ─────────────────────────────────────────────
+// ── Send SMS — redirected to WhatsApp ─────────────────────────────────────────
 
 export async function sendSMS(to: string, message: string): Promise<void> {
-  const apiKey   = process.env.AT_API_KEY
-  const username = process.env.AT_USERNAME
-
-  if (!apiKey || !username) {
-    console.warn('[SMS] AT_API_KEY or AT_USERNAME not set — skipping send')
-    return
-  }
-
-  const formatted = formatUgandaPhone(to)
-
-  try {
-    // Use require() — same pattern as scheduling.ts — no @types package needed
-    const AfricasTalking = require('africastalking') as (cfg: { apiKey: string; username: string }) => any
-    const at = AfricasTalking({ apiKey, username })
-    const result = await at.SMS.send({
-      to:      [formatted],
-      message,
-      from:    process.env.AT_SENDER_ID || 'CodeClinic',
-    })
-    console.log(`[SMS] Sent to ${formatted}:`, JSON.stringify(result?.SMSMessageData?.Recipients ?? result))
-  } catch (err: any) {
-    console.error(`[SMS] Failed to send to ${formatted}:`, err.message ?? err)
-  }
+  const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
+  await sendWhatsAppMessage(to, message)
 }
 
 // ── Process inbound SMS from Africa's Talking ─────────────────────────────────
