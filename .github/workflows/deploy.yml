@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
 
+# Prevent concurrent deploys racing each other and corrupting the .next build
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -14,6 +19,7 @@ jobs:
           host: 165.22.81.15
           username: root
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 10m
           script: |
             export NVM_DIR=/root/.nvm
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -28,7 +34,14 @@ jobs:
           host: 165.22.81.15
           username: root
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # 20m: TypeScript check + pnpm build can exceed the default 10m timeout,
+          # killing the SSH mid-build and leaving a corrupt .next directory.
+          command_timeout: 20m
           script: |
             export NVM_DIR=/root/.nvm
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            cd /var/www/codeclinic
+            # Point elyrac to SSH so deploy-web.sh git pull works from CI
+            # (avoids HTTPS PAT auth failures in automated environments)
+            git remote set-url elyrac git@github.com:Ogaven/code-clinic-app.git
             bash /var/www/codeclinic/deploy-web.sh
