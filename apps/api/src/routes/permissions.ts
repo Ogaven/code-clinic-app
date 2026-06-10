@@ -5,6 +5,21 @@ import { adminOnly } from '../middleware/rbac'
 
 const router = Router()
 
+// GET /staff/permissions/me — returns the calling user's live permissions from DB
+router.get('/permissions/me', requireAuth, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where:  { id: (req as any).user.id },
+      select: { permissions: true },
+    })
+    let perms: Record<string, boolean> = {}
+    try { perms = JSON.parse(user?.permissions || '{}') } catch {}
+    res.json(perms)
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch permissions' })
+  }
+})
+
 // GET /staff/permissions
 router.get('/permissions', requireAuth, adminOnly, async (_req, res) => {
   try {

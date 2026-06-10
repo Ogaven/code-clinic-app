@@ -43,16 +43,14 @@ const navBottom = [
   { label: 'Communications', href: '/receptionist/communications', icon: MessageSquare, badge: true, permKey: 'communications' },
 ]
 
-function parseJwtPerms(token: string | null): Record<string, boolean> {
-  if (!token) return {}
+async function fetchLivePerms(token: string): Promise<Record<string, boolean>> {
   try {
-    const b64 = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/')
-    if (!b64) return {}
-    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4)
-    const payload = JSON.parse(atob(padded))
-    if (payload.permissions) return JSON.parse(payload.permissions)
-    return {}
-  } catch { return {} }
+    const res = await fetch('/api-proxy/staff/permissions/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) return await res.json()
+  } catch {}
+  return {}
 }
 
 type Theme = 'light' | 'dark' | 'system'
@@ -257,7 +255,8 @@ export default function ReceptionistLayout({ children }: { children: React.React
       return
     }
     setUser(u)
-    setPermsMap(parseJwtPerms(localStorage.getItem('cc_token')))
+    const tok = localStorage.getItem('cc_token') || ''
+    fetchLivePerms(tok).then(setPermsMap)
     refreshAvatar(u)
     fetchUnread(u)
     fetchTodayAppts()

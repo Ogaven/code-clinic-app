@@ -24,16 +24,14 @@ function applyTheme(t: Theme) {
     ? root.classList.add('dark') : root.classList.remove('dark')
 }
 
-function parseJwtPerms(token: string | null): Record<string, boolean> {
-  if (!token) return {}
+async function fetchLivePerms(token: string): Promise<Record<string, boolean>> {
   try {
-    const b64 = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/')
-    if (!b64) return {}
-    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4)
-    const payload = JSON.parse(atob(padded))
-    if (payload.permissions) return JSON.parse(payload.permissions)
-    return {}
-  } catch { return {} }
+    const res = await fetch('/api-proxy/staff/permissions/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) return await res.json()
+  } catch {}
+  return {}
 }
 
 const NAV_MAIN = [
@@ -152,7 +150,8 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     }
 
     setUser(u)
-    setPermsMap(parseJwtPerms(localStorage.getItem('cc_token')))
+    const tok = localStorage.getItem('cc_token') || ''
+    fetchLivePerms(tok).then(setPermsMap)
     const t = (localStorage.getItem('cc_theme') as Theme) || 'dark'
     setTheme(t)
     applyTheme(t)
