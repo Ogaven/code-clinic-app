@@ -11,11 +11,23 @@ function eatHour(): number {
 function isMinor(dob: Date | null | undefined): boolean {
   if (!dob) return false
   const age = (Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-  return age < 15
+  return age < 16
 }
 
 function toProper(s: string | null | undefined): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : ''
+}
+
+// Returns the most likely English/Western name from patient fields.
+// Prefers whichever name does NOT match common Luganda/Ugandan clan prefixes.
+function getEnglishName(patient: { firstName?: string | null; lastName?: string | null } | null | undefined): string {
+  if (!patient) return ''
+  const lugandaPatterns = /^(MU|BA|KA|NA|WA|BU|LU|KI|MA|NY|NG|NJ|NK)/i
+  const first = (patient.firstName || '').trim()
+  const last  = (patient.lastName  || '').trim()
+  if (last  && !lugandaPatterns.test(last))  return toProper(last)
+  if (first && !lugandaPatterns.test(first)) return toProper(first)
+  return toProper(last || first)
 }
 
 // ── checkAndSendFollowups ─────────────────────────────────────────────────────
@@ -33,7 +45,7 @@ export async function checkAndSendFollowups(): Promise<void> {
       status:  'COMPLETED',
     },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
       doctor:  { include: { user: { select: { firstName: true } } } },
       service: { select: { name: true } },
     },
@@ -61,11 +73,15 @@ export async function checkAndSendFollowups(): Promise<void> {
     if (alreadySent) continue
 
     // ── Build message ─────────────────────────────────────────────────────────
-    const channel   = 'WHATSAPP'
-    const doctor    = `Dr ${appt.doctor.user.firstName}`
-    const greetName = toProper(patient.lastName || patient.firstName)
-    const message   =
-      `Hello ${greetName}, hope you are feeling well after your visit yesterday with ${doctor} 😊 How are you doing? Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you.`
+    const channel      = 'WHATSAPP'
+    const doctor       = `Dr ${appt.doctor.user.firstName}`
+    const minor        = isMinor(patient.dob)
+    const guardianName = patient.nextOfKinName
+    const greetName    = getEnglishName(patient)
+    const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
+    const message      = minor
+      ? `Hello ${addr}, this is Sarah from Code Clinic. We are following up on ${greetName}'s visit yesterday with ${doctor}. How is ${greetName} doing? 😊 Feel free to reply if you have any questions, we are always here for you.`
+      : `Hello ${greetName}, hope you are feeling well after your visit yesterday with ${doctor} 😊 How are you doing? Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you.`
 
     // ── Send ──────────────────────────────────────────────────────────────────
     try {
@@ -131,7 +147,7 @@ export async function processAfterHoursQueue(): Promise<void> {
       scheduledFor: { lte: now },
     },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
     },
     take: 50,
   })
@@ -140,7 +156,10 @@ export async function processAfterHoursQueue(): Promise<void> {
   console.log(`[AfterHoursQueue] Processing ${entries.length} morning follow-up(s)`)
 
   for (const entry of entries) {
-    const name = toProper(entry.patient?.lastName || entry.patient?.firstName) || 'there'
+    const minor        = isMinor(entry.patient?.dob)
+    const guardianName = entry.patient?.nextOfKinName
+    const patientName  = getEnglishName(entry.patient) || 'there'
+    const name         = minor && guardianName ? guardianName : minor ? 'there' : patientName
 
     let templateName: string | undefined
     let message: string
@@ -232,7 +251,7 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
     const doctorFirst  = appt.doctor.user.firstName
-    const greetName    = toProper(patient.lastName || patient.firstName)
+    const greetName    = getEnglishName(patient)
     const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
     const msg          = `Hello ${addr}, we noticed you missed your appointment yesterday with Dr ${doctorFirst}. We hope everything is okay 😊 Would you like to reschedule? We would love to see you.`
 
@@ -289,7 +308,7 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
     const isFirstContact = agentMsgCount === 0
 
     // Stage 1 greeting
-    const greetName = toProper(patient.lastName || patient.firstName)
+    const greetName = getEnglishName(patient)
     let stage1: string
     if (minor) {
       const addr = guardianName ? `Hello ${guardianName},` : `Hello,`
@@ -420,7 +439,7 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
     const doctorFirst  = appt.doctor.user.firstName
-    const greetName    = toProper(patient.lastName || patient.firstName)
+    const greetName    = getEnglishName(patient)
     const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
     const start        = new Date(appt.startAt)
     const timeStr      = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
@@ -462,7 +481,7 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
         createdAt:  { gte: windowStart },
       },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
       },
       take: 50,
     })
@@ -499,14 +518,17 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
     if (recentBooking) continue
 
     const templateName = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
-    const firstName    = toProper(patient.lastName || patient.firstName) || 'there'
+    const minor        = isMinor(patient.dob)
+    const guardianName = patient.nextOfKinName
+    const firstName    = getEnglishName(patient) || 'there'
+    const addr         = minor && guardianName ? guardianName : minor ? 'there' : firstName
     try {
       try {
-        await sendWhatsAppTemplate(patient.phone, templateName, [firstName])
+        await sendWhatsAppTemplate(patient.phone, templateName, [addr])
       } catch {
         await sendWhatsAppMessage(
           patient.phone,
-          `Hello ${firstName} 😊 We noticed you tried reaching us at Code Clinic earlier. Sorry we missed you! How can we help? Just reply here or call us on +256 394 836 298.`
+          `Hello ${addr} 😊 We noticed you tried reaching us at Code Clinic earlier. Sorry we missed you! How can we help? Just reply here or call us on +256 394 836 298.`
         )
       }
 
@@ -546,7 +568,7 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
         none: { startAt: { gte: ninetyDaysAgo } },
       },
     },
-    select: { id: true, firstName: true, lastName: true, phone: true },
+    select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true },
     take: 100,
   })
 
@@ -568,14 +590,19 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
     if (alreadySent) continue
 
     const templateName = process.env.WA_TEMPLATE_REACTIVATION_NAME || 'cc_patient_reactivation'
-    const firstName    = toProper(patient.lastName || patient.firstName) || 'there'
+    const minor        = isMinor(patient.dob)
+    const guardianName = patient.nextOfKinName
+    const firstName    = getEnglishName(patient) || 'there'
+    const addr         = minor && guardianName ? guardianName : minor ? 'there' : firstName
     try {
       try {
-        await sendWhatsAppTemplate(patient.phone, templateName, [firstName])
+        await sendWhatsAppTemplate(patient.phone, templateName, [addr])
       } catch {
         await sendWhatsAppMessage(
           patient.phone,
-          `Hello ${firstName} 😊 It has been a while since we have seen you at Code Clinic. We hope you are doing well! When you are ready for your next visit, we are here for you. Just reply or call us on +256 394 836 298.`
+          minor
+            ? `Hello ${addr} 😊 It has been a while since ${firstName} visited Code Clinic. We hope everything is well! When ready, just reply or call us on +256 394 836 298.`
+            : `Hello ${addr} 😊 It has been a while since we have seen you at Code Clinic. We hope you are doing well! When you are ready for your next visit, we are here for you. Just reply or call us on +256 394 836 298.`
         )
       }
 
