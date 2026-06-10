@@ -416,9 +416,9 @@ function InboxPage() {
                 active ? 'bg-green-50' : 'hover:bg-gray-50')}>
               <div className="relative">
                 <Avatar name={name} size={46} />
-                {conv.status === 'active' && (
-                  <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[#25D366] border-2 border-white" />
-                )}
+                <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center shadow-sm border-2 border-white bg-[#25D366]">
+                  <MessageSquare size={9} className="text-white" />
+                </span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-0.5">
@@ -560,9 +560,10 @@ function InboxPage() {
               style={active ? { backgroundColor: accent + '15' } : undefined}>
               <div className="relative">
                 <Avatar name={name} size={46} />
-                {conv.status === 'active' && (
-                  <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white" style={{ background: accent }} />
-                )}
+                <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center shadow-sm border-2 border-white flex-shrink-0"
+                  style={{ background: channel === 'INSTAGRAM' ? 'linear-gradient(135deg,#833AB4,#E4405F)' : accent }}>
+                  <ChIcon size={9} className="text-white" />
+                </span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-0.5">

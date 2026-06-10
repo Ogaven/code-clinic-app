@@ -113,8 +113,15 @@ router.post('/conversations/:conversationId/send', async (req, res) => {
       const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
       await sendWhatsAppMessage(conversation.phoneNumber, text.trim())
     } else if (conversation.channel === 'FACEBOOK' || conversation.channel === 'INSTAGRAM') {
-      const { sendSocialReply } = await import('../facebook/facebook.routes')
-      await sendSocialReply(conversation.phoneNumber, text.trim(), conversation.channel as 'FACEBOOK' | 'INSTAGRAM')
+      const phone = conversation.phoneNumber
+      if (phone.startsWith('fb_') || phone.startsWith('ig_')) {
+        const subscriberId = phone.replace(/^(fb_|ig_)/, '')
+        const { sendManychatReply } = await import('../../routes/manychat')
+        await sendManychatReply(subscriberId, text.trim())
+      } else {
+        const { sendSocialReply } = await import('../facebook/facebook.routes')
+        await sendSocialReply(phone, text.trim(), conversation.channel as 'FACEBOOK' | 'INSTAGRAM')
+      }
     }
     // WEBSITE: no external delivery — message is visible in the widget on next poll
 

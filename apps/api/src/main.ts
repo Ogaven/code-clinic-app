@@ -40,6 +40,7 @@ import webhooksRouter from './routes/webhooks'
 import auditRouter from './routes/audit'
 import aiReportsRouter from './routes/ai-reports'
 import permissionsRouter from './routes/permissions'
+import manychatRouter from './routes/manychat'
 
 // AI Suite routers
 import aiSuiteRouter     from './ai-suite/whatsapp/whatsapp.routes'
@@ -175,6 +176,7 @@ app.use('/clinical',     clinicalRouter)
 app.use('/pre-visit',    previsitRouter)
 app.use('/audit-logs',   auditRouter)
 app.use('/ai-suite',     aiReportsRouter)
+app.use('/manychat',     manychatRouter)
 
 // ─── Webhooks (Meta, etc.) ────────────────────────────────────
 // GET  /webhooks/facebook — Meta webhook verification
