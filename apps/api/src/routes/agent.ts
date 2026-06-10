@@ -22,9 +22,30 @@ router.post('/whatsapp/webhook', async (req, res) => {
     res.status(200).json({ received: true })
     const body      = req.body
 
-    // ── Delivery receipts (READ/DELIVERED) — silence, don't process ──────────
-    if (body.status && !body.from && !body.data?.from && !body.phoneNumber) {
-      console.log('[AT] Delivery receipt:', body.status, body.messageId || '')
+    // ── Delivery receipts (READ/DELIVERED) — save to DB ─────────────────────
+    if (body.status && !body.from && !body.data?.from) {
+      const recipientPhone = body.phoneNumber || body.to || body.data?.phoneNumber
+      const status = (body.status as string).toLowerCase()
+      if (recipientPhone && ['sent', 'delivered', 'read', 'failed'].includes(status)) {
+        try {
+          const digits = String(recipientPhone).replace(/\D/g, '')
+          const normPhone = digits.startsWith('256') ? `+${digits}`
+                          : digits.startsWith('0') && digits.length === 10 ? `+256${digits.slice(1)}`
+                          : `+${digits}`
+          const recent = await prisma.aiScheduledMessage.findFirst({
+            where: { patient: { phone: normPhone }, sent: true },
+            orderBy: { createdAt: 'desc' },
+          })
+          if (recent) {
+            await prisma.aiScheduledMessage.update({ where: { id: recent.id }, data: { deliveryStatus: status } })
+            console.log(`[AT] Delivery status saved: ${status} for ${normPhone}`)
+          }
+        } catch (e: any) {
+          console.error('[AT] Delivery status save error:', e.message)
+        }
+      } else {
+        console.log('[AT] Delivery receipt (no phone):', body.status, body.messageId || '')
+      }
       return
     }
 

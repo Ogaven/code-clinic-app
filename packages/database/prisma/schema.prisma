@@ -899,15 +899,16 @@ model SipTrunk {
 }
 
 model AiScheduledMessage {
-  id           String   @id @default(cuid())
-  patientId    String
-  patient      Patient  @relation(fields: [patientId], references: [id])
-  channel      String
-  templateType String   // REMINDER | FOLLOWUP | DEBT | LEADNURTURE
-  scheduledFor DateTime
-  sent         Boolean  @default(false)
-  content      String
-  createdAt    DateTime @default(now())
+  id             String   @id @default(cuid())
+  patientId      String
+  patient        Patient  @relation(fields: [patientId], references: [id])
+  channel        String
+  templateType   String   // REMINDER | FOLLOWUP | DEBT | LEADNURTURE | POST_APPOINTMENT
+  scheduledFor   DateTime
+  sent           Boolean  @default(false)
+  content        String
+  deliveryStatus String?  // sent | delivered | read | failed
+  createdAt      DateTime @default(now())
 
   @@index([sent, scheduledFor])
   @@map("ai_scheduled_messages")

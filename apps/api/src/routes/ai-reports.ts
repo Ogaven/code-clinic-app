@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly, clinicalStaff } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
-import { checkAndSendAppointmentConfirmations } from '../ai-suite/scheduler/followup.service'
+import { checkAndSendAppointmentConfirmations, checkAndSendPostAppointmentFollowups } from '../ai-suite/scheduler/followup.service'
 
 const router = Router()
 
@@ -141,6 +141,16 @@ router.get('/confirmation-report', requireAuth, clinicalStaff, async (_req, res)
     res.json({ confirmations: confirmationsWithReply, upcomingAppts })
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch confirmation report' })
+  }
+})
+
+// POST /ai-suite/trigger/followups — manually trigger post-appointment follow-up run
+router.post('/trigger/followups', requireAuth, clinicalStaff, async (_req, res) => {
+  try {
+    const result = await checkAndSendPostAppointmentFollowups(true)
+    res.json({ sent: result.sent, skipped: result.skipped })
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to trigger follow-ups' })
   }
 })
 

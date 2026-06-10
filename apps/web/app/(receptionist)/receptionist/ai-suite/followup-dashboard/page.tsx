@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { RefreshCw, MessageCircle, UserX, Clock, Bot, Send, X, Loader2, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react'
+import { RefreshCw, MessageCircle, UserX, Clock, Bot, Send, X, Loader2, ArrowRight, CheckCircle2, AlertCircle, Rocket, Eye, Mail, XCircle } from 'lucide-react'
 
 const STATUS_STYLES: Record<string, string> = {
   NONE:           'bg-gray-100 text-gray-500',
@@ -23,7 +23,20 @@ type FollowupMessage = {
   replied: boolean
   replyContent: string | null
   replyAt: string | null
+  deliveryStatus: string | null
   patient: { id: string; firstName: string; lastName: string; phone: string } | null
+}
+
+function DeliveryBadge({ m }: { m: FollowupMessage }) {
+  if (m.replied)
+    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">✅ Replied</span>
+  if (m.deliveryStatus === 'read')
+    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 flex items-center gap-0.5"><Eye size={9} /> Seen, no reply</span>
+  if (m.deliveryStatus === 'delivered')
+    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 flex items-center gap-0.5"><Mail size={9} /> Delivered</span>
+  if (m.deliveryStatus === 'failed')
+    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 flex items-center gap-0.5"><XCircle size={9} /> Not on WhatsApp</span>
+  return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600">❌ No response</span>
 }
 
 export default function FollowupDashboardPage() {
@@ -34,6 +47,8 @@ export default function FollowupDashboardPage() {
   const [askInput,   setAskInput]   = useState<Record<string, string>>({})
   const [askReply,   setAskReply]   = useState<Record<string, string>>({})
   const [askLoading, setAskLoading] = useState<Record<string, boolean>>({})
+  const [triggering, setTriggering] = useState(false)
+  const [triggerMsg, setTriggerMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -45,6 +60,26 @@ export default function FollowupDashboardPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function triggerFollowups() {
+    setTriggering(true)
+    setTriggerMsg(null)
+    const token = localStorage.getItem('cc_token')
+    try {
+      const r = await fetch('/api-proxy/ai-suite/trigger/followups', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Unknown error')
+      setTriggerMsg({ type: 'success', text: `Sent ${d.sent} follow-up${d.sent !== 1 ? 's' : ''}${d.skipped ? `, ${d.skipped} skipped` : ''}.` })
+      await load()
+    } catch (e: any) {
+      setTriggerMsg({ type: 'error', text: e.message || 'Failed to trigger follow-ups' })
+    } finally {
+      setTriggering(false)
+    }
+  }
 
   async function askSarah(m: FollowupMessage) {
     const id = m.id
@@ -79,10 +114,13 @@ export default function FollowupDashboardPage() {
     setAskInput(prev => ({ ...prev, [id]: '' }))
   }
 
-  const msgs         = data?.messages || []
-  const repliedCount    = msgs.filter(m => m.replied).length
-  const noResponseCount = msgs.filter(m => !m.replied).length
-  const doNotContact    = data?.notes.filter(n => n.followUpStatus === 'DO_NOT_CONTACT').length ?? 0
+  const msgs             = data?.messages || []
+  const repliedCount     = msgs.filter(m => m.replied).length
+  const seenNoReply      = msgs.filter(m => !m.replied && m.deliveryStatus === 'read').length
+  const deliveredNoReply = msgs.filter(m => !m.replied && m.deliveryStatus === 'delivered').length
+  const failedCount      = msgs.filter(m => m.deliveryStatus === 'failed').length
+  const noResponseCount  = msgs.filter(m => !m.replied && (!m.deliveryStatus || m.deliveryStatus === 'sent')).length
+  const doNotContact     = data?.notes.filter(n => n.followUpStatus === 'DO_NOT_CONTACT').length ?? 0
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -102,13 +140,37 @@ export default function FollowupDashboardPage() {
         📌 Follow-up messages are sent automatically at 10am the day after a patient&apos;s appointment is marked Complete. Patients marked &quot;Contact&quot; today will receive their follow-up tomorrow morning.
       </div>
 
+      {/* Send Follow-ups Now */}
+      <div className="bg-gradient-to-r from-violet-500 to-purple-600 rounded-2xl p-5 text-white shadow-lg">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="font-black text-base flex items-center gap-2"><Rocket size={16} /> Send Follow-ups Now</h2>
+            <p className="text-xs text-violet-200 mt-0.5">Immediately send follow-up messages to all eligible patients</p>
+          </div>
+          <button
+            onClick={triggerFollowups}
+            disabled={triggering}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-violet-700 font-bold text-sm hover:bg-violet-50 disabled:opacity-60 transition-all shadow-sm flex-shrink-0">
+            {triggering ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
+            {triggering ? 'Sending...' : 'Send Now'}
+          </button>
+        </div>
+        {triggerMsg && (
+          <div className={`mt-3 px-4 py-2 rounded-xl text-sm font-semibold ${triggerMsg.type === 'success' ? 'bg-emerald-500/20 text-emerald-100' : 'bg-red-500/20 text-red-100'}`}>
+            {triggerMsg.type === 'success' ? '✅' : '⚠️'} {triggerMsg.text}
+          </div>
+        )}
+      </div>
+
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {[
-          { icon: MessageCircle, label: 'Messages Sent',  value: msgs.length,     color: 'text-blue-600',    bg: 'bg-blue-50 dark:bg-blue-900/20' },
-          { icon: CheckCircle2,  label: 'Replied',        value: repliedCount,    color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-          { icon: AlertCircle,   label: 'No Response',    value: noResponseCount, color: 'text-amber-600',   bg: 'bg-amber-50 dark:bg-amber-900/20' },
-          { icon: UserX,         label: 'Do Not Contact', value: doNotContact,    color: 'text-red-600',     bg: 'bg-red-50 dark:bg-red-900/20' },
+          { icon: MessageCircle, label: 'Messages Sent',    value: msgs.length,        color: 'text-blue-600',    bg: 'bg-blue-50 dark:bg-blue-900/20' },
+          { icon: CheckCircle2,  label: 'Replied',          value: repliedCount,        color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+          { icon: Eye,           label: 'Seen, no reply',   value: seenNoReply,         color: 'text-amber-600',   bg: 'bg-amber-50 dark:bg-amber-900/20' },
+          { icon: Mail,          label: 'Delivered',        value: deliveredNoReply,    color: 'text-indigo-600',  bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
+          { icon: AlertCircle,   label: 'No response',      value: noResponseCount,     color: 'text-red-600',     bg: 'bg-red-50 dark:bg-red-900/20' },
+          { icon: UserX,         label: 'Do Not Contact',   value: doNotContact,        color: 'text-gray-600',    bg: 'bg-gray-100 dark:bg-white/10' },
         ].map(({ icon: Icon, label, value, color, bg }) => (
           <div key={label} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm">
             <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center mb-3`}>
@@ -183,16 +245,7 @@ export default function FollowupDashboardPage() {
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-600">
                         {m.templateType === 'MISSED_APPOINTMENT' ? 'Missed Appt' : 'Follow-up'}
                       </span>
-                      {/* Reply status badge */}
-                      {m.replied ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 flex items-center gap-0.5">
-                          ✅ Replied
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600 flex items-center gap-0.5">
-                          ❌ No Response
-                        </span>
-                      )}
+                      <DeliveryBadge m={m} />
                     </div>
                     <p className="text-xs text-gray-500 line-clamp-2">{m.content}</p>
                     {/* Reply preview */}

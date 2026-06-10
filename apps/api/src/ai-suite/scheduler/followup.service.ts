@@ -202,13 +202,15 @@ export async function processAfterHoursQueue(): Promise<void> {
 // 2. Completed appointments — 3-stage follow-up (immediate, 30min, 90min)
 //    Stages 2 and 3 are skipped if the patient replies between stages.
 
-export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
+export async function checkAndSendPostAppointmentFollowups(forceRun = false): Promise<{sent: number; skipped: number}> {
+  const counts = { sent: 0, skipped: 0 }
   const nowUTC  = new Date()
   const eatHourNow = parseInt(
     nowUTC.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
   )
-  if (eatHourNow < 8 || eatHourNow >= 9) return
+  if (!forceRun && (eatHourNow < 8 || eatHourNow >= 9)) return counts
 
+  const startOfToday     = new Date(nowUTC.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T00:00:00+03:00')
   const yesterday        = new Date(nowUTC)
   yesterday.setDate(yesterday.getDate() - 1)
   const startOfYesterday = new Date(yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T00:00:00+03:00')
@@ -241,11 +243,16 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
       continue
     }
 
-    const alreadySent = await prisma.aiScheduledMessage.findFirst({
-      where: { patientId: patient.id, templateType: 'MISSED_APPOINTMENT', sent: true,
-               scheduledFor: { gte: startOfYesterday, lte: endOfYesterday } },
+    const sentToday = await prisma.aiScheduledMessage.findFirst({
+      where: { patientId: patient.id, templateType: 'MISSED_APPOINTMENT', sent: true, createdAt: { gte: startOfToday } },
     })
-    if (alreadySent) continue
+    if (sentToday) {
+      const patientReplied = await prisma.aiMessage.findFirst({
+        where: { conversation: { phoneNumber: patient.phone }, role: 'USER', createdAt: { gte: sentToday.createdAt } },
+      })
+      if (patientReplied) { counts.skipped++; console.log(`[PostApptFollowup] Missed: skipping ${patient.firstName}, already replied`); continue }
+      // Not replied — send again (fall through to re-send)
+    }
 
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
@@ -265,6 +272,7 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
     if (!conv) conv = await prisma.aiConversation.create({ data: { patientId: patient.id, channel: 'WHATSAPP', phoneNumber: patient.phone, status: 'ACTIVE', agentEnabled: true } })
     await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'AGENT', content: msg } })
     await prisma.aiScheduledMessage.create({ data: { patientId: patient.id, channel: 'WHATSAPP', templateType: 'MISSED_APPOINTMENT', scheduledFor: appt.startAt, sent: true, content: msg } })
+    counts.sent++
     console.log(`[PostApptFollowup] Missed appt message sent to ${patient.firstName} ${patient.lastName}`)
   }
 
@@ -272,7 +280,7 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
   let appointments: any[] = []
   try {
     appointments = await prisma.appointment.findMany({
-      where: { startAt: { gte: startOfYesterday, lte: endOfYesterday }, status: { in: ['COMPLETED', 'CONFIRMED'] }, followUpSent: false },
+      where: { startAt: { gte: startOfYesterday, lte: endOfYesterday }, status: { in: ['COMPLETED', 'CONFIRMED'] }, ...(forceRun ? {} : { followUpSent: false }) },
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
         doctor:  { include: { user: { select: { firstName: true } } } },
@@ -281,10 +289,10 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
     })
   } catch (err: any) {
     console.error('[PostApptFollowup] Query failed:', err.message)
-    return
+    return counts
   }
 
-  if (appointments.length === 0) return
+  if (appointments.length === 0) return counts
   console.log(`[PostApptFollowup] Processing ${appointments.length} completed appointment follow-up(s)`)
 
   for (const appt of appointments) {
@@ -297,8 +305,43 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
       where: { patientId: patient.id },
       orderBy: { createdAt: 'desc' },
     })
-    if (!latestNoteC || latestNoteC.followUpStatus !== 'CONTACT') {
+    if (!latestNoteC || latestNoteC.followUpStatus === 'CONTACTED' || latestNoteC.followUpStatus === 'DO_NOT_CONTACT') {
+      counts.skipped++
       console.log('[PostApptFollowup] Skipping', patient.firstName, '— status is', latestNoteC?.followUpStatus || 'none')
+      continue
+    }
+    if (!latestNoteC || latestNoteC.followUpStatus !== 'CONTACT') {
+      counts.skipped++
+      continue
+    }
+
+    // For forceRun: skip if processed on a previous day (followUpSent: true but not sent today)
+    const sentToday = await prisma.aiScheduledMessage.findFirst({
+      where: { patientId: patient.id, templateType: 'POST_APPOINTMENT', sent: true, createdAt: { gte: startOfToday } },
+    })
+    if (appt.followUpSent && !sentToday) { counts.skipped++; continue }
+
+    // Re-send check: if already sent today, check reply status
+    if (sentToday) {
+      const patientReplied = await prisma.aiMessage.findFirst({
+        where: { conversation: { phoneNumber: patient.phone }, role: 'USER', createdAt: { gte: sentToday.createdAt } },
+      })
+      if (patientReplied) { counts.skipped++; console.log(`[PostApptFollowup] Skipping ${patient.firstName} — already replied`); continue }
+      // Not replied — send gentle nudge
+      const greetName2 = getGreetingName(patient)
+      const addr2 = minor && guardianName ? guardianName : minor ? 'there' : greetName2
+      const nudge = minor
+        ? `Hello ${addr2}, just checking in on ${greetName2} 😊 Feel free to reply if you have any questions, we are here for you!`
+        : `Hello ${greetName2}, just checking in 😊 How are you doing? Feel free to reply anytime!`
+      try {
+        await sendWhatsAppMessage(patient.phone, nudge)
+        const c = await prisma.aiConversation.findFirst({ where: { phoneNumber: patient.phone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
+        if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', content: nudge } })
+        counts.sent++
+        console.log(`[PostApptFollowup] Nudge sent to ${patient.firstName} ${patient.lastName}`)
+      } catch (err: any) {
+        console.error(`[PostApptFollowup] Nudge failed for ${patient.phone}:`, err.message)
+      }
       continue
     }
 
@@ -339,6 +382,10 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
       await sendWhatsAppMessage(patient.phone, stage1)
       await prisma.aiMessage.create({ data: { conversationId: convId, role: 'AGENT', content: stage1 } })
       await prisma.appointment.update({ where: { id: appt.id }, data: { followUpSent: true } })
+      await prisma.aiScheduledMessage.create({
+        data: { patientId: patient.id, channel: 'WHATSAPP', templateType: 'POST_APPOINTMENT', scheduledFor: appt.startAt, sent: true, content: stage1 },
+      })
+      counts.sent++
       console.log(`[PostApptFollowup] Stage 1 sent to ${patient.firstName} ${patient.lastName}`)
     } catch (err: any) {
       console.error(`[PostApptFollowup] Stage 1 failed for ${patient.phone}:`, err.message)
@@ -381,6 +428,7 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
       }
     }, 90 * 60 * 1000)
   }
+  return counts
 }
 
 // ── checkAndSendAppointmentConfirmations ──────────────────────────────────────
