@@ -11,6 +11,7 @@ import { formatPatientId } from '../lib/utils'
 import { syncAppointmentToGCal } from '../services/gcal'
 import { sendAppointmentNotification } from '../ai-suite/notifications/notification.service'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { getGreetingName } from '../utils/nameHelper'
 import { prisma } from '../lib/prisma'
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
@@ -452,12 +453,12 @@ router.post('/appointments/:id/checkin-notify', requireAuth, async (req, res) =>
     const appt = await prisma.appointment.findUnique({
       where: { id: req.params.id },
       include: {
-        patient: { select: { firstName: true, phone: true } },
+        patient: { select: { firstName: true, lastName: true, phone: true } },
         doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
       },
     })
     if (!appt) { res.status(404).json({ error: 'Not found' }); return }
-    const msg = `Hi ${appt.patient.firstName}! You've been checked in at Code Clinic. Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName} will be with you shortly 😊`
+    const msg = `Hi ${getGreetingName(appt.patient)}! You've been checked in at Code Clinic. Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName} will be with you shortly 😊`
     sendWhatsAppMessage(appt.patient.phone, msg).catch(() => {})
     res.json({ sent: true })
   } catch (e: any) { res.status(500).json({ error: e.message }) }

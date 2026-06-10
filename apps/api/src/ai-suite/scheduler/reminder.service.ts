@@ -1,5 +1,6 @@
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
+import { getGreetingName } from '../../utils/nameHelper'
 
 // ── checkAndSendReminders ─────────────────────────────────────────────────────
 // Runs every hour. Finds appointments starting 23–25 hours from now and sends a
@@ -55,8 +56,9 @@ export async function checkAndSendReminders(): Promise<void> {
       weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi',
     })
     const doctor  = `Dr ${appt.doctor.user.firstName}`
+    const greetName = getGreetingName(patient)
     const message =
-      `Hello ${patient.firstName} 😊 Just a reminder that you have an appointment tomorrow:\n\n` +
+      `Hello ${greetName} 😊 Just a reminder that you have an appointment tomorrow:\n\n` +
       `📅 ${dayDate} at ${time}\n` +
       `👨‍⚕️ ${doctor}, ${appt.service.name}\n` +
       `📍 Code Clinic, Kamwokya\n\n` +
@@ -68,7 +70,7 @@ export async function checkAndSendReminders(): Promise<void> {
       if (templateName) {
         try {
           await sendWhatsAppTemplate(patient.phone, templateName, [
-            patient.firstName,
+            greetName,
             dayDate,
             time,
             appt.service.name,
