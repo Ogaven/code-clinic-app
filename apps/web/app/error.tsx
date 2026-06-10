@@ -10,8 +10,18 @@ export default function GlobalError({
   reset: () => void
 }) {
   useEffect(() => {
-    // Log to console in dev; wire up to Sentry in production
     console.error('[GlobalError]', error)
+    const isChunkError =
+      error.name === 'ChunkLoadError' ||
+      error.message?.includes('Loading chunk') ||
+      error.message?.includes('ChunkLoadError')
+    if (isChunkError) {
+      const key = 'cc_chunk_reloaded'
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1')
+        window.location.reload()
+      }
+    }
   }, [error])
 
   return (

@@ -49,6 +49,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{
           __html: `if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js')})}`,
         }} />
+        <script dangerouslySetInnerHTML={{
+          __html: `window.addEventListener('error',function(e){if(e.message&&(e.message.indexOf('Loading chunk')!==-1||e.message.indexOf('ChunkLoadError')!==-1)){var k='cc_chunk_reloaded';if(!sessionStorage.getItem(k)){sessionStorage.setItem(k,'1');window.location.reload();}}});`,
+        }} />
       </head>
       <body className="min-h-screen bg-clinic-bg font-sans antialiased transition-colors duration-300">
         <OfflineBanner />
