@@ -67,9 +67,14 @@ export async function sendAppointmentNotification(
     }
 
     if (!message) return
+    if (!p.phone) {
+      console.warn(`[Notification] Skipping '${type}' — patient ${p.firstName} ${p.lastName} has no phone number`)
+      return
+    }
     await sendWhatsAppMessage(p.phone, message)
     console.log(`[Notification] Sent '${type}' to ${p.firstName} ${p.lastName} (${p.phone})`)
   } catch (err: any) {
-    console.error('[Notification] Failed to send notification:', err.message)
+    const msg = err?.message ?? err?.errorMessage ?? (typeof err === 'string' ? err : JSON.stringify(err))
+    console.error('[Notification] Failed to send notification:', msg)
   }
 }
