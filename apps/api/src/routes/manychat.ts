@@ -5,22 +5,21 @@ import { isAgentEnabled } from '../ai-suite/takeover/takeover.service'
 
 const router = Router()
 
-const MANYCHAT_SEND_URL = 'https://api.manychat.com/fb/sending/sendContent'
-
 // POST /manychat/webhook
 // Receives messages from ManyChat (Facebook + Instagram) and responds via Sarah.
 router.post('/webhook', async (req, res) => {
   res.sendStatus(200) // Acknowledge immediately so ManyChat doesn't retry
 
   try {
-    const { id: subscriberId, first_name, last_name, platform, message } = req.body as {
-      id: string; first_name?: string; last_name?: string;
-      platform?: string; message: string; page_id?: string
+    const { subscriber_id, first_name, last_name, channel: incomingChannel, message } = req.body as {
+      subscriber_id: string; first_name?: string; last_name?: string;
+      channel?: string; message: string
     }
 
+    const subscriberId = subscriber_id
     if (!subscriberId || !message) return
 
-    const channel      = platform === 'instagram' ? 'INSTAGRAM' : 'FACEBOOK'
+    const channel = incomingChannel === 'instagram' ? 'INSTAGRAM' : 'FACEBOOK'
     const phoneNumber  = channel === 'FACEBOOK' ? `fb_${subscriberId}` : `ig_${subscriberId}`
 
     let conversation = await prisma.aiConversation.findFirst({
@@ -50,20 +49,24 @@ router.post('/webhook', async (req, res) => {
       data: { conversationId: conversation.id, role: 'AGENT', content: reply },
     })
 
-    await sendManychatReply(subscriberId, reply)
+    await sendManychatReply(subscriberId, reply, channel)
   } catch (err) {
     console.error('[ManyChat] Webhook error:', err)
   }
 })
 
-export async function sendManychatReply(subscriberId: string, text: string): Promise<void> {
+export async function sendManychatReply(subscriberId: string, text: string, channel = 'FACEBOOK'): Promise<void> {
   const apiKey = process.env.MANYCHAT_API_KEY
   if (!apiKey) {
     console.warn('[ManyChat] MANYCHAT_API_KEY not set — reply not sent')
     return
   }
 
-  const res = await fetch(MANYCHAT_SEND_URL, {
+  const sendUrl = channel === 'INSTAGRAM'
+    ? 'https://api.manychat.com/ig/sending/sendContent'
+    : 'https://api.manychat.com/fb/sending/sendContent'
+
+  const res = await fetch(sendUrl, {
     method:  'POST',
     headers: {
       'Content-Type':  'application/json',
