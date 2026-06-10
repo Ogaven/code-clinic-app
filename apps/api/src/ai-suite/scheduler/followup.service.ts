@@ -14,20 +14,19 @@ function isMinor(dob: Date | null | undefined): boolean {
   return age < 16
 }
 
-function toProper(s: string | null | undefined): string {
-  return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : ''
-}
-
-// Returns the most likely English/Western name from patient fields.
-// Prefers whichever name does NOT match common Luganda/Ugandan clan prefixes.
-function getEnglishName(patient: { firstName?: string | null; lastName?: string | null } | null | undefined): string {
-  if (!patient) return ''
-  const lugandaPatterns = /^(MU|BA|KA|NA|WA|BU|LU|KI|MA|NY|NG|NJ|NK)/i
-  const first = (patient.firstName || '').trim()
-  const last  = (patient.lastName  || '').trim()
-  if (last  && !lugandaPatterns.test(last))  return toProper(last)
-  if (first && !lugandaPatterns.test(first)) return toProper(first)
-  return toProper(last || first)
+// Returns the best greeting name: last non-Luganda word scanning backwards through full name.
+// Examples: NUWAHEREZA PATIENCE → Patience, DIANA KIBUUKA → Diana, TUMWESIGYE ALEX → Alex
+function getGreetingName(patient: { firstName?: string | null; lastName?: string | null } | null | undefined): string {
+  if (!patient) return 'there'
+  const toProper = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : ''
+  const allWords = `${patient.firstName || ''} ${patient.lastName || ''}`.trim().split(/\s+/).filter(Boolean)
+  if (allWords.length === 0) return 'there'
+  const lugandaPrefixes = /^(MU|BA|KA|NA|WA|BU|LU|KI|MA|NY|NG|NJ|NK|SS|KK)/i
+  for (let i = allWords.length - 1; i >= 0; i--) {
+    const word = allWords[i]
+    if (word.length > 2 && !lugandaPrefixes.test(word)) return toProper(word)
+  }
+  return toProper(allWords[allWords.length - 1])
 }
 
 // ── checkAndSendFollowups ─────────────────────────────────────────────────────
@@ -77,7 +76,7 @@ export async function checkAndSendFollowups(): Promise<void> {
     const doctor       = `Dr ${appt.doctor.user.firstName}`
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
-    const greetName    = getEnglishName(patient)
+    const greetName    = getGreetingName(patient)
     const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
     const message      = minor
       ? `Hello ${addr}, this is Sarah from Code Clinic. We are following up on ${greetName}'s visit yesterday with ${doctor}. How is ${greetName} doing? 😊 Feel free to reply if you have any questions, we are always here for you.`
@@ -158,7 +157,7 @@ export async function processAfterHoursQueue(): Promise<void> {
   for (const entry of entries) {
     const minor        = isMinor(entry.patient?.dob)
     const guardianName = entry.patient?.nextOfKinName
-    const patientName  = getEnglishName(entry.patient) || 'there'
+    const patientName  = getGreetingName(entry.patient) || 'there'
     const name         = minor && guardianName ? guardianName : minor ? 'there' : patientName
 
     let templateName: string | undefined
@@ -251,7 +250,7 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
     const doctorFirst  = appt.doctor.user.firstName
-    const greetName    = getEnglishName(patient)
+    const greetName    = getGreetingName(patient)
     const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
     const msg          = `Hello ${addr}, we noticed you missed your appointment yesterday with Dr ${doctorFirst}. We hope everything is okay 😊 Would you like to reschedule? We would love to see you.`
 
@@ -308,7 +307,7 @@ export async function checkAndSendPostAppointmentFollowups(): Promise<void> {
     const isFirstContact = agentMsgCount === 0
 
     // Stage 1 greeting
-    const greetName = getEnglishName(patient)
+    const greetName = getGreetingName(patient)
     let stage1: string
     if (minor) {
       const addr = guardianName ? `Hello ${guardianName},` : `Hello,`
@@ -439,7 +438,7 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
     const doctorFirst  = appt.doctor.user.firstName
-    const greetName    = getEnglishName(patient)
+    const greetName    = getGreetingName(patient)
     const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
     const start        = new Date(appt.startAt)
     const timeStr      = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
@@ -520,7 +519,7 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
     const templateName = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
-    const firstName    = getEnglishName(patient) || 'there'
+    const firstName    = getGreetingName(patient) || 'there'
     const addr         = minor && guardianName ? guardianName : minor ? 'there' : firstName
     try {
       try {
@@ -592,7 +591,7 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
     const templateName = process.env.WA_TEMPLATE_REACTIVATION_NAME || 'cc_patient_reactivation'
     const minor        = isMinor(patient.dob)
     const guardianName = patient.nextOfKinName
-    const firstName    = getEnglishName(patient) || 'there'
+    const firstName    = getGreetingName(patient) || 'there'
     const addr         = minor && guardianName ? guardianName : minor ? 'there' : firstName
     try {
       try {

@@ -145,7 +145,7 @@ router.get('/confirmation-report', requireAuth, clinicalStaff, async (_req, res)
 })
 
 // POST /ai-suite/trigger/confirmations — manually trigger confirmation run (bypasses time gate)
-router.post('/trigger/confirmations', requireAuth, adminOnly, async (_req, res) => {
+router.post('/trigger/confirmations', requireAuth, clinicalStaff, async (_req, res) => {
   try {
     checkAndSendAppointmentConfirmations(true).catch(e => console.error('[TriggerConfirmations]', e))
     res.json({ message: 'Confirmation run triggered' })

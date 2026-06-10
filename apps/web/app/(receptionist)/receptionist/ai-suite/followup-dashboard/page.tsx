@@ -53,12 +53,15 @@ export default function FollowupDashboardPage() {
     setAskLoading(prev => ({ ...prev, [id]: true }))
     const token = localStorage.getItem('cc_token')
     try {
+      const patientFullName = `${m.patient?.firstName || ''} ${m.patient?.lastName || ''}`.trim()
+      const sentDate = new Date(m.scheduledFor).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      const staffContext = `[STAFF ASSISTANT MODE] You are Sarah, assistant to the Code Clinic medical team. A staff member is asking about a patient follow-up — answer helpfully and share all relevant details freely with clinic staff. Patient: ${patientFullName} (${m.patient?.phone}). Follow-up sent on ${sentDate}: "${m.content}".${m.replied && m.replyContent ? ` Patient replied: "${m.replyContent}"` : ' Patient has not replied yet.'} Staff question: ${q}`
       const res = await fetch('/api-proxy/website-chat/message', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           sessionId: 'staff-followup-' + (m.patient?.id || id),
-          message:   q + ` Context: This is about the follow-up conversation with ${m.patient?.firstName} (${m.patient?.phone})`,
+          message:   staffContext,
         }),
       })
       const d = await res.json()
@@ -92,6 +95,11 @@ export default function FollowupDashboardPage() {
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-white hover:bg-gray-200 dark:hover:bg-white/20 disabled:opacity-50 transition-all">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
+      </div>
+
+      {/* Info note */}
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 rounded-xl px-4 py-3 text-xs text-amber-700 dark:text-amber-300">
+        📌 Follow-up messages are sent automatically at 10am the day after a patient&apos;s appointment is marked Complete. Patients marked &quot;Contact&quot; today will receive their follow-up tomorrow morning.
       </div>
 
       {/* Stat cards */}

@@ -27,6 +27,19 @@ function sanitizeForClaude(content: string): string {
   return content
 }
 
+function getGreetingName(patient: { firstName?: string | null; lastName?: string | null } | null | undefined): string {
+  if (!patient) return 'there'
+  const toProper = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : ''
+  const allWords = `${patient.firstName || ''} ${patient.lastName || ''}`.trim().split(/\s+/).filter(Boolean)
+  if (allWords.length === 0) return 'there'
+  const lugandaPrefixes = /^(MU|BA|KA|NA|WA|BU|LU|KI|MA|NY|NG|NJ|NK|SS|KK)/i
+  for (let i = allWords.length - 1; i >= 0; i--) {
+    const word = allWords[i]
+    if (word.length > 2 && !lugandaPrefixes.test(word)) return toProper(word)
+  }
+  return toProper(allWords[allWords.length - 1])
+}
+
 function sanitizeForWhatsApp(text: string): string {
   return text
     .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -152,7 +165,14 @@ RATING AND FEEDBACK RULES:
 GOOGLE REVIEW:
 - Google review link: https://g.page/r/CaA8lzxCme9FEBM/review
 - Only share this link when a patient gives a 4 or 5 star rating during a follow-up
-- When sharing, say something like: "If you have a moment, we'd love it if you shared that on Google — it helps other people in Kampala find us! 😊 Here is the link: https://g.page/r/CaA8lzxCme9FEBM/review"`
+- When sharing, say something like: "If you have a moment, we'd love it if you shared that on Google — it helps other people in Kampala find us! 😊 Here is the link: https://g.page/r/CaA8lzxCme9FEBM/review"
+
+APPROXIMATE SERVICE PRICES (share only if patient explicitly asks about prices):
+- Dental cleaning / scaling: UGX 80,000 - 150,000
+- Teeth whitening: UGX 350,000 - 500,000
+- Composite filling: UGX 150,000 per tooth
+- GI (glass ionomer) filling: UGX 80,000 per tooth
+- Exact prices depend on complexity and are confirmed at booking`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -294,7 +314,7 @@ async function buildContext(
       : Promise.resolve([]),
   ])
 
-  const patientName = patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown patient'
+  const patientName = patient ? getGreetingName(patient) : 'Unknown patient'
 
   const conversationHistory = dbMessages
     .map(m => (m.role === 'USER' ? `Patient: ${sanitizeForClaude(m.content)}` : `Sarah: ${m.content}`))
@@ -862,33 +882,38 @@ export async function getAgentReply(
   // ── Booking state machine ─────────────────────────────────────────────────
   const bookingState = getBookingState(from)
 
-  switch (bookingState.state) {
-    case 'AWAITING_SERVICE':
-      return handleAwaitingService(from, latestMessage)
-
-    case 'AWAITING_DOCTOR_PREFERENCE':
-      return handleAwaitingDoctorPreference(from, latestMessage, bookingState)
-
-    case 'AWAITING_DOCTOR_NAME':
-      return handleAwaitingDoctorName(from, latestMessage, bookingState)
-
-    case 'AWAITING_SLOT_CONFIRMATION':
-      return handleAwaitingSlotConfirmation(from, latestMessage, bookingState)
-
-    case 'AWAITING_RESCHEDULE_SLOT':
-      return handleAwaitingRescheduleSlot(from, latestMessage, bookingState)
-
-    case 'AWAITING_CANCEL_CONFIRMATION':
-      return handleAwaitingCancelConfirmation(from, latestMessage, bookingState)
-
-    case 'IDLE':
-    default: {
-      const intent = detectIntent(latestMessage)
-      if (intent === 'CHECK')   return handleCheckAppointment(from)
-      if (intent === 'CONFIRM') return handleConfirmAppointment(from)
-      if (intent) return handleIdleBookIntent(from, intent)
-      // fall through to normal Claude call
+  if (bookingState.state !== 'IDLE') {
+    // Escape: if patient changed topic mid-flow, abandon booking and answer normally
+    const isSlotChoice = parseSlotChoice(latestMessage) !== null
+    const isYesNo = /^(yes|yeah|no|nope|sure|ok|okay|confirm|cancel)\b/i.test(latestMessage.trim())
+    const isNewTopic = /[?]|how much|price|cost|charge|open|hours|location|direction|where/i.test(latestMessage)
+    if (!isSlotChoice && !isYesNo && isNewTopic) {
+      clearBookingState(from)
+      console.log(`[Agent] Booking flow escaped for ${from}: patient changed topic`)
+      // fall through to Claude call below
+    } else {
+      switch (bookingState.state) {
+        case 'AWAITING_SERVICE':
+          return handleAwaitingService(from, latestMessage)
+        case 'AWAITING_DOCTOR_PREFERENCE':
+          return handleAwaitingDoctorPreference(from, latestMessage, bookingState)
+        case 'AWAITING_DOCTOR_NAME':
+          return handleAwaitingDoctorName(from, latestMessage, bookingState)
+        case 'AWAITING_SLOT_CONFIRMATION':
+          return handleAwaitingSlotConfirmation(from, latestMessage, bookingState)
+        case 'AWAITING_RESCHEDULE_SLOT':
+          return handleAwaitingRescheduleSlot(from, latestMessage, bookingState)
+        case 'AWAITING_CANCEL_CONFIRMATION':
+          return handleAwaitingCancelConfirmation(from, latestMessage, bookingState)
+      }
     }
+  } else {
+    // IDLE: detect intent
+    const intent = detectIntent(latestMessage)
+    if (intent === 'CHECK')   return handleCheckAppointment(from)
+    if (intent === 'CONFIRM') return handleConfirmAppointment(from)
+    if (intent) return handleIdleBookIntent(from, intent)
+    // fall through to normal Claude call
   }
 
   // ── Normal Claude call with RAG context ───────────────────────────────────
