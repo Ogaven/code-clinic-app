@@ -82,11 +82,12 @@ export default function StaffPermissionsPage() {
     setSaving(userId)
     const token = localStorage.getItem('cc_token')
     try {
-      await fetch(`/api-proxy/staff/${userId}/permissions`, {
+      const res = await fetch(`/api-proxy/staff/${userId}/permissions`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body:    JSON.stringify(perms[userId] || {}),
       })
+      if (!res.ok) throw new Error('Save failed')
       setSaved(userId)
       setTimeout(() => setSaved(s => s === userId ? null : s), 2000)
     } catch {/* ignore */} finally { setSaving(null) }

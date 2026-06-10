@@ -24,14 +24,26 @@ function applyTheme(t: Theme) {
     ? root.classList.add('dark') : root.classList.remove('dark')
 }
 
+function parseJwtPerms(token: string | null): Record<string, boolean> {
+  if (!token) return {}
+  try {
+    const b64 = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/')
+    if (!b64) return {}
+    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4)
+    const payload = JSON.parse(atob(padded))
+    if (payload.permissions) return JSON.parse(payload.permissions)
+    return {}
+  } catch { return {} }
+}
+
 const NAV_MAIN = [
   { label: 'Dashboard',              href: '/doctor/dashboard',                       icon: LayoutDashboard },
-  { label: 'Appointments',           href: '/doctor/schedule',                        icon: CalendarDays },
-  { label: 'My Patients',            href: '/doctor/patients',                        icon: Users },
-  { label: 'Patient Flow',           href: '/doctor/flow',                            icon: Activity },
-  { label: 'Communications',         href: '/doctor/messages',                        icon: MessageSquare, badge: true },
-  { label: 'Follow-up Dashboard',    href: '/doctor/ai-suite/followup-dashboard',     icon: CheckCircle2 },
-  { label: 'Confirmation Dashboard', href: '/doctor/ai-suite/confirmation-dashboard', icon: ListChecks },
+  { label: 'Appointments',           href: '/doctor/schedule',                        icon: CalendarDays,  permKey: 'appointments' },
+  { label: 'My Patients',            href: '/doctor/patients',                        icon: Users,         permKey: 'patients' },
+  { label: 'Patient Flow',           href: '/doctor/flow',                            icon: Activity,      permKey: 'liveFlow' },
+  { label: 'Communications',         href: '/doctor/messages',                        icon: MessageSquare, badge: true, permKey: 'communications' },
+  { label: 'Follow-up Dashboard',    href: '/doctor/ai-suite/followup-dashboard',     icon: CheckCircle2,  permKey: 'aiSuiteFollowup' },
+  { label: 'Confirmation Dashboard', href: '/doctor/ai-suite/confirmation-dashboard', icon: ListChecks,    permKey: 'aiSuiteConfirmation' },
 ]
 
 const NAV_BOTTOM = [
@@ -86,6 +98,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const router   = useRouter()
 
   const [user, setUser]           = useState<any>(null)
+  const [permsMap, setPermsMap]   = useState<Record<string, boolean>>({})
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [collapsed, setCol]       = useState(false)
   const [theme, setTheme]         = useState<Theme>('dark')
@@ -139,6 +152,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     }
 
     setUser(u)
+    setPermsMap(parseJwtPerms(localStorage.getItem('cc_token')))
     const t = (localStorage.getItem('cc_theme') as Theme) || 'dark'
     setTheme(t)
     applyTheme(t)
@@ -194,6 +208,9 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     applyTheme(t)
   }
 
+  const allowed = (key?: string) => !key || permsMap[key] !== false
+  const visibleNavMain = NAV_MAIN.filter(item => allowed(item.permKey))
+
   const initials = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'D'
 
   return (
@@ -220,7 +237,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
         {/* Main nav — scrollable */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-          {NAV_MAIN.map(item => (
+          {visibleNavMain.map(({ permKey: _pk, ...item }) => (
             <NavLink key={item.href} {...item} unread={unread} collapsed={collapsed} />
           ))}
         </nav>
@@ -252,7 +269,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               </button>
             </div>
             <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-              {NAV_MAIN.map(item => (
+              {visibleNavMain.map(({ permKey: _pk, ...item }) => (
                 <NavLink key={item.href} {...item} unread={unread} collapsed={false} onNavigate={() => setDrawer(false)} />
               ))}
             </nav>

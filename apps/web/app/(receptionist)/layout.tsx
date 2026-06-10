@@ -13,35 +13,47 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type SubNavItem = { label: string; href: string; icon: React.ElementType }
-type NavItem    = { label: string; href: string; icon: React.ElementType; sub?: SubNavItem[] }
+type SubNavItem = { label: string; href: string; icon: React.ElementType; permKey?: string }
+type NavItem    = { label: string; href: string; icon: React.ElementType; sub?: SubNavItem[]; permKey?: string }
 
 const navTop: NavItem[] = [
   { label: 'Dashboard',    href: '/receptionist/dashboard',    icon: LayoutDashboard },
-  { label: 'Scheduling',   href: '/receptionist/scheduling',   icon: CalendarDays },
-  { label: 'Appointments', href: '/receptionist/appointments', icon: ListChecks },
-  { label: 'Patients',   href: '/receptionist/patients',     icon: Users },
-  { label: 'Leads',      href: '/receptionist/leads',        icon: UserPlus },
-  { label: 'Live Flow',  href: '/receptionist/flow',         icon: Zap },
+  { label: 'Scheduling',   href: '/receptionist/scheduling',   icon: CalendarDays,  permKey: 'scheduling' },
+  { label: 'Appointments', href: '/receptionist/appointments', icon: ListChecks,    permKey: 'appointments' },
+  { label: 'Patients',     href: '/receptionist/patients',     icon: Users,         permKey: 'patients' },
+  { label: 'Leads',        href: '/receptionist/leads',        icon: UserPlus,      permKey: 'leads' },
+  { label: 'Live Flow',    href: '/receptionist/flow',         icon: Zap,           permKey: 'liveFlow' },
   {
     label: 'AI Suite',   href: '/receptionist/ai-suite',     icon: Bot,
     sub: [
       { label: 'Agent Control',          href: '/receptionist/ai-suite',                        icon: Bot },
-      { label: 'Inbox',                  href: '/receptionist/ai-suite/inbox',                  icon: Inbox },
-      { label: 'Call Logs',              href: '/receptionist/ai-suite/calls',                  icon: Phone },
-      { label: 'Voice Studio',           href: '/receptionist/ai-suite/voice-studio',           icon: Mic },
-      { label: 'Knowledge Base',         href: '/receptionist/ai-suite/knowledge',              icon: BookOpen },
-      { label: 'Follow-up Dashboard',    href: '/receptionist/ai-suite/followup-dashboard',     icon: ListChecks },
-      { label: 'Confirmation Dashboard', href: '/receptionist/ai-suite/confirmation-dashboard', icon: CalendarDays },
+      { label: 'Inbox',                  href: '/receptionist/ai-suite/inbox',                  icon: Inbox,        permKey: 'aiSuiteInbox' },
+      { label: 'Call Logs',              href: '/receptionist/ai-suite/calls',                  icon: Phone,        permKey: 'callLogs' },
+      { label: 'Voice Studio',           href: '/receptionist/ai-suite/voice-studio',           icon: Mic,          permKey: 'voiceStudio' },
+      { label: 'Knowledge Base',         href: '/receptionist/ai-suite/knowledge',              icon: BookOpen,     permKey: 'knowledgeBase' },
+      { label: 'Follow-up Dashboard',    href: '/receptionist/ai-suite/followup-dashboard',     icon: ListChecks,   permKey: 'aiSuiteFollowup' },
+      { label: 'Confirmation Dashboard', href: '/receptionist/ai-suite/confirmation-dashboard', icon: CalendarDays, permKey: 'aiSuiteConfirmation' },
       { label: 'Settings',               href: '/receptionist/ai-suite/settings',               icon: Settings },
     ],
   },
-  { label: 'Reports',    href: '/receptionist/reports',      icon: BarChart2 },
+  { label: 'Reports',      href: '/receptionist/reports',      icon: BarChart2,     permKey: 'reports' },
 ]
 
 const navBottom = [
-  { label: 'Communications', href: '/receptionist/communications', icon: MessageSquare, badge: true },
+  { label: 'Communications', href: '/receptionist/communications', icon: MessageSquare, badge: true, permKey: 'communications' },
 ]
+
+function parseJwtPerms(token: string | null): Record<string, boolean> {
+  if (!token) return {}
+  try {
+    const b64 = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/')
+    if (!b64) return {}
+    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4)
+    const payload = JSON.parse(atob(padded))
+    if (payload.permissions) return JSON.parse(payload.permissions)
+    return {}
+  } catch { return {} }
+}
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -208,6 +220,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const pathname  = usePathname()
   const router    = useRouter()
   const [user, setUser]         = useState<any>(null)
+  const [permsMap, setPermsMap] = useState<Record<string, boolean>>({})
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [collapsed, setCol]     = useState(false)
   const [showProfile, setProf]  = useState(false)
@@ -244,6 +257,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
       return
     }
     setUser(u)
+    setPermsMap(parseJwtPerms(localStorage.getItem('cc_token')))
     refreshAvatar(u)
     fetchUnread(u)
     fetchTodayAppts()
@@ -436,6 +450,12 @@ export default function ReceptionistLayout({ children }: { children: React.React
     router.push('/login')
   }
 
+  const allowed = (key?: string) => !key || permsMap[key] !== false
+  const visibleNavTop = navTop
+    .filter(item => allowed(item.permKey))
+    .map(item => ({ ...item, sub: item.sub?.filter(s => allowed(s.permKey)) }))
+  const visibleNavBottom = navBottom.filter(item => allowed(item.permKey))
+
   const themeIcon  = theme === 'dark' ? <Moon size={16} /> : theme === 'light' ? <Sun size={16} /> : <Monitor size={16} />
   const themeLabel = theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'System'
   const initials   = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'R'
@@ -481,7 +501,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
         <nav className="flex-1 overflow-y-auto sidebar-nav py-3 px-2 flex flex-col">
           {/* Top section */}
           <div className="space-y-0.5">
-            {navTop.map((item) => {
+            {visibleNavTop.map((item) => {
               const Icon    = item.icon
               const active  = pathname === item.href || pathname.startsWith(item.href + '/')
               const hasSub  = item.sub && item.sub.length > 0
@@ -547,7 +567,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
 
           {/* Communications */}
           <div className="space-y-0.5">
-            {navBottom.map((item) => {
+            {visibleNavBottom.map((item) => {
               const Icon   = item.icon
               const active = pathname === item.href || pathname.startsWith(item.href + '/')
               return (
@@ -797,12 +817,12 @@ export default function ReceptionistLayout({ children }: { children: React.React
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#0a1f4a] border-t border-gray-100 dark:border-white/10 flex items-center justify-around px-2 py-1.5"
         style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
         {[
-          { href: '/receptionist/dashboard',    icon: LayoutDashboard, label: 'Home' },
-          { href: '/receptionist/scheduling',   icon: CalendarDays,    label: 'Schedule' },
-          { href: '/receptionist/patients',     icon: Users,           label: 'Patients' },
-          { href: '/receptionist/ai-suite/inbox', icon: Inbox,         label: 'Inbox' },
-          { href: '/receptionist/flow',         icon: Zap,             label: 'Flow' },
-        ].map(({ href, icon: Icon, label }) => {
+          { href: '/receptionist/dashboard',      icon: LayoutDashboard, label: 'Home' },
+          { href: '/receptionist/scheduling',     icon: CalendarDays,    label: 'Schedule',  permKey: 'scheduling' },
+          { href: '/receptionist/patients',       icon: Users,           label: 'Patients',  permKey: 'patients' },
+          { href: '/receptionist/ai-suite/inbox', icon: Inbox,           label: 'Inbox',     permKey: 'aiSuiteInbox' },
+          { href: '/receptionist/flow',           icon: Zap,             label: 'Flow',      permKey: 'liveFlow' },
+        ].filter(item => allowed(item.permKey)).map(({ href, icon: Icon, label }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
             <Link key={href} href={href}
