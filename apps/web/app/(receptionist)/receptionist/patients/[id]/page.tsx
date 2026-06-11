@@ -7,6 +7,7 @@ import {
   ArrowLeft, User, Calendar, FileText, Activity, DollarSign, Folder,
   Phone, Mail, Edit2, Save, X, Plus, Trash2, CheckCircle2, AlertCircle,
   Clock, ChevronRight, Receipt, Download, Upload, Star, Brain, Camera, Loader2,
+  CheckCircle, XCircle, Eye, Sparkles, Mic, MicOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import TimelineTab from '@/components/patients/TimelineTab'
@@ -45,6 +46,109 @@ function avatarColor(name: string) {
 
 function formatUGX(n: number) {
   return 'UGX ' + n.toLocaleString()
+}
+
+// ── Dental chart types ────────────────────────────────────────
+type Surface = 'buccal' | 'lingual' | 'occlusal' | 'mesial' | 'distal'
+type SurfaceStatus = 'Healthy' | 'Caries' | 'Planned Treatment' | 'Amalgam' | 'Composite' | 'Gold' | 'Sealant'
+type ToothCondition = 'Missing' | 'Implant' | 'Root Canal' | 'Crown' | 'Fracture' | 'To be Extracted' | 'Impacted' | 'Mobile' | 'Supraerupted' | 'Bridge Abutment' | 'Pontic' | 'Denture' | 'Caries'
+type PerioSite = 'db' | 'b' | 'mb' | 'dl' | 'l' | 'ml'
+interface TrackedCondition { id: string; condition: ToothCondition }
+interface ToothState {
+  conditions: TrackedCondition[]
+  surfaces: Partial<Record<Surface, SurfaceStatus>>
+  notes?: string
+  mobility?: number
+  periodontal?: Partial<Record<PerioSite, { pocketDepth?: number; gingivalMargin?: number; bleeding?: boolean; suppuration?: boolean; plaque?: boolean }>>
+  history?: { date: string; changeType: string; item: string; oldStatus?: string; newStatus: string }[]
+}
+
+const statusColorMap: Record<SurfaceStatus, string> = {
+  Healthy: 'fill-white', Caries: 'fill-red-400', 'Planned Treatment': 'fill-amber-400',
+  Amalgam: 'fill-slate-500', Composite: 'fill-sky-300', Gold: 'fill-yellow-400', Sealant: 'fill-pink-300',
+}
+const quadrant1 = ['18','17','16','15','14','13','12','11']
+const quadrant2 = ['21','22','23','24','25','26','27','28']
+const quadrant3 = ['31','32','33','34','35','36','37','38']
+const quadrant4 = ['48','47','46','45','44','43','42','41']
+const childQ1 = ['55','54','53','52','51']
+const childQ2 = ['61','62','63','64','65']
+const childQ3 = ['71','72','73','74','75']
+const childQ4 = ['85','84','83','82','81']
+const conditionTools: ToothCondition[] = [
+  'Missing','Implant','Root Canal','Crown','Fracture','To be Extracted',
+  'Impacted','Mobile','Supraerupted','Bridge Abutment','Pontic','Denture',
+]
+const surfaceTools: SurfaceStatus[] = ['Healthy','Caries','Planned Treatment','Amalgam','Composite','Gold','Sealant']
+
+function ToothSVG({ toothNumber, state, isSelected, onSelect, isPatientLeft, isUpperQuadrant }: {
+  toothNumber: string; state: ToothState; isSelected: boolean;
+  onSelect: (n: string | null) => void; isPatientLeft: boolean; isUpperQuadrant: boolean
+}) {
+  const { conditions = [], surfaces = {} } = state
+  const hasCondition = (c: string) => conditions.some(tc => tc.condition === c)
+  const isMissing    = hasCondition('Missing')
+  const hasImplant   = hasCondition('Implant')
+  const hasRootCanal = hasCondition('Root Canal')
+  const hasCrown     = hasCondition('Crown')
+  const hasFracture  = hasCondition('Fracture')
+  const toBeExtracted= hasCondition('To be Extracted')
+
+  const getSurfaceColor = (surfaceName: 'top' | 'bottom' | 'occlusal' | 'left' | 'right') => {
+    let s: Surface
+    if (surfaceName === 'top')    s = isUpperQuadrant ? 'buccal' : 'lingual'
+    else if (surfaceName === 'bottom') s = isUpperQuadrant ? 'lingual' : 'buccal'
+    else if (surfaceName === 'left')   s = isPatientLeft ? 'mesial' : 'distal'
+    else if (surfaceName === 'right')  s = isPatientLeft ? 'distal' : 'mesial'
+    else s = 'occlusal'
+    return statusColorMap[surfaces[s] || 'Healthy']
+  }
+
+  return (
+    <div
+      className={cn('w-14 h-14 flex flex-col items-center justify-center relative cursor-pointer p-0.5 rounded-lg transition-colors',
+        isSelected ? 'bg-blue-200' : 'hover:bg-slate-100 dark:hover:bg-white/10')}
+      onClick={() => onSelect(isSelected ? null : toothNumber)}
+      title={`Tooth ${toothNumber}`}
+    >
+      <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">{toothNumber}</span>
+      <div className="w-10 h-10 relative">
+        {isMissing ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <X size={20} className="text-slate-400" />
+          </div>
+        ) : (
+          <svg viewBox="0 0 20 20" className="w-full h-full">
+            <path d="M7,6 L13,6 L14,2 L6,2 Z"    className={`transition-colors stroke-slate-400 stroke-[0.5] ${getSurfaceColor('top')}`} />
+            <path d="M7,14 L13,14 L14,18 L6,18 Z" className={`transition-colors stroke-slate-400 stroke-[0.5] ${getSurfaceColor('bottom')}`} />
+            <path d="M6,7 L6,13 L2,14 L2,6 Z"    className={`transition-colors stroke-slate-400 stroke-[0.5] ${getSurfaceColor('left')}`} />
+            <path d="M14,7 L14,13 L18,14 L18,6 Z" className={`transition-colors stroke-slate-400 stroke-[0.5] ${getSurfaceColor('right')}`} />
+            <path d="M6,6 H14 V14 H6 Z"            className={`transition-colors stroke-slate-400 stroke-[0.5] ${getSurfaceColor('occlusal')}`} />
+          </svg>
+        )}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          {hasImplant    && <CheckCircle size={14} className="text-cyan-600 opacity-80" />}
+          {hasRootCanal  && <span className="text-xs font-bold text-blue-500 opacity-80">R</span>}
+          {hasCrown      && <div className="w-8 h-8 border-2 border-yellow-400 rounded opacity-80" />}
+          {hasFracture   && <XCircle size={12} className="text-red-600 opacity-80" />}
+          {toBeExtracted && <X size={16} className="text-red-600 opacity-80 stroke-2" />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function renderMarkdown(text: string) {
+  return text.split('\n').map((line, i) => {
+    if (line.startsWith('### ')) return <h4 key={i} className="font-bold text-slate-800 dark:text-white mt-2 mb-0.5 text-sm">{line.slice(4)}</h4>
+    if (line.startsWith('## '))  return <h3 key={i} className="font-bold text-slate-800 dark:text-white mt-3 mb-1">{line.slice(3)}</h3>
+    if (line.startsWith('# '))   return <h2 key={i} className="font-semibold text-slate-900 dark:text-white mt-3 mb-1 text-base">{line.slice(2)}</h2>
+    if (line === '---')           return <hr key={i} className="border-slate-200 dark:border-white/10 my-2" />
+    const html = line
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    return <p key={i} className="text-sm text-slate-700 dark:text-slate-300" dangerouslySetInnerHTML={{ __html: html || '&nbsp;' }} />
+  })
 }
 
 // ── Card wrapper ─────────────────────────────────────────────
@@ -424,184 +528,453 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
   )
 }
 
-// ── Dental Chart Tab (read-only view for receptionist) ───────
-function DentalTab({ patientId }: { patientId: string }) {
-  const [chart, setChart] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [chartMode, setChartMode] = useState<'adult' | 'child'>('adult')
-  const API = '/api-proxy'
+// ── Dental Chart Tab (full editable — matches doctor view) ───
+function DentalChartTab({ patientId }: { patientId: string }) {
+  const [chart, setChart]               = useState<Record<string, ToothState>>({})
+  const [selectedTooth, setSelectedTooth] = useState<string | null>(null)
+  const [aiSummary, setAiSummary]       = useState('')
+  const [isSummarizing, setIsSummarizing] = useState(false)
+  const [isSaving, setIsSaving]         = useState(false)
+  const [smartEntry, setSmartEntry]     = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [savedAiSummary, setSavedAiSummary] = useState('')
+  const [services, setServices]         = useState<any[]>([])
+  const [chartMode, setChartMode]       = useState<'adult' | 'child'>('adult')
 
   useEffect(() => {
     const token = localStorage.getItem('cc_token')
-    fetch(`${API}/patients/${patientId}/dental-chart`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(setChart).catch(() => {}).finally(() => setLoading(false))
+    fetch(`/api-proxy/clinical/patients/${patientId}/dental-chart`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => {
+        setChart(d.teeth || {})
+        if (d.aiSummary) setSavedAiSummary(d.aiSummary)
+      }).catch(() => {})
+    fetch('/api-proxy/services', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => setServices(Array.isArray(d) ? d : [])).catch(() => {})
   }, [patientId])
 
-  const adultUpper = ['18','17','16','15','14','13','12','11','21','22','23','24','25','26','27','28']
-  const adultLower = ['48','47','46','45','44','43','42','41','31','32','33','34','35','36','37','38']
-  const childUpper = ['55','54','53','52','51','61','62','63','64','65']
-  const childLower = ['85','84','83','82','81','71','72','73','74','75']
+  const getToothState = (n: string): ToothState => chart[n] || { conditions: [], surfaces: {}, history: [] }
 
-  const upperRow = chartMode === 'adult' ? adultUpper : childUpper
-  const lowerRow = chartMode === 'adult' ? adultLower : childLower
-
-  const SURFACE_COLORS: Record<string, string> = {
-    Healthy: '#fff', Caries: '#F87171', 'Planned Treatment': '#FCD34D',
-    Amalgam: '#94A3B8', Composite: '#7DD3FC', Gold: '#FBBF24', Sealant: '#F9A8D4',
+  const updateTooth = (n: string, updates: Partial<ToothState>) => {
+    setChart(prev => {
+      const current = prev[n] || { conditions: [], surfaces: {}, history: [] }
+      const newHistory = [...(current.history || [])]
+      if (updates.conditions) {
+        const oldSet = new Set(current.conditions.map(c => c.condition))
+        updates.conditions.forEach(c => { if (!oldSet.has(c.condition)) newHistory.push({ date: new Date().toISOString(), changeType: 'condition', item: c.condition, newStatus: 'added' }) })
+      }
+      if (updates.surfaces) {
+        Object.entries(updates.surfaces).forEach(([s, v]) => {
+          const old = current.surfaces[s as Surface] || 'Healthy'
+          if (old !== v) newHistory.push({ date: new Date().toISOString(), changeType: 'surface', item: s, oldStatus: old, newStatus: v as string })
+        })
+      }
+      return { ...prev, [n]: { ...current, ...updates, surfaces: updates.surfaces ? { ...current.surfaces, ...updates.surfaces } : current.surfaces, conditions: updates.conditions ?? current.conditions, history: newHistory } }
+    })
   }
 
-  if (loading) return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" /></div>
+  const handleConditionToggle = (condition: ToothCondition) => {
+    if (!selectedTooth) return
+    const state = getToothState(selectedTooth)
+    const exists = state.conditions.some(c => c.condition === condition)
+    const newConditions = exists
+      ? state.conditions.filter(c => c.condition !== condition)
+      : [...state.conditions, { id: `${condition}-${Date.now()}`, condition }]
+    updateTooth(selectedTooth, { conditions: newConditions })
+  }
 
-  const teethData = chart?.teeth || {}
+  const handleSurfaceChange = (surface: Surface, status: SurfaceStatus) => {
+    if (!selectedTooth) return
+    const state = getToothState(selectedTooth)
+    const newSurfaces = { ...state.surfaces, [surface]: status }
+    const updates: Partial<ToothState> = { surfaces: newSurfaces }
+    if (status === 'Caries' && !state.conditions.some(c => c.condition === 'Caries')) {
+      updates.conditions = [...state.conditions, { id: `Caries-${surface}-${Date.now()}`, condition: 'Caries' }]
+    }
+    updateTooth(selectedTooth, updates)
+  }
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    const token = localStorage.getItem('cc_token')
+    try {
+      await fetch(`/api-proxy/clinical/patients/${patientId}/dental-chart`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ teeth: chart }),
+      })
+    } catch {} finally { setIsSaving(false) }
+  }
+
+  const handleGenerateSummary = async () => {
+    setIsSummarizing(true)
+    const token = localStorage.getItem('cc_token')
+    try {
+      const res = await fetch(`/api-proxy/clinical/patients/${patientId}/dental-chart/ai-summary`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ chartData: chart, type: 'dental' }),
+      })
+      const data = await res.json()
+      setSavedAiSummary(data.summary || '')
+      setAiSummary(data.summary || '')
+    } catch {} finally { setIsSummarizing(false) }
+  }
+
+  const handleSmartEntry = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!smartEntry.trim()) return
+    setIsProcessing(true)
+    const token = localStorage.getItem('cc_token')
+    try {
+      const res = await fetch('/api-proxy/clinical/dental-chart/smart-entry', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ command: smartEntry, patientId }),
+      })
+      const data = await res.json()
+      if (data.commands) {
+        data.commands.forEach((cmd: any) => {
+          const state = chart[cmd.toothNumber] || { conditions: [], surfaces: {}, history: [] }
+          if (cmd.type === 'surface') updateTooth(cmd.toothNumber, { surfaces: { ...state.surfaces, [cmd.surface]: cmd.status } })
+          else if (cmd.type === 'condition') {
+            if (!state.conditions.some(c => c.condition === cmd.condition))
+              updateTooth(cmd.toothNumber, { conditions: [...state.conditions, { id: `${cmd.condition}-${Date.now()}`, condition: cmd.condition }] })
+          }
+        })
+        setSmartEntry('')
+      }
+    } catch {} finally { setIsProcessing(false) }
+  }
+
+  const selectedState    = selectedTooth ? getToothState(selectedTooth) : null
+  const activeTreatable  = selectedState?.conditions.filter(c => ['Caries','Fracture','To be Extracted'].includes(c.condition)) || []
+
+  const renderQuadrant = (teeth: string[], isPatientLeft: boolean, isUpper: boolean) => (
+    <div className="flex">
+      {teeth.map(n => (
+        <ToothSVG key={n} toothNumber={n} state={getToothState(n)} isSelected={selectedTooth === n}
+          onSelect={setSelectedTooth} isPatientLeft={isPatientLeft} isUpperQuadrant={isUpper} />
+      ))}
+    </div>
+  )
+
+  const q1 = chartMode === 'adult' ? quadrant1 : childQ1
+  const q2 = chartMode === 'adult' ? quadrant2 : childQ2
+  const q3 = chartMode === 'adult' ? quadrant3 : childQ3
+  const q4 = chartMode === 'adult' ? quadrant4 : childQ4
 
   return (
-    <div className="space-y-4">
-      <Card className="p-5">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-gray-800 dark:text-white">Dental Chart (Read-only)</h3>
-            <p className="text-xs text-gray-400 dark:text-white/40">Chart edits are done by the dentist.</p>
-          </div>
-          {/* Adult / Child toggle */}
-          <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/10 rounded-lg p-0.5">
+    <div className="flex flex-col h-full">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+        {/* Chart */}
+        <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-white/3 overflow-auto min-h-[200px]">
+          <div className="flex items-center gap-1 mb-3 self-start bg-slate-200 dark:bg-white/10 rounded-lg p-0.5">
             {(['adult','child'] as const).map(mode => (
-              <button key={mode} onClick={() => setChartMode(mode)}
+              <button key={mode} onClick={() => { setChartMode(mode); setSelectedTooth(null) }}
                 className={cn('px-3 py-1 text-xs font-semibold rounded-md transition-colors',
-                  chartMode === mode ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400')}>
-                {mode === 'adult' ? 'Adult' : 'Child'}
+                  chartMode === mode ? 'bg-white dark:bg-gray-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700')}>
+                {mode === 'adult' ? 'Adult (32)' : 'Child — Primary (20)'}
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Simple tooth grid */}
-        <div className="overflow-x-auto">
-          <div className="min-w-max">
-            {/* Upper arch */}
-            <div className="flex gap-1 mb-2">
-              {upperRow.map(t => {
-                const td = teethData[t] || {}
-                const conditions = td.conditions || []
-                const missing = conditions.some((c: any) => c.condition === 'Missing')
-                return (
-                  <div key={t} className="flex flex-col items-center gap-0.5">
-                    <span className="text-[8px] text-gray-400">{t}</span>
-                    <div className={cn('w-8 h-8 rounded-lg border-2 flex items-center justify-center text-[8px] font-bold transition-all',
-                      missing ? 'border-dashed border-gray-300 bg-gray-50 dark:bg-white/5 text-gray-300' : 'border-gray-200 dark:border-white/10 bg-white dark:bg-white/5')}>
-                      {missing ? '×' : conditions.length > 0 ? '!' : ''}
-                    </div>
-                    <div className="w-1 h-3 bg-gray-200 dark:bg-white/10 rounded-full" />
-                  </div>
-                )
-              })}
+          <div className="overflow-x-auto w-full">
+            <div className="flex items-center justify-center min-w-max mx-auto">
+              {renderQuadrant(q1, false, true)}
+              <div className="w-px h-14 bg-slate-300 mx-1" />
+              {renderQuadrant(q2, true, true)}
             </div>
-
-            {/* Lower arch */}
-            <div className="flex gap-1 mt-1">
-              {lowerRow.map(t => {
-                const td = teethData[t] || {}
-                const conditions = td.conditions || []
-                const missing = conditions.some((c: any) => c.condition === 'Missing')
-                return (
-                  <div key={t} className="flex flex-col items-center gap-0.5">
-                    <div className="w-1 h-3 bg-gray-200 dark:bg-white/10 rounded-full" />
-                    <div className={cn('w-8 h-8 rounded-lg border-2 flex items-center justify-center text-[8px] font-bold',
-                      missing ? 'border-dashed border-gray-300 bg-gray-50 dark:bg-white/5 text-gray-300' : 'border-gray-200 dark:border-white/10 bg-white dark:bg-white/5')}>
-                      {missing ? '×' : conditions.length > 0 ? '!' : ''}
-                    </div>
-                    <span className="text-[8px] text-gray-400">{t}</span>
-                  </div>
-                )
-              })}
+            <div className="border-t my-2 border-slate-300 min-w-max" />
+            <div className="flex items-center justify-center min-w-max mx-auto">
+              {renderQuadrant(q4, false, false)}
+              <div className="w-px h-14 bg-slate-300 mx-1" />
+              {renderQuadrant(q3, true, false)}
             </div>
           </div>
         </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-50 dark:border-white/5">
-          {Object.entries(SURFACE_COLORS).map(([k, v]) => (
-            <div key={k} className="flex items-center gap-1">
-              <span className="w-3 h-3 rounded border border-gray-200" style={{ background: v }} />
-              <span className="text-[10px] text-gray-500 dark:text-white/50">{k}</span>
+        {/* Inspector */}
+        <div className="w-full md:w-72 border-t md:border-t-0 md:border-l border-slate-200 dark:border-white/10 flex flex-col overflow-y-auto bg-white dark:bg-gray-900 max-h-[40vh] md:max-h-none">
+          {!selectedTooth ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-slate-400">
+              <Eye size={40} className="mb-2 opacity-30" />
+              <p className="font-medium">Select a tooth</p>
+              <p className="text-sm">Click any tooth on the chart to view and edit</p>
             </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* Conditions summary */}
-      {Object.keys(teethData).length > 0 && (
-        <Card className="overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50 dark:border-white/5">
-            <h3 className="text-sm font-bold text-gray-800 dark:text-white">Conditions Summary</h3>
-          </div>
-          <div className="divide-y divide-gray-50 dark:divide-white/5">
-            {Object.entries(teethData).filter(([, v]: any) => v?.conditions?.length > 0).map(([tooth, td]: any) => (
-              <div key={tooth} className="flex items-center gap-3 px-4 py-2.5">
-                <span className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/8 flex items-center justify-center text-xs font-bold text-gray-600 dark:text-white/60">{tooth}</span>
-                <div className="flex flex-wrap gap-1">
-                  {td.conditions.map((c: any) => (
-                    <span key={c.id} className="text-[10px] font-bold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded-full">{c.condition}</span>
-                  ))}
-                </div>
+          ) : (
+            <>
+              <div className="p-4 border-b dark:border-white/10">
+                <h3 className="font-bold text-slate-800 dark:text-white">Tooth #{selectedTooth}</h3>
               </div>
-            ))}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {activeTreatable.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+                      <Sparkles size={12} className="text-indigo-500" /> Recommended Actions
+                    </h4>
+                    {activeTreatable.map(tc => {
+                      const recs = services.filter(s =>
+                        tc.condition === 'Caries' ? s.name.toLowerCase().includes('fill') :
+                        tc.condition === 'Fracture' ? s.name.toLowerCase().includes('crown') :
+                        tc.condition === 'To be Extracted' ? s.name.toLowerCase().includes('extract') : false
+                      ).slice(0, 2)
+                      return (
+                        <div key={tc.id} className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-md mb-2">
+                          <p className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">For: <strong>{tc.condition}</strong></p>
+                          {recs.length > 0 ? recs.map(r => (
+                            <div key={r.id} className="text-xs text-slate-700 dark:text-slate-300 flex items-center gap-1 py-0.5">
+                              <Plus size={10} /> {r.name} — {formatUGX(r.priceUGX)}
+                            </div>
+                          )) : <p className="text-xs text-slate-500">No services matched</p>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Conditions</h4>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {conditionTools.map(c => (
+                      <button key={c} onClick={() => handleConditionToggle(c)}
+                        className={cn('px-2 py-1.5 text-xs rounded text-left transition-colors',
+                          selectedState?.conditions.some(tc => tc.condition === c) ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-white/10 hover:bg-slate-200 text-slate-700 dark:text-slate-300')}>
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Surfaces</h4>
+                  <div className="space-y-1.5">
+                    {(['occlusal','buccal','lingual','mesial','distal'] as Surface[]).map(s => (
+                      <div key={s} className="flex items-center justify-between">
+                        <span className="capitalize text-xs text-slate-700 dark:text-slate-300">{s}</span>
+                        <select value={selectedState?.surfaces[s] || 'Healthy'} onChange={e => handleSurfaceChange(s, e.target.value as SurfaceStatus)}
+                          className="text-xs border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-1 py-0.5">
+                          {surfaceTools.map(st => <option key={st} value={st}>{st}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Notes</h4>
+                  <textarea value={selectedState?.notes || ''} onChange={e => updateTooth(selectedTooth, { notes: e.target.value })}
+                    placeholder="Tooth-specific notes..."
+                    className="w-full text-xs border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded p-2 min-h-[60px] resize-none" />
+                </div>
+                {selectedState?.history && selectedState.history.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">History</h4>
+                    <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                      {[...selectedState.history].reverse().slice(0, 5).map((h, i) => (
+                        <div key={i} className="border-l-2 border-slate-300 pl-2 text-xs">
+                          <p className="text-slate-700 dark:text-slate-300">
+                            {h.changeType === 'condition' ? `${h.item} ${h.newStatus}` : `${h.item}: ${h.oldStatus || 'Healthy'} → ${h.newStatus}`}
+                          </p>
+                          <p className="text-slate-400">{new Date(h.date).toLocaleDateString('en-UG')}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom bar */}
+      <div className="p-4 border-t dark:border-white/10 bg-white dark:bg-gray-900 space-y-3">
+        <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+              <Brain size={16} className="text-indigo-600" /> AI Chart Summary
+            </h4>
+            <button onClick={handleGenerateSummary} disabled={isSummarizing}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:bg-slate-400">
+              <Sparkles size={12} /> {isSummarizing ? 'Generating...' : 'Generate'}
+            </button>
           </div>
-        </Card>
-      )}
+          {isSummarizing && <p className="text-sm text-slate-500 animate-pulse">Analyzing chart...</p>}
+          {!isSummarizing && savedAiSummary && <div>{renderMarkdown(savedAiSummary)}</div>}
+          {!isSummarizing && !savedAiSummary && <p className="text-sm text-slate-500">Click Generate for an AI summary of this chart.</p>}
+        </div>
+        <form onSubmit={handleSmartEntry} className="relative">
+          <input value={smartEntry} onChange={e => setSmartEntry(e.target.value)} disabled={isProcessing}
+            placeholder="e.g. 'Caries on 16 occlusal', 'Missing 38 and 48', 'Crown on 25'"
+            className="w-full pl-9 pr-14 py-2.5 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+          <Mic size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <button type="submit" disabled={isProcessing || !smartEntry.trim()}
+            className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs bg-blue-600 text-white rounded disabled:bg-slate-300">
+            {isProcessing ? '...' : 'Apply'}
+          </button>
+        </form>
+        <button onClick={handleSave} disabled={isSaving}
+          className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-400">
+          <Save size={14} /> {isSaving ? 'Saving...' : 'Save Chart'}
+        </button>
+      </div>
     </div>
   )
 }
 
-// ── Perio Tab ────────────────────────────────────────────────
-function PerioTab({ patientId }: { patientId: string }) {
-  const [chart, setChart] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const API = '/api-proxy'
+// ── Perio Chart Tab (full editable — matches doctor view) ─────
+function PerioChartTab({ patientId }: { patientId: string }) {
+  const [teeth, setTeeth]           = useState<Record<string, ToothState>>({})
+  const [aiSummary, setAiSummary]   = useState('')
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isSaving, setIsSaving]     = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [transcript, setTranscript] = useState('')
+  const recognitionRef              = useRef<any>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('cc_token')
-    fetch(`${API}/patients/${patientId}/dental-chart`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(setChart).catch(() => {}).finally(() => setLoading(false))
+    fetch(`/api-proxy/clinical/patients/${patientId}/dental-chart`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => {
+        setTeeth(d.teeth || {})
+        if (d.aiPerioSummary) setAiSummary(d.aiPerioSummary)
+      }).catch(() => {})
   }, [patientId])
 
-  if (loading) return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" /></div>
+  const updateMeasurement = (tooth: string, site: PerioSite, field: string, value: number | boolean) => {
+    setTeeth(prev => {
+      const t = prev[tooth] || { conditions: [], surfaces: {}, periodontal: {} }
+      return { ...prev, [tooth]: { ...t, periodontal: { ...t.periodontal, [site]: { ...(t.periodontal?.[site] || {}), [field]: value } } } }
+    })
+  }
 
-  const teethData = chart?.teeth || {}
-  const perioTeeth = Object.entries(teethData).filter(([, v]: any) => v?.periodontal && Object.keys(v.periodontal).length > 0)
+  const handleSave = async () => {
+    setIsSaving(true)
+    const token = localStorage.getItem('cc_token')
+    try {
+      await fetch(`/api-proxy/clinical/patients/${patientId}/dental-chart`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ periodontal: teeth }),
+      })
+    } catch {} finally { setIsSaving(false) }
+  }
+
+  const handleAISummary = async () => {
+    setIsAnalyzing(true)
+    const token = localStorage.getItem('cc_token')
+    try {
+      const res = await fetch(`/api-proxy/clinical/patients/${patientId}/dental-chart/ai-summary`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ chartData: teeth, type: 'perio' }),
+      })
+      const data = await res.json()
+      setAiSummary(data.summary || '')
+    } catch {} finally { setIsAnalyzing(false) }
+  }
+
+  const startVoiceScribe = () => {
+    if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+      alert('Voice recognition not supported on this browser'); return
+    }
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const recognition = new SR()
+    recognition.continuous = false; recognition.interimResults = false; recognition.maxAlternatives = 1; recognition.lang = 'en-US'
+    let resultReceived = false
+    recognition.onresult = (event: any) => {
+      if (resultReceived) return
+      resultReceived = true
+      setTranscript((prev: string) => {
+        const sep = prev && !prev.endsWith(' ') ? ' ' : ''
+        return prev + sep + event.results[0][0].transcript
+      })
+    }
+    recognition.onerror = () => setIsRecording(false)
+    recognition.onend = () => setIsRecording(false)
+    recognitionRef.current = recognition
+    setIsRecording(true)
+    recognition.start()
+    setTimeout(() => { try { recognition.stop() } catch {} }, 10000)
+  }
+
+  const stopVoiceScribe = () => {
+    try { recognitionRef.current?.stop() } catch {}
+    setIsRecording(false)
+  }
+
+  const pdColor = (v?: number) => !v ? '' : v >= 6 ? 'text-red-600 font-bold' : v >= 4 ? 'text-yellow-600 font-bold' : 'text-slate-700'
+
+  const renderToothCol = (tooth: string, isUpper: boolean) => {
+    const t = teeth[tooth]
+    const isMissing = t?.conditions?.some(c => ['Missing','Implant'].includes(c.condition))
+    return (
+      <div key={tooth} className="w-16 text-center flex-shrink-0 border-r border-slate-200 dark:border-white/10 last:border-r-0">
+        {isUpper && <div className="h-5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-white/10 flex items-center justify-center border-b border-slate-200">{tooth}</div>}
+        {(['db','b','mb'] as PerioSite[]).map(site => (
+          <div key={site} className="h-5 border-b border-slate-200 dark:border-white/10 flex items-center justify-center">
+            {!isMissing && (
+              <input type="text" value={t?.periodontal?.[site]?.pocketDepth ?? ''}
+                onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) updateMeasurement(tooth, site, 'pocketDepth', v) }}
+                className={cn('w-full h-full text-center bg-transparent border-none text-xs p-0 focus:ring-1 focus:ring-blue-500', pdColor(t?.periodontal?.[site]?.pocketDepth))} />
+            )}
+          </div>
+        ))}
+        <div className="h-4 flex items-center justify-center gap-0.5">
+          {(['db','b','mb'] as PerioSite[]).map(site => (
+            <button key={site} onClick={() => updateMeasurement(tooth, site, 'bleeding', !t?.periodontal?.[site]?.bleeding)}
+              className={cn('w-2 h-2 rounded-full', t?.periodontal?.[site]?.bleeding ? 'bg-red-500' : 'bg-slate-200')} />
+          ))}
+        </div>
+        {(['dl','l','ml'] as PerioSite[]).map(site => (
+          <div key={site} className="h-5 border-b border-slate-200 dark:border-white/10 flex items-center justify-center">
+            {!isMissing && (
+              <input type="text" value={t?.periodontal?.[site]?.pocketDepth ?? ''}
+                onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) updateMeasurement(tooth, site, 'pocketDepth', v) }}
+                className={cn('w-full h-full text-center bg-transparent border-none text-xs p-0 focus:ring-1 focus:ring-blue-500', pdColor(t?.periodontal?.[site]?.pocketDepth))} />
+            )}
+          </div>
+        ))}
+        {!isUpper && <div className="h-5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-white/10 flex items-center justify-center border-t border-slate-200">{tooth}</div>}
+      </div>
+    )
+  }
 
   return (
-    <Card className="overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-50 dark:border-white/5">
-        <h3 className="text-sm font-bold text-gray-800 dark:text-white">Periodontal Chart (Read-only)</h3>
-        <p className="text-xs text-gray-400 dark:text-white/40">Recorded by the treating dentist</p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 items-center">
+        <button onClick={isRecording ? stopVoiceScribe : startVoiceScribe}
+          className={cn('flex items-center gap-2 px-3 py-2 text-sm font-medium text-white rounded-lg', isRecording ? 'bg-red-500 animate-pulse' : 'bg-blue-600')}>
+          {isRecording ? <><MicOff size={14} /> Stop Recording</> : <><Mic size={14} /> Dictate Note</>}
+        </button>
+        {transcript && <span className="text-sm text-slate-600 dark:text-slate-300 flex-1 truncate">{transcript}</span>}
+        <button onClick={handleAISummary} disabled={isAnalyzing}
+          className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-slate-400">
+          <Brain size={14} /> {isAnalyzing ? 'Analyzing...' : 'AI Analysis'}
+        </button>
+        <button onClick={handleSave} disabled={isSaving}
+          className="flex items-center gap-1 px-3 py-2 text-sm font-medium bg-green-600 text-white rounded-lg disabled:bg-slate-400">
+          <Save size={14} /> {isSaving ? 'Saving...' : 'Save'}
+        </button>
       </div>
-      {perioTeeth.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <Activity size={36} className="text-gray-200 dark:text-white/10 mb-3" />
-          <p className="text-sm text-gray-400">No periodontal data recorded yet</p>
-        </div>
-      ) : (
-        <div className="divide-y divide-gray-50 dark:divide-white/5">
-          {perioTeeth.map(([tooth, td]: any) => {
-            const sites = td.periodontal
-            return (
-              <div key={tooth} className="px-4 py-3">
-                <p className="text-sm font-bold text-gray-700 dark:text-white mb-2">Tooth {tooth}</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {Object.entries(sites).map(([site, data]: any) => (
-                    <div key={site} className="bg-gray-50 dark:bg-white/5 rounded-lg p-2">
-                      <p className="text-[10px] font-black text-gray-400 uppercase mb-1">{site}</p>
-                      {data.pocketDepth !== undefined && <p className="text-xs text-gray-700 dark:text-white/70">PD: <span className={cn('font-bold', data.pocketDepth >= 4 ? 'text-red-500' : 'text-emerald-500')}>{data.pocketDepth}mm</span></p>}
-                      {data.bleeding && <p className="text-[10px] text-red-400">● Bleeding</p>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+      {aiSummary && (
+        <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 p-3 rounded-lg">{renderMarkdown(aiSummary)}</div>
       )}
-    </Card>
+      <div className="flex gap-4 text-xs text-slate-500">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Bleeding</span>
+        <span className="text-red-600 font-bold">Red = PPD ≥ 6</span>
+        <span className="text-yellow-600 font-bold">Yellow = PPD ≥ 4</span>
+      </div>
+      <div className="overflow-x-auto">
+        <p className="text-center text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">Maxillary Arch (Upper)</p>
+        <div className="flex border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden w-fit mx-auto">
+          <div className="w-14 text-[10px] text-slate-400 text-right pr-1 flex flex-col">
+            {['Tooth','DB','B','MB','BOP','DL','L','ML'].map(l => <div key={l} className={l === 'BOP' ? 'h-4 flex items-center justify-end' : 'h-5 flex items-center justify-end'}>{l}</div>)}
+          </div>
+          {[...quadrant1, ...quadrant2].map(t => renderToothCol(t, true))}
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <p className="text-center text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">Mandibular Arch (Lower)</p>
+        <div className="flex border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden w-fit mx-auto">
+          <div className="w-14 text-[10px] text-slate-400 text-right pr-1 flex flex-col">
+            {['DL','L','ML','BOP','DB','B','MB','Tooth'].map(l => <div key={l} className={l === 'BOP' ? 'h-4 flex items-center justify-end' : 'h-5 flex items-center justify-end'}>{l}</div>)}
+          </div>
+          {[...quadrant4.slice().reverse(), ...quadrant3.slice().reverse()].map(t => renderToothCol(t, false))}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1088,8 +1461,8 @@ export default function PatientDetailPage() {
       <div className="flex-1 overflow-y-auto p-5">
         {tab === 'overview'     && <OverviewTab patient={patient} onRefresh={fetchPatient} />}
         {tab === 'appointments' && <AppointmentsTab patientId={id} />}
-        {tab === 'dental'       && <DentalTab patientId={id} />}
-        {tab === 'perio'        && <PerioTab patientId={id} />}
+        {tab === 'dental'       && <DentalChartTab patientId={id} />}
+        {tab === 'perio'        && <PerioChartTab patientId={id} />}
         {tab === 'treatment'    && <TreatmentTab patientId={id} />}
         {tab === 'notes'        && <NotesTab patientId={id} />}
         {tab === 'billing'      && <BillingTab patientId={id} />}
