@@ -362,12 +362,12 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#0d1526] border-t border-gray-100 dark:border-white/[0.06] flex z-40"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {[
-          { label: 'Home',         href: '/doctor/dashboard', emoji: '🏠' },
-          { label: 'Appointments', href: '/doctor/schedule',  emoji: '🗓' },
-          { label: 'Patients',     href: '/doctor/patients',  emoji: '👥' },
-          { label: 'Messages',     href: '/doctor/messages',  emoji: '💬' },
-          { label: 'More',         href: '#',                 emoji: '☰', isMenu: true },
-        ].map(({ label, href, emoji, isMenu }) => {
+          { label: 'Home',         href: '/doctor/dashboard', emoji: '🏠',  permKey: undefined },
+          { label: 'Appointments', href: '/doctor/schedule',  emoji: '🗓',  permKey: 'appointments' },
+          { label: 'Patients',     href: '/doctor/patients',  emoji: '👥',  permKey: 'patients' },
+          { label: 'Messages',     href: '/doctor/messages',  emoji: '💬',  permKey: 'communications' },
+          { label: 'More',         href: '#',                 emoji: '☰',  permKey: undefined, isMenu: true },
+        ].filter(item => allowed(item.permKey)).map(({ label, href, emoji, isMenu }) => {
           const active = !isMenu && (pathname === href || pathname.startsWith(href + '/'))
           return isMenu ? (
             <button key="more" onClick={() => setDrawer(true)}
