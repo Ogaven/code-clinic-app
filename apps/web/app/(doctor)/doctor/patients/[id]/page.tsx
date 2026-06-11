@@ -1353,7 +1353,7 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
           { label: 'Gender', value: patient.gender || '—' },
           { label: 'Address', value: patient.address || '—' },
           { label: 'District', value: patient.district || '—' },
-          { label: 'Referred By', value: patient.referredBy || '—' },
+          { label: 'Source of Referral', value: patient.referralSource || '—' },
           { label: 'Patient Since', value: new Date(patient.createdAt).toLocaleDateString('en-UG', { year: 'numeric', month: 'long' }) },
         ].map(({ label, value }) => (
           <div key={label}>
@@ -1441,6 +1441,7 @@ export default function PatientProfilePage() {
       nextOfKinName: patient.nextOfKinName || '',
       nextOfKinPhone: patient.nextOfKinPhone || '',
       nextOfKinRelation: patient.nextOfKinRelation || '',
+      referralSource: patient.referralSource || '',
     })
     setEditOpen(true)
   }
@@ -1696,6 +1697,16 @@ export default function PatientProfilePage() {
                     </div>
                   </div>
                 </div>
+              </div>
+              <div className="border-t dark:border-white/10 pt-4">
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Source of Referral</label>
+                <select value={editForm.referralSource} onChange={e => setEditForm((f: any) => ({ ...f, referralSource: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                  <option value="">— Not specified —</option>
+                  {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friend/Family referral','Doctor referral','Other'].map((o: string) => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t dark:border-white/10 bg-slate-50 dark:bg-white/5 rounded-b-2xl">

@@ -211,7 +211,7 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
     const {
       firstName, lastName, phone, email, gender, dob, address, district,
       nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
-      importSource,
+      referralSource, importSource,
     } = req.body
     if (!firstName || !lastName || !phone) {
       res.status(400).json({ error: 'firstName, lastName and phone are required' }); return
@@ -230,6 +230,7 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
         nextOfKinRelation: nextOfKinRelation || undefined,
         allergies:         allergies         || undefined,
         medicalHistory:    medHistory        || undefined,
+        referralSource:    referralSource    || undefined,
         ...(importSource ? { importSource, status: 'ACTIVE' as any } : {}),
       },
     })

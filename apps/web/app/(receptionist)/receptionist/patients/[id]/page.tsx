@@ -182,6 +182,7 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
       nextOfKinRelation:patient.nextOfKinRelation|| '',
       allergies:        patient.allergies        || '',
       medicalHistory:   patient.medicalHistory   || '',
+      referralSource:   patient.referralSource   || '',
       notes:            patient.notes            || '',
     })
   }, [patient])
@@ -286,6 +287,15 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
               </div>
             </div>
             <div>
+              <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Source of Referral</label>
+              <select value={form.referralSource} onChange={e => setForm((f: any) => ({...f, referralSource: e.target.value}))} className={inputCls}>
+                <option value="" className="dark:bg-gray-800">— Not specified —</option>
+                {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friend/Family referral','Doctor referral','Other'].map((o: string) => (
+                  <option key={o} value={o} className="dark:bg-gray-800">{o}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Allergies</label>
               <input value={form.allergies} onChange={e => setForm((f: any) => ({...f, allergies: e.target.value}))} className={inputCls} placeholder="e.g. Penicillin, Latex (comma separated)" />
             </div>
@@ -388,6 +398,12 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
                     <span key={cond} className="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-bold">{cond}</span>
                   ))}
                 </div>
+              </div>
+            )}
+            {patient.referralSource && (
+              <div className="bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2.5">
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wider mb-0.5">Source of Referral</p>
+                <p className="text-sm font-semibold text-gray-800 dark:text-white">{patient.referralSource}</p>
               </div>
             )}
             {patient.notes && (

@@ -118,6 +118,7 @@ export default function PatientsPage() {
     nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '',
     allergies: '',
     medicalHistory: [] as string[],
+    referralSource: '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
@@ -197,13 +198,14 @@ export default function PatientsPage() {
       if (form.nextOfKinRelation) payload.nextOfKinRelation = form.nextOfKinRelation
       if (form.allergies)         payload.allergies         = form.allergies
       if (form.medicalHistory.length > 0) payload.medicalHistory = form.medicalHistory
+      if (form.referralSource)         payload.referralSource   = form.referralSource
       const res = await fetch(`${API}/patients`, {
         method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
       if (res.ok) {
         fetchPatients(); setShowAdd(false)
-        setForm({ firstName: '', lastName: '', phone: '', email: '', gender: '', dob: '', address: '', district: '', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '', allergies: '', medicalHistory: [] })
+        setForm({ firstName: '', lastName: '', phone: '', email: '', gender: '', dob: '', address: '', district: '', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '', allergies: '', medicalHistory: [], referralSource: '' })
         showToast('Patient added successfully', 'ok')
       } else { const d = await res.json(); setError(d.error || 'Failed to add patient') }
     } catch { setError('Network error') } finally { setSaving(false) }
@@ -846,6 +848,17 @@ export default function PatientsPage() {
                     <input value={form.nextOfKinRelation} onChange={e => setForm(f => ({ ...f, nextOfKinRelation: e.target.value }))} className={inputCls} placeholder="Relationship" />
                   </div>
                 </div>
+              </div>
+
+              {/* Source of Referral */}
+              <div className="pt-1">
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Source of Referral</p>
+                <select value={form.referralSource} onChange={e => setForm(f => ({ ...f, referralSource: e.target.value }))} className={inputCls}>
+                  <option value="" className="dark:bg-gray-800">— Not specified —</option>
+                  {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friend/Family referral','Doctor referral','Other'].map(o => (
+                    <option key={o} value={o} className="dark:bg-gray-800">{o}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Allergies */}

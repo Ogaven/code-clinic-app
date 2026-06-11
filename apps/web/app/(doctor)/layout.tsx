@@ -9,7 +9,7 @@ import {
   MessageSquare, Settings, HelpCircle, Download,
   Bell, UserCircle, LogOut,
   ChevronLeft, ChevronRight, Menu, X,
-  Sun, Moon, ListChecks, CheckCircle2,
+  Sun, Moon, ListChecks, CheckCircle2, Inbox,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import DoctorChatbot from '@/components/DoctorChatbot'
@@ -35,13 +35,14 @@ async function fetchLivePerms(token: string): Promise<Record<string, boolean>> {
 }
 
 const NAV_MAIN = [
-  { label: 'Dashboard',              href: '/doctor/dashboard',                       icon: LayoutDashboard },
-  { label: 'Appointments',           href: '/doctor/schedule',                        icon: CalendarDays,  permKey: 'appointments' },
-  { label: 'My Patients',            href: '/doctor/patients',                        icon: Users,         permKey: 'patients' },
-  { label: 'Patient Flow',           href: '/doctor/flow',                            icon: Activity,      permKey: 'liveFlow' },
-  { label: 'Communications',         href: '/doctor/messages',                        icon: MessageSquare, badge: true, permKey: 'communications' },
-  { label: 'Follow-up Dashboard',    href: '/doctor/ai-suite/followup-dashboard',     icon: CheckCircle2,  permKey: 'aiSuiteFollowup' },
-  { label: 'Confirmation Dashboard', href: '/doctor/ai-suite/confirmation-dashboard', icon: ListChecks,    permKey: 'aiSuiteConfirmation' },
+  { label: 'Dashboard',              href: '/doctor/dashboard',                             icon: LayoutDashboard },
+  { label: 'Appointments',           href: '/doctor/schedule',                              icon: CalendarDays,  permKey: 'appointments' },
+  { label: 'My Patients',            href: '/doctor/patients',                              icon: Users,         permKey: 'patients' },
+  { label: 'Patient Flow',           href: '/doctor/flow',                                  icon: Activity,      permKey: 'liveFlow' },
+  { label: 'Communications',         href: '/doctor/messages',                              icon: MessageSquare, badge: true, permKey: 'communications' },
+  { label: 'AI Inbox',               href: '/receptionist/ai-suite/inbox',                  icon: Inbox,         permKey: 'aiSuiteInbox' },
+  { label: 'Follow-up Dashboard',    href: '/receptionist/ai-suite/followup-dashboard',     icon: CheckCircle2,  permKey: 'aiSuiteFollowup' },
+  { label: 'Confirmation Dashboard', href: '/receptionist/ai-suite/confirmation-dashboard', icon: ListChecks,    permKey: 'aiSuiteConfirmation' },
 ]
 
 const NAV_BOTTOM = [

@@ -47,6 +47,7 @@ interface AddPatientForm {
   email: string
   dateOfBirth: string
   gender: string
+  referralSource: string
 }
 
 const BLANK_FORM: AddPatientForm = {
@@ -56,6 +57,7 @@ const BLANK_FORM: AddPatientForm = {
   email: '',
   dateOfBirth: '',
   gender: '',
+  referralSource: '',
 }
 
 export default function DoctorPatientsPage() {
@@ -176,12 +178,13 @@ export default function DoctorPatientsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          firstName:   form.firstName.trim(),
-          lastName:    form.lastName.trim(),
-          phone:       form.phone.trim() || undefined,
-          email:       form.email.trim() || undefined,
-          dateOfBirth: form.dateOfBirth || undefined,
-          gender:      form.gender || undefined,
+          firstName:      form.firstName.trim(),
+          lastName:       form.lastName.trim(),
+          phone:          form.phone.trim() || undefined,
+          email:          form.email.trim() || undefined,
+          dateOfBirth:    form.dateOfBirth || undefined,
+          gender:         form.gender || undefined,
+          referralSource: form.referralSource || undefined,
         }),
       })
       if (res.ok) {
@@ -460,6 +463,16 @@ export default function DoctorPatientsPage() {
                     <option value="OTHER">Other</option>
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 block">Source of Referral</label>
+                <select value={form.referralSource} onChange={e => setField('referralSource', e.target.value)}
+                  className="w-full px-3 py-3 text-base border border-gray-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                  <option value="">— Not specified —</option>
+                  {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friend/Family referral','Doctor referral','Other'].map(o => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
