@@ -703,7 +703,7 @@ async function handleAwaitingSlotConfirmation(
       if (templateName && process.env.AT_API_KEY && process.env.AT_USERNAME) {
         const waNumber = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
         if (waNumber) {
-          const patientName = patient ? patient.firstName : 'there'
+          const patientName = getGreetingName(patient)
           const apptDate = appt.startAt.toLocaleDateString('en-UG', {
             weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi',
           })
