@@ -12,6 +12,7 @@ import {
   Sun, Moon, ListChecks, CheckCircle2, Inbox,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { setAuthCookie } from '@/lib/api'
 import DoctorChatbot from '@/components/DoctorChatbot'
 
 type Theme = 'light' | 'dark' | 'system'
@@ -152,7 +153,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
     setUser(u)
     const tok = localStorage.getItem('cc_token') || ''
-    fetchLivePerms(tok).then(setPermsMap)
+    fetchLivePerms(tok).then(p => { console.log('[Perms] loaded:', p); setPermsMap(p) })
     const t = (localStorage.getItem('cc_theme') as Theme) || 'dark'
     setTheme(t)
     applyTheme(t)
@@ -163,7 +164,14 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     const refreshSilently = () => {
       fetch('/api-proxy/auth/refresh', { method: 'POST', credentials: 'include' })
         .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.accessToken) { localStorage.setItem('cc_token', d.accessToken); setToken(d.accessToken) } })
+        .then(d => {
+          if (d?.accessToken) {
+            localStorage.setItem('cc_token', d.accessToken)
+            setAuthCookie(d.accessToken)
+            setToken(d.accessToken)
+            fetchLivePerms(d.accessToken).then(p => { console.log('[Perms] refreshed:', p); setPermsMap(p) })
+          }
+        })
         .catch(() => {})
     }
 

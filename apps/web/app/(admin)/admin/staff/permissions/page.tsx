@@ -22,8 +22,8 @@ const FEATURE_GROUPS = [
     color: 'text-cyan-600 dark:text-cyan-400',
     features: [
       { key: 'aiSuiteInbox',        label: 'Inbox' },
-      { key: 'aiSuiteFollowup',     label: 'Follow-up' },
-      { key: 'aiSuiteConfirmation', label: 'Confirmations' },
+      { key: 'aiSuiteFollowup',     label: 'Follow-up Dashboard' },
+      { key: 'aiSuiteConfirmation', label: 'Confirmation Dashboard' },
       { key: 'callLogs',            label: 'Call Logs' },
       { key: 'voiceStudio',         label: 'Voice Studio' },
       { key: 'knowledgeBase',       label: 'Knowledge Base' },

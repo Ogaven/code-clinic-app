@@ -256,7 +256,19 @@ export default function ReceptionistLayout({ children }: { children: React.React
     }
     setUser(u)
     const tok = localStorage.getItem('cc_token') || ''
-    fetchLivePerms(tok).then(setPermsMap)
+    // Refresh token at mount so cookie has latest permissions for middleware enforcement
+    fetch('/api-proxy/auth/refresh', { method: 'POST', credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(refreshData => {
+        const activeTok = refreshData?.accessToken ?? tok
+        if (refreshData?.accessToken) {
+          localStorage.setItem('cc_token', refreshData.accessToken)
+          document.cookie = `cc_token=${refreshData.accessToken}; path=/; SameSite=Lax; max-age=43200`
+        }
+        return fetchLivePerms(activeTok)
+      })
+      .then(p => { console.log('[Perms] loaded:', p); setPermsMap(p) })
+      .catch(() => fetchLivePerms(tok).then(p => { console.log('[Perms] loaded:', p); setPermsMap(p) }))
     refreshAvatar(u)
     fetchUnread(u)
     fetchTodayAppts()
