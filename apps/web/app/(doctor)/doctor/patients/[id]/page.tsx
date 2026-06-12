@@ -1352,8 +1352,8 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
           { label: 'Email', value: patient.email || '—' },
           { label: 'Gender', value: patient.gender || '—' },
           { label: 'Address', value: patient.address || '—' },
-          { label: 'District', value: patient.district || '—' },
-          { label: 'Source of Referral', value: patient.referralSource || '—' },
+          { label: 'Residence', value: patient.district || '—' },
+          { label: 'How They Found Us', value: patient.referralSource || '—' },
           { label: 'Patient Since', value: new Date(patient.createdAt).toLocaleDateString('en-UG', { year: 'numeric', month: 'long' }) },
         ].map(({ label, value }) => (
           <div key={label}>
@@ -1668,7 +1668,7 @@ export default function PatientProfilePage() {
                     className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">District</label>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Residence</label>
                   <input value={editForm.district} onChange={e => setEditForm((f: any) => ({ ...f, district: e.target.value }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
@@ -1699,11 +1699,11 @@ export default function PatientProfilePage() {
                 </div>
               </div>
               <div className="border-t dark:border-white/10 pt-4">
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Source of Referral</label>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">How did they find us?</label>
                 <select value={editForm.referralSource} onChange={e => setEditForm((f: any) => ({ ...f, referralSource: e.target.value }))}
                   className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
                   <option value="">— Not specified —</option>
-                  {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friend/Family referral','Doctor referral','Other'].map((o: string) => (
+                  {['Word of mouth','Google','Facebook','Instagram','Doctor referral','NWSC','ERA','City Medicals','GA','Other'].map((o: string) => (
                     <option key={o} value={o}>{o}</option>
                   ))}
                 </select>

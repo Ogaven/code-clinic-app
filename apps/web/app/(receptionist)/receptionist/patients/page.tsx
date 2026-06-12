@@ -123,16 +123,16 @@ export default function PatientsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
 
-  useEffect(() => { fetchPatients() }, [])
+  // Search effect: re-fetch from server when search changes so all patients are searchable
+  useEffect(() => {
+    if (!search) { fetchPatients(); return }
+    const t = setTimeout(() => fetchPatients(search), 300)
+    return () => clearTimeout(t)
+  }, [search]) // eslint-disable-line
 
   useEffect(() => {
     if (!Array.isArray(patients)) { setFiltered([]); return }
     let list = patients
-    if (search) list = list.filter(p =>
-      `${p.firstName ?? ''} ${p.lastName ?? ''}`.toLowerCase().includes(search.toLowerCase()) ||
-      (p.phone ?? '').includes(search) || (p.email || '').toLowerCase().includes(search.toLowerCase()) ||
-      (p.patientId || '').toLowerCase().includes(search.toLowerCase())
-    )
     if (filter === 'new') {
       const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
       list = list.filter(p => { try { return new Date(p.createdAt) > weekAgo } catch { return false } })
@@ -149,12 +149,14 @@ export default function PatientsPage() {
       })
     }
     setFiltered(list)
-  }, [patients, search, filter, sortAZ])
+  }, [patients, filter, sortAZ])
 
-  async function fetchPatients() {
+  async function fetchPatients(q?: string) {
     setLoading(true)
     try {
-      const res = await fetch(`${API}/patients?limit=500`, { headers: authH })
+      const qs = new URLSearchParams({ limit: '500' })
+      if (q) qs.set('q', q)
+      const res = await fetch(`${API}/patients?${qs}`, { headers: authH })
       if (res.ok) {
         const json = await res.json().catch(() => null)
         if (!json) { setLoading(false); return }
@@ -830,7 +832,7 @@ export default function PatientsPage() {
                     <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={inputCls} placeholder="Street / Estate" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">District</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Residence</label>
                     <input value={form.district} onChange={e => setForm(f => ({ ...f, district: e.target.value }))} className={inputCls} placeholder="e.g. Kampala" />
                   </div>
                 </div>
@@ -848,12 +850,12 @@ export default function PatientsPage() {
                 </div>
               </div>
 
-              {/* Source of Referral */}
+              {/* How did they find us */}
               <div className="pt-1">
-                <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Source of Referral</p>
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">How did they find us?</p>
                 <select value={form.referralSource} onChange={e => setForm(f => ({ ...f, referralSource: e.target.value }))} className={inputCls}>
                   <option value="" className="dark:bg-gray-800">— Not specified —</option>
-                  {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friend/Family referral','Doctor referral','Other'].map(o => (
+                  {['Word of mouth','Google','Facebook','Instagram','Doctor referral','NWSC','ERA','City Medicals','GA','Other'].map(o => (
                     <option key={o} value={o} className="dark:bg-gray-800">{o}</option>
                   ))}
                 </select>

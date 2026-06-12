@@ -465,11 +465,11 @@ export default function DoctorPatientsPage() {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 block">Source of Referral</label>
+                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 block">How did they find us?</label>
                 <select value={form.referralSource} onChange={e => setField('referralSource', e.target.value)}
                   className="w-full px-3 py-3 text-base border border-gray-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none">
                   <option value="">— Not specified —</option>
-                  {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friend/Family referral','Doctor referral','Other'].map(o => (
+                  {['Word of mouth','Google','Facebook','Instagram','Doctor referral','NWSC','ERA','City Medicals','GA','Other'].map(o => (
                     <option key={o} value={o}>{o}</option>
                   ))}
                 </select>

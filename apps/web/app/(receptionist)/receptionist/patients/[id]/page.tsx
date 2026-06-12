@@ -256,7 +256,7 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
                 <input value={form.address} onChange={e => setForm((f: any) => ({...f, address: e.target.value}))} className={inputCls} placeholder="Street / village" />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">District</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Residence</label>
                 <input value={form.district} onChange={e => setForm((f: any) => ({...f, district: e.target.value}))} className={inputCls} placeholder="e.g. Kampala" />
               </div>
             </div>
@@ -287,10 +287,10 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
               </div>
             </div>
             <div>
-              <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Source of Referral</label>
+              <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">How did they find us?</label>
               <select value={form.referralSource} onChange={e => setForm((f: any) => ({...f, referralSource: e.target.value}))} className={inputCls}>
                 <option value="" className="dark:bg-gray-800">— Not specified —</option>
-                {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friend/Family referral','Doctor referral','Other'].map((o: string) => (
+                {['Word of mouth','Google','Facebook','Instagram','Doctor referral','NWSC','ERA','City Medicals','GA','Other'].map((o: string) => (
                   <option key={o} value={o} className="dark:bg-gray-800">{o}</option>
                 ))}
               </select>
@@ -402,7 +402,7 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
             )}
             {patient.referralSource && (
               <div className="bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2.5">
-                <p className="text-[10px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wider mb-0.5">Source of Referral</p>
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wider mb-0.5">How They Found Us</p>
                 <p className="text-sm font-semibold text-gray-800 dark:text-white">{patient.referralSource}</p>
               </div>
             )}
