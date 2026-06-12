@@ -238,6 +238,63 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
   } catch { res.status(500).json({ error: 'Failed to create patient' }) }
 })
 
+// POST /patients/import-csv — batch import with phone-based deduplication (skip if phone exists)
+// Body: { records: Array<{ firstName, lastName, phone, email?, gender?, dob?, address?, referralSource? }> }
+router.post('/import-csv', requireAuth, async (req, res) => {
+  try {
+    const { records } = req.body
+    if (!Array.isArray(records) || records.length === 0) {
+      res.status(400).json({ error: 'records array required' }); return
+    }
+
+    let created = 0, skipped = 0
+    const errors: string[] = []
+
+    for (let i = 0; i < records.length; i++) {
+      try {
+        const r = records[i]
+        const firstName      = (r.firstName || '').trim()
+        const normalizedPhone = normalizePhone((r.phone || '').trim())
+        if (!firstName || !normalizedPhone) {
+          skipped++
+          errors.push(`Row ${i + 1}: missing first name or phone`)
+          continue
+        }
+
+        const existing = await prisma.patient.findFirst({ where: { phone: normalizedPhone } })
+        if (existing) { skipped++; continue }
+
+        let genderEnum: 'MALE' | 'FEMALE' | undefined
+        if (r.gender?.toLowerCase().startsWith('m')) genderEnum = 'MALE'
+        if (r.gender?.toLowerCase().startsWith('f')) genderEnum = 'FEMALE'
+        const dobDate = r.dob ? parseDob(r.dob) ?? undefined : undefined
+
+        await prisma.patient.create({
+          data: {
+            firstName,
+            lastName:      (r.lastName || firstName).trim(),
+            phone:         normalizedPhone,
+            email:         r.email          || undefined,
+            gender:        genderEnum,
+            dob:           dobDate,
+            address:       r.address        || undefined,
+            referralSource: r.referralSource || undefined,
+            status:        'ACTIVE' as any,
+            importSource:  'CSV',
+          },
+        })
+        created++
+      } catch (err: any) {
+        errors.push(`Row ${i + 1}: ${cleanError(err.message)}`)
+        skipped++
+      }
+    }
+
+    console.log(`[patients/import-csv] created=${created} skipped=${skipped}`)
+    res.json({ created, skipped, total: records.length, errors })
+  } catch (err: any) { res.status(500).json({ error: err.message }) }
+})
+
 // POST /patients/import-sheet — import from public Google Sheet
 // Body:
 //   { sheetUrl, previewOnly?: true }                       → returns { headers, rows (first 5) }

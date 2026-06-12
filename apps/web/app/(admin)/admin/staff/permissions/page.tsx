@@ -3,23 +3,43 @@
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw, Save, Shield, Check } from 'lucide-react'
 
-const FEATURES = [
-  { key: 'scheduling',         label: 'Scheduling' },
-  { key: 'appointments',       label: 'Appointments' },
-  { key: 'patients',           label: 'Patients' },
-  { key: 'leads',              label: 'Leads' },
-  { key: 'liveFlow',           label: 'Live Flow' },
-  { key: 'aiSuiteInbox',       label: 'AI Suite — Inbox' },
-  { key: 'aiSuiteFollowup',    label: 'AI Suite — Follow-up' },
-  { key: 'aiSuiteConfirmation',label: 'AI Suite — Confirmations' },
-  { key: 'callLogs',           label: 'AI Suite — Call Logs' },
-  { key: 'voiceStudio',        label: 'AI Suite — Voice Studio' },
-  { key: 'knowledgeBase',      label: 'AI Suite — Knowledge Base' },
-  { key: 'reports',            label: 'Reports' },
-  { key: 'communications',     label: 'Communications' },
-  { key: 'accounts',           label: 'Accounts' },
-  { key: 'auditLog',           label: 'Audit Log' },
+const FEATURE_GROUPS = [
+  {
+    label: 'CLINIC',
+    color: 'text-blue-600 dark:text-blue-400',
+    features: [
+      { key: 'scheduling',     label: 'Scheduling' },
+      { key: 'appointments',   label: 'Appointments' },
+      { key: 'patients',       label: 'Patients' },
+      { key: 'leads',          label: 'Leads' },
+      { key: 'liveFlow',       label: 'Live Flow' },
+      { key: 'communications', label: 'Communications' },
+      { key: 'reports',        label: 'Reports' },
+    ],
+  },
+  {
+    label: 'AI SUITE',
+    color: 'text-cyan-600 dark:text-cyan-400',
+    features: [
+      { key: 'aiSuiteInbox',        label: 'Inbox' },
+      { key: 'aiSuiteFollowup',     label: 'Follow-up' },
+      { key: 'aiSuiteConfirmation', label: 'Confirmations' },
+      { key: 'callLogs',            label: 'Call Logs' },
+      { key: 'voiceStudio',         label: 'Voice Studio' },
+      { key: 'knowledgeBase',       label: 'Knowledge Base' },
+    ],
+  },
+  {
+    label: 'FINANCE',
+    color: 'text-amber-600 dark:text-amber-400',
+    features: [
+      { key: 'accounts', label: 'Accounts' },
+      { key: 'auditLog', label: 'Audit Log' },
+    ],
+  },
 ]
+
+const ALL_FEATURES = FEATURE_GROUPS.flatMap(g => g.features)
 
 const ROLE_COLORS: Record<string, string> = {
   ADMIN:        'bg-purple-100 text-purple-700',
@@ -61,7 +81,7 @@ export default function StaffPermissionsPage() {
       for (const u of data) {
         const p = parsePerms(u.permissions)
         initial[u.id] = {}
-        for (const f of FEATURES) {
+        for (const f of ALL_FEATURES) {
           initial[u.id][f.key] = p[f.key] !== false
         }
       }
@@ -146,20 +166,29 @@ export default function StaffPermissionsPage() {
                 </button>
               </div>
 
-              {/* Feature toggles */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-px bg-gray-50 dark:bg-white/5">
-                {FEATURES.map(f => {
-                  const enabled = perms[user.id]?.[f.key] !== false
-                  return (
-                    <button key={f.key} onClick={() => toggle(user.id, f.key)}
-                      className="flex items-center justify-between p-3 bg-white dark:bg-[#0e1f4d] hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left gap-2">
-                      <span className="text-xs font-medium text-gray-700 dark:text-white/80 leading-tight">{f.label}</span>
-                      <div className={`flex-shrink-0 w-9 h-5 rounded-full relative transition-colors ${enabled ? 'bg-cyan-500' : 'bg-gray-200 dark:bg-white/10'}`}>
-                        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${enabled ? 'left-4' : 'left-0.5'}`} />
-                      </div>
-                    </button>
-                  )
-                })}
+              {/* Feature toggles — grouped */}
+              <div className="divide-y divide-gray-50 dark:divide-white/5">
+                {FEATURE_GROUPS.map(group => (
+                  <div key={group.label}>
+                    <p className={`px-5 py-1.5 text-[10px] font-black tracking-wider uppercase ${group.color} bg-gray-50 dark:bg-white/[0.03]`}>
+                      {group.label}
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-px bg-gray-50 dark:bg-white/5">
+                      {group.features.map(f => {
+                        const enabled = perms[user.id]?.[f.key] !== false
+                        return (
+                          <button key={f.key} onClick={() => toggle(user.id, f.key)}
+                            className="flex items-center justify-between p-3 bg-white dark:bg-[#0e1f4d] hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left gap-2">
+                            <span className="text-xs font-medium text-gray-700 dark:text-white/80 leading-tight">{f.label}</span>
+                            <div className={`flex-shrink-0 w-9 h-5 rounded-full relative transition-colors ${enabled ? 'bg-cyan-500' : 'bg-gray-200 dark:bg-white/10'}`}>
+                              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${enabled ? 'left-4' : 'left-0.5'}`} />
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}

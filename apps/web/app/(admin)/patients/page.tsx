@@ -213,31 +213,31 @@ export default function PatientsPage() {
         const text  = ev.target?.result as string
         const lines = text.trim().split('\n')
         const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
-        let imported = 0; let failed = 0
-        for (const row of lines.slice(1)) {
-          const vals = row.split(',').map(v => v.trim().replace(/"/g, ''))
-          const obj: Record<string, string> = {}
-          headers.forEach((h, i) => { obj[h] = vals[i] || '' })
-          const payload = {
-            firstName:   obj.firstname || obj['first name'] || obj.name?.split(' ')[0] || '',
-            lastName:    obj.lastname  || obj['last name']  || obj.name?.split(' ')[1] || '',
-            phone:       obj.phone     || obj.telephone     || obj.mobile || '',
-            email:       obj.email     || '',
-            gender:      (obj.gender   || 'FEMALE').toUpperCase(),
-            dob:         obj.dob       || obj['date of birth'] || '',
-            importSource: 'CSV',
-          }
-          if (!payload.firstName || !payload.phone) { failed++; continue }
-          try {
-            const res = await fetch(`${API}/patients`, {
-              method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            })
-            if (res.ok) imported++; else failed++
-          } catch { failed++ }
-        }
+        const records = lines.slice(1)
+          .map(row => {
+            const vals = row.split(',').map(v => v.trim().replace(/"/g, ''))
+            const obj: Record<string, string> = {}
+            headers.forEach((h, i) => { obj[h] = vals[i] || '' })
+            return {
+              firstName: obj.firstname || obj['first name'] || obj.name?.split(' ')[0] || '',
+              lastName:  obj.lastname  || obj['last name']  || obj.name?.split(' ')[1] || '',
+              phone:     obj.phone     || obj.telephone     || obj.mobile || '',
+              email:     obj.email     || '',
+              gender:    (obj.gender   || 'FEMALE').toUpperCase(),
+              dob:       obj.dob       || obj['date of birth'] || '',
+            }
+          })
+          .filter(r => r.firstName && r.phone)
+
+        if (records.length === 0) { showToast('No valid rows found in CSV', 'err'); return }
+
+        const res = await fetch(`${API}/patients/import-csv`, {
+          method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records }),
+        })
+        const data = await res.json()
         fetchPatients()
-        showToast(`Imported ${imported} patients${failed > 0 ? `, ${failed} skipped` : ''}`, imported > 0 ? 'ok' : 'err')
+        showToast(`${data.created} created, ${data.skipped} skipped`, data.created > 0 ? 'ok' : 'err')
       } catch { showToast('Invalid CSV format', 'err') }
       finally { setImporting(false); if (csvInputRef.current) csvInputRef.current.value = '' }
     }
