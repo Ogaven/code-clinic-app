@@ -11,15 +11,17 @@ router.post('/webhook', async (req, res) => {
   res.sendStatus(200) // Acknowledge immediately so ManyChat doesn't retry
 
   try {
-    const { subscriber_id, first_name, last_name, channel: incomingChannel, message } = req.body as {
-      subscriber_id: string; first_name?: string; last_name?: string;
-      channel?: string; message: string
+    const { id, last_input_text, ig_id } = req.body as {
+      id: string | number; last_input_text?: string; ig_id?: number | string
     }
 
-    const subscriberId = subscriber_id
+    console.log('[ManyChat] Received:', JSON.stringify({ id, last_input_text, ig_id, channel: ig_id ? 'INSTAGRAM' : 'FACEBOOK' }))
+
+    const subscriberId = String(id)
+    const message      = last_input_text
     if (!subscriberId || !message) return
 
-    const channel = incomingChannel === 'instagram' ? 'INSTAGRAM' : 'FACEBOOK'
+    const channel = ig_id ? 'INSTAGRAM' : 'FACEBOOK'
     const phoneNumber  = channel === 'FACEBOOK' ? `fb_${subscriberId}` : `ig_${subscriberId}`
 
     let conversation = await prisma.aiConversation.findFirst({
