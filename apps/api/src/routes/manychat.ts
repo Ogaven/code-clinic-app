@@ -76,6 +76,7 @@ export async function sendManychatReply(subscriberId: string, text: string, chan
     },
     body: JSON.stringify({
       subscriber_id: subscriberId,
+      message_tag: 'CONFIRMED_EVENT_UPDATE',
       data: {
         version: 'v2',
         content: {
