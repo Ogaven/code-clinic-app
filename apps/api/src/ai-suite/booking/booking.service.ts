@@ -191,10 +191,14 @@ export async function createAppointment(
   // Appointment.patientId is non-nullable — find or create patient from phone
   let resolvedPatientId = patientId
   if (!resolvedPatientId) {
-    let patient = await prisma.patient.findFirst({ where: { phone } })
+    // Try exact match, then local-number match (handles +256 vs 0 prefix)
+    const localDigits = phone.replace(/^\+256/, '0')
+    let patient = await prisma.patient.findFirst({
+      where: { OR: [{ phone }, { phone: localDigits }] },
+    })
     if (!patient) {
       patient = await prisma.patient.create({
-        data: { firstName: 'New', lastName: 'Patient', phone },
+        data: { firstName: 'WhatsApp', lastName: 'Patient', phone },
       })
     }
     resolvedPatientId = patient.id

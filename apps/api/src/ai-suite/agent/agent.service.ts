@@ -444,12 +444,30 @@ function formatSlotLine(slot: AvailableSlot, index: number): string {
   return `${index + 1}. ${day} at ${time} - ${slot.doctorName}`
 }
 
-function formatSlotsMessage(slots: AvailableSlot[], serviceName: string): string {
+function formatSlotsMessage(slots: AvailableSlot[], serviceName: string, specificDoctorName?: string): string {
   if (slots.length === 0) {
+    if (specificDoctorName) {
+      return `${specificDoctorName} doesn't seem to have any free slots for ${serviceName} in the next 7 days. Would you like me to check other doctors instead? 😊`
+    }
     return `I'm sorry, I couldn't find any available slots for ${serviceName} in the next 7 days. Would you like me to look further ahead, or shall I have someone from the clinic call you to arrange a time? 😊`
   }
-  const lines = slots.slice(0, 5).map((s, i) => formatSlotLine(s, i)).join('\n')
-  return `I found these available slots for ${serviceName} 😊\n\n${lines}\n\nJust reply with the number that works best for you!`
+  const lines = slots.slice(0, 5).map((s, i) => {
+    const day = s.startAt.toLocaleDateString('en-UG', {
+      weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
+    })
+    const time = s.startAt.toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
+    }).toLowerCase()
+    if (specificDoctorName) {
+      return `${i + 1}. ${day} at ${time}`
+    }
+    const docFirst = s.doctorName.replace(/^Dr\s+/, '').split(' ')[0]
+    return `${i + 1}. ${day} at ${time} - Dr ${docFirst}`
+  }).join('\n')
+  if (specificDoctorName) {
+    return `${specificDoctorName} has these slots available 😊\n\n${lines}\n\nJust reply with the number that works for you!`
+  }
+  return `Here are the earliest available slots 😊\n\n${lines}\n\nJust reply with the number that works for you!`
 }
 
 function formatConfirmation(appt: {
@@ -463,8 +481,8 @@ function formatConfirmation(appt: {
   const time = appt.startAt.toLocaleTimeString('en-US', {
     hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   }).toLowerCase()
-  const doctor = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
-  return `Perfect! You're all booked 🎉 ${day} at ${time} with ${doctor} for ${appt.service.name}. We'll send you a reminder the day before. See you then!`
+  const doctor = `Dr ${appt.doctor.user.firstName}`
+  return `Perfect! You're booked ✅\n📅 ${day} at ${time}\n🦷 ${appt.service.name}\n👨‍⚕️ ${doctor}\n📍 Code Clinic, Kamwokya\nSee you then! 😊`
 }
 
 // ── Parse patient's slot choice (1/2/3 or "first"/"second" etc.) ──────────────
@@ -525,32 +543,68 @@ function slotKampalaWeekday(slot: AvailableSlot): number {
   return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(short)
 }
 
+// ── Service aliases — natural language → exact DB service name ────────────────
+
+const SERVICE_ALIASES: Record<string, string> = {
+  'checkup':       'Review Check up',
+  'check up':      'Review Check up',
+  'check-up':      'Review Check up',
+  'cleaning':      'Stain Removal',
+  'scale':         'Stain Removal',
+  'scaling':       'Stain Removal',
+  'polish':        'Stain Removal',
+  'stain':         'Stain Removal',
+  'whitening':     'Teeth Whitening (Inoffice)',
+  'whiten':        'Teeth Whitening (Inoffice)',
+  'brighten':      'Teeth Whitening (Inoffice)',
+  'filling':       'Composite Filling',
+  'composite':     'Composite Filling',
+  'cavity':        'Composite Filling',
+  'cavities':      'Composite Filling',
+  'extraction':    'Extraction',
+  'extract':       'Extraction',
+  'remove tooth':  'Extraction',
+  'remove teeth':  'Extraction',
+  'root canal':    'Root Canal Therapy (Incisors/Premolars)',
+  'nerve':         'Root Canal Therapy (Incisors/Premolars)',
+  'braces':        'Braces Consultation',
+  'brace':         'Braces Consultation',
+  'aligner':       'Braces Consultation',
+  'aligners':      'Braces Consultation',
+  'orthodont':     'Braces Consultation',
+  'implant':       'Implant',
+  'implants':      'Implant',
+  'x-ray':         'Dental X-ray',
+  'xray':          'Dental X-ray',
+  'x ray':         'Dental X-ray',
+  'scan':          'Dental X-ray',
+  'consultation':  'consultation',
+  'consult':       'consultation',
+  'denture':       'Complete Dentures',
+  'dentures':      'Complete Dentures',
+  'false teeth':   'Complete Dentures',
+  'crown':         'crown',
+  'cap':           'crown',
+  'veneer':        'veneer',
+  'veneers':       'veneer',
+}
+
 // ── Match service from patient message ────────────────────────────────────────
 
 async function matchService(message: string) {
   const services = await getServices()
   const lower    = message.toLowerCase()
 
+  // 1. Direct name match
   const direct = services.find(s => lower.includes(s.name.toLowerCase()))
   if (direct) return direct
 
-  const synonyms: Array<[string[], string]> = [
-    [['clean', 'scal', 'polish'],                        'cleaning'],
-    [['fill', 'cavity', 'cavit'],                        'filling'],
-    [['whiten', 'bright'],                               'whitening'],
-    [['extract', 'pull', 'remove tooth', 'remove teeth'],'extraction'],
-    [['root canal', 'nerve'],                            'root canal'],
-    [['check', 'exam', 'consult'],                       'checkup'],
-    [['crown', 'cap'],                                   'crown'],
-    [['brace', 'align', 'orthodont'],                    'braces'],
-    [['implant'],                                        'implant'],
-    [['veneer'],                                         'veneer'],
-    [['x-ray', 'xray', 'scan'],                         'x-ray'],
-  ]
-
-  for (const [keywords, canonical] of synonyms) {
-    if (keywords.some(k => lower.includes(k))) {
-      const hit = services.find(s => s.name.toLowerCase().includes(canonical))
+  // 2. Alias lookup — longest key first so 'root canal' beats 'canal'
+  const aliasKeys = Object.keys(SERVICE_ALIASES).sort((a, b) => b.length - a.length)
+  for (const key of aliasKeys) {
+    if (lower.includes(key)) {
+      const targetName = SERVICE_ALIASES[key].toLowerCase()
+      const hit = services.find(s => s.name.toLowerCase().includes(targetName))
       if (hit) return hit
     }
   }
@@ -581,11 +635,11 @@ async function handleIdleBookIntent(
       const service = await matchService(originalMessage)
       if (service) {
         setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
-        return `Of course! ${service.name} — great choice 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
+        return `Got it — ${service.name} 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
       }
     }
     setBookingState(from, { state: 'AWAITING_SERVICE' })
-    return `Of course! What dental service are you looking for? For example — cleaning, filling, whitening, extraction, or a checkup? 😊`
+    return `Of course! What brings you in today? For example — cleaning, filling, whitening, checkup, extraction, or something else? 😊`
   }
 
   // RESCHEDULE or CANCEL — need to find their upcoming appointment
@@ -648,7 +702,7 @@ async function handleAwaitingService(from: string, message: string): Promise<str
   }
 
   setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
-  return `Got it! ${service.name} - great choice 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
+  return `Got it — ${service.name} 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
 }
 
 async function handleAwaitingDoctorPreference(
@@ -658,26 +712,24 @@ async function handleAwaitingDoctorPreference(
 ): Promise<string> {
   const lower = message.toLowerCase()
 
-  // Patient said "yes" but hasn't named a doctor yet
-  if (
-    (lower.includes('yes') || lower.includes('prefer') || lower.includes('specific')) &&
-    !lower.includes('no') &&
-    !(await matchDoctor(message))
-  ) {
-    setBookingState(from, { state: 'AWAITING_DOCTOR_NAME', serviceId: state.serviceId })
-    const doctors  = await getDoctors()
-    const nameList = doctors.map(d => `• Dr ${d.firstName} ${d.lastName}${d.specialisation ? ` (${d.specialisation})` : ''}`).join('\n')
-    return `Of course! Here are our doctors:\n\n${nameList}\n\nWhich doctor would you like? 😊`
-  }
-
-  // Patient named a doctor directly
+  // Patient named a specific doctor — show only their slots
   const namedDoctor = await matchDoctor(message)
   if (namedDoctor) {
     return presentSlots(from, state.serviceId!, namedDoctor.id)
   }
 
-  // Patient said no preference / any / whoever
-  return presentSlots(from, state.serviceId!, undefined)
+  // Patient explicitly says no preference — earliest slots across all doctors
+  const noPreference = /\b(any|whoever|anyone|available|soonest|earliest|don't mind|dont mind|no preference|no specific|no doctor)\b/.test(lower)
+    || /^(no|nope|none|okay|ok|sure|yeah|yes)\b/i.test(message.trim())
+  if (noPreference) {
+    return presentSlots(from, state.serviceId!, undefined)
+  }
+
+  // Patient wants to pick but hasn't named anyone yet — list doctors (first name only)
+  setBookingState(from, { state: 'AWAITING_DOCTOR_NAME', serviceId: state.serviceId })
+  const doctors  = await getDoctors()
+  const nameList = doctors.map(d => `• Dr ${d.firstName}${d.specialisation ? ` (${d.specialisation})` : ''}`).join('\n')
+  return `Sure! Here are our doctors:\n\n${nameList}\n\nWhich one would you prefer? 😊`
 }
 
 async function handleAwaitingDoctorName(
@@ -714,7 +766,19 @@ async function presentSlots(
   })
 
   const serviceName = slots[0]?.serviceName ?? 'your appointment'
-  return formatSlotsMessage(slots, serviceName)
+  let specificDocName: string | undefined
+  if (doctorId) {
+    if (slots.length > 0) {
+      // Use first name only per system prompt
+      const docFirst = slots[0].doctorName.replace(/^Dr\s+/, '').split(' ')[0]
+      specificDocName = `Dr ${docFirst}`
+    } else {
+      const docs = await getDoctors()
+      const doc  = docs.find(d => d.id === doctorId)
+      specificDocName = doc ? `Dr ${doc.firstName}` : undefined
+    }
+  }
+  return formatSlotsMessage(slots, serviceName, specificDocName)
 }
 
 async function handleAwaitingSlotConfirmation(
