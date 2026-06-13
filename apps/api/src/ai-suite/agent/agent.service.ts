@@ -1069,7 +1069,7 @@ export async function getAgentReply(
   const eatDate    = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
   const eatDayOfWeek = eatDate.getDay()          // 0=Sun … 6=Sat in Kampala
   const eatHour    = eatDate.getHours()
-  const eatDateTime = now.toLocaleString('en-UG', {
+  const eatDateTime = now.toLocaleString('en-GB', {
     timeZone: 'Africa/Nairobi', weekday: 'long', year: 'numeric',
     month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
   })
