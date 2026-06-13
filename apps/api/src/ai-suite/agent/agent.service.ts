@@ -185,7 +185,19 @@ SHORT SERVICE LIST — only show if patient explicitly asks "what services do yo
 7. Braces / Aligners
 8. Dental Implant
 Then add: "Or just tell me what you need in your own words 😊"
-NEVER show all 50 services — only these 8 if they really want a list.`
+NEVER show all 50 services — only these 8 if they really want a list.
+
+SILENT OPERATIONS RULE:
+Never tell the patient you are checking, looking up, or fetching anything. All database checks happen in the background.
+Do NOT say:
+- "Let me check that for you"
+- "I'll look that up"
+- "One moment while I check"
+- "Let me see what's available"
+Just respond with the answer directly.
+
+WRONG: "Let me check if Dr Steven has a 2pm slot!"
+RIGHT: "Dr Steven has slots at 10am and 1pm on Saturday. Which works better for you? 😊"`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -884,7 +896,7 @@ async function handleAwaitingSlotConfirmation(
     if (err.message?.includes('no longer available') || err.message?.includes('slot')) {
       return `Oh no — that slot was just taken while we were chatting 😅 Let me find you a fresh list! Just send "book appointment" to start again, or I'll get someone to call you.`
     }
-    return `Something went a little wrong on my end, so sorry! 😅 Could you try again in a moment? Or I can have someone from our team call you to sort this out!`
+    return `I wasn't able to confirm that booking right now 😔 Please call us on +256 394 836 298 and we'll sort it out for you immediately.`
   }
 }
 
@@ -1052,17 +1064,34 @@ export async function getAgentReply(
   }
 
   // ── Normal Claude call with RAG context ───────────────────────────────────
-  const [context, weather] = await Promise.all([
+  // Compute EAT time before parallel queries so we can look up today's hours
+  const now        = new Date()
+  const eatDate    = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
+  const eatDayOfWeek = eatDate.getDay()          // 0=Sun … 6=Sat in Kampala
+  const eatHour    = eatDate.getHours()
+  const eatDateTime = now.toLocaleString('en-UG', {
+    timeZone: 'Africa/Nairobi', weekday: 'long', year: 'numeric',
+    month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+  })
+  const eatDay = now.toLocaleDateString('en-UG', { timeZone: 'Africa/Nairobi', weekday: 'long' })
+
+  const [context, weather, todayHours] = await Promise.all([
     buildContext(conversationId, from, latestMessage),
     getKampalaWeather(),
+    prisma.workingHours.findUnique({ where: { dayOfWeek: eatDayOfWeek } }).catch(() => null),
   ])
 
-  const eatTime = new Date().toLocaleString('en-UG', {
-    timeZone: 'Africa/Nairobi',
-    weekday: 'long', day: 'numeric', month: 'long',
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  })
-  const clinicStatus = isClinicOpenNow() ? 'open' : 'closed'
+  let clinicHoursStr: string
+  let clinicStatus: string
+  if (!todayHours || !todayHours.isOpen) {
+    clinicHoursStr = 'closed today'
+    clinicStatus   = 'closed'
+  } else {
+    const openH  = parseInt(todayHours.openTime.split(':')[0])
+    const closeH = parseInt(todayHours.closeTime.split(':')[0])
+    clinicHoursStr = `${todayHours.openTime} - ${todayHours.closeTime}`
+    clinicStatus   = (eatHour >= openH && eatHour < closeH) ? 'open' : 'closed'
+  }
 
   const historyLines = context.conversationHistory
     .split('\n')
@@ -1129,8 +1158,10 @@ export async function getAgentReply(
 
     const dynamicSystem = [
       '',
-      `CURRENT TIME: ${eatTime} (East Africa Time)`,
-      `CLINIC STATUS: ${clinicStatus}`,
+      `CURRENT DATE AND TIME IN KAMPALA: ${eatDateTime}`,
+      `Sarah knows this and uses it accurately in all responses. Never guess or approximate the date or time — always use this.`,
+      `CLINIC HOURS TODAY (${eatDay}): ${clinicHoursStr}`,
+      `CLINIC STATUS RIGHT NOW: ${clinicStatus}`,
       `KAMPALA WEATHER: ${weather}`,
       '',
       'PATIENT CONTEXT:',
