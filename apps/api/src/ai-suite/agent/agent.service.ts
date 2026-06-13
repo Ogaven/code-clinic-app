@@ -160,7 +160,32 @@ APPROXIMATE SERVICE PRICES (share only if patient explicitly asks about prices):
 - Teeth whitening: UGX 350,000 - 500,000
 - Composite filling: UGX 150,000 per tooth
 - GI (glass ionomer) filling: UGX 80,000 per tooth
-- Exact prices depend on complexity and are confirmed at booking`
+- Exact prices depend on complexity and are confirmed at booking
+
+CONVERSATION MEMORY — critical:
+- You have the complete conversation history shown to you. Read it carefully before every response.
+- NEVER re-introduce yourself or repeat the opening greeting to someone you have already spoken with in this conversation. If you already said "Hello, this is Sarah from Code Clinic", do NOT say it again.
+- NEVER ask for information the patient already gave you earlier in the conversation.
+- If the conversation history shows a previous exchange, assume you know each other — respond naturally without re-greeting.
+
+CLINICAL CONCERN RESPONSES:
+- When a patient expresses pain, worry, an unusual sensation, or a problem with a previous treatment — lead with genuine empathy first: "I'm so sorry to hear that 😔"
+- Do NOT immediately push them into a booking flow — address their concern first
+- Always offer the clinic number so they can speak to a dentist directly: +256 394 836 298
+- If they want to book, offer an URGENT slot — do not walk them through a standard booking flow
+- Examples: "my filling tastes sweet", "my tooth hurts", "something feels wrong", "I'm worried about my extraction" — these all need empathy first, not a booking form
+
+SHORT SERVICE LIST — only show if patient explicitly asks "what services do you offer" or insists on a list:
+1. Dental Cleaning / Stain Removal
+2. Teeth Whitening
+3. Dental Filling
+4. Tooth Extraction
+5. Root Canal
+6. Dental Checkup / Consultation
+7. Braces / Aligners
+8. Dental Implant
+Then add: "Or just tell me what you need in your own words 😊"
+NEVER show all 50 services — only these 8 if they really want a list.`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -305,6 +330,7 @@ async function buildContext(
   const patientName = patient ? getGreetingName(patient) : 'Unknown patient'
 
   const conversationHistory = dbMessages
+    .filter(m => m.role !== 'SYSTEM')
     .map(m => (m.role === 'USER' ? `Patient: ${sanitizeForClaude(m.content)}` : `Sarah: ${m.content}`))
     .join('\n')
 
@@ -376,6 +402,34 @@ export function detectIntent(message: string): Intent {
   if (bookWords.some(w => lower.includes(w))) return 'BOOK'
 
   return null
+}
+
+// ── Clinical concern detection ────────────────────────────────────────────────
+// Returns true when a patient message is about a symptom, side-effect or worry
+// rather than a booking request. Must run BEFORE the booking state machine.
+
+const CLINICAL_CONCERN_PATTERNS = [
+  'pain', 'hurts', 'hurting', 'painful',
+  'bleeding', 'bleed',
+  'swelling', 'swollen', 'swell',
+  'tasting', 'tastes', 'taste weird', 'sweet taste', 'bitter taste', 'tasting sweet', 'tasting bitter',
+  'feels wrong', 'feeling wrong', 'something wrong', 'went wrong', 'something feels',
+  'worried', 'scared', 'anxious',
+  'help me', 'i need help',
+  'infection', 'infected', 'abscess',
+  'sensitive to', 'sensitivity',
+  'had a filling', 'got a filling', 'had a root canal', 'had an extraction', 'had a cleaning', 'had treatment',
+  'broken tooth', 'chipped tooth', 'cracked tooth', 'fell out', 'knocked out',
+  'side effect', 'reaction to',
+  'emergency', 'urgent help',
+  'not healing', 'still hurting', 'still in pain', 'it hurts',
+]
+
+function isClinicalConcern(message: string): boolean {
+  const lower = message.toLowerCase()
+  // If the patient explicitly mentions booking/appointment, it's a booking request
+  if (/\b(book|schedule|appointment|coming in|can i come)\b/.test(lower)) return false
+  return CLINICAL_CONCERN_PATTERNS.some(kw => lower.includes(kw))
 }
 
 // ── Slot formatting helpers ───────────────────────────────────────────────────
@@ -518,11 +572,20 @@ async function matchDoctor(message: string) {
 
 async function handleIdleBookIntent(
   from: string,
-  intent: NonNullable<Intent>
+  intent: NonNullable<Intent>,
+  originalMessage?: string
 ): Promise<string> {
   if (intent === 'BOOK') {
+    // Try to extract service directly from the message — avoids a "What service?" round-trip
+    if (originalMessage) {
+      const service = await matchService(originalMessage)
+      if (service) {
+        setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
+        return `Of course! ${service.name} — great choice 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
+      }
+    }
     setBookingState(from, { state: 'AWAITING_SERVICE' })
-    return `Of course! What dental service are you looking for? For example — cleaning, filling, whitening, extraction, or something else? 😊`
+    return `Of course! What dental service are you looking for? For example — cleaning, filling, whitening, extraction, or a checkup? 😊`
   }
 
   // RESCHEDULE or CANCEL — need to find their upcoming appointment
@@ -571,12 +634,17 @@ async function handleIdleBookIntent(
 }
 
 async function handleAwaitingService(from: string, message: string): Promise<string> {
+  // Clinical concern takes priority even mid-flow
+  if (isClinicalConcern(message)) {
+    clearBookingState(from)
+    return `I'm so sorry to hear that 😔 That sounds like something our team needs to look at. Please call us on +256 394 836 298 so our dentist can advise you directly. Would you like me to book you an urgent appointment?`
+  }
+
   const service = await matchService(message)
 
   if (!service) {
-    const services = await getServices()
-    const list = services.map(s => `• ${s.name}`).join('\n')
-    return `Sorry, I didn't quite catch that 😊 Here are the services we offer:\n\n${list}\n\nWhich one are you interested in?`
+    // Never dump the full service list — ask a clarifying question instead
+    return `I'd love to help! Are you looking for something like a cleaning, filling, whitening, extraction, or a checkup? Just tell me what you need 😊`
   }
 
   setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
@@ -867,14 +935,29 @@ export async function getAgentReply(
     return `Hi! I've received your message and a team member will be with you shortly. For urgent matters please call us directly.`
   }
 
+  // ── Clinical concern — runs BEFORE everything else ────────────────────────
+  // Pain, side-effects, post-treatment worries → empathy first, never booking
+  if (isClinicalConcern(latestMessage)) {
+    clearBookingState(from)
+    console.log(`[Agent] Clinical concern detected for ${from}: "${latestMessage.slice(0, 80)}"`)
+    return `I'm so sorry to hear that 😔 That sounds like something our team needs to look at right away. Please call us on +256 394 836 298 so our dentist can advise you directly. Would you like me to book you an urgent appointment instead?`
+  }
+
+  // ── Human request — patient wants to speak to someone ────────────────────
+  const wantsHuman = /talk to|speak to|speak with|talk with|call me|ring me|real person|human|julian|receptionist/i.test(latestMessage)
+  if (wantsHuman) {
+    clearBookingState(from)
+    // Fall through to Claude — the system prompt handles escalation to Julian
+  }
+
   // ── Booking state machine ─────────────────────────────────────────────────
   const bookingState = getBookingState(from)
 
-  if (bookingState.state !== 'IDLE') {
+  if (!wantsHuman && bookingState.state !== 'IDLE') {
     // Escape: if patient changed topic mid-flow, abandon booking and answer normally
     const isSlotChoice = parseSlotChoice(latestMessage) !== null
     const isYesNo = /^(yes|yeah|no|nope|sure|ok|okay|confirm|cancel)\b/i.test(latestMessage.trim())
-    const isNewTopic = /[?]|how much|price|cost|charge|open|hours|location|direction|where/i.test(latestMessage)
+    const isNewTopic = /[?]|how much|price|cost|charge|open|hours|location|direction|where|talk to|speak to|speak with|call me/i.test(latestMessage)
     if (!isSlotChoice && !isYesNo && isNewTopic) {
       clearBookingState(from)
       console.log(`[Agent] Booking flow escaped for ${from}: patient changed topic`)
@@ -895,12 +978,12 @@ export async function getAgentReply(
           return handleAwaitingCancelConfirmation(from, latestMessage, bookingState)
       }
     }
-  } else {
+  } else if (!wantsHuman && bookingState.state === 'IDLE') {
     // IDLE: detect intent
     const intent = detectIntent(latestMessage)
     if (intent === 'CHECK')   return handleCheckAppointment(from)
     if (intent === 'CONFIRM') return handleConfirmAppointment(from)
-    if (intent) return handleIdleBookIntent(from, intent)
+    if (intent) return handleIdleBookIntent(from, intent, latestMessage)
     // fall through to normal Claude call
   }
 
@@ -925,11 +1008,23 @@ export async function getAgentReply(
 
   for (const line of historyLines) {
     if (line.startsWith('Patient: ')) {
-      messages.push({ role: 'user',      content: line.slice('Patient: '.length) })
+      // Collapse consecutive user messages (API requires alternating turns)
+      if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+        messages[messages.length - 1].content += '\n' + line.slice('Patient: '.length)
+      } else {
+        messages.push({ role: 'user', content: line.slice('Patient: '.length) })
+      }
     } else if (line.startsWith('Sarah: ')) {
-      messages.push({ role: 'assistant', content: line.slice('Sarah: '.length) })
+      if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+        messages[messages.length - 1].content += '\n' + line.slice('Sarah: '.length)
+      } else {
+        messages.push({ role: 'assistant', content: line.slice('Sarah: '.length) })
+      }
     }
   }
+
+  // API requires messages to start with 'user' and end with 'user'
+  while (messages.length > 0 && messages[0].role !== 'user') messages.shift()
 
   if (messages.length === 0) {
     messages.push({ role: 'user', content: latestMessage })
@@ -975,11 +1070,13 @@ export async function getAgentReply(
       `KAMPALA WEATHER: ${weather}`,
       '',
       'PATIENT CONTEXT:',
-      `Name: ${context.patientName}`,
+      `Name: ${context.patientName} (from database — use as their name when addressing them)`,
       `Phone: ${from}`,
       'Recent appointments:',
       context.appointments,
       ...(context.knowledgeBase ? ['', 'CLINIC KNOWLEDGE BASE:', context.knowledgeBase] : []),
+      '',
+      `CONVERSATION HISTORY: ${context.conversationHistory ? 'Shown in the messages above — you already know this person. Do NOT re-introduce yourself.' : 'No prior messages — this is the first contact.'}`,
     ].join('\n')
 
     const response = await client.messages.create({
