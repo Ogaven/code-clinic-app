@@ -2,6 +2,11 @@ import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachabl
 import { prisma } from '../../lib/prisma'
 import { getGreetingName } from '../../utils/nameHelper'
 
+const ADMIN_WHATSAPP = '+256741087667'
+
+// Dedup flag: reset each deploy/restart (acceptable for a weekly report)
+let weekendReportSentOn: string | null = null
+
 // EAT hour helper (UTC+3)
 function eatHour(): number {
   return parseInt(
@@ -653,5 +658,112 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
     } catch (err: any) {
       console.error(`[Reactivation] Failed for ${patient.phone}:`, err.message)
     }
+  }
+}
+
+// ── checkAndSendWeekendReport ─────────────────────────────────────────────────
+// Runs every Monday at 8 AM EAT. Sends a WhatsApp weekend activity summary to
+// the clinic admin summarising Sarah's conversations from Saturday and Sunday.
+
+export async function checkAndSendWeekendReport(): Promise<void> {
+  const now        = new Date()
+  const dayOfWeek  = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Africa/Nairobi' })
+  const hour       = eatHour()
+  if (dayOfWeek !== 'Monday' || hour < 8 || hour >= 9) return
+
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
+  if (weekendReportSentOn === todayStr) return
+  weekendReportSentOn = todayStr
+
+  // Weekend window: Saturday 00:00 to Sunday 23:59 EAT
+  const satDate  = new Date(now); satDate.setDate(satDate.getDate() - 2)
+  const sunDate  = new Date(now); sunDate.setDate(sunDate.getDate() - 1)
+  const satStart = new Date(satDate.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T00:00:00+03:00')
+  const sunEnd   = new Date(sunDate.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T23:59:59+03:00')
+
+  const satLabel = satDate.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+  const sunLabel = sunDate.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+
+  console.log(`[WeekendReport] Generating report for ${satLabel} – ${sunLabel}`)
+
+  // Total conversations started over the weekend
+  const conversations = await prisma.aiConversation.findMany({
+    where: { createdAt: { gte: satStart, lte: sunEnd } },
+    select: { id: true, phoneNumber: true, agentEnabled: true, channel: true, createdAt: true },
+  })
+  const totalConversations = conversations.length
+
+  // New contacts: phone numbers that had NO prior conversation before Saturday
+  let newContacts = 0
+  for (const conv of conversations) {
+    const priorCount = await prisma.aiConversation.count({
+      where: { phoneNumber: conv.phoneNumber, createdAt: { lt: satStart } },
+    })
+    if (priorCount === 0) newContacts++
+  }
+
+  // Appointments booked during the weekend
+  const appointmentsBooked = await prisma.appointment.count({
+    where: { createdAt: { gte: satStart, lte: sunEnd } },
+  })
+
+  // Conversations needing attention: human takeover still active (agentEnabled = false)
+  const needAttentionConvs = conversations.filter(c => c.agentEnabled === false)
+  const needAttentionCount = needAttentionConvs.length
+  const attentionList = needAttentionCount > 0
+    ? needAttentionConvs.slice(0, 5).map(c => `  • ${c.phoneNumber} (${c.channel})`).join('\n')
+    : '  None — all conversations handled ✅'
+
+  // Top topics: analyse USER messages for keyword frequency
+  const userMessages = await prisma.aiMessage.findMany({
+    where: { role: 'USER', createdAt: { gte: satStart, lte: sunEnd } },
+    select: { content: true },
+    take: 100,
+  })
+  const topicKeywords: [string, string][] = [
+    ['appointment', 'Appointments'],
+    ['price|cost|fee|how much', 'Pricing'],
+    ['teeth|tooth|dental', 'Dental care'],
+    ['pain|emergency|urgent', 'Pain / Emergency'],
+    ['hours|open|available|time', 'Opening hours'],
+    ['doctor|specialist', 'Doctor availability'],
+    ['location|where|address|directions', 'Location'],
+  ]
+  const topicCounts: Record<string, number> = {}
+  for (const msg of userMessages) {
+    const lower = msg.content.toLowerCase()
+    for (const [pattern, label] of topicKeywords) {
+      if (new RegExp(pattern).test(lower)) {
+        topicCounts[label] = (topicCounts[label] || 0) + 1
+      }
+    }
+  }
+  const topTopics = Object.entries(topicCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([label, count], i) => `  ${i + 1}. ${label} (${count} mention${count !== 1 ? 's' : ''})`)
+    .join('\n')
+
+  const message = `Good morning! 🌅 Here is your weekend summary from Code Clinic Sarah:
+
+📊 Weekend Activity (${satLabel} – ${sunLabel}):
+• ${totalConversations} new conversation${totalConversations !== 1 ? 's' : ''}
+• ${newContacts} new contact${newContacts !== 1 ? 's' : ''}
+• ${appointmentsBooked} appointment${appointmentsBooked !== 1 ? 's' : ''} booked
+• ${needAttentionCount} conversation${needAttentionCount !== 1 ? 's' : ''} need${needAttentionCount === 1 ? 's' : ''} follow-up
+
+Top topics asked about:
+${topTopics || '  (not enough data)'}
+
+Conversations needing attention:
+${attentionList}
+
+Have a great week! 😊`
+
+  try {
+    await sendWhatsAppMessage(ADMIN_WHATSAPP, message)
+    console.log('[WeekendReport] Sent to admin WhatsApp')
+  } catch (err: any) {
+    console.error('[WeekendReport] Failed to send:', err.message)
   }
 }

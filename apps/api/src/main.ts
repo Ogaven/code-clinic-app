@@ -60,7 +60,7 @@ import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
 import { checkAndSendReminders }           from './ai-suite/scheduler/reminder.service'
-import { checkAndSendFollowups, processAfterHoursQueue, checkAndSendPostAppointmentFollowups, checkAndSendMissedCallFollowups, checkAndSendReactivationMessages, checkAndSendAppointmentConfirmations } from './ai-suite/scheduler/followup.service'
+import { checkAndSendFollowups, processAfterHoursQueue, checkAndSendPostAppointmentFollowups, checkAndSendMissedCallFollowups, checkAndSendReactivationMessages, checkAndSendAppointmentConfirmations, checkAndSendWeekendReport } from './ai-suite/scheduler/followup.service'
 import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
 import { updatePatientStatuses }           from './ai-suite/scheduler/patient-status.service'
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
@@ -341,6 +341,12 @@ runStartup().then(() => {
   setInterval(() => {
     runScheduledCampaigns().catch(err => console.error('[Campaign] Scheduler error:', err))
   }, FIVE_MINUTES)
+
+  // Weekend summary report — check every minute, fires Monday 8 AM EAT only
+  const ONE_MINUTE = 60 * 1000
+  setInterval(() => {
+    checkAndSendWeekendReport().catch(err => console.error('[WeekendReport] Scheduler error:', err))
+  }, ONE_MINUTE)
 
   // Run once 2 minutes after startup (gives DB time to settle after migrations)
   setTimeout(() => {
