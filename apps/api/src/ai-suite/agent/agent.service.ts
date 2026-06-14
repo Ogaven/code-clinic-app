@@ -18,6 +18,7 @@ import {
 } from '../booking/booking.state'
 import { prisma } from '../../lib/prisma'
 import { getGreetingName } from '../../utils/nameHelper'
+import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 
 function sanitizeForClaude(content: string): string {
   if (content.startsWith('__MEDIA_IMAGE__:')) {
@@ -1061,6 +1062,78 @@ async function handleConfirmAppointment(from: string): Promise<string> {
   return `Perfect, you're confirmed! Your appointment on ${day} at ${time} is all set 😊 We look forward to seeing you!`
 }
 
+// ── alertStaffOfConcern ───────────────────────────────────────────────────────
+
+async function alertStaffOfConcern(params: {
+  conversationId: string
+  patientPhone:   string
+  message:        string
+  serviceName?:   string
+  doctorName?:    string
+}): Promise<void> {
+  try {
+    // Dedup: don't fire again if already alerted for this conversation within 2 hours
+    const recentAlert = await prisma.aiMessage.findFirst({
+      where: {
+        conversationId: params.conversationId,
+        role:           'SYSTEM',
+        content:        { contains: 'STAFF_ALERTED' },
+        createdAt:      { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+      },
+    })
+    if (recentAlert) return
+
+    // Resolve patient name from DB; fall back to phone number
+    const localPhone = params.patientPhone.replace(/^\+256/, '0')
+    const patient = await prisma.patient.findFirst({
+      where: { OR: [{ phone: params.patientPhone }, { phone: localPhone }] },
+      select: { firstName: true, lastName: true },
+    })
+    const patientName = patient ? `${patient.firstName} ${patient.lastName}` : params.patientPhone
+
+    const contextLine = params.serviceName
+      ? `\nRelated to: ${params.serviceName}${params.doctorName ? ` with Dr ${params.doctorName}` : ''} (yesterday)`
+      : ''
+
+    const alertText =
+      `🚨 PATIENT NEEDS ATTENTION\n\n` +
+      `Name: ${patientName}\n` +
+      `Phone: ${params.patientPhone}\n` +
+      `Message: "${params.message.slice(0, 200)}"${contextLine}\n\n` +
+      `Sarah told the patient our team would follow up. Please reach out when convenient.`
+
+    // 1. WhatsApp to clinic front desk
+    await sendWhatsAppMessage('+256394836298', alertText)
+
+    // 2. In-app notification for all active RECEPTIONIST + ADMIN users
+    const staff = await prisma.user.findMany({
+      where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
+    })
+    await Promise.all(staff.map(u => prisma.notification.create({
+      data: {
+        userId: u.id,
+        type:   'SYSTEM',
+        title:  `Patient concern — ${patientName}`,
+        body:   alertText,
+        href:   '/receptionist/ai-suite/inbox',
+      },
+    })))
+
+    // 3. Dedup marker — SYSTEM role is excluded from Sarah's context window
+    await prisma.aiMessage.create({
+      data: {
+        conversationId: params.conversationId,
+        role:           'SYSTEM',
+        content:        'STAFF_ALERTED: clinical concern',
+      },
+    })
+
+    console.log(`[Agent] Staff alerted for clinical concern from ${params.patientPhone}`)
+  } catch (err: any) {
+    console.error('[Agent] alertStaffOfConcern failed:', err?.message || err)
+  }
+}
+
 // ── getAgentReply — main entry point ─────────────────────────────────────────
 
 export async function getAgentReply(
@@ -1094,6 +1167,14 @@ export async function getAgentReply(
         }
       } catch { /* malformed metadata — ignore */ }
     }
+    alertStaffOfConcern({
+      conversationId,
+      patientPhone: from,
+      message:      latestMessage,
+      serviceName:  followupCtx?.serviceName,
+      doctorName:   followupCtx?.doctorName,
+    }).catch(() => {})
+
     return buildClinicalConcernResponse(followupCtx)
   }
 
