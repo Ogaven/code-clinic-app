@@ -16,6 +16,7 @@ export async function checkAndSendReminders(): Promise<void> {
     where: {
       startAt: { gte: windowStart, lte: windowEnd },
       status:  { in: ['CONFIRMED', 'PENDING'] },
+      patient: { isActive: true },
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true } },

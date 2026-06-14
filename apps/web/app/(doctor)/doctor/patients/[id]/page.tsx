@@ -1400,8 +1400,7 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
           { label: 'Phone', value: formatPhone(patient.phone) },
           { label: 'Email', value: patient.email || '—' },
           { label: 'Gender', value: patient.gender || '—' },
-          { label: 'Address', value: patient.address || '—' },
-          { label: 'Residence', value: patient.district || '—' },
+          { label: 'Residence', value: patient.address || '—' },
           { label: 'How They Found Us', value: patient.referralSource || '—' },
           { label: 'Patient Since', value: new Date(patient.createdAt).toLocaleDateString('en-UG', { year: 'numeric', month: 'long' }) },
         ].map(({ label, value }) => (
@@ -1476,6 +1475,19 @@ export default function PatientProfilePage() {
   const [editOpen, setEditOpen] = useState(false)
   const [editForm, setEditForm] = useState<any>({})
   const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [toggling, setToggling] = useState(false)
+
+  async function toggleActive() {
+    setToggling(true)
+    try {
+      const res = await fetch(`/api-proxy/patients/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ isActive: !patient.isActive }),
+      })
+      if (res.ok) setPatient((p: any) => ({ ...p, isActive: !p.isActive }))
+    } finally { setToggling(false) }
+  }
 
   function openEdit() {
     setEditForm({
@@ -1587,8 +1599,20 @@ export default function PatientProfilePage() {
               <div className="mb-2">
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl font-bold text-clinic-navy dark:text-white">{patient.firstName} {patient.lastName}</h1>
+                  {!patient.isActive && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 uppercase">Inactive</span>
+                  )}
                   <button onClick={openEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-clinic-blue hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Edit patient">
                     <Edit size={15} />
+                  </button>
+                  <button
+                    onClick={toggleActive}
+                    disabled={toggling}
+                    className={cn('text-xs font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50',
+                      patient.isActive
+                        ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                        : 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20')}>
+                    {toggling ? '...' : patient.isActive ? 'Deactivate' : 'Reactivate'}
                   </button>
                 </div>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -1712,13 +1736,8 @@ export default function PatientProfilePage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Address</label>
-                  <input value={editForm.address} onChange={e => setEditForm((f: any) => ({ ...f, address: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                </div>
-                <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-1">Residence</label>
-                  <input value={editForm.district} onChange={e => setEditForm((f: any) => ({ ...f, district: e.target.value }))}
+                  <input value={editForm.address} onChange={e => setEditForm((f: any) => ({ ...f, address: e.target.value }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
               </div>
@@ -1752,7 +1771,7 @@ export default function PatientProfilePage() {
                 <select value={editForm.referralSource} onChange={e => setEditForm((f: any) => ({ ...f, referralSource: e.target.value }))}
                   className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
                   <option value="">— Not specified —</option>
-                  {['Word of mouth','Google','Facebook','Instagram','Doctor referral','NWSC','ERA','City Medicals','GA','Other'].map((o: string) => (
+                  {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friends and Family','Doctor referral','NWSC','ERA','City Medicals','GA','BNI','YouTube','Worship Harvest','Other'].map((o: string) => (
                     <option key={o} value={o}>{o}</option>
                   ))}
                 </select>

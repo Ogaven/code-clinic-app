@@ -469,7 +469,7 @@ export default function DoctorPatientsPage() {
                 <select value={form.referralSource} onChange={e => setField('referralSource', e.target.value)}
                   className="w-full px-3 py-3 text-base border border-gray-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none">
                   <option value="">— Not specified —</option>
-                  {['Word of mouth','Google','Facebook','Instagram','Doctor referral','NWSC','ERA','City Medicals','GA','Other'].map(o => (
+                  {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friends and Family','Doctor referral','NWSC','ERA','City Medicals','GA','BNI','YouTube','Worship Harvest','Other'].map(o => (
                     <option key={o} value={o}>{o}</option>
                   ))}
                 </select>

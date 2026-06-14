@@ -139,6 +139,7 @@ export async function checkAndSendFollowups(): Promise<void> {
     where: {
       startAt: { gte: windowStart, lte: windowEnd },
       status:  'COMPLETED',
+      patient: { isActive: true },
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },

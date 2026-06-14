@@ -162,10 +162,24 @@ function Card({ className, children }: { className?: string; children: React.Rea
 
 // ── Overview Tab ─────────────────────────────────────────────
 function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => void }) {
-  const [editing, setEditing] = useState(false)
-  const [form, setForm]       = useState<any>({})
-  const [saving, setSaving]   = useState(false)
+  const [editing, setEditing]         = useState(false)
+  const [form, setForm]               = useState<any>({})
+  const [saving, setSaving]           = useState(false)
+  const [toggling, setToggling]       = useState(false)
   const API = '/api-proxy'
+
+  async function toggleActive() {
+    setToggling(true)
+    const token = localStorage.getItem('cc_token')
+    try {
+      await fetch(`${API}/patients/${patient.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !patient.isActive }),
+      })
+      onRefresh()
+    } finally { setToggling(false) }
+  }
 
   useEffect(() => {
     setForm({
@@ -209,12 +223,28 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
     <div className="space-y-4">
       <Card className="p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-wide">Personal Information</h3>
-          <button onClick={() => setEditing(e => !e)}
-            className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all',
-              editing ? 'bg-gray-100 dark:bg-white/8 text-gray-600 dark:text-white/60' : 'text-cyan-600 hover:bg-cyan-50 dark:hover:bg-cyan-900/20')}>
-            {editing ? <><X size={12} /> Cancel</> : <><Edit2 size={12} /> Edit</>}
-          </button>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-wide">Personal Information</h3>
+            {!patient.isActive && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 uppercase tracking-wide">Inactive</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleActive}
+              disabled={toggling}
+              className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50',
+                patient.isActive
+                  ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                  : 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20')}>
+              {toggling ? '...' : patient.isActive ? 'Deactivate' : 'Reactivate'}
+            </button>
+            <button onClick={() => setEditing(e => !e)}
+              className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all',
+                editing ? 'bg-gray-100 dark:bg-white/8 text-gray-600 dark:text-white/60' : 'text-cyan-600 hover:bg-cyan-50 dark:hover:bg-cyan-900/20')}>
+              {editing ? <><X size={12} /> Cancel</> : <><Edit2 size={12} /> Edit</>}
+            </button>
+          </div>
         </div>
 
         {editing ? (
@@ -250,15 +280,9 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
                 <input type="date" value={form.dob} onChange={e => setForm((f: any) => ({...f, dob: e.target.value}))} className={inputCls} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Place of Residence</label>
-                <input value={form.address} onChange={e => setForm((f: any) => ({...f, address: e.target.value}))} className={inputCls} placeholder="Street / village" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Residence</label>
-                <input value={form.district} onChange={e => setForm((f: any) => ({...f, district: e.target.value}))} className={inputCls} placeholder="e.g. Kampala" />
-              </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Residence</label>
+              <input value={form.address} onChange={e => setForm((f: any) => ({...f, address: e.target.value}))} className={inputCls} placeholder="e.g. Kampala, Ntinda" />
             </div>
             <div className="pt-1">
               <p className="text-xs font-black text-gray-400 dark:text-white/40 uppercase tracking-wider mb-2">Next of Kin</p>
@@ -290,7 +314,7 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
               <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">How did they find us?</label>
               <select value={form.referralSource} onChange={e => setForm((f: any) => ({...f, referralSource: e.target.value}))} className={inputCls}>
                 <option value="" className="dark:bg-gray-800">— Not specified —</option>
-                {['Word of mouth','Google','Facebook','Instagram','Doctor referral','NWSC','ERA','City Medicals','GA','Other'].map((o: string) => (
+                {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friends and Family','Doctor referral','NWSC','ERA','City Medicals','GA','BNI','YouTube','Worship Harvest','Other'].map((o: string) => (
                   <option key={o} value={o} className="dark:bg-gray-800">{o}</option>
                 ))}
               </select>
@@ -368,10 +392,10 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
               <Mail size={13} className="text-cyan-500 flex-shrink-0" />
               <span className="text-sm text-gray-700 dark:text-white/70">{patient.email || 'No email'}</span>
             </div>
-            {(patient.address || patient.district) && (
+            {patient.address && (
               <div className="bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2.5">
-                <p className="text-[10px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wider mb-0.5">Place of Residence</p>
-                <p className="text-sm text-gray-700 dark:text-white/70">{[patient.address, patient.district].filter(Boolean).join(', ')}</p>
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wider mb-0.5">Residence</p>
+                <p className="text-sm text-gray-700 dark:text-white/70">{patient.address}</p>
               </div>
             )}
             {(patient.nextOfKinName || patient.nextOfKinPhone) && (

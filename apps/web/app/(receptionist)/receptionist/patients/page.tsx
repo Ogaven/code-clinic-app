@@ -194,7 +194,6 @@ export default function PatientsPage() {
       if (form.gender)            payload.gender            = form.gender
       if (form.dob)               payload.dob               = form.dob
       if (form.address)           payload.address           = form.address
-      if (form.district)          payload.district          = form.district
       if (form.nextOfKinName)     payload.nextOfKinName     = form.nextOfKinName
       if (form.nextOfKinPhone)    payload.nextOfKinPhone    = form.nextOfKinPhone
       if (form.nextOfKinRelation) payload.nextOfKinRelation = form.nextOfKinRelation
@@ -825,17 +824,8 @@ export default function PatientsPage() {
 
               {/* Residence */}
               <div className="pt-1">
-                <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Residence</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Street / Estate</label>
-                    <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={inputCls} placeholder="Street / Estate" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Residence</label>
-                    <input value={form.district} onChange={e => setForm(f => ({ ...f, district: e.target.value }))} className={inputCls} placeholder="e.g. Kampala" />
-                  </div>
-                </div>
+                <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Residence</label>
+                <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={inputCls} placeholder="e.g. Kampala, Ntinda" />
               </div>
 
               {/* Next of Kin */}
@@ -855,7 +845,7 @@ export default function PatientsPage() {
                 <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">How did they find us?</p>
                 <select value={form.referralSource} onChange={e => setForm(f => ({ ...f, referralSource: e.target.value }))} className={inputCls}>
                   <option value="" className="dark:bg-gray-800">— Not specified —</option>
-                  {['Word of mouth','Google','Facebook','Instagram','Doctor referral','NWSC','ERA','City Medicals','GA','Other'].map(o => (
+                  {['Walk-in','Google Search','Google Ad','Facebook','Instagram','Friends and Family','Doctor referral','NWSC','ERA','City Medicals','GA','BNI','YouTube','Worship Harvest','Other'].map(o => (
                     <option key={o} value={o} className="dark:bg-gray-800">{o}</option>
                   ))}
                 </select>
