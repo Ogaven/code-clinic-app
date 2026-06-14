@@ -9,7 +9,7 @@ interface Employee {
   id: string; firstName: string; lastName: string; email: string
   role: string; isActive: boolean; lastLogin?: string; avatarUrl?: string | null
   phone?: string
-  doctor?: { specialisation?: string; colour: string; photoUrl?: string | null }
+  doctor?: { specialisation?: string; colour: string; photoUrl?: string | null; bookingMode?: string }
 }
 
 const ROLE_COLOURS: Record<string, string> = {
@@ -525,6 +525,7 @@ function EditEmployeeModal({ employee, onClose, onSaved, token }: {
     role:           employee.role,
     isActive:       employee.isActive,
     specialisation: employee.doctor?.specialisation || '',
+    bookingMode:    employee.doctor?.bookingMode || 'OPEN',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
@@ -551,17 +552,21 @@ function EditEmployeeModal({ employee, onClose, onSaved, token }: {
         if (!r2.ok) { setError((await r2.json()).error || 'Role update failed'); return }
       }
 
-      // Update doctor specialisation if applicable
-      const isDoctor = form.role === 'DOCTOR' || (form.role !== 'DOCTOR' && employee.role === 'DOCTOR')
-      if (isDoctor && form.specialisation !== (employee.doctor?.specialisation || '')) {
+      // Update doctor specialisation / bookingMode if applicable
+      const isDoctor = form.role === 'DOCTOR' || employee.role === 'DOCTOR'
+      const doctorChanged = isDoctor && (
+        form.specialisation !== (employee.doctor?.specialisation || '') ||
+        form.bookingMode    !== (employee.doctor?.bookingMode    || 'OPEN')
+      )
+      if (doctorChanged) {
         await fetch(`/api-proxy/employees/${employee.id}/doctor`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ specialisation: form.specialisation }),
+          body: JSON.stringify({ specialisation: form.specialisation, bookingMode: form.bookingMode }),
         })
       }
 
-      onSaved({ ...employee, ...form, doctor: employee.doctor ? { ...employee.doctor, specialisation: form.specialisation } : undefined })
+      onSaved({ ...employee, ...form, doctor: employee.doctor ? { ...employee.doctor, specialisation: form.specialisation, bookingMode: form.bookingMode } : undefined })
     } catch { setError('Network error') } finally { setLoading(false) }
   }
 
@@ -616,6 +621,21 @@ function EditEmployeeModal({ employee, onClose, onSaved, token }: {
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
+              </div>
+            )}
+
+            {(form.role === 'DOCTOR' || employee.role === 'DOCTOR') && (
+              <div className="flex items-center justify-between py-3 px-4 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Accepts new patients via Sarah</p>
+                  <p className="text-xs text-gray-400">{form.bookingMode === 'OPEN' ? 'Sarah can book patients with this doctor' : 'Patients are seen by referral only'}</p>
+                </div>
+                <button type="button" onClick={() => setForm(f => ({ ...f, bookingMode: f.bookingMode === 'OPEN' ? 'BY_REFERRAL' : 'OPEN' }))}
+                  className={cn('relative w-11 h-6 rounded-full transition-colors flex-shrink-0',
+                    form.bookingMode === 'OPEN' ? 'bg-green-500' : 'bg-gray-300 dark:bg-white/20')}>
+                  <span className={cn('absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                    form.bookingMode === 'OPEN' ? 'translate-x-5' : 'translate-x-0')} />
+                </button>
               </div>
             )}
 

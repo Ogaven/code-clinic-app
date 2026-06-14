@@ -780,6 +780,9 @@ async function handleAwaitingDoctorPreference(
   // Patient named a specific doctor — show only their slots
   const namedDoctor = await matchDoctor(message)
   if (namedDoctor) {
+    if (namedDoctor.bookingMode === 'BY_REFERRAL') {
+      return `Dr ${namedDoctor.firstName} sees patients by referral only. I can pass your details to our team and they'll follow up with you about seeing Dr ${namedDoctor.firstName}. In the meantime, would you like me to book you with another available dentist? 😊`
+    }
     return presentSlots(from, state.serviceId!, namedDoctor.id)
   }
 
@@ -790,10 +793,13 @@ async function handleAwaitingDoctorPreference(
     return presentSlots(from, state.serviceId!, undefined)
   }
 
-  // Patient wants to pick but hasn't named anyone yet — list doctors (first name only)
+  // Patient wants to pick but hasn't named anyone yet — list bookable doctors (first name only)
   setBookingState(from, { state: 'AWAITING_DOCTOR_NAME', serviceId: state.serviceId })
   const doctors  = await getDoctors()
-  const nameList = doctors.map(d => `• Dr ${d.firstName}${d.specialisation ? ` (${d.specialisation})` : ''}`).join('\n')
+  const nameList = doctors
+    .filter(d => d.bookingMode !== 'BY_REFERRAL')
+    .map(d => `• Dr ${d.firstName}${d.specialisation ? ` (${d.specialisation})` : ''}`)
+    .join('\n')
   return `Sure! Here are our doctors:\n\n${nameList}\n\nWhich one would you prefer? 😊`
 }
 
@@ -806,8 +812,13 @@ async function handleAwaitingDoctorName(
 
   if (!doctor) {
     const doctors  = await getDoctors()
-    const nameList = doctors.map(d => `• Dr ${d.firstName} ${d.lastName}`).join('\n')
+    const nameList = doctors.filter(d => d.bookingMode !== 'BY_REFERRAL').map(d => `• Dr ${d.firstName} ${d.lastName}`).join('\n')
     return `I couldn't find that doctor 😊 Here's who we have:\n\n${nameList}\n\nWhich one would you prefer?`
+  }
+
+  if (doctor.bookingMode === 'BY_REFERRAL') {
+    setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: state.serviceId })
+    return `Dr ${doctor.firstName} sees patients by referral only. I can pass your details to our team and they'll follow up with you about seeing Dr ${doctor.firstName}. In the meantime, would you like me to book you with another available dentist? 😊`
   }
 
   return presentSlots(from, state.serviceId!, doctor.id)

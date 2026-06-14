@@ -66,7 +66,7 @@ export async function getAvailableSlots(
     doctors = d ? [d] : []
   } else {
     const all = await prisma.doctor.findMany({
-      where: { isActive: true },
+      where: { isActive: true, bookingMode: { not: 'BY_REFERRAL' } },
       include: { user: { select: { firstName: true, lastName: true } } },
     })
     // Include doctors with no serviceIds restriction OR explicitly assigned this service
@@ -176,6 +176,7 @@ export async function getDoctors() {
     firstName:      d.user.firstName,
     lastName:       d.user.lastName,
     specialisation: d.specialisation,
+    bookingMode:    d.bookingMode,
   }))
 }
 

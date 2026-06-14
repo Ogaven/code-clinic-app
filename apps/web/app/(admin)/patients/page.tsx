@@ -71,6 +71,7 @@ const EMPTY_FORM = {
   nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '',
   allergies: '',
   medicalHistory: [] as string[],
+  referralSource: '',
 }
 
 // ── Page ─────────────────────────────────────────────────────────
@@ -901,6 +902,17 @@ export default function PatientsPage() {
                     setForm(f => ({ ...f, medicalHistory: [...pills, ...extras] }))
                   }}
                   className={inputCls} placeholder="Other conditions..." />
+              </div>
+
+              {/* Referral Source */}
+              <div className="pt-1">
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">How did they find us?</p>
+                <select value={form.referralSource} onChange={e => setForm(f => ({ ...f, referralSource: e.target.value }))} className={inputCls}>
+                  <option value="">— Select source —</option>
+                  {['Google Search', 'Google Maps', 'Facebook', 'Instagram', 'TikTok', 'Referred by Friend / Family', 'Referred by Doctor', 'Walk-in', 'Returning Patient', 'Other'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
               </div>
 
               {formError && <p className="text-xs text-red-500 font-medium">{formError}</p>}

@@ -38,7 +38,7 @@ router.get('/', requireAuth, allStaff, async (_req, res) => {
     select: {
       id: true, email: true, role: true, firstName: true, lastName: true,
       phone: true, isActive: true, lastLogin: true, avatarR2Key: true, createdAt: true,
-      doctor: { select: { id: true, specialisation: true, colour: true, photoR2Key: true } },
+      doctor: { select: { id: true, specialisation: true, colour: true, photoR2Key: true, bookingMode: true } },
     },
     orderBy: { createdAt: 'asc' },
   })
@@ -127,9 +127,9 @@ router.patch('/:id', requireAuth, adminOnly, auditLog('employees'), async (req, 
   res.json(user)
 })
 
-// PATCH /employees/:id/doctor — update doctor specialisation/colour
+// PATCH /employees/:id/doctor — update doctor specialisation/colour/bookingMode
 router.patch('/:id/doctor', requireAuth, adminOnly, async (req, res) => {
-  const { specialisation, colour } = req.body
+  const { specialisation, colour, bookingMode } = req.body
   try {
     const doctor = await prisma.doctor.findFirst({ where: { userId: req.params.id } })
     if (!doctor) { res.status(404).json({ error: 'Doctor record not found' }); return }
@@ -138,9 +138,10 @@ router.patch('/:id/doctor', requireAuth, adminOnly, async (req, res) => {
       data: {
         ...(specialisation !== undefined && { specialisation }),
         ...(colour         !== undefined && { colour }),
+        ...(bookingMode    !== undefined && { bookingMode }),
       },
     })
-    res.json({ specialisation: updated.specialisation, colour: updated.colour })
+    res.json({ specialisation: updated.specialisation, colour: updated.colour, bookingMode: updated.bookingMode })
   } catch (e: any) { res.status(500).json({ error: e.message }) }
 })
 

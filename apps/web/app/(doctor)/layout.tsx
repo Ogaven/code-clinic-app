@@ -35,15 +35,18 @@ async function fetchLivePerms(token: string): Promise<Record<string, boolean>> {
   return {}
 }
 
-const NAV_MAIN = [
-  { label: 'Dashboard',              href: '/doctor/dashboard',                             icon: LayoutDashboard },
-  { label: 'Appointments',           href: '/doctor/schedule',                              icon: CalendarDays,  permKey: 'appointments' },
-  { label: 'My Patients',            href: '/doctor/patients',                              icon: Users,         permKey: 'patients' },
-  { label: 'Patient Flow',           href: '/doctor/flow',                                  icon: Activity,      permKey: 'liveFlow' },
-  { label: 'Communications',         href: '/doctor/messages',                              icon: MessageSquare, badge: true, permKey: 'communications' },
-  { label: 'AI Inbox',               href: '/receptionist/ai-suite/inbox',                  icon: Inbox,         permKey: 'aiSuiteInbox' },
-  { label: 'Follow-up Dashboard',    href: '/receptionist/ai-suite/followup-dashboard',     icon: CheckCircle2,  permKey: 'aiSuiteFollowup' },
-  { label: 'Confirmation Dashboard', href: '/receptionist/ai-suite/confirmation-dashboard', icon: ListChecks,    permKey: 'aiSuiteConfirmation' },
+const NAV_CORE = [
+  { label: 'Dashboard',      href: '/doctor/dashboard', icon: LayoutDashboard },
+  { label: 'Appointments',   href: '/doctor/schedule',  icon: CalendarDays,  permKey: 'appointments' },
+  { label: 'My Patients',    href: '/doctor/patients',  icon: Users,         permKey: 'patients' },
+  { label: 'Patient Flow',   href: '/doctor/flow',      icon: Activity,      permKey: 'liveFlow' },
+  { label: 'Communications', href: '/doctor/messages',  icon: MessageSquare, badge: true, permKey: 'communications' },
+]
+
+const NAV_AI_SUITE = [
+  { label: 'AI Inbox',               href: '/receptionist/ai-suite/inbox',                  icon: Inbox,        permKey: 'aiSuiteInbox' },
+  { label: 'Follow-up Dashboard',    href: '/receptionist/ai-suite/followup-dashboard',     icon: CheckCircle2, permKey: 'aiSuiteFollowup' },
+  { label: 'Confirmation Dashboard', href: '/receptionist/ai-suite/confirmation-dashboard', icon: ListChecks,   permKey: 'aiSuiteConfirmation' },
 ]
 
 const NAV_BOTTOM = [
@@ -217,7 +220,8 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   }
 
   const allowed = (key?: string) => !key || permsMap[key] !== false
-  const visibleNavMain = NAV_MAIN.filter(item => allowed(item.permKey))
+  const visibleNavCore    = NAV_CORE.filter(item => allowed(item.permKey))
+  const visibleNavAISuite = NAV_AI_SUITE.filter(item => allowed(item.permKey))
 
   const initials = user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'D'
 
@@ -245,9 +249,21 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
         {/* Main nav — scrollable */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-          {visibleNavMain.map(({ permKey: _pk, ...item }) => (
+          {visibleNavCore.map(({ permKey: _pk, ...item }) => (
             <NavLink key={item.href} {...item} unread={unread} collapsed={collapsed} />
           ))}
+          {visibleNavAISuite.length > 0 && (
+            <>
+              {!collapsed && (
+                <p className="px-3 pt-4 pb-1 text-[10px] font-bold tracking-widest text-gray-400 dark:text-white/30 uppercase">
+                  AI Suite
+                </p>
+              )}
+              {visibleNavAISuite.map(({ permKey: _pk, ...item }) => (
+                <NavLink key={item.href} {...item} unread={unread} collapsed={collapsed} />
+              ))}
+            </>
+          )}
         </nav>
 
         {/* Bottom nav — pinned */}
@@ -277,9 +293,19 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               </button>
             </div>
             <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-              {visibleNavMain.map(({ permKey: _pk, ...item }) => (
+              {visibleNavCore.map(({ permKey: _pk, ...item }) => (
                 <NavLink key={item.href} {...item} unread={unread} collapsed={false} onNavigate={() => setDrawer(false)} />
               ))}
+              {visibleNavAISuite.length > 0 && (
+                <>
+                  <p className="px-3 pt-4 pb-1 text-[10px] font-bold tracking-widest text-gray-400 dark:text-white/30 uppercase">
+                    AI Suite
+                  </p>
+                  {visibleNavAISuite.map(({ permKey: _pk, ...item }) => (
+                    <NavLink key={item.href} {...item} unread={unread} collapsed={false} onNavigate={() => setDrawer(false)} />
+                  ))}
+                </>
+              )}
             </nav>
             <div className="border-t border-gray-100 dark:border-white/[0.06] px-2 py-2 pb-4 space-y-0.5">
               {NAV_BOTTOM.map(item => (
