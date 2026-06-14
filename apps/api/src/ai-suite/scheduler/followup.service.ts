@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachable } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { getGreetingName } from '../../utils/nameHelper'
@@ -32,6 +33,60 @@ function normalizeRelation(relation: string | null | undefined): string {
     friend: 'friend', boss: 'guardian',
   }
   return map[r] || 'guardian'
+}
+
+async function generatePersonalizedFollowup(params: {
+  patientName: string
+  doctorName: string
+  noteContent: string | null
+  isGuardianMessage: boolean
+  guardianAddress?: string
+  childName?: string
+}): Promise<string | null> {
+  if (!params.noteContent || params.noteContent.trim().length < 20) return null
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return null
+
+  const truncatedNote = params.noteContent.slice(0, 3000)
+
+  const prompt = `You are Sarah, a warm WhatsApp assistant for Code Clinic dental clinic in Uganda. Write a SHORT follow-up message (2-3 sentences max) to a patient after yesterday's visit, based on this clinical note:
+
+"""
+${truncatedNote}
+"""
+
+Rules:
+- Translate clinical/medical terms into simple, friendly language a patient would understand. NEVER use jargon like "RCT", "GI restoration", "periapical", tooth numbers, diagnoses, etc.
+- Mention what was done in simple terms (e.g. "cleaning", "filling", "root canal treatment", "your crown")
+- If the note mentions specific aftercare instructions (avoid hard foods, rinse with salt water, take medication, etc.) include ONE relevant tip naturally
+- Do NOT mention diagnoses, prognosis, or anything that could alarm the patient
+- Warm, caring tone, 1-2 emojis max
+- NEVER use em dashes (—)
+- ${params.isGuardianMessage
+    ? `This message is going to ${params.guardianAddress}, the guardian of ${params.childName}, a minor patient. Address them as "${params.guardianAddress}" and refer to the child as ${params.childName}.`
+    : `Address the patient as ${params.patientName}.`}
+- Doctor's name: Dr ${params.doctorName}
+- End with an invitation to reply if they have questions
+- Output ONLY the message text, nothing else`
+
+  try {
+    const client = new Anthropic({ apiKey })
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 300,
+      messages: [{ role: 'user', content: prompt }],
+    })
+    const text = response.content
+      .filter(b => b.type === 'text')
+      .map(b => (b as any).text)
+      .join('')
+      .trim()
+    return text || null
+  } catch (err: any) {
+    console.error('[PersonalizedFollowup] Failed:', err?.message || err)
+    return null
+  }
 }
 
 // ── checkAndSendFollowups ─────────────────────────────────────────────────────
@@ -78,7 +133,8 @@ export async function checkAndSendFollowups(): Promise<void> {
 
     // ── Build message ─────────────────────────────────────────────────────────
     const channel           = 'WHATSAPP'
-    const doctor            = `Dr ${appt.doctor.user.firstName}`
+    const doctorFirst       = appt.doctor.user.firstName
+    const doctor            = `Dr ${doctorFirst}`
     const minor             = isMinor(patient.dob)
     const guardianFirstName = minor && patient.nextOfKinName
       ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
@@ -86,9 +142,24 @@ export async function checkAndSendFollowups(): Promise<void> {
     const relation  = normalizeRelation(patient.nextOfKinRelation)
     const greetName = getGreetingName(patient)
     const addr      = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : greetName
-    const message   = minor
+
+    const note = await prisma.treatmentNote.findFirst({
+      where: { patientId: patient.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    const personalized = await generatePersonalizedFollowup({
+      patientName:       greetName,
+      doctorName:        doctorFirst,
+      noteContent:       note?.content ?? null,
+      isGuardianMessage: minor && !!guardianFirstName,
+      guardianAddress:   guardianFirstName ?? undefined,
+      childName:         minor ? greetName : undefined,
+    })
+
+    const genericMessage = minor
       ? `Hello ${addr}, this is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, we wanted to follow up on ${greetName}'s visit yesterday with ${doctor}. How is ${greetName} doing? Feel free to reply if you have any questions, we are always here for you.`
       : `Hello ${greetName}, hope you are feeling well after your visit yesterday with ${doctor} 😊 How are you doing? Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you.`
+    const message = personalized ?? genericMessage
 
     // ── Send ──────────────────────────────────────────────────────────────────
     try {
@@ -413,7 +484,15 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
 
     const patientPhone    = patient.phone
     const patientFullName = `${patient.firstName} ${patient.lastName}`
-    const stage2 = `How are you doing? Hope you are feeling well after your visit yesterday with Dr ${doctorFirst} 😊`
+    const personalizedStage2 = await generatePersonalizedFollowup({
+      patientName:       greetName,
+      doctorName:        doctorFirst,
+      noteContent:       latestNoteC?.content ?? null,
+      isGuardianMessage: minor && !!guardianFirstName,
+      guardianAddress:   guardianFirstName ?? undefined,
+      childName:         minor ? greetName : undefined,
+    })
+    const stage2 = personalizedStage2 ?? `How are you doing? Hope you are feeling well after your visit yesterday with Dr ${doctorFirst} 😊`
     const stage3 = `Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you 🌟`
 
     // Stage 2 — 30 minutes later if no reply
