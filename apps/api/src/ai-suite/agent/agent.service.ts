@@ -1234,22 +1234,23 @@ export async function getAgentReply(
   })
   const eatDay = now.toLocaleDateString('en-UG', { timeZone: 'Africa/Nairobi', weekday: 'long' })
 
-  const [context, weather, todayHours] = await Promise.all([
+  const [context, weather, allHours] = await Promise.all([
     buildContext(conversationId, from, latestMessage),
     getKampalaWeather(),
-    prisma.workingHours.findUnique({ where: { dayOfWeek: eatDayOfWeek } }).catch(() => null),
+    prisma.workingHours.findMany({ orderBy: { dayOfWeek: 'asc' } }).catch(() => []),
   ])
 
-  let clinicHoursStr: string
-  let clinicStatus: string
-  if (!todayHours || !todayHours.isOpen) {
-    clinicHoursStr = 'closed today'
-    clinicStatus   = 'closed'
-  } else {
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  const hoursTable = allHours.length > 0
+    ? allHours.map(h => `${DAY_NAMES[h.dayOfWeek]}: ${h.isOpen ? `${h.openTime} – ${h.closeTime}` : 'Closed'}`).join('\n')
+    : '(hours not configured in database)'
+
+  const todayHours = allHours.find(h => h.dayOfWeek === eatDayOfWeek) ?? null
+  let isOpenNow = false
+  if (todayHours?.isOpen) {
     const openH  = parseInt(todayHours.openTime.split(':')[0])
     const closeH = parseInt(todayHours.closeTime.split(':')[0])
-    clinicHoursStr = `${todayHours.openTime} - ${todayHours.closeTime}`
-    clinicStatus   = (eatHour >= openH && eatHour < closeH) ? 'open' : 'closed'
+    isOpenNow = eatHour >= openH && eatHour < closeH
   }
 
   const historyLines = context.conversationHistory
@@ -1306,7 +1307,6 @@ export async function getAgentReply(
       'Email: dentist@codeclinic.ug',
       'Website: codeclinic.ug',
       'Address: Old Kira Road, opposite Police Playground, Kamwokya, Kampala',
-      'Hours: Monday–Friday 8am–6pm, Saturday 9am–2pm',
       '',
       'OUR SERVICES:',
       context.services,
@@ -1319,8 +1319,10 @@ export async function getAgentReply(
       '',
       `CURRENT DATE AND TIME IN KAMPALA: ${eatDateTime}`,
       `Sarah knows this and uses it accurately in all responses. Never guess or approximate the date or time — always use this.`,
-      `CLINIC HOURS TODAY (${eatDay}): ${clinicHoursStr}`,
-      `CLINIC STATUS RIGHT NOW: ${clinicStatus}`,
+      `CLINIC HOURS — FULL WEEK (from database — this is the ONLY source of truth, NEVER guess or use generic hours):`,
+      hoursTable,
+      `TODAY is ${eatDay}. CLINIC STATUS RIGHT NOW: ${isOpenNow ? 'OPEN' : 'CLOSED'}.`,
+      `CRITICAL: When discussing ANY day's hours (today, tomorrow, Saturday, Monday, etc.) always reference the table above exactly. NEVER say generic phrases like "9am to 5pm" or "closed on Mondays" unless that is EXACTLY what the table says. If asked about a day not in the table or you're unsure, say "let me have the team confirm that with you" rather than guessing.`,
       `KAMPALA WEATHER: ${weather}`,
       '',
       'PATIENT CONTEXT:',
