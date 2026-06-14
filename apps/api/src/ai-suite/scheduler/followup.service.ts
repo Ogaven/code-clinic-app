@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachable } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
-import { getGreetingName } from '../../utils/nameHelper'
+import { getGreetingName, isMinor, normalizeRelation } from '../../utils/nameHelper'
 
 const ADMIN_WHATSAPP = '+256394836298'
 
@@ -13,26 +13,6 @@ function eatHour(): number {
   return parseInt(
     new Date().toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
   )
-}
-
-function isMinor(dob: Date | null | undefined): boolean {
-  if (!dob) return false
-  const age = (Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-  return age < 16
-}
-
-function normalizeRelation(relation: string | null | undefined): string {
-  if (!relation) return 'guardian'
-  const r = relation.trim().toLowerCase()
-  const map: Record<string, string> = {
-    mum: 'mum', mother: 'mum', mom: 'mum',
-    dad: 'dad', father: 'dad',
-    husband: 'husband', wife: 'wife',
-    sister: 'sister', brother: 'brother',
-    son: 'son', daughter: 'daughter',
-    friend: 'friend', boss: 'guardian',
-  }
-  return map[r] || 'guardian'
 }
 
 function naturalServiceName(dbName: string | null | undefined): string {

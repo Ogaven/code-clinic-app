@@ -1,6 +1,6 @@
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
-import { getGreetingName } from '../../utils/nameHelper'
+import { getGreetingName, isMinor, normalizeRelation } from '../../utils/nameHelper'
 
 // ── checkAndSendReminders ─────────────────────────────────────────────────────
 // Runs every hour. Finds appointments starting 23–25 hours from now and sends a
@@ -19,7 +19,7 @@ export async function checkAndSendReminders(): Promise<void> {
       patient: { isActive: true },
     },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
       doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
       service: { select: { name: true } },
     },
@@ -56,14 +56,41 @@ export async function checkAndSendReminders(): Promise<void> {
     const dayDate = appt.startAt.toLocaleDateString('en-UG', {
       weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi',
     })
-    const doctor  = `Dr ${appt.doctor.user.firstName}`
-    const greetName = getGreetingName(patient)
-    const message =
-      `Hello ${greetName} 😊 Just a reminder that you have an appointment tomorrow:\n\n` +
-      `📅 ${dayDate} at ${time}\n` +
-      `👨‍⚕️ ${doctor}, ${appt.service.name}\n` +
-      `📍 Code Clinic, Kamwokya\n\n` +
-      `Reply YES to confirm or NO to reschedule.`
+    const doctor        = `Dr ${appt.doctor.user.firstName}`
+    const greetName     = getGreetingName(patient)
+    const minor         = isMinor(patient.dob)
+    const guardianName  = minor && patient.nextOfKinName
+      ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
+      : null
+    const relation      = normalizeRelation(patient.nextOfKinRelation)
+
+    let message: string
+    let templateAddr: string
+    if (minor && guardianName) {
+      templateAddr = guardianName
+      message =
+        `Hello ${guardianName} 😊 Just a reminder that ${greetName} has an appointment tomorrow:\n\n` +
+        `📅 ${dayDate} at ${time}\n` +
+        `👨‍⚕️ ${doctor}, ${appt.service.name}\n` +
+        `📍 Code Clinic, Kamwokya\n\n` +
+        `Reply YES to confirm or NO to reschedule.`
+    } else if (minor) {
+      templateAddr = greetName
+      message =
+        `Hello 😊 Just a reminder about tomorrow's appointment for ${greetName} (as ${relation}):\n\n` +
+        `📅 ${dayDate} at ${time}\n` +
+        `👨‍⚕️ ${doctor}, ${appt.service.name}\n` +
+        `📍 Code Clinic, Kamwokya\n\n` +
+        `Reply YES to confirm or NO to reschedule.`
+    } else {
+      templateAddr = greetName
+      message =
+        `Hello ${greetName} 😊 Just a reminder that you have an appointment tomorrow:\n\n` +
+        `📅 ${dayDate} at ${time}\n` +
+        `👨‍⚕️ ${doctor}, ${appt.service.name}\n` +
+        `📍 Code Clinic, Kamwokya\n\n` +
+        `Reply YES to confirm or NO to reschedule.`
+    }
 
     // ── Send ──────────────────────────────────────────────────────────────────
     try {
@@ -71,7 +98,7 @@ export async function checkAndSendReminders(): Promise<void> {
       if (templateName) {
         try {
           await sendWhatsAppTemplate(patient.phone, templateName, [
-            greetName,
+            templateAddr,
             dayDate,
             time,
             appt.service.name,

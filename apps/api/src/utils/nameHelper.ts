@@ -12,3 +12,23 @@ export function getGreetingName(patient: { firstName?: string | null; lastName?:
   }
   return toProper(allWords[allWords.length - 1])
 }
+
+export function isMinor(dob: Date | null | undefined): boolean {
+  if (!dob) return false
+  const age = (Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+  return age < 16
+}
+
+export function normalizeRelation(relation: string | null | undefined): string {
+  if (!relation) return 'guardian'
+  const r = relation.trim().toLowerCase()
+  const map: Record<string, string> = {
+    mum: 'mum', mother: 'mum', mom: 'mum',
+    dad: 'dad', father: 'dad',
+    husband: 'husband', wife: 'wife',
+    sister: 'sister', brother: 'brother',
+    son: 'son', daughter: 'daughter',
+    friend: 'friend', boss: 'guardian',
+  }
+  return map[r] || 'guardian'
+}
