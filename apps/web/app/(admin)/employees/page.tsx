@@ -9,7 +9,7 @@ interface Employee {
   id: string; firstName: string; lastName: string; email: string
   role: string; isActive: boolean; lastLogin?: string; avatarUrl?: string | null
   phone?: string
-  doctor?: { specialisation?: string; colour: string; photoUrl?: string | null; bookingMode?: string }
+  doctor?: { specialisation?: string; colour: string; photoUrl?: string | null; bookingMode?: string; workingDays?: string }
 }
 
 const ROLE_COLOURS: Record<string, string> = {
@@ -514,6 +514,10 @@ function AddEmployeeModal({ onClose, onAdded, token }: any) {
   )
 }
 
+function parseWorkingDays(wd: string | undefined): number[] {
+  try { return JSON.parse(wd || '[1,2,3,4,5]') } catch { return [1, 2, 3, 4, 5] }
+}
+
 /* ─── Edit Employee Modal ─────────────────────────────────────────────────── */
 function EditEmployeeModal({ employee, onClose, onSaved, token }: {
   employee: Employee; onClose: () => void; onSaved: (e: Employee) => void; token: string | null
@@ -526,6 +530,7 @@ function EditEmployeeModal({ employee, onClose, onSaved, token }: {
     isActive:       employee.isActive,
     specialisation: employee.doctor?.specialisation || '',
     bookingMode:    employee.doctor?.bookingMode || 'OPEN',
+    workingDays:    parseWorkingDays(employee.doctor?.workingDays),
   })
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
@@ -556,17 +561,18 @@ function EditEmployeeModal({ employee, onClose, onSaved, token }: {
       const isDoctor = form.role === 'DOCTOR' || employee.role === 'DOCTOR'
       const doctorChanged = isDoctor && (
         form.specialisation !== (employee.doctor?.specialisation || '') ||
-        form.bookingMode    !== (employee.doctor?.bookingMode    || 'OPEN')
+        form.bookingMode    !== (employee.doctor?.bookingMode    || 'OPEN') ||
+        JSON.stringify(form.workingDays) !== (employee.doctor?.workingDays || '[1,2,3,4,5]')
       )
       if (doctorChanged) {
         await fetch(`/api-proxy/employees/${employee.id}/doctor`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ specialisation: form.specialisation, bookingMode: form.bookingMode }),
+          body: JSON.stringify({ specialisation: form.specialisation, bookingMode: form.bookingMode, workingDays: JSON.stringify(form.workingDays) }),
         })
       }
 
-      onSaved({ ...employee, ...form, doctor: employee.doctor ? { ...employee.doctor, specialisation: form.specialisation, bookingMode: form.bookingMode } : undefined })
+      onSaved({ ...employee, ...form, doctor: employee.doctor ? { ...employee.doctor, specialisation: form.specialisation, bookingMode: form.bookingMode, workingDays: JSON.stringify(form.workingDays) } : undefined })
     } catch { setError('Network error') } finally { setLoading(false) }
   }
 
@@ -636,6 +642,33 @@ function EditEmployeeModal({ employee, onClose, onSaved, token }: {
                   <span className={cn('absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
                     form.bookingMode === 'OPEN' ? 'translate-x-5' : 'translate-x-0')} />
                 </button>
+              </div>
+            )}
+
+            {(form.role === 'DOCTOR' || employee.role === 'DOCTOR') && (
+              <div className="py-3 px-4 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Working Days</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const).map((label, day) => {
+                    const checked = form.workingDays.includes(day)
+                    return (
+                      <label key={day} className={cn(
+                        'flex items-center justify-center w-10 h-8 rounded-lg border text-xs cursor-pointer transition-colors select-none font-medium',
+                        checked
+                          ? 'border-clinic-blue bg-clinic-blue/10 text-clinic-blue dark:bg-clinic-blue/20'
+                          : 'border-gray-200 dark:border-white/10 text-gray-400 hover:border-gray-300',
+                      )}>
+                        <input type="checkbox" checked={checked} onChange={() => setForm(f => ({
+                          ...f,
+                          workingDays: checked
+                            ? f.workingDays.filter(n => n !== day)
+                            : [...f.workingDays, day].sort((a, b) => a - b),
+                        }))} className="sr-only" />
+                        {label}
+                      </label>
+                    )
+                  })}
+                </div>
               </div>
             )}
 

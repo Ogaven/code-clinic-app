@@ -886,8 +886,10 @@ async function handleAwaitingSlotConfirmation(
   const choice = parseSlotChoice(message)
 
   if (!choice || !state.availableSlots || choice > state.availableSlots.length) {
-    const lower = message.toLowerCase()
-    const isRejection = /don'?t|not that|no,|wrong|different|prefer|another|other|change|switch|rather|instead|like that/i.test(lower)
+    const lower   = message.toLowerCase()
+    const trimmed = message.trim()
+    const isRejection = trimmed.length > 8 &&
+      /\bnot\b|\bdon'?t\b|\bno\b|prefer|different|another|change|switch|rather|instead|wrong/i.test(lower)
     if (isRejection) {
       setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: state.serviceId })
       return `No problem! Would you like me to find slots with a different doctor, or a different time? 😊`
