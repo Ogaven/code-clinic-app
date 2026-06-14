@@ -286,9 +286,11 @@ function InboxPage() {
   const [search,     setSearch]     = useState('')
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
 
-  const msgsEnd  = useRef<HTMLDivElement>(null)
-  const pollConv = useRef<ReturnType<typeof setInterval> | null>(null)
-  const pollMsg  = useRef<ReturnType<typeof setInterval> | null>(null)
+  const msgsEnd      = useRef<HTMLDivElement>(null)
+  const pollConv     = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollMsg      = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isNearBottom = useRef(true)
+  const prevConvId   = useRef<string | null>(null)
 
   // Deduplicate: one entry per phone number, keep most-recently-updated
   function dedupeByPhone(data: Conversation[]): Conversation[] {
@@ -340,10 +342,17 @@ function InboxPage() {
     return () => { if (pollMsg.current) clearInterval(pollMsg.current) }
   }, [sel?.id])
 
-  useEffect(() => { msgsEnd.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+  useEffect(() => {
+    const isSwitch = sel?.id !== prevConvId.current
+    prevConvId.current = sel?.id ?? null
+    if (isSwitch || isNearBottom.current) {
+      msgsEnd.current?.scrollIntoView({ behavior: isSwitch ? 'auto' : 'smooth' })
+      if (isSwitch) isNearBottom.current = true
+    }
+  }, [msgs])
 
   useEffect(() => {
-    const handler = () => msgsEnd.current?.scrollIntoView({ behavior: 'smooth' })
+    const handler = () => { if (isNearBottom.current) msgsEnd.current?.scrollIntoView({ behavior: 'smooth' }) }
     window.visualViewport?.addEventListener('resize', handler)
     return () => { window.visualViewport?.removeEventListener('resize', handler) }
   }, [])
@@ -354,6 +363,11 @@ function InboxPage() {
     const match = convs.find(c => c.phoneNumber?.replace(/[\s\-]/g, '') === normalized)
     if (match) selectConv(match)
   }, [convs, phoneParam])
+
+  function handleMessagesScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget
+    isNearBottom.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 100
+  }
 
   async function toggleTakeover() {
     if (!sel) return
@@ -465,6 +479,7 @@ function InboxPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 px-4 pt-4 pb-20 space-y-1.5"
+        onScroll={handleMessagesScroll}
         style={{ background: '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-400" /></div>
@@ -604,7 +619,7 @@ function InboxPage() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20 space-y-2">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20 space-y-2" onScroll={handleMessagesScroll}>
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-300" /></div>
         )}
