@@ -68,18 +68,34 @@ export async function processInbound(from: string, text: string, wamid: string):
       orderBy: { createdAt: 'desc' },
     })
 
-    const isNewConversation = !conversation
+    let isNewConversation = !conversation
 
     if (!conversation) {
-      conversation = await prisma.aiConversation.create({
-        data: {
-          patientId:    patient?.id ?? null,
-          channel:      'WHATSAPP',
-          phoneNumber:  from,
-          status:       'ACTIVE',
-          agentEnabled: true,
+      const recentConv = await prisma.aiConversation.findFirst({
+        where: {
+          phoneNumber: from,
+          channel:     'WHATSAPP',
+          updatedAt:   { gte: new Date(Date.now() - 48 * 60 * 60 * 1000) },
         },
+        orderBy: { updatedAt: 'desc' },
       })
+      if (recentConv) {
+        conversation = await prisma.aiConversation.update({
+          where: { id: recentConv.id },
+          data:  { status: 'ACTIVE' },
+        })
+        isNewConversation = false
+      } else {
+        conversation = await prisma.aiConversation.create({
+          data: {
+            patientId:    patient?.id ?? null,
+            channel:      'WHATSAPP',
+            phoneNumber:  from,
+            status:       'ACTIVE',
+            agentEnabled: true,
+          },
+        })
+      }
     }
 
     // ── 2b. Create or update Lead for unknown contacts ───────────────────────

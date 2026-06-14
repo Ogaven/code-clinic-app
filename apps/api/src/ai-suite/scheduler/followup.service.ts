@@ -241,6 +241,7 @@ export async function checkAndSendFollowups(): Promise<void> {
         conversationId: conv.id,
         role:           'AGENT',
         content:        message,
+        metadata:       JSON.stringify({ type: 'followup', serviceName: naturalServiceName(appt.service?.name), doctorName: doctorFirst }),
       },
     })
 
@@ -542,7 +543,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
         if (hasReplied) { console.log(`[PostApptFollowup] Stage 2 skipped, patient replied`); return }
         await sendWhatsAppMessage(patientPhone, stage2)
         const c = await prisma.aiConversation.findFirst({ where: { phoneNumber: patientPhone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
-        if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', content: stage2 } })
+        if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', content: stage2, metadata: JSON.stringify({ type: 'followup', serviceName: naturalServiceName(appt.service?.name), doctorName: doctorFirst }) } })
         console.log(`[PostApptFollowup] Stage 2 sent to ${patientPhone}`)
       } catch (err: any) {
         console.error(`[PostApptFollowup] Stage 2 failed for ${patientPhone}:`, err.message)
@@ -557,7 +558,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
         if (hasReplied) { console.log(`[PostApptFollowup] Stage 3 skipped, patient replied`); return }
         await sendWhatsAppMessage(patientPhone, stage3)
         const c = await prisma.aiConversation.findFirst({ where: { phoneNumber: patientPhone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
-        if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', content: stage3 } })
+        if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', content: stage3, metadata: JSON.stringify({ type: 'followup', serviceName: naturalServiceName(appt.service?.name), doctorName: doctorFirst }) } })
         console.log(`[PostApptFollowup] Stage 3 sent to ${patientPhone}`)
       } catch (err: any) {
         console.error(`[PostApptFollowup] Stage 3 failed for ${patientPhone}:`, err.message)

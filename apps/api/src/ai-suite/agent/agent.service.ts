@@ -470,7 +470,7 @@ async function getNextOpeningInfo(): Promise<{ dayName: string; time: string }> 
   return { dayName: 'Monday', time: '8am' }
 }
 
-async function buildClinicalConcernResponse(): Promise<string> {
+async function buildClinicalConcernResponse(followupCtx?: { serviceName: string; doctorName: string }): Promise<string> {
   const now          = new Date()
   const eatDate      = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
   const eatDayOfWeek = eatDate.getDay()
@@ -485,9 +485,15 @@ async function buildClinicalConcernResponse(): Promise<string> {
   }
 
   if (clinicOpen) {
+    if (followupCtx) {
+      return `I'm so sorry to hear that 😔 Since this is related to your ${followupCtx.serviceName} yesterday with Dr ${followupCtx.doctorName}, let me get our team to look into this for you right away. Someone will call you within the hour — or if this is urgent right now, please call us on +256 394 836 298.`
+    }
     return `I'm so sorry to hear that 😔 I've flagged this as urgent for our team — someone will call you within the hour. If this is a dental emergency right now, please call us directly on +256 394 836 298.`
   }
   const next = await getNextOpeningInfo()
+  if (followupCtx) {
+    return `I'm so sorry to hear that 😔 Since this is related to your ${followupCtx.serviceName} yesterday with Dr ${followupCtx.doctorName}, let me get our team to look into this for you right away. We're currently closed, but as soon as we open ${next.dayName} at ${next.time}, someone will call you first thing. For emergencies, call us on +256 394 836 298.`
+  }
   return `I'm so sorry to hear that 😔 I've flagged this as urgent for our team. We're currently closed, but as soon as we open ${next.dayName} at ${next.time}, someone will call you first thing. If this is a dental emergency right now, call us on +256 394 836 298 — they may be able to assist even outside normal hours.`
 }
 
@@ -1063,7 +1069,21 @@ export async function getAgentReply(
   if (isClinicalConcern(latestMessage)) {
     clearBookingState(from)
     console.log(`[Agent] Clinical concern detected for ${from}: "${latestMessage.slice(0, 80)}"`)
-    return buildClinicalConcernResponse()
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+    const lastFollowupMsg = await prisma.aiMessage.findFirst({
+      where: { conversationId, role: 'AGENT', createdAt: { gte: threeDaysAgo } },
+      orderBy: { createdAt: 'desc' },
+    })
+    let followupCtx: { serviceName: string; doctorName: string } | undefined
+    if (lastFollowupMsg?.metadata) {
+      try {
+        const meta = JSON.parse(lastFollowupMsg.metadata) as { type?: string; serviceName?: string; doctorName?: string }
+        if (meta.type === 'followup' && meta.serviceName && meta.doctorName) {
+          followupCtx = { serviceName: meta.serviceName, doctorName: meta.doctorName }
+        }
+      } catch { /* malformed metadata — ignore */ }
+    }
+    return buildClinicalConcernResponse(followupCtx)
   }
 
   // ── Human request — patient wants to speak to someone ────────────────────
