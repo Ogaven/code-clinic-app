@@ -35,34 +35,71 @@ function normalizeRelation(relation: string | null | undefined): string {
   return map[r] || 'guardian'
 }
 
+function naturalServiceName(dbName: string | null | undefined): string {
+  if (!dbName) return 'appointment'
+  const lower = dbName.toLowerCase().trim()
+  const map: Record<string, string> = {
+    'stain removal':                             'cleaning',
+    'teeth whitening (inoffice)':                'teeth whitening',
+    'teeth whitening':                           'teeth whitening',
+    'composite filling':                         'filling',
+    'gi restoration':                            'filling',
+    'extraction':                                'tooth extraction',
+    'root canal therapy (incisors/premolars)':   'root canal treatment',
+    'root canal therapy (molars)':               'root canal treatment',
+    'root canal therapy':                        'root canal treatment',
+    'braces consultation':                       'braces consultation',
+    'implant':                                   'implant procedure',
+    'implant sitting':                           'implant procedure',
+    'implant placement':                         'implant procedure',
+    'dental x-ray':                              'dental X-ray',
+    'x-ray':                                     'dental X-ray',
+    'complete dentures':                         'dentures',
+    'review check up':                           'check-up',
+    'consultation':                              'consultation',
+    'crown':                                     'crown fitting',
+    'veneer':                                    'veneer',
+    'veneers':                                   'veneers',
+    'periodontal therapy':                       'gum treatment',
+    'periodontal treatment(quadrant scaling)':   'deep cleaning',
+    'periodontal treatment (quadrant scaling)':  'deep cleaning',
+    'scale and polish':                          'cleaning',
+  }
+  return map[lower] || dbName
+}
+
 async function generatePersonalizedFollowup(params: {
   patientName: string
   doctorName: string
+  serviceName: string
   noteContent: string | null
   isGuardianMessage: boolean
   guardianAddress?: string
   childName?: string
 }): Promise<string | null> {
-  if (!params.noteContent || params.noteContent.trim().length < 20) return null
-
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return null
 
-  const truncatedNote = params.noteContent.slice(0, 3000)
+  const noteSection = params.noteContent && params.noteContent.trim().length >= 20
+    ? `Clinical note:\n"""\n${params.noteContent.slice(0, 3000)}\n"""`
+    : `(No clinical note available — write based on the treatment name only.)`
 
-  const prompt = `You are Sarah, a warm WhatsApp assistant for Code Clinic dental clinic in Uganda. Write a SHORT follow-up message (2-3 sentences max) to a patient after yesterday's visit, based on this clinical note:
+  const prompt = `You are Sarah, a warm WhatsApp assistant for Code Clinic dental clinic in Uganda. Write a SHORT follow-up message (2-3 sentences max) to a patient after yesterday's appointment.
 
-"""
-${truncatedNote}
-"""
+The patient came in yesterday for: ${params.serviceName}.
+
+Start the message by referencing THIS SPECIFIC TREATMENT in simple terms — for example "your cleaning", "your filling", "your implant procedure", "your root canal treatment", "your check-up". Do NOT use the generic word "visit".
+
+Use the clinical note below ONLY to find any specific aftercare instructions to include (avoid hard foods, rinse with salt water, take medication, etc). If the note doesn't add anything useful beyond the treatment name, that is fine — just write a warm message about the ${params.serviceName} itself.
+
+${noteSection}
 
 Rules:
 - Translate clinical/medical terms into simple, friendly language a patient would understand. NEVER use jargon like "RCT", "GI restoration", "periapical", tooth numbers, diagnoses, etc.
-- Mention what was done in simple terms (e.g. "cleaning", "filling", "root canal treatment", "your crown")
-- If the note mentions specific aftercare instructions (avoid hard foods, rinse with salt water, take medication, etc.) include ONE relevant tip naturally
 - Do NOT mention diagnoses, prognosis, or anything that could alarm the patient
 - Warm, caring tone, 1-2 emojis max
 - NEVER use em dashes (—)
+- Always greet with "Hello" not "Hi"
 - ${params.isGuardianMessage
     ? `This message is going to ${params.guardianAddress}, the guardian of ${params.childName}, a minor patient. Address them as "${params.guardianAddress}" and refer to the child as ${params.childName}.`
     : `Address the patient as ${params.patientName}.`}
@@ -150,6 +187,7 @@ export async function checkAndSendFollowups(): Promise<void> {
     const personalized = await generatePersonalizedFollowup({
       patientName:       greetName,
       doctorName:        doctorFirst,
+      serviceName:       naturalServiceName(appt.service?.name),
       noteContent:       note?.content ?? null,
       isGuardianMessage: minor && !!guardianFirstName,
       guardianAddress:   guardianFirstName ?? undefined,
@@ -487,6 +525,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     const personalizedStage2 = await generatePersonalizedFollowup({
       patientName:       greetName,
       doctorName:        doctorFirst,
+      serviceName:       naturalServiceName(appt.service?.name),
       noteContent:       latestNoteC?.content ?? null,
       isGuardianMessage: minor && !!guardianFirstName,
       guardianAddress:   guardianFirstName ?? undefined,
