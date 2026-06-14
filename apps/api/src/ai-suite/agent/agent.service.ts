@@ -1206,6 +1206,18 @@ export async function getAgentReply(
     return buildClinicalConcernResponse(followupCtx)
   }
 
+  // ── Voucher / gift request — intercept before booking state machine ─────────
+  const isVoucherRequest = /\bvoucher\b|\bgift card\b|\bgift certificate\b|\bgift for\b|\bgift to someone\b/i.test(latestMessage)
+  if (isVoucherRequest) {
+    console.log(`[Agent] Gift voucher request from ${from}: "${latestMessage.slice(0, 80)}"`)
+    alertStaffOfConcern({
+      conversationId,
+      patientPhone: from,
+      message:      latestMessage,
+    }).catch(() => {})
+    return `That's so thoughtful! 🎁 Let me have our team get back to you with the details on gift vouchers — they'll reach out shortly!`
+  }
+
   // ── Human request — patient wants to speak to someone ────────────────────
   const wantsHuman = /talk to|speak to|speak with|talk with|call me|ring me|real person|human|julian|receptionist/i.test(latestMessage)
   if (wantsHuman) {
