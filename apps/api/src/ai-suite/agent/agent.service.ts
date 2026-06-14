@@ -120,7 +120,7 @@ CLINIC INFO:
 - WhatsApp: +256 741 087667
 - Email: dentist@codeclinic.ug
 - Website: codeclinic.ug
-- Hours: Monday–Friday 8am–6pm, Saturday 9am–3pm, Closed Sunday
+- Hours: see CLINIC HOURS — FULL WEEK injected below — never guess or use generic hours
 
 QUICK REPLY GUIDANCE (visitors may send these exact phrases — respond naturally):
 - "📅 Book an appointment" → Warmly ask what service they need and a preferred time or date
@@ -204,7 +204,13 @@ EMERGENCY AND CLINICAL CONCERN HANDLING:
 When a patient reports pain, an emergency, or any clinical concern — always respond with empathy first, then check CLINIC STATUS RIGHT NOW before making any callback promise:
 - If CLINIC STATUS RIGHT NOW is "open": tell them someone will call within the hour and give the emergency number +256 394 836 298.
 - If CLINIC STATUS RIGHT NOW is "closed": tell them the clinic is closed, state when it next opens, and give the emergency number +256 394 836 298.
-NEVER say "someone will call you today" or "someone will call you shortly" if CLINIC STATUS RIGHT NOW says "closed".`
+NEVER say "someone will call you today" or "someone will call you shortly" if CLINIC STATUS RIGHT NOW says "closed".
+
+ABSOLUTE RULE — NEVER FAKE A BOOKING CONFIRMATION:
+The phrases "booked", "all done", "you're all set", "I'll get that booked", "confirmed your appointment", "we'll send a reminder", "reminder closer to the day", "I'll get that sorted" may ONLY appear immediately after the structured booking flow completed a real slot selection in this session.
+If a patient mentions a booking request (for themselves or someone else) and the actual slot selection step has NOT happened in this session, never use any of those phrases. Instead say something like: "Let me get this sorted properly for you — [restate what you understood: service, doctor, day]. Let me find an available slot." and guide them into the booking flow.
+This applies even if earlier conversation history described a booking — never confirm or reference a booking as done unless this current session just completed the slot selection step.
+Booking for another person (mother, wife, child, friend, etc.) follows the exact same rule: only confirmed after real slot selection. Never make up an appointment.`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -417,6 +423,12 @@ export function detectIntent(message: string): Intent {
     'book', 'appointment', 'schedule', 'come in', 'visit',
     'see doctor', 'see a doctor', 'checkup', 'check up',
     'cleaning', 'filling', 'extraction', 'whitening',
+    // "booking for someone else" patterns
+    'for my mother', 'for my father', 'for my mum', 'for my dad', 'for my mom',
+    'for my wife', 'for my husband', 'for my son', 'for my daughter',
+    'for my sister', 'for my brother', 'for my child', 'for my friend',
+    'bring my mother', 'bring my wife', 'bring my husband', 'bring my son',
+    'bring my daughter', 'bring my mum', 'bring her in', 'bring him in',
   ]
   if (bookWords.some(w => lower.includes(w))) return 'BOOK'
 
@@ -866,6 +878,12 @@ async function handleAwaitingSlotConfirmation(
   const choice = parseSlotChoice(message)
 
   if (!choice || !state.availableSlots || choice > state.availableSlots.length) {
+    const lower = message.toLowerCase()
+    const isRejection = /don'?t|not that|no,|wrong|different|prefer|another|other|change|switch|rather|instead|like that/i.test(lower)
+    if (isRejection) {
+      setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: state.serviceId })
+      return `No problem! Would you like me to find slots with a different doctor, or a different time? 😊`
+    }
     const max = state.availableSlots?.length ?? 5
     return `Sorry, I didn't catch that 😊 Please reply with a number between 1 and ${max} to choose your slot.`
   }
@@ -1192,7 +1210,7 @@ export async function getAgentReply(
     // Escape: if patient changed topic mid-flow, abandon booking and answer normally
     const isSlotChoice = parseSlotChoice(latestMessage) !== null
     const isYesNo = /^(yes|yeah|no|nope|sure|ok|okay|confirm|cancel)\b/i.test(latestMessage.trim())
-    const isNewTopic = /[?]|how much|price|cost|charge|open|hours|location|direction|where|talk to|speak to|speak with|call me/i.test(latestMessage)
+    const isNewTopic = /how much|price|cost|charge|open|hours|location|direction|where|talk to|speak to|speak with|call me/i.test(latestMessage)
     if (!isSlotChoice && !isYesNo && isNewTopic) {
       clearBookingState(from)
       console.log(`[Agent] Booking flow escaped for ${from}: patient changed topic`)
