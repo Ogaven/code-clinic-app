@@ -197,7 +197,13 @@ Do NOT say:
 Just respond with the answer directly.
 
 WRONG: "Let me check if Dr Steven has a 2pm slot!"
-RIGHT: "Dr Steven has slots at 10am and 1pm on Saturday. Which works better for you? 😊"`
+RIGHT: "Dr Steven has slots at 10am and 1pm on Saturday. Which works better for you? 😊"
+
+EMERGENCY AND CLINICAL CONCERN HANDLING:
+When a patient reports pain, an emergency, or any clinical concern — always respond with empathy first, then check CLINIC STATUS RIGHT NOW before making any callback promise:
+- If CLINIC STATUS RIGHT NOW is "open": tell them someone will call within the hour and give the emergency number +256 394 836 298.
+- If CLINIC STATUS RIGHT NOW is "closed": tell them the clinic is closed, state when it next opens, and give the emergency number +256 394 836 298.
+NEVER say "someone will call you today" or "someone will call you shortly" if CLINIC STATUS RIGHT NOW says "closed".`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -442,6 +448,47 @@ function isClinicalConcern(message: string): boolean {
   // If the patient explicitly mentions booking/appointment, it's a booking request
   if (/\b(book|schedule|appointment|coming in|can i come)\b/.test(lower)) return false
   return CLINICAL_CONCERN_PATTERNS.some(kw => lower.includes(kw))
+}
+
+async function getNextOpeningInfo(): Promise<{ dayName: string; time: string }> {
+  const now      = new Date()
+  const eatDate  = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
+  const todayDow = eatDate.getDay()
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  for (let offset = 1; offset <= 7; offset++) {
+    const checkDow = (todayDow + offset) % 7
+    const hours    = await prisma.workingHours.findUnique({ where: { dayOfWeek: checkDow } }).catch(() => null)
+    if (hours && hours.isOpen) {
+      const dayLabel = offset === 1 ? 'tomorrow' : dayNames[checkDow]
+      const [h, m]   = hours.openTime.split(':').map(Number)
+      const period   = h >= 12 ? 'pm' : 'am'
+      const h12      = h > 12 ? h - 12 : h === 0 ? 12 : h
+      const timeStr  = `${h12}${m === 0 ? '' : ':' + String(m).padStart(2, '0')}${period}`
+      return { dayName: dayLabel, time: timeStr }
+    }
+  }
+  return { dayName: 'Monday', time: '8am' }
+}
+
+async function buildClinicalConcernResponse(): Promise<string> {
+  const now          = new Date()
+  const eatDate      = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
+  const eatDayOfWeek = eatDate.getDay()
+  const eatHourNow   = eatDate.getHours()
+  const todayHours   = await prisma.workingHours.findUnique({ where: { dayOfWeek: eatDayOfWeek } }).catch(() => null)
+
+  let clinicOpen = false
+  if (todayHours && todayHours.isOpen) {
+    const openH  = parseInt(todayHours.openTime.split(':')[0])
+    const closeH = parseInt(todayHours.closeTime.split(':')[0])
+    clinicOpen   = eatHourNow >= openH && eatHourNow < closeH
+  }
+
+  if (clinicOpen) {
+    return `I'm so sorry to hear that 😔 I've flagged this as urgent for our team — someone will call you within the hour. If this is a dental emergency right now, please call us directly on +256 394 836 298.`
+  }
+  const next = await getNextOpeningInfo()
+  return `I'm so sorry to hear that 😔 I've flagged this as urgent for our team. We're currently closed, but as soon as we open ${next.dayName} at ${next.time}, someone will call you first thing. If this is a dental emergency right now, call us on +256 394 836 298 — they may be able to assist even outside normal hours.`
 }
 
 // ── Slot formatting helpers ───────────────────────────────────────────────────
@@ -703,7 +750,7 @@ async function handleAwaitingService(from: string, message: string): Promise<str
   // Clinical concern takes priority even mid-flow
   if (isClinicalConcern(message)) {
     clearBookingState(from)
-    return `I'm so sorry to hear that 😔 That sounds like something our team needs to look at. Please call us on +256 394 836 298 so our dentist can advise you directly. Would you like me to book you an urgent appointment?`
+    return buildClinicalConcernResponse()
   }
 
   const service = await matchService(message)
@@ -1016,7 +1063,7 @@ export async function getAgentReply(
   if (isClinicalConcern(latestMessage)) {
     clearBookingState(from)
     console.log(`[Agent] Clinical concern detected for ${from}: "${latestMessage.slice(0, 80)}"`)
-    return `I'm so sorry to hear that 😔 That sounds like something our team needs to look at right away. Please call us on +256 394 836 298 so our dentist can advise you directly. Would you like me to book you an urgent appointment instead?`
+    return buildClinicalConcernResponse()
   }
 
   // ── Human request — patient wants to speak to someone ────────────────────

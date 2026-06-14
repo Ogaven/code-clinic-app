@@ -20,6 +20,20 @@ function isMinor(dob: Date | null | undefined): boolean {
   return age < 16
 }
 
+function normalizeRelation(relation: string | null | undefined): string {
+  if (!relation) return 'guardian'
+  const r = relation.trim().toLowerCase()
+  const map: Record<string, string> = {
+    mum: 'mum', mother: 'mum', mom: 'mum',
+    dad: 'dad', father: 'dad',
+    husband: 'husband', wife: 'wife',
+    sister: 'sister', brother: 'brother',
+    son: 'son', daughter: 'daughter',
+    friend: 'friend', boss: 'guardian',
+  }
+  return map[r] || 'guardian'
+}
+
 // ── checkAndSendFollowups ─────────────────────────────────────────────────────
 // Runs every hour. Finds COMPLETED appointments from 23–25 hours ago and sends a
 // warm post-visit follow-up message if one hasn't been sent yet.
@@ -35,7 +49,7 @@ export async function checkAndSendFollowups(): Promise<void> {
       status:  'COMPLETED',
     },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
       doctor:  { include: { user: { select: { firstName: true } } } },
       service: { select: { name: true } },
     },
@@ -63,14 +77,17 @@ export async function checkAndSendFollowups(): Promise<void> {
     if (alreadySent) continue
 
     // ── Build message ─────────────────────────────────────────────────────────
-    const channel      = 'WHATSAPP'
-    const doctor       = `Dr ${appt.doctor.user.firstName}`
-    const minor        = isMinor(patient.dob)
-    const guardianName = patient.nextOfKinName
-    const greetName    = getGreetingName(patient)
-    const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
-    const message      = minor
-      ? `Hello ${addr}, this is Sarah from Code Clinic. We are following up on ${greetName}'s visit yesterday with ${doctor}. How is ${greetName} doing? 😊 Feel free to reply if you have any questions, we are always here for you.`
+    const channel           = 'WHATSAPP'
+    const doctor            = `Dr ${appt.doctor.user.firstName}`
+    const minor             = isMinor(patient.dob)
+    const guardianFirstName = minor && patient.nextOfKinName
+      ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
+      : null
+    const relation  = normalizeRelation(patient.nextOfKinRelation)
+    const greetName = getGreetingName(patient)
+    const addr      = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : greetName
+    const message   = minor
+      ? `Hello ${addr}, this is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, we wanted to follow up on ${greetName}'s visit yesterday with ${doctor}. How is ${greetName} doing? Feel free to reply if you have any questions, we are always here for you.`
       : `Hello ${greetName}, hope you are feeling well after your visit yesterday with ${doctor} 😊 How are you doing? Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you.`
 
     // ── Send ──────────────────────────────────────────────────────────────────
@@ -137,7 +154,7 @@ export async function processAfterHoursQueue(): Promise<void> {
       scheduledFor: { lte: now },
     },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
     },
     take: 50,
   })
@@ -146,10 +163,12 @@ export async function processAfterHoursQueue(): Promise<void> {
   console.log(`[AfterHoursQueue] Processing ${entries.length} morning follow-up(s)`)
 
   for (const entry of entries) {
-    const minor        = isMinor(entry.patient?.dob)
-    const guardianName = entry.patient?.nextOfKinName
-    const patientName  = getGreetingName(entry.patient) || 'there'
-    const name         = minor && guardianName ? guardianName : minor ? 'there' : patientName
+    const minor             = isMinor(entry.patient?.dob)
+    const guardianFirstName = minor && entry.patient?.nextOfKinName
+      ? getGreetingName({ firstName: entry.patient.nextOfKinName, lastName: '' })
+      : null
+    const patientName = getGreetingName(entry.patient) || 'there'
+    const name        = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : patientName
 
     let templateName: string | undefined
     let message: string
@@ -213,7 +232,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     missedAppts = await prisma.appointment.findMany({
       where: { startAt: { gte: startOfYesterday, lte: endOfYesterday }, status: { in: ['CANCELLED', 'NO_SHOW'] } },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
         doctor:  { include: { user: { select: { firstName: true } } } },
       },
     })
@@ -245,12 +264,17 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       // Not replied — send again (fall through to re-send)
     }
 
-    const minor        = isMinor(patient.dob)
-    const guardianName = patient.nextOfKinName
+    const minor             = isMinor(patient.dob)
+    const guardianFirstName = minor && patient.nextOfKinName
+      ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
+      : null
+    const relation  = normalizeRelation(patient.nextOfKinRelation)
     const doctorFirst  = appt.doctor.user.firstName
     const greetName    = getGreetingName(patient)
-    const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
-    const msg          = `Hello ${addr}, we noticed you missed your appointment yesterday with Dr ${doctorFirst}. We hope everything is okay 😊 Would you like to reschedule? We would love to see you.`
+    const addr         = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : greetName
+    const msg          = minor && guardianFirstName
+      ? `Hello ${addr}, this is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, we noticed ${greetName} missed an appointment yesterday with Dr ${doctorFirst}. We hope everything is okay. Would you like to reschedule? We would love to see ${greetName}.`
+      : `Hello ${addr}, we noticed you missed your appointment yesterday with Dr ${doctorFirst}. We hope everything is okay 😊 Would you like to reschedule? We would love to see you.`
 
     try {
       await sendWhatsAppMessage(patient.phone, msg)
@@ -273,7 +297,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     appointments = await prisma.appointment.findMany({
       where: { startAt: { gte: startOfYesterday, lte: endOfYesterday }, status: { in: ['COMPLETED', 'CONFIRMED'] }, ...(forceRun ? {} : { followUpSent: false }) },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
         doctor:  { include: { user: { select: { firstName: true } } } },
         service: { select: { name: true } },
       },
@@ -287,10 +311,13 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
   console.log(`[PostApptFollowup] Processing ${appointments.length} completed appointment follow-up(s)`)
 
   for (const appt of appointments) {
-    const patient      = appt.patient
-    const doctorFirst  = appt.doctor.user.firstName
-    const minor        = isMinor(patient.dob)
-    const guardianName = patient.nextOfKinName
+    const patient           = appt.patient
+    const doctorFirst       = appt.doctor.user.firstName
+    const minor             = isMinor(patient.dob)
+    const guardianFirstName = minor && patient.nextOfKinName
+      ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
+      : null
+    const relation = normalizeRelation(patient.nextOfKinRelation)
 
     const latestNoteC = await prisma.treatmentNote.findFirst({
       where: { patientId: patient.id },
@@ -320,7 +347,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       if (patientReplied) { counts.skipped++; console.log(`[PostApptFollowup] Skipping ${patient.firstName} — already replied`); continue }
       // Not replied — send gentle nudge
       const greetName2 = getGreetingName(patient)
-      const addr2 = minor && guardianName ? guardianName : minor ? 'there' : greetName2
+      const addr2 = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : greetName2
       const nudge = minor
         ? `Hello ${addr2}, just checking in on ${greetName2} 😊 Feel free to reply if you have any questions, we are here for you!`
         : `Hello ${greetName2}, just checking in 😊 How are you doing? Feel free to reply anytime!`
@@ -344,9 +371,9 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     const greetName = getGreetingName(patient)
     let stage1: string
     if (minor) {
-      const addr = guardianName ? `Hello ${guardianName},` : `Hello,`
+      const addr = guardianFirstName ? `Hello ${guardianFirstName},` : `Hello,`
       stage1 = isFirstContact
-        ? `${addr} Good morning. This is Sarah from Code Clinic 😊 I am reaching out regarding your child ${greetName}.`
+        ? `${addr} Good morning. This is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, I am reaching out regarding ${greetName}'s recent visit.`
         : `${addr} Good morning 😊 I am checking in on ${greetName}.`
     } else {
       stage1 = isFirstContact
@@ -447,7 +474,7 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
         status:  { in: ['PENDING', 'CONFIRMED'] },
       },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
         doctor:  { include: { user: { select: { firstName: true } } } },
         service: { select: { name: true } },
       },
@@ -474,15 +501,18 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     })
     if (alreadySent) continue
 
-    const minor        = isMinor(patient.dob)
-    const guardianName = patient.nextOfKinName
+    const minor             = isMinor(patient.dob)
+    const guardianFirstName = minor && patient.nextOfKinName
+      ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
+      : null
+    const relation  = normalizeRelation(patient.nextOfKinRelation)
     const doctorFirst  = appt.doctor.user.firstName
     const greetName    = getGreetingName(patient)
-    const addr         = minor && guardianName ? guardianName : minor ? 'there' : greetName
+    const addr         = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : greetName
     const start        = new Date(appt.startAt)
     const timeStr      = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
     const msg          = minor
-      ? `Hello ${addr}, this is Sarah from Code Clinic. ${greetName} has an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
+      ? `Hello ${addr}, this is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, just a reminder that ${greetName} has an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel.`
       : `Hello ${greetName}, this is Sarah from Code Clinic. You have an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
 
     try {
@@ -519,7 +549,7 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
         createdAt:  { gte: windowStart },
       },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
       },
       take: 50,
     })
@@ -555,11 +585,13 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
     })
     if (recentBooking) continue
 
-    const templateName = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
-    const minor        = isMinor(patient.dob)
-    const guardianName = patient.nextOfKinName
-    const firstName    = getGreetingName(patient) || 'there'
-    const addr         = minor && guardianName ? guardianName : minor ? 'there' : firstName
+    const templateName      = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
+    const minor             = isMinor(patient.dob)
+    const guardianFirstName = minor && patient.nextOfKinName
+      ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
+      : null
+    const firstName = getGreetingName(patient) || 'there'
+    const addr      = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : firstName
     try {
       try {
         await sendWhatsAppTemplate(patient.phone, templateName, [addr])
@@ -606,7 +638,7 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
         none: { startAt: { gte: ninetyDaysAgo } },
       },
     },
-    select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true },
+    select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true },
     take: 100,
   })
 
@@ -627,11 +659,13 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
     })
     if (alreadySent) continue
 
-    const templateName = process.env.WA_TEMPLATE_REACTIVATION_NAME || 'cc_patient_reactivation'
-    const minor        = isMinor(patient.dob)
-    const guardianName = patient.nextOfKinName
-    const firstName    = getGreetingName(patient) || 'there'
-    const addr         = minor && guardianName ? guardianName : minor ? 'there' : firstName
+    const templateName      = process.env.WA_TEMPLATE_REACTIVATION_NAME || 'cc_patient_reactivation'
+    const minor             = isMinor(patient.dob)
+    const guardianFirstName = minor && patient.nextOfKinName
+      ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
+      : null
+    const firstName = getGreetingName(patient) || 'there'
+    const addr      = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : firstName
     try {
       try {
         await sendWhatsAppTemplate(patient.phone, templateName, [addr])
