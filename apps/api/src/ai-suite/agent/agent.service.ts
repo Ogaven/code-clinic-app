@@ -470,6 +470,7 @@ const CLINICAL_CONCERN_PATTERNS = [
   'side effect', 'reaction to',
   'emergency', 'urgent help',
   'not healing', 'still hurting', 'still in pain', 'it hurts',
+  'sore', 'sore mouth', 'mouth sore', 'sore gums', 'sore tooth',
 ]
 
 function isClinicalConcern(message: string): boolean {
