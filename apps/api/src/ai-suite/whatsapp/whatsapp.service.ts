@@ -447,22 +447,26 @@ export async function processInbound(from: string, text: string, wamid: string):
 }
 
 // Exported so schedulers (reminder, followup) can send outbound WhatsApp messages
-export async function sendWhatsAppMessage(to: string, body: string, _replyToMessageId?: string): Promise<void> {
+export async function sendWhatsAppMessage(to: string, body: string, _replyToMessageId?: string): Promise<string | null> {
   const apiKey   = process.env.AT_API_KEY
   const username = process.env.AT_USERNAME
   const waNumber = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
 
   if (!apiKey || !username || !waNumber) {
     console.error('[WhatsApp] Missing AT_API_KEY, AT_USERNAME, or WHATSAPP_PHONE_NUMBER env vars')
-    return
+    return null
   }
 
   const normalizedTo = formatUgandaPhone(to)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const AfricasTalking = require('africastalking')
   const at = AfricasTalking({ apiKey, username })
-  await at.WHATSAPP.sendMessage({ waNumber, phoneNumber: normalizedTo, body: { message: body } })
-  console.log(`[WhatsApp] Sent to ${normalizedTo}: ${body.slice(0, 60)}...`)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resp: any = await at.WHATSAPP.sendMessage({ waNumber, phoneNumber: normalizedTo, body: { message: body } })
+  // AT returns the Meta wamid in one of these shapes depending on API version
+  const msgId: string | null = resp?.messageId ?? resp?.data?.messageId ?? resp?.recipients?.[0]?.messageId ?? null
+  console.log(`[WhatsApp] Sent to ${normalizedTo}: ${body.slice(0, 60)}... (msgId: ${msgId ?? 'unknown'})`)
+  return msgId
 }
 
 export async function notifyReceptionistUnreachable(patientName: string, phone: string): Promise<void> {

@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import { processInbound, sendWhatsAppMessage } from './whatsapp.service'
+import { handleStaffReply, STAFF_NUMBER, type AlertMeta } from './staff-relay.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 
@@ -91,6 +92,28 @@ router.post('/webhook', async (req: Request, res: Response) => {
           if (msg.type === 'text') {
             const text = msg.text?.body ?? ''
             if (!text) continue
+
+            // Staff replying to an alert message — route to relay handler
+            if (from === STAFF_NUMBER && msg.context?.id) {
+              const alertMsg = await prisma.aiMessage.findFirst({
+                where: {
+                  role:     'SYSTEM',
+                  content:  { contains: 'STAFF_ALERTED' },
+                  metadata: { contains: msg.context.id },
+                },
+              })
+              if (alertMsg?.metadata) {
+                try {
+                  const meta = JSON.parse(alertMsg.metadata) as AlertMeta
+                  console.log(`[StaffRelay] Matched alert ${msg.context.id} → conv ${alertMsg.conversationId}`)
+                  await handleStaffReply(alertMsg.conversationId, text, meta)
+                } catch (err: any) {
+                  console.error('[StaffRelay] handleStaffReply error:', err.message)
+                }
+                continue
+              }
+            }
+
             await processInbound(from, text, msg.id)
             continue
           }
@@ -323,6 +346,7 @@ interface WhatsAppMessage {
   id:        string
   type:      string
   timestamp: string
+  context?:  { id: string; from?: string }
   text?:     { body: string }
   audio?:    { id: string; mime_type: string; voice?: boolean }
   image?:    { id: string; mime_type: string; caption?: string }
