@@ -4,6 +4,7 @@ import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import { requireAuth } from '../middleware/auth'
 import { processInbound } from '../ai-suite/whatsapp/whatsapp.service'
+import { handleStaffReply, STAFF_NUMBER, type AlertMeta } from '../ai-suite/whatsapp/staff-relay.service'
 import { handleInboundCall, triggerOutboundCall, handleRecordingComplete } from '../services/agent/channels/voice-channel'
 import { runAgent } from '../services/agent/unified-agent'
 // import { runReminderJob, runFollowupJob, runDebtJob, processQueue } from '../services/agent/scheduler' // disabled
@@ -176,6 +177,30 @@ router.post('/whatsapp/webhook', async (req, res) => {
                  : digits.startsWith('0') && digits.length === 10 ? `+256${digits.slice(1)}`
                  : digits.length === 9                   ? `+256${digits}`
                  : `+${digits}`
+
+    // ── Staff relay: AT doesn't send reply-context IDs, so match against the
+    // most recent unresolved STAFF_ALERTED system message within 24 hours.
+    if (from === STAFF_NUMBER && text) {
+      const recentAlert = await prisma.aiMessage.findFirst({
+        where: {
+          role:      'SYSTEM',
+          content:   { contains: 'STAFF_ALERTED' },
+          createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (recentAlert?.metadata) {
+        try {
+          const meta = JSON.parse(recentAlert.metadata) as AlertMeta
+          console.log(`[AT StaffRelay] Routing staff reply to relay handler → conv ${recentAlert.conversationId}`)
+          await handleStaffReply(recentAlert.conversationId, text, meta)
+        } catch (err: any) {
+          console.error('[AT StaffRelay] handleStaffReply error:', err.message)
+        }
+        return
+      }
+    }
+
     await processInbound(from, text, msgId)
   } catch (err: any) {
     console.error('[WEBHOOK] WhatsApp error:', err.message)
