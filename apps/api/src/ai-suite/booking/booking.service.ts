@@ -153,6 +153,22 @@ export async function getAvailableSlots(
   return slots
 }
 
+// ── findSoonestAvailableSlot ──────────────────────────────────────────────────
+// Returns the single earliest slot across all non-referral doctors.
+// daysAhead=1 → today only; use 7 to find next available within a week.
+
+export async function findSoonestAvailableSlot(daysAhead = 1): Promise<AvailableSlot | null> {
+  const services = await prisma.service.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+  })
+  const service = services.find(s => /consult|emergency/i.test(s.name)) ?? services[0]
+  if (!service) return null
+  const slots = await getAvailableSlots(service.id, undefined, daysAhead)
+  if (slots.length === 0) return null
+  return slots.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0]
+}
+
 // ── getServices ───────────────────────────────────────────────────────────────
 
 export async function getServices() {

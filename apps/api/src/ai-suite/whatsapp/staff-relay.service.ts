@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { getAvailableSlots, createAppointment } from '../booking/booking.service'
+import { findSoonestAvailableSlot, createAppointment } from '../booking/booking.service'
 import { sendWhatsAppMessage } from './whatsapp.service'
 import { prisma } from '../../lib/prisma'
 
@@ -12,12 +12,6 @@ export interface AlertMeta {
   concernSummary: string
 }
 
-async function findSoonestSlotToday(serviceId: string) {
-  // daysAhead=1 scopes to the next 24 hours (today's remaining slots)
-  const slots = await getAvailableSlots(serviceId, undefined, 1)
-  if (slots.length === 0) return null
-  return slots.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0]
-}
 
 export async function handleStaffReply(
   conversationId: string,
@@ -34,18 +28,7 @@ export async function handleStaffReply(
   if (isGoAhead) {
     // ── MODE 1: Fast-track booking ──────────────────────────────────────────
 
-    // Find best service (prefer emergency/consultation, fall back to first active)
-    const services = await prisma.service.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
-    })
-    const service = services.find(s => /emergency|consult/i.test(s.name)) ?? services[0]
-    if (!service) {
-      await sendWhatsAppMessage(STAFF_NUMBER, `No active services found — please book manually for ${firstName}.`)
-      return
-    }
-
-    const slot = await findSoonestSlotToday(service.id)
+    const slot = await findSoonestAvailableSlot(1)
 
     if (!slot) {
       await sendWhatsAppMessage(
@@ -61,7 +44,7 @@ export async function handleStaffReply(
       where: { OR: [{ phone: patientPhone }, { phone: localPhone }] },
     })
 
-    await createAppointment(patient?.id ?? null, slot.doctorId, service.id, slot.startAt, patientPhone)
+    await createAppointment(patient?.id ?? null, slot.doctorId, slot.serviceId, slot.startAt, patientPhone)
 
     const time        = new Date(slot.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
     const drFirstName = slot.doctorName.replace(/^Dr\s+/, '').split(' ')[0]

@@ -8,6 +8,7 @@ import {
   cancelAppointment,
   getNextAppointment,
   confirmAppointment,
+  findSoonestAvailableSlot,
   type AvailableSlot,
 } from '../booking/booking.service'
 import {
@@ -500,31 +501,36 @@ async function getNextOpeningInfo(): Promise<{ dayName: string; time: string }> 
   return { dayName: 'Monday', time: '8am' }
 }
 
-async function buildClinicalConcernResponse(followupCtx?: { serviceName: string; doctorName: string }): Promise<string> {
-  const now          = new Date()
-  const eatDate      = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
-  const eatDayOfWeek = eatDate.getDay()
-  const eatHourNow   = eatDate.getHours()
-  const todayHours   = await prisma.workingHours.findUnique({ where: { dayOfWeek: eatDayOfWeek } }).catch(() => null)
-
-  let clinicOpen = false
-  if (todayHours && todayHours.isOpen) {
-    const openH  = parseInt(todayHours.openTime.split(':')[0])
-    const closeH = parseInt(todayHours.closeTime.split(':')[0])
-    clinicOpen   = eatHourNow >= openH && eatHourNow < closeH
-  }
+async function buildClinicalConcernResponse(from?: string, followupCtx?: { serviceName: string; doctorName: string }): Promise<string> {
+  const clinicOpen = isClinicOpenNow()
 
   if (clinicOpen) {
     if (followupCtx) {
       return `I'm so sorry to hear that 😔 Since this is related to your ${followupCtx.serviceName} yesterday with Dr ${followupCtx.doctorName}, let me get our team to look into this for you right away. Someone will call you within the hour — or if this is urgent right now, please call us on +256 394 836 298.`
     }
-    return `I'm so sorry to hear that 😔 I've flagged this as urgent for our team — someone will call you within the hour. If this is a dental emergency right now, please call us directly on +256 394 836 298.`
+    // Try today first, then next available within a week
+    const todaySlot = await findSoonestAvailableSlot(1)
+    const slot      = todaySlot ?? await findSoonestAvailableSlot(7)
+    if (slot && from) {
+      const isToday     = !!todaySlot
+      const time        = new Date(slot.startAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).toLowerCase()
+      const drFirstName = slot.doctorName.replace(/^Dr\s+/, '').split(' ')[0]
+      const dayLabel    = isToday ? 'TODAY' : new Date(slot.startAt).toLocaleDateString('en-UG', { weekday: 'long', timeZone: 'Africa/Nairobi' })
+      setBookingState(from, {
+        state:          'AWAITING_SLOT_CONFIRMATION',
+        serviceId:      slot.serviceId,
+        availableSlots: [slot],
+      })
+      return `Ehh, I'm so sorry about that 😔 Let me see what I can do... Good news, I can get you in ${dayLabel} at ${time} with Dr ${drFirstName} for a consultation - would that work, or would you prefer I look for something else?`
+    }
+    return `Ehh, I'm so sorry about that 😔 I've flagged this as urgent for our team — someone will reach out to you very soon. If this is a dental emergency right now, please call us directly on +256 394 836 298.`
   }
+
   const next = await getNextOpeningInfo()
   if (followupCtx) {
     return `I'm so sorry to hear that 😔 Since this is related to your ${followupCtx.serviceName} yesterday with Dr ${followupCtx.doctorName}, let me get our team to look into this for you right away. We're currently closed, but as soon as we open ${next.dayName} at ${next.time}, someone will call you first thing. For emergencies, call us on +256 394 836 298.`
   }
-  return `I'm so sorry to hear that 😔 I've flagged this as urgent for our team. We're currently closed, but as soon as we open ${next.dayName} at ${next.time}, someone will call you first thing. If this is a dental emergency right now, call us on +256 394 836 298 — they may be able to assist even outside normal hours.`
+  return `Ehh, I'm so sorry about that 😔 We're closed right now, but I'll make sure our team sees this first thing when we open ${next.dayName} at ${next.time} and gets you in as a priority. In the meantime, is there anything I can help with - like general advice?`
 }
 
 // ── Tangent question helpers ──────────────────────────────────────────────────
@@ -858,7 +864,7 @@ async function handleAwaitingService(from: string, message: string): Promise<str
   // Clinical concern takes priority even mid-flow
   if (isClinicalConcern(message)) {
     clearBookingState(from)
-    return buildClinicalConcernResponse()
+    return buildClinicalConcernResponse(from)
   }
 
   const service = await matchService(message)
@@ -1020,7 +1026,14 @@ async function handleAwaitingSlotConfirmation(
   message: string,
   state: BookingStateEntry
 ): Promise<string> {
-  const choice = parseSlotChoice(message)
+  let choice = parseSlotChoice(message)
+
+  // Single-slot offer (clinical concern flow): treat "yes"/"sure"/"ok" as selecting slot 1
+  if (!choice && state.availableSlots?.length === 1) {
+    if (/^(yes|yeah|yep|sure|ok|okay|great|perfect|that works|that'?s fine|works for me|let'?s do|sounds good|book me|book it|go ahead|i'?ll come|i'?ll be there)\b/i.test(message.trim())) {
+      choice = 1
+    }
+  }
 
   if (!choice || !state.availableSlots || choice > state.availableSlots.length) {
     const trimmed = message.trim()
@@ -1379,7 +1392,7 @@ export async function getAgentReply(
     if (staffAlreadyAlerted) {
       return respondToClinicalFollowUp(latestMessage)
     }
-    return `I'm so sorry you're dealing with that 😔 Let me get someone from our team to reach out to you right away. While you wait, is there anything I can help with - like general advice or info about the clinic?`
+    return buildClinicalConcernResponse(from, followupCtx)
   }
 
   // ── Voucher / gift request — intercept before booking state machine ─────────
