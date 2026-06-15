@@ -6,7 +6,7 @@ import {
   ArrowLeft, User, Calendar, FileText, Activity, DollarSign, Folder,
   Phone, Mail, MapPin, Edit, AlertTriangle, Clock, Plus, Trash2, Mic,
   MicOff, Save, ChevronRight, X, Brain, Sparkles, Loader2, Upload,
-  Eye, Download, CheckCircle, XCircle, Star, Receipt, Camera
+  Eye, Download, CheckCircle, XCircle, Star, Receipt, Camera, Printer
 } from 'lucide-react'
 import { cn, formatUGX, formatPhone, getInitials } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
@@ -1382,6 +1382,46 @@ export default function PatientProfilePage() {
   const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [toggling, setToggling] = useState(false)
 
+  const handlePrint = async () => {
+    if (!patient) return
+    const name   = `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'Patient'
+    const dob    = patient.dob ? new Date(patient.dob).toLocaleDateString('en-UG') : 'N/A'
+    const phone  = patient.phone || 'N/A'
+    const origin = window.location.origin
+    const res    = await fetch(`/api-proxy/clinical/patients/${id}/treatment-notes`, { headers: { Authorization: `Bearer ${token}` } })
+    const raw    = res.ok ? await res.json() : []
+    const notes: any[] = Array.isArray(raw) ? raw : []
+    const notesHtml = notes.map((note: any) => {
+      const date   = new Date(note.createdAt).toLocaleString('en-UG')
+      const author = note.author ? `Dr ${note.author.firstName} ${note.author.lastName}` : ''
+      const body   = (note.content || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      return `<div class="note"><div class="note-date">${date}${author ? ` &bull; <span class="note-author">${author}</span>` : ''}</div><div class="note-content">${body}</div></div>`
+    }).join('')
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Patient Notes — ${name}</title>
+<style>
+body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;padding:24px}
+.header{text-align:center;border-bottom:2px solid #1A237E;padding-bottom:16px;margin-bottom:24px}
+.patient-info{margin-bottom:24px;background:#f8f9fa;padding:12px 16px;border-radius:8px}
+.patient-info h2{font-size:18px;font-weight:700;margin:0 0 6px;color:#1A237E}
+.patient-info p{font-size:12px;color:#555;margin:2px 0}
+.section-title{font-size:12px;font-weight:700;color:#1A237E;text-transform:uppercase;letter-spacing:.5px;margin:20px 0 10px;border-bottom:1px solid #e0e0e0;padding-bottom:4px}
+.note{border:1px solid #e0e0e0;border-radius:8px;padding:12px 16px;margin-bottom:12px;page-break-inside:avoid}
+.note-date{font-size:11px;color:#888;margin-bottom:6px}.note-author{color:#1A237E;font-weight:600}
+.note-content{font-size:13px;line-height:1.6;white-space:pre-wrap}
+.empty{color:#aaa;font-size:13px;font-style:italic}
+.footer{text-align:center;font-size:10px;color:#555;margin-top:32px;border-top:1px solid #e0e0e0;padding-top:12px}
+</style></head><body>
+<div class="header"><img src="${origin}/logo.png" alt="Code Clinic" style="height:44px;width:auto;display:block;margin:0 auto 10px"><div style="font-size:12px;color:#555">Patient Treatment Notes</div></div>
+<div class="patient-info"><h2>${name}</h2><p>Date of Birth: ${dob}</p><p>Phone: ${phone}</p></div>
+<div class="section-title">Treatment Notes (${notes.length})</div>
+${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
+<div class="footer">Code Clinic, Kiira Road, Kamwokya &bull; +256 394 836 298</div>
+<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>
+</body></html>`
+    const w = window.open('', '_blank', 'width=800,height=900')
+    if (w) { w.document.write(html); w.document.close() }
+  }
+
   async function toggleActive() {
     setToggling(true)
     try {
@@ -1542,6 +1582,11 @@ export default function PatientProfilePage() {
                 </div>
               </div>
             </div>
+            {/* Print button — always visible regardless of active tab */}
+            <button onClick={handlePrint}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 dark:text-white/70 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 transition-all self-end mb-2">
+              <Printer size={14} /> Print Notes
+            </button>
           </div>
         </div>
       </div>
