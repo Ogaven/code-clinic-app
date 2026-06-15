@@ -837,6 +837,8 @@ async function handleIdleBookIntent(
   return `Sure! Your appointment is on ${apptDay} at ${apptTime} with ${apptDoctor} for ${upcoming.service.name}. What day or time would work better for you? 😊`
 }
 
+const servicePromptSent = new Set<string>()
+
 async function handleAwaitingService(from: string, message: string): Promise<string> {
   // Clinical concern takes priority even mid-flow
   if (isClinicalConcern(message)) {
@@ -847,9 +849,17 @@ async function handleAwaitingService(from: string, message: string): Promise<str
   const service = await matchService(message)
 
   if (!service) {
-    // Never dump the full service list — ask a clarifying question instead
-    return `I'd love to help! Are you looking for something like a cleaning, filling, whitening, extraction, or a checkup? Just tell me what you need 😊`
+    const CANNED = `I'd love to help! Are you looking for something like a cleaning, filling, whitening, extraction, or a checkup? Just tell me what you need 😊`
+    if (looksLikeTangent(message)) {
+      return respondToTangentThenRedirect(message, CANNED)
+    }
+    if (servicePromptSent.has(from)) {
+      return `Just let me know what you're coming in for — a cleaning, filling, checkup, extraction, or something else? 😊`
+    }
+    servicePromptSent.add(from)
+    return CANNED
   }
+  servicePromptSent.delete(from)
 
   const doctor       = await matchDoctor(message)
   const hasDrMention = /\bdr\.?\s|\bdoctor\b/i.test(message)
