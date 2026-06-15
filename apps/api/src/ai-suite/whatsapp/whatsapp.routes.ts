@@ -78,11 +78,14 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
     for (const entry of body.entry ?? []) {
       for (const change of entry.changes ?? []) {
-        const messages = change.value?.messages
+        const messages     = change.value?.messages
+        const waDisplayName = change.value?.contacts?.[0]?.profile?.name ?? null
         if (!messages?.length) continue
 
+        const seenFroms = new Set<string>()
         for (const msg of messages) {
           const from = msg.from
+          seenFroms.add(from)
 
           // ── Text messages → normal Sarah flow ──────────────────────────────
           if (msg.type === 'text') {
@@ -267,6 +270,16 @@ router.post('/webhook', async (req: Request, res: Response) => {
           const desc = getMediaDescription(msg)
           await processInbound(from, desc, msg.id)
         }
+
+        // Persist WhatsApp display name for unrecognised contacts (fire-and-forget)
+        if (waDisplayName) {
+          for (const from of seenFroms) {
+            prisma.aiConversation.updateMany({
+              where: { phoneNumber: from, channel: 'WHATSAPP', waDisplayName: null },
+              data:  { waDisplayName },
+            }).catch(() => {})
+          }
+        }
       }
     }
   } catch (err) {
@@ -326,6 +339,7 @@ interface WhatsAppWebhookPayload {
     changes: Array<{
       value: {
         messages?: WhatsAppMessage[]
+        contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>
       }
       field: string
     }>

@@ -22,7 +22,7 @@ function authH(json = false) {
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Conversation = {
   id: string; channel: string; phoneNumber: string; status: string
-  agentEnabled: boolean; patientName: string | null
+  agentEnabled: boolean; patientName: string | null; waDisplayName: string | null
   lastMessage: { role: string; content: string; createdAt: string } | null
   createdAt: string; updatedAt: string
 }
@@ -83,6 +83,7 @@ function fmtFull(iso: string): string {
 // Returns a human-readable label for the conversation list.
 function convLabel(conv: Conversation, channel: ChannelKey): string {
   if (conv.patientName) return conv.patientName
+  if (channel === 'WHATSAPP' && conv.waDisplayName) return conv.waDisplayName
   const id = conv.phoneNumber || ''
   if (channel === 'WHATSAPP') return id || 'Unknown'
   if (channel === 'INSTAGRAM') return `@${id.slice(0, 10)}`

@@ -52,12 +52,13 @@ router.get('/conversations', async (req, res) => {
 
     res.json(
       conversations.map(c => ({
-        id:           c.id,
-        channel:      c.channel,
-        phoneNumber:  c.phoneNumber,
-        status:       c.status,
-        agentEnabled: c.agentEnabled,
-        patientName:  c.patient
+        id:             c.id,
+        channel:        c.channel,
+        phoneNumber:    c.phoneNumber,
+        waDisplayName:  c.waDisplayName ?? null,
+        status:         c.status,
+        agentEnabled:   c.agentEnabled,
+        patientName:    c.patient
           ? `${c.patient.firstName} ${c.patient.lastName}`
           : null,
         lastMessage: c.messages[0] ?? null,
