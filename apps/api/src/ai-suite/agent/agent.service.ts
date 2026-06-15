@@ -646,8 +646,9 @@ function parseSlotChoice(message: string): number | null {
     'fourth': 4, '4th': 4, 'four': 4,
     'fifth': 5, '5th': 5, 'five': 5,
   }
+  const wordSet = new Set(lower.split(/\W+/))
   for (const [word, num] of Object.entries(ordinals)) {
-    if (lower.includes(word)) return num
+    if (wordSet.has(word)) return num
   }
   const m = lower.match(/\b([1-5])\b/)
   return m ? parseInt(m[1]) : null
