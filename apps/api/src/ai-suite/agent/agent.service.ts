@@ -518,6 +518,55 @@ async function buildClinicalConcernResponse(followupCtx?: { serviceName: string;
   return `I'm so sorry to hear that 😔 I've flagged this as urgent for our team. We're currently closed, but as soon as we open ${next.dayName} at ${next.time}, someone will call you first thing. If this is a dental emergency right now, call us on +256 394 836 298 — they may be able to assist even outside normal hours.`
 }
 
+// ── Tangent question helpers ──────────────────────────────────────────────────
+
+function looksLikeTangent(message: string): boolean {
+  if (message.includes('?')) return true
+  const lower = message.toLowerCase().trim()
+  if (/^(what|why|how|does|can|do|is|are|will|where)\b/.test(lower)) return true
+  if (/^(hello|hi|hey)\b/.test(lower) && lower.split(/\s+/).length <= 3) return true
+  return false
+}
+
+async function respondToTangentThenRedirect(
+  message: string,
+  pendingPromptText: string
+): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return pendingPromptText
+  try {
+    const client = new Anthropic({ apiKey })
+    const response = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 80,
+      system:     `You are Sarah, a warm dental assistant at Code Clinic. Give a brief (1-2 sentence), friendly, informative answer using general dental knowledge. Do NOT state clinic-specific prices, doctor names, or availability unless certain. No em dashes. No markdown.`,
+      messages:   [{ role: 'user', content: `The patient asked: "${message}". Answer briefly and warmly.` }],
+    })
+    const block = response.content[0]
+    const answer = block?.type === 'text' ? sanitizeForWhatsApp(block.text) : ''
+    return answer ? `${answer}\n\n${pendingPromptText}` : pendingPromptText
+  } catch {
+    return pendingPromptText
+  }
+}
+
+async function respondToClinicalFollowUp(message: string): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return `Our team's on it and will be in touch soon 🙏`
+  try {
+    const client = new Anthropic({ apiKey })
+    const response = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 120,
+      system:     `You are Sarah, a warm dental assistant at Code Clinic. The patient previously reported a clinical concern and our team has already been notified. Answer their follow-up question with 1-2 friendly sentences using general dental knowledge. If it fits naturally at the end, add: "Our team's on it and will be in touch soon 🙏" - only if it flows well. Do NOT say you've alerted the team again. No em dashes. No markdown.`,
+      messages:   [{ role: 'user', content: message }],
+    })
+    const block = response.content[0]
+    if (block?.type === 'text') return sanitizeForWhatsApp(block.text)
+  } catch { /* fall through */ }
+  return `Our team's on it and will be in touch soon 🙏`
+}
+
 // ── Slot formatting helpers ───────────────────────────────────────────────────
 
 function formatSlotLine(slot: AvailableSlot, index: number): string {
@@ -844,6 +893,14 @@ async function handleAwaitingDoctorPreference(
     return presentSlots(from, state.serviceId!, undefined)
   }
 
+  // Tangent question (info, general query) — answer briefly then re-ask the preference
+  if (looksLikeTangent(message)) {
+    return respondToTangentThenRedirect(
+      message,
+      `Do you have a preferred doctor, or shall I find whoever is available soonest? 😊`
+    )
+  }
+
   // Patient wants to pick but hasn't named anyone yet — list bookable doctors (first name only)
   setBookingState(from, { state: 'AWAITING_DOCTOR_NAME', serviceId: state.serviceId })
   const doctors  = await getDoctors()
@@ -864,6 +921,12 @@ async function handleAwaitingDoctorName(
   if (!doctor) {
     const doctors  = await getDoctors()
     const nameList = doctors.filter(d => d.bookingMode !== 'BY_REFERRAL').map(d => `• Dr ${d.firstName} ${d.lastName}`).join('\n')
+    if (looksLikeTangent(message)) {
+      return respondToTangentThenRedirect(
+        message,
+        `Here's who we have:\n\n${nameList}\n\nWhich one would you prefer?`
+      )
+    }
     return `I couldn't find that doctor 😊 Here's who we have:\n\n${nameList}\n\nWhich one would you prefer?`
   }
 
@@ -920,13 +983,29 @@ async function handleAwaitingSlotConfirmation(
 
   if (!choice || !state.availableSlots || choice > state.availableSlots.length) {
     const trimmed = message.trim()
+    const lower   = message.toLowerCase()
     // Very short / trivial message (emoji, "ok", "hi") — nudge once, then redirect on repeat
     if (trimmed.length <= 3 && !slotNudgeSent.has(from)) {
       slotNudgeSent.add(from)
       const max = state.availableSlots?.length ?? 5
       return `Just reply with a number 1–${max} that works best, or let me know if you'd like different options 😊`
     }
-    // Any non-trivial message (or repeated trivial) that isn't a valid slot number → redirect
+    // Rejection words — patient wants a different option
+    if (/\b(don'?t|not|prefer|different)\b/.test(lower)) {
+      slotNudgeSent.delete(from)
+      setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: state.serviceId })
+      return `No worries! Would you like me to look for a different doctor, or a different time? 😊`
+    }
+    // Tangent question — answer briefly then re-show the slot prompt
+    if (looksLikeTangent(message)) {
+      slotNudgeSent.delete(from)
+      const max = state.availableSlots?.length ?? 5
+      return respondToTangentThenRedirect(
+        message,
+        `Just reply with a number 1-${max} to pick your slot, or let me know if you'd like different options 😊`
+      )
+    }
+    // Any other non-trivial non-matching message → redirect
     slotNudgeSent.delete(from)
     setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: state.serviceId })
     return `No worries! Would you like me to look for a different doctor, or a different time? 😊`
@@ -1216,6 +1295,18 @@ export async function getAgentReply(
   if (isClinicalConcern(latestMessage)) {
     clearBookingState(from)
     console.log(`[Agent] Clinical concern detected for ${from}: "${latestMessage.slice(0, 80)}"`)
+
+    // Check if staff was already alerted for this conversation within the dedup window
+    const recentAlert = await prisma.aiMessage.findFirst({
+      where: {
+        conversationId,
+        role:      'SYSTEM',
+        content:   { contains: 'STAFF_ALERTED' },
+        createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+      },
+    })
+    const staffAlreadyAlerted = !!recentAlert
+
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
     const lastFollowupMsg = await prisma.aiMessage.findFirst({
       where: { conversationId, role: 'AGENT', createdAt: { gte: threeDaysAgo } },
@@ -1238,7 +1329,10 @@ export async function getAgentReply(
       doctorName:   followupCtx?.doctorName,
     }).catch(() => {})
 
-    return buildClinicalConcernResponse(followupCtx)
+    if (staffAlreadyAlerted) {
+      return respondToClinicalFollowUp(latestMessage)
+    }
+    return `I'm so sorry you're dealing with that 😔 Let me get someone from our team to reach out to you right away. While you wait, is there anything I can help with - like general advice or info about the clinic?`
   }
 
   // ── Voucher / gift request — intercept before booking state machine ─────────
