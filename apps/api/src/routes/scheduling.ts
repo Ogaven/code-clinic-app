@@ -16,7 +16,7 @@ import { prisma } from '../lib/prisma'
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
-const STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
+const STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
 
 async function notifyStaff(
   prismaClient: PrismaClient,

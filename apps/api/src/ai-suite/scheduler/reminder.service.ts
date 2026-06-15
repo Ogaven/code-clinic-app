@@ -69,27 +69,27 @@ export async function checkAndSendReminders(): Promise<void> {
     if (minor && guardianName) {
       templateAddr = guardianName
       message =
-        `Hello ${guardianName} 😊 Just a reminder that ${greetName} has an appointment tomorrow:\n\n` +
+        `Hi ${guardianName}! 😊 This is Sarah from Code Clinic, just a friendly reminder that ${greetName}'s appointment is tomorrow:\n\n` +
         `📅 ${dayDate} at ${time}\n` +
-        `👨‍⚕️ ${doctor}, ${appt.service.name}\n` +
-        `📍 Code Clinic, Kamwokya\n\n` +
-        `Reply YES to confirm or NO to reschedule.`
+        `👨‍⚕️ with ${doctor} for ${appt.service.name}\n` +
+        `📍 Code Clinic, Kamwokya.\n\n` +
+        `Reply YES to confirm or NO if you'd like to reschedule.`
     } else if (minor) {
       templateAddr = greetName
       message =
-        `Hello 😊 Just a reminder about tomorrow's appointment for ${greetName} (as ${relation}):\n\n` +
+        `Hi there! 😊 This is Sarah from Code Clinic, just confirming ${greetName}'s appointment tomorrow:\n\n` +
         `📅 ${dayDate} at ${time}\n` +
-        `👨‍⚕️ ${doctor}, ${appt.service.name}\n` +
-        `📍 Code Clinic, Kamwokya\n\n` +
-        `Reply YES to confirm or NO to reschedule.`
+        `👨‍⚕️ with ${doctor} for ${appt.service.name}\n` +
+        `📍 Code Clinic, Kamwokya.\n\n` +
+        `Reply YES to confirm or NO if you'd like to reschedule.`
     } else {
       templateAddr = greetName
       message =
-        `Hello ${greetName} 😊 Just a reminder that you have an appointment tomorrow:\n\n` +
+        `Hi ${greetName}! 😊 This is Sarah from Code Clinic, just a friendly reminder that your appointment is tomorrow:\n\n` +
         `📅 ${dayDate} at ${time}\n` +
-        `👨‍⚕️ ${doctor}, ${appt.service.name}\n` +
-        `📍 Code Clinic, Kamwokya\n\n` +
-        `Reply YES to confirm or NO to reschedule.`
+        `👨‍⚕️ with ${doctor} for ${appt.service.name}\n` +
+        `📍 Code Clinic, Kamwokya.\n\n` +
+        `Reply YES to confirm or NO if you'd like to reschedule.`
     }
 
     // ── Send ──────────────────────────────────────────────────────────────────

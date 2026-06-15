@@ -332,9 +332,8 @@ runStartup().then(() => {
   setInterval(() => {
     checkAndSendReactivationMessages().catch(err => console.error('[Reactivation] Scheduler error:', err))
   }, ONE_HOUR)
-  setInterval(() => {
-    checkAndSendAppointmentConfirmations().catch(err => console.error('[ApptConfirmation] Scheduler error:', err))
-  }, ONE_HOUR)
+  // checkAndSendAppointmentConfirmations disabled — reminder.service.ts covers this with better dedup
+  // setInterval(() => { checkAndSendAppointmentConfirmations().catch(...) }, ONE_HOUR)
 
   // Scheduled campaigns — check every 5 minutes
   const FIVE_MINUTES = 5 * 60 * 1000

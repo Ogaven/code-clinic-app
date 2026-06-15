@@ -3,7 +3,7 @@ import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachabl
 import { prisma } from '../../lib/prisma'
 import { getGreetingName, isMinor, normalizeRelation } from '../../utils/nameHelper'
 
-const ADMIN_WHATSAPP = '+256394836298'
+const ADMIN_WHATSAPP = '+256763430276'
 
 // Dedup flag: reset each deploy/restart (acceptable for a weekly report)
 let weekendReportSentOn: string | null = null

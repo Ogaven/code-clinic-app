@@ -1166,7 +1166,7 @@ async function alertStaffOfConcern(params: {
       `Sarah told the patient our team would follow up. Please reach out when convenient.`
 
     // 1. WhatsApp to clinic front desk
-    await sendWhatsAppMessage('+256394836298', alertText)
+    await sendWhatsAppMessage('+256763430276', alertText)
 
     // 2. In-app notification for all active RECEPTIONIST + ADMIN users
     const staff = await prisma.user.findMany({
