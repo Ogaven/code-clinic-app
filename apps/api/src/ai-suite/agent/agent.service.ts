@@ -864,6 +864,16 @@ async function handleAwaitingService(from: string, message: string): Promise<str
   const service = await matchService(message)
 
   if (!service) {
+    // Doctor named without a service — carry doctor forward and ask what they need
+    const namedDoctor = await matchDoctor(message)
+    if (namedDoctor) {
+      if (namedDoctor.bookingMode === 'BY_REFERRAL') {
+        return `Dr ${namedDoctor.firstName} sees patients by referral only. I can pass your details to our team and they'll follow up with you. In the meantime, would you like me to book you with another available dentist? 😊`
+      }
+      setBookingState(from, { state: 'AWAITING_SERVICE', doctorId: namedDoctor.id })
+      return `Got it — what can Dr ${namedDoctor.firstName} help you with today? 😊`
+    }
+
     const CANNED = `I'd love to help! Are you looking for something like a cleaning, filling, whitening, extraction, or a checkup? Just tell me what you need 😊`
     if (looksLikeTangent(message)) {
       return respondToTangentThenRedirect(message, CANNED)
@@ -1275,8 +1285,8 @@ async function alertStaffOfConcern(params: {
       `Message: "${params.message.slice(0, 200)}"${contextLine}\n\n` +
       `Sarah told the patient our team would follow up. Please reach out when convenient.`
 
-    // 1. WhatsApp to clinic front desk
-    await sendWhatsAppMessage('+256763430276', alertText)
+    // 1. WhatsApp to clinic front desk — capture message ID so staff replies can be linked back
+    const alertMessageId = await sendWhatsAppMessage('+256763430276', alertText)
 
     // 2. In-app notification for all active RECEPTIONIST + ADMIN users
     const staff = await prisma.user.findMany({
@@ -1292,12 +1302,18 @@ async function alertStaffOfConcern(params: {
       },
     })))
 
-    // 3. Dedup marker — SYSTEM role is excluded from Sarah's context window
+    // 3. Dedup marker + staff-relay linking — SYSTEM role excluded from Sarah's context window
     await prisma.aiMessage.create({
       data: {
         conversationId: params.conversationId,
         role:           'SYSTEM',
         content:        'STAFF_ALERTED: clinical concern',
+        metadata:       JSON.stringify({
+          alertMessageId,
+          patientPhone:   params.patientPhone,
+          patientName,
+          concernSummary: params.message.slice(0, 200),
+        }),
       },
     })
 
