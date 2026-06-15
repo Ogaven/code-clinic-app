@@ -431,6 +431,10 @@ export function detectIntent(message: string): Intent {
     'book', 'appointment', 'schedule', 'come in', 'visit',
     'see doctor', 'see a doctor', 'checkup', 'check up',
     'cleaning', 'filling', 'extraction', 'whitening',
+    // availability / slot-check phrases that signal booking intent
+    'available slot', 'slots available', 'available today', 'available this',
+    'check availability', 'check his slot', 'check her slot', 'check the slot',
+    'check slot', 'which doctor is', 'who is available', 'see his slot', 'see her slot',
     // "booking for someone else" patterns
     'for my mother', 'for my father', 'for my mum', 'for my dad', 'for my mom',
     'for my wife', 'for my husband', 'for my son', 'for my daughter',
@@ -438,6 +442,10 @@ export function detectIntent(message: string): Intent {
     'bring my mother', 'bring my wife', 'bring my husband', 'bring my son',
     'bring my daughter', 'bring my mum', 'bring her in', 'bring him in',
   ]
+  // Guard against meta-uses of "book" that aren't real booking requests
+  const META_BOOK = /\b(before you book|if i book|should i book|do i need to book|need to book first|before booking|before i book)\b/i
+  const strongBookWords = bookWords.filter(w => w !== 'book')
+  if (META_BOOK.test(lower) && !strongBookWords.some(w => lower.includes(w))) return null
   if (bookWords.some(w => lower.includes(w))) return 'BOOK'
 
   return null
@@ -787,6 +795,12 @@ async function handleIdleBookIntent(
         setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
         return `Got it — ${service.name} 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
       }
+      // No service matched — check if a doctor was named, carry them forward
+      const doctor = await matchDoctor(originalMessage)
+      if (doctor && doctor.bookingMode !== 'BY_REFERRAL') {
+        setBookingState(from, { state: 'AWAITING_SERVICE', doctorId: doctor.id })
+        return `Got it — what can Dr ${doctor.firstName} help you with today? 😊`
+      }
     }
     setBookingState(from, { state: 'AWAITING_SERVICE' })
     return `Of course! What brings you in today? For example — cleaning, filling, whitening, checkup, extraction, or something else? 😊`
@@ -860,6 +874,12 @@ async function handleAwaitingService(from: string, message: string): Promise<str
     return CANNED
   }
   servicePromptSent.delete(from)
+
+  // If a doctor was already captured in a prior turn, skip the preference question
+  const priorState = getBookingState(from)
+  if (priorState.doctorId) {
+    return presentSlots(from, service.id, priorState.doctorId)
+  }
 
   const doctor       = await matchDoctor(message)
   const hasDrMention = /\bdr\.?\s|\bdoctor\b/i.test(message)
