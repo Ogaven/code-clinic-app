@@ -720,6 +720,21 @@ async function handleIdleBookIntent(
     if (originalMessage) {
       const service = await matchService(originalMessage)
       if (service) {
+        const doctor       = await matchDoctor(originalMessage)
+        const hasDrMention = /\bdr\.?\s|\bdoctor\b/i.test(originalMessage)
+        if (doctor) {
+          if (doctor.bookingMode === 'BY_REFERRAL') {
+            setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
+            return `Dr ${doctor.firstName} sees patients by referral only. I can pass your details to our team and they'll follow up with you. In the meantime, would you like me to book you with another available dentist? 😊`
+          }
+          return presentSlots(from, service.id, doctor.id)
+        }
+        if (hasDrMention) {
+          const doctors  = await getDoctors()
+          const nameList = doctors.filter(d => d.bookingMode !== 'BY_REFERRAL').map(d => `• Dr ${d.firstName} ${d.lastName}`).join('\n')
+          setBookingState(from, { state: 'AWAITING_DOCTOR_NAME', serviceId: service.id })
+          return `I couldn't find that doctor 😊 Here's who we have:\n\n${nameList}\n\nWhich one would you prefer?`
+        }
         setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
         return `Got it — ${service.name} 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
       }
@@ -787,6 +802,21 @@ async function handleAwaitingService(from: string, message: string): Promise<str
     return `I'd love to help! Are you looking for something like a cleaning, filling, whitening, extraction, or a checkup? Just tell me what you need 😊`
   }
 
+  const doctor       = await matchDoctor(message)
+  const hasDrMention = /\bdr\.?\s|\bdoctor\b/i.test(message)
+  if (doctor) {
+    if (doctor.bookingMode === 'BY_REFERRAL') {
+      setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
+      return `Dr ${doctor.firstName} sees patients by referral only. I can pass your details to our team and they'll follow up with you. In the meantime, would you like me to book you with another available dentist? 😊`
+    }
+    return presentSlots(from, service.id, doctor.id)
+  }
+  if (hasDrMention) {
+    const doctors  = await getDoctors()
+    const nameList = doctors.filter(d => d.bookingMode !== 'BY_REFERRAL').map(d => `• Dr ${d.firstName} ${d.lastName}`).join('\n')
+    setBookingState(from, { state: 'AWAITING_DOCTOR_NAME', serviceId: service.id })
+    return `I couldn't find that doctor 😊 Here's who we have:\n\n${nameList}\n\nWhich one would you prefer?`
+  }
   setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: service.id })
   return `Got it — ${service.name} 😊 Do you have a preferred doctor, or shall I find whoever is available soonest?`
 }
@@ -878,6 +908,9 @@ async function presentSlots(
   return formatSlotsMessage(slots, serviceName, specificDocName)
 }
 
+// Tracks phones that already received a slot nudge — prevents looping on repeated trivial messages
+const slotNudgeSent = new Set<string>()
+
 async function handleAwaitingSlotConfirmation(
   from: string,
   message: string,
@@ -886,18 +919,20 @@ async function handleAwaitingSlotConfirmation(
   const choice = parseSlotChoice(message)
 
   if (!choice || !state.availableSlots || choice > state.availableSlots.length) {
-    const lower   = message.toLowerCase()
     const trimmed = message.trim()
-    const isRejection = trimmed.length > 8 &&
-      /\bnot\b|\bdon'?t\b|\bno\b|prefer|different|another|change|switch|rather|instead|wrong/i.test(lower)
-    if (isRejection) {
-      setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: state.serviceId })
-      return `No problem! Would you like me to find slots with a different doctor, or a different time? 😊`
+    // Very short / trivial message (emoji, "ok", "hi") — nudge once, then redirect on repeat
+    if (trimmed.length <= 3 && !slotNudgeSent.has(from)) {
+      slotNudgeSent.add(from)
+      const max = state.availableSlots?.length ?? 5
+      return `Just reply with a number 1–${max} that works best, or let me know if you'd like different options 😊`
     }
-    const max = state.availableSlots?.length ?? 5
-    return `Sorry, I didn't catch that 😊 Please reply with a number between 1 and ${max} to choose your slot.`
+    // Any non-trivial message (or repeated trivial) that isn't a valid slot number → redirect
+    slotNudgeSent.delete(from)
+    setBookingState(from, { state: 'AWAITING_DOCTOR_PREFERENCE', serviceId: state.serviceId })
+    return `No worries! Would you like me to look for a different doctor, or a different time? 😊`
   }
 
+  slotNudgeSent.delete(from)
   const slot = state.availableSlots[choice - 1]
 
   try {
