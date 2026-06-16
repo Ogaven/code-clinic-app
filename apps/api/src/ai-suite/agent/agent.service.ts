@@ -1875,19 +1875,31 @@ async function executeV2Tool(
       }
 
       case 'get_patient_appointments': {
-        const appt = await getNextAppointment(from)
-        if (!appt) return JSON.stringify({ appointments: [] })
-        const day  = appt.startAt.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
-        const time = appt.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).toLowerCase()
+        const patient2 = await prisma.patient.findFirst({ where: { phone: from } })
+        if (!patient2) return JSON.stringify({ appointments: [] })
+        const appts = await prisma.appointment.findMany({
+          where: {
+            patientId: patient2.id,
+            startAt:   { gt: new Date() },
+            status:    { notIn: ['CANCELLED'] },
+          },
+          orderBy: { startAt: 'asc' },
+          take: 5,
+          include: {
+            doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+            service: { select: { name: true } },
+          },
+        })
+        if (appts.length === 0) return JSON.stringify({ appointments: [] })
         return JSON.stringify({
-          appointments: [{
-            id:      appt.id,
-            date:    day,
-            time,
-            doctor:  `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`,
-            service: appt.service.name,
-            status:  appt.status,
-          }],
+          appointments: appts.map(a => ({
+            id:      a.id,
+            date:    a.startAt.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' }),
+            time:    a.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).toLowerCase(),
+            doctor:  `Dr ${a.doctor.user.firstName} ${a.doctor.user.lastName}`,
+            service: a.service.name,
+            status:  a.status,
+          })),
         })
       }
 
