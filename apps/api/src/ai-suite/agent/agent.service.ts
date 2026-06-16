@@ -1856,6 +1856,8 @@ async function executeV2Tool(
           .then(staff => Promise.all(staff.map(u => prisma.notification.create({
             data: { userId: u.id, type: 'APPOINTMENT', title: 'New Booking via WhatsApp (V2)', body: `${pName} booked ${appt.service.name} with ${docName} on ${dateStr} at ${timeStr}`, href: '/receptionist/scheduling' },
           })))).catch(() => {})
+        const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+        sendWhatsAppMessage(staffNumber, `📋 New booking: ${pName} — ${appt.service.name} on ${dateStr} at ${timeStr} with ${docName}`).catch(() => {})
         return JSON.stringify({ success: true, appointmentId: appt.id, confirmation: formatConfirmation(appt) })
       }
 
