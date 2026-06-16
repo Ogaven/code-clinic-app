@@ -1586,3 +1586,445 @@ export async function getAgentReply(
     return `Sorry, I'm having a small issue right now. Please try again or call the clinic directly.`
   }
 }
+
+// ── V2: Claude-tool-driven agent ──────────────────────────────────────────────
+// Feature-flagged to test numbers only. V1 (getAgentReply + state machine)
+// is COMPLETELY UNCHANGED for all other phone numbers.
+// To expand to production: add numbers to V2_TEST_NUMBERS or remove the gate.
+
+// Normalized set — includes both with and without leading '+' to handle
+// WhatsApp webhook format variations
+export const V2_TEST_NUMBERS = new Set([
+  '256758194632', '+256758194632',
+  '256763430276', '+256763430276',
+])
+
+// Improved doctor matching: "Steve" → "Steven", "Lois" → "Lois", etc.
+async function matchDoctorFuzzy(query: string) {
+  const doctors = await getDoctors()
+  const q = query.toLowerCase().trim().replace(/^dr\.?\s+/i, '')
+  if (!q) return null
+
+  // 1. Exact first or last name
+  const exact = doctors.find(d =>
+    d.firstName.toLowerCase() === q ||
+    d.lastName.toLowerCase()  === q ||
+    `${d.firstName} ${d.lastName}`.toLowerCase() === q
+  )
+  if (exact) return exact
+
+  // 2. Prefix: patient says "Steve", doctor is "Steven"
+  if (q.length >= 3) {
+    const byFirst = doctors.find(d => d.firstName.toLowerCase().startsWith(q))
+    if (byFirst) return byFirst
+    const byLast  = doctors.find(d => d.lastName.toLowerCase().startsWith(q))
+    if (byLast)  return byLast
+    // Reverse prefix: "Stev" typed against "Steven" first name (all but last char)
+    const revFirst = doctors.find(d =>
+      d.firstName.length >= 3 &&
+      q.startsWith(d.firstName.toLowerCase().slice(0, d.firstName.length - 1))
+    )
+    if (revFirst) return revFirst
+  }
+
+  // 3. Substring fallback
+  return doctors.find(d =>
+    d.firstName.toLowerCase().includes(q) ||
+    d.lastName.toLowerCase().includes(q)
+  ) ?? null
+}
+
+const SARAH_V2_SYSTEM_BASE = `You are Sarah, a warm and friendly member of the front desk team at Code Clinic dental clinic in Kampala, Uganda.
+
+IDENTITY:
+- You are a REAL human dental receptionist — NEVER admit to being a bot, AI, or assistant
+- If asked, deny naturally: "Ha, I wish — that'd make my job so much easier 😂 Nope, totally human!"
+- Never use the words "assistant", "virtual", "automated", "AI", "bot", "system", "language model"
+- Warm, casual, caring — like a real Ugandan receptionist you know personally
+- Use patient first name only, never surname
+- Short responses — 1-2 sentences usually, never more than 3 unless patient asked a detailed question
+- No markdown, no bold, no bullet points, no em-dashes — you are texting, not writing a document
+- For doctors use first name only: Dr Lois not Dr Lois Kisakye
+- Emojis are fine but keep them natural — don't overdo it
+
+TOOL USE — MANDATORY RULES:
+1. You have tools to check real clinic data. When you need to look up a doctor, service, slots, or appointments — call the tool RIGHT NOW in this response. Never say "let me check" or "I'll look that up" without calling a tool in the same turn.
+2. BOOKING FLOW — strict order, no shortcuts:
+   (a) Call check_availability → get real numbered slots
+   (b) Present numbered list to patient and wait for their number
+   (c) Patient replies with a number → immediately call book_appointment with that exact slot
+   (d) book_appointment returns confirmation text → send it to patient
+   NEVER confirm a booking without book_appointment returning success:true
+   NEVER invent or guess a slot time — every time you mention must come from check_availability
+3. SLOT LIST FORMAT — copy the display strings from the tool result exactly:
+   Dr Steven has these slots available 😊
+
+   1. [display from tool]
+   2. [display from tool]
+   3. [display from tool]
+
+   Just reply with the number that works for you!
+4. When patient gives a slot number → call book_appointment immediately. Do NOT ask for more info first (no last name, no age, no extra fields — just the slot).
+5. CLINICAL CONCERNS (pain, bleeding, swelling, infection, sore, hurts, worried, emergency): call flag_clinical_concern FIRST in this response, then reply with empathy.
+6. Doctor nicknames: "Steve" or "Dr Steve" → call search_doctors("Steve") — the tool resolves it to Dr Steven automatically.
+7. NEVER ask for the patient's last name or age. The booking system only needs their phone (already known).
+8. For cancellations: call get_patient_appointments to find the appointment, confirm with patient, then call cancel_appointment.
+
+AFTER flag_clinical_concern:
+- If clinicStatus is "open": "I'm so sorry to hear that 😔 I've let our team know — someone will reach out to you very soon. If this is urgent right now, call us on +256 394 836 298."
+- If clinicStatus is "closed": "I'm so sorry 😔 We're closed right now but I've flagged this for our team — they'll follow up first thing when we open. For emergencies call +256 394 836 298."
+
+ESCALATION:
+If patient is upset and wants a real person or needs something beyond your ability: "Let me pass you to my colleague Julian who can help you further 😊"
+
+AFTER-HOURS:
+When clinic is closed, acknowledge warmly and reassure team will follow up. For urgent pain, give +256 394 836 298. NEVER direct patients to other hospitals or clinics.
+
+CLINIC INFO:
+Code Clinic | Kiira Road, opposite Police Playground, Kamwokya, Kampala
+Phone/WhatsApp: +256 394 836 298 / +256 741 087667 | Email: dentist@codeclinic.ug | Website: codeclinic.ug`
+
+const V2_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'search_services',
+    description: 'Find a dental service matching what the patient described. Returns serviceId needed for check_availability.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string' as const, description: 'What the patient wants, e.g. "cleaning", "filling", "toothache help", "whitening"' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'search_doctors',
+    description: 'Find a doctor by name. Handles nicknames ("Steve" finds "Steven"). Returns doctorId and booking mode.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string' as const, description: 'Doctor name, partial name, or nickname — no Dr prefix needed' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'check_availability',
+    description: 'Get real available appointment slots. Always call this before showing times to the patient. Returns up to 5 slots with display text and ISO datetimes.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        serviceId: { type: 'string' as const, description: 'Service ID from search_services' },
+        doctorId:  { type: 'string' as const, description: 'Doctor ID from search_doctors — omit for any available doctor' },
+        daysAhead: { type: 'number' as const, description: 'Days ahead to search, default 7' },
+      },
+      required: ['serviceId'],
+    },
+  },
+  {
+    name: 'book_appointment',
+    description: 'Create a real appointment. ONLY call after patient confirmed a slot by replying with a number from your list. Use the exact startAt ISO string from check_availability.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        doctorId:    { type: 'string' as const, description: 'Doctor ID (from check_availability slot result)' },
+        serviceId:   { type: 'string' as const, description: 'Service ID (from check_availability slot result)' },
+        slotStartAt: { type: 'string' as const, description: 'Exact ISO 8601 datetime from check_availability — must match exactly' },
+      },
+      required: ['doctorId', 'serviceId', 'slotStartAt'],
+    },
+  },
+  {
+    name: 'cancel_appointment',
+    description: "Cancel a patient's appointment. Get appointmentId from get_patient_appointments. Only cancel after patient confirms.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        appointmentId: { type: 'string' as const, description: 'Appointment ID to cancel' },
+      },
+      required: ['appointmentId'],
+    },
+  },
+  {
+    name: 'reschedule_appointment',
+    description: 'Reschedule an appointment to a new slot. Call check_availability first for the new slot, then call this with the exact new startAt.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        appointmentId:  { type: 'string' as const, description: 'Appointment ID to reschedule' },
+        newSlotStartAt: { type: 'string' as const, description: 'Exact ISO 8601 datetime from check_availability for the new slot' },
+      },
+      required: ['appointmentId', 'newSlotStartAt'],
+    },
+  },
+  {
+    name: 'get_patient_appointments',
+    description: "Get this patient's upcoming appointments. Use when they ask about their appointment or want to cancel/reschedule.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'flag_clinical_concern',
+    description: 'Alert clinic staff about a clinical concern (pain, bleeding, swelling, infection, emergency). Sends immediate WhatsApp alert to front desk. Call as soon as you detect any clinical concern.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        summary: { type: 'string' as const, description: 'Brief summary of the clinical concern, 1-2 sentences' },
+      },
+      required: ['summary'],
+    },
+  },
+]
+
+async function executeV2Tool(
+  toolName:       string,
+  toolInput:      Record<string, unknown>,
+  from:           string,
+  conversationId: string,
+  shownSlots:     AvailableSlot[]
+): Promise<string> {
+  try {
+    switch (toolName) {
+
+      case 'search_services': {
+        const service = await matchService(toolInput.query as string)
+        if (service) {
+          return JSON.stringify({ found: true, serviceId: service.id, name: service.name, priceUGX: service.priceUGX })
+        }
+        const all  = await getServices()
+        const top8 = all.slice(0, 8).map(s => ({ id: s.id, name: s.name }))
+        return JSON.stringify({ found: false, message: 'No exact match. Available services:', services: top8 })
+      }
+
+      case 'search_doctors': {
+        const doctor = await matchDoctorFuzzy(toolInput.name as string)
+        if (doctor) {
+          return JSON.stringify({
+            found:       true,
+            doctorId:    doctor.id,
+            firstName:   doctor.firstName,
+            fullName:    `Dr ${doctor.firstName} ${doctor.lastName}`,
+            bookingMode: doctor.bookingMode,
+          })
+        }
+        const all      = await getDoctors()
+        const bookable = all
+          .filter(d => d.bookingMode !== 'BY_REFERRAL')
+          .map(d => ({ id: d.id, name: `Dr ${d.firstName} ${d.lastName}` }))
+        return JSON.stringify({ found: false, availableDoctors: bookable })
+      }
+
+      case 'check_availability': {
+        const serviceId = toolInput.serviceId as string
+        const doctorId  = toolInput.doctorId  as string | undefined
+        const daysAhead = (toolInput.daysAhead as number | undefined) ?? 7
+        const slots = await getAvailableSlots(serviceId, doctorId, daysAhead)
+        const top5  = slots.slice(0, 5)
+        shownSlots.splice(0, shownSlots.length, ...top5)
+        if (top5.length === 0) {
+          return JSON.stringify({ slots: [], message: 'No slots found. Try more daysAhead or omit doctorId to check any doctor.' })
+        }
+        const formatted = top5.map((s, i) => ({
+          number:     i + 1,
+          display:    formatSlotLine(s, i),
+          startAt:    s.startAt.toISOString(),
+          doctorId:   s.doctorId,
+          serviceId:  s.serviceId,
+          doctorName: s.doctorName,
+        }))
+        return JSON.stringify({ slots: formatted })
+      }
+
+      case 'book_appointment': {
+        const requested = new Date(toolInput.slotStartAt as string)
+        const matched   = shownSlots.find(s => Math.abs(s.startAt.getTime() - requested.getTime()) < 60_000)
+        if (!matched) {
+          return JSON.stringify({ success: false, error: 'Slot not in current check_availability results. Call check_availability to get valid slots, then use an exact startAt from those results.' })
+        }
+        const patient = await prisma.patient.findFirst({ where: { phone: from } })
+        const appt    = await createAppointment(patient?.id ?? null, matched.doctorId, matched.serviceId, matched.startAt, from)
+        const pName   = patient ? `${patient.firstName} ${patient.lastName}`.trim() : 'New patient'
+        const docName = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+        const dateStr = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+        const timeStr = appt.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+        prisma.user.findMany({ where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true } })
+          .then(staff => Promise.all(staff.map(u => prisma.notification.create({
+            data: { userId: u.id, type: 'APPOINTMENT', title: 'New Booking via WhatsApp (V2)', body: `${pName} booked ${appt.service.name} with ${docName} on ${dateStr} at ${timeStr}`, href: '/receptionist/scheduling' },
+          })))).catch(() => {})
+        return JSON.stringify({ success: true, appointmentId: appt.id, confirmation: formatConfirmation(appt) })
+      }
+
+      case 'cancel_appointment': {
+        await cancelAppointment(toolInput.appointmentId as string)
+        return JSON.stringify({ success: true })
+      }
+
+      case 'reschedule_appointment': {
+        const requested = new Date(toolInput.newSlotStartAt as string)
+        const matched   = shownSlots.find(s => Math.abs(s.startAt.getTime() - requested.getTime()) < 60_000)
+        if (!matched) {
+          return JSON.stringify({ success: false, error: 'New slot not in check_availability results. Call check_availability first.' })
+        }
+        const updated = await rescheduleAppointment(toolInput.appointmentId as string, matched.startAt)
+        return JSON.stringify({ success: true, confirmation: formatConfirmation(updated) })
+      }
+
+      case 'get_patient_appointments': {
+        const appt = await getNextAppointment(from)
+        if (!appt) return JSON.stringify({ appointments: [] })
+        const day  = appt.startAt.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+        const time = appt.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).toLowerCase()
+        return JSON.stringify({
+          appointments: [{
+            id:      appt.id,
+            date:    day,
+            time,
+            doctor:  `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`,
+            service: appt.service.name,
+            status:  appt.status,
+          }],
+        })
+      }
+
+      case 'flag_clinical_concern': {
+        await alertStaffOfConcern({ conversationId, patientPhone: from, message: toolInput.summary as string })
+        return JSON.stringify({ alerted: true, clinicStatus: isClinicOpenNow() ? 'open' : 'closed' })
+      }
+
+      default:
+        return JSON.stringify({ error: `Unknown tool: ${toolName}` })
+    }
+  } catch (err: any) {
+    console.error(`[AgentV2 Tool] ${toolName} error:`, err?.message)
+    return JSON.stringify({ error: `${toolName} failed: ${err?.message ?? 'unknown'}` })
+  }
+}
+
+export async function getAgentReplyV2(
+  conversationId: string,
+  from:           string,
+  latestMessage:  string
+): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return `Hi! I've received your message and a team member will be with you shortly.`
+
+  try {
+    const [patient, dbMessages, menu, allHours] = await Promise.all([
+      prisma.patient.findFirst({ where: { phone: from }, select: { firstName: true, lastName: true } }),
+      prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 30 })
+        .then(msgs => msgs.reverse()),
+      getCachedMenu(),
+      prisma.workingHours.findMany({ orderBy: { dayOfWeek: 'asc' } }).catch(
+        () => [] as Array<{ dayOfWeek: number; isOpen: boolean; openTime: string; closeTime: string }>
+      ),
+    ])
+
+    const patientName = getGreetingName(patient)
+
+    const DAY_NAMES   = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const now         = new Date()
+    const eatDate     = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
+    const eatDow      = eatDate.getDay()
+    const eatHour     = eatDate.getHours()
+    const todayHours  = allHours.find(h => h.dayOfWeek === eatDow)
+    const isOpen      = !!(todayHours?.isOpen &&
+      eatHour >= parseInt(todayHours.openTime.split(':')[0]) &&
+      eatHour <  parseInt(todayHours.closeTime.split(':')[0]))
+    const eatDateTime = now.toLocaleString('en-GB', {
+      timeZone: 'Africa/Nairobi', weekday: 'long', year: 'numeric',
+      month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+    })
+    const hoursTable = allHours.length > 0
+      ? allHours.map(h => `${DAY_NAMES[h.dayOfWeek]}: ${h.isOpen ? `${h.openTime} – ${h.closeTime}` : 'Closed'}`).join('\n')
+      : '(clinic hours not configured)'
+
+    const systemPrompt = [
+      SARAH_V2_SYSTEM_BASE,
+      '',
+      `CURRENT DATE/TIME IN KAMPALA: ${eatDateTime}`,
+      `CLINIC STATUS RIGHT NOW: ${isOpen ? 'OPEN' : 'CLOSED'}`,
+      `CLINIC HOURS:\n${hoursTable}`,
+      '',
+      `PATIENT NAME: ${patientName} — address them by this name`,
+      '',
+      'AVAILABLE SERVICES (use search_services to get IDs for check_availability):',
+      menu.services,
+      '',
+      'AVAILABLE DOCTORS (use search_doctors to get IDs for check_availability):',
+      menu.doctors,
+    ].join('\n')
+
+    // Build alternating user/assistant message history from DB
+    const history = dbMessages.filter(m => m.role !== 'SYSTEM')
+    const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    for (const m of history) {
+      const role    = m.role === 'USER' ? 'user' : 'assistant'
+      const content = sanitizeForClaude(m.content)
+      const last    = apiMessages[apiMessages.length - 1]
+      if (last && last.role === role) {
+        last.content += '\n' + content
+      } else {
+        apiMessages.push({ role, content })
+      }
+    }
+    // Must start with user
+    while (apiMessages.length > 0 && apiMessages[0].role !== 'user') apiMessages.shift()
+    // Ensure latest user message is present at end
+    if (apiMessages.length === 0 || apiMessages[apiMessages.length - 1].role !== 'user') {
+      apiMessages.push({ role: 'user', content: latestMessage })
+    }
+
+    const client     = new Anthropic({ apiKey })
+    const shownSlots: AvailableSlot[] = []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let messages: any[] = apiMessages
+
+    for (let iter = 0; iter < 8; iter++) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response: any = await client.messages.create({
+        model:      'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system:     systemPrompt,
+        tools:      V2_TOOLS,
+        messages,
+      })
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolBlocks: any[] = (response.content ?? []).filter((b: any) => b.type === 'tool_use')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const textBlock: any    = (response.content ?? []).find((b: any) => b.type === 'text')
+
+      if (toolBlocks.length === 0) {
+        const reply = textBlock ? sanitizeForWhatsApp(textBlock.text as string) : `I'm here to help! Could you rephrase that for me? 😊`
+        console.log(`[AgentV2] Reply after ${iter} tool round(s) for ${from}: "${reply.slice(0, 80)}"`)
+        return reply
+      }
+
+      // Append assistant turn and execute all tool calls
+      messages = [...messages, { role: 'assistant', content: response.content }]
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const results: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = []
+      for (const block of toolBlocks) {
+        console.log(`[AgentV2] Tool: ${block.name}(${JSON.stringify(block.input ?? {}).slice(0, 100)})`)
+        const result = await executeV2Tool(
+          block.name as string,
+          (block.input ?? {}) as Record<string, unknown>,
+          from,
+          conversationId,
+          shownSlots
+        )
+        console.log(`[AgentV2] Result: ${result.slice(0, 150)}`)
+        results.push({ type: 'tool_result', tool_use_id: block.id as string, content: result })
+      }
+      messages = [...messages, { role: 'user', content: results }]
+    }
+
+    return `I ran into a small issue — please try again or call us on +256 394 836 298 😊`
+  } catch (err: any) {
+    console.error('[AgentV2] Error:', err?.message)
+    return `Sorry, I'm having a small issue right now. Please try again or call us on +256 394 836 298.`
+  }
+}

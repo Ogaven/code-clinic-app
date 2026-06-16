@@ -1,4 +1,4 @@
-import { getAgentReply } from '../agent/agent.service'
+import { getAgentReply, getAgentReplyV2, V2_TEST_NUMBERS } from '../agent/agent.service'
 import { isAgentEnabled, takeoverConversation } from '../takeover/takeover.service'
 import { setBookingState } from '../booking/booking.state'
 import { createEscalation, notifyJulian } from '../../services/agent/guards/escalation'
@@ -309,7 +309,11 @@ export async function processInbound(from: string, text: string, wamid: string):
     }
 
     // ── 7. Get Sarah's reply from Claude ──────────────────────────────────────
-    const agentReply = await getAgentReply(conversation.id, from, text)
+    // V2 feature flag: Claude-tool-driven flow for test numbers only.
+    // All other numbers use the V1 state-machine flow unchanged.
+    const agentReply = V2_TEST_NUMBERS.has(from)
+      ? await getAgentReplyV2(conversation.id, from, text)
+      : await getAgentReply(conversation.id, from, text)
 
     // ── 7b. Escalation detection ──────────────────────────────────────────────
     // If Sarah's reply indicates she's handing off to Julian, trigger the full
