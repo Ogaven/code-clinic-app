@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { findSoonestAvailableSlot, createAppointment } from '../booking/booking.service'
+import { clearBookingState } from '../booking/booking.state'
 import { sendWhatsAppMessage } from './whatsapp.service'
 import { prisma } from '../../lib/prisma'
 
@@ -12,12 +13,11 @@ export interface AlertMeta {
   concernSummary: string
 }
 
-
 export async function handleStaffReply(
   conversationId: string,
   staffMessage:   string,
   meta:           AlertMeta
-): Promise<void> {
+): Promise<'BOOKED' | 'RELAYED' | 'NO_SLOTS'> {
   const { patientPhone, patientName, concernSummary } = meta
   const firstName = patientName.split(' ')[0] || patientName
 
@@ -35,16 +35,16 @@ export async function handleStaffReply(
         STAFF_NUMBER,
         `No slots left today for ${firstName} — want me to offer them the earliest slot tomorrow instead?`
       )
-      return
+      return 'NO_SLOTS'
     }
 
-    // createAppointment handles patient lookup/creation from phone
     const localPhone = patientPhone.replace(/^\+256/, '0')
     const patient = await prisma.patient.findFirst({
       where: { OR: [{ phone: patientPhone }, { phone: localPhone }] },
     })
 
     await createAppointment(patient?.id ?? null, slot.doctorId, slot.serviceId, slot.startAt, patientPhone)
+    clearBookingState(patientPhone)
 
     const time        = new Date(slot.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
     const drFirstName = slot.doctorName.replace(/^Dr\s+/, '').split(' ')[0]
@@ -58,13 +58,15 @@ export async function handleStaffReply(
       data: { conversationId, role: 'AGENT', content: patientMsg },
     })
 
+    return 'BOOKED'
+
   } else {
     // ── MODE 2: Relay staff guidance to patient in Sarah's voice ────────────
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {
       console.error('[StaffRelay] Missing ANTHROPIC_API_KEY')
-      return
+      return 'RELAYED'
     }
 
     const anthropic = new Anthropic({ apiKey })
@@ -88,5 +90,7 @@ export async function handleStaffReply(
       data: { conversationId, role: 'AGENT', content: relayText },
     })
     await sendWhatsAppMessage(STAFF_NUMBER, `Got it, I've let ${firstName} know 😊`)
+
+    return 'RELAYED'
   }
 }

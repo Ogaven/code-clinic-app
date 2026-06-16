@@ -1269,12 +1269,13 @@ async function alertStaffOfConcern(params: {
   doctorName?:    string
 }): Promise<void> {
   try {
-    // Dedup: don't fire again if already alerted for this conversation within 2 hours
+    // Dedup: don't fire again if already alerted (and not yet resolved) within 2 hours
     const recentAlert = await prisma.aiMessage.findFirst({
       where: {
         conversationId: params.conversationId,
         role:           'SYSTEM',
         content:        { contains: 'STAFF_ALERTED' },
+        NOT:            { content: { contains: '(RESOLVED)' } },
         createdAt:      { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
       },
     })
@@ -1357,12 +1358,13 @@ export async function getAgentReply(
     clearBookingState(from)
     console.log(`[Agent] Clinical concern detected for ${from}: "${latestMessage.slice(0, 80)}"`)
 
-    // Check if staff was already alerted for this conversation within the dedup window
+    // Check if staff was already alerted (and not yet resolved) within the dedup window
     const recentAlert = await prisma.aiMessage.findFirst({
       where: {
         conversationId,
         role:      'SYSTEM',
         content:   { contains: 'STAFF_ALERTED' },
+        NOT:       { content: { contains: '(RESOLVED)' } },
         createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
       },
     })

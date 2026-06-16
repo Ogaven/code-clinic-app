@@ -93,25 +93,53 @@ router.post('/webhook', async (req: Request, res: Response) => {
             const text = msg.text?.body ?? ''
             if (!text) continue
 
-            // Staff replying to an alert message — route to relay handler
-            if (from === STAFF_NUMBER && msg.context?.id) {
-              const alertMsg = await prisma.aiMessage.findFirst({
-                where: {
-                  role:     'SYSTEM',
-                  content:  { contains: 'STAFF_ALERTED' },
-                  metadata: { contains: msg.context.id },
-                },
-              })
+            // Staff messages — route to relay handler or send staff-mode ack
+            if (from === STAFF_NUMBER) {
+              let alertMsg: { id: string; conversationId: string; metadata: string | null } | null = null
+
+              // 1. Try exact message-id match (Meta threaded reply)
+              if (msg.context?.id) {
+                alertMsg = await prisma.aiMessage.findFirst({
+                  where: {
+                    role:     'SYSTEM',
+                    content:  { contains: 'STAFF_ALERTED' },
+                    NOT:      { content: { contains: '(RESOLVED)' } },
+                    metadata: { contains: msg.context.id },
+                  },
+                })
+              }
+
+              // 2. Fallback: most recent unresolved alert within 24 hours
+              if (!alertMsg) {
+                alertMsg = await prisma.aiMessage.findFirst({
+                  where: {
+                    role:      'SYSTEM',
+                    content:   { contains: 'STAFF_ALERTED' },
+                    NOT:       { content: { contains: '(RESOLVED)' } },
+                    createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+                  },
+                  orderBy: { createdAt: 'desc' },
+                })
+              }
+
               if (alertMsg?.metadata) {
                 try {
                   const meta = JSON.parse(alertMsg.metadata) as AlertMeta
-                  console.log(`[StaffRelay] Matched alert ${msg.context.id} → conv ${alertMsg.conversationId}`)
-                  await handleStaffReply(alertMsg.conversationId, text, meta)
+                  console.log(`[StaffRelay] Routing staff message → conv ${alertMsg.conversationId}`)
+                  const result = await handleStaffReply(alertMsg.conversationId, text, meta)
+                  if (result !== 'NO_SLOTS') {
+                    await prisma.aiMessage.update({
+                      where: { id: alertMsg.id },
+                      data:  { content: 'STAFF_ALERTED: clinical concern (RESOLVED)' },
+                    })
+                  }
                 } catch (err: any) {
                   console.error('[StaffRelay] handleStaffReply error:', err.message)
                 }
-                continue
+              } else {
+                await sendWhatsAppMessage(STAFF_NUMBER, `Hi! No active patient alert right now. A new alert will come through as soon as a patient flags a concern 😊`)
               }
+              continue
             }
 
             await processInbound(from, text, msg.id)

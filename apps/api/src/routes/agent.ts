@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import { requireAuth } from '../middleware/auth'
-import { processInbound } from '../ai-suite/whatsapp/whatsapp.service'
+import { processInbound, sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
 import { handleStaffReply, STAFF_NUMBER, type AlertMeta } from '../ai-suite/whatsapp/staff-relay.service'
 import { handleInboundCall, triggerOutboundCall, handleRecordingComplete } from '../services/agent/channels/voice-channel'
 import { runAgent } from '../services/agent/unified-agent'
@@ -178,13 +178,14 @@ router.post('/whatsapp/webhook', async (req, res) => {
                  : digits.length === 9                   ? `+256${digits}`
                  : `+${digits}`
 
-    // ── Staff relay: AT doesn't send reply-context IDs, so match against the
+    // ── Staff routing: AT has no reply-context IDs, so match against the
     // most recent unresolved STAFF_ALERTED system message within 24 hours.
-    if (from === STAFF_NUMBER && text) {
+    if (from === STAFF_NUMBER) {
       const recentAlert = await prisma.aiMessage.findFirst({
         where: {
           role:      'SYSTEM',
           content:   { contains: 'STAFF_ALERTED' },
+          NOT:       { content: { contains: '(RESOLVED)' } },
           createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
         },
         orderBy: { createdAt: 'desc' },
@@ -192,13 +193,21 @@ router.post('/whatsapp/webhook', async (req, res) => {
       if (recentAlert?.metadata) {
         try {
           const meta = JSON.parse(recentAlert.metadata) as AlertMeta
-          console.log(`[AT StaffRelay] Routing staff reply to relay handler → conv ${recentAlert.conversationId}`)
-          await handleStaffReply(recentAlert.conversationId, text, meta)
+          console.log(`[AT StaffRelay] Routing staff message to relay handler → conv ${recentAlert.conversationId}`)
+          const result = await handleStaffReply(recentAlert.conversationId, text, meta)
+          if (result !== 'NO_SLOTS') {
+            await prisma.aiMessage.update({
+              where: { id: recentAlert.id },
+              data:  { content: 'STAFF_ALERTED: clinical concern (RESOLVED)' },
+            })
+          }
         } catch (err: any) {
           console.error('[AT StaffRelay] handleStaffReply error:', err.message)
         }
-        return
+      } else {
+        await sendWhatsAppMessage(STAFF_NUMBER, `Hi! No active patient alert right now. A new alert will come through as soon as a patient flags a concern 😊`)
       }
+      return
     }
 
     await processInbound(from, text, msgId)
