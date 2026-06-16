@@ -105,8 +105,12 @@ export interface ToolContext {
 // ── TOOL HANDLERS ──────────────────────────────────────────────
 
 async function handle_get_patient_by_phone(input: { phone_number: string }) {
+  const raw   = input.phone_number.trim()
+  const intl  = raw.startsWith('+256') ? raw : '+256' + raw.replace(/^0/, '')
+  const local = raw.startsWith('0')    ? raw : '0'   + raw.replace(/^\+256/, '')
+
   const patient = await prisma.patient.findFirst({
-    where: { phone: input.phone_number },
+    where: { OR: [{ phone: intl }, { phone: local }] },
     include: {
       invoices: { where: { status: { in: ['UNPAID', 'PARTIAL', 'OVERDUE'] } } },
       appointments: {
@@ -264,6 +268,63 @@ async function handle_get_all_doctors() {
       colour: d.colour,
     }
   })
+}
+
+async function handle_get_doctors_available_today(input: { date?: string }) {
+  const targetDate = input.date ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
+  const dayStart   = new Date(`${targetDate}T00:00:00`)
+  const dayEnd     = new Date(`${targetDate}T23:59:59`)
+  const dayOfWeek  = dayStart.getDay()
+  const dayNames   = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+  const doctors = await prisma.doctor.findMany({
+    where: { isActive: true },
+    include: { user: { select: { firstName: true, lastName: true } } },
+  })
+
+  const available = []
+
+  for (const doctor of doctors) {
+    const workingDays: number[]                        = JSON.parse(doctor.workingDays || '[1,2,3,4,5]')
+    const workingHours: { start: string; end: string } = JSON.parse(doctor.workingHours || '{"start":"08:00","end":"18:00"}')
+
+    if (!workingDays.includes(dayOfWeek)) continue
+
+    const [existingAppts, blockedTimes] = await Promise.all([
+      prisma.appointment.findMany({
+        where: {
+          doctorId: doctor.id,
+          startAt: { gte: dayStart, lt: dayEnd },
+          status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+        },
+        select: { startAt: true, endAt: true },
+      }),
+      prisma.blockedTime.findMany({
+        where: { doctorId: doctor.id, startAt: { gte: dayStart, lt: dayEnd } },
+        select: { startAt: true, endAt: true },
+      }),
+    ])
+
+    const freeSlots = generateSlots(workingHours.start, workingHours.end, 30, existingAppts, blockedTimes, dayStart)
+
+    if (freeSlots.length > 0) {
+      available.push({
+        id: doctor.id,
+        name: `Dr. ${doctor.user.firstName} ${doctor.user.lastName}`,
+        specialisation: doctor.specialisation,
+        working_hours: `${workingHours.start} – ${workingHours.end}`,
+        next_available: freeSlots[0],
+        free_slot_count: freeSlots.length,
+      })
+    }
+  }
+
+  return {
+    date: targetDate,
+    day: dayNames[dayOfWeek],
+    doctors_available: available,
+    total_available: available.length,
+  }
 }
 
 async function handle_get_services() {
@@ -708,6 +769,17 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object' as const, properties: {}, required: [] },
   },
   {
+    name: 'get_doctors_available_today',
+    description: "Call when a patient asks who is available today, who they can see, or which doctors have slots. Returns only doctors who are scheduled to work AND have free time that day — live from the database. Call this BEFORE asking which service the patient needs. You do NOT need a service name or duration to use this tool.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        date: { type: 'string', description: 'Date in YYYY-MM-DD format. Omit to use today in Kampala time.' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'get_services',
     description: 'Get all available services with prices and durations. ALWAYS call before mentioning any price.',
     input_schema: { type: 'object' as const, properties: {}, required: [] },
@@ -853,7 +925,8 @@ export async function executeAgentTool(
       case 'get_patient_by_phone':       return await handle_get_patient_by_phone(input)
       case 'get_patient_appointments':   return await handle_get_patient_appointments(input)
       case 'get_doctor_availability':    return await handle_get_doctor_availability(input)
-      case 'get_all_doctors':            return await handle_get_all_doctors()
+      case 'get_all_doctors':              return await handle_get_all_doctors()
+      case 'get_doctors_available_today': return await handle_get_doctors_available_today(input)
       case 'get_services':               return await handle_get_services()
       case 'get_patient_balance':        return await handle_get_patient_balance(input)
       case 'book_appointment':           return await handle_book_appointment(input, ctx)
