@@ -1846,8 +1846,9 @@ async function executeV2Tool(
         if (!matched) {
           return JSON.stringify({ success: false, error: 'Slot not in current check_availability results. Call check_availability to get valid slots, then use an exact startAt from those results.' })
         }
-        const patient = await prisma.patient.findFirst({ where: { phone: from } })
-        const appt    = await createAppointment(patient?.id ?? null, matched.doctorId, matched.serviceId, matched.startAt, from)
+        const normalizedFrom = from.startsWith('+') ? from : `+${from}`
+        const patient = await prisma.patient.findFirst({ where: { OR: [{ phone: normalizedFrom }, { phone: from }] } })
+        const appt    = await createAppointment(patient?.id ?? null, matched.doctorId, matched.serviceId, matched.startAt, normalizedFrom)
         const pName   = patient ? `${patient.firstName} ${patient.lastName}`.trim() : 'New patient'
         const docName = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
         const dateStr = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
@@ -1877,7 +1878,8 @@ async function executeV2Tool(
       }
 
       case 'get_patient_appointments': {
-        const patient2 = await prisma.patient.findFirst({ where: { phone: from } })
+        const normalizedFrom2 = from.startsWith('+') ? from : `+${from}`
+        const patient2 = await prisma.patient.findFirst({ where: { OR: [{ phone: normalizedFrom2 }, { phone: from }] } })
         if (!patient2) return JSON.stringify({ appointments: [] })
         const appts = await prisma.appointment.findMany({
           where: {
