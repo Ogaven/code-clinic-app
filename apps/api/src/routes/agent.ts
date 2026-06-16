@@ -178,34 +178,48 @@ router.post('/whatsapp/webhook', async (req, res) => {
                  : digits.length === 9                   ? `+256${digits}`
                  : `+${digits}`
 
-    // ── Staff routing: AT has no reply-context IDs, so match against the
-    // most recent unresolved STAFF_ALERTED system message within 24 hours.
+    // ── Staff routing: AT has no reply-context IDs — find ALL unresolved alerts
+    // within 4 hours. Multiple open alerts → ask staff to specify; exactly one → route.
     if (from === STAFF_NUMBER) {
-      const recentAlert = await prisma.aiMessage.findFirst({
+      const openAlerts = await prisma.aiMessage.findMany({
         where: {
           role:      'SYSTEM',
           content:   { contains: 'STAFF_ALERTED' },
           NOT:       { content: { contains: '(RESOLVED)' } },
-          createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+          metadata:  { not: null },
+          createdAt: { gte: new Date(Date.now() - 4 * 60 * 60 * 1000) },
         },
         orderBy: { createdAt: 'desc' },
+        take: 10,
       })
-      if (recentAlert?.metadata) {
+
+      if (openAlerts.length === 0) {
+        await sendWhatsAppMessage(STAFF_NUMBER, `Hi! No active patient alerts right now. A new alert will come through as soon as a patient flags a concern 😊`)
+      } else if (openAlerts.length > 1) {
+        // Multiple open alerts — too ambiguous to guess which patient; ask staff to clarify
+        const list = openAlerts.map(a => {
+          try {
+            const m = JSON.parse(a.metadata!) as AlertMeta
+            return `• ${m.patientName || m.patientPhone} — "${(m.concernSummary ?? '').slice(0, 50)}"`
+          } catch { return null }
+        }).filter(Boolean).join('\n')
+        await sendWhatsAppMessage(STAFF_NUMBER, `I have ${openAlerts.length} open patient alerts:\n${list}\n\nWhich patient is this about? Reply with their name or concern and I'll handle it 😊`)
+      } else {
+        // Exactly one unresolved alert — safe to route
+        const alert = openAlerts[0]
         try {
-          const meta = JSON.parse(recentAlert.metadata) as AlertMeta
-          console.log(`[AT StaffRelay] Routing staff message to relay handler → conv ${recentAlert.conversationId}`)
-          const result = await handleStaffReply(recentAlert.conversationId, text, meta)
-          if (result !== 'NO_SLOTS') {
+          const meta = JSON.parse(alert.metadata!) as AlertMeta
+          console.log(`[AT StaffRelay] Routing staff message → conv ${alert.conversationId}`)
+          const result = await handleStaffReply(alert.conversationId, text, meta)
+          if (result === 'BOOKED' || result === 'RELAYED') {
             await prisma.aiMessage.update({
-              where: { id: recentAlert.id },
+              where: { id: alert.id },
               data:  { content: 'STAFF_ALERTED: clinical concern (RESOLVED)' },
             })
           }
         } catch (err: any) {
           console.error('[AT StaffRelay] handleStaffReply error:', err.message)
         }
-      } else {
-        await sendWhatsAppMessage(STAFF_NUMBER, `Hi! No active patient alert right now. A new alert will come through as soon as a patient flags a concern 😊`)
       }
       return
     }
