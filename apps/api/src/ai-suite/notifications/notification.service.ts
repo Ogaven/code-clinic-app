@@ -73,6 +73,25 @@ export async function sendAppointmentNotification(
     }
     await sendWhatsAppMessage(p.phone, message)
     console.log(`[Notification] Sent '${type}' to ${p.firstName} ${p.lastName} (${p.phone})`)
+
+    // Log to ai_messages so Sarah has full visibility of system-sent messages
+    const rawPhone = p.phone.replace(/^\+/, '')
+    const conv = await prisma.aiConversation.findFirst({
+      where: {
+        OR: [{ phoneNumber: p.phone }, { phoneNumber: rawPhone }],
+        channel: 'WHATSAPP',
+      },
+      orderBy: { updatedAt: 'desc' },
+    })
+    if (conv) {
+      await prisma.aiMessage.create({
+        data: { conversationId: conv.id, role: 'AGENT', content: message },
+      })
+      await prisma.aiConversation.update({
+        where: { id: conv.id },
+        data: { updatedAt: new Date() },
+      })
+    }
   } catch (err: any) {
     const msg = err?.message ?? err?.errorMessage ?? (typeof err === 'string' ? err : JSON.stringify(err))
     console.error('[Notification] Failed to send notification:', msg)
