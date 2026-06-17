@@ -315,32 +315,7 @@ export async function processInbound(from: string, text: string, wamid: string):
       ? await getAgentReplyV2(conversation.id, from, text)
       : await getAgentReply(conversation.id, from, text)
 
-    // ── 7b. Escalation detection ──────────────────────────────────────────────
-    // If Sarah's reply indicates she's handing off to Julian, trigger the full
-    // escalation flow: create DB record, silence the bot, notify Julian.
-    const escalationPhrases = ['julian', 'pass you to', 'connect you with', 'hand you over', 'colleague']
-    const agentTriggeredEscalation = escalationPhrases.some(p => agentReply.toLowerCase().includes(p))
-
-    if (agentTriggeredEscalation) {
-      try {
-        await createEscalation({
-          patientId:   patient?.id,
-          phoneNumber: from,
-          channel:     'WHATSAPP',
-          reason:      `Sarah escalated to Julian — patient message: ${text.slice(0, 200)}`,
-          transcript:  text,
-        })
-        await takeoverConversation(conversation.id, 'auto-escalation')
-        if (isClinicOpen()) {
-          await notifyJulian(from, text)
-        }
-        console.log(`[WhatsApp] Escalated conversation ${conversation.id} to Julian (clinic ${isClinicOpen() ? 'open' : 'closed'})`)
-      } catch (err: any) {
-        console.error('[WhatsApp] Escalation flow error:', err.message)
-      }
-    }
-
-    // ── 7c. Rating detection ─────────────────────────────────────────────────
+    // ── 7b. Rating detection ─────────────────────────────────────────────────
     // If patient sends a bare 1–5 number (or "X stars"), persist as PatientFeedback.
     // Low scores (≤3) trigger an escalation to Julian.
     if (patient) {
