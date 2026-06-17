@@ -155,4 +155,80 @@ export async function checkAndSendReminders(): Promise<void> {
       `[Reminder] Sent to ${patient.firstName} ${patient.lastName} (${patient.phone}) via ${channel}`
     )
   }
+
+  // ── 1-hour reminder ───────────────────────────────────────────────────────
+  const window1hStart = new Date(now.getTime() + 55 * 60 * 1000)
+  const window1hEnd   = new Date(now.getTime() + 65 * 60 * 1000)
+
+  const appointments1h = await prisma.appointment.findMany({
+    where: {
+      startAt: { gte: window1hStart, lte: window1hEnd },
+      status:  { in: ['CONFIRMED', 'PENDING'] },
+      patient: { isActive: true },
+    },
+    include: {
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+      doctor:  { include: { user: { select: { firstName: true } } } },
+    },
+  })
+
+  for (const appt1h of appointments1h) {
+    const pat1h = appt1h.patient
+    const alreadySent1h = await prisma.aiScheduledMessage.findFirst({
+      where: {
+        patientId:    pat1h.id,
+        templateType: 'REMINDER_1H',
+        sent:         true,
+        scheduledFor: {
+          gte: new Date(appt1h.startAt.getTime() - 30 * 60 * 1000),
+          lte: new Date(appt1h.startAt.getTime() + 30 * 60 * 1000),
+        },
+      },
+    })
+    if (alreadySent1h) continue
+
+    const minor1h    = isMinor(pat1h.dob)
+    const name1h     = getGreetingName(pat1h)
+    const guardian1h = minor1h && pat1h.nextOfKinName
+      ? getGreetingName({ firstName: pat1h.nextOfKinName, lastName: '' })
+      : null
+    const addressee1h = guardian1h ?? name1h
+    const doc1h       = `Dr ${appt1h.doctor.user.firstName}`
+    const msg1h       = minor1h
+      ? `Hi ${addressee1h}! Just a friendly reminder that ${name1h}'s appointment with ${doc1h} is in 1 hour 😊 See you soon!`
+      : `Hi ${name1h}! Just a friendly reminder that your appointment with ${doc1h} is in 1 hour 😊 See you soon!`
+
+    try {
+      await sendWhatsAppMessage(pat1h.phone, msg1h)
+    } catch (err: any) {
+      console.error(`[Reminder 1h] Send failed for ${pat1h.phone}:`, err.message ?? err)
+      continue
+    }
+
+    await prisma.aiScheduledMessage.create({
+      data: {
+        patientId:    pat1h.id,
+        channel:      'WHATSAPP',
+        templateType: 'REMINDER_1H',
+        scheduledFor: appt1h.startAt,
+        sent:         true,
+        content:      msg1h,
+      },
+    })
+
+    let conv1h = await prisma.aiConversation.findFirst({
+      where:   { phoneNumber: pat1h.phone, channel: 'WHATSAPP', status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!conv1h) {
+      conv1h = await prisma.aiConversation.create({
+        data: { patientId: pat1h.id, channel: 'WHATSAPP', phoneNumber: pat1h.phone, status: 'ACTIVE', agentEnabled: true },
+      })
+    }
+    await prisma.aiMessage.create({
+      data: { conversationId: conv1h.id, role: 'AGENT', content: msg1h },
+    })
+
+    console.log(`[Reminder 1h] Sent to ${pat1h.firstName} ${pat1h.lastName} (${pat1h.phone})`)
+  }
 }

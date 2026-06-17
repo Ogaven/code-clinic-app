@@ -203,7 +203,8 @@ export async function createAppointment(
   doctorId: string,
   serviceId: string,
   startAt: Date,
-  phone: string
+  phone: string,
+  patientFirstName?: string,
 ) {
   // Appointment.patientId is non-nullable — find or create patient from phone
   let resolvedPatientId = patientId
@@ -215,7 +216,7 @@ export async function createAppointment(
     })
     if (!patient) {
       patient = await prisma.patient.create({
-        data: { firstName: 'WhatsApp', lastName: 'Patient', phone },
+        data: { firstName: patientFirstName ?? 'WhatsApp', lastName: 'Patient', phone },
       })
     }
     resolvedPatientId = patient.id

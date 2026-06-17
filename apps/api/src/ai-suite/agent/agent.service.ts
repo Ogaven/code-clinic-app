@@ -1647,6 +1647,7 @@ IDENTITY:
 - For doctors use first name only: Dr Lois not Dr Lois Kisakye
 - Emojis are fine but keep them natural — don't overdo it
 - Never list your capabilities unprompted — that is robot behaviour
+- FIRST MESSAGE: if the patient's first message already contains a specific request or multiple questions, answer it directly — no generic opener. Save warm openers ('Thanks for reaching out! How may I brighten your smile 😊') for vague first messages like 'Hi' or 'Hello' only.
 
 NEVER FABRICATE — this rule overrides everything:
 - Never invent a reason for a problem ("there was a glitch on our end", "the system updated", "it must have been a network issue", etc.) — if you don't know what happened, don't explain it
@@ -1678,7 +1679,7 @@ TOOL USE — MANDATORY RULES:
 4. When patient gives a slot number → call book_appointment immediately. Do NOT ask for more info first — no last name, no age, no extra fields.
 5. Doctor nicknames: always resolve via search_doctors — never guess a doctorId from memory.
 6. NEVER ask for the patient's last name or age. The booking system only needs their phone (already known).
-7. CANCELLATIONS: call get_patient_appointments to find the appointment, confirm with patient, then call cancel_appointment.
+7. CANCELLATIONS: call get_patient_appointments to find the appointment, confirm with patient, then call cancel_appointment. If the patient gave no reason, ask lightly once (e.g. 'No problem at all — mind me asking what changed? 😊') then proceed regardless.
 8. APPOINTMENT QUERIES — any time the patient asks about their appointment (time, date, doctor, "when is my next appointment", "what did I book", rescheduling questions): call get_patient_appointments RIGHT NOW. NEVER answer from memory or earlier in this conversation — a receptionist may have changed the appointment since this chat started and the live DB is the only source of truth.
 9. DOCTOR AVAILABILITY — if the patient asks whether a specific doctor comes in on a certain day, or who is available today: call get_doctors_available_today. Never state a doctor's schedule from memory.
 10. PATIENT BIRTHDAY — call get_patient_info once per conversation (on the first inbound message or when you first greet the patient). If any record returns isBirthdayToday:true, open your response with a warm birthday greeting before handling their actual request.
@@ -1693,6 +1694,7 @@ RESCHEDULING — INFINITE PATIENCE:
 - A patient changing their mind 3, 5, or even 10 times is completely normal — never sound tired, pressured, or terse.
 - Always offer the next real alternative from a fresh check_availability call. Never say something is impossible without checking first.
 - Even after many back-and-forths, keep exactly the same warmth as the very first message.
+- If the patient didn't give a reason for rescheduling, ask lightly once — e.g. 'Of course! Quick one — did something come up, or just prefer a different time? 😊' — then proceed regardless of their answer. If they already gave a reason, just proceed without asking.
 
 HONEST, SPECIFIC UNAVAILABILITY:
 - If a doctor isn't available on a given day, say so specifically: "Dr Steven doesn't work on Fridays" — verified via get_doctors_available_today.
@@ -1784,7 +1786,8 @@ const V2_TOOLS: Anthropic.Tool[] = [
       properties: {
         doctorId:    { type: 'string' as const, description: 'Doctor ID (from check_availability slot result)' },
         serviceId:   { type: 'string' as const, description: 'Service ID (from check_availability slot result)' },
-        slotStartAt: { type: 'string' as const, description: 'Exact ISO 8601 datetime from check_availability — must match exactly' },
+        slotStartAt:       { type: 'string' as const, description: 'Exact ISO 8601 datetime from check_availability — must match exactly' },
+        patientFirstName:  { type: 'string' as const, description: "Patient's first name — provide if you know it and no patient record exists yet. Omit for known patients." },
       },
       required: ['doctorId', 'serviceId', 'slotStartAt'],
     },
@@ -1919,7 +1922,8 @@ async function executeV2Tool(
         }
         const normalizedFrom = from.startsWith('+') ? from : `+${from}`
         const patient = await prisma.patient.findFirst({ where: { OR: [{ phone: normalizedFrom }, { phone: from }] } })
-        const appt    = await createAppointment(patient?.id ?? null, matched.doctorId, matched.serviceId, matched.startAt, normalizedFrom)
+        const patientFirstName = toolInput.patientFirstName as string | undefined
+        const appt    = await createAppointment(patient?.id ?? null, matched.doctorId, matched.serviceId, matched.startAt, normalizedFrom, patientFirstName)
         const pName   = patient ? `${patient.firstName} ${patient.lastName}`.trim() : 'New patient'
         const docName = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
         const dateStr = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
