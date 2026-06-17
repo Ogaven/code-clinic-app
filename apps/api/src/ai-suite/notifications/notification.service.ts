@@ -49,7 +49,7 @@ export async function sendAppointmentNotification(
           `📅 ${dayDate}\n` +
           `⏰ ${time}\n` +
           `👨‍⚕️ ${doc}\n\n` +
-          `Reply YES to confirm or call 0741 087667.`
+          `Reply YES to confirm or call +256 394 836 298.`
         break
       case 'cancelled':
         message =
