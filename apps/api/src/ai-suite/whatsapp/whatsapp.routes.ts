@@ -94,7 +94,8 @@ router.post('/webhook', async (req: Request, res: Response) => {
             if (!text) continue
 
             // Staff messages — route to relay handler or send staff-mode ack
-            if (from === STAFF_NUMBER) {
+            // Meta sends numbers without leading '+', so match both formats
+            if (from === STAFF_NUMBER || from === STAFF_NUMBER.replace(/^\+/, '')) {
               // 1. Try exact context.id match (Meta threaded reply) — always unambiguous
               if (msg.context?.id) {
                 const exactAlert = await prisma.aiMessage.findFirst({

@@ -1265,6 +1265,7 @@ async function alertStaffOfConcern(params: {
   conversationId: string
   patientPhone:   string
   message:        string
+  sarahAdvice?:   string
   serviceName?:   string
   doctorName?:    string
 }): Promise<void> {
@@ -1293,12 +1294,17 @@ async function alertStaffOfConcern(params: {
       ? `\nRelated to: ${params.serviceName}${params.doctorName ? ` with Dr ${params.doctorName}` : ''} (yesterday)`
       : ''
 
+    const adviceLine = params.sarahAdvice
+      ? `\nSarah's advice given: ${params.sarahAdvice.slice(0, 200)}`
+      : `\nSarah has acknowledged the concern and told the patient someone will follow up.`
+
     const alertText =
       `🚨 PATIENT NEEDS ATTENTION\n\n` +
       `Name: ${patientName}\n` +
       `Phone: ${params.patientPhone}\n` +
-      `Message: "${params.message.slice(0, 200)}"${contextLine}\n\n` +
-      `Sarah told the patient our team would follow up. Please reach out when convenient.`
+      `Message: "${params.message.slice(0, 200)}"${contextLine}` +
+      `${adviceLine}\n\n` +
+      `Reply to this message with guidance and I'll relay it to the patient in my voice, or say "continue" to fast-track a booking.`
 
     // 1. WhatsApp to clinic front desk — capture message ID so staff replies can be linked back
     const alertMessageId = await sendWhatsAppMessage('+256763430276', alertText)
@@ -1728,7 +1734,7 @@ PROACTIVE BUT BOUNDED:
 
 AFTER flag_clinical_concern — append ONE sentence to your answer:
 - Clinic open: "I've let my colleague Julian know so she can check in with you 😊"
-- Clinic closed: "I've flagged this for my colleague Julian — she'll follow up first thing when we open. For anything urgent right now, call +256 394 836 298."
+- Clinic closed: "We're closed right now, but I've flagged this for my colleague Julian and she'll follow up first thing when we open 😊 If anything changes or gets worse before then, please call +256 394 836 298."
 - alreadyNotified:true: skip this sentence entirely. Do not mention Julian again.
 
 ESCALATION:
@@ -1830,9 +1836,10 @@ const V2_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        summary: { type: 'string' as const, description: 'Brief summary of the clinical concern, 1-2 sentences' },
+        summary:     { type: 'string' as const, description: 'Brief summary of the clinical concern, 1-2 sentences' },
+        sarahAdvice: { type: 'string' as const, description: 'One sentence summarising what you are telling the patient right now — so Julian knows what advice has already been given' },
       },
-      required: ['summary'],
+      required: ['summary', 'sarahAdvice'],
     },
   },
   {
@@ -2001,7 +2008,7 @@ async function executeV2Tool(
         if (recentFlag) {
           return JSON.stringify({ alerted: false, alreadyNotified: true, clinicStatus: isClinicOpenNow() ? 'open' : 'closed' })
         }
-        await alertStaffOfConcern({ conversationId, patientPhone: from, message: toolInput.summary as string })
+        await alertStaffOfConcern({ conversationId, patientPhone: from, message: toolInput.summary as string, sarahAdvice: toolInput.sarahAdvice as string | undefined })
         return JSON.stringify({ alerted: true, clinicStatus: isClinicOpenNow() ? 'open' : 'closed' })
       }
 
