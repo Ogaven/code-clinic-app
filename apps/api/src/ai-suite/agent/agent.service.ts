@@ -1603,6 +1603,7 @@ export async function getAgentReply(
 export const V2_TEST_NUMBERS = new Set([
   '256758194632', '+256758194632',
   '256763430276', '+256763430276',
+  '256772867578', '+256772867578',
 ])
 
 // Improved doctor matching: "Steve" → "Steven", "Lois" → "Lois", etc.
