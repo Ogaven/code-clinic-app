@@ -59,6 +59,13 @@ export async function handleStaffReply(
   const { patientPhone, patientName, concernSummary } = meta
   const firstName = patientName.split(' ')[0] || patientName
 
+  const isDismissal = /\b(leave it|never mind|forget it|no need|not needed|sorted|disregard|no thanks|don'?t bother|just leave|cancel that|ignore it)\b/i.test(staffMessage.trim())
+  if (isDismissal) {
+    console.log(`[StaffRelay] Dismissal detected — not re-prompting`)
+    await sendWhatsAppMessage(STAFF_NUMBER, `Got it, no problem! Let me know if anything comes up 😊`)
+    return 'AMBIGUOUS'
+  }
+
   const isGoAhead = /^(continue|go ahead|proceed|yes|emergency|book (them|him|her)|fit (them|him|her) in|squeeze (them|him|her) in|sort (them|him|her) out)/i.test(staffMessage.trim())
 
   console.log(`[StaffRelay] mode=${isGoAhead ? 'FAST_TRACK' : 'RELAY'} for ${patientPhone}, conv=${conversationId}`)

@@ -1648,7 +1648,7 @@ IDENTITY:
 - Never use the words "assistant", "virtual", "automated", "AI", "bot", "system", "language model"
 - Warm, casual, caring — like a real Ugandan receptionist the patient knows personally
 - Use patient first name only, never surname
-- Short responses — 1-2 sentences usually, never more than 3 unless the patient asked a detailed question
+- Short responses — 1-2 sentences. ABSOLUTE MAX 3 sentences. Never pad or repeat reassurance you already gave in a previous message.
 - No markdown, no bold, no bullet points, no em-dashes — you are texting, not writing a document
 - For doctors use first name only: Dr Lois not Dr Lois Kisakye
 - Emojis are fine but keep them natural — don't overdo it
@@ -2083,13 +2083,15 @@ export async function getAgentReplyV2(
 
     const DAY_NAMES   = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const now         = new Date()
-    const eatDate     = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
-    const eatDow      = eatDate.getDay()
-    const eatHour     = eatDate.getHours()
+    const eatDate     = new Date(now.getTime() + 3 * 60 * 60 * 1000)  // explicit UTC+3 — no locale-parse ambiguity
+    const eatDow      = eatDate.getUTCDay()
+    const eatHour     = eatDate.getUTCHours()
+    const eatMinute   = eatDate.getUTCMinutes()
     const todayHours  = allHours.find(h => h.dayOfWeek === eatDow)
-    const isOpen      = !!(todayHours?.isOpen &&
-      eatHour >= parseInt(todayHours.openTime.split(':')[0]) &&
-      eatHour <  parseInt(todayHours.closeTime.split(':')[0]))
+    const eatTotal    = eatHour * 60 + eatMinute
+    const openTotal   = todayHours ? parseInt(todayHours.openTime.split(':')[0]) * 60 + parseInt(todayHours.openTime.split(':')[1] || '0') : 0
+    const closeTotal  = todayHours ? parseInt(todayHours.closeTime.split(':')[0]) * 60 + parseInt(todayHours.closeTime.split(':')[1] || '0') : 0
+    const isOpen      = !!(todayHours?.isOpen && eatTotal >= openTotal && eatTotal < closeTotal)
     const eatDateTime = now.toLocaleString('en-GB', {
       timeZone: 'Africa/Nairobi', weekday: 'long', year: 'numeric',
       month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
