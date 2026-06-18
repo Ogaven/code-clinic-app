@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, User, Calendar, FileText, Activity, DollarSign, Folder,
-  Phone, Mail, MapPin, Edit, AlertTriangle, Clock, Plus, Trash2, Mic,
+  Phone, Mail, MapPin, Edit, AlertTriangle, Clock, Plus, Trash2, Pencil, Mic,
   MicOff, Save, ChevronRight, X, Brain, Sparkles, Loader2, Upload,
   Eye, Download, CheckCircle, XCircle, Star, Receipt, Camera, Printer
 } from 'lucide-react'
@@ -653,6 +653,8 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
   const [showAdd, setShowAdd] = useState(false)
   const [appointments, setAppointments] = useState<any[]>([])
   const [form, setForm] = useState({ serviceId: '', toothNumber: '', quantity: 1, costPerUnit: 0, discount: 0, notes: '', status: 'Planned' })
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ serviceId: '', toothNumber: '', quantity: 1, costPerUnit: 0, discount: 0, notes: '', status: 'Planned' })
 
   useEffect(() => {
     fetch(`/api-proxy/clinical/patients/${patientId}/treatment-plans`, { headers: { Authorization: `Bearer ${token}` } })
@@ -690,6 +692,24 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
       method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
     })
     setPlans(prev => prev.filter(p => p.id !== planId))
+  }
+
+  function handleStartEdit(p: any) {
+    setEditingId(p.id)
+    setEditForm({ serviceId: p.serviceId || '', toothNumber: p.toothNumber || '', quantity: p.quantity || 1, costPerUnit: p.costPerUnit || 0, discount: p.discount || 0, notes: p.notes || '', status: p.status || 'Planned' })
+  }
+
+  async function handleSaveEdit() {
+    if (!editingId) return
+    const res = await fetch(`/api-proxy/clinical/patients/${patientId}/treatment-plans/${editingId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(editForm),
+    })
+    if (res.ok) {
+      const updated = await res.json()
+      setPlans(prev => prev.map(p => p.id === editingId ? updated : p))
+    }
+    setEditingId(null)
   }
 
   const statusStyles: Record<string, string> = {
@@ -773,6 +793,53 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
               {plans.map(p => {
                 const svc = services.find(s => s.id === p.serviceId)
                 const total = (p.costPerUnit * p.quantity) * (1 - p.discount / 100)
+                const isEditing = editingId === p.id
+                const editTotal = (editForm.costPerUnit * editForm.quantity) * (1 - editForm.discount / 100)
+                if (isEditing) {
+                  return (
+                    <tr key={p.id} className="border-b border-slate-100 dark:border-white/5 bg-blue-50/30 dark:bg-blue-900/10">
+                      <td className="px-3 py-2">
+                        <input value={editForm.toothNumber} onChange={e => setEditForm(f => ({ ...f, toothNumber: e.target.value }))}
+                          className="w-16 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1" placeholder="—" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <select value={editForm.serviceId} onChange={e => {
+                          const sv = services.find(s => s.id === e.target.value)
+                          setEditForm(f => ({ ...f, serviceId: e.target.value, costPerUnit: sv?.priceUGX || f.costPerUnit }))
+                        }} className="w-full text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1">
+                          {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2">
+                        <select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                          className={cn('text-xs px-2 py-0.5 rounded-full font-semibold border-0 cursor-pointer', statusStyles[editForm.status] || 'bg-slate-100 text-slate-700')}>
+                          {['Planned','In Progress','Completed','On Hold','Cancelled'].map(s => <option key={s}>{s}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="number" min={1} value={editForm.quantity} onChange={e => setEditForm(f => ({ ...f, quantity: Number(e.target.value) }))}
+                          className="w-14 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-center" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="text" inputMode="numeric" value={editForm.costPerUnit > 0 ? editForm.costPerUnit.toLocaleString('en-US') : ''}
+                          onChange={e => { const raw = e.target.value.replace(/[^0-9]/g, ''); setEditForm(f => ({ ...f, costPerUnit: raw ? parseInt(raw, 10) : 0 })) }}
+                          className="w-24 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-right" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="number" min={0} max={100} value={editForm.discount} onChange={e => setEditForm(f => ({ ...f, discount: Number(e.target.value) }))}
+                          className="w-14 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-center" />
+                      </td>
+                      <td className="px-3 py-2 text-sm font-semibold text-slate-800 dark:text-white text-right">{formatUGX(editTotal)}</td>
+                      <td className="px-3 py-2 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-UG')}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-1">
+                          <button onClick={handleSaveEdit} className="p-1 text-emerald-500 hover:text-emerald-700"><Save size={14} /></button>
+                          <button onClick={() => setEditingId(null)} className="p-1 text-slate-400 hover:text-slate-600"><X size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                }
                 return (
                   <tr key={p.id} className="border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5">
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{p.toothNumber || '—'}</td>
@@ -789,7 +856,10 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                     <td className="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white text-right">{formatUGX(total)}</td>
                     <td className="px-4 py-3 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-UG')}</td>
                     <td className="px-4 py-3">
-                      <button onClick={() => handleDelete(p.id)} className="p-1 text-red-400 hover:text-red-600"><Trash2 size={14} /></button>
+                      <div className="flex gap-1">
+                        <button onClick={() => handleStartEdit(p)} className="p-1 text-slate-400 hover:text-slate-600"><Pencil size={14} /></button>
+                        <button onClick={() => handleDelete(p.id)} className="p-1 text-red-400 hover:text-red-600"><Trash2 size={14} /></button>
+                      </div>
                     </td>
                   </tr>
                 )

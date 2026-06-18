@@ -97,6 +97,9 @@ export default function DoctorsTab() {
   const [addForm,   setAddForm]   = useState({ firstName: '', lastName: '', email: '', phone: '', specialisation: '' })
   const addFileRef = useRef<HTMLInputElement>(null)
 
+  // Active/inactive filter for sidebar
+  const [showInactive, setShowInactive] = useState(false)
+
   // Block-time state
   const [blockedTimes, setBlockedTimes] = useState<BlockedTime[]>([])
   const [blkDate,      setBlkDate]      = useState('')
@@ -113,7 +116,7 @@ export default function DoctorsTab() {
   async function fetchDoctors() {
     setLoading(true)
     try {
-      const res  = await fetch(`${API}/doctors`, { headers: jsonH })
+      const res  = await fetch(`${API}/doctors/all`, { headers: jsonH })
       const data = await res.json()
       setDoctors(Array.isArray(data) ? data : [])
     } catch { } finally { setLoading(false) }
@@ -302,6 +305,28 @@ export default function DoctorsTab() {
     finally { setDeleting(false) }
   }
 
+  async function handleToggleActive() {
+    if (!selected) return
+    setSaving(true)
+    try {
+      const newActive = !selected.isActive
+      const res = await fetch(`${API}/doctors/${selected.id}`, {
+        method: 'PATCH', headers: jsonH,
+        body: JSON.stringify({ isActive: newActive }),
+      })
+      if (res.ok) {
+        showToast(newActive ? 'Doctor reactivated' : 'Doctor deactivated', true)
+        setSelected(prev => prev ? { ...prev, isActive: newActive } : null)
+        setDoctors(prev => prev.map(d => d.id === selected.id ? { ...d, isActive: newActive } : d))
+        window.dispatchEvent(new Event('doctor-updated'))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        showToast(d.error || 'Update failed', false)
+      }
+    } catch { showToast('Network error', false) }
+    finally { setSaving(false) }
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-full">
       <Loader2 size={28} className="animate-spin text-clinic-blue" />
@@ -313,6 +338,10 @@ export default function DoctorsTab() {
     if (list.length) acc[cat] = list
     return acc
   }, {})
+
+  const activeDoctors   = doctors.filter(d => d.isActive)
+  const inactiveCount   = doctors.filter(d => !d.isActive).length
+  const displayedDoctors = showInactive ? doctors : activeDoctors
 
   return (
     <div className="flex h-full">
@@ -445,8 +474,14 @@ export default function DoctorsTab() {
         <div className="p-4 border-b border-gray-100 dark:border-white/5">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-clinic-navy dark:text-clinic-blue">Doctors ({doctors.length})</h3>
+              <h3 className="text-sm font-bold text-clinic-navy dark:text-clinic-blue">Doctors ({activeDoctors.length})</h3>
               <p className="text-xs text-gray-400 mt-0.5">Select to edit profile & schedule</p>
+              {inactiveCount > 0 && (
+                <button onClick={() => setShowInactive(v => !v)}
+                  className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-1 underline underline-offset-2 transition-colors">
+                  {showInactive ? 'Hide inactive' : `+${inactiveCount} inactive`}
+                </button>
+              )}
             </div>
             <button onClick={() => setShowAdd(true)}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-white flex-shrink-0"
@@ -456,8 +491,8 @@ export default function DoctorsTab() {
           </div>
         </div>
         <div className="p-2 space-y-1">
-          {doctors.map(d => (
-            <div key={d.id} className="relative group">
+          {displayedDoctors.map(d => (
+            <div key={d.id} className={cn('relative group', !d.isActive && 'opacity-60')}>
               <button onClick={() => selectDoctor(d)}
                 className={cn(
                   'w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all',
@@ -474,7 +509,12 @@ export default function DoctorsTab() {
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-clinic-navy dark:text-gray-100 truncate">Dr. {d.firstName} {d.lastName}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-bold text-clinic-navy dark:text-gray-100 truncate">Dr. {d.firstName} {d.lastName}</p>
+                    {!d.isActive && (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-full font-bold flex-shrink-0">Inactive</span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-400 truncate">{d.specialisation || 'General Dentistry'}</p>
                   <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-0.5">
                     {(() => {
@@ -675,12 +715,21 @@ export default function DoctorsTab() {
             </div>
 
             {/* ─── Save button ─── */}
-            <div className="flex gap-3 pt-2">
+            <div className="flex flex-wrap gap-3 pt-2">
               <button onClick={handleSave} disabled={saving}
                 className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-white text-sm transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60"
                 style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 14px rgba(41,171,226,0.3)' }}>
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Save Changes
+              </button>
+              <button onClick={handleToggleActive} disabled={saving}
+                className={cn(
+                  'flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold border transition-all disabled:opacity-60',
+                  selected.isActive
+                    ? 'text-red-500 border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/10'
+                    : 'text-emerald-600 border-emerald-200 dark:border-emerald-900/30 hover:bg-emerald-50 dark:hover:bg-emerald-900/10',
+                )}>
+                {selected.isActive ? <><Ban size={14} /> Deactivate</> : <><Check size={14} /> Reactivate</>}
               </button>
             </div>
 

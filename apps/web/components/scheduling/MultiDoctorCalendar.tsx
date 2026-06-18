@@ -383,7 +383,7 @@ function ApptDetailModal({ appt, onClose }: { appt: Appointment; onClose: () => 
 }
 
 // ─── Doctors View ─────────────────────────────────────────────────────────────
-function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay, workingHours, resizing, onApptResizeStart, onApptResizeTouchStart, onApptDrop, onReorderColumns }: {
+function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlockClick, onSlotDragStart, onSlotDragMove, dragOverlay, workingHours, resizing, onApptResizeStart, onApptResizeTouchStart, onApptDrop, onReorderColumns, columnWidths, onToggleWide }: {
   columns:                  DoctorCol[]
   dateStr:                  string
   onBookSlot?:              (docId: string, at: Date) => void
@@ -398,6 +398,8 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
   onApptResizeTouchStart?:  (e: React.TouchEvent, appt: Appointment) => void
   onApptDrop?:              (apptId: string, targetDoctorId: string, slotIdx: number) => void
   onReorderColumns?:        (newOrder: string[]) => void
+  columnWidths?:            Record<string, 'wide' | 'normal'>
+  onToggleWide?:            (doctorId: string) => void
 }) {
   const today      = toDateStr(new Date()) === dateStr
   const TIME_W     = 56
@@ -450,10 +452,12 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
             }
           } catch {}
           const isDragOver = dragOverDocId === doctor.id
+          const isWide = columnWidths?.[doctor.id] === 'wide'
           return (
             <div key={doctor.id}
               className={cn(
-                'flex-1 min-w-[130px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 flex items-center gap-2 transition-colors',
+                'min-w-[130px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 flex items-center gap-2 transition-colors',
+                isWide ? 'flex-[2]' : 'flex-1',
                 isDragOver && 'bg-blue-50/60 dark:bg-blue-900/20 border-clinic-blue/40',
                 onReorderColumns && 'cursor-grab active:cursor-grabbing',
               )}
@@ -495,6 +499,15 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
                 <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded-full"
                   style={{ background: doctor.colour }}>{count}</span>
               )}
+              {onToggleWide && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleWide(doctor.id) }}
+                  title={isWide ? 'Slim column' : 'Expand column'}
+                  className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 transition-colors text-[11px] font-bold leading-none"
+                >
+                  {isWide ? '↙' : '↗'}
+                </button>
+              )}
             </div>
           )
         })}
@@ -519,7 +532,7 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
 
           return (
             <div key={doctor.id}
-              className="flex-1 min-w-[130px] border-r border-gray-100 dark:border-white/10 relative select-none"
+              className={cn('min-w-[130px] border-r border-gray-100 dark:border-white/10 relative select-none', columnWidths?.[doctor.id] === 'wide' ? 'flex-[2]' : 'flex-1')}
               style={{ height: `${total}px` }}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
@@ -814,6 +827,21 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     if (typeof window === 'undefined') return []
     try { return JSON.parse(localStorage.getItem('cc_doctor_order') || '[]') } catch { return [] }
   })
+
+  // ─── Column widths (wide/normal toggle, persisted in localStorage) ────────────
+  const [columnWidths, setColumnWidths] = useState<Record<string, 'wide' | 'normal'>>(() => {
+    if (typeof window === 'undefined') return {}
+    try { return JSON.parse(localStorage.getItem('cc_doctor_widths') || '{}') } catch { return {} }
+  })
+
+  function handleToggleWide(doctorId: string) {
+    setColumnWidths(prev => {
+      const value: 'wide' | 'normal' = prev[doctorId] === 'wide' ? 'normal' : 'wide'
+      const next: Record<string, 'wide' | 'normal'> = { ...prev, [doctorId]: value }
+      localStorage.setItem('cc_doctor_widths', JSON.stringify(next))
+      return next
+    })
+  }
 
   const orderedColumns = columnOrder.length > 0
     ? [...columns].sort((a, b) => {
@@ -1324,6 +1352,8 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           onApptResizeTouchStart={handleResizeTouchStart}
           onApptDrop={handleApptDrop}
           onReorderColumns={handleReorderColumns}
+          columnWidths={columnWidths}
+          onToggleWide={handleToggleWide}
         />
       )}
       {view === 'week' && (
