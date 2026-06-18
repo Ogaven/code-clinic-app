@@ -1689,6 +1689,7 @@ TOOL USE — MANDATORY RULES:
 8. APPOINTMENT QUERIES — any time the patient asks about their appointment (time, date, doctor, "when is my next appointment", "what did I book", rescheduling questions): call get_patient_appointments RIGHT NOW. NEVER answer from memory or earlier in this conversation — a receptionist may have changed the appointment since this chat started and the live DB is the only source of truth.
 9. DOCTOR AVAILABILITY — if the patient asks whether a specific doctor comes in on a certain day, or who is available today: call get_doctors_available_today. Never state a doctor's schedule from memory.
 10. PATIENT BIRTHDAY — call get_patient_info once per conversation (on the first inbound message or when you first greet the patient). If any record returns isBirthdayToday:true, open your response with a warm birthday greeting before handling their actual request.
+11. NO AVAILABILITY LOOP: check_availability is ONLY for booking requests. Never call it to answer questions about clinic hours, pricing, or services. If you already told the patient no slots exist for a requested date, say so once, offer an alternative, then drop it. If they then ask about anything else, answer THAT — do not call check_availability again or repeat the unavailability finding.
 
 BOOKING CONFIRMATION — CRITICAL:
 After book_appointment returns success:true, the "confirmation" field contains the full booking summary. You MUST output that text exactly as it appears — word for word. Do NOT paraphrase or summarise.
@@ -1773,13 +1774,14 @@ const V2_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'check_availability',
-    description: 'Get real available appointment slots. Always call this before showing times to the patient. Returns up to 5 slots with display text and ISO datetimes.',
+    description: 'Get real available appointment slots for booking. Pass date to target a specific day (e.g. tomorrow). Returns up to 5 slots with display text and ISO datetimes.',
     input_schema: {
       type: 'object' as const,
       properties: {
         serviceId: { type: 'string' as const, description: 'Service ID from search_services' },
         doctorId:  { type: 'string' as const, description: 'Doctor ID from search_doctors — omit for any available doctor' },
-        daysAhead: { type: 'number' as const, description: 'Days ahead to search, default 7' },
+        date:      { type: 'string' as const, description: 'ISO date YYYY-MM-DD for the specific day to search (e.g. "2026-06-19" for tomorrow). Omit to search from today.' },
+        daysAhead: { type: 'number' as const, description: 'Days to search from date (default 1 when date given, 7 when omitted)' },
       },
       required: ['serviceId'],
     },
@@ -1901,10 +1903,18 @@ async function executeV2Tool(
       }
 
       case 'check_availability': {
-        const serviceId = toolInput.serviceId as string
-        const doctorId  = toolInput.doctorId  as string | undefined
-        const daysAhead = (toolInput.daysAhead as number | undefined) ?? 7
-        const slots = await getAvailableSlots(serviceId, doctorId, daysAhead)
+        const serviceId   = toolInput.serviceId as string
+        const doctorId    = toolInput.doctorId  as string | undefined
+        const dateParam   = toolInput.date as string | undefined
+        let   startOffset = 0
+        if (dateParam) {
+          const eatNow   = new Date(Date.now() + 3 * 60 * 60 * 1000)
+          const todayStr = eatNow.toISOString().slice(0, 10)
+          const msPerDay = 86_400_000
+          startOffset    = Math.max(0, Math.round((new Date(dateParam + 'T00:00:00Z').getTime() - new Date(todayStr + 'T00:00:00Z').getTime()) / msPerDay))
+        }
+        const daysAhead = (toolInput.daysAhead as number | undefined) ?? (dateParam ? 1 : 7)
+        const slots = await getAvailableSlots(serviceId, doctorId, daysAhead, startOffset)
         const top5  = slots.slice(0, 5)
         shownSlots.splice(0, shownSlots.length, ...top5)
         if (top5.length === 0) {

@@ -39,7 +39,8 @@ function getWorkingHours(json: string, weekday: number): { start: string; end: s
 export async function getAvailableSlots(
   serviceId: string,
   doctorId?: string,
-  daysAhead = 7
+  daysAhead = 7,
+  startDayOffset = 0,
 ): Promise<AvailableSlot[]> {
   const service = await prisma.service.findUnique({ where: { id: serviceId } })
   if (!service) return []
@@ -47,7 +48,7 @@ export async function getAvailableSlots(
   const durationMs = service.durationMins * 60_000
   const now        = new Date()
   const minStart   = new Date(now.getTime() + 2 * 60 * 60 * 1000)  // minimum 2h lead time
-  const rangeEnd   = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000)
+  const rangeEnd   = new Date(now.getTime() + (startDayOffset + daysAhead) * 24 * 60 * 60 * 1000)
 
   // Resolve eligible doctors
   let doctors: Array<{
@@ -102,7 +103,7 @@ export async function getAvailableSlots(
 
   const slots: AvailableSlot[] = []
 
-  for (let dayOffset = 0; dayOffset < daysAhead && slots.length < 20; dayOffset++) {
+  for (let dayOffset = startDayOffset; dayOffset < startDayOffset + daysAhead && slots.length < 20; dayOffset++) {
     const dayBase   = new Date(now.getTime() + dayOffset * 24 * 60 * 60 * 1000)
     const dateStr   = toKampalaDateStr(dayBase)
     const weekday   = kampalaWeekday(dayBase)
