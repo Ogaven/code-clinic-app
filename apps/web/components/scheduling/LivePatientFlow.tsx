@@ -35,23 +35,23 @@ const STAGES = [
     color: '#14B8A6',
     bg: 'bg-teal-50 dark:bg-teal-900/10',
     badge: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
-    next: 'SESSION_COMPLETE',
-    nextLabel: 'Complete',
+    next: 'READY_CHECKOUT',
+    nextLabel: 'Ready for Checkout',
   },
   {
     key: 'CHECKOUT',
     label: 'Checkout & Billing',
-    statuses: ['SESSION_COMPLETE', 'CHECKOUT'],
+    statuses: ['READY_CHECKOUT'],
     color: '#8B5CF6',
     bg: 'bg-purple-50 dark:bg-purple-900/10',
     badge: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-    next: 'DEPARTED',
-    nextLabel: 'Departed',
+    next: 'COMPLETED',
+    nextLabel: 'Complete',
   },
 ]
 
 const ALL_ACTIVE_STATUSES = [
-  'ARRIVED', 'CHECKED_IN', 'WAITING', 'IN_OPERATORY', 'IN_CHAIR', 'WITH_PROVIDER', 'SESSION_COMPLETE', 'CHECKOUT',
+  'ARRIVED', 'CHECKED_IN', 'WAITING', 'IN_OPERATORY', 'IN_CHAIR', 'WITH_PROVIDER', 'READY_CHECKOUT', 'COMPLETED',
 ]
 
 // Elapsed time since dateStr — returns text + color based on wait
@@ -265,7 +265,7 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000, pat
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       })
-      if (newStatus === 'SESSION_COMPLETE') {
+      if (newStatus === 'READY_CHECKOUT') {
         const appt = appointments.find(a => a.id === apptId)
         if (appt) {
           const patientName = `${appt.patient.firstName} ${appt.patient.lastName}`

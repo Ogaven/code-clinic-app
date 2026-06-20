@@ -715,7 +715,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
     Completed: 'bg-green-100 text-green-800', 'On Hold': 'bg-yellow-100 text-yellow-800', Cancelled: 'bg-red-100 text-red-800',
   }
 
-  const totalCost = plans.filter(p => ['Planned','In Progress'].includes(p.status)).reduce((s, p) => s + (p.costPerUnit * p.quantity) * (1 - p.discount / 100), 0)
+  const totalCost = plans.filter(p => ['Planned','In Progress'].includes(p.status)).reduce((s, p) => s + (p.costPerUnit * p.quantity - p.discount), 0)
 
   return (
     <div className="space-y-4">
@@ -765,8 +765,8 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                 className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5" />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Discount %</label>
-              <input type="number" min={0} max={100} value={form.discount} onChange={e => setForm(f => ({ ...f, discount: Number(e.target.value) }))} className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5" />
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Discount (UGX)</label>
+              <input type="number" min={0} value={form.discount} onChange={e => setForm(f => ({ ...f, discount: Number(e.target.value) }))} className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5" />
             </div>
           </div>
           <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Notes..." className="w-full text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5 min-h-[60px] resize-none" />
@@ -782,7 +782,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
           <table className="w-full text-left">
             <thead className="bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
               <tr>
-                {['Tooth','Treatment','Status','Qty','Unit Cost','Disc%','Total','Date',''].map(h => (
+                {['Tooth','Treatment','Status','Qty','Unit Cost','Disc (UGX)','Total','Date',''].map(h => (
                   <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -790,9 +790,9 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
             <tbody>
               {plans.map(p => {
                 const svc = services.find(s => s.id === p.serviceId)
-                const total = (p.costPerUnit * p.quantity) * (1 - p.discount / 100)
+                const total = p.costPerUnit * p.quantity - p.discount
                 const isEditing = editingId === p.id
-                const editTotal = (editForm.costPerUnit * editForm.quantity) * (1 - editForm.discount / 100)
+                const editTotal = editForm.costPerUnit * editForm.quantity - editForm.discount
                 if (isEditing) {
                   return (
                     <tr key={p.id} className="border-b border-slate-100 dark:border-white/5 bg-blue-50/30 dark:bg-blue-900/10">
@@ -824,7 +824,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                           className="w-24 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-right" />
                       </td>
                       <td className="px-3 py-2">
-                        <input type="number" min={0} max={100} value={editForm.discount} onChange={e => setEditForm(f => ({ ...f, discount: Number(e.target.value) }))}
+                        <input type="number" min={0} value={editForm.discount} onChange={e => setEditForm(f => ({ ...f, discount: Number(e.target.value) }))}
                           className="w-14 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-center" />
                       </td>
                       <td className="px-3 py-2 text-sm font-semibold text-slate-800 dark:text-white text-right">{formatUGX(editTotal)}</td>
@@ -850,7 +850,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-center">{p.quantity}</td>
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-right">{formatUGX(p.costPerUnit)}</td>
-                    <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-center">{p.discount > 0 ? `${p.discount}%` : '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-center">{p.discount > 0 ? `UGX ${p.discount.toLocaleString()}` : '—'}</td>
                     <td className="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white text-right">{formatUGX(total)}</td>
                     <td className="px-4 py-3 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-UG')}</td>
                     <td className="px-4 py-3">

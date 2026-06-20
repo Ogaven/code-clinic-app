@@ -34,7 +34,8 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   READY_CHECKOUT: { label: 'Ready for Checkout',   className: 'bg-purple-100 text-purple-700' },
   COMPLETED:      { label: 'Checkout Complete',    className: 'bg-green-100 text-green-700' },
   NO_SHOW:        { label: 'Missed / No-Show',     className: 'bg-red-100 text-red-700' },
-  CANCELLED:      { label: 'Cancelled',            className: 'bg-slate-100 text-slate-400' },
+  CANCELLED:             { label: 'Cancelled',              className: 'bg-slate-100 text-slate-400' },
+  CANCELLED_RESCHEDULED: { label: 'Cancelled & Rescheduled', className: 'bg-amber-100 text-amber-700' },
 }
 
 const STATUS_NEXT: Record<string, { status: string; label: string; colour: string }> = {
@@ -66,7 +67,7 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
   const s = statusLabels[appointment.status] || statusLabels.PENDING
   const start = new Date(appointment.startAt)
   const end   = new Date(appointment.endAt)
-  const canEdit = !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(appointment.status)
+  const canEdit = !['COMPLETED', 'CANCELLED', 'CANCELLED_RESCHEDULED', 'NO_SHOW'].includes(appointment.status)
 
   async function openEdit() {
     const d = new Date(appointment!.startAt)
@@ -234,6 +235,11 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                       className="flex items-center gap-1.5 px-3 py-2 bg-red-50 text-red-700 text-xs font-semibold rounded-lg hover:bg-red-100 transition-colors disabled:opacity-60">
                       {loading === 'CANCELLED' ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />}
                       Cancel
+                    </button>
+                    <button onClick={() => changeStatus('CANCELLED_RESCHEDULED')} disabled={!!loading}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-700 text-xs font-semibold rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-60">
+                      {loading === 'CANCELLED_RESCHEDULED' ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />}
+                      Cancel &amp; Rescheduled
                     </button>
                   </div>
                 )}

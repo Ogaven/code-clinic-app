@@ -416,8 +416,8 @@ export default function LiveFlowPage() {
           })}
 
           {/* Cancelled / No Shows */}
-          {appts.filter(a => ['CANCELLED', 'NO_SHOW'].includes(a.status)).length > 0 && (() => {
-            const cancelled = appts.filter(a => ['CANCELLED', 'NO_SHOW'].includes(a.status))
+          {appts.filter(a => ['CANCELLED', 'CANCELLED_RESCHEDULED', 'NO_SHOW'].includes(a.status)).length > 0 && (() => {
+            const cancelled = appts.filter(a => ['CANCELLED', 'CANCELLED_RESCHEDULED', 'NO_SHOW'].includes(a.status))
             return (
               <div className="mt-4">
                 <div className="flex items-center gap-3 px-2 mb-2">
@@ -437,7 +437,7 @@ export default function LiveFlowPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-gray-500 dark:text-white/40 truncate">{appt.patient?.firstName} {appt.patient?.lastName}</p>
-                          <p className="text-[10px] text-gray-400">{time} · {appt.status === 'CANCELLED' ? 'Cancelled' : 'No Show'}</p>
+                          <p className="text-[10px] text-gray-400">{time} · {appt.status === 'CANCELLED' ? 'Cancelled' : appt.status === 'CANCELLED_RESCHEDULED' ? 'Cancelled & Rescheduled' : 'No Show'}</p>
                         </div>
                       </div>
                     )

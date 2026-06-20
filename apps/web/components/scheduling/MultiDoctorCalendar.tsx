@@ -105,7 +105,8 @@ const STATUS_RING: Record<string, string> = {
   READY_CHECKOUT: '#A855F7', // purple
   COMPLETED:      '#10B981', // green
   NO_SHOW:        '#EF4444', // red
-  CANCELLED:      '#9CA3AF', // gray
+  CANCELLED:             '#9CA3AF', // gray
+  CANCELLED_RESCHEDULED: '#F59E0B', // amber
 }
 
 // Pulse animation statuses (patient is actively in clinic)
@@ -117,7 +118,8 @@ const STATUS_BADGE: Record<string, { label: string; bg: string; color: string }>
   CANCELLED:   { label: 'Cancelled',   bg: '#FEF2F2', color: '#EF4444' },
   COMPLETED:   { label: 'Completed',   bg: '#EFF6FF', color: '#3B82F6' },
   NO_SHOW:     { label: 'No Show',     bg: '#F9FAFB', color: '#9CA3AF' },
-  RESCHEDULED: { label: 'Rescheduled', bg: '#FEFCE8', color: '#EAB308' },
+  RESCHEDULED:           { label: 'Rescheduled',              bg: '#FEFCE8', color: '#EAB308' },
+  CANCELLED_RESCHEDULED: { label: 'Cancelled & Rescheduled',  bg: '#FFFBEB', color: '#D97706' },
 }
 
 // ─── NowLine ──────────────────────────────────────────────────────────────────
