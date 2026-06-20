@@ -10,14 +10,15 @@ interface Doctor   { id: string; firstName: string; lastName: string; colour: st
 interface Patient  { id: string; firstName: string; lastName: string; phone: string }
 
 interface Props {
-  open:           boolean
-  onClose:        () => void
-  prefillDoctorId?: string
-  prefillStartAt?:  Date
-  onBooked?:      () => void
+  open:             boolean
+  onClose:          () => void
+  prefillDoctorId?:  string
+  prefillStartAt?:   Date
+  prefillPatient?:   Patient
+  onBooked?:         () => void
 }
 
-export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillStartAt, onBooked }: Props) {
+export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillStartAt, prefillPatient, onBooked }: Props) {
   const token   = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
   const API     = '/api-proxy'
@@ -62,6 +63,12 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
       setSelTime(`${h}:${m}`)
     } else {
       setSelDate(new Date().toISOString().slice(0, 10))
+    }
+
+    // Pre-fill patient from follow-up booking
+    if (prefillPatient) {
+      setSelPatient(prefillPatient)
+      setPatientQ(`${prefillPatient.firstName} ${prefillPatient.lastName}`)
     }
 
     fetch(`${API}/services`, { headers }).then((r) => r.json()).then((d) => setServices(Array.isArray(d) ? d : [])).catch(() => {})

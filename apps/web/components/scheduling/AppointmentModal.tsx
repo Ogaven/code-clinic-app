@@ -21,6 +21,7 @@ interface Props {
   appointment: Appointment | null
   onClose: () => void
   onStatusChange?: (id: string, status: string) => void
+  onBookFollowUp?: (patient: { id: string; firstName: string; lastName: string; phone: string }, doctorId?: string) => void
   userRole?: string
 }
 
@@ -45,7 +46,7 @@ const STATUS_NEXT: Record<string, { status: string; label: string; colour: strin
   READY_CHECKOUT: { status: 'COMPLETED',      label: 'Complete Checkout',    colour: 'bg-green-600' },
 }
 
-export default function AppointmentModal({ appointment, onClose, onStatusChange, userRole = 'ADMIN' }: Props) {
+export default function AppointmentModal({ appointment, onClose, onStatusChange, onBookFollowUp, userRole = 'ADMIN' }: Props) {
   const [loading,      setLoading]      = useState<string | null>(null)
   const [editMode,     setEditMode]     = useState(false)
   const [doctors,      setDoctors]      = useState<any[]>([])
@@ -233,6 +234,18 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                       className="flex items-center gap-1.5 px-3 py-2 bg-red-50 text-red-700 text-xs font-semibold rounded-lg hover:bg-red-100 transition-colors disabled:opacity-60">
                       {loading === 'CANCELLED' ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />}
                       Cancel
+                    </button>
+                  </div>
+                )}
+
+                {onBookFollowUp && (
+                  <div className="pt-2 border-t border-gray-100 dark:border-white/8">
+                    <button
+                      onClick={() => { onBookFollowUp(appointment.patient, appointment.doctor.id); onClose() }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
+                      style={{ background: 'linear-gradient(135deg,#0d9488,#0891b2)', boxShadow: '0 4px 12px rgba(8,145,178,0.25)' }}>
+                      <CalendarDays size={14} />
+                      Book Next Appointment
                     </button>
                   </div>
                 )}

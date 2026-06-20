@@ -40,6 +40,7 @@ export default function AppointmentsPage() {
   const [drawerOpen,      setDrawerOpen]      = useState(false)
   const [prefillDoctorId, setPrefillDoctorId] = useState<string | undefined>()
   const [prefillStartAt,  setPrefillStartAt]  = useState<Date | undefined>()
+  const [prefillPatient,  setPrefillPatient]  = useState<{ id: string; firstName: string; lastName: string; phone: string } | undefined>()
   const [selectedAppt,    setSelectedAppt]    = useState<any | null>(null)
   const [refreshKey,      setRefreshKey]      = useState(0)
 
@@ -123,9 +124,10 @@ export default function AppointmentsPage() {
 
       <BookingDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => { setDrawerOpen(false); setPrefillPatient(undefined) }}
         prefillDoctorId={prefillDoctorId}
         prefillStartAt={prefillStartAt}
+        prefillPatient={prefillPatient}
         onBooked={() => { setRefreshKey(k => k + 1); setDrawerOpen(false) }}
       />
 
@@ -134,6 +136,13 @@ export default function AppointmentsPage() {
           appointment={selectedAppt}
           onClose={() => setSelectedAppt(null)}
           onStatusChange={() => { setRefreshKey(k => k + 1); setSelectedAppt(null) }}
+          onBookFollowUp={(patient, doctorId) => {
+            setSelectedAppt(null)
+            setPrefillPatient(patient)
+            setPrefillDoctorId(doctorId)
+            setPrefillStartAt(undefined)
+            setDrawerOpen(true)
+          }}
           userRole="RECEPTIONIST"
         />
       )}
