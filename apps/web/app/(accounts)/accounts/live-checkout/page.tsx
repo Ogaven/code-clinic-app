@@ -302,7 +302,7 @@ function PatientCard({
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
-const CHECKOUT_STATUSES = ['SESSION_COMPLETE', 'CHECKOUT']
+const CHECKOUT_STATUSES = ['READY_CHECKOUT', 'COMPLETED', 'SESSION_COMPLETE', 'CHECKOUT']
 
 export default function LiveCheckoutPage() {
   const [patients,  setPatients]  = useState<CheckoutPatient[]>([])
