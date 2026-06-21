@@ -397,4 +397,47 @@ router.get('/calendar-dates', requireAuth, async (req, res) => {
   }
 })
 
+// ─── GET /receptionist/daily-reports ─────────────────────────
+router.get('/daily-reports', requireAuth, async (_req, res) => {
+  try {
+    const reports = await (prisma as any).dailyPatientReport.findMany({
+      orderBy: { reportDate: 'desc' },
+      take: 90,
+    })
+    res.json(reports)
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch daily reports' })
+  }
+})
+
+// ─── GET /receptionist/daily-report?date=YYYY-MM-DD ──────────
+router.get('/daily-report', requireAuth, async (req, res) => {
+  try {
+    const dateParam = req.query.date as string | undefined
+    const dateStr   = dateParam ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
+    const reportDate = new Date(dateStr + 'T00:00:00.000Z')
+    const report = await (prisma as any).dailyPatientReport.findUnique({ where: { reportDate } })
+    res.json(report || null)
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch daily report' })
+  }
+})
+
+// ─── POST /receptionist/daily-report ─────────────────────────
+router.post('/daily-report', requireAuth, async (req, res) => {
+  try {
+    const { date, newPatients, oldPatients, reviewPatients, notes } = req.body
+    if (!date) return res.status(400).json({ error: 'date required (YYYY-MM-DD)' })
+    const reportDate = new Date(date + 'T00:00:00.000Z')
+    const report = await (prisma as any).dailyPatientReport.upsert({
+      where:  { reportDate },
+      create: { reportDate, newPatients: newPatients ?? 0, oldPatients: oldPatients ?? 0, reviewPatients: reviewPatients ?? 0, notes: notes ?? null, submittedById: req.user!.id },
+      update: { newPatients: newPatients ?? 0, oldPatients: oldPatients ?? 0, reviewPatients: reviewPatients ?? 0, notes: notes ?? null, submittedById: req.user!.id },
+    })
+    res.json(report)
+  } catch {
+    res.status(500).json({ error: 'Failed to save daily report' })
+  }
+})
+
 export default router

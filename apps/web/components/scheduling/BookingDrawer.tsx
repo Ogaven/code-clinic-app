@@ -57,12 +57,13 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
     setError(null)
     // Pre-fill date/time from slot click
     if (prefillStartAt) {
-      setSelDate(prefillStartAt.toISOString().slice(0, 10))
-      const h = String(prefillStartAt.getHours()).padStart(2, '0')
-      const m = String(prefillStartAt.getMinutes()).padStart(2, '0')
+      const eat = new Date(prefillStartAt.getTime() + 3 * 60 * 60 * 1000)
+      setSelDate(eat.toISOString().slice(0, 10))
+      const h = String(eat.getUTCHours()).padStart(2, '0')
+      const m = String(eat.getUTCMinutes()).padStart(2, '0')
       setSelTime(`${h}:${m}`)
     } else {
-      setSelDate(new Date().toISOString().slice(0, 10))
+      setSelDate(new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10))
     }
 
     // Pre-fill patient from follow-up booking

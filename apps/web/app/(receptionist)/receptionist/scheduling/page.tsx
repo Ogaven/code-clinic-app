@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CalendarDays, Users, Stethoscope, Plug, Settings, X, Upload } from 'lucide-react'
+import { CalendarDays, Users, Stethoscope, Plug, Settings, X, Upload, ClipboardList } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MultiDoctorCalendar  from '@/components/scheduling/MultiDoctorCalendar'
 import BookingDrawer        from '@/components/scheduling/BookingDrawer'
@@ -14,16 +14,18 @@ import SpecialDaysTab       from '@/components/scheduling/SpecialDaysTab'
 import ImportTab            from '@/components/scheduling/ImportTab'
 import ConnectionsTab       from '@/components/scheduling/ConnectionsTab'
 import BookingSettingsTab   from '@/components/scheduling/BookingSettingsTab'
+import DailyReportTab       from '@/components/scheduling/DailyReportTab'
 
-type Tab = 'calendar' | 'doctors' | 'services' | 'connections' | 'settings'
+type Tab = 'calendar' | 'doctors' | 'services' | 'connections' | 'settings' | 'report'
 type SettingsSub = 'working-hours' | 'doctors-schedule' | 'special-days' | 'booking'
 
 const TABS: { key: Tab; label: string; Icon: React.ElementType }[] = [
   { key: 'calendar',    label: 'Calendar',    Icon: CalendarDays },
   { key: 'doctors',     label: 'Doctors',     Icon: Users        },
   { key: 'services',    label: 'Services',    Icon: Stethoscope  },
-  { key: 'connections', label: 'Connections', Icon: Plug         },
-  { key: 'settings',    label: 'Settings',    Icon: Settings     },
+  { key: 'connections', label: 'Connections', Icon: Plug          },
+  { key: 'settings',    label: 'Settings',    Icon: Settings      },
+  { key: 'report',      label: 'Daily Report', Icon: ClipboardList },
 ]
 
 const SETTINGS_SUBS: { key: SettingsSub; label: string }[] = [
@@ -97,6 +99,7 @@ export default function AppointmentsPage() {
         {tab === 'doctors'     && <DoctorsTab />}
         {tab === 'services'    && <ServicesTab />}
         {tab === 'connections' && <ConnectionsTab />}
+        {tab === 'report'      && <div className="flex-1 overflow-y-auto"><DailyReportTab /></div>}
         {tab === 'settings' && (
           <div className="flex flex-col flex-1 overflow-hidden">
             <div className="flex-shrink-0 flex gap-1 border-b border-gray-100 dark:border-white/8 px-4 bg-white dark:bg-white/3">

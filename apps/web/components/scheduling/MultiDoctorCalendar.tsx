@@ -35,7 +35,9 @@ interface Props {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function timeToTop(dateStr: string): number {
   const d    = new Date(dateStr)
-  const mins = d.getHours() * 60 + d.getMinutes() - HOUR_START * 60
+  // Use EAT (UTC+3) so position is correct regardless of browser timezone
+  const eat  = new Date(d.getTime() + 3 * 60 * 60 * 1000)
+  const mins = eat.getUTCHours() * 60 + eat.getUTCMinutes() - HOUR_START * 60
   return Math.max(0, (mins / 30) * SLOT_HEIGHT)
 }
 function durationToHeight(mins: number): number {
@@ -51,7 +53,7 @@ function toDateStr(d: Date): string {
   // always shows the correct Uganda day (not UTC day, which can lag by 3 hours).
   return new Date(d.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
-function sameDay(a: Date, b: Date) { return a.toDateString() === b.toDateString() }
+function sameDay(a: Date, b: Date) { return toDateStr(a) === toDateStr(b) }
 
 function getWeekDates(anchor: Date): Date[] {
   const day = anchor.getDay()
@@ -132,7 +134,8 @@ function NowLine() {
   useEffect(() => {
     function update() {
       const now  = new Date()
-      const mins = now.getHours() * 60 + now.getMinutes() - HOUR_START * 60
+      const eat  = new Date(now.getTime() + 3 * 60 * 60 * 1000)
+      const mins = eat.getUTCHours() * 60 + eat.getUTCMinutes() - HOUR_START * 60
       if (mins < 0 || mins > (HOUR_END - HOUR_START) * 60) { setTop(null); return }
       setTop((mins / 30) * SLOT_HEIGHT)
     }
@@ -1234,15 +1237,15 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
     setDate(d)
   }
 
-  // Title
+  // Title — always in EAT so it matches the data being shown
   let title = ''
   if (view === 'doctors') {
-    title = date.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    title = date.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
   } else if (view === 'week') {
     const wk = getWeekDates(date)
-    title = `${wk[0].toLocaleDateString('en-UG', { day: 'numeric', month: 'short' })} – ${wk[5].toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })}`
+    title = `${wk[0].toLocaleDateString('en-UG', { day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })} – ${wk[5].toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' })}`
   } else {
-    title = date.toLocaleDateString('en-UG', { month: 'long', year: 'numeric' })
+    title = date.toLocaleDateString('en-UG', { month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
   }
 
   return (

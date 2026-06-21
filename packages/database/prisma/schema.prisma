@@ -931,3 +931,18 @@ model StockItem {
 
   @@map("stock_items")
 }
+
+model DailyPatientReport {
+  id              String   @id @default(cuid())
+  reportDate      DateTime
+  newPatients     Int      @default(0)
+  oldPatients     Int      @default(0)
+  reviewPatients  Int      @default(0)
+  notes           String?
+  submittedById   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([reportDate])
+  @@map("daily_patient_reports")
+}
