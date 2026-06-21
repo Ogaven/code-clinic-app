@@ -70,10 +70,14 @@ export default function SettingsPage() {
         const data = await res.json()
         const updated = { ...user, avatarUrl: data.avatarUrl }
         setUser(updated)
+        setPreview(data.avatarUrl)
         localStorage.setItem('cc_user', JSON.stringify(updated))
+        localStorage.setItem('cc_avatar', data.avatarUrl)
+        window.dispatchEvent(new CustomEvent('cc-avatar-updated', { detail: data.avatarUrl }))
         showToast('Profile photo updated!', 'success')
       } else {
-        showToast('Upload failed. Try again.', 'error')
+        const err = await res.json().catch(() => ({}))
+        showToast(err.error || 'Upload failed. Try again.', 'error')
       }
     } catch {
       showToast('Upload failed. Check connection.', 'error')
