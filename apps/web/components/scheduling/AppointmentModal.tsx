@@ -26,7 +26,8 @@ interface Props {
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  PENDING:        { label: 'Scheduled',           className: 'bg-slate-100 text-slate-700' },
+  IMPORTED:       { label: 'Needs Review',         className: 'bg-amber-100 text-amber-700' },
+  PENDING:        { label: 'Scheduled',            className: 'bg-slate-100 text-slate-700' },
   CONFIRMED:      { label: 'Confirmed',            className: 'bg-blue-100 text-blue-700' },
   CHECKED_IN:     { label: 'Checked In',           className: 'bg-yellow-100 text-yellow-700' },
   IN_CHAIR:       { label: 'In Chair',             className: 'bg-orange-100 text-orange-700' },
@@ -39,6 +40,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
 }
 
 const STATUS_NEXT: Record<string, { status: string; label: string; colour: string }> = {
+  IMPORTED:       { status: 'CONFIRMED',      label: 'Confirm',              colour: 'bg-blue-600' },
   PENDING:        { status: 'CONFIRMED',      label: 'Confirm',              colour: 'bg-blue-600' },
   CONFIRMED:      { status: 'CHECKED_IN',     label: 'Check In',             colour: 'bg-yellow-500' },
   CHECKED_IN:     { status: 'IN_CHAIR',       label: 'Seat in Chair',        colour: 'bg-orange-500' },
