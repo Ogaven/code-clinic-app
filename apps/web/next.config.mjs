@@ -28,6 +28,10 @@ const nextConfig = {
   async headers() {
     return [
       {
+        source: '/(.*)',
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      },
+      {
         // Content-hashed static assets — safe to cache for 1 year
         source: '/_next/static/:path*',
         headers: [
