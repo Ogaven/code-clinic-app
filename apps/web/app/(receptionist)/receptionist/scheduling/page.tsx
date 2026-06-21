@@ -128,7 +128,7 @@ export default function AppointmentsPage() {
         prefillDoctorId={prefillDoctorId}
         prefillStartAt={prefillStartAt}
         prefillPatient={prefillPatient}
-        onBooked={() => { setRefreshKey(k => k + 1); setDrawerOpen(false) }}
+        onBooked={() => setDrawerOpen(false)}
       />
 
       {selectedAppt && (

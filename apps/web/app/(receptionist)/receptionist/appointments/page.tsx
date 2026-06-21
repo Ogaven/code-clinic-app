@@ -124,6 +124,15 @@ function exportCSV(appts: Appt[]) {
 
 const LIMIT = 25
 
+function getTokenRole(): string {
+  try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+    if (!token) return ''
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return payload.role || ''
+  } catch { return '' }
+}
+
 export default function AppointmentsPage() {
   const router = useRouter()
 
@@ -147,6 +156,9 @@ export default function AppointmentsPage() {
   const [menuOpen,    setMenuOpen]    = useState<string | null>(null)
   const [cancelling,  setCancelling]  = useState(false)
   const [refreshKey,  setRefreshKey]  = useState(0)
+  const [deleteConfirm, setDeleteConfirm] = useState<Appt | null>(null)
+  const [deleting,    setDeleting]    = useState(false)
+  const isAdmin = getTokenRole() === 'ADMIN'
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -210,6 +222,22 @@ export default function AppointmentsPage() {
       })
       if (res.ok) { setSelected(null); setRefreshKey(k => k + 1) }
     } finally { setCancelling(false) }
+  }
+
+  async function handleDelete(id: string) {
+    setDeleting(true)
+    const token = (typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null) ?? ''
+    try {
+      const res = await fetch(`/api-proxy/scheduling/appointments/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        setDeleteConfirm(null)
+        setSelected(null)
+        setRefreshKey(k => k + 1)
+      }
+    } finally { setDeleting(false) }
   }
 
   const totalPages = Math.ceil(total / LIMIT)
@@ -381,6 +409,12 @@ export default function AppointmentsPage() {
                                 <button onClick={() => { handleCancel(appt.id); setMenuOpen(null) }}
                                   className="w-full text-left px-4 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                                   Cancel
+                                </button>
+                              )}
+                              {isAdmin && (
+                                <button onClick={() => { setDeleteConfirm(appt); setMenuOpen(null) }}
+                                  className="w-full text-left px-4 py-2 text-xs font-semibold text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-t border-gray-100 dark:border-white/8">
+                                  Delete
                                 </button>
                               )}
                             </div>
@@ -591,6 +625,39 @@ export default function AppointmentsPage() {
         onClose={() => setDrawerOpen(false)}
         onBooked={() => { setDrawerOpen(false); setRefreshKey(k => k + 1) }}
       />
+
+      {/* ── Delete confirmation dialog (admin only) ───────────────────────────── */}
+      {deleteConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setDeleteConfirm(null)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4 pointer-events-none">
+            <div className="pointer-events-auto w-full max-w-sm bg-white dark:bg-[#0f1729] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 p-6 space-y-4">
+              <h3 className="text-base font-black text-gray-800 dark:text-white">Delete Appointment?</h3>
+              <p className="text-sm text-gray-500 dark:text-white/60">
+                This will permanently delete the appointment for{' '}
+                <span className="font-semibold text-gray-700 dark:text-white/80">
+                  {deleteConfirm.patient.firstName} {deleteConfirm.patient.lastName}
+                </span>{' '}
+                on <span className="font-semibold">{fmtDate(deleteConfirm.startAt)}</span>. This cannot be undone.
+              </p>
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => handleDelete(deleteConfirm.id)}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                  {deleting ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {deleting ? 'Deleting…' : 'Yes, Delete'}
+                </button>
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="px-4 py-2.5 text-sm font-semibold text-gray-600 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/8 rounded-xl transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

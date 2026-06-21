@@ -447,6 +447,18 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
   res.json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })
 
+// ─── Delete appointment (admin only) ─────────────────────────────────────────
+router.delete('/appointments/:id', requireAuth, async (req, res) => {
+  if (req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Admin only' }); return }
+  try {
+    await prisma.appointment.delete({ where: { id: req.params.id } })
+    res.json({ message: 'Appointment deleted' })
+  } catch (e: any) {
+    if (e?.code === 'P2025') { res.status(404).json({ error: 'Appointment not found' }); return }
+    res.status(500).json({ error: 'Failed to delete appointment' })
+  }
+})
+
 // ─── Check-in WhatsApp notification ──────────────────────────────────────────
 router.post('/appointments/:id/checkin-notify', requireAuth, async (req, res) => {
   try {

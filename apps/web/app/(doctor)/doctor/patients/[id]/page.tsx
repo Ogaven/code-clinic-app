@@ -670,6 +670,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(form),
     })
+    if (!res.ok) return
     const plan = await res.json()
     setPlans(p => [plan, ...p])
     setShowAdd(false)
@@ -755,7 +756,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
               <input type="number" min={1} value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: Number(e.target.value) }))} className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5" />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Cost per unit (UGX)</label>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Cost per unit (UGX) <span className="text-slate-400 font-normal">— optional</span></label>
               <input
                 type="text" inputMode="numeric"
                 value={form.costPerUnit > 0 ? form.costPerUnit.toLocaleString('en-US') : ''}
@@ -763,7 +764,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                   const raw = e.target.value.replace(/[^0-9]/g, '')
                   setForm(f => ({ ...f, costPerUnit: raw ? parseInt(raw, 10) : 0 }))
                 }}
-                placeholder="e.g. 35,000"
+                placeholder="0 (free / no charge)"
                 className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5" />
             </div>
             <div>
@@ -821,7 +822,8 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                           className="w-14 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-center" />
                       </td>
                       <td className="px-3 py-2">
-                        <input type="text" inputMode="numeric" value={editForm.costPerUnit > 0 ? editForm.costPerUnit.toLocaleString('en-US') : ''}
+                        <input type="text" inputMode="numeric" placeholder="0"
+                          value={editForm.costPerUnit > 0 ? editForm.costPerUnit.toLocaleString('en-US') : ''}
                           onChange={e => { const raw = e.target.value.replace(/[^0-9]/g, ''); setEditForm(f => ({ ...f, costPerUnit: raw ? parseInt(raw, 10) : 0 })) }}
                           className="w-24 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-right" />
                       </td>
