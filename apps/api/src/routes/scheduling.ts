@@ -304,6 +304,26 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
     },
   })
 
+  // Field-level audit entry so the audit log shows old vs new time/doctor
+  if (rawStart || req.body.doctorId) {
+    prisma.auditLog.create({
+      data: {
+        userId:     req.user!.id,
+        action:     'RESCHEDULE',
+        resource:   'appointments',
+        resourceId: req.params.id,
+        metadata:   JSON.stringify({
+          oldStartAt:  existing.startAt,
+          newStartAt:  updated.startAt,
+          oldEndAt:    existing.endAt,
+          newEndAt:    updated.endAt,
+          oldDoctorId: existing.doctorId,
+          newDoctorId: updated.doctorId,
+        }),
+      },
+    }).catch(() => {})
+  }
+
   // Auto-sync to Google Calendar (fire-and-forget)
   syncAppointmentToGCal(updated).catch(() => {})
 
@@ -448,10 +468,17 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
 })
 
 // ─── Delete appointment (admin only) ─────────────────────────────────────────
-router.delete('/appointments/:id', requireAuth, async (req, res) => {
+router.delete('/appointments/:id', requireAuth, auditLog('appointments'), async (req, res) => {
   if (req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Admin only' }); return }
   try {
-    await prisma.appointment.delete({ where: { id: req.params.id } })
+    await prisma.$transaction(async (tx) => {
+      // Nullify invoice FK first to avoid constraint error on appointments with invoices
+      await tx.invoice.updateMany({
+        where: { appointmentId: req.params.id },
+        data:  { appointmentId: null },
+      })
+      await tx.appointment.delete({ where: { id: req.params.id } })
+    })
     res.json({ message: 'Appointment deleted' })
   } catch (e: any) {
     if (e?.code === 'P2025') { res.status(404).json({ error: 'Appointment not found' }); return }

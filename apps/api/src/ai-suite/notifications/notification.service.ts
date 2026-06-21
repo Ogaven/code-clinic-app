@@ -3,6 +3,10 @@ import { prisma } from '../../lib/prisma'
 
 export type NotificationType = 'booked' | 'rescheduled' | 'cancelled' | 'reminder'
 
+function toProperCase(name: string): string {
+  return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()
+}
+
 export async function sendAppointmentNotification(
   appointmentId: string,
   type: NotificationType,
@@ -35,7 +39,7 @@ export async function sendAppointmentNotification(
     switch (type) {
       case 'booked':
         message =
-          `Hi ${p.firstName}! 😊 Your appointment has been confirmed:\n\n` +
+          `Hi ${toProperCase(p.firstName)}! 😊 Your appointment has been confirmed:\n\n` +
           `📅 ${dayDate}\n` +
           `⏰ ${time}\n` +
           `👨‍⚕️ ${doc}\n` +
@@ -45,7 +49,7 @@ export async function sendAppointmentNotification(
         break
       case 'rescheduled':
         message =
-          `Hi ${p.firstName}! Your appointment has been rescheduled to:\n\n` +
+          `Hi ${toProperCase(p.firstName)}! Your appointment has been rescheduled to:\n\n` +
           `📅 ${dayDate}\n` +
           `⏰ ${time}\n` +
           `👨‍⚕️ ${doc}\n\n` +
@@ -53,12 +57,12 @@ export async function sendAppointmentNotification(
         break
       case 'cancelled':
         message =
-          `Hi ${p.firstName}, your appointment on ${shortDate} has been cancelled. ` +
+          `Hi ${toProperCase(p.firstName)}, your appointment on ${shortDate} has been cancelled. ` +
           `Reply to rebook anytime 😊`
         break
       case 'reminder':
         message =
-          `Hi ${p.firstName}! 👋 Just a reminder that you have an appointment tomorrow:\n\n` +
+          `Hi ${toProperCase(p.firstName)}! 👋 Just a reminder that you have an appointment tomorrow:\n\n` +
           `📅 ${dayDate} at ${time}\n` +
           `👨‍⚕️ ${doc} — ${svc}\n` +
           `📍 Code Clinic, Kamwokya\n\n` +

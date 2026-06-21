@@ -46,7 +46,11 @@ function fmtTime(dateStr: string) {
     timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hour12: true,
   })
 }
-function toDateStr(d: Date): string { return d.toISOString().slice(0, 10) }
+function toDateStr(d: Date): string {
+  // Convert to EAT (UTC+3) before extracting the date string, so the calendar
+  // always shows the correct Uganda day (not UTC day, which can lag by 3 hours).
+  return new Date(d.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
 function sameDay(a: Date, b: Date) { return a.toDateString() === b.toDateString() }
 
 function getWeekDates(anchor: Date): Date[] {
