@@ -6,8 +6,8 @@ import path from 'path'
 
 // ── Local fallback when R2 is not configured ───────────────────────────────
 function isR2Configured(): boolean {
-  const id  = process.env.CLOUDFLARE_R2_ACCOUNT_ID
-  const key = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
+  const id  = process.env.R2_ACCOUNT_ID
+  const key = process.env.R2_ACCESS_KEY_ID
   return !!(id && id !== '...' && key && key !== '...')
 }
 
@@ -23,14 +23,15 @@ const API_URL = process.env.API_URL ||
 // ── R2 client (only used when configured) ─────────────────────────────────
 const s3 = new S3Client({
   region: 'auto',
-  endpoint: `https://${process.env.CLOUDFLARE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  endpoint: process.env.R2_ENDPOINT
+    || `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
   credentials: {
-    accessKeyId:     process.env.CLOUDFLARE_R2_ACCESS_KEY_ID  ?? '',
-    secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ?? '',
+    accessKeyId:     process.env.R2_ACCESS_KEY_ID      ?? '',
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY  ?? '',
   },
 })
 
-const BUCKET = process.env.CLOUDFLARE_R2_BUCKET || 'codeclinic'
+const BUCKET = process.env.R2_BUCKET_NAME || process.env.R2_BUCKET || 'codeclinic'
 
 // ── Exports ────────────────────────────────────────────────────────────────
 
@@ -101,5 +102,5 @@ export async function deleteFile(key: string): Promise<void> {
 
 export function getPublicUrl(key: string): string {
   if (key.startsWith('local:')) return `${API_URL}/uploads/${key.replace('local:', '')}`
-  return `${process.env.CLOUDFLARE_R2_PUBLIC_URL}/${key}`
+  return `${process.env.R2_PUBLIC_URL}/${key}`
 }
