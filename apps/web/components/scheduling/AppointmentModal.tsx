@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { X, Phone, Clock, Stethoscope, User, Check, XCircle, AlertTriangle, Loader2, ExternalLink, Edit2, Save, CalendarDays } from 'lucide-react'
+import { X, Phone, Clock, Stethoscope, User, Check, XCircle, AlertTriangle, Loader2, ExternalLink, Edit2, Save, CalendarDays, RotateCcw } from 'lucide-react'
 import { cn, formatPhone, formatUGX } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
 
@@ -228,6 +228,13 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                         </button>
                       )
                     })()}
+                    {appointment.status === 'CONFIRMED' && (
+                      <button onClick={() => changeStatus('PENDING')} disabled={!!loading}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors disabled:opacity-60">
+                        {loading === 'PENDING' ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                        Revert to Pending
+                      </button>
+                    )}
                     <button onClick={() => changeStatus('NO_SHOW')} disabled={!!loading}
                       className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-60">
                       {loading === 'NO_SHOW' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}

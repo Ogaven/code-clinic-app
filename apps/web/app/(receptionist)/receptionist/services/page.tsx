@@ -25,10 +25,10 @@ const SERVICE_COLORS = [
 
 // ── Service Form ─────────────────────────────────────────────
 function ServiceForm({ svc, onSave, onCancel }: { svc?: any; onSave: (d: any) => void; onCancel: () => void }) {
-  const [name,     setName]     = useState(svc?.name     || '')
+  const [name,     setName]     = useState(svc?.name        || '')
   const [desc,     setDesc]     = useState(svc?.description || '')
-  const [duration, setDuration] = useState(svc?.duration  || 30)
-  const [price,    setPrice]    = useState(svc?.price     || 0)
+  const [duration, setDuration] = useState(svc?.durationMins || 30)
+  const [price,    setPrice]    = useState(svc?.priceUGX    || 0)
   const [colour,   setColour]   = useState(svc?.colour    || '#29ABE2')
   const [active,   setActive]   = useState(svc?.isActive  !== false)
   const [saving,   setSaving]   = useState(false)
@@ -36,7 +36,7 @@ function ServiceForm({ svc, onSave, onCancel }: { svc?: any; onSave: (d: any) =>
   async function save() {
     if (!name.trim()) return
     setSaving(true)
-    await onSave({ name: name.trim(), description: desc.trim(), duration: Number(duration), price: Number(price), colour, isActive: active })
+    await onSave({ name: name.trim(), description: desc.trim(), durationMins: Number(duration), priceUGX: Number(price), colour, isActive: active })
     setSaving(false)
   }
 

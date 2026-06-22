@@ -44,7 +44,6 @@ export default function AppointmentsPage() {
   const [prefillStartAt,  setPrefillStartAt]  = useState<Date | undefined>()
   const [prefillPatient,  setPrefillPatient]  = useState<{ id: string; firstName: string; lastName: string; phone: string } | undefined>()
   const [selectedAppt,    setSelectedAppt]    = useState<any | null>(null)
-  const [refreshKey,      setRefreshKey]      = useState(0)
 
   function handleBookSlot(doctorId: string, startAt: Date) {
     setPrefillDoctorId(doctorId || undefined)
@@ -91,7 +90,6 @@ export default function AppointmentsPage() {
       <div className="flex-1 overflow-hidden flex flex-col">
         {tab === 'calendar' && (
           <MultiDoctorCalendar
-            key={refreshKey}
             onBookSlot={handleBookSlot}
             onClickAppointment={setSelectedAppt}
           />
@@ -138,7 +136,7 @@ export default function AppointmentsPage() {
         <AppointmentModal
           appointment={selectedAppt}
           onClose={() => setSelectedAppt(null)}
-          onStatusChange={() => { setRefreshKey(k => k + 1); setSelectedAppt(null) }}
+          onStatusChange={() => { window.dispatchEvent(new Event('appointment-updated')); setSelectedAppt(null) }}
           onBookFollowUp={(patient, doctorId) => {
             setSelectedAppt(null)
             setPrefillPatient(patient)

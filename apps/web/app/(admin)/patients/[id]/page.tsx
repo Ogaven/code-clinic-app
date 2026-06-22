@@ -1304,8 +1304,17 @@ function ActivityTab({ patientId, token }: { patientId: string; token: string | 
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────
 
+function formatDobAge(dob: string) {
+  const birth = new Date(dob)
+  const now   = new Date()
+  const totalMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth()) - (now.getDate() < birth.getDate() ? 1 : 0)
+  const years  = Math.floor(totalMonths / 12)
+  const months = totalMonths % 12
+  const agePart = totalMonths < 12 ? `${totalMonths} mo` : (years < 3 && months > 0 ? `${years} yr ${months} mo` : `${years} yrs`)
+  return `${birth.toLocaleDateString('en-UG')} (${agePart})`
+}
+
 function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab: ActiveTab) => void }) {
-  const age = patient.dob ? Math.floor((Date.now() - new Date(patient.dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)) : null
   const totalSpent = (patient.invoices || []).reduce((s: number, inv: any) => s + inv.paidUGX, 0)
   const outstanding = (patient.invoices || []).reduce((s: number, inv: any) => s + (inv.totalUGX - inv.paidUGX), 0)
   const lastVisit = patient.appointments?.slice().sort((a: any, b: any) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())[0]
@@ -1373,7 +1382,7 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
       {/* Patient details */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {[
-          { label: 'Date of Birth', value: patient.dob ? `${new Date(patient.dob).toLocaleDateString('en-UG')}${age ? ` (age ${age})` : ''}` : '—' },
+          { label: 'Date of Birth', value: patient.dob ? formatDobAge(patient.dob) : '—' },
           { label: 'Phone', value: formatPhone(patient.phone) },
           { label: 'Email', value: patient.email || '—' },
           { label: 'Gender', value: patient.gender || '—' },
@@ -1636,7 +1645,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
                   </button>
                 </div>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  {patient.dob && <span className="text-sm text-slate-500">{new Date(patient.dob).toLocaleDateString('en-UG')}</span>}
+                  {patient.dob && <span className="text-sm text-slate-500">{formatDobAge(patient.dob)}</span>}
                   <span className="text-slate-300">·</span>
                   <a href={`tel:${patient.phone}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1">
                     <Phone size={12} /> {formatPhone(patient.phone)}

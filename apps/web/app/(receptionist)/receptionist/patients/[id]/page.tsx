@@ -217,7 +217,15 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
 
   const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
 
-  const age = patient.dob ? new Date().getFullYear() - new Date(patient.dob).getFullYear() : null
+  function formatDobAge(dob: string) {
+    const birth = new Date(dob)
+    const now   = new Date()
+    const totalMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth()) - (now.getDate() < birth.getDate() ? 1 : 0)
+    const years  = Math.floor(totalMonths / 12)
+    const months = totalMonths % 12
+    const agePart = totalMonths < 12 ? `${totalMonths} mo` : (years < 3 && months > 0 ? `${years} yr ${months} mo` : `${years} yrs`)
+    return `${birth.toLocaleDateString('en-UG')} (${agePart})`
+  }
 
   return (
     <div className="space-y-4">
@@ -375,8 +383,7 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
               {[
                 { label: 'Full Name',  value: `${patient.firstName} ${patient.lastName}` },
                 { label: 'Gender',     value: patient.gender || 'N/A' },
-                { label: 'Age',        value: age ? `${age} years` : 'N/A' },
-                { label: 'Date of Birth', value: patient.dob ? new Date(patient.dob).toLocaleDateString('en-UG') : 'N/A' },
+                { label: 'Date of Birth', value: patient.dob ? formatDobAge(patient.dob) : 'N/A' },
               ].map(f => (
                 <div key={f.label} className="bg-gray-50 dark:bg-white/5 rounded-xl px-3 py-2.5">
                   <p className="text-[10px] font-black text-gray-400 dark:text-white/40 uppercase tracking-wider mb-0.5">{f.label}</p>

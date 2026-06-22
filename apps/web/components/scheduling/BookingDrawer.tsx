@@ -291,6 +291,11 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
                 </div>
               </div>
             ))}
+            {selService && selService.priceUGX > 0 && (
+              <p className="text-xs font-semibold text-clinic-blue dark:text-blue-400 mt-1.5">
+                Fee: UGX {selService.priceUGX.toLocaleString()}
+              </p>
+            )}
           </div>
 
           {/* ── Doctor ── */}
