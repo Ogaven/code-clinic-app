@@ -74,7 +74,7 @@ export default function ServicesTab() {
   }
 
   async function handleSave() {
-    if (!form.name || !form.priceUGX) { showToast('Name and price are required', false); return }
+    if (!form.name) { showToast('Service name is required', false); return }
     setSaving(true)
     try {
       const url    = editId ? `${API}/services/${editId}` : `${API}/services`
@@ -272,7 +272,7 @@ export default function ServicesTab() {
                     <p className="text-xs font-bold text-gray-800 dark:text-gray-100 leading-tight mb-1">{s.name}</p>
                     <p className="text-[10px] text-gray-400 dark:text-gray-500">{s.durationMins} min</p>
                     <p className="text-xs font-bold mt-1" style={{ color: s.colour }}>
-                      {formatUGX(s.priceUGX)}
+                      {s.priceUGX > 0 ? formatUGX(s.priceUGX) : <span className="text-gray-400 dark:text-gray-500 font-normal">No charge</span>}
                     </p>
                     {s.vatApplicable && <span className="text-[9px] text-gray-300 dark:text-gray-600 font-medium">+VAT</span>}
                   </div>

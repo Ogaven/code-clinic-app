@@ -40,6 +40,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
   const [selDuration, setSelDuration] = useState(30)
   const [notes,       setNotes]       = useState('')
   const [showNewPt,   setShowNewPt]   = useState(false)
+  const [svcSearch,   setSvcSearch]   = useState('')
 
   // New patient form
   const [newFirst,    setNewFirst]    = useState('')
@@ -54,6 +55,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
   // On open — load services & doctors
   useEffect(() => {
     if (!open) return
+    setSvcSearch('')
     setError(null)
     // Pre-fill date/time from slot click
     if (prefillStartAt) {
@@ -151,8 +153,11 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
     }, 300)
   }
 
-  // Group services by category
-  const categories = [...new Set(services.map((s) => s.category || 'General'))].sort()
+  // Group services by category, filtered by search
+  const filteredServices = svcSearch.trim()
+    ? services.filter(s => s.name.toLowerCase().includes(svcSearch.toLowerCase().trim()))
+    : services
+  const categories = [...new Set(filteredServices.map((s) => s.category || 'General'))].sort()
 
   const inputCls = "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue focus:bg-white dark:focus:bg-gray-600 transition-all"
 
@@ -271,11 +276,18 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
           {/* ── Service ── */}
           <div>
             <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Service</label>
+            <input
+              type="text"
+              value={svcSearch}
+              onChange={e => setSvcSearch(e.target.value)}
+              placeholder="Search services…"
+              className="w-full mb-2 px-3 py-2 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+            />
             {categories.map((cat) => (
               <div key={cat} className="mb-2">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{cat}</p>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {services.filter((s) => (s.category || 'General') === cat && s.isActive !== false).map((s) => (
+                  {filteredServices.filter((s) => (s.category || 'General') === cat && s.isActive !== false).map((s) => (
                     <button key={s.id} onClick={() => setSelService(s)}
                       className={cn(
                         'p-2.5 rounded-xl border-2 text-left transition-all',

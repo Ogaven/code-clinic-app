@@ -584,49 +584,20 @@ function DoctorsView({ columns, dateStr, onBookSlot, onClickAppointment, onBlock
                 <BlockedBlock key={b.id} block={b}
                   onRemove={onBlockClick ? () => onBlockClick(doctor.id, b.id) : undefined} />
               ))}
-              {/* Appointments — max 2 visible columns, +N pill for overflow */}
-              {(() => {
-                const grouped = groupOverlapping(appointments)
-                const visible = grouped.filter(a => a.colIndex < 2)
-                const hidden  = grouped.filter(a => a.colIndex >= 2)
-
-                // One "+N" chip per unique start-minute for hidden appointments
-                const seen = new Set<string>()
-                const pills: React.ReactElement[] = []
-                hidden.forEach(a => {
-                  const key = a.startAt.slice(0, 16)
-                  if (!seen.has(key)) {
-                    seen.add(key)
-                    const count = hidden.filter(h => h.startAt.slice(0, 16) === key).length
-                    pills.push(
-                      <div key={`more-${key}`}
-                        className="absolute z-20 right-1 text-[10px] font-bold text-white rounded-full px-1.5 py-0.5 shadow-sm pointer-events-none"
-                        style={{ top: timeToTop(a.startAt) + 2, background: '#64748B' }}>
-                        +{count}
-                      </div>
-                    )
-                  }
-                })
-
-                return (
-                  <>
-                    {visible.map((a) => (
-                      <ApptBlock
-                        key={a.id}
-                        appt={a}
-                        colIndex={a.colIndex}
-                        totalCols={Math.min(a.totalCols, 2)}
-                        onClick={() => onClickAppointment?.(a)}
-                        resizingEndAt={resizing?.apptId === a.id ? resizing.currentEndAt : undefined}
-                        onResizeStart={onApptResizeStart ? (e) => onApptResizeStart(e, a) : undefined}
-                        onResizeTouchStart={onApptResizeTouchStart ? (e) => onApptResizeTouchStart(e, a) : undefined}
-                        isDraggable={!!onApptDrop}
-                      />
-                    ))}
-                    {pills}
-                  </>
-                )
-              })()}
+              {/* Appointments — show all, no overflow cap */}
+              {groupOverlapping(appointments).map((a) => (
+                <ApptBlock
+                  key={a.id}
+                  appt={a}
+                  colIndex={a.colIndex}
+                  totalCols={a.totalCols}
+                  onClick={() => onClickAppointment?.(a)}
+                  resizingEndAt={resizing?.apptId === a.id ? resizing.currentEndAt : undefined}
+                  onResizeStart={onApptResizeStart ? (e) => onApptResizeStart(e, a) : undefined}
+                  onResizeTouchStart={onApptResizeTouchStart ? (e) => onApptResizeTouchStart(e, a) : undefined}
+                  isDraggable={!!onApptDrop}
+                />
+              ))}
               {/* Now line */}
               {today && <NowLine />}
               {/* Closed day overlay */}
@@ -793,15 +764,12 @@ function MonthView({ year, month, appointments, onDateClick, workingHours }: {
               )}>
                 {date.getDate()}
               </div>
-              {dayAppts.slice(0, 3).map((a) => (
+              {dayAppts.map((a) => (
                 <div key={a.id} className="text-[10px] font-medium truncate px-1.5 py-0.5 rounded-md mb-0.5"
                   style={{ background: a.service.colour + '22', color: a.service.colour }}>
                   {a.patient.firstName} · {a.service.name.split(' ')[0]}
                 </div>
               ))}
-              {dayAppts.length > 3 && (
-                <div className="text-[10px] text-gray-400 font-medium mt-0.5">+{dayAppts.length - 3} more</div>
-              )}
               {isClosed && (
                 <div className="absolute bottom-0 left-0 right-0 text-center text-[8px] font-bold text-red-400 bg-red-50 dark:bg-red-900/10 py-0.5">
                   CLOSED

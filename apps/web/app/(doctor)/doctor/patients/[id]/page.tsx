@@ -1515,16 +1515,42 @@ export default function PatientProfilePage() {
     const dob    = patient.dob ? new Date(patient.dob).toLocaleDateString('en-UG') : 'N/A'
     const phone  = patient.phone || 'N/A'
     const origin = window.location.origin
-    const res    = await fetch(`/api-proxy/clinical/patients/${id}/treatment-notes`, { headers: { Authorization: `Bearer ${token}` } })
-    const raw    = res.ok ? await res.json() : []
-    const notes: any[] = Array.isArray(raw) ? raw : []
+    const hdrs   = { Authorization: `Bearer ${token}` }
+    const [notesRes, plansRes, svcsRes] = await Promise.all([
+      fetch(`/api-proxy/clinical/patients/${id}/treatment-notes`, { headers: hdrs }),
+      fetch(`/api-proxy/clinical/patients/${id}/treatment-plans`,  { headers: hdrs }),
+      fetch('/api-proxy/services',                                  { headers: hdrs }),
+    ])
+    const notes: any[]   = notesRes.ok ? await notesRes.json() : []
+    const plansAll: any[]= plansRes.ok ? await plansRes.json() : []
+    const svcsAll: any[] = svcsRes.ok  ? await svcsRes.json()  : []
+    const svcMap: Record<string,string> = Object.fromEntries(svcsAll.map((s: any) => [s.id, s.name]))
+    const plans = plansAll.filter((p: any) => ['Planned','In Progress'].includes(p.status))
+
     const notesHtml = notes.map((note: any) => {
       const date   = new Date(note.createdAt).toLocaleString('en-UG')
       const author = note.author ? `Dr ${note.author.firstName} ${note.author.lastName}` : ''
       const body   = (note.content || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       return `<div class="note"><div class="note-date">${date}${author ? ` &bull; <span class="note-author">${author}</span>` : ''}</div><div class="note-content">${body}</div></div>`
     }).join('')
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Patient Notes — ${name}</title>
+
+    const planRows = plans.map((p: any) => {
+      const total = (p.costPerUnit * p.quantity) - (p.discount || 0)
+      return `<tr>
+        <td>${p.toothNumber || '—'}</td>
+        <td>${svcMap[p.serviceId] || '—'}</td>
+        <td><span class="badge ${p.status === 'In Progress' ? 'badge-ip' : 'badge-pl'}">${p.status}</span></td>
+        <td class="num">${p.quantity}</td>
+        <td class="num">${p.costPerUnit > 0 ? 'UGX ' + p.costPerUnit.toLocaleString() : '—'}</td>
+        <td class="num">${p.discount > 0 ? 'UGX ' + (p.discount).toLocaleString() : '—'}</td>
+        <td class="num bold">${total > 0 ? 'UGX ' + total.toLocaleString() : '—'}</td>
+      </tr>`
+    }).join('')
+    const planHtml = plans.length > 0
+      ? `<table class="plan-table"><thead><tr><th>Tooth</th><th>Procedure</th><th>Status</th><th>Qty</th><th>Unit Cost</th><th>Discount</th><th>Total</th></tr></thead><tbody>${planRows}</tbody></table>`
+      : '<p class="empty">No active treatment plan items.</p>'
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Patient Record — ${name}</title>
 <style>
 body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;padding:24px}
 .header{text-align:center;border-bottom:2px solid #1A237E;padding-bottom:16px;margin-bottom:24px}
@@ -1532,14 +1558,23 @@ body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;padding:24
 .patient-info h2{font-size:18px;font-weight:700;margin:0 0 6px;color:#1A237E}
 .patient-info p{font-size:12px;color:#555;margin:2px 0}
 .section-title{font-size:12px;font-weight:700;color:#1A237E;text-transform:uppercase;letter-spacing:.5px;margin:20px 0 10px;border-bottom:1px solid #e0e0e0;padding-bottom:4px}
+.plan-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px}
+.plan-table th{background:#f0f4ff;color:#1A237E;font-weight:700;padding:6px 8px;text-align:left;border:1px solid #d0d8f0}
+.plan-table td{padding:5px 8px;border:1px solid #e0e0e0;vertical-align:middle}
+.plan-table tr:nth-child(even) td{background:#fafafa}
+.num{text-align:right}.bold{font-weight:700}
+.badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;white-space:nowrap}
+.badge-pl{background:#dbeafe;color:#1d4ed8}.badge-ip{background:#fef3c7;color:#92400e}
 .note{border:1px solid #e0e0e0;border-radius:8px;padding:12px 16px;margin-bottom:12px;page-break-inside:avoid}
 .note-date{font-size:11px;color:#888;margin-bottom:6px}.note-author{color:#1A237E;font-weight:600}
 .note-content{font-size:13px;line-height:1.6;white-space:pre-wrap}
 .empty{color:#aaa;font-size:13px;font-style:italic}
 .footer{text-align:center;font-size:10px;color:#555;margin-top:32px;border-top:1px solid #e0e0e0;padding-top:12px}
 </style></head><body>
-<div class="header"><img src="${origin}/logo.png" alt="Code Clinic" style="height:44px;width:auto;display:block;margin:0 auto 10px"><div style="font-size:12px;color:#555">Patient Treatment Notes</div></div>
+<div class="header"><img src="${origin}/logo.png" alt="Code Clinic" style="height:44px;width:auto;display:block;margin:0 auto 10px"><div style="font-size:12px;color:#555">Patient Record</div></div>
 <div class="patient-info"><h2>${name}</h2><p>Date of Birth: ${dob}</p><p>Phone: ${phone}</p></div>
+<div class="section-title">Treatment Plan — Active Items (${plans.length})</div>
+${planHtml}
 <div class="section-title">Treatment Notes (${notes.length})</div>
 ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 <div class="footer">Code Clinic, Kiira Road, Kamwokya &bull; +256 394 836 298</div>
