@@ -158,7 +158,7 @@ export default function AppointmentsPage() {
   const [refreshKey,  setRefreshKey]  = useState(0)
   const [deleteConfirm, setDeleteConfirm] = useState<Appt | null>(null)
   const [deleting,    setDeleting]    = useState(false)
-  const isAdmin = getTokenRole() === 'ADMIN'
+  const [isAdmin,     setIsAdmin]     = useState(false)
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -167,6 +167,8 @@ export default function AppointmentsPage() {
     clearTimeout(searchTimer.current!)
     searchTimer.current = setTimeout(() => { setSearch(val); setPage(1) }, 350)
   }
+
+  useEffect(() => { setIsAdmin(getTokenRole().toUpperCase() === 'ADMIN') }, [])
 
   // Reset page when filter-type controls change
   useEffect(() => { setPage(1) }, [startDate, endDate, statusFilter, search])

@@ -1509,7 +1509,7 @@ export default function PatientProfilePage() {
   const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [toggling, setToggling] = useState(false)
 
-  const handlePrint = async () => {
+  const handlePrint = async (mode: 'print' | 'download' = 'print') => {
     if (!patient) return
     const name   = `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'Patient'
     const dob    = patient.dob ? new Date(patient.dob).toLocaleDateString('en-UG') : 'N/A'
@@ -1580,8 +1580,19 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 <div class="footer">Code Clinic, Kiira Road, Kamwokya &bull; +256 394 836 298</div>
 <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>
 </body></html>`
-    const w = window.open('', '_blank', 'width=800,height=900')
-    if (w) { w.document.write(html); w.document.close() }
+    if (mode === 'download') {
+      const dlHtml = html.replace(/<script>[\s\S]*?<\/script>/, '')
+      const blob = new Blob([dlHtml], { type: 'text/html;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${name.replace(/\s+/g, '-')}-TreatmentPlan.html`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } else {
+      const w = window.open('', '_blank', 'width=800,height=900')
+      if (w) { w.document.write(html); w.document.close() }
+    }
   }
 
   async function toggleActive() {
@@ -1741,11 +1752,17 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
                 </div>
               </div>
             </div>
-            {/* Print button — always visible regardless of active tab */}
-            <button onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 dark:text-white/70 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 transition-all self-end mb-2">
-              <Printer size={14} /> Print Notes
-            </button>
+            {/* Print + Download buttons — always visible regardless of active tab */}
+            <div className="flex gap-2 self-end mb-2">
+              <button onClick={() => handlePrint('print')}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 dark:text-white/70 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 transition-all">
+                <Printer size={14} /> Print Notes
+              </button>
+              <button onClick={() => handlePrint('download')}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 dark:text-white/70 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 transition-all">
+                <Download size={14} /> Download
+              </button>
+            </div>
           </div>
         </div>
       </div>
