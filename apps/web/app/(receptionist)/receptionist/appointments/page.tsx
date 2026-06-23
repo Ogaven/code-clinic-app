@@ -126,7 +126,15 @@ const LIMIT = 25
 
 function getTokenRole(): string {
   try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+    if (typeof window === 'undefined') return ''
+    // cc_user is stored at login and contains role directly — prefer it
+    const ccUser = localStorage.getItem('cc_user')
+    if (ccUser) {
+      const u = JSON.parse(ccUser)
+      if (u?.role) return u.role
+    }
+    // Fallback: decode JWT
+    const token = localStorage.getItem('cc_token')
     if (!token) return ''
     const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
     return payload.role || ''

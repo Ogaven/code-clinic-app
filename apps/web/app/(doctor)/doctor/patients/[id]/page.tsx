@@ -1546,8 +1546,9 @@ export default function PatientProfilePage() {
         <td class="num bold">${total > 0 ? 'UGX ' + total.toLocaleString() : '—'}</td>
       </tr>`
     }).join('')
+    const grandTotal = plans.reduce((sum: number, p: any) => sum + ((p.costPerUnit * p.quantity) - (p.discount || 0)), 0)
     const planHtml = plans.length > 0
-      ? `<table class="plan-table"><thead><tr><th>Tooth</th><th>Procedure</th><th>Status</th><th>Qty</th><th>Unit Cost</th><th>Discount</th><th>Total</th></tr></thead><tbody>${planRows}</tbody></table>`
+      ? `<table class="plan-table"><thead><tr><th>Tooth</th><th>Procedure</th><th>Status</th><th>Qty</th><th>Unit Cost</th><th>Discount</th><th>Total</th></tr></thead><tbody>${planRows}</tbody><tfoot><tr><td colspan="6" class="bold" style="text-align:right;background:#f0f4ff;color:#1A237E">Grand Total</td><td class="num bold" style="background:#f0f4ff;color:#1A237E">UGX ${grandTotal.toLocaleString()}</td></tr></tfoot></table>`
       : '<p class="empty">No active treatment plan items.</p>'
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Patient Record — ${name}</title>
