@@ -1584,6 +1584,25 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
     } finally { setToggling(false) }
   }
 
+  async function handleDeletePatient() {
+    setDeletingPatient(true)
+    setDeletePatientError('')
+    try {
+      const res = await fetch(`/api-proxy/patients/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (res.ok) {
+        router.push('/patients')
+      } else {
+        setDeletePatientError(data.error || 'Failed to delete patient')
+      }
+    } catch {
+      setDeletePatientError('Network error')
+    } finally { setDeletingPatient(false) }
+  }
+
   function openEdit() {
     setEditForm({
       firstName: patient.firstName || '',
@@ -1712,6 +1731,13 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
                         : 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20')}>
                     {toggling ? '...' : patient.isActive ? 'Deactivate' : 'Reactivate'}
                   </button>
+                  {user.role === 'ADMIN' && (
+                    <button
+                      onClick={() => { setDeletePatientOpen(true); setDeletePatientError('') }}
+                      className="text-xs font-bold px-3 py-1.5 rounded-lg transition-colors text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 border border-red-200 dark:border-red-800/40">
+                      Delete Patient
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {patient.dob && <span className="text-sm text-slate-500">{formatDobAge(patient.dob)}</span>}
@@ -1877,6 +1903,48 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
             </div>
           </div>
         </div>
+      )}
+
+      {/* Delete Patient Confirmation Dialog */}
+      {deletePatientOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => !deletingPatient && setDeletePatientOpen(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4 pointer-events-none">
+            <div className="pointer-events-auto w-full max-w-sm bg-white dark:bg-[#0f1729] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 p-6 space-y-4">
+              <h3 className="text-base font-black text-red-700 dark:text-red-400">Permanently Delete Patient?</h3>
+              <p className="text-sm text-gray-500 dark:text-white/60">
+                This will permanently delete{' '}
+                <span className="font-semibold text-gray-700 dark:text-white/80">
+                  {patient?.firstName} {patient?.lastName}
+                </span>{' '}
+                and all their records. This cannot be undone.
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                Only patients with no appointments and no treatment records can be deleted. Use Deactivate for all others.
+              </p>
+              {deletePatientError && (
+                <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 rounded-xl px-3 py-2">
+                  {deletePatientError}
+                </p>
+              )}
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={handleDeletePatient}
+                  disabled={deletingPatient}
+                  className="flex-1 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                  {deletingPatient ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {deletingPatient ? 'Deleting…' : 'Yes, Delete Permanently'}
+                </button>
+                <button
+                  onClick={() => setDeletePatientOpen(false)}
+                  disabled={deletingPatient}
+                  className="px-4 py-2.5 text-sm font-semibold text-gray-600 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/8 rounded-xl transition-colors disabled:opacity-60">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

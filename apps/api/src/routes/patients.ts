@@ -636,6 +636,16 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
 router.delete('/:id', requireAuth, adminAndReceptionist, auditLog('patients'), async (req, res) => {
   try {
     const id = req.params.id
+    // Safety check — refuse deletion if patient has appointments or treatment records
+    const [apptCount, planCount] = await Promise.all([
+      prisma.appointment.count({ where: { patientId: id } }),
+      prisma.treatmentPlan.count({ where: { patientId: id } }),
+    ])
+    if (apptCount > 0 || planCount > 0) {
+      res.status(409).json({
+        error: `Cannot delete — patient has ${apptCount} appointment(s) and ${planCount} treatment record(s). Deactivate instead.`,
+      }); return
+    }
     await prisma.$transaction(async (tx) => {
       // Null out optional patient FKs
       await tx.nurtureLog.updateMany({ where: { patientId: id }, data: { patientId: null } })

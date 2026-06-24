@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Loader2, Save, X, Check, Pencil, Trash2, Upload, Image as ImageIcon } from 'lucide-react'
+import { Plus, Loader2, Save, X, Check, Pencil, Trash2, Upload, Image as ImageIcon, GitMerge } from 'lucide-react'
 import { cn, formatUGX } from '@/lib/utils'
 
 interface Service {
@@ -44,6 +44,9 @@ export default function ServicesTab() {
   const [form,        setForm]        = useState(emptyForm())
   const [deleteTarget, setDeleteTarget] = useState<Service | null>(null)
   const [deleting,    setDeleting]    = useState(false)
+  const [mergeSource,  setMergeSource]  = useState<Service | null>(null)
+  const [mergeTargetId, setMergeTargetId] = useState('')
+  const [merging,      setMerging]      = useState(false)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [photoFile,   setPhotoFile]   = useState<File | null>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
@@ -122,6 +125,23 @@ export default function ServicesTab() {
     }
   }
 
+  async function confirmMerge() {
+    if (!mergeSource || !mergeTargetId) return
+    setMerging(true)
+    try {
+      const res = await fetch(`${API}/services/${mergeSource.id}/merge`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ targetServiceId: mergeTargetId }),
+      })
+      const data = await res.json()
+      if (!res.ok) { showToast(data.error || 'Merge failed', false) }
+      else { showToast('Services merged — all appointments updated', true); fetchServices() }
+    } catch { showToast('Network error', false) } finally {
+      setMerging(false); setMergeSource(null); setMergeTargetId('')
+    }
+  }
+
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok }); setTimeout(() => setToast(null), 3000)
   }
@@ -188,6 +208,53 @@ export default function ServicesTab() {
                 className="flex-1 py-2.5 text-sm font-bold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
                 {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merge Confirmation Modal */}
+      {mergeSource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 border border-gray-100 dark:border-white/10 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <GitMerge size={18} className="text-blue-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 dark:text-white text-sm">Merge Service</h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500">All appointments + treatment plans will be reassigned</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Merging</p>
+              <p className="text-sm font-semibold text-gray-800 dark:text-white">{mergeSource.name}</p>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">Merge into *</label>
+              <select
+                value={mergeTargetId}
+                onChange={e => setMergeTargetId(e.target.value)}
+                className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                <option value="">— select target service —</option>
+                {services.filter(s => s.id !== mergeSource.id).map(s => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.category})</option>
+                ))}
+              </select>
+            </div>
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              <strong>Warning:</strong> "{mergeSource.name}" will be permanently deleted after merging.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => { setMergeSource(null); setMergeTargetId('') }}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl transition-colors">
+                Cancel
+              </button>
+              <button onClick={confirmMerge} disabled={merging || !mergeTargetId}
+                className="flex-1 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                {merging ? <Loader2 size={14} className="animate-spin" /> : <GitMerge size={14} />}
+                Merge
               </button>
             </div>
           </div>
@@ -261,6 +328,11 @@ export default function ServicesTab() {
                           className="p-1 rounded-lg text-gray-400 hover:text-clinic-blue hover:bg-blue-50 dark:hover:bg-clinic-blue/10 transition-colors"
                           title="Edit">
                           <Pencil size={12} />
+                        </button>
+                        <button onClick={() => { setMergeSource(s); setMergeTargetId('') }}
+                          className="p-1 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+                          title="Merge into…">
+                          <GitMerge size={12} />
                         </button>
                         <button onClick={() => setDeleteTarget(s)}
                           className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"

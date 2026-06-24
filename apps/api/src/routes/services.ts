@@ -118,6 +118,27 @@ router.delete('/:id', requireAuth, adminOnly, async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to delete service' }) }
 })
 
+// POST /services/:id/merge — merge source service into target, updating all appointments + treatment plans (admin only)
+router.post('/:id/merge', requireAuth, adminOnly, async (req, res) => {
+  const sourceId = req.params.id
+  const { targetServiceId } = req.body as { targetServiceId?: string }
+  if (!targetServiceId) { res.status(400).json({ error: 'targetServiceId is required' }); return }
+  if (sourceId === targetServiceId) { res.status(400).json({ error: 'Cannot merge a service into itself' }); return }
+  try {
+    const target = await prisma.service.findUnique({ where: { id: targetServiceId } })
+    if (!target) { res.status(404).json({ error: 'Target service not found' }); return }
+    await prisma.$transaction([
+      prisma.appointment.updateMany({ where: { serviceId: sourceId }, data: { serviceId: targetServiceId } }),
+      prisma.treatmentPlan.updateMany({ where: { serviceId: sourceId }, data: { serviceId: targetServiceId } }),
+      prisma.service.delete({ where: { id: sourceId } }),
+    ])
+    res.json({ message: 'Services merged', targetId: targetServiceId })
+  } catch (e: any) {
+    if (e?.code === 'P2025') { res.status(404).json({ error: 'Source service not found' }); return }
+    res.status(500).json({ error: 'Failed to merge services' })
+  }
+})
+
 // POST /services/:id/photo — upload service icon/photo
 router.post('/:id/photo', requireAuth, adminOnly, uploadLimiter, upload.single('photo'), async (req, res) => {
   try {

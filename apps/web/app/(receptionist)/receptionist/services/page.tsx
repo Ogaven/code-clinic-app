@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Stethoscope, Plus, Edit2, Trash2, Save, X,
-  CheckCircle2, AlertCircle, Clock, DollarSign,
+  CheckCircle2, AlertCircle, Clock, DollarSign, GitMerge,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -96,11 +96,14 @@ function ServiceForm({ svc, onSave, onCancel }: { svc?: any; onSave: (d: any) =>
 // ── Main Page ────────────────────────────────────────────────
 export default function ServicesPage() {
   const API = '/api-proxy'
-  const [services, setServices] = useState<any[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [showAdd,  setShowAdd]  = useState(false)
-  const [editSvc,  setEditSvc]  = useState<any>(null)
-  const [toast,    setToast]    = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
+  const [services,     setServices]     = useState<any[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [showAdd,      setShowAdd]      = useState(false)
+  const [editSvc,      setEditSvc]      = useState<any>(null)
+  const [toast,        setToast]        = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
+  const [mergeSource,  setMergeSource]  = useState<any>(null)
+  const [mergeTargetId, setMergeTargetId] = useState('')
+  const [merging,      setMerging]      = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
@@ -132,6 +135,18 @@ export default function ServicesPage() {
     } catch { showToast('Network error', 'err') }
   }
 
+  async function mergeService(sourceId: string, targetServiceId: string) {
+    setMerging(true)
+    try {
+      const res = await fetch(`${API}/services/${sourceId}/merge`, {
+        method: 'POST', headers: authH, body: JSON.stringify({ targetServiceId }),
+      })
+      const data = await res.json()
+      if (res.ok) { showToast('Services merged — all appointments updated', 'ok'); setMergeSource(null); setMergeTargetId(''); fetchAll() }
+      else showToast(data.error || 'Merge failed', 'err')
+    } catch { showToast('Network error', 'err') } finally { setMerging(false) }
+  }
+
   async function deleteService(id: string) {
     if (!confirm('Delete this service?')) return
     try {
@@ -144,6 +159,48 @@ export default function ServicesPage() {
   return (
     <div className="p-5 max-w-4xl mx-auto space-y-5">
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* Merge modal */}
+      {mergeSource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 max-w-sm w-full border border-gray-100 dark:border-white/10 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <GitMerge size={18} className="text-blue-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 dark:text-white text-sm">Merge Service</h3>
+                <p className="text-xs text-gray-400">All appointments + treatment plans will be reassigned</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Merging</p>
+              <p className="text-sm font-semibold text-gray-800 dark:text-white">{mergeSource.name}</p>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">Merge into *</label>
+              <select value={mergeTargetId} onChange={e => setMergeTargetId(e.target.value)}
+                className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                <option value="">— select target service —</option>
+                {services.filter(s => s.id !== mergeSource.id).map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <p className="text-xs text-amber-600">
+              <strong>Warning:</strong> "{mergeSource.name}" will be permanently deleted after merging.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => { setMergeSource(null); setMergeTargetId('') }}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100 rounded-xl transition-colors">Cancel</button>
+              <button onClick={() => mergeService(mergeSource.id, mergeTargetId)} disabled={merging || !mergeTargetId}
+                className="flex-1 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-60 flex items-center justify-center gap-2">
+                {merging ? 'Merging…' : <><GitMerge size={14} /> Merge</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -188,6 +245,11 @@ export default function ServicesPage() {
                       <button onClick={() => setEditSvc(s)}
                         className="w-7 h-7 rounded-lg flex items-center justify-center bg-gray-100 dark:bg-white/10 hover:bg-cyan-100 dark:hover:bg-cyan-900/30 transition-colors">
                         <Edit2 size={12} className="text-gray-500 dark:text-white/50" />
+                      </button>
+                      <button onClick={() => { setMergeSource(s); setMergeTargetId('') }}
+                        title="Merge into…"
+                        className="w-7 h-7 rounded-lg flex items-center justify-center bg-gray-100 dark:bg-white/10 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors">
+                        <GitMerge size={12} className="text-gray-500 dark:text-white/50" />
                       </button>
                       <button onClick={() => deleteService(s.id)}
                         className="w-7 h-7 rounded-lg flex items-center justify-center bg-gray-100 dark:bg-white/10 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors">
