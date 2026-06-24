@@ -16,7 +16,7 @@ import TimelineTab from '@/components/patients/TimelineTab'
 
 type Surface = 'buccal' | 'lingual' | 'occlusal' | 'mesial' | 'distal'
 type SurfaceStatus = 'Healthy' | 'Caries' | 'Planned Treatment' | 'Amalgam' | 'Composite' | 'Gold' | 'Sealant'
-type ToothCondition = 'Missing' | 'Implant' | 'Root Canal' | 'Crown' | 'Fracture' | 'To be Extracted' | 'Impacted' | 'Mobile' | 'Supraerupted' | 'Bridge Abutment' | 'Pontic' | 'Denture' | 'Caries'
+type ToothCondition = 'Missing' | 'Implant' | 'Root Canal' | 'Crown' | 'Fracture' | 'To be Extracted' | 'Impacted' | 'Mobile' | 'Supraerupted' | 'Bridge Abutment' | 'Pontic' | 'Denture' | 'Caries' | 'Retained Roots' | 'Erosion' | 'Abrasions' | 'Abfractions'
 type PerioSite = 'db' | 'b' | 'mb' | 'dl' | 'l' | 'ml'
 
 interface TrackedCondition { id: string; condition: ToothCondition }
@@ -52,6 +52,7 @@ const childQ4 = ['85','84','83','82','81']
 const conditionTools: ToothCondition[] = [
   'Missing','Implant','Root Canal','Crown','Fracture','To be Extracted',
   'Impacted','Mobile','Supraerupted','Bridge Abutment','Pontic','Denture',
+  'Retained Roots','Erosion','Abrasions','Abfractions',
 ]
 const surfaceTools: SurfaceStatus[] = ['Healthy','Caries','Planned Treatment','Amalgam','Composite','Gold','Sealant']
 
@@ -1363,6 +1364,22 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
           <p className="text-sm text-red-700 dark:text-red-400">{patient.medicalNotesEncrypted}</p>
         </div>
       )}
+      {patient.allergies && (
+        <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-700/20 rounded-xl px-3 py-2.5">
+          <p className="text-[10px] font-black text-red-500 uppercase tracking-wider mb-0.5">Allergies</p>
+          <p className="text-sm text-red-700 dark:text-red-300">{patient.allergies}</p>
+        </div>
+      )}
+      {patient.medicalHistory && (
+        <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-700/20 rounded-xl px-3 py-2.5">
+          <p className="text-[10px] font-black text-blue-500 uppercase tracking-wider mb-1.5">Medical History</p>
+          <div className="flex flex-wrap gap-1.5">
+            {patient.medicalHistory.split(',').map((c: string) => c.trim()).filter(Boolean).map((cond: string) => (
+              <span key={cond} className="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-bold">{cond}</span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1462,6 +1479,9 @@ export default function PatientProfilePage() {
   const [editForm, setEditForm] = useState<any>({})
   const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [toggling, setToggling] = useState(false)
+  const [deletePatientOpen, setDeletePatientOpen] = useState(false)
+  const [deletingPatient,   setDeletingPatient]   = useState(false)
+  const [deletePatientError, setDeletePatientError] = useState('')
 
   const handlePrint = async (mode: 'print' | 'download' = 'print') => {
     if (!patient) return
@@ -1479,7 +1499,7 @@ export default function PatientProfilePage() {
     const plansAll: any[]= plansRes.ok ? await plansRes.json() : []
     const svcsAll: any[] = svcsRes.ok  ? await svcsRes.json()  : []
     const svcMap: Record<string,string> = Object.fromEntries(svcsAll.map((s: any) => [s.id, s.name]))
-    const plans = plansAll.filter((p: any) => ['Planned','In Progress'].includes(p.status))
+    const plans = plansAll
 
     const notesHtml = notes.map((note: any) => {
       const date   = new Date(note.createdAt).toLocaleString('en-UG')
@@ -1490,20 +1510,22 @@ export default function PatientProfilePage() {
 
     const planRows = plans.map((p: any) => {
       const total = (p.costPerUnit * p.quantity) - (p.discount || 0)
+      const badgeCls = p.status === 'In Progress' ? 'badge-ip' : p.status === 'Completed' ? 'badge-done' : p.status === 'On Hold' ? 'badge-hold' : p.status === 'Cancelled' ? 'badge-cancel' : 'badge-pl'
       return `<tr>
         <td>${p.toothNumber || '—'}</td>
         <td>${svcMap[p.serviceId] || '—'}</td>
-        <td><span class="badge ${p.status === 'In Progress' ? 'badge-ip' : 'badge-pl'}">${p.status}</span></td>
+        <td><span class="badge ${badgeCls}">${p.status}</span></td>
         <td class="num">${p.quantity}</td>
         <td class="num">${p.costPerUnit > 0 ? 'UGX ' + p.costPerUnit.toLocaleString() : '—'}</td>
         <td class="num">${p.discount > 0 ? 'UGX ' + (p.discount).toLocaleString() : '—'}</td>
         <td class="num bold">${total > 0 ? 'UGX ' + total.toLocaleString() : '—'}</td>
       </tr>`
     }).join('')
-    const grandTotal = plans.reduce((sum: number, p: any) => sum + ((p.costPerUnit * p.quantity) - (p.discount || 0)), 0)
+    const remainingTotal = plans.filter((p: any) => ['Planned','In Progress'].includes(p.status)).reduce((sum: number, p: any) => sum + ((p.costPerUnit * p.quantity) - (p.discount || 0)), 0)
+    const completedTotal = plans.filter((p: any) => p.status === 'Completed').reduce((sum: number, p: any) => sum + ((p.costPerUnit * p.quantity) - (p.discount || 0)), 0)
     const planHtml = plans.length > 0
-      ? `<table class="plan-table"><thead><tr><th>Tooth</th><th>Procedure</th><th>Status</th><th>Qty</th><th>Unit Cost</th><th>Discount</th><th>Total</th></tr></thead><tbody>${planRows}</tbody><tfoot><tr><td colspan="6" class="bold" style="text-align:right;background:#f0f4ff;color:#1A237E">Grand Total</td><td class="num bold" style="background:#f0f4ff;color:#1A237E">UGX ${grandTotal.toLocaleString()}</td></tr></tfoot></table>`
-      : '<p class="empty">No active treatment plan items.</p>'
+      ? `<table class="plan-table"><thead><tr><th>Tooth</th><th>Procedure</th><th>Status</th><th>Qty</th><th>Unit Cost</th><th>Discount</th><th>Total</th></tr></thead><tbody>${planRows}</tbody><tfoot><tr><td colspan="6" class="bold" style="text-align:right;background:#f0fff4;color:#166534">Completed Total</td><td class="num bold" style="background:#f0fff4;color:#166534">${completedTotal > 0 ? 'UGX ' + completedTotal.toLocaleString() : '—'}</td></tr><tr><td colspan="6" class="bold" style="text-align:right;background:#f0f4ff;color:#1A237E">Remaining / Outstanding</td><td class="num bold" style="background:#f0f4ff;color:#1A237E">UGX ${remainingTotal.toLocaleString()}</td></tr></tfoot></table>`
+      : '<p class="empty">No treatment plan items.</p>'
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Patient Record — ${name}</title>
 <style>
@@ -1519,7 +1541,7 @@ body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;padding:24
 .plan-table tr:nth-child(even) td{background:#fafafa}
 .num{text-align:right}.bold{font-weight:700}
 .badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;white-space:nowrap}
-.badge-pl{background:#dbeafe;color:#1d4ed8}.badge-ip{background:#fef3c7;color:#92400e}
+.badge-pl{background:#dbeafe;color:#1d4ed8}.badge-ip{background:#fef3c7;color:#92400e}.badge-done{background:#dcfce7;color:#166534}.badge-hold{background:#f3f4f6;color:#6b7280}.badge-cancel{background:#fee2e2;color:#dc2626}
 .note{border:1px solid #e0e0e0;border-radius:8px;padding:12px 16px;margin-bottom:12px;page-break-inside:avoid}
 .note-date{font-size:11px;color:#888;margin-bottom:6px}.note-author{color:#1A237E;font-weight:600}
 .note-content{font-size:13px;line-height:1.6;white-space:pre-wrap}
@@ -1528,7 +1550,7 @@ body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;padding:24
 </style></head><body>
 <div class="header"><img src="${origin}/logo.png" alt="Code Clinic" style="height:44px;width:auto;display:block;margin:0 auto 10px"><div style="font-size:12px;color:#555">Patient Record</div></div>
 <div class="patient-info"><h2>${name}</h2><p>Date of Birth: ${dob}</p><p>Phone: ${phone}</p></div>
-<div class="section-title">Treatment Plan — Active Items (${plans.length})</div>
+<div class="section-title">Treatment Plan — All Items (${plans.length})</div>
 ${planHtml}
 <div class="section-title">Treatment Notes (${notes.length})</div>
 ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}

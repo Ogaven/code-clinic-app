@@ -347,7 +347,7 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
     'ARRIVED', 'WAITING', 'IN_OPERATORY', 'WITH_PROVIDER', 'SESSION_COMPLETE', 'CHECKOUT', 'DEPARTED',
     // Legacy (kept for backward compat)
     'CHECKED_IN', 'IN_CHAIR', 'READY_CHECKOUT', 'COMPLETED',
-    'CANCELLED', 'NO_SHOW',
+    'CANCELLED', 'CANCELLED_RESCHEDULED', 'RESCHEDULED', 'NO_SHOW',
   ]
   console.log('[CHECKIN]', { id: req.params.id, status: req.body.status, role: (req as any).user?.role })
   const { status } = req.body
@@ -385,7 +385,8 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
     DEPARTED: 'Patient Departed',
     CONFIRMED: 'Appointment Confirmed', CHECKED_IN: 'Checked In',
     IN_CHAIR: 'In Chair', READY_CHECKOUT: 'Ready for Checkout',
-    COMPLETED: 'Completed', CANCELLED: 'Cancelled', NO_SHOW: 'No Show',
+    COMPLETED: 'Completed', CANCELLED: 'Cancelled', CANCELLED_RESCHEDULED: 'Cancelled & Rescheduled',
+    RESCHEDULED: 'Rescheduled', NO_SHOW: 'No Show',
   }
   const actorName = `${req.user!.role} ${req.user!.firstName || ''} ${req.user!.lastName || ''}`.trim()
   try {
