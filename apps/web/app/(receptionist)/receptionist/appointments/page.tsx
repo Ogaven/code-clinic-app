@@ -401,7 +401,7 @@ export default function AppointmentsPage() {
                       <td className="px-4 py-3.5 text-right" onClick={e => e.stopPropagation()}>
                         <div className="relative inline-block">
                           <button
-                            onClick={e => { e.stopPropagation(); setMenuOpen(menuOpen === appt.id ? null : appt.id) }}
+                            onClick={e => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setMenuOpen(menuOpen === appt.id ? null : appt.id) }}
                             className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-white">
                             <MoreHorizontal size={15} />
                           </button>

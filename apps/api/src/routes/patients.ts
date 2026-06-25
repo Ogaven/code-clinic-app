@@ -676,6 +676,73 @@ router.delete('/:id', requireAuth, adminAndReceptionist, auditLog('patients'), a
   }
 })
 
+// POST /patients/:id/merge — admin only
+router.post('/:id/merge', requireAuth, adminOnly, async (req, res) => {
+  try {
+    const targetId = req.params.id
+    const { sourceId } = req.body
+    if (!sourceId || sourceId === targetId) {
+      res.status(400).json({ error: 'Invalid source patient' }); return
+    }
+    const [target, source] = await Promise.all([
+      prisma.patient.findUnique({ where: { id: targetId } }),
+      prisma.patient.findUnique({ where: { id: sourceId } }),
+    ])
+    if (!target || !source) {
+      res.status(404).json({ error: 'Patient not found' }); return
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Re-parent all clinical records to target
+      await tx.appointment.updateMany({ where: { patientId: sourceId }, data: { patientId: targetId } })
+      await tx.invoice.updateMany({ where: { patientId: sourceId }, data: { patientId: targetId } })
+      await tx.payment.updateMany({ where: { patientId: sourceId }, data: { patientId: targetId } })
+      await tx.patientFeedback.updateMany({ where: { patientId: sourceId }, data: { patientId: targetId } })
+      await tx.treatmentPlan.updateMany({ where: { patientId: sourceId }, data: { patientId: targetId } })
+      await tx.treatmentNote.updateMany({ where: { patientId: sourceId }, data: { patientId: targetId } })
+      await tx.patientDocument.updateMany({ where: { patientId: sourceId }, data: { patientId: targetId } })
+      await tx.patientActivity.updateMany({ where: { patientId: sourceId }, data: { patientId: targetId } })
+
+      // Null out agent/AI logs (not clinically attributed)
+      await tx.nurtureLog.updateMany({ where: { patientId: sourceId }, data: { patientId: null } })
+      await tx.agentLog.updateMany({ where: { patientId: sourceId }, data: { patientId: null } })
+      await tx.aiConversation.updateMany({ where: { patientId: sourceId }, data: { patientId: null } })
+
+      // Delete non-re-parentable records
+      await tx.agentMemory.deleteMany({ where: { patientId: sourceId } })
+      await tx.aiScheduledMessage.deleteMany({ where: { patientId: sourceId } })
+      await tx.outboundQueue.deleteMany({ where: { patientId: sourceId } })
+
+      // Handle DentalChart unique constraint — keep target's if it exists
+      const sourceDental = await tx.dentalChart.findUnique({ where: { patientId: sourceId } })
+      if (sourceDental) {
+        const targetDental = await tx.dentalChart.findUnique({ where: { patientId: targetId } })
+        if (!targetDental) {
+          await tx.dentalChart.update({ where: { patientId: sourceId }, data: { patientId: targetId } })
+        } else {
+          await tx.dentalChart.delete({ where: { patientId: sourceId } })
+        }
+      }
+
+      // Merge text fields — append source's into target's if target doesn't have them
+      const mergedAllergies = [target.allergies, source.allergies].filter(Boolean).join('; ') || null
+      const mergedHistory = [target.medicalHistory, source.medicalHistory].filter(Boolean).join('\n\n---\n\n') || null
+      await tx.patient.update({
+        where: { id: targetId },
+        data: { allergies: mergedAllergies, medicalHistory: mergedHistory },
+      })
+
+      // Delete source patient (PatientDocument/Activity already re-parented above)
+      await tx.patient.delete({ where: { id: sourceId } })
+    })
+
+    res.json({ merged: true, targetId })
+  } catch (e: any) {
+    console.error('[patients] merge error:', e)
+    res.status(500).json({ error: 'Failed to merge patients' })
+  }
+})
+
 // POST /patients/:id/avatar
 router.post('/:id/avatar', requireAuth, uploadLimiter, upload.single('avatar'), async (req, res) => {
   try {

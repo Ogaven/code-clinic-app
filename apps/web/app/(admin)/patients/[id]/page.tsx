@@ -1482,6 +1482,12 @@ export default function PatientProfilePage() {
   const [deletePatientOpen, setDeletePatientOpen] = useState(false)
   const [deletingPatient,   setDeletingPatient]   = useState(false)
   const [deletePatientError, setDeletePatientError] = useState('')
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [mergeSearch, setMergeSearch] = useState('')
+  const [mergeResults, setMergeResults] = useState<any[]>([])
+  const [mergeSource, setMergeSource] = useState<any>(null)
+  const [mergingPatient, setMergingPatient] = useState(false)
+  const [mergeError, setMergeError] = useState('')
 
   const handlePrint = async (mode: 'print' | 'download' = 'print') => {
     if (!patient) return
@@ -1601,6 +1607,39 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
     } catch {
       setDeletePatientError('Network error')
     } finally { setDeletingPatient(false) }
+  }
+
+  async function searchMergePatients(q: string) {
+    if (q.length < 2) { setMergeResults([]); return }
+    const res = await fetch(`/api-proxy/patients?q=${encodeURIComponent(q)}&limit=8`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setMergeResults((data.data || []).filter((p: any) => p.id !== id))
+    }
+  }
+
+  async function handleMergePatient() {
+    if (!mergeSource) return
+    setMergingPatient(true)
+    setMergeError('')
+    try {
+      const res = await fetch(`/api-proxy/patients/${id}/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ sourceId: mergeSource.id }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setMergeOpen(false)
+        router.push('/patients')
+      } else {
+        setMergeError(data.error || 'Failed to merge patients')
+      }
+    } catch {
+      setMergeError('Network error')
+    } finally { setMergingPatient(false) }
   }
 
   function openEdit() {
@@ -1731,6 +1770,13 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
                         : 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20')}>
                     {toggling ? '...' : patient.isActive ? 'Deactivate' : 'Reactivate'}
                   </button>
+                  {user.role === 'ADMIN' && (
+                    <button
+                      onClick={() => { setMergeOpen(true); setMergeSearch(''); setMergeResults([]); setMergeSource(null); setMergeError('') }}
+                      className="text-xs font-bold px-3 py-1.5 rounded-lg transition-colors text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
+                      Merge Patient…
+                    </button>
+                  )}
                   {user.role === 'ADMIN' && (
                     <button
                       onClick={() => { setDeletePatientOpen(true); setDeletePatientError('') }}
@@ -1938,6 +1984,81 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
                 <button
                   onClick={() => setDeletePatientOpen(false)}
                   disabled={deletingPatient}
+                  className="px-4 py-2.5 text-sm font-semibold text-gray-600 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/8 rounded-xl transition-colors disabled:opacity-60">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Merge Patient Dialog */}
+      {mergeOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => !mergingPatient && setMergeOpen(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4 pointer-events-none">
+            <div className="pointer-events-auto w-full max-w-md bg-white dark:bg-[#0f1729] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 p-6 space-y-4">
+              <h3 className="text-base font-black text-amber-700 dark:text-amber-400">Merge Duplicate Patient</h3>
+              <p className="text-sm text-gray-500 dark:text-white/60">
+                Search for the <span className="font-semibold">duplicate</span> patient to merge into{' '}
+                <span className="font-semibold text-gray-700 dark:text-white/80">{patient?.firstName} {patient?.lastName}</span>.
+                The duplicate will be deleted and all their records moved here.
+              </p>
+
+              {!mergeSource ? (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={mergeSearch}
+                    onChange={e => { setMergeSearch(e.target.value); searchMergePatients(e.target.value) }}
+                    placeholder="Search by name or phone…"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 text-gray-700 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                  />
+                  {mergeResults.length > 0 && (
+                    <div className="border border-gray-100 dark:border-white/10 rounded-xl overflow-hidden">
+                      {mergeResults.map((p: any) => (
+                        <button
+                          key={p.id}
+                          onClick={() => setMergeSource(p)}
+                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors border-b border-gray-50 dark:border-white/5 last:border-0">
+                          <span className="font-semibold text-gray-700 dark:text-white/80">{p.firstName} {p.lastName}</span>
+                          <span className="ml-2 text-xs text-gray-400 dark:text-white/30">{p.phone}</span>
+                          {p.patientId && <span className="ml-2 text-xs font-mono text-cyan-600 dark:text-cyan-400">{p.patientId}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {mergeSearch.length >= 2 && mergeResults.length === 0 && (
+                    <p className="text-xs text-gray-400 dark:text-white/30 text-center py-2">No patients found</p>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-4 py-3 space-y-1">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Will be deleted:</p>
+                  <p className="text-sm font-bold text-gray-800 dark:text-white">{mergeSource.firstName} {mergeSource.lastName}</p>
+                  <p className="text-xs text-gray-500 dark:text-white/50">{mergeSource.phone}{mergeSource.patientId ? ` · ${mergeSource.patientId}` : ''}</p>
+                  <button onClick={() => setMergeSource(null)} className="text-xs text-amber-600 dark:text-amber-400 underline mt-1">Change</button>
+                </div>
+              )}
+
+              {mergeError && (
+                <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 rounded-xl px-3 py-2">
+                  {mergeError}
+                </p>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={handleMergePatient}
+                  disabled={!mergeSource || mergingPatient}
+                  className="flex-1 py-2.5 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                  {mergingPatient ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {mergingPatient ? 'Merging…' : 'Merge & Delete Duplicate'}
+                </button>
+                <button
+                  onClick={() => setMergeOpen(false)}
+                  disabled={mergingPatient}
                   className="px-4 py-2.5 text-sm font-semibold text-gray-600 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/8 rounded-xl transition-colors disabled:opacity-60">
                   Cancel
                 </button>
