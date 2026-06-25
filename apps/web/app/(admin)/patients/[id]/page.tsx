@@ -1492,8 +1492,6 @@ export default function PatientProfilePage() {
   const handlePrint = async (mode: 'print' | 'download' = 'print') => {
     if (!patient) return
     const name   = `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'Patient'
-    const dob    = patient.dob ? new Date(patient.dob).toLocaleDateString('en-UG') : 'N/A'
-    const phone  = patient.phone || 'N/A'
     const origin = window.location.origin
     const hdrs   = { Authorization: `Bearer ${token}` }
     const [notesRes, plansRes, svcsRes] = await Promise.all([
@@ -1533,13 +1531,36 @@ export default function PatientProfilePage() {
       ? `<table class="plan-table"><thead><tr><th>Tooth</th><th>Procedure</th><th>Status</th><th>Qty</th><th>Unit Cost</th><th>Discount</th><th>Total</th></tr></thead><tbody>${planRows}</tbody><tfoot><tr><td colspan="6" class="bold" style="text-align:right;background:#f0fff4;color:#166534">Completed Total</td><td class="num bold" style="background:#f0fff4;color:#166534">${completedTotal > 0 ? 'UGX ' + completedTotal.toLocaleString() : '—'}</td></tr><tr><td colspan="6" class="bold" style="text-align:right;background:#f0f4ff;color:#1A237E">Remaining / Outstanding</td><td class="num bold" style="background:#f0f4ff;color:#1A237E">UGX ${remainingTotal.toLocaleString()}</td></tr></tfoot></table>`
       : '<p class="empty">No treatment plan items.</p>'
 
+    const dobDisplay = patient.dob ? formatDobAge(patient.dob) : null
+    const genderDisplay = patient.gender ? patient.gender.charAt(0) + patient.gender.slice(1).toLowerCase() : null
+    const addressDisplay = [patient.address, patient.district].filter(Boolean).join(', ') || null
+    const generatedAt = new Date().toLocaleString('en-UG', { timeZone: 'Africa/Nairobi', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    const infoItems = [
+      patient.patientId ? `<div class="info-item"><span class="info-label">Patient ID</span><span class="info-value mono">${patient.patientId}</span></div>` : '',
+      dobDisplay        ? `<div class="info-item"><span class="info-label">Date of Birth</span><span class="info-value">${dobDisplay}</span></div>` : '',
+      `<div class="info-item"><span class="info-label">Phone</span><span class="info-value">${patient.phone || 'N/A'}</span></div>`,
+      genderDisplay     ? `<div class="info-item"><span class="info-label">Gender</span><span class="info-value">${genderDisplay}</span></div>` : '',
+      addressDisplay    ? `<div class="info-item"><span class="info-label">Residence</span><span class="info-value">${addressDisplay}</span></div>` : '',
+      `<div class="info-item"><span class="info-label">Generated</span><span class="info-value">${generatedAt}</span></div>`,
+    ].filter(Boolean).join('')
+
+    const tipBanner = mode === 'download'
+      ? `<div class="pdf-tip"><strong>To save as PDF:</strong> Press <strong>Ctrl+P</strong> (Cmd+P on Mac) &rarr; change the printer/destination to <strong>"Save as PDF"</strong> &rarr; click Save.</div>`
+      : ''
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Patient Record — ${name}</title>
 <style>
 body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;padding:24px}
+.pdf-tip{background:#fff8e1;border:1px solid #f59e0b;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#78350f}
+@media print{.pdf-tip{display:none}@page{size:A4;margin:1.5cm}}
 .header{text-align:center;border-bottom:2px solid #1A237E;padding-bottom:16px;margin-bottom:24px}
-.patient-info{margin-bottom:24px;background:#f8f9fa;padding:12px 16px;border-radius:8px}
-.patient-info h2{font-size:18px;font-weight:700;margin:0 0 6px;color:#1A237E}
-.patient-info p{font-size:12px;color:#555;margin:2px 0}
+.patient-info{margin-bottom:24px;background:#f0f4ff;padding:14px 16px;border-radius:8px;border-left:4px solid #1A237E}
+.patient-info h2{font-size:18px;font-weight:700;margin:0 0 10px;color:#1A237E}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px}
+.info-item{display:flex;flex-direction:column;gap:1px}
+.info-label{font-size:10px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px}
+.info-value{font-size:12px;color:#222;font-weight:500}
+.mono{font-family:monospace;font-size:11px;letter-spacing:.3px;color:#1A237E}
 .section-title{font-size:12px;font-weight:700;color:#1A237E;text-transform:uppercase;letter-spacing:.5px;margin:20px 0 10px;border-bottom:1px solid #e0e0e0;padding-bottom:4px}
 .plan-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px}
 .plan-table th{background:#f0f4ff;color:#1A237E;font-weight:700;padding:6px 8px;text-align:left;border:1px solid #d0d8f0}
@@ -1554,8 +1575,9 @@ body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;padding:24
 .empty{color:#aaa;font-size:13px;font-style:italic}
 .footer{text-align:center;font-size:10px;color:#555;margin-top:32px;border-top:1px solid #e0e0e0;padding-top:12px}
 </style></head><body>
+${tipBanner}
 <div class="header"><img src="${origin}/logo.png" alt="Code Clinic" style="height:44px;width:auto;display:block;margin:0 auto 10px"><div style="font-size:12px;color:#555">Patient Record</div></div>
-<div class="patient-info"><h2>${name}</h2><p>Date of Birth: ${dob}</p><p>Phone: ${phone}</p></div>
+<div class="patient-info"><h2>${name}</h2><div class="info-grid">${infoItems}</div></div>
 <div class="section-title">Treatment Plan — All Items (${plans.length})</div>
 ${planHtml}
 <div class="section-title">Treatment Notes (${notes.length})</div>
@@ -1563,19 +1585,9 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 <div class="footer">Code Clinic, Kiira Road, Kamwokya &bull; +256 394 836 298</div>
 <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>
 </body></html>`
-    if (mode === 'download') {
-      const dlHtml = html.replace(/<script>[\s\S]*?<\/script>/, '')
-      const blob = new Blob([dlHtml], { type: 'text/html;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${name.replace(/\s+/g, '-')}-TreatmentPlan.html`
-      document.body.appendChild(a); a.click(); document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } else {
-      const w = window.open('', '_blank', 'width=800,height=900')
-      if (w) { w.document.write(html); w.document.close() }
-    }
+
+    const w = window.open('', '_blank', 'width=800,height=900')
+    if (w) { w.document.write(html); w.document.close() }
   }
 
   async function toggleActive() {
