@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/utils'
 import BookingDrawer from '@/components/scheduling/BookingDrawer'
 import ImportTab from '@/components/scheduling/ImportTab'
+import AppointmentModal from '@/components/scheduling/AppointmentModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -159,6 +160,7 @@ export default function AppointmentsPage() {
 
   // UI state
   const [selected,    setSelected]    = useState<Appt | null>(null)
+  const [editAppt,    setEditAppt]    = useState<Appt | null>(null)
   const [drawerOpen,  setDrawerOpen]  = useState(false)
   const [importOpen,  setImportOpen]  = useState(false)
   const [menuOpen,    setMenuOpen]    = useState<string | null>(null)
@@ -219,6 +221,13 @@ export default function AppointmentsPage() {
     function close() { setMenuOpen(null) }
     document.addEventListener('click', close)
     return () => document.removeEventListener('click', close)
+  }, [])
+
+  // Refresh list when an appointment is updated (reschedule, status change, etc.)
+  useEffect(() => {
+    function onUpdated() { setRefreshKey(k => k + 1) }
+    window.addEventListener('appointment-updated', onUpdated)
+    return () => window.removeEventListener('appointment-updated', onUpdated)
   }, [])
 
   async function handleCancel(id: string) {
@@ -411,7 +420,7 @@ export default function AppointmentsPage() {
                                 className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                                 View details
                               </button>
-                              <button onClick={() => { setSelected(appt); setMenuOpen(null) }}
+                              <button onClick={() => { setEditAppt(appt); setMenuOpen(null) }}
                                 className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                                 Edit
                               </button>
@@ -635,6 +644,16 @@ export default function AppointmentsPage() {
         onClose={() => setDrawerOpen(false)}
         onBooked={() => { setDrawerOpen(false); setRefreshKey(k => k + 1) }}
       />
+
+      {/* ── Edit Appointment Modal ─────────────────────────────────────────────── */}
+      {editAppt && (
+        <AppointmentModal
+          appointment={editAppt}
+          onClose={() => setEditAppt(null)}
+          onStatusChange={() => { setEditAppt(null); setRefreshKey(k => k + 1) }}
+          autoEdit
+        />
+      )}
 
       {/* ── Delete confirmation dialog (admin only) ───────────────────────────── */}
       {deleteConfirm && (

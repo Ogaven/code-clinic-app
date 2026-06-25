@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { X, Phone, Clock, Stethoscope, User, Check, XCircle, AlertTriangle, Loader2, ExternalLink, Edit2, Save, CalendarDays, RotateCcw } from 'lucide-react'
 import { cn, formatPhone, formatUGX } from '@/lib/utils'
@@ -11,7 +11,7 @@ interface Appointment {
   startAt: string
   endAt: string
   status: string
-  notes?: string
+  notes?: string | null
   patient: { id: string; firstName: string; lastName: string; phone: string }
   doctor: { id?: string; user: { firstName: string; lastName: string } }
   service: { name: string; colour: string; priceUGX?: number }
@@ -23,6 +23,7 @@ interface Props {
   onStatusChange?: (id: string, status: string) => void
   onBookFollowUp?: (patient: { id: string; firstName: string; lastName: string; phone: string }, doctorId?: string) => void
   userRole?: string
+  autoEdit?: boolean
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
@@ -49,7 +50,7 @@ const STATUS_NEXT: Record<string, { status: string; label: string; colour: strin
   READY_CHECKOUT: { status: 'COMPLETED',      label: 'Complete Checkout',    colour: 'bg-green-600' },
 }
 
-export default function AppointmentModal({ appointment, onClose, onStatusChange, onBookFollowUp, userRole = 'ADMIN' }: Props) {
+export default function AppointmentModal({ appointment, onClose, onStatusChange, onBookFollowUp, userRole = 'ADMIN', autoEdit }: Props) {
   const [loading,      setLoading]      = useState<string | null>(null)
   const [editMode,     setEditMode]     = useState(false)
   const [doctors,      setDoctors]      = useState<any[]>([])
@@ -63,6 +64,14 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
   const [saving,       setSaving]       = useState(false)
   const [saveError,    setSaveError]    = useState('')
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+
+  const autoEditCalledRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (autoEdit && appointment && autoEditCalledRef.current !== appointment.id) {
+      autoEditCalledRef.current = appointment.id
+      openEdit()
+    }
+  }, [appointment?.id, autoEdit])
 
   if (!appointment) return null
 
@@ -117,7 +126,7 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       })
-      if (res.ok) { onStatusChange?.(appointment!.id, appointment!.status); onClose() }
+      if (res.ok) { window.dispatchEvent(new Event('appointment-updated')); onStatusChange?.(appointment!.id, appointment!.status); onClose() }
       else { const d = await res.json(); setSaveError(d.error || 'Failed to save') }
     } catch { setSaveError('Network error') } finally { setSaving(false) }
   }

@@ -94,7 +94,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
     const t = setTimeout(async () => {
       setSearching(true)
       try {
-        const res  = await fetch(`${API}/patients?q=${encodeURIComponent(patientQ)}&limit=8`, { headers })
+        const res  = await fetch(`${API}/patients?q=${encodeURIComponent(patientQ)}&limit=50&sortBy=name`, { headers })
         const data = await res.json()
         setPatients(data.data || data || [])
       } catch { } finally { setSearching(false) }
