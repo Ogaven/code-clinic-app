@@ -6,7 +6,7 @@ import {
   Search, Send, Paperclip, Smile, X, Loader2,
   MessageSquare, Instagram, Facebook, Globe, Bot, UserCheck,
   Image as ImageIcon, FileText, Music, Video as VideoIcon, Check,
-  ChevronLeft,
+  ChevronLeft, Bell,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -274,6 +274,23 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
   )
 }
 
+// ── Inbox push notification ────────────────────────────────────────────────────
+function fireInboxNotification(title: string, body: string) {
+  if (typeof window === 'undefined') return
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+  const path = window.location.pathname
+  const url  = path.includes('/receptionist/') ? '/receptionist/ai-suite/inbox' : '/ai-suite/inbox'
+  const opts: NotificationOptions = { body, icon: '/icon.png', badge: '/icon.png', tag: 'inbox-message', data: { url } }
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts)).catch(() => {})
+    return
+  }
+  try {
+    const n = new Notification(title, opts)
+    n.onclick = () => { window.focus(); window.location.href = url }
+  } catch {}
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 function InboxPage() {
   const searchParams = useSearchParams()
@@ -287,11 +304,13 @@ function InboxPage() {
   const [search,     setSearch]     = useState('')
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
 
-  const msgsEnd      = useRef<HTMLDivElement>(null)
-  const pollConv     = useRef<ReturnType<typeof setInterval> | null>(null)
-  const pollMsg      = useRef<ReturnType<typeof setInterval> | null>(null)
-  const isNearBottom = useRef(true)
-  const prevConvId   = useRef<string | null>(null)
+  const msgsEnd        = useRef<HTMLDivElement>(null)
+  const pollConv       = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollMsg        = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isNearBottom   = useRef(true)
+  const prevConvId     = useRef<string | null>(null)
+  const prevConvsRef   = useRef<Map<string, string>>(new Map())
+  const [notifPerm, setNotifPerm] = useState<string>('default')
 
   // Deduplicate: one entry per phone number, keep most-recently-updated
   function dedupeByPhone(data: Conversation[]): Conversation[] {
@@ -311,6 +330,23 @@ function InboxPage() {
       if (!res.ok) return
       const data: Conversation[] = await res.json()
       const deduped = dedupeByPhone(data)
+      // Detect new incoming patient messages and fire browser notifications
+      if (prevConvsRef.current.size > 0 && document.hidden && Notification.permission === 'granted') {
+        for (const conv of deduped) {
+          const lm = conv.lastMessage
+          if (!lm || lm.role !== 'USER') continue
+          const prev = prevConvsRef.current.get(conv.id)
+          if (prev && lm.createdAt > prev) {
+            const name    = convLabel(conv, channel)
+            const preview = name + ': ' + lm.content.replace(/\n/g, ' ').slice(0, 60)
+            fireInboxNotification('New Message — Code Clinic', preview)
+          }
+        }
+      }
+      for (const conv of deduped) {
+        const lm = conv.lastMessage
+        prevConvsRef.current.set(conv.id, lm ? lm.createdAt : conv.updatedAt)
+      }
       setConvs(deduped)
       if (sel) {
         const updated = deduped.find(c => c.id === sel.id)
@@ -329,11 +365,25 @@ function InboxPage() {
 
   useEffect(() => {
     setSel(null); setConvs([]); setMsgs([]); setLoadingC(true)
+    prevConvsRef.current.clear()
     if (pollConv.current) clearInterval(pollConv.current)
     fetchConvs()
     pollConv.current = setInterval(fetchConvs, 10000)
     return () => { if (pollConv.current) clearInterval(pollConv.current) }
   }, [channel])
+
+  useEffect(() => {
+    if ('Notification' in window) setNotifPerm(Notification.permission)
+    else setNotifPerm('not-supported')
+  }, [])
+
+  async function handleEnableNotif() {
+    if (!('Notification' in window)) return
+    try {
+      const perm = await Notification.requestPermission()
+      setNotifPerm(perm)
+    } catch {}
+  }
 
   useEffect(() => {
     if (pollMsg.current) clearInterval(pollMsg.current)
@@ -689,6 +739,14 @@ function InboxPage() {
             </button>
           )
         })}
+        {notifPerm === 'default' && (
+          <button onClick={handleEnableNotif}
+            className="ml-auto mr-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors flex-shrink-0"
+            title="Get notified when new messages arrive">
+            <Bell size={13} />
+            <span className="hidden sm:inline">Enable notifications</span>
+          </button>
+        )}
       </div>
 
       {/* Split pane */}
