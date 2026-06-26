@@ -1586,8 +1586,22 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>
 </body></html>`
 
-    const w = window.open('', '_blank', 'width=800,height=900')
-    if (w) { w.document.write(html); w.document.close() }
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    if (isMobile) {
+      const mobileHtml = html.replace('<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>', '')
+      const blob = new Blob([mobileHtml], { type: 'text/html' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `patient-record-${name.replace(/[^a-zA-Z0-9]/g, '-')}.html`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } else {
+      const w = window.open('', '_blank', 'width=800,height=900')
+      if (w) { w.document.write(html); w.document.close() }
+    }
   }
 
   async function toggleActive() {
