@@ -739,13 +739,27 @@ function InboxPage() {
             </button>
           )
         })}
-        {notifPerm === 'default' && (
-          <button onClick={handleEnableNotif}
-            className="ml-auto mr-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors flex-shrink-0"
-            title="Get notified when new messages arrive">
-            <Bell size={13} />
-            <span className="hidden sm:inline">Enable notifications</span>
-          </button>
+        {notifPerm !== 'not-supported' && (
+          notifPerm === 'granted' ? (
+            <span className="ml-auto mr-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 rounded-xl flex-shrink-0"
+              title="Browser notifications are enabled">
+              <Bell size={13} />
+              <span className="hidden sm:inline">Notifications ON</span>
+            </span>
+          ) : notifPerm === 'denied' ? (
+            <span className="ml-auto mr-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-500 bg-red-50 rounded-xl flex-shrink-0"
+              title="Notifications are blocked — open browser site settings to allow them">
+              <Bell size={13} />
+              <span className="hidden sm:inline">Notifications blocked</span>
+            </span>
+          ) : (
+            <button onClick={handleEnableNotif}
+              className="ml-auto mr-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors flex-shrink-0"
+              title="Get notified when new messages arrive">
+              <Bell size={13} />
+              <span className="hidden sm:inline">Enable notifications</span>
+            </button>
+          )
         )}
       </div>
 
