@@ -2073,7 +2073,8 @@ async function executeV2Tool(
 export async function getAgentReplyV2(
   conversationId: string,
   from:           string,
-  latestMessage:  string
+  latestMessage:  string,
+  channel?:       string
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return `Hi! I've received your message and a team member will be with you shortly.`
@@ -2119,6 +2120,10 @@ export async function getAgentReplyV2(
       '',
       `PATIENT NAME: ${patientName} — address them by this name`,
       '',
+      ...(channel === 'WEBSITE' ? [
+        'WEBSITE VISITOR CONTEXT: This person is chatting via the clinic website widget — not WhatsApp. If their name is unknown (PATIENT NAME shows "there"), and at least one exchange has already happened, naturally ask for their name once: "By the way, what\'s your name? 😊" — do this only once, never repeat it.',
+        '',
+      ] : []),
       'AVAILABLE SERVICES (use search_services to get IDs for check_availability):',
       menu.services,
       '',

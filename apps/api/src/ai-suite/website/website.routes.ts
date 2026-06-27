@@ -6,6 +6,11 @@ import { getAgentReplyV2 } from '../agent/agent.service'
 import { isAgentEnabled }       from '../takeover/takeover.service'
 import { prisma }               from '../../lib/prisma'
 
+function extractNameFromText(text: string): string | null {
+  const m = text.match(/(?:my name is|i['']?m|i am|this is|call me)\s+([A-Z][a-z]{1,15}(?:\s+[A-Z][a-z]{1,15})?)/i)
+  return m?.[1]?.trim() ?? null
+}
+
 const router = Router()
 
 // ── Upload storage ─────────────────────────────────────────────────────────────
@@ -55,13 +60,29 @@ router.post('/message', async (req, res) => {
     if (!agentOn) {
       reply = 'Our team has taken over this conversation. A staff member will respond shortly.'
     } else {
-      reply = await getAgentReplyV2(conversation.id, sessionId, message)
+      reply = await getAgentReplyV2(conversation.id, sessionId, message, 'WEBSITE')
       await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: reply },
       })
     }
 
     res.json({ reply, sessionId, conversationId: conversation.id })
+
+    setImmediate(() => {
+      const extractedName = extractNameFromText(message)
+      prisma.lead.findFirst({
+        where: { phone: sessionId, source: 'WEBSITE', status: { notIn: ['CONVERTED', 'LOST'] } },
+      }).then(existing => {
+        if (!existing) {
+          return prisma.lead.create({
+            data: { phone: sessionId, source: 'WEBSITE', status: 'NEW', stage: 'NEW', lastMessage: message, name: extractedName || null },
+          })
+        }
+        const updateData: Record<string, unknown> = { lastMessage: message }
+        if (extractedName && !existing.name) updateData.name = extractedName
+        return prisma.lead.update({ where: { id: existing.id }, data: updateData })
+      }).catch((e: any) => console.error('[Website] Lead upsert error:', e?.message))
+    })
   } catch (err: any) {
     console.error('[Website] /message error:', err)
     res.status(500).json({ error: err.message })
