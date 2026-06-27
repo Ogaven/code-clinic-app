@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { requireRole } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
+import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
 
 const router = Router()
 
@@ -47,6 +48,14 @@ router.post('/leads', requireAuth, async (req: Request, res: Response) => {
       },
     })
     res.status(201).json(lead)
+    // FIX 3 — Warm Sarah message for manually-added leads with a phone number
+    if (phone) {
+      const firstName = (name || '').trim().split(' ')[0] || 'there'
+      const warmMsg = `Hi ${firstName}! 😊 Thanks for reaching out to Code Clinic. We received your message and one of our team will be in touch shortly. Is there anything else I can help you with in the meantime?`
+      sendWhatsAppMessage(String(phone), warmMsg).catch((e: any) =>
+        console.error('[CRM] Lead warm message failed:', e?.message)
+      )
+    }
   } catch (e) {
     res.status(500).json({ error: 'Failed to create lead' })
   }

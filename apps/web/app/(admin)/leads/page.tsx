@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, Search, RefreshCw, UserCheck, Trash2, X, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Plus, Search, RefreshCw, UserCheck, Trash2, X, CheckCircle2, AlertCircle, Eye, Phone, Mail, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -71,6 +71,7 @@ export default function LeadsPage() {
   const [showAdd,    setShowAdd]    = useState(false)
   const [converting, setConverting] = useState<Lead | null>(null)
   const [deleting,   setDeleting]   = useState<Lead | null>(null)
+  const [viewLead,   setViewLead]   = useState<Lead | null>(null)
   const [busy,       setBusy]       = useState(false)
 
   // Add form
@@ -245,7 +246,11 @@ export default function LeadsPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {leads.map(lead => (
-                  <tr key={lead.id} className="hover:bg-gray-50/60 transition-colors">
+                  <tr
+                    key={lead.id}
+                    onClick={() => setViewLead(lead)}
+                    className="hover:bg-gray-50/60 transition-colors cursor-pointer"
+                  >
                     <td className="px-5 py-3.5">
                       <p className="font-semibold text-gray-800">{lead.name || <span className="italic text-gray-400">Unknown</span>}</p>
                       {lead.phone && <p className="text-xs text-gray-400 mt-0.5">{lead.phone}</p>}
@@ -259,7 +264,8 @@ export default function LeadsPage() {
                     <td className="px-4 py-3.5">
                       <select
                         value={lead.status}
-                        onChange={e => updateStatus(lead, e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => { e.stopPropagation(); updateStatus(lead, e.target.value) }}
                         disabled={lead.status === 'CONVERTED'}
                         className={cn(
                           'text-[11px] font-bold px-2.5 py-1 rounded-full border-0 cursor-pointer outline-none',
@@ -270,14 +276,23 @@ export default function LeadsPage() {
                         {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
                       </select>
                     </td>
-                    <td className="px-4 py-3.5 hidden md:table-cell max-w-[200px]">
-                      <p className="text-xs text-gray-500 truncate">{lead.lastMessage || '—'}</p>
+                    <td className="px-4 py-3.5 hidden md:table-cell max-w-[220px]">
+                      {lead.lastMessage ? (
+                        <p className="text-xs text-gray-500 line-clamp-2">{lead.lastMessage}</p>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 hidden sm:table-cell text-xs text-gray-400 whitespace-nowrap">
                       {fmtDate(lead.updatedAt)}
                     </td>
                     <td className="px-4 py-3.5">
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setViewLead(lead)}
+                          className="p-1.5 rounded-lg text-gray-300 hover:text-cyan-500 hover:bg-cyan-50 transition-colors">
+                          <Eye size={13} />
+                        </button>
                         {lead.status !== 'CONVERTED' && lead.status !== 'LOST' && (
                           <button
                             onClick={() => setConverting(lead)}
@@ -376,6 +391,82 @@ export default function LeadsPage() {
               <button onClick={convertLead} disabled={busy}
                 className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-60">
                 {busy ? 'Converting…' : 'Convert'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lead detail modal ────────────────────────────────── */}
+      {viewLead && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setViewLead(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-black text-gray-800">Lead Details</h2>
+              <button onClick={() => setViewLead(null)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
+                <X size={16} className="text-gray-400" />
+              </button>
+            </div>
+
+            {/* Identity */}
+            <div className="space-y-2">
+              <p className="text-lg font-black text-gray-800">{viewLead.name || <span className="italic text-gray-400">Unknown name</span>}</p>
+              {viewLead.phone && (
+                <a href={`https://wa.me/${viewLead.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer"
+                  className="flex items-center gap-2 text-sm text-green-600 font-semibold hover:underline">
+                  <Phone size={13} /> {viewLead.phone}
+                </a>
+              )}
+              {viewLead.email && (
+                <a href={`mailto:${viewLead.email}`} className="flex items-center gap-2 text-sm text-blue-600 font-semibold hover:underline">
+                  <Mail size={13} /> {viewLead.email}
+                </a>
+              )}
+            </div>
+
+            {/* Badges */}
+            <div className="flex items-center gap-2">
+              <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', SOURCE_STYLE[viewLead.source] ?? 'bg-gray-100 text-gray-600')}>
+                {SOURCE_LABEL[viewLead.source] ?? viewLead.source}
+              </span>
+              <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', STATUS_STYLE[viewLead.status] ?? 'bg-gray-100 text-gray-600')}>
+                {viewLead.status.charAt(0) + viewLead.status.slice(1).toLowerCase()}
+              </span>
+              <span className="text-[10px] text-gray-400 ml-auto">{fmtDate(viewLead.createdAt)}</span>
+            </div>
+
+            {/* Full message */}
+            {viewLead.lastMessage && (
+              <div className="bg-gray-50 rounded-2xl p-4">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <MessageSquare size={12} className="text-gray-400" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Message</span>
+                </div>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{viewLead.lastMessage}</p>
+              </div>
+            )}
+
+            {/* Notes */}
+            {viewLead.notes && (
+              <div className="bg-amber-50 rounded-2xl p-4">
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-500 block mb-2">Notes</span>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{viewLead.notes}</p>
+              </div>
+            )}
+
+            {/* Quick actions */}
+            <div className="flex gap-2 pt-1">
+              {viewLead.status !== 'CONVERTED' && viewLead.status !== 'LOST' && (
+                <button
+                  onClick={() => { setViewLead(null); setConverting(viewLead) }}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors">
+                  <UserCheck size={14} /> Convert to Patient
+                </button>
+              )}
+              <button
+                onClick={() => setViewLead(null)}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                Close
               </button>
             </div>
           </div>

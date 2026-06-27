@@ -63,18 +63,25 @@ router.post('/', async (req, res) => {
       },
     })
 
-    // Sarah's opening message
-    const greeting = `Hello ${firstName}, this is Sarah from Code Clinic. I saw you visited our website and I would love to help you. What brings you to Code Clinic today? Are you looking to book an appointment or do you have a dental concern? 😊`
+    // Sarah's opening message (FIX 3 — warm acknowledgment)
+    const greeting = `Hi ${firstName}! 😊 Thanks for reaching out to Code Clinic. We received your message and one of our team will be in touch shortly. Is there anything else I can help you with in the meantime?`
 
     // Save agent message
     await prisma.aiMessage.create({
       data: { conversationId: conv.id, role: 'AGENT', content: greeting },
     })
 
-    // Send via WhatsApp
+    // Send warm message to lead
     await sendWhatsAppMessage(normalized, greeting, '')
 
     console.log('[WebsiteLead] Sarah texted', normalized, 'from website popup')
+
+    // FIX 2 — Alert staff immediately
+    const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+    const staffAlert = `🔔 New Lead from Website\nName: ${name}\nPhone: ${normalized}\nReply to them directly on WhatsApp if they left a number, or call them back.`
+    sendWhatsAppMessage(staffNumber, staffAlert, '').catch((e: any) =>
+      console.error('[WebsiteLead] Staff alert failed:', e?.message)
+    )
 
   } catch (err: any) {
     console.error('[WebsiteLead] Error:', err?.message || JSON.stringify(err) || 'unknown error')

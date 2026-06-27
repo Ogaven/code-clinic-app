@@ -108,6 +108,12 @@ export async function processInbound(from: string, text: string, wamid: string):
         await prisma.lead.create({
           data: { phone: from, source: 'WHATSAPP', status: 'NEW', stage: 'NEW', lastMessage: text },
         })
+        // FIX 2 — Alert staff of new WhatsApp lead
+        const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+        const staffAlert = `🔔 New Lead from WhatsApp\nPhone: ${from}\nMessage: ${text}\nReply to them directly on WhatsApp if they left a number, or call them back.`
+        sendWhatsAppMessage(staffNumber, staffAlert).catch((e: any) =>
+          console.error('[Lead] Staff alert failed:', e?.message)
+        )
       } else {
         await prisma.lead.update({
           where: { id: existingLead.id },
