@@ -6,7 +6,7 @@ import {
   ArrowLeft, User, Calendar, FileText, Activity, DollarSign, Folder,
   Phone, Mail, MapPin, Edit, AlertTriangle, Clock, Plus, Trash2, Pencil, Mic,
   MicOff, Save, ChevronRight, X, Brain, Sparkles, Loader2, Upload,
-  Eye, Download, CheckCircle, XCircle, Star, Receipt, Camera, Printer
+  Eye, Download, CheckCircle, XCircle, Star, Receipt, Camera, Printer, Share2
 } from 'lucide-react'
 import { cn, formatUGX, formatPhone, getInitials } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
@@ -1526,7 +1526,7 @@ export default function PatientProfilePage() {
   const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [toggling, setToggling] = useState(false)
 
-  const handlePrint = async (mode: 'print' | 'download' = 'print') => {
+  const handlePrint = async (mode: 'print' | 'download' | 'share' = 'print') => {
     if (!patient) return
     const name   = `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'Patient'
     const origin = window.location.origin
@@ -1581,7 +1581,7 @@ export default function PatientProfilePage() {
       `<div class="info-item"><span class="info-label">Generated</span><span class="info-value">${generatedAt}</span></div>`,
     ].filter(Boolean).join('')
 
-    const tipBanner = mode === 'download'
+    const tipBanner = mode === 'print'
       ? `<div class="pdf-tip"><strong>To save as PDF:</strong> Press <strong>Ctrl+P</strong> (Cmd+P on Mac) &rarr; change the printer/destination to <strong>"Save as PDF"</strong> &rarr; click Save.</div>`
       : ''
 
@@ -1623,18 +1623,22 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>
 </body></html>`
 
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-    if (isMobile) {
-      const mobileHtml = html.replace('<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>', '')
-      const blob = new Blob([mobileHtml], { type: 'text/html' })
+    const cleanHtml = html.replace('<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>', '')
+    if (mode === 'share') {
+      const file = new File([new Blob([cleanHtml], { type: 'text/html' })], `treatment-plan-${name.replace(/[^a-zA-Z0-9]/g, '-')}.html`, { type: 'text/html' })
+      if ((navigator as any).canShare?.({ files: [file] })) {
+        try { await (navigator as any).share({ files: [file], title: `Treatment Plan — ${name}`, text: 'Treatment plan from Code Clinic' }) } catch {}
+      } else {
+        const url = URL.createObjectURL(file)
+        const a = document.createElement('a')
+        a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
+      }
+    } else if (mode === 'download') {
+      const blob = new Blob([cleanHtml], { type: 'text/html' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url
-      a.download = `patient-record-${name.replace(/[^a-zA-Z0-9]/g, '-')}.html`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      a.href = url; a.download = `treatment-plan-${name.replace(/[^a-zA-Z0-9]/g, '-')}.html`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
     } else {
       const w = window.open('', '_blank', 'width=800,height=900')
       if (w) { w.document.write(html); w.document.close() }
@@ -1798,15 +1802,19 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
                 </div>
               </div>
             </div>
-            {/* Print + Download buttons — always visible regardless of active tab */}
-            <div className="flex gap-2 self-end mb-2">
+            {/* Print + Download + Share buttons */}
+            <div className="flex gap-2 self-end mb-2 flex-wrap">
               <button onClick={() => handlePrint('print')}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 dark:text-white/70 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 transition-all">
-                <Printer size={14} /> Print Notes
+                <Printer size={14} /> Print
               </button>
               <button onClick={() => handlePrint('download')}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 dark:text-white/70 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 transition-all">
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-all">
                 <Download size={14} /> Download
+              </button>
+              <button onClick={() => handlePrint('share')}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-all">
+                <Share2 size={14} /> Share
               </button>
             </div>
           </div>
