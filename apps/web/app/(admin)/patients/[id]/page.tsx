@@ -747,7 +747,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
             <div>
               <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Status</label>
               <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5">
-                {['Planned','In Progress','Completed','On Hold','Cancelled'].map(s => <option key={s}>{s}</option>)}
+                {['Planned','In Progress','Completed','On Hold','Declined','Cancelled'].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
@@ -813,7 +813,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                       <td className="px-3 py-2">
                         <select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
                           className={cn('text-xs px-2 py-0.5 rounded-full font-semibold border-0 cursor-pointer', statusStyles[editForm.status] || 'bg-slate-100 text-slate-700')}>
-                          {['Planned','In Progress','Completed','On Hold','Cancelled'].map(s => <option key={s}>{s}</option>)}
+                          {['Planned','In Progress','Completed','On Hold','Declined','Cancelled'].map(s => <option key={s}>{s}</option>)}
                         </select>
                       </td>
                       <td className="px-3 py-2">
@@ -848,7 +848,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                     <td className="px-4 py-3">
                       <select value={p.status} onChange={e => handleStatusChange(p.id, e.target.value)}
                         className={cn('text-xs px-2 py-0.5 rounded-full font-semibold border-0 cursor-pointer', statusStyles[p.status] || 'bg-slate-100 text-slate-700')}>
-                        {['Planned','In Progress','Completed','On Hold','Cancelled'].map(s => <option key={s}>{s}</option>)}
+                        {['Planned','In Progress','Completed','On Hold','Declined','Cancelled'].map(s => <option key={s}>{s}</option>)}
                       </select>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-center">{p.quantity}</td>
