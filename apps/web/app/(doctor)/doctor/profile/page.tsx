@@ -347,10 +347,10 @@ export default function DoctorProfilePage() {
                 {checkIns.slice(0, 14).map((ci) => (
                   <tr key={ci.id} className="hover:bg-gray-50 dark:hover:bg-white/[0.03]">
                     <td className="px-5 py-3 text-xs text-gray-600 dark:text-gray-300">
-                      {new Date(ci.createdAt).toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      {new Date(ci.createdAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-600 dark:text-gray-300">
-                      {new Date(ci.createdAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })}
+                      {new Date(ci.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })}
                     </td>
                     <td className="px-5 py-3">
                       <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full',

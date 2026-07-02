@@ -89,7 +89,7 @@ export default function FollowupDashboardPage() {
     const token = localStorage.getItem('cc_token')
     try {
       const patientFullName = `${m.patient?.firstName || ''} ${m.patient?.lastName || ''}`.trim()
-      const sentDate = new Date(m.scheduledFor).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      const sentDate = new Date(m.scheduledFor).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
       const staffContext = `[STAFF ASSISTANT MODE] You are Sarah, assistant to the Code Clinic medical team. A staff member is asking about a patient follow-up — answer helpfully and share all relevant details freely with clinic staff. Patient: ${patientFullName} (${m.patient?.phone}). Follow-up sent on ${sentDate}: "${m.content}".${m.replied && m.replyContent ? ` Patient replied: "${m.replyContent}"` : ' Patient has not replied yet.'} Staff question: ${q}`
       const res = await fetch('/api-proxy/website-chat/message', {
         method:  'POST',
@@ -202,7 +202,7 @@ export default function FollowupDashboardPage() {
                   </div>
                   <p className="text-xs text-gray-500 line-clamp-2">{n.content}</p>
                   <p className="text-[10px] text-gray-400 mt-1">
-                    {n.author?.firstName} {n.author?.lastName} · {new Date(n.updatedAt).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {n.author?.firstName} {n.author?.lastName} · {new Date(n.updatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
                 {n.patient?.phone && (
@@ -262,12 +262,12 @@ export default function FollowupDashboardPage() {
                     <div>
                       <div className="flex items-center gap-1 text-[10px] text-gray-400 justify-end">
                         <Clock size={10} />
-                        {new Date(m.scheduledFor).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        {new Date(m.scheduledFor).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                       </div>
                       <p className="text-[10px] text-gray-400 mt-0.5">{m.patient?.phone}</p>
                       {m.replyAt && (
                         <p className="text-[10px] text-emerald-500 mt-0.5">
-                          replied {new Date(m.replyAt).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          replied {new Date(m.replyAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                         </p>
                       )}
                     </div>

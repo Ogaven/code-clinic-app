@@ -69,7 +69,7 @@ function fmt(n: number): string {
 }
 
 function timeStr(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────

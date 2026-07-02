@@ -46,7 +46,7 @@ function fmtMins(m: number | null) {
 
 function fmtTime(dateStr?: string | null) {
   if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleTimeString('en-UG', {
+  return new Date(dateStr).toLocaleTimeString('en-GB', {
     hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   })
 }

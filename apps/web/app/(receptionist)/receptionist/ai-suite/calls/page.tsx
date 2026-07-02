@@ -77,7 +77,7 @@ export default function CallLogsPage() {
                   const name = log.patient
                     ? `${log.patient.firstName} ${log.patient.lastName}`
                     : 'Unknown'
-                  const date = new Date(log.createdAt).toLocaleString('en-UG', {
+                  const date = new Date(log.createdAt).toLocaleString('en-GB', {
                     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                     hour12: true, timeZone: 'Africa/Nairobi',
                   })

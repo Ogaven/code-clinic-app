@@ -157,7 +157,7 @@ function LocalExpensesTable({ expenses, loading, onRefresh }: {
               {expenses.map((e: any) => (
                 <tr key={e.id} className="hover:bg-blue-50/30 dark:hover:bg-white/5">
                   <td className="px-4 py-2.5 text-[11px] text-gray-500 dark:text-gray-400">
-                    {new Date(e.date).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })}
+                    {new Date(e.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })}
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-gray-600 dark:text-gray-300 font-medium">{e.category}</td>
                   <td className="px-3 py-2.5 text-xs text-gray-800 dark:text-gray-200 max-w-[200px] truncate">{e.description || '—'}</td>

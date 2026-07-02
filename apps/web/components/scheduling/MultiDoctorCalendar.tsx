@@ -44,7 +44,7 @@ function durationToHeight(mins: number): number {
   return Math.max((mins / 30) * SLOT_HEIGHT, 60)
 }
 function fmtTime(dateStr: string) {
-  return new Date(dateStr).toLocaleTimeString('en-UG', {
+  return new Date(dateStr).toLocaleTimeString('en-GB', {
     timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hour12: true,
   })
 }
@@ -312,7 +312,7 @@ function ApptDetailModal({ appt, onClose }: { appt: Appointment; onClose: () => 
   const colour   = appt.service.colour || '#29ABE2'
   const initials = `${appt.patient.firstName[0] || ''}${appt.patient.lastName[0] || ''}`
   const ring     = STATUS_RING[appt.status] || '#9CA3AF'
-  const dateLabel = new Date(appt.startAt).toLocaleDateString('en-UG', {
+  const dateLabel = new Date(appt.startAt).toLocaleDateString('en-GB', {
     weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
   })
 
@@ -661,7 +661,7 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
           return (
             <div key={date.toISOString()} className={cn('flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 text-center', isClosed && 'bg-red-50/60 dark:bg-red-900/10')}>
               <div className={cn('text-[11px] font-semibold uppercase flex items-center justify-center gap-1', isToday ? 'text-clinic-blue' : isClosed ? 'text-red-400' : 'text-gray-400')}>
-                {date.toLocaleDateString('en-UG', { weekday: 'short' })}
+                {date.toLocaleDateString('en-GB', { weekday: 'short' })}
                 {isClosed && <span className="text-[9px] font-bold text-red-500 bg-red-100 dark:bg-red-900/30 px-1 py-0.5 rounded-full">CLOSED</span>}
               </div>
               <div className={cn(
@@ -1208,12 +1208,12 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   // Title — always in EAT so it matches the data being shown
   let title = ''
   if (view === 'doctors') {
-    title = date.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
+    title = date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
   } else if (view === 'week') {
     const wk = getWeekDates(date)
-    title = `${wk[0].toLocaleDateString('en-UG', { day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })} – ${wk[5].toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' })}`
+    title = `${wk[0].toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })} – ${wk[5].toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' })}`
   } else {
-    title = date.toLocaleDateString('en-UG', { month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
+    title = date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
   }
 
   return (
@@ -1244,7 +1244,7 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
           <div className="flex items-center gap-1 text-[10px] text-gray-400 mr-1">
             <RefreshCw size={10} className={cn(loading && 'animate-spin')} />
             <span className="hidden sm:inline">
-              {lastFetched.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit' })}
+              {lastFetched.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
             </span>
           </div>
         )}

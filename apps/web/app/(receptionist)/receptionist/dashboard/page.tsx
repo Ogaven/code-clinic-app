@@ -60,7 +60,7 @@ function AnalogClock() {
     )
   })
 
-  const label = time.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+  const label = time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
 
   return (
     <div className="flex flex-col items-center gap-1 select-none">
@@ -115,7 +115,7 @@ function MiniCalendar({ onDateSelect, selectedDate }: { onDateSelect: (d: Date) 
   const year = view.getFullYear(), month = view.getMonth()
   const firstDay = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const monthName = view.toLocaleDateString('en-UG', { month: 'long', year: 'numeric' })
+  const monthName = view.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
   const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
 
@@ -189,7 +189,7 @@ const STATUS_NEXT: Record<string, { status: string; label: string }> = {
 // ── Patient row ───────────────────────────────────────────────
 function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
   const isActive = ['CHECKED_IN','IN_CHAIR','WITH_PROVIDER'].includes(appt.status)
-  const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+  const time = new Date(appt.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 
   async function changeStatus(status: string) {
     const token = localStorage.getItem('cc_token')
@@ -426,7 +426,7 @@ export default function ReceptionistDashboard() {
   }
 
   function nowTime() {
-    return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
+    return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
   }
 
   async function sendChat(text?: string) {
@@ -466,7 +466,7 @@ export default function ReceptionistDashboard() {
     if (recording) { recRef.current?.stop(); setRec(false); return }
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) { sendChat("Voice input isn't supported in this browser."); return }
-    const rec = new SR(); rec.lang = 'en-UG'; rec.interimResults = false
+    const rec = new SR(); rec.lang = 'en-GB'; rec.interimResults = false
     rec.onresult = (e: any) => { const t = e.results[0][0].transcript; setChatInput(t); sendChat(t) }
     rec.onend = () => setRec(false); rec.onerror = () => setRec(false)
     recRef.current = rec; rec.start(); setRec(true)
@@ -581,7 +581,7 @@ export default function ReceptionistDashboard() {
               )}
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {checkinResults.map((appt: any) => {
-                  const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Africa/Nairobi' })
+                  const time = new Date(appt.startAt).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Africa/Nairobi' })
                   const canCheckin  = checkinMode === 'in'  && ['PENDING','CONFIRMED'].includes(appt.status)
                   const canCheckout = checkinMode === 'out' && ['IN_CHAIR','WITH_PROVIDER','READY_CHECKOUT'].includes(appt.status)
                   const canAct = canCheckin || canCheckout
@@ -629,7 +629,7 @@ export default function ReceptionistDashboard() {
                 <div className="space-y-2 max-h-60 overflow-y-auto">
                   <p className="text-xs font-bold text-gray-400 dark:text-white/40 uppercase tracking-wider">Today's Appointments</p>
                   {appointments.slice(0, 8).map((appt: any) => {
-                    const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Africa/Nairobi' })
+                    const time = new Date(appt.startAt).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Africa/Nairobi' })
                     const canCheckin  = checkinMode === 'in'  && ['PENDING','CONFIRMED'].includes(appt.status)
                     const canCheckout = checkinMode === 'out' && ['IN_CHAIR','WITH_PROVIDER','READY_CHECKOUT'].includes(appt.status)
                     const canAct = canCheckin || canCheckout
@@ -664,7 +664,7 @@ export default function ReceptionistDashboard() {
         {/* Greeting text */}
         <div className="flex-1">
           <p className="text-gray-400 dark:text-white/40 text-sm font-medium mb-1">
-            {new Date().toLocaleDateString('en-UG', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'Africa/Nairobi' })}
+            {new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'Africa/Nairobi' })}
           </p>
           <h1 className="text-3xl font-black text-gray-800 dark:text-white mb-1">
             {greeting()}, <span style={{ color: '#29ABE2' }}>{user?.firstName}!</span> 👋
@@ -1044,8 +1044,8 @@ export default function ReceptionistDashboard() {
                   <p className="text-xs text-gray-400">No upcoming appointments</p>
                 </div>
               ) : upcoming.slice(0, 6).map(a => {
-                const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
-                const date = new Date(a.startAt).toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+                const t = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+                const date = new Date(a.startAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
                 return (
                   <div key={a.id} className="px-4 py-2.5">
                     <div className="flex items-center gap-2">

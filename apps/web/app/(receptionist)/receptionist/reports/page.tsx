@@ -73,18 +73,18 @@ function PatientFlowTab() {
   function fmtMins(m: number) { return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m` }
 
   function exportFlowPDF() {
-    const today = new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
+    const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
     const stageRows = FLOW_STAGES.map(s => {
       const pts = appts.filter(a => s.statuses.includes(a.status))
       const avg = pts.length ? Math.round(pts.reduce((sum, a) => sum + durationMins(a), 0) / pts.length) : null
       return `<tr><td style="color:${s.color};font-weight:700">${s.label}</td><td>${pts.length}</td><td>${avg !== null ? fmtMins(avg) : '—'}</td><td>${pts.length ? fmtMins(Math.min(...pts.map(durationMins))) : '—'}</td><td>${pts.length ? fmtMins(Math.max(...pts.map(durationMins))) : '—'}</td></tr>`
     }).join('')
     const rows = appts.map(a => {
-      const t     = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+      const t     = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
       const stage = FLOW_STAGES.find(s => s.statuses.includes(a.status))?.label || a.status
       return `<tr><td>${a.patient?.firstName} ${a.patient?.lastName}</td><td>${t}</td><td>${a.service?.name || '—'}</td><td>Dr. ${a.doctor?.user?.firstName} ${a.doctor?.user?.lastName}</td><td>${stage}</td><td>${fmtMins(durationMins(a))}</td></tr>`
     }).join('')
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Live Flow Report — ${today}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1a1a1a}h1{font-size:22px;margin-bottom:4px}h2{font-size:14px;font-weight:700;margin:24px 0 10px}p.sub{color:#666;font-size:13px;margin-bottom:24px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}th{background:#0c1e50;color:white;text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em}td{padding:8px 10px;border-bottom:1px solid #e5e7eb}tr:nth-child(even) td{background:#f9fafb}.summary{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}.stat{background:#f1f5f9;border-radius:10px;padding:12px 20px;text-align:center}.stat .n{font-size:28px;font-weight:900;color:#0c1e50}.stat .l{font-size:11px;color:#64748b;margin-top:2px}@media print{body{padding:16px}}</style></head><body><h1>Live Patient Flow Report</h1><p class="sub">Code Clinic — ${today}</p><div class="summary"><div class="stat"><div class="n">${appts.length}</div><div class="l">Total Today</div></div><div class="stat"><div class="n" style="color:#16a34a">${completed}</div><div class="l">Completed</div></div><div class="stat"><div class="n" style="color:#ef4444">${cancelled}</div><div class="l">Cancelled</div></div><div class="stat"><div class="n" style="color:#d97706">${noShow}</div><div class="l">No Show</div></div></div><h2>Stage Duration Summary</h2><table><thead><tr><th>Stage</th><th>Count</th><th>Avg</th><th>Min</th><th>Max</th></tr></thead><tbody>${stageRows}</tbody></table><h2>Appointment Log</h2><table><thead><tr><th>Patient</th><th>Time</th><th>Service</th><th>Doctor</th><th>Stage</th><th>Duration</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:24px;font-size:11px;color:#9ca3af">Generated ${new Date().toLocaleString('en-UG',{timeZone:'Africa/Nairobi'})} · Code Clinic</p></body></html>`
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Live Flow Report — ${today}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1a1a1a}h1{font-size:22px;margin-bottom:4px}h2{font-size:14px;font-weight:700;margin:24px 0 10px}p.sub{color:#666;font-size:13px;margin-bottom:24px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}th{background:#0c1e50;color:white;text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em}td{padding:8px 10px;border-bottom:1px solid #e5e7eb}tr:nth-child(even) td{background:#f9fafb}.summary{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}.stat{background:#f1f5f9;border-radius:10px;padding:12px 20px;text-align:center}.stat .n{font-size:28px;font-weight:900;color:#0c1e50}.stat .l{font-size:11px;color:#64748b;margin-top:2px}@media print{body{padding:16px}}</style></head><body><h1>Live Patient Flow Report</h1><p class="sub">Code Clinic — ${today}</p><div class="summary"><div class="stat"><div class="n">${appts.length}</div><div class="l">Total Today</div></div><div class="stat"><div class="n" style="color:#16a34a">${completed}</div><div class="l">Completed</div></div><div class="stat"><div class="n" style="color:#ef4444">${cancelled}</div><div class="l">Cancelled</div></div><div class="stat"><div class="n" style="color:#d97706">${noShow}</div><div class="l">No Show</div></div></div><h2>Stage Duration Summary</h2><table><thead><tr><th>Stage</th><th>Count</th><th>Avg</th><th>Min</th><th>Max</th></tr></thead><tbody>${stageRows}</tbody></table><h2>Appointment Log</h2><table><thead><tr><th>Patient</th><th>Time</th><th>Service</th><th>Doctor</th><th>Stage</th><th>Duration</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:24px;font-size:11px;color:#9ca3af">Generated ${new Date().toLocaleString('en-GB',{timeZone:'Africa/Nairobi'})} · Code Clinic</p></body></html>`
     const w = window.open('', '_blank')
     if (w) { w.document.write(html); w.document.close(); w.print() }
   }
@@ -169,7 +169,7 @@ function PatientFlowTab() {
                     {appts.length === 0 ? (
                       <tr><td colSpan={6} className="text-center py-8 text-gray-400 dark:text-white/40 text-sm">No appointments today</td></tr>
                     ) : appts.map(a => {
-                      const t = new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+                      const t = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
                       const statusColor: Record<string, string> = {
                         CONFIRMED: 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
                         COMPLETED: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -455,7 +455,7 @@ function lastMonthRange() {
   return { from, to }
 }
 function fmtMonthLabel(from: string) {
-  return new Date(from + 'T12:00:00Z').toLocaleDateString('en-UG', { month: 'long', year: 'numeric' })
+  return new Date(from + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 }
 
 function RateBar({ rate }: { rate: number }) {

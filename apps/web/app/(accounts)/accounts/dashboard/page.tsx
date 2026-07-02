@@ -33,8 +33,8 @@ function AnalogClock() {
     x2: cx + Math.cos((deg - 90) * Math.PI / 180) * len,
     y2: cy + Math.sin((deg - 90) * Math.PI / 180) * len,
   })
-  const timeStr = kla.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
-  const dateStr = kla.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'long', year: '2-digit' })
+  const timeStr = kla.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })
+  const dateStr = kla.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: '2-digit' })
     .replace(',', '').replace(/(\d+) (\w+) (\d+)/, '$1 $2 \'$3')
   return (
     <div className="flex flex-col items-center gap-1.5">
@@ -197,7 +197,7 @@ export default function AccountsDashboardPage() {
   const greeting    = getGreeting()
   const name        = user?.firstName || 'Accounts'
   const netProfit   = data ? data.monthRevenue - data.monthExpenses : 0
-  const dateStr     = now.toLocaleDateString('en-UG', {
+  const dateStr     = now.toLocaleDateString('en-GB', {
     timeZone: 'Africa/Nairobi', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   })
 
@@ -434,7 +434,7 @@ export default function AccountsDashboardPage() {
                         </td>
                         <td className="px-3 py-2.5 hidden sm:table-cell">
                           <span className="text-[10px] text-gray-400">
-                            {new Date(inv.createdAt).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })}
+                            {new Date(inv.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })}
                           </span>
                         </td>
                       </tr>

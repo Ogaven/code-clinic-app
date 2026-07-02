@@ -82,7 +82,7 @@ export default function SettingsPage() {
 
   // Appearance
   const [theme, setTheme] = useState<Theme>('system')
-  const [lang,  setLang]  = useState('en-UG')
+  const [lang,  setLang]  = useState('en-GB')
 
   // Integrations
   const [gcal,       setGcal]       = useState<GCalStatus>({ connected: false })

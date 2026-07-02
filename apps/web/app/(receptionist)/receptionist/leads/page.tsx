@@ -49,7 +49,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 function fmtDate(iso: string) {
   const d = new Date(iso)
-  return d.toLocaleDateString('en-UG', { day: '2-digit', month: 'short', year: 'numeric' })
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function waLink(phone: string): string {

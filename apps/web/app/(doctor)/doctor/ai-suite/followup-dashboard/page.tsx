@@ -82,7 +82,7 @@ export default function DoctorFollowupDashboardPage() {
                   </div>
                   <p className="text-xs text-gray-500 line-clamp-2">{n.content}</p>
                   <p className="text-[10px] text-gray-400 mt-1">
-                    {n.author?.firstName} {n.author?.lastName} · {new Date(n.updatedAt).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {n.author?.firstName} {n.author?.lastName} · {new Date(n.updatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
@@ -123,7 +123,7 @@ export default function DoctorFollowupDashboardPage() {
                 <div className="text-right flex-shrink-0">
                   <div className="flex items-center gap-1 text-[10px] text-gray-400">
                     <Clock size={10} />
-                    {new Date(m.scheduledFor).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {new Date(m.scheduledFor).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </div>
                   <p className="text-[10px] text-gray-400 mt-0.5">{m.patient?.phone}</p>
                 </div>

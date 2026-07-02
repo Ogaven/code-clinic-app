@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatUGX(amount: number | bigint): string {
   const n = typeof amount === 'bigint' ? Number(amount) : amount
-  return `UGX ${n.toLocaleString('en-UG')}`
+  return `UGX ${n.toLocaleString('en-GB')}`
 }
 
 export function formatPhone(phone: string): string {
@@ -24,7 +24,7 @@ export function getInitials(firstName: string, lastName: string): string {
 }
 
 export function formatKampalaTime(date: Date): string {
-  return date.toLocaleTimeString('en-UG', {
+  return date.toLocaleTimeString('en-GB', {
     timeZone: 'Africa/Nairobi',
     hour: '2-digit',
     minute: '2-digit',
@@ -33,7 +33,7 @@ export function formatKampalaTime(date: Date): string {
 }
 
 export function formatKampalaDate(date: Date): string {
-  return date.toLocaleDateString('en-UG', {
+  return date.toLocaleDateString('en-GB', {
     timeZone: 'Africa/Nairobi',
     weekday: 'long',
     year: 'numeric',
@@ -43,7 +43,7 @@ export function formatKampalaDate(date: Date): string {
 }
 
 export function getGreeting(): string {
-  const hour = new Date().toLocaleString('en-UG', {
+  const hour = new Date().toLocaleString('en-GB', {
     timeZone: 'Africa/Nairobi',
     hour: 'numeric',
     hour12: false,

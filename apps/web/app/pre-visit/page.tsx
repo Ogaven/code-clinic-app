@@ -109,7 +109,7 @@ function PreVisitForm() {
         <div className="mt-6 bg-cyan-50 border border-cyan-200 rounded-2xl px-6 py-4 text-sm text-cyan-800 max-w-sm">
           <p className="font-bold">{appt.service?.name}</p>
           <p>Dr. {appt.doctor?.user?.firstName} {appt.doctor?.user?.lastName}</p>
-          <p>{new Date(appt.startAt).toLocaleString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })}</p>
+          <p>{new Date(appt.startAt).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })}</p>
         </div>
       )}
     </div>
@@ -136,7 +136,7 @@ function PreVisitForm() {
           <div className="bg-white rounded-2xl border border-cyan-200 p-4 shadow-sm">
             <p className="text-[10px] font-black text-cyan-600 uppercase tracking-wider mb-1">Your Appointment</p>
             <p className="font-bold text-gray-800">{appt.service?.name}</p>
-            <p className="text-sm text-gray-500">Dr. {appt.doctor?.user?.firstName} {appt.doctor?.user?.lastName} · {new Date(appt.startAt).toLocaleString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })}</p>
+            <p className="text-sm text-gray-500">Dr. {appt.doctor?.user?.firstName} {appt.doctor?.user?.lastName} · {new Date(appt.startAt).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })}</p>
           </div>
         )}
 

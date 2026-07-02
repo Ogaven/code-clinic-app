@@ -65,13 +65,13 @@ function Avatar({ name, size = 40, borderColor }: { name: string | null | undefi
 function fmtTime(iso: string): string {
   const d = new Date(iso), now = new Date()
   const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
-  if (diff === 0) return d.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+  if (diff === 0) return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
   if (diff === 1) return 'Yesterday'
-  if (diff < 7)  return d.toLocaleDateString('en-UG', { weekday: 'short' })
-  return d.toLocaleDateString('en-UG', { day: 'numeric', month: 'short' })
+  if (diff < 7)  return d.toLocaleDateString('en-GB', { weekday: 'short' })
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 function fmtFull(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
 
 // ── Channel identity ───────────────────────────────────────────────────────────

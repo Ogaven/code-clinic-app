@@ -71,7 +71,7 @@ export default function AuditLogPage() {
   const applyFilter = (fn: () => void) => { fn(); setPage(1) }
 
   const formatTime = (iso: string) =>
-    new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short' })
+    new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
 
   const getActionBadge = (act: string) => {
     const map: Record<string, string> = {

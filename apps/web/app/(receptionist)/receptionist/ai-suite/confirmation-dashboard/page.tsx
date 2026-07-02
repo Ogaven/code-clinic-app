@@ -67,7 +67,7 @@ export default function ConfirmationDashboardPage() {
   const tomorrowAppts     = (data?.upcomingAppts || []).filter(a => isTomorrow(a.startAt))
   const tomorrowConfirmed = tomorrowAppts.filter(a => a.status === 'CONFIRMED').length
   const tomorrowWaiting   = tomorrowAppts.filter(a => a.status === 'SCHEDULED').length
-  const tomorrowDateStr   = new Date(Date.now() + 86400000).toLocaleDateString('en-UG', {
+  const tomorrowDateStr   = new Date(Date.now() + 86400000).toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long',
   })
 
@@ -184,7 +184,7 @@ export default function ConfirmationDashboardPage() {
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 text-right">
-                    {new Date(a.startAt).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {new Date(a.startAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
                   <span className="text-[11px] font-semibold text-cyan-500 group-hover:text-cyan-600 flex items-center gap-0.5 whitespace-nowrap">
                     View <ArrowRight size={11} />
@@ -214,7 +214,7 @@ export default function ConfirmationDashboardPage() {
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <div className="text-right">
                     <p className="text-[10px] text-gray-400">
-                      {new Date(m.scheduledFor).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      {new Date(m.scheduledFor).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </p>
                     <p className="text-[10px] text-gray-400 mt-0.5">{m.patient?.phone}</p>
                   </div>

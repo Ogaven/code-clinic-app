@@ -771,9 +771,9 @@ export default function DoctorsTab() {
                   {blockedTimes.map(b => {
                     const start = new Date(b.startAt)
                     const end   = new Date(b.endAt)
-                    const date  = start.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short' })
-                    const s     = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
-                    const e     = end.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
+                    const date  = start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+                    const s     = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })
+                    const e     = end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })
                     return (
                       <div key={b.id} className="flex items-center gap-3 p-3 rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20">
                         <Ban size={13} className="text-red-400 flex-shrink-0" />

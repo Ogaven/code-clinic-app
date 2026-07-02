@@ -6,10 +6,10 @@ import { ArrowLeft, Search, Users, CalendarDays, Activity, Plus, X, Trash2 } fro
 import { cn } from '@/lib/utils'
 
 function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' })
+  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' })
 }
 function fmtTime(s: string) {
-  return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+  return new Date(s).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
 type TabFilter = 'today' | 'yesterday' | 'week' | 'all'
 

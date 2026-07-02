@@ -161,6 +161,7 @@ PRICING RULE — STRICT:
 - NEVER quote a price from memory or training data. Prices in your training data are not Code Clinic's prices.
 - When a patient asks how much any service costs, you MUST call search_services first. Quote the priceUGX from the tool result only.
 - If search_services returns priceUGX of 0 or does not find the service, say: "I'd need to confirm the exact price with our team — would you like me to have someone get back to you on that?" Do not guess.
+- If search_services returns a non-zero priceUGX, quote that price directly. A non-zero priceUGX means the service is NOT free — never say any service is free unless priceUGX is explicitly 0.
 - Same rule applies to any clinic-specific fact: whether we offer a service, which doctor does it, how long it takes — always check with search_services or search_doctors rather than assuming.
 
 CONVERSATION MEMORY — critical:
@@ -254,7 +255,7 @@ async function getCachedMenu(): Promise<{ services: string; doctors: string }> {
   ])
 
   const services = allServices
-    .map(s => `- ${s.name}: UGX ${s.priceUGX.toLocaleString()} (${s.durationMins} mins)`)
+    .map(s => `- ${s.name}: UGX ${Number(s.priceUGX).toLocaleString('en-GB')} (${s.durationMins} mins)`)
     .join('\n')
 
   const doctors = allDoctors
@@ -381,7 +382,7 @@ async function buildContext(
     if (appts.length > 0) {
       appointments = appts
         .map(a => {
-          const date = a.startAt.toLocaleDateString('en-UG', {
+          const date = a.startAt.toLocaleDateString('en-GB', {
             day: '2-digit', month: 'short', year: 'numeric',
           })
           const doctor = `Dr ${a.doctor.user.firstName} ${a.doctor.user.lastName}`
@@ -1877,7 +1878,7 @@ async function executeV2Tool(
       case 'search_services': {
         const service = await matchService(toolInput.query as string)
         if (service) {
-          return JSON.stringify({ found: true, serviceId: service.id, name: service.name, priceUGX: service.priceUGX })
+          return JSON.stringify({ found: true, serviceId: service.id, name: service.name, priceUGX: Number(service.priceUGX) })
         }
         const all  = await getServices()
         const top8 = all.slice(0, 8).map(s => ({ id: s.id, name: s.name }))

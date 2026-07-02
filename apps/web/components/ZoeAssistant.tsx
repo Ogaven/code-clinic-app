@@ -6,7 +6,7 @@ import { X, Send, Minimize2, Maximize2, Mic, MicOff, Bot } from 'lucide-react'
 type Msg = { from: 'zoe' | 'user'; text: string; time: string }
 
 function now() {
-  return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
+  return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
 }
 
 function buildGreetings(): Msg[] {
@@ -101,7 +101,7 @@ export default function ZoeAssistant({ role }: Props) {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) { sendMessage("Sorry, voice input isn't supported in this browser."); return }
     const recognition = new SR()
-    recognition.lang = 'en-UG'
+    recognition.lang = 'en-GB'
     recognition.interimResults = false
     recognition.onresult = (e: any) => { const t = e.results[0][0].transcript; setInput(t); sendMessage(t) }
     recognition.onend = () => setRec(false)

@@ -26,11 +26,11 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
 }
 
 function fmt(s: string) {
-  return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+  return new Date(s).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
 
 function fmtDate(d: Date) {
-  return d.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
 }
 
 function startOfWeek(d: Date) {
@@ -208,10 +208,10 @@ export default function MySchedulePage() {
   const { start: rangeStart, end: rangeEnd } = getRange()
 
   const headerLabel = view === 'day'
-    ? anchor.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    ? anchor.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     : view === 'week'
       ? `${fmtDate(startOfWeek(anchor))} – ${fmtDate(addDays(startOfWeek(anchor), 6))}`
-      : anchor.toLocaleDateString('en-UG', { month: 'long', year: 'numeric' })
+      : anchor.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
   const todayStr = ugandaDateStr(new Date())
 
@@ -349,7 +349,7 @@ export default function MySchedulePage() {
                   <div key={i} className="flex-1 text-center py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5"
                     onClick={() => { setAnchor(d); setView('day') }}>
                     <p className={cn('text-[10px] font-semibold', isToday ? 'text-blue-600' : 'text-gray-400')}>
-                      {d.toLocaleDateString('en-UG', { weekday: 'short' })}
+                      {d.toLocaleDateString('en-GB', { weekday: 'short' })}
                     </p>
                     <div className={cn('w-7 h-7 rounded-full flex items-center justify-center mx-auto text-sm font-bold',
                       isToday ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300')}>

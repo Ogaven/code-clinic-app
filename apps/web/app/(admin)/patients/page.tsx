@@ -740,12 +740,12 @@ export default function PatientsPage() {
                   <div key={a.id} className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 dark:border-white/5 last:border-0">
                     <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[10px] font-black flex-shrink-0"
                       style={{ background: a.service?.colour || '#29ABE2' }}>
-                      {d.getDate()}<br />{d.toLocaleDateString('en-UG', { month: 'short' })}
+                      {d.getDate()}<br />{d.toLocaleDateString('en-GB', { month: 'short' })}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{a.service?.name || 'Appointment'}</p>
                       <p className="text-xs text-gray-400 dark:text-white/40">
-                        {a.doctor?.user?.firstName ? `Dr. ${a.doctor.user.firstName}` : 'Doctor'} · {d.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {a.doctor?.user?.firstName ? `Dr. ${a.doctor.user.firstName}` : 'Doctor'} · {d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}
                       </p>
                     </div>
                     <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', statusColor[a.status] || 'bg-gray-50 text-gray-500')}>{a.status}</span>

@@ -47,7 +47,7 @@ function fmtDateShort(iso: string) {
   }).replace(/\//g, '-')
 }
 function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-UG', {
+  return new Date(iso).toLocaleTimeString('en-GB', {
     hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Nairobi',
   })
 }

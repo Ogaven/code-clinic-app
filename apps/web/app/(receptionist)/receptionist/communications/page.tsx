@@ -360,7 +360,7 @@ export default function CommunicationsPage() {
   }
 
   function nowTime() {
-    return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit' })
+    return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
   }
 
   const waFiltered = waConversations.filter(c =>
@@ -402,7 +402,7 @@ export default function CommunicationsPage() {
     id: m.id,
     from: m.fromUser?.role === 'DOCTOR' ? 'them' as const : 'me' as const,
     text: m.body,
-    time: new Date(m.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }),
+    time: new Date(m.createdAt).toLocaleTimeString('en-GB', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }),
     ts: new Date(m.createdAt).getTime(),
   })).sort((a: any, b: any) => a.ts - b.ts) : []
 
@@ -676,7 +676,7 @@ export default function CommunicationsPage() {
                   doctorList.map(({ name, userId, last, unread }) => {
                     const initials = name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
                     const preview  = last.body || ''
-                    const timeStr  = new Date(last.createdAt).toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' })
+                    const timeStr  = new Date(last.createdAt).toLocaleTimeString('en-GB', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' })
                     return (
                       <button key={userId}
                         onClick={() => { setSelectedDoctor(name); setSelectedDoctorId(userId); setShowDoctorThread(true) }}

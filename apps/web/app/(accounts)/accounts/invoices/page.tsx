@@ -214,7 +214,7 @@ export default function InvoicesPage() {
                         {inv.patient?.firstName} {inv.patient?.lastName}
                       </td>
                       <td className="px-3 py-2.5 text-[11px] text-gray-500 hidden sm:table-cell">
-                        {new Date(inv.createdAt).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })}
+                        {new Date(inv.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })}
                       </td>
                       <td className="px-3 py-2.5 text-right text-xs font-bold text-gray-800 dark:text-gray-200">
                         UGX {(inv.totalUGX ?? 0).toLocaleString()}

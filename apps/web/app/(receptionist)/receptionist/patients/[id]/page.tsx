@@ -224,7 +224,7 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
     const years  = Math.floor(totalMonths / 12)
     const months = totalMonths % 12
     const agePart = totalMonths < 12 ? `${totalMonths} mo` : (years < 3 && months > 0 ? `${years} yr ${months} mo` : `${years} yrs`)
-    return `${birth.toLocaleDateString('en-UG')} (${agePart})`
+    return `${birth.toLocaleDateString('en-GB')} (${agePart})`
   }
 
   return (
@@ -515,12 +515,12 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
                 <div key={a.id} className="flex items-center gap-3 px-4 py-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                     style={{ background: a.service?.colour || '#29ABE2' }}>
-                    {d.getDate()}<br className="hidden" /><span className="hidden">{d.toLocaleDateString('en-UG',{month:'short'})}</span>
+                    {d.getDate()}<br className="hidden" /><span className="hidden">{d.toLocaleDateString('en-GB',{month:'short'})}</span>
                     <span>{d.getDate()}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 dark:text-white">{a.service?.name || 'Appointment'}</p>
-                    <p className="text-xs text-gray-400">Dr. {a.doctor?.user?.firstName} {a.doctor?.user?.lastName} · {d.toLocaleDateString('en-UG',{weekday:'short',day:'numeric',month:'short'})} {d.toLocaleTimeString('en-UG',{hour:'2-digit',minute:'2-digit',hour12:true})}</p>
+                    <p className="text-xs text-gray-400">Dr. {a.doctor?.user?.firstName} {a.doctor?.user?.lastName} · {d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})} {d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:true})}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', cfg?.cls)}>{cfg?.label || a.status}</span>
@@ -551,11 +551,11 @@ function AppointmentsTab({ patientId }: { patientId: string }) {
                 <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[10px] font-black flex-shrink-0"
                     style={{ background: a.service?.colour || '#CBD5E1' }}>
-                    {d.getDate()}<br />{d.toLocaleDateString('en-UG',{month:'short'})}
+                    {d.getDate()}<br />{d.toLocaleDateString('en-GB',{month:'short'})}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{a.service?.name || 'Appointment'}</p>
-                    <p className="text-xs text-gray-400">Dr. {a.doctor?.user?.firstName} · {d.toLocaleDateString('en-UG',{day:'numeric',month:'short',year:'numeric'})}</p>
+                    <p className="text-xs text-gray-400">Dr. {a.doctor?.user?.firstName} · {d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</p>
                   </div>
                   <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', cfg?.cls)}>{cfg?.label || a.status}</span>
                 </div>
@@ -815,7 +815,7 @@ function DentalChartTab({ patientId }: { patientId: string }) {
                           <p className="text-slate-700 dark:text-slate-300">
                             {h.changeType === 'condition' ? `${h.item} ${h.newStatus}` : `${h.item}: ${h.oldStatus || 'Healthy'} → ${h.newStatus}`}
                           </p>
-                          <p className="text-slate-400">{new Date(h.date).toLocaleDateString('en-UG')}</p>
+                          <p className="text-slate-400">{new Date(h.date).toLocaleDateString('en-GB')}</p>
                         </div>
                       ))}
                     </div>
@@ -1052,7 +1052,7 @@ function TreatmentTab({ patientId }: { patientId: string }) {
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
             <div>
               <h3 className="text-sm font-bold text-gray-800 dark:text-white">{plan.title || 'Treatment Plan'}</h3>
-              <p className="text-xs text-gray-400 dark:text-white/40">{new Date(plan.createdAt).toLocaleDateString('en-UG')}</p>
+              <p className="text-xs text-gray-400 dark:text-white/40">{new Date(plan.createdAt).toLocaleDateString('en-GB')}</p>
             </div>
             <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full',
               plan.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
@@ -1175,7 +1175,7 @@ function NotesTab({ patientId, patient }: { patientId: string; patient?: any }) 
             return (
               <Card key={n.id} className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-gray-400">{new Date(n.createdAt).toLocaleString('en-UG', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+                  <span className="text-xs text-gray-400">{new Date(n.createdAt).toLocaleString('en-GB', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusInfo.color}`}>{statusInfo.label}</span>
                 </div>
                 <p className="text-sm text-gray-700 dark:text-white/80 leading-relaxed mb-3">{n.content}</p>
@@ -1259,7 +1259,7 @@ function BillingTab({ patientId }: { patientId: string }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-800 dark:text-white">Invoice #{inv.invoiceNumber || inv.id?.slice(0, 8)}</p>
-                  <p className="text-xs text-gray-400">{new Date(inv.createdAt).toLocaleDateString('en-UG')}</p>
+                  <p className="text-xs text-gray-400">{new Date(inv.createdAt).toLocaleDateString('en-GB')}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-black text-gray-800 dark:text-white">{formatUGX(inv.amount || 0)}</p>
@@ -1333,7 +1333,7 @@ function ActivityTab({ patientId }: { patientId: string }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-700 dark:text-white/80">{a.description || a.action}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{new Date(a.createdAt).toLocaleString('en-UG', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{new Date(a.createdAt).toLocaleString('en-GB', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</p>
               </div>
             </div>
           ))}
@@ -1371,7 +1371,7 @@ export default function PatientDetailPage() {
   const handlePrint = async () => {
     if (!patient) return
     const name   = `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'Patient'
-    const dob    = patient.dob ? new Date(patient.dob).toLocaleDateString('en-UG') : 'N/A'
+    const dob    = patient.dob ? new Date(patient.dob).toLocaleDateString('en-GB') : 'N/A'
     const phone  = patient.phone || 'N/A'
     const origin = window.location.origin
     const token  = localStorage.getItem('cc_token')
@@ -1379,7 +1379,7 @@ export default function PatientDetailPage() {
     const raw    = res.ok ? await res.json() : []
     const notes: any[] = Array.isArray(raw) ? raw : (raw.data || [])
     const notesHtml = notes.map((note: any) => {
-      const date   = new Date(note.createdAt).toLocaleString('en-UG', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+      const date   = new Date(note.createdAt).toLocaleString('en-GB', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
       const author = note.author ? `${note.author.firstName} ${note.author.lastName}` : ''
       const body   = (note.content || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       return `<div class="note"><div class="note-date">${date}${author ? ` &bull; <span class="note-author">${author}</span>` : ''}</div><div class="note-content">${body}</div></div>`

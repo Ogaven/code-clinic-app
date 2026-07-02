@@ -190,12 +190,12 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                     <div>
                       <p className="text-xs text-gray-400">Time</p>
                       <p className="text-sm font-semibold text-clinic-navy dark:text-white">
-                        {start.toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {start.toLocaleTimeString('en-GB', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hour12: true })}
                         {' – '}
-                        {end.toLocaleTimeString('en-UG', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {end.toLocaleTimeString('en-GB', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hour12: true })}
                       </p>
                       <p className="text-xs text-gray-400">
-                        {start.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })}
+                        {start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })}
                       </p>
                     </div>
                   </div>

@@ -407,7 +407,7 @@ function DentalChartTab({ patientId, token }: { patientId: string; token: string
                           <p className="text-slate-700 dark:text-slate-300">
                             {h.changeType === 'condition' ? `${h.item} ${h.newStatus}` : `${h.item}: ${h.oldStatus || 'Healthy'} → ${h.newStatus}`}
                           </p>
-                          <p className="text-slate-400">{new Date(h.date).toLocaleDateString('en-UG')}</p>
+                          <p className="text-slate-400">{new Date(h.date).toLocaleDateString('en-GB')}</p>
                         </div>
                       ))}
                     </div>
@@ -831,7 +831,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                           className="w-14 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 text-center" />
                       </td>
                       <td className="px-3 py-2 text-sm font-semibold text-slate-800 dark:text-white text-right">{formatUGX(editTotal)}</td>
-                      <td className="px-3 py-2 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-UG')}</td>
+                      <td className="px-3 py-2 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-GB')}</td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">
                           <button onClick={handleSaveEdit} className="p-1 text-emerald-500 hover:text-emerald-700"><Save size={14} /></button>
@@ -855,7 +855,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-right">{formatUGX(p.costPerUnit)}</td>
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-center">{p.discount > 0 ? `UGX ${p.discount.toLocaleString()}` : '—'}</td>
                     <td className="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white text-right">{formatUGX(total)}</td>
-                    <td className="px-4 py-3 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-UG')}</td>
+                    <td className="px-4 py-3 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-GB')}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button onClick={() => handleStartEdit(p)} className="p-1 text-slate-400 hover:text-slate-600"><Pencil size={14} /></button>
@@ -1014,7 +1014,7 @@ function NotesTab({ patientId, token }: { patientId: string; token: string | nul
           <div key={note.id} className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl p-4 group relative">
             <div className="flex items-start justify-between mb-2">
               <div>
-                <p className="text-xs font-semibold text-slate-500">{new Date(note.createdAt).toLocaleString('en-UG')}</p>
+                <p className="text-xs font-semibold text-slate-500">{new Date(note.createdAt).toLocaleString('en-GB')}</p>
               </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 {note.authorId === user.id && (
@@ -1078,7 +1078,7 @@ function AppointmentsTab({ patient, token }: { patient: any; token: string | nul
           </div>
           <div>
             <p className="font-medium text-sm text-slate-800 dark:text-white">{a.service?.name}</p>
-            <p className="text-xs text-slate-500">Dr. {a.doctor?.user?.firstName} {a.doctor?.user?.lastName} · {new Date(a.startAt).toLocaleDateString('en-UG', { weekday: 'short', month: 'short', day: 'numeric' })} {new Date(a.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit' })}</p>
+            <p className="text-xs text-slate-500">Dr. {a.doctor?.user?.firstName} {a.doctor?.user?.lastName} · {new Date(a.startAt).toLocaleDateString('en-GB', { weekday: 'short', month: 'short', day: 'numeric' })} {new Date(a.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1143,7 +1143,7 @@ function BillingTab({ patient, token }: { patient: any; token: string | null }) 
               return (
                 <tr key={inv.id} className="border-b border-slate-100 dark:border-white/5">
                   <td className="px-4 py-3 text-sm font-medium text-blue-600">{inv.invoiceNumber}</td>
-                  <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{new Date(inv.createdAt).toLocaleDateString('en-UG')}</td>
+                  <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{new Date(inv.createdAt).toLocaleDateString('en-GB')}</td>
                   <td className="px-4 py-3 text-sm text-slate-800 dark:text-white">{formatUGX(inv.totalUGX)}</td>
                   <td className="px-4 py-3 text-sm text-green-600">{formatUGX(inv.paidUGX)}</td>
                   <td className={cn('px-4 py-3 text-sm font-semibold', balance > 0 ? 'text-red-600' : 'text-green-600')}>{formatUGX(balance)}</td>
@@ -1254,7 +1254,7 @@ function DocumentsTab({ patientId, token }: { patientId: string; token: string |
             <div className="flex-1 ml-3 overflow-hidden">
               <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
                 className="text-sm font-medium text-blue-600 truncate block hover:underline">{doc.fileName}</a>
-              <p className="text-xs text-slate-400">Uploaded by {doc.uploadedBy} · {new Date(doc.createdAt).toLocaleDateString('en-UG')}</p>
+              <p className="text-xs text-slate-400">Uploaded by {doc.uploadedBy} · {new Date(doc.createdAt).toLocaleDateString('en-GB')}</p>
             </div>
             <button onClick={() => handleDelete(doc.id)} className="p-2 text-slate-400 hover:text-red-500 ml-2">
               <Trash2 size={15} />
@@ -1295,7 +1295,7 @@ function ActivityTab({ patientId, token }: { patientId: string; token: string | 
           </div>
           <div>
             <p className="text-sm text-slate-700 dark:text-slate-300">{a.action}</p>
-            <p className="text-xs text-slate-400">By {a.userName} · <span title={new Date(a.createdAt).toLocaleString('en-UG')}>{timeAgo(a.createdAt)}</span></p>
+            <p className="text-xs text-slate-400">By {a.userName} · <span title={new Date(a.createdAt).toLocaleString('en-GB')}>{timeAgo(a.createdAt)}</span></p>
           </div>
         </div>
       ))}
@@ -1312,7 +1312,7 @@ function formatDobAge(dob: string) {
   const years  = Math.floor(totalMonths / 12)
   const months = totalMonths % 12
   const agePart = totalMonths < 12 ? `${totalMonths} mo` : (years < 3 && months > 0 ? `${years} yr ${months} mo` : `${years} yrs`)
-  return `${birth.toLocaleDateString('en-UG')} (${agePart})`
+  return `${birth.toLocaleDateString('en-GB')} (${agePart})`
 }
 
 function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab: ActiveTab) => void }) {
@@ -1385,7 +1385,7 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Total Visits', value: patient.appointments?.length || 0 },
-          { label: 'Last Visit', value: lastVisit ? new Date(lastVisit.startAt).toLocaleDateString('en-UG', { month: 'short', day: 'numeric' }) : '—' },
+          { label: 'Last Visit', value: lastVisit ? new Date(lastVisit.startAt).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }) : '—' },
           { label: 'Total Spent', value: formatUGX(totalSpent) },
           { label: 'Balance', value: formatUGX(outstanding), red: outstanding > 0 },
         ].map(({ label, value, red }) => (
@@ -1405,7 +1405,7 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
           { label: 'Gender', value: patient.gender || '—' },
           { label: 'Residence', value: patient.address || '—' },
           { label: 'How They Found Us', value: patient.referralSource || '—' },
-          { label: 'Patient Since', value: new Date(patient.createdAt).toLocaleDateString('en-UG', { year: 'numeric', month: 'long' }) },
+          { label: 'Patient Since', value: new Date(patient.createdAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'long' }) },
         ].map(({ label, value }) => (
           <div key={label}>
             <p className="text-xs text-slate-400 mb-0.5">{label}</p>
@@ -1445,7 +1445,7 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
               <div key={a.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-100 dark:border-white/10">
                 <div>
                   <p className="text-sm font-medium text-slate-800 dark:text-white">{a.service?.name}</p>
-                  <p className="text-xs text-slate-400">Dr. {a.doctor?.user?.firstName} {a.doctor?.user?.lastName} · {new Date(a.startAt).toLocaleDateString('en-UG')}</p>
+                  <p className="text-xs text-slate-400">Dr. {a.doctor?.user?.firstName} {a.doctor?.user?.lastName} · {new Date(a.startAt).toLocaleDateString('en-GB')}</p>
                 </div>
                 <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', STATUS_COLOURS[a.status] || 'bg-slate-100 text-slate-600')}>
                   {a.status.replace(/_/g, ' ')}
@@ -1506,7 +1506,7 @@ export default function PatientProfilePage() {
     const plans = plansAll
 
     const notesHtml = notes.map((note: any) => {
-      const date   = new Date(note.createdAt).toLocaleString('en-UG')
+      const date   = new Date(note.createdAt).toLocaleString('en-GB')
       const author = note.author ? `Dr ${note.author.firstName} ${note.author.lastName}` : ''
       const body   = (note.content || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       return `<div class="note"><div class="note-date">${date}${author ? ` &bull; <span class="note-author">${author}</span>` : ''}</div><div class="note-content">${body}</div></div>`
@@ -1534,7 +1534,7 @@ export default function PatientProfilePage() {
     const dobDisplay = patient.dob ? formatDobAge(patient.dob) : null
     const genderDisplay = patient.gender ? patient.gender.charAt(0) + patient.gender.slice(1).toLowerCase() : null
     const addressDisplay = [patient.address, patient.district].filter(Boolean).join(', ') || null
-    const generatedAt = new Date().toLocaleString('en-UG', { timeZone: 'Africa/Nairobi', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    const generatedAt = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     const infoItems = [
       patient.patientId ? `<div class="info-item"><span class="info-label">Patient ID</span><span class="info-value mono">${patient.patientId}</span></div>` : '',
       dobDisplay        ? `<div class="info-item"><span class="info-label">Date of Birth</span><span class="info-value">${dobDisplay}</span></div>` : '',

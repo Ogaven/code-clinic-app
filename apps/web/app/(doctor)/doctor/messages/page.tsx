@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, Send, RefreshCw, CheckCheck } from 'lucide-react'
 
 function fmtTime(dateStr: string) {
-  return new Date(dateStr).toLocaleTimeString('en-UG', {
+  return new Date(dateStr).toLocaleTimeString('en-GB', {
     hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   })
 }
@@ -16,7 +16,7 @@ function fmtDay(dateStr: string) {
   if (d.toDateString() === today.toDateString()) return 'Today'
   const y = new Date(today); y.setDate(y.getDate() - 1)
   if (d.toDateString() === y.toDateString()) return 'Yesterday'
-  return d.toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 interface Msg {

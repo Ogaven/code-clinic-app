@@ -143,8 +143,8 @@ export default function AppointmentsListTab() {
             <div className="sm:hidden divide-y divide-gray-50 dark:divide-white/5">
               {filtered.map(a => {
                 const start   = new Date(a.startAt)
-                const dateStr = start.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
-                const timeStr = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+                const dateStr = start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+                const timeStr = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
                 return (
                   <div key={a.id} className="px-4 py-3 space-y-1">
                     <div className="flex items-start justify-between gap-2">
@@ -183,8 +183,8 @@ export default function AppointmentsListTab() {
               <tbody>
                 {filtered.map((a, i) => {
                   const start   = new Date(a.startAt)
-                  const dateStr = start.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
-                  const timeStr = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+                  const dateStr = start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+                  const timeStr = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
                   return (
                     <tr key={a.id} className={cn('border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/60 dark:hover:bg-white/3 transition-colors', i % 2 !== 0 && 'bg-gray-50/30 dark:bg-white/[0.01]')}>
                       <td className="px-4 py-3">

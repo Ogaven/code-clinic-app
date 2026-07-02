@@ -52,8 +52,8 @@ function AnalogClock() {
     x2: cx + Math.cos((deg - 90) * Math.PI / 180) * len,
     y2: cy + Math.sin((deg - 90) * Math.PI / 180) * len,
   })
-  const timeStr = kla.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
-  const dateStr = kla.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'long', year: '2-digit' })
+  const timeStr = kla.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })
+  const dateStr = kla.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: '2-digit' })
     .replace(',', '').replace(/(\d+) (\w+) (\d+)/, '$1 $2 \'$3')
   return (
     <div className="flex flex-col items-center gap-1.5">
@@ -179,7 +179,7 @@ function MiniCalendar() {
   const days   = Array.from({ length: daysInMonth }, (_, i) => i + 1)
   const blanks = Array.from({ length: firstDay }, (_, i) => i)
   const booked = [3, 7, 10, 14, 17, 21, 24, 28]
-  const monthName = today.toLocaleDateString('en-UG', { month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
+  const monthName = today.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi' })
   return (
     <div>
       <p className="text-xs font-bold text-clinic-navy dark:text-white mb-3 text-center">{monthName}</p>
@@ -359,7 +359,7 @@ export default function DashboardPage() {
   const isDoctor     = user?.role === 'DOCTOR'
   const displayName  = isDoctor ? `Dr. ${name}` : name
 
-  const dateStr = now.toLocaleDateString('en-UG', {
+  const dateStr = now.toLocaleDateString('en-GB', {
     timeZone: 'Africa/Nairobi', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   })
 
@@ -934,7 +934,7 @@ export default function DashboardPage() {
                       <p className="text-[10px] text-gray-400">{a.userName}</p>
                     </div>
                     <span className="text-[9px] text-gray-400">
-                      {new Date(a.createdAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      {new Date(a.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}
                     </span>
                   </a>
                 ))}

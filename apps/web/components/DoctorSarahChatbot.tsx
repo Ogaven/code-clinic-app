@@ -7,7 +7,7 @@ import { X, Send, Minimize2, Mic, MicOff, GripHorizontal } from 'lucide-react'
 type Msg = { from: 'sarah' | 'user'; text: string; time: string }
 
 function nowTime() {
-  return new Date().toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
+  return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
 }
 
 const GREETINGS: Msg[] = [
@@ -99,7 +99,7 @@ export default function DoctorSarahChatbot() {
     if (recording) { recRef.current?.stop(); setRec(false); return }
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) { sendMessage("Voice input isn't supported in this browser."); return }
-    const r = new SR(); r.lang = 'en-UG'; r.interimResults = false
+    const r = new SR(); r.lang = 'en-GB'; r.interimResults = false
     r.onresult = (e: any) => { const t = e.results[0][0].transcript; setInput(t); sendMessage(t) }
     r.onend = () => setRec(false); r.onerror = () => setRec(false)
     recRef.current = r; r.start(); setRec(true)

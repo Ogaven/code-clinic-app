@@ -26,7 +26,7 @@ function lastMonthRange() {
   }
 }
 function fmtMonthLabel(from: string) {
-  return new Date(from + 'T12:00:00Z').toLocaleDateString('en-UG', { month: 'long', year: 'numeric' })
+  return new Date(from + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 }
 
 function RateBar({ rate }: { rate: number }) {

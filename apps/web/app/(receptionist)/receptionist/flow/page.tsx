@@ -109,7 +109,7 @@ function PatientCard({
   onAdvance: (id: string, status: string) => void
   onCancel: (id: string) => void
 }) {
-  const time = new Date(appt.startAt).toLocaleTimeString('en-UG', {
+  const time = new Date(appt.startAt).toLocaleTimeString('en-GB', {
     hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
   })
   const wait     = elapsed(appt.startAt)
@@ -344,7 +344,7 @@ export default function LiveFlowPage() {
             Patient Live Flow
           </h1>
           <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">
-            Auto-refreshes every 20s · Last updated {lastRefresh.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            Auto-refreshes every 20s · Last updated {lastRefresh.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -429,7 +429,7 @@ export default function LiveFlowPage() {
                 </div>
                 <div className="flex flex-col gap-2 opacity-50">
                   {cancelled.map(appt => {
-                    const time = new Date(appt.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+                    const time = new Date(appt.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
                     return (
                       <div key={appt.id} className="bg-gray-50 dark:bg-white/3 rounded-xl border border-gray-100 dark:border-white/5 p-3 flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gray-300 dark:bg-white/20">

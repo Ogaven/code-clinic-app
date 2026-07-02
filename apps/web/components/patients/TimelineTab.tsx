@@ -41,12 +41,12 @@ function fmtUGX(n: number) {
 }
 
 function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString('en-UG', {
+  return new Date(d).toLocaleDateString('en-GB', {
     weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
   })
 }
 function fmtTime(d: string) {
-  return new Date(d).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit' })
+  return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
 // ── Appointment row ───────────────────────────────────────────────────────────
@@ -469,7 +469,7 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-xs text-slate-400 hidden sm:inline">
-                      {new Date(conv.updatedAt).toLocaleDateString('en-UG', { day: 'numeric', month: 'short' })}
+                      {new Date(conv.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                     </span>
                     {isOpen
                       ? <ChevronUp size={14} className="text-slate-400" />
@@ -576,10 +576,10 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
                   {note.author
                     ? `${note.author.firstName} ${note.author.lastName}`
                     : 'Staff'} ·{' '}
-                  {new Date(note.createdAt).toLocaleDateString('en-UG', {
+                  {new Date(note.createdAt).toLocaleDateString('en-GB', {
                     day: 'numeric', month: 'short', year: 'numeric',
                   })}{' '}
-                  {new Date(note.createdAt).toLocaleTimeString('en-UG', {
+                  {new Date(note.createdAt).toLocaleTimeString('en-GB', {
                     hour: '2-digit', minute: '2-digit',
                   })}
                 </p>

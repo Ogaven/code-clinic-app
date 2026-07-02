@@ -93,7 +93,7 @@ export default function DoctorConfirmationDashboardPage() {
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-                    {new Date(a.startAt).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {new Date(a.startAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
@@ -116,7 +116,7 @@ export default function DoctorConfirmationDashboardPage() {
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-[10px] text-gray-400">
-                    {new Date(m.scheduledFor).toLocaleString('en-UG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {new Date(m.scheduledFor).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
                   <p className="text-[10px] text-gray-400 mt-0.5">{m.patient?.phone}</p>
                 </div>

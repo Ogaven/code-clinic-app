@@ -28,8 +28,8 @@ function AnalogClock() {
     x2: cx + Math.cos((deg - 90) * Math.PI / 180) * len,
     y2: cy + Math.sin((deg - 90) * Math.PI / 180) * len,
   })
-  const timeStr = kla.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
-  const dateStr = kla.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'long', year: '2-digit' })
+  const timeStr = kla.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })
+  const dateStr = kla.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: '2-digit' })
     .replace(',', '').replace(/(\d+) (\w+) (\d+)/, '$1 $2 \'$3')
   return (
     <div className="flex flex-col items-center gap-1.5">
@@ -77,7 +77,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
 }
 
 function fmtTime(s: string) {
-  return new Date(s).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+  return new Date(s).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
 
 export default function DoctorDashboardPage() {
@@ -301,7 +301,7 @@ export default function DoctorDashboardPage() {
           <div>
             <h2 className="text-base font-bold text-gray-800 dark:text-white">Today&apos;s Schedule</h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              {new Date().toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi' })}
+              {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi' })}
             </p>
           </div>
           <Link href="/doctor/schedule"

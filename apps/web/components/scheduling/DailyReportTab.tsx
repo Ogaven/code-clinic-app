@@ -15,7 +15,7 @@ function eatToday() {
 }
 
 function fmtDate(isoDate: string) {
-  return new Date(isoDate + 'T12:00:00Z').toLocaleDateString('en-UG', {
+  return new Date(isoDate + 'T12:00:00Z').toLocaleDateString('en-GB', {
     weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
     timeZone: 'Africa/Nairobi',
   })

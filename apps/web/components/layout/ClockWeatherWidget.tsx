@@ -30,13 +30,13 @@ export default function ClockWeatherWidget({ compact = false }: Props) {
   useEffect(() => {
     const update = () => {
       const now = new Date()
-      setTime(now.toLocaleTimeString('en-UG', {
+      setTime(now.toLocaleTimeString('en-GB', {
         timeZone: 'Africa/Nairobi',
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
       }))
-      setDate(now.toLocaleDateString('en-UG', {
+      setDate(now.toLocaleDateString('en-GB', {
         timeZone: 'Africa/Nairobi',
         weekday: compact ? undefined : 'short',
         month: 'short',
