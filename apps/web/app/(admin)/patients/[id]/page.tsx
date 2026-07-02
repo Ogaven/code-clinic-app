@@ -784,7 +784,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
           <table className="w-full text-left">
             <thead className="bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
               <tr>
-                {['Tooth','Treatment','Status','Qty','Unit Cost','Disc (UGX)','Total','Date',''].map(h => (
+                {['Tooth','Treatment','Status','Qty','Unit Cost','Disc (UGX)','Total','Date','Notes',''].map(h => (
                   <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -833,6 +833,10 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                       <td className="px-3 py-2 text-sm font-semibold text-slate-800 dark:text-white text-right">{formatUGX(editTotal)}</td>
                       <td className="px-3 py-2 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-GB')}</td>
                       <td className="px-3 py-2">
+                        <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                          className="w-40 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 resize-none" rows={2} />
+                      </td>
+                      <td className="px-3 py-2">
                         <div className="flex gap-1">
                           <button onClick={handleSaveEdit} className="p-1 text-emerald-500 hover:text-emerald-700"><Save size={14} /></button>
                           <button onClick={() => setEditingId(null)} className="p-1 text-slate-400 hover:text-slate-600"><X size={14} /></button>
@@ -856,6 +860,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-center">{p.discount > 0 ? `UGX ${p.discount.toLocaleString()}` : '—'}</td>
                     <td className="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white text-right">{formatUGX(total)}</td>
                     <td className="px-4 py-3 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-GB')}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 max-w-[180px]" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{p.notes || '—'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button onClick={() => handleStartEdit(p)} className="p-1 text-slate-400 hover:text-slate-600"><Pencil size={14} /></button>
@@ -871,7 +876,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                 <tr>
                   <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white text-right">Outstanding Cost:</td>
                   <td className="px-4 py-3 text-sm font-bold text-clinic-navy dark:text-white text-right">{formatUGX(totalCost)}</td>
-                  <td colSpan={2} />
+                  <td colSpan={3} />
                 </tr>
               </tfoot>
             )}
@@ -1514,7 +1519,8 @@ export default function PatientProfilePage() {
 
     const planRows = plans.map((p: any) => {
       const total = (p.costPerUnit * p.quantity) - (p.discount || 0)
-      const badgeCls = p.status === 'In Progress' ? 'badge-ip' : p.status === 'Completed' ? 'badge-done' : p.status === 'On Hold' ? 'badge-hold' : p.status === 'Cancelled' ? 'badge-cancel' : 'badge-pl'
+      const badgeCls = p.status === 'In Progress' ? 'badge-ip' : p.status === 'Completed' ? 'badge-done' : p.status === 'On Hold' ? 'badge-hold' : p.status === 'Cancelled' ? 'badge-cancel' : p.status === 'Declined' ? 'badge-decline' : 'badge-pl'
+      const notesEsc = (p.notes || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       return `<tr>
         <td>${p.toothNumber || '—'}</td>
         <td>${svcMap[p.serviceId] || '—'}</td>
@@ -1523,12 +1529,13 @@ export default function PatientProfilePage() {
         <td class="num">${p.costPerUnit > 0 ? 'UGX ' + p.costPerUnit.toLocaleString() : '—'}</td>
         <td class="num">${p.discount > 0 ? 'UGX ' + (p.discount).toLocaleString() : '—'}</td>
         <td class="num bold">${total > 0 ? 'UGX ' + total.toLocaleString() : '—'}</td>
+        <td style="white-space:pre-wrap;word-break:break-word">${notesEsc || '—'}</td>
       </tr>`
     }).join('')
     const remainingTotal = plans.filter((p: any) => ['Planned','In Progress'].includes(p.status)).reduce((sum: number, p: any) => sum + ((p.costPerUnit * p.quantity) - (p.discount || 0)), 0)
     const completedTotal = plans.filter((p: any) => p.status === 'Completed').reduce((sum: number, p: any) => sum + ((p.costPerUnit * p.quantity) - (p.discount || 0)), 0)
     const planHtml = plans.length > 0
-      ? `<table class="plan-table"><thead><tr><th>Tooth</th><th>Procedure</th><th>Status</th><th>Qty</th><th>Unit Cost</th><th>Discount</th><th>Total</th></tr></thead><tbody>${planRows}</tbody><tfoot><tr><td colspan="6" class="bold" style="text-align:right;background:#f0fff4;color:#166534">Completed Total</td><td class="num bold" style="background:#f0fff4;color:#166534">${completedTotal > 0 ? 'UGX ' + completedTotal.toLocaleString() : '—'}</td></tr><tr><td colspan="6" class="bold" style="text-align:right;background:#f0f4ff;color:#1A237E">Remaining / Outstanding</td><td class="num bold" style="background:#f0f4ff;color:#1A237E">UGX ${remainingTotal.toLocaleString()}</td></tr></tfoot></table>`
+      ? `<table class="plan-table"><thead><tr><th>Tooth</th><th>Procedure</th><th>Status</th><th>Qty</th><th>Unit Cost</th><th>Discount</th><th>Total</th><th>Notes</th></tr></thead><tbody>${planRows}</tbody><tfoot><tr><td colspan="6" class="bold" style="text-align:right;background:#f0fff4;color:#166534">Completed Total</td><td class="num bold" style="background:#f0fff4;color:#166534">${completedTotal > 0 ? 'UGX ' + completedTotal.toLocaleString() : '—'}</td><td></td></tr><tr><td colspan="6" class="bold" style="text-align:right;background:#f0f4ff;color:#1A237E">Remaining / Outstanding</td><td class="num bold" style="background:#f0f4ff;color:#1A237E">UGX ${remainingTotal.toLocaleString()}</td><td></td></tr></tfoot></table>`
       : '<p class="empty">No treatment plan items.</p>'
 
     const dobDisplay = patient.dob ? formatDobAge(patient.dob) : null
@@ -1568,7 +1575,7 @@ body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;padding:24
 .plan-table tr:nth-child(even) td{background:#fafafa}
 .num{text-align:right}.bold{font-weight:700}
 .badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;white-space:nowrap}
-.badge-pl{background:#dbeafe;color:#1d4ed8}.badge-ip{background:#fef3c7;color:#92400e}.badge-done{background:#dcfce7;color:#166534}.badge-hold{background:#f3f4f6;color:#6b7280}.badge-cancel{background:#fee2e2;color:#dc2626}
+.badge-pl{background:#dbeafe;color:#1d4ed8}.badge-ip{background:#fef3c7;color:#92400e}.badge-done{background:#dcfce7;color:#166534}.badge-hold{background:#f3f4f6;color:#6b7280}.badge-cancel{background:#fee2e2;color:#dc2626}.badge-decline{background:#ffe4e1;color:#b91c1c}
 .note{border:1px solid #e0e0e0;border-radius:8px;padding:12px 16px;margin-bottom:12px;page-break-inside:avoid}
 .note-date{font-size:11px;color:#888;margin-bottom:6px}.note-author{color:#1A237E;font-weight:600}
 .note-content{font-size:13px;line-height:1.6;white-space:pre-wrap}
@@ -1597,11 +1604,44 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
         a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
       }
     } else if (mode === 'download') {
-      const blob = new Blob([cleanHtml], { type: 'text/html' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = `treatment-plan-${name.replace(/[^a-zA-Z0-9]/g, '-')}.html`
-      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
+      try {
+        const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
+          import('jspdf'),
+          import('html2canvas'),
+        ])
+        const iframe = document.createElement('iframe')
+        iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:2000px;border:none;visibility:hidden'
+        document.body.appendChild(iframe)
+        await new Promise<void>(resolve => {
+          iframe.onload = () => resolve()
+          iframe.srcdoc = cleanHtml
+        })
+        await new Promise(r => setTimeout(r, 300))
+        const body = iframe.contentDocument!.body
+        body.style.margin = '0'; body.style.padding = '24px'; body.style.width = '746px'
+        iframe.style.height = body.scrollHeight + 'px'
+        await new Promise(r => setTimeout(r, 100))
+        const canvas = await html2canvas(body, { scale: 2, useCORS: true, width: 794, windowWidth: 794 })
+        document.body.removeChild(iframe)
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' })
+        const pageW = pdf.internal.pageSize.getWidth()
+        const pageH = pdf.internal.pageSize.getHeight()
+        const imgW = pageW
+        const imgH = (canvas.height * imgW) / canvas.width
+        let y = 0
+        while (y < imgH) {
+          if (y > 0) pdf.addPage()
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, -y, imgW, imgH)
+          y += pageH
+        }
+        pdf.save(`treatment-plan-${name.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`)
+      } catch {
+        const blob = new Blob([cleanHtml], { type: 'text/html' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `treatment-plan-${name.replace(/[^a-zA-Z0-9]/g, '-')}.html`
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
+      }
     } else {
       const w = window.open('', '_blank', 'width=800,height=900')
       if (w) { w.document.write(html); w.document.close() }

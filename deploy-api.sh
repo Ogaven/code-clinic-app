@@ -16,7 +16,8 @@ SERVER=root@46.101.255.243
 REMOTE_DIR=/var/www/codeclinic
 
 echo '[deploy-api] Building API locally (tsc)...'
-pnpm --filter api build
+# tsc requires extra heap on large codebases — 3 GB should be enough on any dev machine
+NODE_OPTIONS='--max-old-space-size=3072' pnpm --filter api build
 
 echo '[deploy-api] Copying compiled dist/ to server...'
 scp -r apps/api/dist "$SERVER:$REMOTE_DIR/apps/api/"
