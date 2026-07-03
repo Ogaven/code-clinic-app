@@ -1307,7 +1307,7 @@ async function alertStaffOfConcern(params: {
       `Reply to this message with guidance and I'll relay it to the patient in my voice, or say "continue" to fast-track a booking.`
 
     // 1. WhatsApp to clinic front desk — capture message ID so staff replies can be linked back
-    const alertMessageId = await sendWhatsAppMessage('+256763430276', alertText)
+    const alertMessageId = await sendWhatsAppMessage(process.env.STAFF_WHATSAPP_NUMBER || '+256763430276', alertText)
 
     // 2. In-app notification for all active RECEPTIONIST + ADMIN users
     const staff = await prisma.user.findMany({
@@ -2150,6 +2150,16 @@ export async function getAgentReplyV2(
     // Ensure latest user message is present at end
     if (apiMessages.length === 0 || apiMessages[apiMessages.length - 1].role !== 'user') {
       apiMessages.push({ role: 'user', content: latestMessage })
+    }
+
+    // If patient wants a human, fire a real WhatsApp alert BEFORE calling Claude
+    // so Sarah's response ("I've passed you to Julian") is accurate
+    if (/talk to|speak to|speak with|talk with|call me|ring me|real person|human|julian|receptionist/i.test(latestMessage)) {
+      const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+      sendWhatsAppMessage(
+        staffNumber,
+        `👤 Patient requesting human\nPhone: ${from}\nMessage: "${latestMessage.slice(0, 200)}"\n\nPlease follow up via the AI Suite inbox.`
+      ).catch((e: any) => console.error('[V2] Human escalation alert failed:', e?.message))
     }
 
     const client     = new Anthropic({ apiKey })

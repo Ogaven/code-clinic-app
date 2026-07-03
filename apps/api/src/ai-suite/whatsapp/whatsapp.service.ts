@@ -108,18 +108,19 @@ export async function processInbound(from: string, text: string, wamid: string):
         await prisma.lead.create({
           data: { phone: from, source: 'WHATSAPP', status: 'NEW', stage: 'NEW', lastMessage: text },
         })
-        // FIX 2 — Alert staff of new WhatsApp lead
-        const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
-        const staffAlert = `🔔 New Lead from WhatsApp\nPhone: ${from}\nMessage: ${text}\nReply to them directly on WhatsApp if they left a number, or call them back.`
-        sendWhatsAppMessage(staffNumber, staffAlert).catch((e: any) =>
-          console.error('[Lead] Staff alert failed:', e?.message)
-        )
       } else {
         await prisma.lead.update({
           where: { id: existingLead.id },
           data:  { lastMessage: text },
         })
       }
+      // Alert staff for EVERY lead message so they can follow up in real-time
+      const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+      const preview     = text.slice(0, 200)
+      sendWhatsAppMessage(
+        staffNumber,
+        `🔔 Lead enquiry\nPhone: ${from}\nMessage: "${preview}"${text.length > 200 ? '…' : ''}\n\nPlease follow up in the AI Suite inbox.`
+      ).catch((e: any) => console.error('[Lead] Staff alert failed:', e?.message))
     }
 
     // ── 3. Save inbound message before calling the agent ─────────────────────

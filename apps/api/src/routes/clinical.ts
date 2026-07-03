@@ -264,7 +264,8 @@ router.post('/patients/:id/treatment-notes/followup-status', requireAuth, async 
 })
 
 // POST /clinical/patients/:id/treatment-notes
-router.post('/patients/:id/treatment-notes', requireAuth, doctorOrAdmin, async (req, res) => {
+// requireAuth only — receptionists need to be able to add notes too
+router.post('/patients/:id/treatment-notes', requireAuth, async (req, res) => {
   try {
     const { content } = req.body
     if (!content?.trim()) { res.status(400).json({ error: 'Content required' }); return }

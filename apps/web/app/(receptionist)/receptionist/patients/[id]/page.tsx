@@ -1117,11 +1117,16 @@ function NotesTab({ patientId, patient }: { patientId: string; patient?: any }) 
     setSaving(true)
     const token = localStorage.getItem('cc_token')
     try {
-      await fetch(`${API}/patients/${patientId}/treatment-notes`, {
+      const res = await fetch(`${API}/patients/${patientId}/treatment-notes`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: text.trim() }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        alert(err.error || 'Failed to save note. Please try again.')
+        return
+      }
       setText('')
       fetchNotes()
     } finally { setSaving(false) }
