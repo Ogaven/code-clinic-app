@@ -676,8 +676,8 @@ router.delete('/:id', requireAuth, adminAndReceptionist, auditLog('patients'), a
   }
 })
 
-// POST /patients/:id/merge — admin only
-router.post('/:id/merge', requireAuth, adminOnly, async (req, res) => {
+// POST /patients/:id/merge — admin + receptionist
+router.post('/:id/merge', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const targetId = req.params.id
     const { sourceId } = req.body
