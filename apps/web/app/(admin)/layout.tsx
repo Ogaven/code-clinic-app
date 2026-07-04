@@ -36,6 +36,8 @@ const pageTitles: Record<string, string> = {
   '/accounts/reports/tax':        'Tax Report',
   '/accounts/reports/monthly':    'Monthly Summary',
   '/accounts/reports/annual':     'Annual Summary',
+  '/reports/patient-flow':        'Patient Flow Report',
+  '/reports/case-acceptance':    'Case Acceptance Rate',
   '/ai-suite':                    'Agent Control',
   '/ai-suite/inbox':              'Inbox',
   '/ai-suite/calls':              'Call Logs',

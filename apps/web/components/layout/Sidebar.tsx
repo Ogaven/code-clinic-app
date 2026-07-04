@@ -64,6 +64,13 @@ const adminNav: NavGroup[] = [
     ],
   },
   {
+    label: 'CLINICAL REPORTS',
+    items: [
+      { label: 'Patient Flow',      href: '/reports/patient-flow',      icon: Activity },
+      { label: 'Case Acceptance',   href: '/reports/case-acceptance',   icon: TrendingUp },
+    ],
+  },
+  {
     items: [
       { label: 'Settings', href: '/settings', icon: Settings },
       { label: 'Support',  href: '/support',  icon: HeadphonesIcon },
