@@ -10,6 +10,7 @@ import { uploadLimiter } from '../middleware/rateLimit'
 import { uploadAvatar, deleteFile, getPublicUrl } from '../services/storage/r2'
 import { sendCredentialsEmail } from '../services/communications/email'
 import { prisma } from '../lib/prisma'
+import { logAudit } from '../services/audit.service'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
@@ -90,6 +91,7 @@ router.post('/', requireAuth, adminOnly, validate(createEmployeeSchema), auditLo
     // Don't fail — employee is created, email can be resent
   }
 
+  logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'STAFF', entityId: user.id, entityName: `${user.firstName} ${user.lastName} (${user.role})`, req })
   res.status(201).json({
     id: user.id,
     email: user.email,
@@ -113,6 +115,7 @@ router.patch('/:id/role', requireAuth, adminOnly, auditLog('employees'), async (
     data: { role },
     select: { id: true, email: true, role: true, firstName: true, lastName: true },
   })
+  logAudit({ userId: req.user!.id, actionType: 'UPDATE', entityType: 'STAFF', entityId: user.id, entityName: `${user.firstName} ${user.lastName}`, notes: `Role changed to ${role}`, severity: 'WARNING', req })
   res.json(user)
 })
 

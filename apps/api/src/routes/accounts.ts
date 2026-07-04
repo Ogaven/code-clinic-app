@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/rbac'
 import { generateInvoiceNumber, calculateNetPay } from '../services/accounts/ugandaTax'
 import { prisma } from '../lib/prisma'
 import { pushInvoiceToQB, pushPaymentToQB, pushExpenseToQB } from '../services/qbPush'
+import { logAudit } from '../services/audit.service'
 
 const router = Router()
 
@@ -184,6 +185,7 @@ router.post('/invoices', requireAuth, async (req: Request, res: Response) => {
       },
     })
 
+    logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'INVOICE', entityId: invoice.id, entityName: `${invoice.invoiceNumber} — ${invoice.patient.firstName} ${invoice.patient.lastName}`, req })
     res.status(201).json(serialise(invoice))
 
     // Fire-and-forget QB push (does not block response)
@@ -266,6 +268,7 @@ router.post('/payments', requireAuth, async (req: Request, res: Response) => {
       })
     }
 
+    logAudit({ userId: req.user!.id, actionType: 'PAYMENT_RECEIVED', entityType: 'PAYMENT', entityId: payment.id, entityName: `${invoiceId} — UGX ${amountUGX.toLocaleString()}`, req })
     res.status(201).json(serialise(payment))
 
     // Fire-and-forget QB push

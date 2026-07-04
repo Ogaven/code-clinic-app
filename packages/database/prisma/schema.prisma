@@ -557,17 +557,29 @@ model PatientFeedback {
 }
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id])
-  action     String
-  resource   String
-  resourceId String?
-  metadata   String?  // JSON string
-  ip         String?
-  userAgent  String?
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id])
+  action       String   // HTTP method or semantic action (kept for compat)
+  resource     String
+  resourceId   String?
+  metadata     String?  // JSON string
+  ip           String?
+  userAgent    String?
+  // v2 compliance fields
+  entityType   String?  // PATIENT | APPOINTMENT | INVOICE | SERVICE | STAFF | TREATMENT_PLAN | NOTE | PAYMENT
+  entityId     String?
+  entityName   String?
+  actionType   String?  // CREATE | UPDATE | DELETE | LOGIN | LOGOUT | VIEW_SENSITIVE | EXPORT | RESCHEDULE | CANCEL | CONFIRM | PAYMENT_RECEIVED | STATUS_CHANGE
+  fieldChanges String?  // JSON: { before: Record<string,any>, after: Record<string,any> }
+  hashChain    String?  // SHA-256 of prevHash + entryData for tamper detection
+  severity     String   @default("INFO") // INFO | WARNING | CRITICAL
+  notes        String?
+  createdAt    DateTime @default(now())
 
+  @@index([entityType, createdAt])
+  @@index([entityId])
+  @@index([userId, createdAt])
   @@map("audit_logs")
 }
 

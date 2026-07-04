@@ -13,6 +13,7 @@ import { sendAppointmentNotification } from '../ai-suite/notifications/notificat
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
 import { getGreetingName } from '../utils/nameHelper'
 import { prisma } from '../lib/prisma'
+import { logAudit } from '../services/audit.service'
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
@@ -226,6 +227,7 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
   // Staff notifications (fire-and-forget)
   notifyStaff(prisma, 'booked', appointment).catch(() => {})
 
+  logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'APPOINTMENT', entityId: appointment.id, entityName: `${appointment.patient.firstName} ${appointment.patient.lastName} — ${appointment.service.name}`, req })
   res.status(201).json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })
 
@@ -304,36 +306,26 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
     },
   })
 
-  // Field-level audit entry so the audit log shows old vs new time/doctor
-  if (rawStart || req.body.doctorId) {
-    prisma.auditLog.create({
-      data: {
-        userId:     req.user!.id,
-        action:     'RESCHEDULE',
-        resource:   'appointments',
-        resourceId: req.params.id,
-        metadata:   JSON.stringify({
-          oldStartAt:  existing.startAt,
-          newStartAt:  updated.startAt,
-          oldEndAt:    existing.endAt,
-          newEndAt:    updated.endAt,
-          oldDoctorId: existing.doctorId,
-          newDoctorId: updated.doctorId,
-        }),
-      },
-    }).catch(() => {})
-  }
-
   // Auto-sync to Google Calendar (fire-and-forget)
   syncAppointmentToGCal(updated).catch(() => {})
+
+  const apptName = `${updated.patient.firstName} ${updated.patient.lastName} — ${updated.service.name}`
 
   // WhatsApp patient notification + staff notification (fire-and-forget)
   if (req.body.status === 'CANCELLED') {
     sendAppointmentNotification(updated.id, 'cancelled').catch(() => {})
     notifyStaff(prisma, 'cancelled', updated).catch(() => {})
-  } else if (rawStart) {
+    logAudit({ userId: req.user!.id, actionType: 'CANCEL', entityType: 'APPOINTMENT', entityId: updated.id, entityName: apptName, severity: 'WARNING', req })
+  } else if (rawStart || req.body.doctorId) {
     sendAppointmentNotification(updated.id, 'rescheduled').catch(() => {})
     notifyStaff(prisma, 'rescheduled', updated).catch(() => {})
+    logAudit({
+      userId: req.user!.id, actionType: 'RESCHEDULE', entityType: 'APPOINTMENT', entityId: updated.id, entityName: apptName,
+      fieldChanges: { before: { startAt: existing.startAt, endAt: existing.endAt, doctorId: existing.doctorId }, after: { startAt: updated.startAt, endAt: updated.endAt, doctorId: updated.doctorId } },
+      req,
+    })
+  } else if (req.body.status) {
+    logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'APPOINTMENT', entityId: updated.id, entityName: apptName, notes: req.body.status, req })
   }
 
   res.json({ ...updated, service: { ...updated.service, priceUGX: Number(updated.service.priceUGX) } })

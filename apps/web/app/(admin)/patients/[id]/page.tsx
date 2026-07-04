@@ -6,7 +6,7 @@ import {
   ArrowLeft, User, Calendar, FileText, Activity, DollarSign, Folder,
   Phone, Mail, MapPin, Edit, AlertTriangle, Clock, Plus, Trash2, Pencil, Mic,
   MicOff, Save, ChevronRight, X, Brain, Sparkles, Loader2, Upload,
-  Eye, Download, CheckCircle, XCircle, Star, Receipt, Camera, Printer, Share2
+  Eye, Download, CheckCircle, XCircle, Star, Receipt, Camera, Printer, Share2, ShieldCheck
 } from 'lucide-react'
 import { cn, formatUGX, formatPhone, getInitials } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
@@ -29,7 +29,7 @@ interface ToothState {
   history?: { date: string; changeType: string; item: string; oldStatus?: string; newStatus: string }[]
 }
 
-type ActiveTab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline'
+type ActiveTab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline' | 'audit'
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -1308,6 +1308,62 @@ function ActivityTab({ patientId, token }: { patientId: string; token: string | 
   )
 }
 
+// ─── Audit Trail Tab ──────────────────────────────────────────────────────
+
+function AuditTrailTab({ patientId, token }: { patientId: string; token: string | null }) {
+  const [logs, setLogs] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api-proxy/audit-logs/patient/${patientId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => setLogs(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLoading(false))
+  }, [patientId, token])
+
+  function sentence(log: any): string {
+    const who = log.user ? `${log.user.firstName} ${log.user.lastName}` : 'System'
+    const entity = log.entityName || ''
+    switch (log.actionType) {
+      case 'CREATE': return `${who} created ${log.entityType?.toLowerCase().replace('_', ' ') || 'record'}`
+      case 'UPDATE': return `${who} updated ${log.entityType?.toLowerCase().replace('_', ' ') || 'record'}`
+      case 'DELETE': return `${who} deleted ${log.entityType?.toLowerCase().replace('_', ' ') || 'record'}`
+      case 'RESCHEDULE': return `${who} rescheduled appointment`
+      case 'CANCEL': return `${who} cancelled appointment`
+      case 'STATUS_CHANGE': return `${who} moved appointment to "${log.notes}"`
+      case 'PAYMENT_RECEIVED': return `${who} recorded payment — ${entity}`
+      default: return `${who} — ${log.actionType || log.action}`
+    }
+  }
+
+  const eatTime = (iso: string) => new Date(iso).toLocaleString('en-GB', {
+    timeZone: 'Africa/Nairobi', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+
+  if (loading) return <div className="py-10 text-center text-sm text-slate-400">Loading audit trail…</div>
+  if (logs.length === 0) return <div className="py-10 text-center text-sm text-slate-400">No audit events for this patient yet.</div>
+
+  return (
+    <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+      {logs.map(log => (
+        <div key={log.id} className="flex items-start gap-3 py-2 border-b border-gray-100 dark:border-white/5 last:border-0">
+          <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-[10px] font-bold text-blue-600 dark:text-blue-400 shrink-0 mt-0.5 uppercase">
+            {log.user ? `${log.user.firstName[0]}${log.user.lastName[0]}` : 'SYS'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-slate-700 dark:text-slate-200">{sentence(log)}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{eatTime(log.createdAt)}{log.user?.role ? ` · ${log.user.role}` : ''}</p>
+          </div>
+          {log.severity && log.severity !== 'INFO' && (
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded mt-1 ${log.severity === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+              {log.severity}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── Overview Tab ─────────────────────────────────────────────────────────
 
 function formatDobAge(dob: string) {
@@ -1474,7 +1530,7 @@ export default function PatientProfilePage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const tp = searchParams.get('tab') as ActiveTab | null
-    const valid: ActiveTab[] = ['timeline','overview','appointments','dental','perio','treatment','notes','billing','documents','activity']
+    const valid: ActiveTab[] = ['timeline','overview','appointments','dental','perio','treatment','notes','billing','documents','activity','audit']
     return tp && valid.includes(tp) ? tp : 'timeline'
   })
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
@@ -1784,6 +1840,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
     { key: 'notes',        label: 'Notes',           icon: FileText   },
     { key: 'billing',      label: 'Billing',         icon: DollarSign },
     { key: 'documents',    label: 'Documents',       icon: Folder     },
+    { key: 'audit',        label: 'Audit Trail',     icon: ShieldCheck },
   ]
 
   const renderTab = () => {
@@ -1797,6 +1854,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
       case 'billing': return <BillingTab patient={patient} token={token} />
       case 'documents': return <DocumentsTab patientId={id!} token={token} />
       case 'activity': return <ActivityTab patientId={id!} token={token} />
+      case 'audit':    return <AuditTrailTab patientId={id!} token={token} />
       case 'timeline': return <TimelineTab patientId={id!} />
     }
   }

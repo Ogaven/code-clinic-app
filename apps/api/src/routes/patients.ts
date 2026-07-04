@@ -10,6 +10,7 @@ import multer from 'multer'
 import { uploadAvatar, deleteFile } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
 import { prisma } from '../lib/prisma'
+import { logAudit } from '../services/audit.service'
 
 const createPatientSchema = z.object({
   firstName:          z.string().min(1),
@@ -234,6 +235,7 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
         ...(importSource ? { importSource, status: 'ACTIVE' as any } : {}),
       },
     })
+    logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'PATIENT', entityId: patient.id, entityName: `${patient.firstName} ${patient.lastName}`, req })
     res.status(201).json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })
   } catch { res.status(500).json({ error: 'Failed to create patient' }) }
 })
@@ -628,6 +630,7 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
         ...(status ? { status: status as any } : {}),
       },
     })
+    logAudit({ userId: req.user!.id, actionType: 'UPDATE', entityType: 'PATIENT', entityId: patient.id, entityName: `${patient.firstName} ${patient.lastName}`, req })
     res.json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })
   } catch { res.status(500).json({ error: 'Failed to update patient' }) }
 })
@@ -636,6 +639,7 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
 router.delete('/:id', requireAuth, adminAndReceptionist, auditLog('patients'), async (req, res) => {
   try {
     const id = req.params.id
+    const patientForAudit = await prisma.patient.findUnique({ where: { id }, select: { firstName: true, lastName: true } })
     // Safety check — refuse deletion if patient has appointments or treatment records
     const [apptCount, planCount] = await Promise.all([
       prisma.appointment.count({ where: { patientId: id } }),
@@ -669,6 +673,7 @@ router.delete('/:id', requireAuth, adminAndReceptionist, auditLog('patients'), a
       // Patient row (TreatmentPlan/Note/DentalChart/PatientDocument/PatientActivity have onDelete:Cascade)
       await tx.patient.delete({ where: { id } })
     })
+    logAudit({ userId: req.user!.id, actionType: 'DELETE', entityType: 'PATIENT', entityId: id, entityName: patientForAudit ? `${patientForAudit.firstName} ${patientForAudit.lastName}` : id, severity: 'WARNING', req })
     res.json({ deleted: true })
   } catch (e: any) {
     console.error('[patients] delete error:', e)

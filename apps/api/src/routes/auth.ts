@@ -11,6 +11,7 @@ import { getPublicUrl } from '../services/storage/r2'
 import { blacklistToken } from '../lib/tokenBlacklist'
 import { prisma } from '../lib/prisma'
 import { env } from '../lib/env'
+import { logAudit } from '../services/audit.service'
 
 const router = Router()
 
@@ -106,6 +107,7 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
 
   const valid = await bcrypt.compare(password, user.passwordHash)
   if (!valid) {
+    logAudit({ userId: user.id, actionType: 'LOGIN_FAILED', entityType: 'STAFF', entityId: user.id, entityName: `${user.firstName} ${user.lastName}`, severity: 'WARNING', req })
     res.status(401).json({ error: 'Invalid credentials' })
     return
   }
@@ -122,6 +124,8 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   const accessToken = signAccess(payload)
   const refreshToken = signRefresh(user.id)
   setRefreshCookie(res, refreshToken)
+
+  logAudit({ userId: user.id, actionType: 'LOGIN', entityType: 'STAFF', entityId: user.id, entityName: `${user.firstName} ${user.lastName}`, req })
 
   const avatarUrl = user.avatarR2Key
     ? (user.avatarR2Key.startsWith('data:') ? user.avatarR2Key : getPublicUrl(user.avatarR2Key))
@@ -197,6 +201,7 @@ router.get('/google/callback', async (req, res) => {
     const accessToken  = signAccess(googlePayload)
     const refreshToken = signRefresh(user.id)
     setRefreshCookie(res, refreshToken)
+    logAudit({ userId: user.id, actionType: 'LOGIN', entityType: 'STAFF', entityId: user.id, entityName: `${user.firstName} ${user.lastName}`, notes: 'Google OAuth', req })
 
     // Redirect to frontend callback page with token
     const userData = encodeURIComponent(JSON.stringify({
@@ -271,6 +276,7 @@ router.post('/logout', requireAuth, async (req, res) => {
         if (ttl > 0) await blacklistToken(req.token, ttl)
       }
     }
+    logAudit({ userId: req.user!.id, actionType: 'LOGOUT', entityType: 'STAFF', entityId: req.user!.id, entityName: `${req.user!.firstName} ${req.user!.lastName}`, req })
     res.clearCookie('refreshToken', { path: '/auth/refresh' })
     res.json({ message: 'Logged out' })
   } catch {

@@ -5,6 +5,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import multer from 'multer'
 import { uploadAvatar, getPublicUrl } from '../services/storage/r2'
 import { prisma } from '../lib/prisma'
+import { logAudit } from '../services/audit.service'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
@@ -161,6 +162,7 @@ router.post('/patients/:id/treatment-plans', requireAuth, doctorOrAdmin, async (
       },
     })
     await logActivity(req.params.id, req.user!.id, `${req.user!.firstName} ${req.user!.lastName}`, `Treatment plan item added: ${toothNumber || 'General'}`)
+    logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'TREATMENT_PLAN', entityId: plan.id, entityName: `${toothNumber || 'General'} — patient ${req.params.id}`, req })
     res.status(201).json(plan)
   } catch (e) {
     res.status(500).json({ error: 'Failed to create treatment plan' })
@@ -186,6 +188,7 @@ router.put('/patients/:id/treatment-plans/:planId', requireAuth, doctorOrAdmin, 
     if (status === 'Completed') {
       await logActivity(req.params.id, req.user!.id, `${req.user!.firstName} ${req.user!.lastName}`, `Treatment completed: ${toothNumber || 'General'}`)
     }
+    logAudit({ userId: req.user!.id, actionType: 'UPDATE', entityType: 'TREATMENT_PLAN', entityId: plan.id, entityName: `${toothNumber || 'General'} — patient ${req.params.id}`, notes: status, req })
     res.json(plan)
   } catch (e) {
     res.status(500).json({ error: 'Failed to update treatment plan' })
@@ -196,6 +199,7 @@ router.put('/patients/:id/treatment-plans/:planId', requireAuth, doctorOrAdmin, 
 router.delete('/patients/:id/treatment-plans/:planId', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     await prisma.treatmentPlan.delete({ where: { id: req.params.planId } })
+    logAudit({ userId: req.user!.id, actionType: 'DELETE', entityType: 'TREATMENT_PLAN', entityId: req.params.planId, entityName: `patient ${req.params.id}`, severity: 'WARNING', req })
     res.json({ message: 'Deleted' })
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete treatment plan' })
@@ -273,6 +277,7 @@ router.post('/patients/:id/treatment-notes', requireAuth, async (req, res) => {
       data: { patientId: req.params.id, content, authorId: req.user!.id },
     })
     await logActivity(req.params.id, req.user!.id, `${req.user!.firstName} ${req.user!.lastName}`, 'Treatment note added')
+    logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'NOTE', entityId: note.id, entityName: `note for patient ${req.params.id}`, req })
     res.status(201).json(note)
   } catch (e) {
     res.status(500).json({ error: 'Failed to create note' })
