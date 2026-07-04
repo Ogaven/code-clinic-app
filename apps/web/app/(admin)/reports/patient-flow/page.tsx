@@ -150,7 +150,7 @@ export default function PatientFlowReportPage() {
     <div className="space-y-5 animate-fade-in p-6">
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Link href="/dashboard" className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-gray-400">
+        <Link href="/reports" className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-gray-400">
           <ArrowLeft size={16} />
         </Link>
         <div className="flex-1">

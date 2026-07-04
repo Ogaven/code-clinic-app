@@ -73,7 +73,7 @@ export default function CaseAcceptancePage() {
       <div className="flex-shrink-0 px-6 pt-5 pb-4 bg-white dark:bg-[#0a1520] border-b border-gray-100 dark:border-white/8">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
-            <Link href="/reports/patient-flow"
+            <Link href="/reports"
               className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
               <ArrowLeft size={15} /> Reports
             </Link>
