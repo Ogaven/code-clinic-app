@@ -73,6 +73,20 @@ function fmtTime(iso: string): string {
 function fmtFull(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
 }
+function msgTimestamp(iso: string): string {
+  const eat    = new Date(new Date(iso).getTime() + 3 * 60 * 60 * 1000)
+  const nowEat = new Date(Date.now()              + 3 * 60 * 60 * 1000)
+  const toDateStr = (d: Date) => d.toISOString().slice(0, 10)
+  const h = eat.getUTCHours(), m = eat.getUTCMinutes()
+  const timePart = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`
+  const eatDate = toDateStr(eat)
+  if (eatDate === toDateStr(nowEat)) return timePart
+  if (eatDate === toDateStr(new Date(nowEat.getTime() - 86400000))) return `Yesterday ${timePart}`
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  if (nowEat.getTime() - eat.getTime() < 7 * 86400000) return `${DAYS[eat.getUTCDay()]} ${timePart}`
+  return `${DAYS[eat.getUTCDay()]} ${eat.getUTCDate()} ${MONTHS[eat.getUTCMonth()]} ${timePart}`
+}
 
 // ── Channel identity ───────────────────────────────────────────────────────────
 // Each channel stores a different kind of identifier in phoneNumber:
@@ -547,8 +561,8 @@ function InboxPage() {
                     ? { background: '#d9fdd3', borderBottomRightRadius: 4, color: '#111' }
                     : { background: '#fff',    borderBottomLeftRadius:  4, color: '#111' }}>
                   {media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
-                  <div className="flex items-center justify-end gap-1 mt-0.5">
-                    <span className="text-[10px] text-gray-400">{fmtFull(msg.createdAt)}</span>
+                  <div className={cn('flex items-center gap-1 mt-0.5', isAgent ? 'justify-end' : 'justify-start')}>
+                    <span className="text-[10px] text-gray-400">{msgTimestamp(msg.createdAt)}</span>
                     {isAgent && <Check size={12} className="text-gray-400" />}
                   </div>
                 </div>
@@ -677,7 +691,6 @@ function InboxPage() {
         {msgs.map((msg, i) => {
           const isAgent  = msg.role === 'AGENT'
           const media    = parseBubble(msg.content)
-          const showTime = i === msgs.length - 1 || msgs[i + 1]?.role !== msg.role
           return (
             <div key={msg.id} className={cn('flex items-end gap-2', isAgent ? 'justify-end' : 'justify-start')}>
               {!isAgent && <Avatar name={convLabel(sel, channel)} size={28} />}
@@ -687,7 +700,7 @@ function InboxPage() {
                   style={isAgent ? { background: BUBBLE_BG[channel] } : undefined}>
                   {media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                 </div>
-                {showTime && <span className="text-[10px] text-gray-400 mt-0.5 px-1">{fmtFull(msg.createdAt)}</span>}
+                <span className={cn('text-[10px] text-gray-400 mt-0.5 px-1', isAgent ? 'text-right' : 'text-left')}>{msgTimestamp(msg.createdAt)}</span>
               </div>
             </div>
           )
