@@ -55,6 +55,30 @@ export default function AccountsLayout({ children }: { children: React.ReactNode
     const isDark = localStorage.getItem('cc_theme') === 'dark'
     setDark(isDark)
     document.documentElement.classList.toggle('dark', isDark)
+
+    // Always refresh avatar from server so stale/updated URLs are picked up
+    const token = localStorage.getItem('cc_token')
+    if (token) {
+      fetch('/api-proxy/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data?.avatarUrl !== undefined) {
+            setUser((prev: any) => prev ? { ...prev, avatarUrl: data.avatarUrl } : prev)
+            localStorage.setItem('cc_user', JSON.stringify({ ...u, avatarUrl: data.avatarUrl }))
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
+
+  // Keep avatar in sync whenever an upload fires the event (e.g. from settings page)
+  useEffect(() => {
+    const onAvatarUpdate = (e: Event) => {
+      const url = (e as CustomEvent).detail as string
+      setUser((prev: any) => prev ? { ...prev, avatarUrl: url } : prev)
+    }
+    window.addEventListener('cc-avatar-updated', onAvatarUpdate)
+    return () => window.removeEventListener('cc-avatar-updated', onAvatarUpdate)
   }, [])
 
   useEffect(() => {

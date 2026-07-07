@@ -79,13 +79,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setDark(isDark)
     document.documentElement.classList.toggle('dark', isDark)
 
-    // Silently refresh avatar from the server in case cc_user is stale
+    // Always refresh avatar from the server so stale/updated URLs are picked up
     const token = localStorage.getItem('cc_token')
-    if (token && !u.avatarUrl) {
+    if (token) {
       fetch('/api-proxy/auth/me', { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.ok ? r.json() : null)
         .then(data => {
-          if (data?.avatarUrl) {
+          if (data?.avatarUrl !== undefined) {
             setUser((prev: any) => prev ? { ...prev, avatarUrl: data.avatarUrl } : prev)
             localStorage.setItem('cc_user', JSON.stringify({ ...u, avatarUrl: data.avatarUrl }))
           }
