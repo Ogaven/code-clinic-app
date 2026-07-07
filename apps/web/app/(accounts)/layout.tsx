@@ -100,10 +100,14 @@ export default function AccountsLayout({ children }: { children: React.ReactNode
           <span className="font-bold text-sm flex-1" style={{ color: dark ? '#E0E8FF' : '#1A237E', fontFamily: 'Plus Jakarta Sans' }}>
             {title}
           </span>
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-[11px] font-bold"
-            style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-            {user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'A'}
-          </div>
+          {user?.avatarUrl ? (
+            <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
+          ) : (
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+              {user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'A'}
+            </div>
+          )}
         </div>
 
         <div className="hidden lg:block">
