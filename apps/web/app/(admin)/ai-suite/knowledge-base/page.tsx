@@ -115,7 +115,7 @@ export default function KnowledgeBasePage() {
 
   const loadDocuments = useCallback(async () => {
     try {
-      const res = await fetch('/api-proxy/knowledge', { headers: getHeaders() })
+      const res = await fetch('/api-proxy/ai-suite/knowledge', { headers: getHeaders() })
       if (res.ok) {
         const data = await res.json()
         setDocuments(data.documents ?? [])
@@ -145,7 +145,7 @@ export default function KnowledgeBasePage() {
       form.append('file', uploadFile)
       form.append('title', uploadTitle || uploadFile.name)
 
-      const res = await fetch('/api-proxy/knowledge/upload', {
+      const res = await fetch('/api-proxy/ai-suite/knowledge/upload', {
         method:  'POST',
         headers: getHeaders(),
         body:    form,
@@ -173,7 +173,7 @@ export default function KnowledgeBasePage() {
     setUrlLoading(true)
     setUrlMsg(null)
     try {
-      const res = await fetch('/api-proxy/knowledge/url', {
+      const res = await fetch('/api-proxy/ai-suite/knowledge/url', {
         method:  'POST',
         headers: getHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({ url: urlInput.trim() }),
@@ -200,7 +200,7 @@ export default function KnowledgeBasePage() {
     setTextLoading(true)
     setTextMsg(null)
     try {
-      const res = await fetch('/api-proxy/knowledge/text', {
+      const res = await fetch('/api-proxy/ai-suite/knowledge/text', {
         method:  'POST',
         headers: getHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({ title: textTitle.trim(), content: textContent.trim() }),
@@ -225,7 +225,7 @@ export default function KnowledgeBasePage() {
 
   async function handleDelete(id: string, title: string) {
     if (!confirm(`Delete "${title}" and all its chunks?`)) return
-    await fetch(`/api-proxy/knowledge/${id}`, { method: 'DELETE', headers: getHeaders() })
+    await fetch(`/api-proxy/ai-suite/knowledge/${id}`, { method: 'DELETE', headers: getHeaders() })
     await loadDocuments()
   }
 
@@ -236,7 +236,7 @@ export default function KnowledgeBasePage() {
     setPreviewChunks([])
     setPreviewLoading(true)
     try {
-      const res = await fetch(`/api-proxy/knowledge/${doc.id}/preview`, { headers: getHeaders() })
+      const res = await fetch(`/api-proxy/ai-suite/knowledge/${doc.id}/preview`, { headers: getHeaders() })
       if (res.ok) {
         const data = await res.json()
         setPreviewChunks(data.chunks ?? [])
@@ -254,7 +254,7 @@ export default function KnowledgeBasePage() {
     setSearchResults(null)
     setNoResults(false)
     try {
-      const res = await fetch('/api-proxy/knowledge/search', {
+      const res = await fetch('/api-proxy/ai-suite/knowledge/search', {
         method:  'POST',
         headers: getHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({ query: searchQuery.trim(), top_k: 5 }),
