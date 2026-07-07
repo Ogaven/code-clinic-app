@@ -30,8 +30,10 @@ export async function sendAppointmentNotification(
     const shortDate = appt.startAt.toLocaleDateString('en-UG', {
       weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
     })
-    const time = appt.startAt.toLocaleTimeString('en-UG', {
-      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
+    // Manual EAT offset — en-UG locale on Linux ignores the timeZone option
+    const eatTime = new Date(appt.startAt.getTime() + 3 * 60 * 60 * 1000)
+    const time = eatTime.toLocaleTimeString('en-UG', {
+      hour: '2-digit', minute: '2-digit', hour12: true,
     })
     const svc = appt.service.name
 
