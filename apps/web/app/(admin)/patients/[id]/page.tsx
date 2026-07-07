@@ -33,6 +33,8 @@ type ActiveTab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' 
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
+const toProperCase = (str: string) => str.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+
 const statusColorMap: Record<SurfaceStatus, string> = {
   Healthy: 'fill-white', Caries: 'fill-red-400', 'Planned Treatment': 'fill-amber-400',
   Amalgam: 'fill-slate-500', Composite: 'fill-sky-300', Gold: 'fill-yellow-400', Sealant: 'fill-pink-300',
@@ -1771,8 +1773,8 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 
   function openEdit() {
     setEditForm({
-      firstName: patient.firstName || '',
-      lastName: patient.lastName || '',
+      firstName: toProperCase(patient.firstName || ''),
+      lastName: toProperCase(patient.lastName || ''),
       phone: patient.phone || '',
       email: patient.email || '',
       gender: patient.gender || '',
@@ -1993,12 +1995,12 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-1">First Name *</label>
-                  <input value={editForm.firstName} onChange={e => setEditForm((f: any) => ({ ...f, firstName: e.target.value }))}
+                  <input value={editForm.firstName} onChange={e => setEditForm((f: any) => ({ ...f, firstName: e.target.value }))} onBlur={e => setEditForm((f: any) => ({ ...f, firstName: toProperCase(e.target.value) }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-1">Last Name *</label>
-                  <input value={editForm.lastName} onChange={e => setEditForm((f: any) => ({ ...f, lastName: e.target.value }))}
+                  <input value={editForm.lastName} onChange={e => setEditForm((f: any) => ({ ...f, lastName: e.target.value }))} onBlur={e => setEditForm((f: any) => ({ ...f, lastName: toProperCase(e.target.value) }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
               </div>

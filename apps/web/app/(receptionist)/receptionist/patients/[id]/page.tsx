@@ -12,6 +12,8 @@ import {
 import { cn } from '@/lib/utils'
 import TimelineTab from '@/components/patients/TimelineTab'
 
+const toProperCase = (str: string) => str.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+
 type Tab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline'
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
@@ -183,8 +185,8 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
 
   useEffect(() => {
     setForm({
-      firstName:        patient.firstName        || '',
-      lastName:         patient.lastName         || '',
+      firstName:        toProperCase(patient.firstName        || ''),
+      lastName:         toProperCase(patient.lastName         || ''),
       phone:            patient.phone            || '',
       email:            patient.email            || '',
       gender:           patient.gender           || 'FEMALE',
@@ -260,11 +262,11 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">First Name</label>
-                <input value={form.firstName} onChange={e => setForm((f: any) => ({...f, firstName: e.target.value}))} className={inputCls} />
+                <input value={form.firstName} onChange={e => setForm((f: any) => ({...f, firstName: e.target.value}))} onBlur={e => setForm((f: any) => ({...f, firstName: toProperCase(e.target.value)}))} className={inputCls} />
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 dark:text-white/40 mb-1 block">Last Name</label>
-                <input value={form.lastName} onChange={e => setForm((f: any) => ({...f, lastName: e.target.value}))} className={inputCls} />
+                <input value={form.lastName} onChange={e => setForm((f: any) => ({...f, lastName: e.target.value}))} onBlur={e => setForm((f: any) => ({...f, lastName: toProperCase(e.target.value)}))} className={inputCls} />
               </div>
             </div>
             <div>

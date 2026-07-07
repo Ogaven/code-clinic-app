@@ -33,6 +33,8 @@ interface Patient {
   treatmentNotes?: Array<{ id: string; followUpStatus: string }>
 }
 
+const toProperCase = (str: string) => str.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+
 const STATUS_BADGES: Record<string, { label: string; pill: string }> = {
   UPCOMING:      { label: 'Upcoming',    pill: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' },
   ACTIVE:        { label: 'Active',      pill: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' },
@@ -229,8 +231,8 @@ export default function PatientsPage() {
             const obj: Record<string, string> = {}
             headers.forEach((h, i) => { obj[h] = vals[i] || '' })
             return {
-              firstName: obj.firstname || obj['first name'] || obj.name?.split(' ')[0] || '',
-              lastName:  obj.lastname  || obj['last name']  || obj.name?.split(' ')[1] || '',
+              firstName: toProperCase(obj.firstname || obj['first name'] || obj.name?.split(' ')[0] || ''),
+              lastName:  toProperCase(obj.lastname  || obj['last name']  || obj.name?.split(' ')[1] || ''),
               phone:     obj.phone     || obj.telephone     || obj.mobile || '',
               email:     obj.email     || '',
               gender:    (obj.gender   || 'FEMALE').toUpperCase(),
@@ -792,11 +794,11 @@ export default function PatientsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">First Name *</label>
-                  <input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} className={inputCls} placeholder="John" />
+                  <input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} onBlur={e => setForm(f => ({ ...f, firstName: toProperCase(e.target.value) }))} className={inputCls} placeholder="John" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Last Name *</label>
-                  <input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} className={inputCls} placeholder="Doe" />
+                  <input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} onBlur={e => setForm(f => ({ ...f, lastName: toProperCase(e.target.value) }))} className={inputCls} placeholder="Doe" />
                 </div>
               </div>
               <div>
