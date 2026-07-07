@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Loader2, Save, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react'
+import { Loader2, Save, ClipboardList, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const API = '/api-proxy'
@@ -31,6 +31,16 @@ interface Report {
   updatedAt: string
 }
 
+interface DailySummary {
+  scheduled: number
+  attended: number
+  departed: number
+  newPatients: number
+  returning: number
+  cancelled: number
+  noShows: number
+}
+
 export default function DailyReportTab() {
   const [date,           setDate]           = useState(eatToday())
   const [newPx,          setNewPx]          = useState('')
@@ -43,6 +53,17 @@ export default function DailyReportTab() {
   const [reports,        setReports]        = useState<Report[]>([])
   const [loadingReports, setLoadingReports] = useState(true)
   const [historyOpen,    setHistoryOpen]    = useState(false)
+  const [autoStats,      setAutoStats]      = useState<DailySummary | null>(null)
+  const [loadingAuto,    setLoadingAuto]    = useState(false)
+
+  const loadAutoStats = useCallback(async (d: string) => {
+    setLoadingAuto(true)
+    try {
+      const r = await fetch(`${API}/receptionist/daily-summary?date=${d}`, { headers: hdr() })
+      if (r.ok) setAutoStats(await r.json())
+    } catch { /* ignore */ }
+    setLoadingAuto(false)
+  }, [])
 
   const loadExisting = useCallback(async (d: string) => {
     setError(null)
@@ -70,7 +91,7 @@ export default function DailyReportTab() {
     setLoadingReports(false)
   }, [])
 
-  useEffect(() => { loadExisting(date) }, [date, loadExisting])
+  useEffect(() => { loadExisting(date); loadAutoStats(date) }, [date, loadExisting, loadAutoStats])
   useEffect(() => { loadHistory() }, [loadHistory])
 
   async function handleSave() {
@@ -99,6 +120,46 @@ export default function DailyReportTab() {
 
   return (
     <div className="flex flex-col gap-5 p-5 max-w-2xl mx-auto">
+
+      {/* Auto-stats card */}
+      <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/8 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/8">
+          <div className="flex items-center gap-2.5">
+            <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+            <h2 className="font-black text-sm text-gray-800 dark:text-white">Appointment Activity (Auto)</h2>
+          </div>
+          <button onClick={() => loadAutoStats(date)} disabled={loadingAuto}
+            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-40">
+            <RefreshCw size={13} className={cn('text-gray-400', loadingAuto && 'animate-spin')} />
+          </button>
+        </div>
+        <div className="p-5">
+          {loadingAuto ? (
+            <div className="flex justify-center py-4">
+              <Loader2 size={18} className="animate-spin text-gray-300 dark:text-gray-600" />
+            </div>
+          ) : !autoStats ? (
+            <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">No appointment data for this date.</p>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-7 gap-3">
+              {[
+                { label: 'Scheduled',    value: autoStats.scheduled,    color: 'text-cyan-600 dark:text-cyan-400'       },
+                { label: 'Attended',     value: autoStats.attended,     color: 'text-teal-600 dark:text-teal-400'       },
+                { label: 'Departed',     value: autoStats.departed,     color: 'text-emerald-600 dark:text-emerald-400' },
+                { label: 'New Patients', value: autoStats.newPatients,  color: 'text-violet-600 dark:text-violet-400'   },
+                { label: 'Returning',    value: autoStats.returning,    color: 'text-blue-600 dark:text-blue-400'       },
+                { label: 'Cancelled',    value: autoStats.cancelled,    color: 'text-red-500 dark:text-red-400'         },
+                { label: 'No Shows',     value: autoStats.noShows,      color: 'text-gray-500 dark:text-gray-400'       },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="text-center">
+                  <p className={cn('text-2xl font-black', color)}>{value}</p>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 leading-tight">{label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Form card */}
       <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/8 rounded-2xl overflow-hidden">

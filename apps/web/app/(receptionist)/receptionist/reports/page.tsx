@@ -33,21 +33,21 @@ function StatBox({ label, value, sub, color }: { label: string; value: string | 
 function PatientFlowTab() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { Authorization: `Bearer ${token}` }
-  const [stats, setStats]     = useState<any>(null)
+  const [summary, setSummary] = useState<any>(null)
   const [appts, setAppts]     = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [dateRange, setDate]  = useState('today')
+  const [date, setDate]       = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }))
 
-  useEffect(() => { fetchData() }, [dateRange])
+  useEffect(() => { fetchData() }, [date])
 
   async function fetchData() {
     setLoading(true)
     try {
       const [s, a] = await Promise.all([
-        fetch('/api-proxy/receptionist/dashboard-stats', { headers: authH }).then(r => r.json()),
-        fetch('/api-proxy/receptionist/today-appointments', { headers: authH }).then(r => r.json()),
+        fetch(`/api-proxy/receptionist/daily-summary?date=${date}`, { headers: authH }).then(r => r.json()),
+        fetch(`/api-proxy/receptionist/today-appointments?date=${date}`, { headers: authH }).then(r => r.json()),
       ])
-      setStats(s)
+      setSummary(s)
       setAppts(Array.isArray(a) ? a : [])
     } catch {} finally { setLoading(false) }
   }
@@ -98,12 +98,12 @@ function PatientFlowTab() {
             <p className="text-sm text-gray-400 mt-0.5">Today's activity summary</p>
           </div>
           <div className="flex items-center gap-3">
-            <select value={dateRange} onChange={e => setDate(e.target.value)}
-              className="text-sm border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-gray-600 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-cyan-500/20">
-              <option value="today">Today</option>
-              <option value="week">This week</option>
-              <option value="month">This month</option>
-            </select>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="text-sm border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-gray-600 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+            />
             <button onClick={exportFlowPDF}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
               style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
@@ -120,22 +120,21 @@ function PatientFlowTab() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-4 gap-4">
-              <StatBox label="Total Appointments" value={stats?.appointments?.total || 0} sub="scheduled today" color="#0891b2" />
-              <StatBox label="New Patients" value={stats?.newPatients?.count || 0} sub="first visit today" color="#7c3aed" />
-              <StatBox label="Returning Patients" value={stats?.returningPatients?.count || 0} sub="repeat visits today" color="#059669" />
-              <StatBox label="AI Escalations" value={stats?.aiAgents?.escalationsToday || 0} sub="required attention" color="#d97706" />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <StatBox label="Scheduled" value={summary?.scheduled || 0} sub="total appointments" color="#0891b2" />
+              <StatBox label="Attended" value={summary?.attended || 0} sub="seen by doctor" color="#059669" />
+              <StatBox label="New Patients" value={summary?.newPatients || 0} sub="first visit" color="#7c3aed" />
+              <StatBox label="Returning" value={summary?.returning || 0} sub="repeat visits" color="#0d9488" />
             </div>
 
             <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
               <h2 className="text-sm font-bold text-gray-700 dark:text-white mb-4">Appointment Breakdown</h2>
               <div className="space-y-3">
                 {[
-                  { label: 'Completed', count: completed,                           color: '#059669' },
-                  { label: 'Confirmed', count: stats?.appointments?.confirmed || 0, color: '#0891b2' },
-                  { label: 'Pending',   count: pending,                             color: '#d97706' },
-                  { label: 'No Show',   count: noShow,                              color: '#9ca3af' },
-                  { label: 'Cancelled', count: cancelled,                           color: '#ef4444' },
+                  { label: 'Completed', count: completed,                 color: '#059669' },
+                  { label: 'Pending',   count: pending,                   color: '#d97706' },
+                  { label: 'No Show',   count: noShow,                    color: '#9ca3af' },
+                  { label: 'Cancelled', count: cancelled,                  color: '#ef4444' },
                 ].map(({ label, count, color }) => {
                   const pct = Math.round((count / (appts.length || 1)) * 100)
                   return (
@@ -200,20 +199,20 @@ function PatientFlowTab() {
             <div className="bg-gradient-to-r from-slate-800 to-blue-900 rounded-2xl p-5 text-white">
               <div className="flex items-center gap-2 mb-3">
                 <Bot size={18} className="text-cyan-400" />
-                <h2 className="font-bold">AI Activity Summary</h2>
+                <h2 className="font-bold">Day Summary</h2>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center">
-                  <p className="text-3xl font-black text-cyan-400">{stats?.aiAgents?.count || 0}</p>
-                  <p className="text-sm text-blue-200/70">Active Agents</p>
+                  <p className="text-3xl font-black text-cyan-400">{summary?.scheduled || 0}</p>
+                  <p className="text-sm text-blue-200/70">Total Scheduled</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-black text-purple-400">{stats?.aiAgents?.escalationsToday || 0}</p>
-                  <p className="text-sm text-blue-200/70">Escalations Today</p>
+                  <p className="text-3xl font-black text-emerald-400">{summary?.departed || 0}</p>
+                  <p className="text-sm text-blue-200/70">Departed</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-black text-emerald-400">0</p>
-                  <p className="text-sm text-blue-200/70">Calls Made Today</p>
+                  <p className="text-3xl font-black text-red-400">{(summary?.cancelled || 0) + (summary?.noShows || 0)}</p>
+                  <p className="text-sm text-blue-200/70">Cancelled + No Shows</p>
                 </div>
               </div>
             </div>

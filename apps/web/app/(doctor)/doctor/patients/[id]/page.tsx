@@ -703,14 +703,15 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
 
   async function handleSaveEdit() {
     if (!editingId) return
-    const res = await fetch(`/api-proxy/clinical/patients/${patientId}/treatment-plans/${editingId}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(editForm),
-    })
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api-proxy/clinical/patients/${patientId}/treatment-plans/${editingId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(editForm),
+      })
+      if (!res.ok) return
       const updated = await res.json()
       setPlans(prev => prev.map(p => p.id === editingId ? updated : p))
-    }
+    } catch { return }
     setEditingId(null)
   }
 

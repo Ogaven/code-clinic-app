@@ -440,4 +440,40 @@ router.post('/daily-report', requireAuth, async (req, res) => {
   }
 })
 
+// ─── GET /receptionist/daily-summary ─────────────────────────
+router.get('/daily-summary', requireAuth, async (req, res) => {
+  try {
+    const dateParam = req.query.date as string | undefined
+    let start: Date, end: Date
+
+    if (dateParam) {
+      start = new Date(dateParam); start.setHours(0, 0, 0, 0)
+      end   = new Date(dateParam); end.setHours(23, 59, 59, 999)
+    } else {
+      start = kampalaDay(0)
+      end   = kampalaDay(1)
+    }
+
+    const appts = await prisma.appointment.findMany({
+      where: { startAt: { gte: start, lt: end } },
+      include: {
+        patient: { include: { appointments: { select: { id: true } } } },
+      },
+    })
+
+    const scheduled   = appts.length
+    const attended    = appts.filter(a => ['IN_CHAIR', 'WITH_PROVIDER', 'READY_CHECKOUT', 'COMPLETED',
+      'CHECKED_IN', 'DEPARTED', 'SESSION_COMPLETE'].includes(a.status)).length
+    const departed    = appts.filter(a => ['COMPLETED', 'DEPARTED'].includes(a.status)).length
+    const newPatients = appts.filter(a => a.patient.appointments.length === 1).length
+    const returning   = appts.filter(a => a.patient.appointments.length > 1).length
+    const cancelled   = appts.filter(a => ['CANCELLED', 'CANCELLED_RESCHEDULED'].includes(a.status)).length
+    const noShows     = appts.filter(a => a.status === 'NO_SHOW').length
+
+    res.json({ scheduled, attended, departed, newPatients, returning, cancelled, noShows })
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch daily summary' })
+  }
+})
+
 export default router

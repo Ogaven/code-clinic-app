@@ -14,7 +14,7 @@ const STAGES = [
     key: 'arrived',
     label: 'Patient Arrived',
     icon: DoorOpen,
-    statuses: ['PENDING'],
+    statuses: ['PENDING', 'RESCHEDULED'],
     color: '#64748B',
     gradient: 'from-slate-500 to-slate-600',
     bg: 'bg-slate-50 dark:bg-slate-900/20',
@@ -177,7 +177,7 @@ function PatientCard({
               {nextLabel}
             </button>
           )}
-          {['PENDING', 'CONFIRMED', 'CHECKED_IN'].includes(appt.status) && (
+          {['PENDING', 'CONFIRMED', 'CHECKED_IN', 'RESCHEDULED'].includes(appt.status) && (
             <button
               onClick={() => onCancel(appt.id)}
               className="px-3 py-2.5 rounded-xl text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex-shrink-0">
