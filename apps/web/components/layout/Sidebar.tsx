@@ -12,6 +12,7 @@ import {
   ListChecks, Inbox, Phone, Mic,
   ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
   Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2, ScrollText, UserPlus, Shield,
+  ClipboardList,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -66,8 +67,9 @@ const adminNav: NavGroup[] = [
   {
     label: 'CLINICAL REPORTS',
     items: [
-      { label: 'Patient Flow',      href: '/reports/patient-flow',      icon: Activity },
-      { label: 'Case Acceptance',   href: '/reports/case-acceptance',   icon: TrendingUp },
+      { label: 'Daily / Weekly Report', href: '/reports/clinical',      icon: ClipboardList },
+      { label: 'Case Acceptance',       href: '/reports/case-acceptance', icon: TrendingUp },
+      { label: 'Patient Flow',          href: '/reports/patient-flow',    icon: Activity },
     ],
   },
   {
