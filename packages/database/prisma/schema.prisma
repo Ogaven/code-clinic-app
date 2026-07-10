@@ -207,8 +207,14 @@ model Patient {
   medicalHistory        String?
   status                PatientStatus @default(NEW_LEAD)
   importSource          String?       // "SHEET" | "CSV" — set on bulk import, null for manual registrations
+  guardianId            String?
+  isMinor               Boolean  @default(false)
+  relationship          String?       // "child" | "spouse" | "dependent" | "other"
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  guardian              Patient?  @relation("GuardianDependents", fields: [guardianId], references: [id])
+  dependents            Patient[] @relation("GuardianDependents")
 
   appointments          Appointment[]
   invoices              Invoice[]
@@ -229,6 +235,7 @@ model Patient {
   @@index([isActive, createdAt])
   @@index([lastName, firstName])
   @@index([status])
+  @@index([guardianId])
   @@map("patients")
 }
 
@@ -271,15 +278,17 @@ model Appointment {
   arrivedAt     DateTime?
   withProviderAt DateTime?
   departedAt    DateTime?
-  followUpSent  Boolean   @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  followUpSent   Boolean   @default(false)
+  followUpSentAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   invoice     Invoice?
   feedback    PatientFeedback?
 
   @@index([doctorId, startAt])
   @@index([patientId, startAt])
+  @@index([followUpSent, status])
   @@index([status, startAt])
   @@map("appointments")
 }

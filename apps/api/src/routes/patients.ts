@@ -31,7 +31,11 @@ const createPatientSchema = z.object({
   status:             z.enum(['NEW_LEAD','UPCOMING','ACTIVE','DUE_RECALL','LAPSED','DORMANT','BALANCE_OWING']).optional(),
 })
 
-const updatePatientSchema = createPatientSchema.partial()
+const updatePatientSchema = createPatientSchema.partial().extend({
+  guardianId:   z.string().nullable().optional(),
+  isMinor:      z.boolean().optional(),
+  relationship: z.string().nullable().optional(),
+})
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = []
@@ -156,7 +160,37 @@ router.get('/', requireAuth, async (req, res) => {
 
     // Build filter clause
     const filterWhere: any = {}
-    if (filter === 'new_today') {
+    if (filter === 'record_only') {
+      // No completed appointments of any kind
+      filterWhere.appointments = { none: { status: { in: ['COMPLETED', 'DEPARTED', 'SESSION_COMPLETE'] } } }
+    } else if (filter === 'new_patient') {
+      // First COMPLETED appointment within last 30 days, not imported
+      const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      const rows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT p.id
+        FROM patients p
+        WHERE (p."importSource" IS NULL OR p."importSource" = '')
+        AND EXISTS (
+          SELECT 1 FROM appointments a
+          WHERE a."patientId" = p.id AND a.status = 'COMPLETED'
+        )
+        AND (
+          SELECT MIN(a."startAt") FROM appointments a
+          WHERE a."patientId" = p.id AND a.status = 'COMPLETED'
+        ) >= ${thirtyDaysAgo}
+      `
+      filterWhere.id = { in: rows.map(r => r.id) }
+    } else if (filter === 'returning') {
+      // More than one COMPLETED appointment
+      const rows = await prisma.$queryRaw<{ patientId: string }[]>`
+        SELECT "patientId"
+        FROM appointments
+        WHERE status = 'COMPLETED'
+        GROUP BY "patientId"
+        HAVING COUNT(*) > 1
+      `
+      filterWhere.id = { in: rows.map(r => r.patientId) }
+    } else if (filter === 'new_today') {
       const today = new Date(); today.setHours(0,0,0,0)
       filterWhere.createdAt = { gte: today }
     } else if (filter === 'has_balance') {
@@ -190,8 +224,9 @@ router.get('/', requireAuth, async (req, res) => {
         skip: offset,
         orderBy,
         include: {
-          _count: { select: { appointments: true, treatmentPlans: true } },
+          _count: { select: { appointments: true, treatmentPlans: true, dependents: true } },
           treatmentNotes: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, followUpStatus: true } },
+          guardian: { select: { id: true, firstName: true, lastName: true } },
         },
       }),
       prisma.patient.count({ where }),
@@ -511,6 +546,11 @@ router.get('/:id', requireAuth, async (req, res) => {
         },
         invoices: { orderBy: { createdAt: 'desc' }, take: 10 },
         feedback: { orderBy: { submittedAt: 'desc' }, take: 10 },
+        guardian: { select: { id: true, firstName: true, lastName: true, phone: true, patientNumber: true } },
+        dependents: {
+          select: { id: true, firstName: true, lastName: true, phone: true, patientNumber: true, relationship: true, isMinor: true, accountBalance: true },
+          orderBy: { firstName: 'asc' },
+        },
       },
     })
     if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
@@ -521,8 +561,27 @@ router.get('/:id', requireAuth, async (req, res) => {
       accountBalance: Number(patient.accountBalance),
       avatarUrl,
       invoices: patient.invoices.map(i => ({ ...i, totalUGX: Number(i.totalUGX), subtotalUGX: Number(i.subtotalUGX), vatUGX: Number(i.vatUGX), paidUGX: Number(i.paidUGX) })),
+      dependents: patient.dependents.map(d => ({ ...d, accountBalance: Number(d.accountBalance) })),
     })
   } catch { res.status(500).json({ error: 'Failed to fetch patient' }) }
+})
+
+// GET /patients/:id/family-balance — guardian's own balance + all dependents
+router.get('/:id/family-balance', requireAuth, async (req, res) => {
+  try {
+    const guardian = await prisma.patient.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, firstName: true, lastName: true, accountBalance: true, patientNumber: true, dependents: {
+        select: { id: true, firstName: true, lastName: true, accountBalance: true, patientNumber: true, relationship: true },
+        orderBy: { firstName: 'asc' },
+      } },
+    })
+    if (!guardian) { res.status(404).json({ error: 'Patient not found' }); return }
+    const guardianBalance = Number(guardian.accountBalance)
+    const dependentBalances = guardian.dependents.map(d => ({ ...d, accountBalance: Number(d.accountBalance) }))
+    const familyTotal = guardianBalance + dependentBalances.reduce((s, d) => s + d.accountBalance, 0)
+    res.json({ guardianBalance, dependents: dependentBalances, familyTotal })
+  } catch { res.status(500).json({ error: 'Failed to fetch family balance' }) }
 })
 
 // GET /patients/:id/timeline
@@ -616,8 +675,12 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
     const {
       firstName, lastName, phone, email, gender, dob, address, district, isActive,
       nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
-      referralSource, status,
+      referralSource, status, guardianId, isMinor, relationship,
     } = req.body
+    // Prevent a patient from being their own guardian
+    if (guardianId !== undefined && guardianId === req.params.id) {
+      res.status(400).json({ error: 'A patient cannot be their own guardian' }); return
+    }
     const patient = await prisma.patient.update({
       where: { id: req.params.id },
       data: {
@@ -628,6 +691,9 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
         allergies, medicalHistory,
         referralSource: referralSource || null,
         ...(status ? { status: status as any } : {}),
+        ...(guardianId !== undefined ? { guardianId: guardianId || null } : {}),
+        ...(isMinor !== undefined ? { isMinor } : {}),
+        ...(relationship !== undefined ? { relationship: relationship || null } : {}),
       },
     })
     logAudit({ userId: req.user!.id, actionType: 'UPDATE', entityType: 'PATIENT', entityId: patient.id, entityName: `${patient.firstName} ${patient.lastName}`, req })

@@ -15,14 +15,26 @@ export async function sendAppointmentNotification(
     const appt = await prisma.appointment.findUnique({
       where: { id: appointmentId },
       include: {
-        patient: { select: { firstName: true, lastName: true, phone: true } },
+        patient: {
+          select: {
+            firstName: true, lastName: true, phone: true,
+            guardianId: true,
+            guardian: { select: { firstName: true, lastName: true, phone: true } },
+          },
+        },
         doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
         service: { select: { name: true } },
       },
     })
     if (!appt) return
 
-    const p       = appt.patient
+    const p = appt.patient
+
+    // Route to guardian when patient has one
+    const recipientPhone  = p.guardian?.phone  || p.phone
+    const recipientName   = p.guardian ? `${toProperCase(p.guardian.firstName)} ${toProperCase(p.guardian.lastName)}` : null
+    const patientName     = `${toProperCase(p.firstName)} ${toProperCase(p.lastName)}`
+
     const doc     = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
     const dayDate = appt.startAt.toLocaleDateString('en-UG', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Nairobi',
@@ -37,11 +49,16 @@ export async function sendAppointmentNotification(
     })
     const svc = appt.service.name
 
+    // Greeting: "Hi Justine! 😊 This is regarding Hezekiah..." vs direct "Hi Hezekiah!"
+    const greeting = recipientName
+      ? `Hi ${recipientName}! 😊 This is regarding ${patientName}...`
+      : `Hi ${toProperCase(p.firstName)}!`
+
     let message = ''
     switch (type) {
       case 'booked':
         message =
-          `Hi ${toProperCase(p.firstName)}! 😊 Your appointment has been confirmed:\n\n` +
+          `${greeting} ${recipientName ? 'Their' : 'Your'} appointment has been confirmed:\n\n` +
           `📅 ${dayDate}\n` +
           `⏰ ${time}\n` +
           `👨‍⚕️ ${doc}\n` +
@@ -51,7 +68,7 @@ export async function sendAppointmentNotification(
         break
       case 'rescheduled':
         message =
-          `Hi ${toProperCase(p.firstName)}! Your appointment has been rescheduled to:\n\n` +
+          `${greeting} ${recipientName ? `${patientName}'s` : 'Your'} appointment has been rescheduled to:\n\n` +
           `📅 ${dayDate}\n` +
           `⏰ ${time}\n` +
           `👨‍⚕️ ${doc}\n\n` +
@@ -59,32 +76,35 @@ export async function sendAppointmentNotification(
         break
       case 'cancelled':
         message =
-          `Hi ${toProperCase(p.firstName)}, your appointment on ${shortDate} has been cancelled. ` +
+          `${greeting} ${recipientName ? `${patientName}'s` : 'Your'} appointment on ${shortDate} has been cancelled. ` +
           `Reply to rebook anytime 😊`
         break
       case 'reminder':
         message =
-          `Hi ${toProperCase(p.firstName)}! 👋 Just a reminder that you have an appointment tomorrow:\n\n` +
+          `${greeting} 👋 Just a reminder that ${recipientName ? patientName + ' has' : 'you have'} an appointment tomorrow:\n\n` +
           `📅 ${dayDate} at ${time}\n` +
           `👨‍⚕️ ${doc} — ${svc}\n` +
           `📍 Code Clinic, Kamwokya\n\n` +
-          `Reply YES to confirm you'll be coming or NO if you need to reschedule.`
+          `Reply YES to confirm or NO if you need to reschedule.`
         break
     }
 
     if (!message) return
-    if (!p.phone) {
+    if (!recipientPhone) {
       console.warn(`[Notification] Skipping '${type}' — patient ${p.firstName} ${p.lastName} has no phone number`)
       return
     }
-    await sendWhatsAppMessage(p.phone, message)
-    console.log(`[Notification] Sent '${type}' to ${p.firstName} ${p.lastName} (${p.phone})`)
+    await sendWhatsAppMessage(recipientPhone, message)
+    const logTarget = recipientName
+      ? `guardian ${recipientName} (${recipientPhone}) re: ${patientName}`
+      : `${patientName} (${recipientPhone})`
+    console.log(`[Notification] Sent '${type}' to ${logTarget}`)
 
     // Log to ai_messages so Sarah has full visibility of system-sent messages
-    const rawPhone = p.phone.replace(/^\+/, '')
+    const rawPhone = recipientPhone.replace(/^\+/, '')
     const conv = await prisma.aiConversation.findFirst({
       where: {
-        OR: [{ phoneNumber: p.phone }, { phoneNumber: rawPhone }],
+        OR: [{ phoneNumber: recipientPhone }, { phoneNumber: rawPhone }],
         channel: 'WHATSAPP',
       },
       orderBy: { updatedAt: 'desc' },

@@ -11,6 +11,7 @@ import {
 import { cn, formatUGX, formatPhone, getInitials } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
 import TimelineTab from '@/components/patients/TimelineTab'
+import GuardianSection from '@/components/patients/GuardianSection'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -1128,9 +1129,43 @@ function AppointmentsTab({ patient, token }: { patient: any; token: string | nul
 function BillingTab({ patient, token }: { patient: any; token: string | null }) {
   const invoices: any[] = patient.invoices || []
   const totalOwed = invoices.reduce((s: number, inv: any) => s + (inv.totalUGX - inv.paidUGX), 0)
+  const isGuardian = patient.dependents && patient.dependents.length > 0
+  const [familyBalance, setFamilyBalance] = useState<any>(null)
+
+  useEffect(() => {
+    if (!isGuardian) return
+    fetch(`/api-proxy/patients/${patient.id}/family-balance`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d) setFamilyBalance(d) }).catch(() => {})
+  }, [patient.id, isGuardian, token])
 
   return (
     <div className="space-y-4">
+      {/* Family Account Balance — shown when this patient is a guardian */}
+      {isGuardian && familyBalance && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-700/30 rounded-xl p-4 space-y-2">
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-600">Family Account Balance</p>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-emerald-700 dark:text-emerald-300">{patient.firstName} {patient.lastName} (guardian)</span>
+            <span className={cn('text-sm font-semibold', familyBalance.guardianBalance > 0 ? 'text-red-600' : 'text-emerald-600')}>
+              {familyBalance.guardianBalance > 0 ? formatUGX(familyBalance.guardianBalance) : '—'}
+            </span>
+          </div>
+          {familyBalance.dependents.map((d: any) => (
+            <div key={d.id} className="flex items-center justify-between pl-3 border-l-2 border-emerald-200 dark:border-emerald-700">
+              <span className="text-xs text-emerald-700 dark:text-emerald-300">{d.firstName} {d.lastName}</span>
+              <span className={cn('text-sm font-semibold', d.accountBalance > 0 ? 'text-red-600' : 'text-emerald-600')}>
+                {d.accountBalance > 0 ? formatUGX(d.accountBalance) : '—'}
+              </span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between pt-2 border-t border-emerald-200 dark:border-emerald-700/30">
+            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">Family Total Outstanding</span>
+            <span className={cn('text-base font-bold', familyBalance.familyTotal > 0 ? 'text-red-600' : 'text-emerald-600')}>
+              {familyBalance.familyTotal > 0 ? formatUGX(familyBalance.familyTotal) : 'Nil'}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="flex justify-between items-center">
         <div className={cn('px-4 py-2 rounded-xl text-sm font-semibold', totalOwed > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700')}>
           {totalOwed > 0 ? `Outstanding: ${formatUGX(totalOwed)}` : 'No outstanding balance'}
@@ -1379,7 +1414,7 @@ function formatDobAge(dob: string) {
   return `${birth.toLocaleDateString('en-GB')} (${agePart})`
 }
 
-function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab: ActiveTab) => void }) {
+function OverviewTab({ patient, onSwitchTab, token, onUpdate }: { patient: any; onSwitchTab: (tab: ActiveTab) => void; token: string | null; onUpdate: () => void }) {
   const totalSpent = (patient.invoices || []).reduce((s: number, inv: any) => s + inv.paidUGX, 0)
   const outstanding = (patient.invoices || []).reduce((s: number, inv: any) => s + (inv.totalUGX - inv.paidUGX), 0)
   const lastVisit = patient.appointments?.slice().sort((a: any, b: any) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())[0]
@@ -1499,6 +1534,9 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
       {!patient.nextOfKinName && (
         <p className="text-xs text-slate-400 italic">No next of kin recorded. Edit patient to add.</p>
       )}
+
+      {/* Family / Guardian */}
+      <GuardianSection patient={patient} token={token} onUpdate={onUpdate} basePath="/admin/patients" />
 
       {/* Recent appointments */}
       {patient.appointments?.length > 0 && (
@@ -1814,6 +1852,11 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
     router.replace(`/patients/${id}?tab=${tab}`, { scroll: false })
   }
 
+  const refetchPatient = useCallback(() => {
+    fetch(`/api-proxy/patients/${id}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(setPatient).catch(console.error)
+  }, [id, token])
+
   useEffect(() => {
     fetch(`/api-proxy/patients/${id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json()).then(setPatient).catch(console.error).finally(() => setLoading(false))
@@ -1848,7 +1891,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'overview': return <OverviewTab patient={patient} onSwitchTab={switchTab} />
+      case 'overview': return <OverviewTab patient={patient} onSwitchTab={switchTab} token={token} onUpdate={refetchPatient} />
       case 'appointments': return <AppointmentsTab patient={patient} token={token} />
       case 'dental': return <DentalChartTab patientId={id!} token={token} />
       case 'perio': return <PerioChartTab patientId={id!} token={token} />
@@ -1922,6 +1965,14 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
                   <a href={`tel:${patient.phone}`} className="text-sm text-blue-600 hover:underline flex items-center gap-1">
                     <Phone size={12} /> {formatPhone(patient.phone)}
                   </a>
+                  {(() => {
+                    const completed = (patient.appointments || []).filter((a: any) => ['COMPLETED', 'DEPARTED', 'SESSION_COMPLETE'].includes(a.status))
+                    if (completed.length === 0) return <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/8 text-gray-500">Record Only</span>
+                    const earliest = completed.reduce((min: any, a: any) => new Date(a.startAt) < new Date(min.startAt) ? a : min, completed[0])
+                    const daysAgo = (Date.now() - new Date(earliest.startAt).getTime()) / 86_400_000
+                    if (completed.length === 1 && daysAgo <= 30) return <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">New Patient</span>
+                    return <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Returning</span>
+                  })()}
                   {outstanding > 0 && (
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
                       Owes {formatUGX(outstanding)}

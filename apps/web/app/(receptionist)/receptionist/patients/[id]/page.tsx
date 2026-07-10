@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import TimelineTab from '@/components/patients/TimelineTab'
+import GuardianSection from '@/components/patients/GuardianSection'
 
 const toProperCase = (str: string) => str.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 
@@ -163,7 +164,7 @@ function Card({ className, children }: { className?: string; children: React.Rea
 }
 
 // ── Overview Tab ─────────────────────────────────────────────
-function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => void }) {
+function OverviewTab({ patient, onRefresh, token }: { patient: any; onRefresh: () => void; token: string | null }) {
   const [editing, setEditing]         = useState(false)
   const [form, setForm]               = useState<any>({})
   const [saving, setSaving]           = useState(false)
@@ -417,6 +418,9 @@ function OverviewTab({ patient, onRefresh }: { patient: any; onRefresh: () => vo
                 </div>
               </div>
             )}
+            {/* Family / Guardian */}
+            <GuardianSection patient={patient} token={token} onUpdate={onRefresh} basePath="/receptionist/patients" />
+
             {patient.allergies && (
               <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-700/20 rounded-xl px-3 py-2.5">
                 <p className="text-[10px] font-black text-red-500 uppercase tracking-wider mb-0.5">Allergies</p>
@@ -1217,9 +1221,10 @@ function NotesTab({ patientId, patient }: { patientId: string; patient?: any }) 
 }
 
 // ── Billing Tab ──────────────────────────────────────────────
-function BillingTab({ patientId }: { patientId: string }) {
+function BillingTab({ patientId, patient }: { patientId: string; patient?: any }) {
   const [invoices, setInvoices] = useState<any[]>([])
   const [loading, setLoading]   = useState(true)
+  const [familyBalance, setFamilyBalance] = useState<any>(null)
   const API = '/api-proxy'
 
   useEffect(() => {
@@ -1229,6 +1234,14 @@ function BillingTab({ patientId }: { patientId: string }) {
       .catch(() => setLoading(false))
   }, [patientId])
 
+  const isGuardian = patient?.dependents && patient.dependents.length > 0
+  useEffect(() => {
+    if (!isGuardian) return
+    const token = localStorage.getItem('cc_token')
+    fetch(`${API}/patients/${patientId}/family-balance`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d) setFamilyBalance(d) }).catch(() => {})
+  }, [patientId, isGuardian])
+
   if (loading) return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" /></div>
 
   const totalDue  = invoices.filter(i => i.status !== 'PAID').reduce((s, i) => s + (i.amount || 0), 0)
@@ -1236,6 +1249,32 @@ function BillingTab({ patientId }: { patientId: string }) {
 
   return (
     <div className="space-y-4">
+      {/* Family Account Balance */}
+      {isGuardian && familyBalance && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-700/30 rounded-2xl p-4 space-y-2">
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-600">Family Account Balance</p>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-emerald-700 dark:text-emerald-300">{patient.firstName} {patient.lastName} (guardian)</span>
+            <span className={cn('text-sm font-semibold', familyBalance.guardianBalance > 0 ? 'text-red-600' : 'text-emerald-600')}>
+              {familyBalance.guardianBalance > 0 ? formatUGX(familyBalance.guardianBalance) : '—'}
+            </span>
+          </div>
+          {familyBalance.dependents.map((d: any) => (
+            <div key={d.id} className="flex items-center justify-between pl-3 border-l-2 border-emerald-200 dark:border-emerald-700">
+              <span className="text-xs text-emerald-700 dark:text-emerald-300">{d.firstName} {d.lastName}</span>
+              <span className={cn('text-sm font-semibold', d.accountBalance > 0 ? 'text-red-600' : 'text-emerald-600')}>
+                {d.accountBalance > 0 ? formatUGX(d.accountBalance) : '—'}
+              </span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between pt-2 border-t border-emerald-200 dark:border-emerald-700/30">
+            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">Family Total Outstanding</span>
+            <span className={cn('text-lg font-black', familyBalance.familyTotal > 0 ? 'text-red-600' : 'text-emerald-600')}>
+              {familyBalance.familyTotal > 0 ? formatUGX(familyBalance.familyTotal) : 'Nil'}
+            </span>
+          </div>
+        </div>
+      )}
       {/* Balance summary */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 p-4 shadow-sm">
@@ -1370,6 +1409,7 @@ export default function PatientDetailPage() {
   const [mergeError, setMergeError]       = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const API = '/api-proxy'
+  const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   const fetchPatient = useCallback(async () => {
     const token = localStorage.getItem('cc_token')
@@ -1605,13 +1645,13 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-5">
-        {tab === 'overview'     && <OverviewTab patient={patient} onRefresh={fetchPatient} />}
+        {tab === 'overview'     && <OverviewTab patient={patient} onRefresh={fetchPatient} token={token} />}
         {tab === 'appointments' && <AppointmentsTab patientId={id} />}
         {tab === 'dental'       && <DentalChartTab patientId={id} />}
         {tab === 'perio'        && <PerioChartTab patientId={id} />}
         {tab === 'treatment'    && <TreatmentTab patientId={id} />}
         {tab === 'notes'        && <NotesTab patientId={id} patient={patient} />}
-        {tab === 'billing'      && <BillingTab patientId={id} />}
+        {tab === 'billing'      && <BillingTab patientId={id} patient={patient} />}
         {tab === 'documents'    && <DocumentsTab patientId={id} />}
         {tab === 'activity'     && <ActivityTab patientId={id} />}
         {tab === 'timeline'     && <TimelineTab patientId={id} />}

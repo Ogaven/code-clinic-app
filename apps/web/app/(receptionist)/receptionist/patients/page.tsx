@@ -2,7 +2,7 @@
 
 import { Component, useEffect, useRef, useState } from 'react'
 import {
-  Search, Plus, Phone, Mail, Calendar, ChevronRight, X, User,
+  Search, Plus, Phone, Mail, Calendar, ChevronRight, X, User, Users,
   Upload, Download, FileText, ExternalLink,
   CheckCircle2, AlertCircle, Trash2,
 } from 'lucide-react'
@@ -28,9 +28,10 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
 interface Patient {
   id: string; patientId?: string; firstName: string; lastName: string; phone: string
   email?: string; gender?: string; dob?: string; isActive: boolean; status?: string
-  createdAt: string; _count?: { appointments: number }
+  createdAt: string; _count?: { appointments: number; dependents?: number }
   avatarUrl?: string
   treatmentNotes?: Array<{ id: string; followUpStatus: string }>
+  guardian?: { id: string; firstName: string; lastName: string } | null
 }
 
 const toProperCase = (str: string) => str.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
@@ -544,11 +545,21 @@ export default function PatientsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{p.firstName} {p.lastName}</p>
+                        <div className="flex items-center gap-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{p.firstName} {p.lastName}</p>
+                          {(p._count?.dependents ?? 0) > 0 && (
+                            <Users size={10} className="text-emerald-500 flex-shrink-0" />
+                          )}
+                        </div>
                         {(p._count?.appointments || 0) > 1 && (
                           <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded-full flex-shrink-0">Returning</span>
                         )}
                       </div>
+                      {p.guardian && (
+                        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          under {p.guardian.firstName} {p.guardian.lastName}
+                        </p>
+                      )}
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <Phone size={10} className="text-cyan-500 flex-shrink-0" />
                         <span className="text-xs text-gray-500 dark:text-white/50">{p.phone}</span>
@@ -611,8 +622,18 @@ export default function PatientsPage() {
                             {(p.firstName || '?')[0]}{(p.lastName || '')[0]}
                           </div>
                           <div>
-                            <p className="font-semibold text-gray-800 dark:text-white">{p.firstName || ''} {p.lastName || ''}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-semibold text-gray-800 dark:text-white">{p.firstName || ''} {p.lastName || ''}</p>
+                              {(p._count?.dependents ?? 0) > 0 && (
+                                <Users size={11} className="text-emerald-500 flex-shrink-0" />
+                              )}
+                            </div>
                             <p className="text-[11px] font-mono text-cyan-600 dark:text-cyan-400">{p.patientId || '—'}</p>
+                            {p.guardian && (
+                              <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                                under {p.guardian.firstName} {p.guardian.lastName}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </td>

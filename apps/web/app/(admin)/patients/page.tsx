@@ -3,7 +3,7 @@
 import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Search, Plus, Phone, Mail, Calendar, ChevronLeft, ChevronRight,
-  X, User, Upload, Download, ExternalLink, Camera,
+  X, User, Upload, Download, ExternalLink, Camera, Users,
   CheckCircle2, AlertCircle,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -31,8 +31,9 @@ interface Patient {
   id: string; patientId?: string; firstName: string; lastName: string; phone: string
   email?: string; gender?: string; dob?: string; isActive: boolean; status?: string
   accountBalance: number; createdAt: string
-  _count?: { appointments: number; treatmentPlans?: number }
+  _count?: { appointments: number; treatmentPlans?: number; dependents?: number }
   avatarUrl?: string | null
+  guardian?: { id: string; firstName: string; lastName: string } | null
 }
 
 const STATUS_BADGES: Record<string, { label: string; pill: string }> = {
@@ -93,7 +94,7 @@ export default function PatientsPage() {
   const [selected,         setSelected]         = useState<Patient | null>(null)
   const [appts,            setAppts]            = useState<any[]>([])
   const [showAdd,          setShowAdd]          = useState(false)
-  const [activeFilter,     setActiveFilter]     = useState<'all'|'new_today'|'this_month'|'has_balance'|'has_plan'|'male'|'female'|'UPCOMING'|'ACTIVE'|'DUE_RECALL'|'LAPSED'|'DORMANT'|'BALANCE_OWING'>('all')
+  const [activeFilter,     setActiveFilter]     = useState<'all'|'new_today'|'this_month'|'new_patient'|'returning'|'record_only'|'has_balance'|'has_plan'|'male'|'female'|'UPCOMING'|'ACTIVE'|'DUE_RECALL'|'LAPSED'|'DORMANT'|'BALANCE_OWING'>('all')
   const [toast,            setToast]            = useState<{ msg: string; type: 'ok'|'err' } | null>(null)
   const [importing,        setImporting]        = useState(false)
   const [exporting,        setExporting]        = useState(false)
@@ -440,6 +441,9 @@ export default function PatientsPage() {
               { key: 'all',         label: 'All' },
               { key: 'new_today',   label: 'Today' },
               { key: 'this_month',  label: 'This Month' },
+              { key: 'new_patient', label: 'New Patient' },
+              { key: 'returning',   label: 'Returning' },
+              { key: 'record_only', label: 'Record Only' },
               { key: 'has_balance', label: 'Has Balance' },
               { key: 'has_plan',    label: 'Active Plan' },
               { key: 'male',        label: 'Male' },
@@ -525,8 +529,18 @@ export default function PatientsPage() {
                             </div>
                           )}
                           <div>
-                            <p className="font-semibold text-gray-800 dark:text-white">{p.firstName} {p.lastName}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-semibold text-gray-800 dark:text-white">{p.firstName} {p.lastName}</p>
+                              {(p._count?.dependents ?? 0) > 0 && (
+                                <Users size={11} className="text-emerald-500 flex-shrink-0" />
+                              )}
+                            </div>
                             <p className="text-[11px] font-mono text-cyan-600 dark:text-cyan-400">{p.patientId ?? patientCode(p.id)}</p>
+                            {p.guardian && (
+                              <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                                under {p.guardian.firstName} {p.guardian.lastName}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -674,6 +688,14 @@ export default function PatientsPage() {
                   <div>
                     <h2 className="text-lg font-black text-gray-800 dark:text-white">{selected.firstName} {selected.lastName}</h2>
                     <p className="text-xs font-mono text-cyan-600 dark:text-cyan-400">{selected.patientId ?? patientCode(selected.id)}</p>
+                    {(() => {
+                      const completed = appts.filter((a: any) => ['COMPLETED', 'DEPARTED', 'SESSION_COMPLETE'].includes(a.status))
+                      if (completed.length === 0) return <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/40 mt-0.5">Record Only</span>
+                      const earliest = completed.reduce((min: any, a: any) => new Date(a.startAt) < new Date(min.startAt) ? a : min, completed[0])
+                      const daysAgo = (Date.now() - new Date(earliest.startAt).getTime()) / 86_400_000
+                      if (completed.length === 1 && daysAgo <= 30) return <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 mt-0.5">New Patient</span>
+                      return <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 mt-0.5">Returning</span>
+                    })()}
                     <p className="text-sm text-gray-400 dark:text-white/40 mt-0.5">
                       {GENDER_LABELS[selected.gender || ''] || 'N/A'} · {selected.dob ? new Date().getFullYear() - new Date(selected.dob).getFullYear() + ' yrs' : 'Age N/A'}
                     </p>
