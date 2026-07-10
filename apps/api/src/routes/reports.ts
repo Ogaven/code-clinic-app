@@ -258,8 +258,9 @@ router.get('/clinical', requireAuth, async (req, res) => {
         : '—',
       reason:        a.status,
       daysSince:     Math.max(0, Math.floor((now.getTime() - (a.startAt as Date).getTime()) / 86400000)),
-      followUpSent:  a.followUpSent,
-      contactedAt:   contactedMap.get(a.id) || null,
+      followUpSent:   a.followUpSent,
+      followUpSentAt: a.followUpSentAt ? (a.followUpSentAt as Date).toISOString() : null,
+      contactedAt:    contactedMap.get(a.id) || null,
     }))
 
     res.json({

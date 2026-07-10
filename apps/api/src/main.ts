@@ -64,6 +64,7 @@ import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
 import { checkAndSendReminders }           from './ai-suite/scheduler/reminder.service'
 import { checkAndSendFollowups, processAfterHoursQueue, checkAndSendPostAppointmentFollowups, checkAndSendMissedCallFollowups, checkAndSendReactivationMessages, checkAndSendAppointmentConfirmations, checkAndSendWeekendReport } from './ai-suite/scheduler/followup.service'
 import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
+import { checkAndSendCancelledFollowups }  from './ai-suite/scheduler/cancelled-followup.service'
 import { updatePatientStatuses }           from './ai-suite/scheduler/patient-status.service'
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
 
@@ -335,6 +336,10 @@ runStartup().then(() => {
   }, TWENTY_FOUR_HOURS)
   setInterval(() => {
     checkAndSendReactivationMessages().catch(err => console.error('[Reactivation] Scheduler error:', err))
+  }, ONE_HOUR)
+  // 24-hour follow-up for cancelled / no-show patients who haven't rebooked
+  setInterval(() => {
+    checkAndSendCancelledFollowups().catch(err => console.error('[CancelledFollowup] Scheduler error:', err))
   }, ONE_HOUR)
   // checkAndSendAppointmentConfirmations disabled — reminder.service.ts covers this with better dedup
   // setInterval(() => { checkAndSendAppointmentConfirmations().catch(...) }, ONE_HOUR)

@@ -34,6 +34,7 @@ interface FollowUpEntry {
   reason: 'CANCELLED' | 'NO_SHOW'
   daysSince: number
   followUpSent: boolean
+  followUpSentAt: string | null
   contactedAt: string | null
 }
 
@@ -416,7 +417,10 @@ export default function ClinicalReportPage() {
                           </td>
                           <td className="px-4 py-3">
                             {r.followUpSent
-                              ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 whitespace-nowrap">Sent ✓</span>
+                              ? <span title={r.followUpSentAt ? `Sent ${fmtDate(r.followUpSentAt)}` : undefined}
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 whitespace-nowrap cursor-help">
+                                  Sent ✓{r.followUpSentAt ? ` ${fmtDate(r.followUpSentAt)}` : ''}
+                                </span>
                               : <span className="text-[10px] text-gray-400">—</span>
                             }
                           </td>
