@@ -19,16 +19,17 @@ const NO_SHOW_MSG = (name: string) =>
 //  - have not rebooked any future appointment
 //  - have not opted out (agentEnabled = false on their conversation)
 export async function checkAndSendCancelledFollowups(): Promise<void> {
-  const now    = new Date()
-  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000) // 24h ago
+  const now        = new Date()
+  const cutoff     = new Date(now.getTime() - 24 * 60 * 60 * 1000)       // 24h ago
+  const lookback   = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)  // 30-day window max
 
   let appts: any[]
   try {
     appts = await prisma.appointment.findMany({
       where: {
-        status:      { in: ['CANCELLED', 'NO_SHOW'] },
+        status:       { in: ['CANCELLED', 'NO_SHOW'] },
         followUpSent: false,
-        startAt:     { lte: cutoff },
+        startAt:      { gte: lookback, lte: cutoff },  // 24h–30d ago only
       },
       include: {
         patient: { select: { id: true, firstName: true, phone: true } },
