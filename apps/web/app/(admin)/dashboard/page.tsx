@@ -21,7 +21,7 @@ import LivePatientFlow from '@/components/scheduling/LivePatientFlow'
 // ── Dashboard analytics types ───────────────────────────────────────────────
 interface DashMetrics {
   activeThisMonth: number; activeLastMonth: number
-  newPatientsThisMonth: number; topReferralSource: string | null
+  newPatientsThisMonth: number; returningPatientsThisMonth: number; topReferralSource: string | null
   noShowRate: number; noShowCount: number; totalWeekAppts: number
   revenueCollected: number; revenueBilled: number; collectionRate: number
   unscheduledTreatmentValue: number; lapsedCount: number
@@ -410,11 +410,16 @@ export default function DashboardPage() {
         {/* 2. New patients */}
         {(() => {
           const m = dashData?.metrics
+          const sub = m
+            ? (m.returningPatientsThisMonth > 0
+                ? `${m.returningPatientsThisMonth} returning · ${m.topReferralSource ? `via ${m.topReferralSource}` : 'this month'}`
+                : m.topReferralSource ? `via ${m.topReferralSource}` : 'this month')
+            : 'this month'
           return (
             <AnalyticCard
               label="New Patients"
               value={m ? m.newPatientsThisMonth.toString() : '—'}
-              sub={m?.topReferralSource ? `via ${m.topReferralSource}` : 'this month'}
+              sub={sub}
               up={true} icon={<TrendingUp size={15}/>} color="#059669"
             />
           )

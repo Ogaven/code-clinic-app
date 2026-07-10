@@ -617,9 +617,11 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
         select:   { patientId: true },
         distinct: ['patientId'],
       }),
-      prisma.patient.findMany({
-        where:  { createdAt: { gte: startOfMonth } },
-        select: { referralSource: true },
+      // Patients who had a COMPLETED appointment this month
+      prisma.appointment.findMany({
+        where: { startAt: { gte: startOfMonth }, status: 'COMPLETED' },
+        select: { patientId: true },
+        distinct: ['patientId'],
       }),
       prisma.appointment.count({ where: { startAt: { gte: weekStart }, status: 'NO_SHOW' } }),
       prisma.appointment.count({ where: { startAt: { gte: weekStart } } }),
@@ -636,12 +638,45 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
       prisma.nurtureLog.count({ where: { createdAt: { gte: startOfMonth }, status: { in: ['SENT', 'DELIVERED'] } } }),
     ])
 
+    // Determine true new vs returning patients:
+    // New = first COMPLETED appointment this month, not imported
+    // Returning = had a COMPLETED appointment this month AND had one before this month
+    const completedThisMonthIds = newThisMonth.map((a: { patientId: string }) => a.patientId)
+
+    const [hadCompletedBefore, newPatientDetails] = await Promise.all([
+      // Which of those had any COMPLETED appointment BEFORE this month?
+      completedThisMonthIds.length > 0
+        ? prisma.appointment.findMany({
+            where:    { patientId: { in: completedThisMonthIds }, startAt: { lt: startOfMonth }, status: 'COMPLETED' },
+            select:   { patientId: true },
+            distinct: ['patientId'],
+          })
+        : Promise.resolve([]),
+      // Referral source for truly new patients (not imported)
+      completedThisMonthIds.length > 0
+        ? prisma.patient.findMany({
+            where: { id: { in: completedThisMonthIds }, OR: [{ importSource: null }, { importSource: '' }] },
+            select: { id: true, referralSource: true },
+          })
+        : Promise.resolve([]),
+    ])
+
+    const returningIds = new Set(hadCompletedBefore.map((a: { patientId: string }) => a.patientId))
+    const newIds       = new Set(
+      newPatientDetails
+        .filter((p: { id: string }) => !returningIds.has(p.id))
+        .map((p: { id: string }) => p.id),
+    )
+
     const sourceMap: Record<string, number> = {}
-    newThisMonth.forEach(p => {
-      const s = p.referralSource || 'Unknown'
-      sourceMap[s] = (sourceMap[s] || 0) + 1
-    })
-    const topReferralSource = Object.entries(sourceMap).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+    newPatientDetails
+      .filter((p: { id: string; referralSource: string | null }) => newIds.has(p.id))
+      .forEach((p: { referralSource: string | null }) => {
+        const s = p.referralSource || 'Unknown'
+        sourceMap[s] = (sourceMap[s] || 0) + 1
+      })
+    const topReferralSource    = Object.entries(sourceMap).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+    const returningPatientsThisMonth = returningIds.size
 
     const collected        = Number(collectedThisMonth._sum.amountUGX) || 0
     const billed           = Number(billedThisMonth._sum.totalUGX)     || 0
@@ -664,7 +699,8 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
       metrics: {
         activeThisMonth:           activeThisMonthRows.length,
         activeLastMonth:           activeLastMonthRows.length,
-        newPatientsThisMonth:      newThisMonth.length,
+        newPatientsThisMonth:      newIds.size,
+        returningPatientsThisMonth,
         topReferralSource,
         noShowRate,
         noShowCount:               noShowWeek,

@@ -139,4 +139,120 @@ router.patch('/treatment/:id/stage', requireAuth, async (req, res) => {
   }
 })
 
+// PATCH /pipeline/treatment/bulk — apply the same stage to multiple plans
+router.patch('/treatment/bulk', requireAuth, async (req, res) => {
+  try {
+    const { ids, stage } = req.body as { ids: string[]; stage: string }
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'ids must be a non-empty array' }); return
+    }
+    if (!stage || !VALID_STAGES.includes(stage)) {
+      res.status(400).json({ error: `Invalid stage. Must be one of: ${VALID_STAGES.join(', ')}` }); return
+    }
+    const result = await prisma.treatmentPlan.updateMany({
+      where: { id: { in: ids } },
+      data:  { stage },
+    })
+    res.json({ updated: result.count })
+  } catch (e) {
+    console.error('[Pipeline] bulk stage update error:', e)
+    res.status(500).json({ error: 'Failed to bulk update stages' })
+  }
+})
+
+// DELETE /pipeline/treatment/bulk — remove multiple plans (must be BEFORE /:id)
+router.delete('/treatment/bulk', requireAuth, async (req, res) => {
+  try {
+    const { ids } = req.body as { ids: string[] }
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'ids must be a non-empty array' }); return
+    }
+    const result = await prisma.treatmentPlan.deleteMany({ where: { id: { in: ids } } })
+    res.json({ deleted: result.count })
+  } catch (e) {
+    console.error('[Pipeline] bulk delete error:', e)
+    res.status(500).json({ error: 'Failed to bulk delete plans' })
+  }
+})
+
+// DELETE /pipeline/treatment/:id — remove a plan from the pipeline
+router.delete('/treatment/:id', requireAuth, async (req, res) => {
+  try {
+    await prisma.treatmentPlan.delete({ where: { id: req.params.id } })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('[Pipeline] delete error:', e)
+    res.status(500).json({ error: 'Failed to delete plan' })
+  }
+})
+
+// GET /pipeline/needs-review — plans that are stale and need Justine's attention
+router.get('/needs-review', requireAuth, async (_req, res) => {
+  try {
+    const now = new Date()
+    const sixtyDaysAgo  = new Date(now.getTime() - 60  * 86_400_000)
+    const ninetyDaysAgo = new Date(now.getTime() - 90  * 86_400_000)
+
+    // Consulted > 60 days (consult only, no follow-up action)
+    const consultStale = await prisma.treatmentPlan.findMany({
+      where:   { stage: 'Consulted', createdAt: { lt: sixtyDaysAgo } },
+      include: { patient: { select: { id: true, firstName: true, lastName: true, phone: true, patientNumber: true } } },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    // Accepted & Unscheduled or Accepted & Scheduled > 90 days (money at risk / stuck)
+    const acceptedStale = await prisma.treatmentPlan.findMany({
+      where: {
+        stage:     { in: ['Accepted & Unscheduled', 'Accepted & Scheduled', 'Treatment Presented', 'Follow-up Due'] },
+        updatedAt: { lt: ninetyDaysAgo },
+      },
+      include: { patient: { select: { id: true, firstName: true, lastName: true, phone: true, patientNumber: true } } },
+      orderBy: { updatedAt: 'asc' },
+    })
+
+    // Enrich with last appointment date per patient
+    const allPatientIds = [...new Set([
+      ...consultStale.map(p => p.patientId),
+      ...acceptedStale.map(p => p.patientId),
+    ])]
+
+    const lastAppts = allPatientIds.length > 0
+      ? await prisma.appointment.findMany({
+          where:   { patientId: { in: allPatientIds }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } },
+          select:  { patientId: true, startAt: true },
+          orderBy: { startAt: 'desc' },
+        })
+      : []
+
+    const lastApptByPatient = new Map<string, Date>()
+    lastAppts.forEach(a => {
+      if (!lastApptByPatient.has(a.patientId)) lastApptByPatient.set(a.patientId, a.startAt)
+    })
+
+    const enrich = (plan: any) => ({
+      id:            plan.id,
+      patientId:     plan.patientId,
+      patientName:   `${plan.patient.firstName} ${plan.patient.lastName}`,
+      patientNumber: plan.patient.patientNumber,
+      phone:         plan.patient.phone,
+      stage:         plan.stage,
+      daysSince:     Math.floor((now.getTime() - new Date(plan.updatedAt || plan.createdAt).getTime()) / 86_400_000),
+      createdAt:     plan.createdAt,
+      updatedAt:     plan.updatedAt,
+      lastApptDate:  lastApptByPatient.get(plan.patientId) ?? null,
+      treatmentName: plan.notes?.split('\n')[0]?.slice(0, 60) || 'General',
+      value:         Number(plan.costPerUnit) * plan.quantity - Number(plan.discount),
+    })
+
+    res.json({
+      consultOnly:   consultStale.map(enrich),
+      stuckPlans:    acceptedStale.map(enrich),
+      total:         consultStale.length + acceptedStale.length,
+    })
+  } catch (e) {
+    console.error('[Pipeline] needs-review error:', e)
+    res.status(500).json({ error: 'Failed to fetch needs-review plans' })
+  }
+})
+
 export default router

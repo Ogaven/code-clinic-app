@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight } from 'lucide-react'
+import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,27 @@ interface Metrics {
   conversionRate:      number
   moneyAtRisk:         number
   avgDaysToSchedule:   number
+}
+
+interface ReviewPlan {
+  id:            string
+  patientId:     string
+  patientName:   string
+  patientNumber: number
+  phone:         string
+  stage:         string
+  daysSince:     number
+  createdAt:     string
+  updatedAt:     string
+  lastApptDate:  string | null
+  treatmentName: string
+  value:         number
+}
+
+interface NeedsReviewData {
+  consultOnly: ReviewPlan[]
+  stuckPlans:  ReviewPlan[]
+  total:       number
 }
 
 // ── Stage config ─────────────────────────────────────────────────────────────
@@ -65,24 +87,35 @@ function urgencyBorderColor(daysSince: number, stage: string) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function TreatmentPipelinePage() {
-  const API   = '/api-proxy'
-  const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
-  const authH = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+  const API    = '/api-proxy'
+  const router = useRouter()
+  const token  = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  const authH  = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
-  const [plans,    setPlans]    = useState<Plan[]>([])
-  const [metrics,  setMetrics]  = useState<Metrics | null>(null)
-  const [loading,  setLoading]  = useState(true)
-  const [dragId,   setDragId]   = useState<string | null>(null)
-  const [dropOver, setDropOver] = useState<string | null>(null)
-  const [movePlan, setMovePlan] = useState<Plan | null>(null)
+  const [plans,          setPlans]          = useState<Plan[]>([])
+  const [metrics,        setMetrics]        = useState<Metrics | null>(null)
+  const [loading,        setLoading]        = useState(true)
+  const [dragId,         setDragId]         = useState<string | null>(null)
+  const [dropOver,       setDropOver]       = useState<string | null>(null)
+  const [movePlan,       setMovePlan]       = useState<Plan | null>(null)
+  const [needsReview,    setNeedsReview]    = useState<NeedsReviewData | null>(null)
+  const [reviewOpen,     setReviewOpen]     = useState(false)
+  const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set())
+  const [bulkStage,      setBulkStage]      = useState('')
+  const [bulkLoading,    setBulkLoading]    = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const r = await fetch(`${API}/pipeline/treatment`, { headers: authH as any })
-      const d = await r.json()
+      const [r, rr] = await Promise.all([
+        fetch(`${API}/pipeline/treatment`,   { headers: authH as any }),
+        fetch(`${API}/pipeline/needs-review`, { headers: authH as any }),
+      ])
+      const d  = await r.json()
+      const dr = await rr.json()
       setPlans(Array.isArray(d.plans) ? d.plans : [])
       setMetrics(d.metrics ?? null)
+      if (!dr.error) setNeedsReview(dr)
     } catch { /* silent */ }
     setLoading(false)
   }, [])
@@ -151,6 +184,75 @@ export default function TreatmentPipelinePage() {
     }
   }
 
+  // ── Bulk actions ──────────────────────────────────────────────────────────
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  async function handleBulkStage(stage: string) {
+    if (!stage || selectedIds.size === 0) return
+    setBulkLoading(true)
+    const ids = Array.from(selectedIds)
+    setPlans(prev => prev.map(p => ids.includes(p.id) ? { ...p, stage } : p))
+    setSelectedIds(new Set())
+    try {
+      await fetch(`${API}/pipeline/treatment/bulk`, {
+        method:  'PATCH',
+        headers: authH as any,
+        body:    JSON.stringify({ ids, stage }),
+      })
+    } catch { load() }
+    setBulkLoading(false)
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return
+    setBulkLoading(true)
+    const ids = Array.from(selectedIds)
+    setPlans(prev => prev.filter(p => !ids.includes(p.id)))
+    setSelectedIds(new Set())
+    try {
+      await fetch(`${API}/pipeline/treatment/bulk`, {
+        method:  'DELETE',
+        headers: authH as any,
+        body:    JSON.stringify({ ids }),
+      })
+    } catch { load() }
+    setBulkLoading(false)
+  }
+
+  async function handleReviewAction(planId: string, action: 'complete' | 'decline' | 'remove') {
+    if (action === 'remove') {
+      setNeedsReview(prev => prev ? {
+        ...prev,
+        consultOnly: prev.consultOnly.filter(p => p.id !== planId),
+        stuckPlans:  prev.stuckPlans.filter(p => p.id !== planId),
+        total: prev.total - 1,
+      } : prev)
+      await fetch(`${API}/pipeline/treatment/${planId}`, { method: 'DELETE', headers: authH as any })
+      setPlans(prev => prev.filter(p => p.id !== planId))
+      return
+    }
+    const stage = action === 'complete' ? 'Completed' : 'Declined'
+    setNeedsReview(prev => prev ? {
+      ...prev,
+      consultOnly: prev.consultOnly.filter(p => p.id !== planId),
+      stuckPlans:  prev.stuckPlans.filter(p => p.id !== planId),
+      total: prev.total - 1,
+    } : prev)
+    setPlans(prev => prev.map(p => p.id === planId ? { ...p, stage } : p))
+    await fetch(`${API}/pipeline/treatment/${planId}/stage`, {
+      method:  'PATCH',
+      headers: authH as any,
+      body:    JSON.stringify({ stage }),
+    })
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   const plansByStage = (stageId: string) => plans.filter(p => p.stage === stageId)
@@ -195,6 +297,59 @@ export default function TreatmentPipelinePage() {
           loading={loading}
         />
       </div>
+
+      {/* ── Needs Review section ──────────────────────────────────────── */}
+      {needsReview && needsReview.total > 0 && (
+        <NeedsReviewSection
+          data={needsReview}
+          open={reviewOpen}
+          onToggle={() => setReviewOpen(v => !v)}
+          onAction={handleReviewAction}
+          onNavigate={(patientId) => router.push(`/scheduling?patientId=${patientId}`)}
+        />
+      )}
+
+      {/* ── Bulk action toolbar ────────────────────────────────────────── */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-2xl shadow-lg flex-shrink-0">
+          <span className="text-sm font-bold text-gray-700">{selectedIds.size} plan{selectedIds.size !== 1 ? 's' : ''} selected</span>
+          <div className="flex items-center gap-2 flex-1">
+            <select
+              value={bulkStage}
+              onChange={e => setBulkStage(e.target.value)}
+              className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-clinic-blue/20"
+            >
+              <option value="">Move to stage…</option>
+              {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+            <button
+              disabled={!bulkStage || bulkLoading}
+              onClick={() => handleBulkStage(bulkStage)}
+              className="text-xs font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}
+            >
+              {bulkLoading ? '…' : 'Apply'}
+            </button>
+            <button
+              onClick={() => handleBulkStage('Completed')}
+              disabled={bulkLoading}
+              className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors disabled:opacity-40"
+            >
+              <CheckCircle2 size={11} className="inline mr-1" />Complete
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkLoading}
+              className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors disabled:opacity-40 ml-auto"
+            >
+              <Trash2 size={11} className="inline mr-1" />Delete
+            </button>
+          </div>
+          <button onClick={() => setSelectedIds(new Set())} className="text-gray-400 hover:text-gray-600">
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {/* ── Kanban board ──────────────────────────────────────────────── */}
       {loading ? (
@@ -282,9 +437,11 @@ export default function TreatmentPipelinePage() {
                         key={plan.id}
                         plan={plan}
                         isDragging={dragId === plan.id}
+                        isSelected={selectedIds.has(plan.id)}
                         onDragStart={handleDragStart}
                         onDragEnd={handleDragEnd}
                         onMove={() => setMovePlan(plan)}
+                        onToggleSelect={() => toggleSelect(plan.id)}
                       />
                     ))}
                   </div>
@@ -312,22 +469,29 @@ export default function TreatmentPipelinePage() {
 function PlanCard({
   plan,
   isDragging,
+  isSelected,
   onDragStart,
   onDragEnd,
   onMove,
+  onToggleSelect,
 }: {
-  plan:        Plan
-  isDragging:  boolean
-  onDragStart: (e: React.DragEvent, id: string) => void
-  onDragEnd:   () => void
-  onMove:      () => void
+  plan:           Plan
+  isDragging:     boolean
+  isSelected:     boolean
+  onDragStart:    (e: React.DragEvent, id: string) => void
+  onDragEnd:      () => void
+  onMove:         () => void
+  onToggleSelect: () => void
 }) {
+  const [showHistory, setShowHistory] = useState(false)
   const borderColor = urgencyBorderColor(plan.daysSince, plan.stage)
   const urgentText  = plan.daysSince > 14
     ? 'text-red-500'
     : plan.daysSince > 7
     ? 'text-amber-500'
     : 'text-gray-400'
+
+  const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
 
   return (
     <div
@@ -338,25 +502,37 @@ function PlanCard({
       style={{
         boxShadow:   isDragging
           ? '0 8px 20px rgba(0,0,0,0.15)'
+          : isSelected
+          ? '0 0 0 2px #29ABE2'
           : '0 1px 3px rgba(0,0,0,0.06)',
         opacity:     isDragging ? 0.6 : 1,
         cursor:      'grab',
-        border:      `1px solid #F3F4F6`,
+        border:      `1px solid ${isSelected ? '#BAE6FD' : '#F3F4F6'}`,
         borderLeft:  `3px solid ${borderColor}`,
       }}
     >
-      {/* Patient */}
-      <div className="flex items-start justify-between gap-1 mb-1">
-        <p className="text-sm font-bold text-gray-900 leading-tight">
-          {plan.patient.firstName} {plan.patient.lastName}
-        </p>
-        <span className="text-[10px] font-mono text-gray-400 flex-shrink-0 mt-0.5">
-          {fmtCC(plan.patient.patientNumber)}
-        </span>
+      {/* Checkbox + Patient */}
+      <div className="flex items-start gap-1.5 mb-1">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggleSelect}
+          onClick={e => e.stopPropagation()}
+          onDragStart={e => e.stopPropagation()}
+          className="mt-0.5 w-3.5 h-3.5 rounded accent-cyan-500 cursor-pointer flex-shrink-0"
+        />
+        <div className="flex items-start justify-between gap-1 flex-1 min-w-0">
+          <p className="text-sm font-bold text-gray-900 leading-tight truncate">
+            {plan.patient.firstName} {plan.patient.lastName}
+          </p>
+          <span className="text-[10px] font-mono text-gray-400 flex-shrink-0 mt-0.5">
+            {fmtCC(plan.patient.patientNumber)}
+          </span>
+        </div>
       </div>
 
       {/* Treatment */}
-      <p className="text-[11px] text-gray-600 truncate leading-tight">
+      <p className="text-[11px] text-gray-600 truncate leading-tight pl-5">
         {plan.treatmentName}
         {plan.toothNumber && (
           <span className="text-gray-400"> · Tooth {plan.toothNumber}</span>
@@ -364,16 +540,24 @@ function PlanCard({
       </p>
 
       {/* Value */}
-      <p className="text-sm font-bold mt-1.5 mb-1" style={{ color: '#1A237E' }}>
+      <p className="text-sm font-bold mt-1.5 mb-1 pl-5" style={{ color: '#1A237E' }}>
         {fmtUGX(plan.value)}
       </p>
 
-      {/* Doctor + days + Move button */}
-      <div className="flex items-center justify-between gap-1">
+      {/* Doctor + days + actions */}
+      <div className="flex items-center justify-between gap-1 pl-5">
         <p className="text-[10px] text-gray-400 truncate flex-1">{plan.doctorName}</p>
         <span className={`text-[10px] font-semibold flex-shrink-0 ${urgentText}`}>
           {plan.daysSince}d
         </span>
+        <button
+          onClick={e => { e.stopPropagation(); setShowHistory(v => !v) }}
+          onDragStart={e => e.stopPropagation()}
+          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-gray-400 hover:text-purple-500 hover:bg-purple-50 transition-colors flex-shrink-0"
+          title="Stage history"
+        >
+          <History size={10} />
+        </button>
         <button
           onClick={e => { e.stopPropagation(); onMove() }}
           onDragStart={e => e.stopPropagation()}
@@ -384,6 +568,24 @@ function PlanCard({
           <span className="hidden sm:inline">Move</span>
         </button>
       </div>
+
+      {/* Stage history timeline */}
+      {showHistory && (
+        <div className="mt-2 pt-2 border-t border-gray-100 pl-5 space-y-1">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
+            <span className="text-[10px] text-gray-400">Entered pipeline: <span className="font-semibold text-gray-600">{fmt(plan.createdAt)}</span></span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 flex-shrink-0" />
+            <span className="text-[10px] text-gray-400">Last updated: <span className="font-semibold text-gray-600">{fmt(plan.updatedAt)}</span></span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+            <span className="text-[10px] text-gray-400">Current stage: <span className="font-semibold text-blue-600">{plan.stage}</span></span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -444,6 +646,114 @@ function MoveModal({
         {/* Safe-area spacer on iOS */}
         <div className="h-safe-bottom sm:hidden" style={{ height: 'env(safe-area-inset-bottom)' }} />
       </div>
+    </div>
+  )
+}
+
+// ── Needs Review Section ──────────────────────────────────────────────────────
+
+function NeedsReviewSection({
+  data, open, onToggle, onAction, onNavigate,
+}: {
+  data:       NeedsReviewData
+  open:       boolean
+  onToggle:   () => void
+  onAction:   (planId: string, action: 'complete' | 'decline' | 'remove') => void
+  onNavigate: (patientId: string) => void
+}) {
+  const fmt = (d: string | null) =>
+    d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'
+
+  const ReviewRow = ({ plan, type }: { plan: ReviewPlan; type: string }) => (
+    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-amber-100/60 last:border-0 hover:bg-amber-50/30 transition-colors">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-bold text-gray-800 truncate">{plan.patientName}</span>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">{plan.stage}</span>
+          <span className="text-[10px] font-semibold text-red-500">{plan.daysSince}d</span>
+        </div>
+        <div className="text-[11px] text-gray-500 mt-0.5">
+          {plan.treatmentName} · {fmtUGX(plan.value)}
+          {plan.lastApptDate && <span className="ml-2 text-gray-400">Last visit: {fmt(plan.lastApptDate)}</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {type === 'stuck' && (
+          <button
+            onClick={() => onAction(plan.id, 'complete')}
+            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
+            title="Mark Completed"
+          >
+            <CheckCircle2 size={11} className="inline mr-0.5" />Done
+          </button>
+        )}
+        <button
+          onClick={() => onAction(plan.id, 'decline')}
+          className="text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+          title="Mark Declined"
+        >
+          Decline
+        </button>
+        <button
+          onClick={() => onNavigate(plan.patientId)}
+          className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+          title="Book Follow-up"
+        >
+          <CalendarPlus size={11} className="inline mr-0.5" />Book
+        </button>
+        <button
+          onClick={() => onAction(plan.id, 'remove')}
+          className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+          title="Remove from pipeline"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="rounded-2xl border border-amber-200 overflow-hidden flex-shrink-0"
+      style={{ background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)' }}>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-50/50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <AlertTriangle size={15} className="text-amber-600" />
+          <span className="text-sm font-bold text-amber-800">Needs Review</span>
+          <span className="text-xs font-black px-2 py-0.5 rounded-full bg-amber-500 text-white">
+            {data.total}
+          </span>
+          <span className="text-xs text-amber-600">
+            {data.consultOnly.length > 0 && `${data.consultOnly.length} consulted >60d`}
+            {data.consultOnly.length > 0 && data.stuckPlans.length > 0 && ' · '}
+            {data.stuckPlans.length > 0 && `${data.stuckPlans.length} stuck >90d`}
+          </span>
+        </div>
+        {open ? <ChevronUp size={15} className="text-amber-600" /> : <ChevronDown size={15} className="text-amber-600" />}
+      </button>
+
+      {open && (
+        <div className="bg-white border-t border-amber-200">
+          {data.consultOnly.length > 0 && (
+            <>
+              <div className="px-4 py-1.5 bg-gray-50 border-b border-gray-100">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Consulted — no follow-up ({data.consultOnly.length})</p>
+              </div>
+              {data.consultOnly.map(p => <ReviewRow key={p.id} plan={p} type="consult" />)}
+            </>
+          )}
+          {data.stuckPlans.length > 0 && (
+            <>
+              <div className="px-4 py-1.5 bg-gray-50 border-b border-gray-100">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Stuck / Accepted — not progressing ({data.stuckPlans.length})</p>
+              </div>
+              {data.stuckPlans.map(p => <ReviewRow key={p.id} plan={p} type="stuck" />)}
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
