@@ -1,9 +1,19 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, Activity, TrendingUp, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Activity, TrendingUp, ChevronRight, ClipboardList } from 'lucide-react'
 
 const REPORTS = [
+  {
+    href:        '/reports/clinical',
+    icon:        ClipboardList,
+    iconBg:      'bg-emerald-100 dark:bg-emerald-900/30',
+    iconColor:   'text-emerald-600 dark:text-emerald-400',
+    accentColor: '#059669',
+    title:       'Daily / Weekly Clinical Report',
+    description: 'Patients seen, new vs. returning, cancellations, no-shows, and a follow-up list with WhatsApp shortcuts.',
+    cta:         'View report',
+  },
   {
     href:        '/reports/patient-flow',
     icon:        Activity,
