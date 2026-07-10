@@ -11,7 +11,7 @@ import { formatPatientId } from '../lib/utils'
 import { syncAppointmentToGCal } from '../services/gcal'
 import { sendAppointmentNotification } from '../ai-suite/notifications/notification.service'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
-import { getGreetingName } from '../utils/nameHelper'
+import { getGreetingName, toProper } from '../utils/nameHelper'
 import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
 
@@ -29,7 +29,7 @@ async function notifyStaff(
   const svc  = appt.service.name
   const date = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
   const time = appt.startAt.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
-  const name = `${p.firstName} ${p.lastName}`
+  const name = `${toProper(p.firstName)} ${toProper(p.lastName)}`.trim()
 
   let waMsg = '', notifTitle = '', notifBody = ''
   if (type === 'booked') {

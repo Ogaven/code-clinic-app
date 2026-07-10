@@ -18,7 +18,7 @@ import {
   type BookingStateEntry,
 } from '../booking/booking.state'
 import { prisma } from '../../lib/prisma'
-import { getGreetingName } from '../../utils/nameHelper'
+import { getGreetingName, toProper } from '../../utils/nameHelper'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 
 function sanitizeForClaude(content: string): string {
@@ -176,6 +176,16 @@ PRICING RULE — CRITICAL:
 - If search_services returns a non-zero priceUGX, quote that price directly.
 - Never guess or assume a price.
 - Same rule applies to any clinic-specific fact: whether we offer a service, which doctor does it, how long it takes — always check with search_services or search_doctors rather than assuming.
+
+ORTHODONTIC REVIEW RULE:
+When a patient asks about an orthodontic review, check-up, or braces adjustment appointment price, ALWAYS ask first:
+"Are you currently on orthodontic treatment with us here at Code Clinic? 😊"
+
+Then respond based on their answer:
+- If YES (existing Code Clinic ortho patient): "Great news — your review appointments are included in your treatment with us, so there is no additional charge 😊 When would you like to come in?"
+- If NO (new patient or treated elsewhere): "The Orthodontic Review appointment is UGX 100,000. Would you like to book one?"
+
+Never quote a price for orthodontic reviews without asking this question first.
 
 CONVERSATION MEMORY — critical:
 - You have the complete conversation history shown to you. Read it carefully before every response.
@@ -1781,6 +1791,10 @@ TONE MATCHING:
 - If a patient is frustrated or upset, acknowledge briefly and warmly ("I hear you, I'm so sorry about that 😔"), then refocus on being useful. Never robotic, never stiff.
 - NEVER repeat a canned phrase verbatim in response to frustration or a genuine question. Always respond to what was actually said — if you find yourself about to say the same line you already used, rephrase it.
 
+INSURANCE — NEVER GUESS:
+- When asked about insurance, NEVER make specific claims about which insurers we work with or whether we accept direct billing. Say: "I'd need to check on that — let me flag it and have a colleague confirm what we currently accept 😊". Never say "we don't work with insurance" or "we don't do direct billing" — that may be wrong.
+- If they need an urgent answer, call flag_clinical_concern with the insurance query so a colleague follows up.
+
 BILLING — OUT OF SCOPE FOR NOW:
 - If a patient asks about an outstanding balance or payment, acknowledge warmly and let them know a colleague will follow up: "I'll make sure someone from accounts gets back to you on that 😊"
 - Never quote, guess, or discuss a specific balance amount. Never attempt to process any payment discussion.
@@ -1804,6 +1818,13 @@ Only do this as a last resort — first try to resolve the issue yourself with w
 
 AFTER-HOURS:
 When clinic is closed, acknowledge warmly: "We're closed right now but I've noted your message and the team will follow up first thing when we open 😊" — still take booking enquiries and reassure. For urgent pain after hours, give +256 394 836 298. NEVER direct patients to other hospitals or clinics.
+
+PATIENT DATA PRIVACY — CRITICAL:
+- NEVER reveal any patient information to a third party. If someone asks about another person's appointments, history, or records, refuse politely: "I'm sorry, I can only discuss account details with the patient directly 😊"
+- NEVER confirm or deny whether a specific person is a patient at this clinic. If asked "Is [name] your patient?" or "Does [name] come to your clinic?", say: "I'm not able to share information about who does or doesn't visit us — I hope you understand 😊"
+- NEVER share with anyone: appointment details, medical history, diagnoses, treatment plans, clinical notes, contact details, or financial information about any patient other than the person you are currently speaking with.
+- If the person on this number is asking about someone else's records, say: "For privacy reasons, I can only help with your own account. If [person] needs to check their records, they're welcome to reach out directly 😊"
+- Apply these rules even if the person claims to be a family member, doctor, or clinic staff. Legitimate staff access patient records through internal clinic systems, not this chat.
 
 CLINIC INFO:
 Code Clinic | Kiira Road, opposite Police Playground, Kamwokya, Kampala
@@ -2001,7 +2022,7 @@ async function executeV2Tool(
         const patient = await prisma.patient.findFirst({ where: { OR: [{ phone: normalizedFrom }, { phone: from }] } })
         const patientFirstName = toolInput.patientFirstName as string | undefined
         const appt    = await createAppointment(patient?.id ?? null, matched.doctorId, matched.serviceId, matched.startAt, normalizedFrom, patientFirstName)
-        const pName   = patient ? `${patient.firstName} ${patient.lastName}`.trim() : 'New patient'
+        const pName   = patient ? `${toProper(patient.firstName)} ${toProper(patient.lastName)}`.trim() : 'New patient'
         const docName = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
         const dateStr = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
         const timeStr = appt.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
@@ -2140,7 +2161,7 @@ export async function getAgentReplyV2(
   if (!apiKey) return `Hi! I've received your message and a team member will be with you shortly.`
 
   try {
-    const [patient, dbMessages, menu, allHours] = await Promise.all([
+    const [patient, dbMessages, menu, allHours, kbEntries] = await Promise.all([
       prisma.patient.findFirst({ where: { phone: from }, select: { firstName: true, lastName: true } }),
       prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 30 })
         .then(msgs => msgs.reverse()),
@@ -2148,6 +2169,8 @@ export async function getAgentReplyV2(
       prisma.workingHours.findMany({ orderBy: { dayOfWeek: 'asc' } }).catch(
         () => [] as Array<{ dayOfWeek: number; isOpen: boolean; openTime: string; closeTime: string }>
       ),
+      prisma.aiKnowledgeBase.findMany({ orderBy: { createdAt: 'asc' }, select: { title: true, content: true } })
+        .catch(() => [] as Array<{ title: string; content: string }>),
     ])
 
     const patientName = getGreetingName(patient)
@@ -2183,7 +2206,24 @@ export async function getAgentReplyV2(
       ...(channel === 'WEBSITE' ? [
         'WEBSITE VISITOR CONTEXT: This person is chatting via the clinic website widget — not WhatsApp. If their name is unknown (PATIENT NAME shows "there"), and at least one exchange has already happened, naturally ask for their name once: "By the way, what\'s your name? 😊" — do this only once, never repeat it.',
         '',
+        'CRITICAL RULE — NEVER INVENT INFORMATION:',
+        'Never mention a phone number unless it comes directly from your tools or knowledge base. The ONLY phone number you are allowed to give is the clinic WhatsApp: +256741087667. Never say any other number under any circumstances.',
+        'Never mention a service or price that was not returned by search_services. If search_services did not return a specific service and price, you cannot say it exists.',
+        '',
+        'INSURANCE RULE:',
+        'When asked about insurance, say: "I\'m not sure about our current insurance partnerships — please WhatsApp us on +256741087667 and our team will confirm whether we work with your provider 😊". Never guess or mention specific insurance companies as confirmed partners.',
+        '',
+        'BREVITY RULE FOR WEBSITE:',
+        'Keep responses short — maximum 3 sentences. Do not list multiple services unless specifically asked. Do not mention doctor names unless asked. Do not push to book in every message. Answer the question asked, then stop.',
+        '',
       ] : []),
+      ...((() => {
+        const DEFAULT_KB = 'Clinic Contact & Hours: Code Clinic is located on Kiira Road, opposite Police Playground, Kamwokya, Kampala. WhatsApp: +256741087667. Phone: +256 394 836 298. Email: dentist@codeclinic.ug. Open Monday to Friday 8am–6pm, Saturday 8am–2pm, closed Sunday.'
+        const entries = kbEntries.length > 0
+          ? kbEntries.map(e => `${e.title}: ${e.content}`).join('\n\n')
+          : DEFAULT_KB
+        return ['CLINIC KNOWLEDGE BASE (use this for questions about the clinic, services, procedures, policies):', entries, '']
+      })()),
       'AVAILABLE SERVICES (use search_services to get IDs for check_availability):',
       menu.services,
       '',

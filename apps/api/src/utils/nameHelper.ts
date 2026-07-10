@@ -1,6 +1,6 @@
 const lugandaPrefixes = /^(MU|BA|KA|NA|WA|BU|LU|KI|MA|NY|NG|NJ|NK|SS|KK)/i
 
-const toProper = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : ''
+export const toProper = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : ''
 
 // For split records (lastName present): check firstName first, then lastName (forward scan).
 // For single-field full names (lastName empty, e.g. nextOfKinName): backward scan to find the

@@ -5,6 +5,9 @@ import fs            from 'fs'
 import { getAgentReplyV2 } from '../agent/agent.service'
 import { isAgentEnabled }       from '../takeover/takeover.service'
 import { prisma }               from '../../lib/prisma'
+import { sendWhatsAppMessage }  from '../whatsapp/whatsapp.service'
+
+const STAFF_WHATSAPP = process.env.STAFF_WHATSAPP_NUMBER ?? '+256394836298'
 
 function extractNameFromText(text: string): string | null {
   const m = text.match(/(?:my name is|i['']?m|i am|this is|call me)\s+([A-Z][a-z]{1,15}(?:\s+[A-Z][a-z]{1,15})?)/i)
@@ -68,20 +71,33 @@ router.post('/message', async (req, res) => {
 
     res.json({ reply, sessionId, conversationId: conversation.id })
 
-    setImmediate(() => {
-      const extractedName = extractNameFromText(message)
-      prisma.lead.findFirst({
-        where: { phone: sessionId, source: 'WEBSITE', status: { notIn: ['CONVERTED', 'LOST'] } },
-      }).then(existing => {
+    setImmediate(async () => {
+      try {
+        const extractedName = extractNameFromText(message)
+
+        // Alert staff on EVERY inbound message
+        const existing = await prisma.lead.findFirst({
+          where: { phone: sessionId, source: 'WEBSITE', status: { notIn: ['CONVERTED', 'LOST'] } },
+        })
+        const nameLabel = existing?.name || extractedName || 'Website Visitor'
+        sendWhatsAppMessage(
+          STAFF_WHATSAPP,
+          `🌐 *Website Visitor Message*\n👤 Name: ${nameLabel}\n💬 Message: "${message.slice(0, 200)}"\n📋 Session: ${sessionId.slice(0, 20)}\n\n→ Open inbox to respond:\nhttps://codeclinicemr.com/ai-suite/inbox`,
+        ).catch((e: any) => console.error('[Website] Staff alert error:', e?.message))
+
+        // Upsert lead
         if (!existing) {
-          return prisma.lead.create({
+          await prisma.lead.create({
             data: { phone: sessionId, source: 'WEBSITE', status: 'NEW', stage: 'NEW', lastMessage: message, name: extractedName || null },
           })
+        } else {
+          const updateData: Record<string, unknown> = { lastMessage: message }
+          if (extractedName && !existing.name) updateData.name = extractedName
+          await prisma.lead.update({ where: { id: existing.id }, data: updateData })
         }
-        const updateData: Record<string, unknown> = { lastMessage: message }
-        if (extractedName && !existing.name) updateData.name = extractedName
-        return prisma.lead.update({ where: { id: existing.id }, data: updateData })
-      }).catch((e: any) => console.error('[Website] Lead upsert error:', e?.message))
+      } catch (e: any) {
+        console.error('[Website] Post-response error:', e?.message)
+      }
     })
   } catch (err: any) {
     console.error('[Website] /message error:', err)
