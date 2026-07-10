@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Megaphone, Send, Clock, Users, CheckCircle2, AlertCircle, RefreshCw, X, Eye } from 'lucide-react'
+import { Megaphone, Send, Clock, Users, CheckCircle2, AlertCircle, RefreshCw, X, Eye, BookOpen, Plus, Pencil, Trash2 } from 'lucide-react'
 
 const SEGMENTS = [
   { value: 'ALL',           label: 'All Patients' },
@@ -58,6 +58,22 @@ export default function CampaignsPage() {
   const [campaigns,    setCampaigns]    = useState<any[]>([])
   const [histLoading,  setHistLoading]  = useState(true)
 
+  // Templates
+  const [mainTab,      setMainTab]      = useState<'send' | 'templates'>('send')
+  const [templates,    setTemplates]    = useState<any[]>([])
+  const [tmplLoading,  setTmplLoading]  = useState(false)
+  const [editTmpl,     setEditTmpl]     = useState<any | null>(null)   // null = closed, {} = new, obj = edit
+  const [tmplTitle,    setTmplTitle]    = useState('')
+  const [tmplBody,     setTmplBody]     = useState('')
+  const [tmplCategory, setTmplCategory] = useState('General')
+  const [tmplSending,  setTmplSending]  = useState(false)
+  const [sendTmpl,     setSendTmpl]     = useState<any | null>(null)   // template to send
+  const [tmplSegment,  setTmplSegment]  = useState('ALL')
+  const [tmplPreview,  setTmplPreview]  = useState('')
+
+  const CATEGORIES = ['Recall', 'Follow-up', 'Promotion', 'Appointment', 'Child health', 'General']
+  const VARS = ['patientName', 'doctorName', 'appointmentDate', 'serviceName', 'clinicName', 'primaryContactName']
+
   const showToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 4000)
@@ -84,9 +100,87 @@ export default function CampaignsPage() {
     setHistLoading(false)
   }
 
+  const fetchTemplates = async () => {
+    setTmplLoading(true)
+    try {
+      const r = await fetch(`${API}/templates`, { headers: authH as any })
+      const d = await r.json()
+      setTemplates(Array.isArray(d) ? d : [])
+    } catch { setTemplates([]) }
+    setTmplLoading(false)
+  }
+
+  const openNewTemplate = () => {
+    setEditTmpl({})
+    setTmplTitle(''); setTmplBody(''); setTmplCategory('General')
+  }
+  const openEditTemplate = (t: any) => {
+    setEditTmpl(t)
+    setTmplTitle(t.title); setTmplBody(t.body); setTmplCategory(t.category)
+  }
+  const closeTemplateForm = () => setEditTmpl(null)
+
+  const saveTemplate = async () => {
+    if (!tmplTitle.trim() || !tmplBody.trim()) return
+    const isNew = !editTmpl?.id
+    const vars  = VARS.filter(v => tmplBody.includes(`{${v}}`))
+    const url   = isNew ? `${API}/templates` : `${API}/templates/${editTmpl.id}`
+    const method = isNew ? 'POST' : 'PUT'
+    try {
+      const r = await fetch(url, {
+        method, headers: authH as any,
+        body: JSON.stringify({ title: tmplTitle, body: tmplBody, category: tmplCategory, variables: vars }),
+      })
+      if (r.ok) { closeTemplateForm(); fetchTemplates(); showToast(isNew ? 'Template created!' : 'Template updated!') }
+      else showToast('Failed to save template', 'err')
+    } catch { showToast('Network error', 'err') }
+  }
+
+  const deleteTemplate = async (id: string) => {
+    if (!confirm('Delete this template?')) return
+    try {
+      await fetch(`${API}/templates/${id}`, { method: 'DELETE', headers: authH as any })
+      fetchTemplates(); showToast('Template deleted')
+    } catch { showToast('Failed to delete', 'err') }
+  }
+
+  const useTemplate = (t: any) => {
+    setMessage(t.body)
+    setMainTab('send')
+    showToast(`Template "${t.title}" loaded into composer`)
+  }
+
+  const openSendTemplate = async (t: any) => {
+    setSendTmpl(t); setTmplSegment('ALL')
+    // Generate preview with dummy data
+    try {
+      const r = await fetch(`${API}/templates/${t.id}/preview`, { headers: authH as any })
+      const d = await r.json()
+      setTmplPreview(d.preview || t.body)
+    } catch { setTmplPreview(t.body) }
+  }
+
+  const sendTemplate = async () => {
+    if (!sendTmpl || tmplSending) return
+    setTmplSending(true)
+    try {
+      const r = await fetch(`${API}/templates/${sendTmpl.id}/send`, {
+        method: 'POST', headers: authH as any,
+        body: JSON.stringify({ segment: tmplSegment }),
+      })
+      const d = await r.json()
+      if (r.ok) {
+        showToast(`Sending "${sendTmpl.title}" to ${d.recipientCount} patients!`)
+        setSendTmpl(null); fetchHistory()
+      } else showToast(d.error || 'Failed to send', 'err')
+    } catch { showToast('Network error', 'err') }
+    setTmplSending(false)
+  }
+
   useEffect(() => {
     fetchCount('ALL')
     fetchHistory()
+    fetchTemplates()
   }, [])
 
   const handleSegment = (seg: string) => {
@@ -183,6 +277,171 @@ export default function CampaignsPage() {
         </div>
       )}
 
+      {/* Main tabs */}
+      <div className="flex gap-1 mb-6">
+        {([
+          { key: 'send',      label: 'Broadcast',  icon: Send     },
+          { key: 'templates', label: 'Templates',  icon: BookOpen },
+        ] as const).map(({ key, label, icon: Icon }) => (
+          <button key={key} onClick={() => setMainTab(key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+              mainTab === key ? 'text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5'
+            }`}
+            style={mainTab === key ? { background: 'linear-gradient(135deg,#1A237E,#29ABE2)' } : {}}>
+            <Icon size={14} />{label}
+          </button>
+        ))}
+      </div>
+
+      {/* ───────────── TEMPLATES TAB ───────────── */}
+      {mainTab === 'templates' && (
+        <div className="space-y-4">
+
+          {/* Send template modal */}
+          {sendTmpl && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-lg" style={{ color: '#1A237E' }}>Send: {sendTmpl.title}</h3>
+                  <button onClick={() => setSendTmpl(null)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><X size={17} /></button>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Segment</label>
+                  <select value={tmplSegment} onChange={e => setTmplSegment(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm">
+                    {SEGMENTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div className="mb-5">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Preview (sample data)</label>
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700">
+                    {tmplPreview || sendTmpl.body}
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setSendTmpl(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-600">Cancel</button>
+                  <button onClick={sendTemplate} disabled={tmplSending}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+                    {tmplSending ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                    {tmplSending ? 'Sending...' : 'Send Now'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Template form */}
+          {editTmpl !== null && (
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="font-bold text-base" style={{ color: '#1A237E' }}>{editTmpl.id ? 'Edit Template' : 'New Template'}</h3>
+                <button onClick={closeTemplateForm} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><X size={16} /></button>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Title</label>
+                  <input value={tmplTitle} onChange={e => setTmplTitle(e.target.value)} placeholder="e.g. Recall — 6-month checkup"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Category</label>
+                  <select value={tmplCategory} onChange={e => setTmplCategory(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm">
+                    {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="mb-3">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Message Body</label>
+                <textarea value={tmplBody} onChange={e => setTmplBody(e.target.value)} rows={6} placeholder="Type your template message here..."
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+              </div>
+              <div className="mb-5">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Insert Variable</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {VARS.map(v => (
+                    <button key={v} onClick={() => setTmplBody(b => b + `{${v}}`)}
+                      className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs font-mono border border-blue-100 dark:border-blue-800/30 hover:bg-blue-100 transition-colors">
+                      {`{${v}}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={closeTemplateForm} className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-600">Cancel</button>
+                <button onClick={saveTemplate} disabled={!tmplTitle.trim() || !tmplBody.trim()}
+                  className="flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+                  Save Template
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Template list header */}
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-base" style={{ color: '#1A237E' }}>
+              Message Templates <span className="text-gray-400 font-normal text-sm ml-1">({templates.length})</span>
+            </h2>
+            <button onClick={openNewTemplate} disabled={editTmpl !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+              <Plus size={13} /> New Template
+            </button>
+          </div>
+
+          {tmplLoading ? (
+            <div className="flex items-center justify-center py-16 text-gray-400 text-sm gap-2">
+              <RefreshCw size={15} className="animate-spin" /> Loading templates...
+            </div>
+          ) : templates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800">
+              <BookOpen size={36} className="mb-3 opacity-25" />
+              <p className="text-sm font-semibold">No templates yet</p>
+              <p className="text-xs mt-1 text-gray-300">Create your first template above</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {templates.map((t: any) => (
+                <div key={t.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-gray-800 dark:text-white truncate">{t.title}</p>
+                      <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
+                        {t.category}
+                      </span>
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button onClick={() => openEditTemplate(t)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Edit">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => deleteTemplate(t.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 line-clamp-2">{t.body.slice(0, 100)}{t.body.length > 100 ? '…' : ''}</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => useTemplate(t)}
+                      className="flex-1 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      Use in Composer
+                    </button>
+                    <button onClick={() => openSendTemplate(t)}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-white flex items-center justify-center gap-1"
+                      style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+                      <Send size={11} /> Send
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ───────────── SEND TAB ───────────── */}
+      {mainTab === 'send' && (
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
 
         {/* ── Builder ── */}
@@ -381,6 +640,7 @@ export default function CampaignsPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

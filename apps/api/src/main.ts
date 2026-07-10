@@ -42,6 +42,7 @@ import aiReportsRouter from './routes/ai-reports'
 import permissionsRouter from './routes/permissions'
 import manychatRouter from './routes/manychat'
 import reportsRouter from './routes/reports'
+import templatesRouter from './routes/templates'
 
 // AI Suite routers
 import aiSuiteRouter     from './ai-suite/whatsapp/whatsapp.routes'
@@ -162,6 +163,7 @@ app.use('/accounts/quickbooks', quickbooksRouter)
 app.use('/ai',           aiRouter)
 app.use('/crm',          crmRouter)
 app.use('/campaigns',    campaignsRouter)
+app.use('/templates',    templatesRouter)
 app.use('/pipeline',     pipelineRouter)
 app.use('/developer',    developerRouter)
 app.use('/integrations', integrationsRouter)

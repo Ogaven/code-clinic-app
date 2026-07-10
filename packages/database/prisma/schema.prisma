@@ -100,6 +100,7 @@ model User {
   payroll           StaffPayroll[]
   appointments      Appointment[]  @relation("CreatedBy")
   treatmentNotes    TreatmentNote[]
+  messageTemplates  MessageTemplate[]
 
   @@index([isActive])
   @@map("users")
@@ -957,4 +958,21 @@ model DailyPatientReport {
 
   @@unique([reportDate])
   @@map("daily_patient_reports")
+}
+
+model MessageTemplate {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  category    String   @default("General")
+  variables   String   @default("[]")
+  isActive    Boolean  @default(true)
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([isActive])
+  @@map("message_templates")
 }
