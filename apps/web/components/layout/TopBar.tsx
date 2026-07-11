@@ -358,12 +358,24 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
               ))}
             </div>
 
-            <div className="px-4 py-2.5 text-center" style={{ borderTop: `1px solid ${bdr}` }}>
-              <button onClick={() => { router.push('/receptionist/communications'); setNotifOpen(false) }}
-                className="text-xs font-semibold hover:underline" style={{ color: '#29ABE2' }}>
-                View all notifications
-              </button>
-            </div>
+            {user?.role && (() => {
+              const NOTIF_ROUTES: Record<string, string> = {
+                RECEPTIONIST: '/receptionist/notifications',
+                DOCTOR:       '/doctor/notifications',
+                ADMIN:        '/admin/notifications',
+                ACCOUNTS:     '/accounts/notifications',
+              }
+              const dest = NOTIF_ROUTES[user.role]
+              if (!dest) return null
+              return (
+                <div className="px-4 py-2.5 text-center" style={{ borderTop: `1px solid ${bdr}` }}>
+                  <button onClick={() => { router.push(dest); setNotifOpen(false) }}
+                    className="text-xs font-semibold hover:underline" style={{ color: '#29ABE2' }}>
+                    View all notifications
+                  </button>
+                </div>
+              )
+            })()}
           </div>
         </>
       )}

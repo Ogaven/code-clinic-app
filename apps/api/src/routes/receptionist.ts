@@ -194,6 +194,20 @@ router.get('/notifications', requireAuth, async (req, res) => {
   }
 })
 
+// ─── PUT /receptionist/notifications/:id/read ────────────────
+router.put('/notifications/:id/read', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user!.id
+    await (prisma as any).notification.updateMany({
+      where: { id: req.params.id, userId },
+      data: { isRead: true },
+    })
+    res.json({ success: true })
+  } catch {
+    res.status(500).json({ error: 'Failed to mark notification read' })
+  }
+})
+
 // ─── PUT /receptionist/notifications/mark-read ───────────────
 router.put('/notifications/mark-read', requireAuth, async (req, res) => {
   try {
