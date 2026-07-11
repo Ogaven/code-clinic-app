@@ -113,7 +113,7 @@ export default function AvatarUpload({
         style={{ backgroundColor: !preview ? (colour || '#1A237E') : undefined }}
       >
         {preview ? (
-          <img src={preview} alt={`${firstName} ${lastName}`} className="w-full h-full object-cover" />
+          <img src={preview} alt={`${firstName} ${lastName}`} className="w-full h-full object-cover object-top" />
         ) : (
           <span className={cn('font-bold text-white', s.text)}>
             {getInitials(firstName, lastName)}

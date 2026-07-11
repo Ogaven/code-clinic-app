@@ -409,7 +409,7 @@ export default function DoctorsTab() {
                 <div className="relative group cursor-pointer flex-shrink-0" onClick={() => addFileRef.current?.click()}>
                   <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gradient-to-br from-[#1A237E] to-[#29ABE2] flex items-center justify-center text-white font-bold text-lg">
                     {addPreview
-                      ? <img src={addPreview} alt="" className="w-full h-full object-cover" />
+                      ? <img src={addPreview} alt="" className="w-full h-full object-cover object-top" />
                       : <span>{(addForm.firstName[0] || '') + (addForm.lastName[0] || '') || '+'}</span>
                     }
                   </div>
@@ -501,7 +501,7 @@ export default function DoctorsTab() {
                     : 'hover:bg-white dark:hover:bg-white/5 hover:shadow-sm',
                 )}>
                 {d.avatarUrl ? (
-                  <img src={d.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-2 ring-white dark:ring-white/10" />
+                  <img src={d.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover object-top flex-shrink-0 ring-2 ring-white dark:ring-white/10" />
                 ) : (
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
                     style={{ background: d.colour }}>
@@ -550,7 +550,7 @@ export default function DoctorsTab() {
                   <div className="w-24 h-24 rounded-2xl overflow-hidden shadow-lg"
                     style={{ background: colour }}>
                     {localAvatar ? (
-                      <img src={localAvatar} alt="" className="w-full h-full object-cover" />
+                      <img src={localAvatar} alt="" className="w-full h-full object-cover object-top" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-white text-2xl font-bold">
                         {firstName[0]}{lastName[0]}

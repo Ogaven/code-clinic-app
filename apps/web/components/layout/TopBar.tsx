@@ -191,7 +191,7 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
             <button onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false) }}
               className="flex items-center gap-2.5 cursor-pointer group">
               {user.avatarUrl ? (
-                <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-xl object-cover" style={{ border: `2px solid ${bdr}` }} />
+                <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-xl object-cover object-top" style={{ border: `2px solid ${bdr}` }} />
               ) : (
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
                   style={{ background: `linear-gradient(135deg,${roleColor},${roleColor}99)` }}>

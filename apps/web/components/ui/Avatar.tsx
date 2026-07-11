@@ -26,7 +26,7 @@ export default function Avatar({ firstName, lastName, avatarUrl, size = 'md', co
       <img
         src={avatarUrl}
         alt={`${firstName} ${lastName}`}
-        className={cn('rounded-full object-cover border-2 border-white shadow-sm flex-shrink-0', sizeClass, className)}
+        className={cn('rounded-full object-cover object-top border-2 border-white shadow-sm flex-shrink-0', sizeClass, className)}
       />
     )
   }
