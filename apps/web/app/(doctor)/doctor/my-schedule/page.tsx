@@ -117,7 +117,7 @@ export default function MySchedulePage() {
   const [doctor, setDoctor]   = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [blockOpen, setBlockOpen] = useState(false)
-  const [blockDate, setBlockDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [blockDate, setBlockDate] = useState(() => new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10))
   const [blockStart, setBlockStart] = useState('12:00')
   const [blockEnd, setBlockEnd]     = useState('13:00')
   const [blockReason, setBlockReason] = useState('Lunch Break')
@@ -198,7 +198,7 @@ export default function MySchedulePage() {
       const r = await fetch(`/api-proxy/scheduling/doctors/${doctor.id}/block-time`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ startAt: `${blockDate}T${blockStart}:00`, endAt: `${blockDate}T${blockEnd}:00`, reason: blockReason }),
+        body: JSON.stringify({ startAt: `${blockDate}T${blockStart}:00+03:00`, endAt: `${blockDate}T${blockEnd}:00+03:00`, reason: blockReason }),
       })
       if (r.ok) { setBlockOpen(false); showToast('Time blocked successfully!') }
       else { const d = await r.json(); showToast(d.error || 'Failed to block time') }

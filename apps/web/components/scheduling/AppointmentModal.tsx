@@ -81,9 +81,10 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
   const canEdit = !['COMPLETED', 'CANCELLED', 'CANCELLED_RESCHEDULED', 'NO_SHOW'].includes(appointment.status)
 
   async function openEdit() {
-    const d = new Date(appointment!.startAt)
-    setEditDate(d.toISOString().slice(0, 10))
-    setEditTime(`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)
+    const d   = new Date(appointment!.startAt)
+    const eat = new Date(d.getTime() + 3 * 60 * 60 * 1000)
+    setEditDate(eat.toISOString().slice(0, 10))
+    setEditTime(`${String(eat.getUTCHours()).padStart(2,'0')}:${String(eat.getUTCMinutes()).padStart(2,'0')}`)
     setEditDoctor(appointment!.doctor.id || '')
     setEditService((appointment!.service as any).id || '')
     const durMins = Math.round((new Date(appointment!.endAt).getTime() - new Date(appointment!.startAt).getTime()) / 60000)
@@ -116,7 +117,7 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
     setSaving(true); setSaveError('')
     try {
       const [hh, mm] = editTime.split(':')
-      const startAt = new Date(`${editDate}T${hh}:${mm}:00`)
+      const startAt = new Date(`${editDate}T${hh}:${mm}:00+03:00`)
       const endAt   = new Date(startAt.getTime() + editDuration * 60000)
       const body: any = { startAt: startAt.toISOString(), endAt: endAt.toISOString(), notes: editNotes }
       if (editDoctor)  body.doctorId  = editDoctor
