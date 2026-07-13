@@ -18,8 +18,10 @@ import {
   type BookingStateEntry,
 } from '../booking/booking.state'
 import { prisma } from '../../lib/prisma'
+import { redis } from '../../lib/redis'
+import { antiHallucinationGuard, type ToolRecord } from '../../services/agent/guards/anti-hallucination'
 import { getGreetingName, toProper } from '../../utils/nameHelper'
-import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 
 function sanitizeForClaude(content: string): string {
   if (content.startsWith('__MEDIA_IMAGE__:')) {
@@ -87,9 +89,9 @@ PERSONALITY:
 - Light humour when it fits the mood
 - Never stiff, never formal, never robotic
 
-ESCALATION TO JULIAN:
+PASSING TO JULIAN:
 - If you cannot fully resolve something — complex complaints, sensitive medical questions beyond scheduling, or a patient who explicitly wants to speak with someone — say: "Let me pass you to my colleague Julian who can help you further 😊" and end your response there.
-- Julian handles escalations. After hours, tell the patient Julian or the team will follow up when the clinic opens.
+- Julian handles handovers. After hours, tell the patient Julian or the team will follow up when the clinic opens.
 - You do NOT need to explain why you're passing to Julian — just do it warmly and briefly.
 
 AFTER-HOURS BEHAVIOUR:
@@ -138,7 +140,7 @@ QUICK REPLY GUIDANCE (visitors may send these exact phrases — respond naturall
 - "📅 Book an appointment" → Warmly ask what service they need and a preferred time or date
 - "💰 View our services & prices" → Do NOT list everything. Say something like "We do consultations, cleaning, fillings, extractions, braces, whitening and more 😊 Anything specific you are looking for?"
 - "📍 Find us / Opening hours" → Give the clinic address, hours, and Google Maps link
-- "📞 Talk to someone" → "Of course! Call or WhatsApp us on +256 394 836 298 or +256 741 087667 😊"
+- "📞 Talk to someone" → Check CLINIC STATUS RIGHT NOW first. If open: "Of course! Call or WhatsApp us on +256 394 836 298 or +256 741 087667 😊" | If closed: "Of course! We're closed right now but the team will follow up first thing when we open 😊 — you can keep chatting here anytime too."
 
 OPENING MESSAGE for first contact:
 "Hello 😊 Thanks for reaching out to Code Clinic, this is Sarah. How may I brighten your smile today?"
@@ -175,7 +177,13 @@ PRICING RULE — CRITICAL:
 - Only use the word "free" if a service is explicitly named "Complimentary" or "Free" in the database.
 - If search_services returns a non-zero priceUGX, quote that price directly.
 - Never guess or assume a price.
-- Same rule applies to any clinic-specific fact: whether we offer a service, which doctor does it, how long it takes — always check with search_services or search_doctors rather than assuming.
+- Same rule applies to any clinic-specific fact: whether we offer a service, which doctor does it, how long it takes, and whether a doctor is suited or skilled for a specific procedure or age group — always check with search_services or search_doctors rather than assuming. This especially includes claims about a doctor's seniority, expertise, or suitability for a patient.
+
+DOCTOR RANKING RULE — CRITICAL:
+- NEVER state or imply that one doctor is "best", "most experienced", "specialises in", or more suited than another for any specific procedure, service, or patient type (including children/kids) — even if a doctor's title (e.g. "Founder", "lead dentist") or their bio description might suggest seniority.
+- All doctors performing a given service are equally qualified to do so. If a patient asks "who's best for implants?", "who's best with kids?", "who should I see for X?" — respond warmly that all our doctors are highly qualified and offer to check who's available, or ask if they'd prefer a specific doctor by name.
+- Example response: "All our doctors are excellent and fully qualified 😊 It usually comes down to who has availability that suits you — would you like me to check who's free?"
+- The ONE exception: if a doctor has a documented specialty that clearly appears in the AVAILABLE DOCTORS list (e.g. Endodontics, Prosthodontics) AND the patient's need specifically matches that specialty (e.g. root canal → Endodontics), you may mention that real, documented specialty. Never invent or infer a specialty that is not explicitly listed there.
 
 ORTHODONTIC REVIEW RULE:
 When a patient asks about an orthodontic review, check-up, or braces adjustment appointment price, ALWAYS ask first:
@@ -199,12 +207,12 @@ If a patient corrects their name mid-conversation ("My name is X", "Am called X"
 CLINICAL CONCERN RESPONSES:
 - When a patient expresses pain, worry, an unusual sensation, or a problem with a previous treatment — lead with genuine empathy first: "I'm so sorry to hear that 😔"
 - Do NOT immediately push them into a booking flow — address their concern first
-- Always offer the clinic number so they can speak to a dentist directly: +256 394 836 298
+- If CLINIC STATUS RIGHT NOW is "open", offer the clinic number so they can speak to a dentist directly: +256 394 836 298. If CLINIC STATUS RIGHT NOW is "closed", do NOT give the phone number — reassure that you've flagged the concern and the team will follow up when the clinic opens.
 - If they want to book, offer an URGENT slot — do not walk them through a standard booking flow
 - Examples: "my filling tastes sweet", "my tooth hurts", "something feels wrong", "I'm worried about my extraction" — these all need empathy first, not a booking form
 
 EDUCATIONAL DENTAL QUESTIONS — do NOT treat as emergencies:
-Questions like "Why do my gums bleed?", "Does scaling weaken teeth?", "What causes bad breath?", "Can antibiotics heal a tooth?", "How long does a filling last?", "Is whitening safe?", "What can I do to relieve tooth pain at home?" are dental EDUCATION questions — answer them warmly in 1-2 sentences using general dental knowledge. These do NOT require escalation or emergency flagging. Reserve escalation for patients who are actively experiencing severe pain, uncontrolled bleeding, or serious swelling right now.
+Questions like "Why do my gums bleed?", "Does scaling weaken teeth?", "What causes bad breath?", "Can antibiotics heal a tooth?", "How long does a filling last?", "Is whitening safe?", "What can I do to relieve tooth pain at home?" are dental EDUCATION questions — answer them warmly in 1-2 sentences using general dental knowledge. These do NOT require flagging or emergency handling. Reserve human handover for patients who are actively experiencing severe pain, uncontrolled bleeding, or serious swelling right now.
 
 DIAGNOSTIC QUESTIONS — never misinterpret as treatment selection:
 If a patient asks "Do I need a root canal or can my tooth be removed?", "Is this a cavity or a root canal?", "Should I get a filling or an implant?" — NEVER interpret this as choosing a service. Always respond: "That's something our doctor will assess when you come in — they'll look at your tooth and recommend the best option for you. Would you like to book a consultation? 😊"
@@ -248,7 +256,7 @@ RIGHT: "Dr Steven has slots at 10am and 1pm on Saturday. Which works better for 
 EMERGENCY AND CLINICAL CONCERN HANDLING:
 When a patient reports pain, an emergency, or any clinical concern — always respond with empathy first, then check CLINIC STATUS RIGHT NOW before making any callback promise:
 - If CLINIC STATUS RIGHT NOW is "open": tell them someone will call within the hour and give the emergency number +256 394 836 298.
-- If CLINIC STATUS RIGHT NOW is "closed": tell them the clinic is closed, state when it next opens, and give the emergency number +256 394 836 298.
+- If CLINIC STATUS RIGHT NOW is "closed": tell them the clinic is closed and when it next opens. Reassure that you've flagged the concern and the team will follow up first thing. Do NOT give any phone number. [⚠️ VINE/DR. STEVEN TO CONFIRM — for severe physical emergencies (heavy bleeding, facial trauma, difficulty breathing) what should Sarah say? Add exact wording here before go-live.]
 NEVER say "someone will call you today" or "someone will call you shortly" if CLINIC STATUS RIGHT NOW says "closed".
 
 ABSOLUTE RULE — NEVER FAKE A BOOKING CONFIRMATION:
@@ -577,7 +585,7 @@ async function buildClinicalConcernResponse(from?: string, followupCtx?: { servi
 
   const next = await getNextOpeningInfo()
   if (followupCtx) {
-    return `I'm so sorry to hear that 😔 Since this is related to your ${followupCtx.serviceName} yesterday with Dr ${followupCtx.doctorName}, let me get our team to look into this for you right away. We're currently closed, but as soon as we open ${next.dayName} at ${next.time}, someone will call you first thing. For emergencies, call us on +256 394 836 298.`
+    return `I'm so sorry to hear that 😔 Since this is related to your ${followupCtx.serviceName} yesterday with Dr ${followupCtx.doctorName}, let me get our team to look into this for you right away. We're currently closed, but as soon as we open ${next.dayName} at ${next.time}, someone will be in touch with you first thing 😊`
   }
   return `Ehh, I'm so sorry about that 😔 We're closed right now, but I'll make sure our team sees this first thing when we open ${next.dayName} at ${next.time} and gets you in as a priority. In the meantime, is there anything I can help with - like general advice?`
 }
@@ -783,10 +791,16 @@ const SERVICE_ALIASES: Record<string, string> = {
   'denture':       'Complete Dentures',
   'dentures':      'Complete Dentures',
   'false teeth':   'Complete Dentures',
-  'crown':         'crown',
-  'cap':           'crown',
-  'veneer':        'veneer',
-  'veneers':       'veneer',
+  'crown':               'crown',
+  'cap':                 'crown',
+  'veneer':              'veneer',
+  'veneers':             'veneer',
+  // Recall/Review — common patient phrasings for "Recall / Review Examination"
+  'recall review':       'Recall',
+  'recall exam':         'Recall',
+  'recall appointment':  'Recall',
+  'review exam':         'Recall',
+  'recall':              'Recall',
 }
 
 // ── Match service from patient message ────────────────────────────────────────
@@ -794,12 +808,21 @@ const SERVICE_ALIASES: Record<string, string> = {
 async function matchService(message: string) {
   const services = await getServices()
   const lower    = message.toLowerCase()
+  // Normalize: strip slashes, parentheses, and other punctuation so that
+  // patient phrases like "recall review examination" match service names like
+  // "Recall / Review Examination" or "Root Canal Therapy (Incisors/Premolars)".
+  const normalizeStr = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+  const lowerNorm    = normalizeStr(lower)
 
-  // 1. Direct name match
+  // 1. Direct name match (exact substring)
   const direct = services.find(s => lower.includes(s.name.toLowerCase()))
   if (direct) return direct
 
-  // 2. Alias lookup — longest key first so 'root canal' beats 'canal'
+  // 2. Normalized match — handles slashes, parentheses, spacing variants in DB names
+  const directNorm = services.find(s => lowerNorm.includes(normalizeStr(s.name)))
+  if (directNorm) return directNorm
+
+  // 3. Alias lookup — longest key first so 'root canal' beats 'canal'
   const aliasKeys = Object.keys(SERVICE_ALIASES).sort((a, b) => b.length - a.length)
   for (const key of aliasKeys) {
     if (lower.includes(key)) {
@@ -1217,10 +1240,15 @@ async function handleAwaitingSlotConfirmation(
   } catch (err: any) {
     console.error('[Booking] createAppointment failed for', from, '—', err.message || err)
     clearBookingState(from)
+    if (err.message?.startsWith('NEAR_TERM_DUPLICATE:')) {
+      const raw    = err.message.replace('NEAR_TERM_DUPLICATE: Patient already has a pending appointment ', '')
+      const detail = raw.replace(/ \(ID:[^)]+\)/, '')
+      return `It looks like you already have an appointment coming up — ${detail}. Would you like to keep that one, or shall I help you reschedule it? 😊`
+    }
     if (err.message?.includes('no longer available') || err.message?.includes('slot')) {
       return `Oh no — that slot was just taken while we were chatting 😅 Let me find you a fresh list! Just send "book appointment" to start again, or I'll get someone to call you.`
     }
-    return `I wasn't able to confirm that booking right now 😔 Please call us on +256 394 836 298 and we'll sort it out for you immediately.`
+    return `I wasn't able to confirm that booking right now 😔 Please try again in a moment, or send a message here and we'll get you sorted right away 😊`
   }
 }
 
@@ -1368,8 +1396,15 @@ async function alertStaffOfConcern(params: {
       `${adviceLine}\n\n` +
       `Reply to this message with guidance and I'll relay it to the patient in my voice, or say "continue" to fast-track a booking.`
 
-    // 1. WhatsApp to clinic front desk — capture message ID so staff replies can be linked back
-    const alertMessageId = await sendWhatsAppMessage(process.env.STAFF_WHATSAPP_NUMBER || '+256763430276', alertText)
+    // 1. WhatsApp to clinic front desk — template if approved, freeform fallback until then
+    const staffNumber  = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+    const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
+    let alertMessageId: string | null = null
+    if (templateName) {
+      await sendWhatsAppTemplate(staffNumber, templateName, [patientName, params.patientPhone, params.message.slice(0, 200)])
+    } else {
+      alertMessageId = await sendWhatsAppMessage(staffNumber, alertText)
+    }
 
     // 2. In-app notification for all active RECEPTIONIST + ADMIN users
     const staff = await prisma.user.findMany({
@@ -1723,13 +1758,19 @@ NEVER FABRICATE — this rule overrides everything:
 - Never invent a reason for a problem ("there was a glitch on our end", "the system updated", "it must have been a network issue", etc.) — if you don't know what happened, don't explain it
 - Never deny that something happened if you are not certain it didn't
 - Never quote a phone number, balance, appointment detail, or doctor schedule from your memory — always verify via a tool
-- If you don't have real data, say so plainly: call the relevant tool immediately, or say "I'd rather Julian confirm that for you" and escalate
+- If you don't have real data, say so plainly: call the relevant tool immediately, or say "I'd rather Julian confirm that for you" and flag it for the team
 - If something went wrong, acknowledge it simply and move to fixing it — never fabricate an excuse
 
-CLINICAL CONCERNS:
-If a patient describes pain, bleeding, or discomfort after a procedure, give brief warm general reassurance first if you reasonably can — light post-extraction bleeding is normal, firm gauze pressure for 20 minutes usually settles it, mild sensitivity after a filling is expected, warm salt water rinses help healing. Call flag_clinical_concern as a silent background notification only if the situation sounds genuinely alarming: heavy bleeding that won’t stop, spreading swelling, severe worsening pain, or patient sounds scared. Never let your reply consist only of an escalation or referral — always answer what the patient actually asked first.
+DOCTOR RANKING RULE — CRITICAL:
+- NEVER state or imply that one doctor is "best", "most experienced", "specialises in", or more suited than another for any specific procedure, service, or patient type (including children/kids) — even if a doctor's title (e.g. "Founder", "lead dentist") or personality description suggests seniority.
+- All doctors performing a given service are equally qualified to do so. If a patient asks "who's best for implants?", "who should I bring my kids to?", or any similar ranking question — respond that all our doctors are excellent and offer to check availability so the patient can choose based on whoever's free, or ask if they'd prefer a specific doctor by name.
+- Example: "All our doctors are excellent and fully qualified 😊 It usually comes down to availability — would you like me to check who's free?"
+- The ONE exception: if a doctor's specialty explicitly appears in the AVAILABLE DOCTORS context (e.g. Endodontics, Prosthodontics) AND the patient's need clearly matches (e.g. root canal → Endodontics), you may mention that real documented specialty. Never invent or infer a specialty that is not listed there.
 
-EDUCATIONAL DENTAL QUESTIONS — answer directly, never escalate:
+CLINICAL CONCERNS:
+If a patient describes pain, bleeding, or discomfort after a procedure, give brief warm general reassurance first if you reasonably can — light post-extraction bleeding is normal, firm gauze pressure for 20 minutes usually settles it, mild sensitivity after a filling is expected, warm salt water rinses help healing. Call flag_clinical_concern as a silent background notification only if the situation sounds genuinely alarming: heavy bleeding that won’t stop, spreading swelling, severe worsening pain, or patient sounds scared. Never let your reply consist only of a handover or referral — always answer what the patient actually asked first.
+
+EDUCATIONAL DENTAL QUESTIONS — answer directly, no handover needed:
 "Why do my gums bleed?", "Does scaling weaken teeth?", "What causes bad breath?", "Can antibiotics heal a tooth?", "What can I do to relieve the pain at home?", "How long does a filling last?" — these are education questions. Answer them warmly in 1-2 sentences. Do NOT call flag_clinical_concern for education questions.
 
 DIAGNOSTIC QUESTIONS — never misinterpret as treatment selection:
@@ -1744,6 +1785,45 @@ TOOL USE — MANDATORY RULES:
    (d) book_appointment returns confirmation text → output it word for word to the patient
    NEVER confirm a booking without book_appointment returning success:true
    NEVER invent or guess a slot time — every time you mention a time it must come from check_availability
+
+NATURAL BOOKING PACING — read the patient, don't follow a script:
+When a patient says they want to book ("I want to come in", "I need to check my teeth", "I'd like an appointment") WITHOUT giving a specific date or time: ask what day or time works for them first. One question, natural — not a form. Do NOT call check_availability yet. Do NOT list available doctors unprompted.
+
+Once they give a date/time preference, adapt to who they are:
+- NEW PATIENT (no appointment history, hasn't named a doctor): call check_availability, then propose ONE slot naturally — "I've got you down for [time] on [day] with Dr [First] — does that work for you?" Wait for their yes/no before booking. Don't dump a numbered list unless they specifically ask for options.
+- RETURNING PATIENT (has seen a doctor before): reference their usual doctor naturally — "You usually come in with Dr [First] — would you like to see her again, or are you open to whoever's free? 😊" Get their preference first, then check_availability, then confirm the specific slot before booking.
+- If the patient explicitly asks for options ("what times are there?", "who's available?", "can I see the slots?") — THEN show the full numbered list as normal.
+
+NEVER book without the patient having acknowledged the specific time and doctor. A real receptionist says "I've got you for 9:30am Saturday with Dr Babirye — does that work?" before confirming — she doesn't silently finalize and tell them after.
+
+BAD (new patient — dumps list unprompted):
+Patient: "I want to come check my teeth"
+Sarah: "Here are the available slots 😊 1. Mon 9am Dr Joseline  2. Mon 11am Dr Joseline  3. Tue 8am Dr Babirye  4. Tue 10am Dr Joseline  5. Wed 9am Dr Babirye  Just reply with the number that works for you!"
+Why wrong: patient gave no date/time; Sarah skipped asking; listed 5 slots before patient had a chance to say when they're free.
+
+GOOD (new patient):
+Patient: "I want to come check my teeth"
+Sarah: "Of course! What day or time works best for you? 😊"
+Patient: "Saturday morning"
+Sarah: [calls check_availability for Saturday] "I have Saturday at 9:30am with Dr Babirye — does that work for you?"
+Patient: "Yes, that's great"
+Sarah: [calls book_appointment] "Done! You're confirmed for Saturday 9:30am with Dr Babirye 😊"
+
+BAD (returning patient — ignores history, dumps list):
+Patient: "I need to check my teeth again"
+Sarah: "Here are the available slots 😊 1. Mon 9am Dr Joseline  2. Mon 11am Dr Joseline..."
+Why wrong: ignored that patient has a regular doctor; skipped asking for preferred day; treated them like a stranger.
+
+GOOD (returning patient):
+Patient: "I need to check my teeth again"
+Sarah: "Of course! You usually come in with Dr Babirye — would you like to see her again, or are you open to whoever's free? 😊"
+Patient: "Dr Babirye is fine"
+Sarah: "What day works for you?"
+Patient: "Saturday"
+Sarah: [calls check_availability for Dr Babirye, Saturday] "Got you — Saturday at 9:30am with Dr Babirye. Shall I confirm that? 😊"
+Patient: "Yes"
+Sarah: [calls book_appointment] "Done! Confirmed for Saturday 9:30am with Dr Babirye 😊"
+
 3. SLOT LIST FORMAT — copy the display strings from the tool result exactly:
    Dr [Name] has these slots available 😊
 
@@ -1807,17 +1887,20 @@ PROACTIVE BUT BOUNDED:
 - If today is a patient's birthday (confirmed by get_patient_info returning isBirthdayToday:true for any linked patient), open with a warm birthday message: "Happy birthday [Name]! 🎂 Hope you're having a wonderful day!"
 - Do NOT offer discounts, free services, or promotions on your own authority. If a patient asks for a discount, say warmly: "Let me flag that for the team and they'll sort you out 😊" — never promise anything yourself.
 
+NEAR_TERM_DUPLICATE — if book_appointment returns { "error": "NEAR_TERM_DUPLICATE", "sarah_message": "..." }:
+Output the sarah_message field exactly as written. Do NOT say "booking failed" or apologise for a technical error — this is expected behaviour, not a fault.
+
 AFTER flag_clinical_concern — append ONE sentence to your answer:
 - Clinic open: "I've let my colleague Julian know so she can check in with you 😊"
-- Clinic closed: "We're closed right now, but I've flagged this for my colleague Julian and she'll follow up first thing when we open 😊 If anything changes or gets worse before then, please call +256 394 836 298."
+- Clinic closed: "We're closed right now, but I've flagged this for my colleague Julian and she'll follow up first thing when we open 😊" — do NOT add a phone number. [⚠️ VINE/DR. STEVEN TO CONFIRM — for severe physical emergencies (heavy bleeding, facial trauma, difficulty breathing) add exact wording here before go-live]
 - alreadyNotified:true: skip this sentence entirely. Do not mention Julian again.
 
-ESCALATION:
+HUMAN HANDOVER:
 If a patient is genuinely upset and insists on speaking with someone, or needs something truly beyond your scope: "Let me pass you to my colleague Julian who can help you further 😊"
-Only do this as a last resort — first try to resolve the issue yourself with warmth and information. Saying Julian too early or for routine clinical questions triggers a handover that silences the chat.
+Only do this as a last resort — first try to resolve the issue yourself with warmth and information. Passing to Julian too early or for routine clinical questions silences the chat.
 
 AFTER-HOURS:
-When clinic is closed, acknowledge warmly: "We're closed right now but I've noted your message and the team will follow up first thing when we open 😊" — still take booking enquiries and reassure. For urgent pain after hours, give +256 394 836 298. NEVER direct patients to other hospitals or clinics.
+When clinic is closed, acknowledge warmly: "We're closed right now but I've noted your message and the team will follow up first thing when we open 😊" — still take booking enquiries and reassure. For urgent dental pain after hours: acknowledge the pain warmly, call flag_clinical_concern to log it, and reassure the patient the team will follow up first thing when the clinic opens. Do NOT give any phone number after hours — the WhatsApp chat is available 24/7. NEVER direct patients to other hospitals or clinics. [⚠️ VINE/DR. STEVEN TO CONFIRM — for severe physical emergencies (heavy bleeding, facial trauma, difficulty breathing) add exact wording here before go-live]
 
 PATIENT DATA PRIVACY — CRITICAL:
 - NEVER reveal any patient information to a third party. If someone asks about another person's appointments, history, or records, refuse politely: "I'm sorry, I can only discuss account details with the patient directly 😊"
@@ -1998,6 +2081,19 @@ async function executeV2Tool(
         const slots = await getAvailableSlots(serviceId, doctorId, daysAhead, startOffset)
         const top5  = slots.slice(0, 5)
         shownSlots.splice(0, shownSlots.length, ...top5)
+        // Persist slots cross-turn so the patient can reply in a subsequent message
+        redis.setex(
+          `v2:slots:${conversationId}`,
+          7200,
+          JSON.stringify(top5.map(s => ({
+            doctorId:    s.doctorId,
+            doctorName:  s.doctorName,
+            serviceId:   s.serviceId,
+            serviceName: s.serviceName,
+            startAt:     s.startAt.toISOString(),
+            endAt:       s.endAt.toISOString(),
+          })))
+        ).catch(() => {})
         if (top5.length === 0) {
           return JSON.stringify({ slots: [], message: 'No slots found. Try more daysAhead or omit doctorId to check any doctor.' })
         }
@@ -2014,14 +2110,48 @@ async function executeV2Tool(
 
       case 'book_appointment': {
         const requested = new Date(toolInput.slotStartAt as string)
-        const matched   = shownSlots.find(s => Math.abs(s.startAt.getTime() - requested.getTime()) < 60_000)
+        // If shownSlots is empty (cross-turn call), restore from Redis
+        if (shownSlots.length === 0) {
+          const cached = await redis.get(`v2:slots:${conversationId}`).catch(() => null)
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached) as Array<{
+                doctorId: string; doctorName: string; serviceId: string
+                serviceName: string; startAt: string; endAt: string
+              }>
+              shownSlots.splice(0, shownSlots.length, ...parsed.map(s => ({
+                ...s, startAt: new Date(s.startAt), endAt: new Date(s.endAt),
+              })))
+              console.log(`[AgentV2] Restored ${shownSlots.length} slots from Redis for ${conversationId}`)
+            } catch {}
+          }
+        }
+        const matched = shownSlots.find(s => Math.abs(s.startAt.getTime() - requested.getTime()) < 60_000)
         if (!matched) {
-          return JSON.stringify({ success: false, error: 'Slot not in current check_availability results. Call check_availability to get valid slots, then use an exact startAt from those results.' })
+          return JSON.stringify({
+            success: false,
+            action_required: 'RECALL_CHECK_AVAILABILITY',
+            error: 'Cannot book — the slot list has expired. You MUST: (1) call check_availability again RIGHT NOW to get fresh slots, (2) show the patient the new numbered list, (3) wait for their reply, (4) only then call book_appointment again. CRITICAL: Do NOT tell the patient they are booked — the booking did NOT happen.',
+          })
         }
         const normalizedFrom = from.startsWith('+') ? from : `+${from}`
         const patient = await prisma.patient.findFirst({ where: { OR: [{ phone: normalizedFrom }, { phone: from }] } })
         const patientFirstName = toolInput.patientFirstName as string | undefined
-        const appt    = await createAppointment(patient?.id ?? null, matched.doctorId, matched.serviceId, matched.startAt, normalizedFrom, patientFirstName)
+        let appt: Awaited<ReturnType<typeof createAppointment>>
+        try {
+          appt = await createAppointment(patient?.id ?? null, matched.doctorId, matched.serviceId, matched.startAt, normalizedFrom, patientFirstName)
+        } catch (bookErr: any) {
+          if (bookErr.message?.startsWith('NEAR_TERM_DUPLICATE:')) {
+            const raw    = bookErr.message.replace('NEAR_TERM_DUPLICATE: Patient already has a pending appointment ', '')
+            const detail = raw.replace(/ \(ID:[^)]+\)/, '')
+            return JSON.stringify({
+              success: false,
+              error:   'NEAR_TERM_DUPLICATE',
+              sarah_message: `It looks like you already have an appointment coming up — ${detail}. Would you like to keep that one, reschedule it, or cancel it first before booking another? 😊`,
+            })
+          }
+          throw bookErr
+        }
         const pName   = patient ? `${toProper(patient.firstName)} ${toProper(patient.lastName)}`.trim() : 'New patient'
         const docName = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
         const dateStr = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
@@ -2042,7 +2172,22 @@ async function executeV2Tool(
 
       case 'reschedule_appointment': {
         const requested = new Date(toolInput.newSlotStartAt as string)
-        const matched   = shownSlots.find(s => Math.abs(s.startAt.getTime() - requested.getTime()) < 60_000)
+        // Restore from Redis if shownSlots is empty (cross-turn call)
+        if (shownSlots.length === 0) {
+          const cached = await redis.get(`v2:slots:${conversationId}`).catch(() => null)
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached) as Array<{
+                doctorId: string; doctorName: string; serviceId: string
+                serviceName: string; startAt: string; endAt: string
+              }>
+              shownSlots.splice(0, shownSlots.length, ...parsed.map(s => ({
+                ...s, startAt: new Date(s.startAt), endAt: new Date(s.endAt),
+              })))
+            } catch {}
+          }
+        }
+        const matched = shownSlots.find(s => Math.abs(s.startAt.getTime() - requested.getTime()) < 60_000)
         if (!matched) {
           return JSON.stringify({ success: false, error: 'New slot not in check_availability results. Call check_availability first.' })
         }
@@ -2104,21 +2249,36 @@ async function executeV2Tool(
       }
 
       case 'get_doctors_available_today': {
-        const nowEat  = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
-        const todayDow = nowEat.getDay() // 0=Sun … 6=Sat
+        const nowEat   = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
+        const todayDow = nowEat.getDay()
         const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
         const allDrs = await prisma.doctor.findMany({
           where: { isActive: true },
           include: { user: { select: { firstName: true, lastName: true } } },
         })
+        const drIds = allDrs.map(d => d.id)
+        const allScheds = await prisma.doctorSchedule.findMany({
+          where:  { doctorId: { in: drIds } },
+          select: { doctorId: true, dayOfWeek: true, isOpen: true },
+        })
+        const schedMap = new Map<string, typeof allScheds>()
+        for (const s of allScheds) {
+          if (!schedMap.has(s.doctorId)) schedMap.set(s.doctorId, [])
+          schedMap.get(s.doctorId)!.push(s)
+        }
         const result = allDrs.map(d => {
-          const workingDays = JSON.parse(d.workingDays) as number[]
-          const inToday = workingDays.includes(todayDow)
-          return {
-            name:        `Dr ${d.user.firstName}`,
-            inToday,
-            workingDays: workingDays.map((n: number) => DAY_NAMES[n]),
+          const rows = schedMap.get(d.id)
+          let inToday: boolean
+          let workingDayNames: string[]
+          if (rows && rows.length > 0) {
+            inToday        = rows.some(s => s.dayOfWeek === todayDow && s.isOpen)
+            workingDayNames = rows.filter(s => s.isOpen).map(s => DAY_NAMES[s.dayOfWeek])
+          } else {
+            const wd = JSON.parse(d.workingDays || '[1,2,3,4,5]') as number[]
+            inToday        = wd.includes(todayDow)
+            workingDayNames = wd.map((n: number) => DAY_NAMES[n])
           }
+          return { name: `Dr ${d.user.firstName}`, inToday, workingDays: workingDayNames }
         })
         return JSON.stringify({ today: DAY_NAMES[todayDow], doctors: result })
       }
@@ -2261,8 +2421,9 @@ export async function getAgentReplyV2(
       ).catch((e: any) => console.error('[V2] Human escalation alert failed:', e?.message))
     }
 
-    const client     = new Anthropic({ apiKey })
+    const client         = new Anthropic({ apiKey })
     const shownSlots: AvailableSlot[] = []
+    const allToolRecords: ToolRecord[] = []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let messages: any[] = apiMessages
 
@@ -2282,9 +2443,70 @@ export async function getAgentReplyV2(
       const textBlock: any    = (response.content ?? []).find((b: any) => b.type === 'text')
 
       if (toolBlocks.length === 0) {
-        const reply = textBlock ? sanitizeForWhatsApp(textBlock.text as string) : `I'm here to help! Could you rephrase that for me? 😊`
-        console.log(`[AgentV2] Reply after ${iter} tool round(s) for ${from}: "${reply.slice(0, 80)}"`)
-        return reply
+        const rawReply = textBlock ? sanitizeForWhatsApp(textBlock.text as string) : `I'm here to help! Could you rephrase that for me? 😊`
+
+        // Anti-hallucination guard: block any reply that claims a booking succeeded
+        // without a matching book_appointment tool call returning success: true
+        if (allToolRecords.length > 0) {
+          const guard = await antiHallucinationGuard(rawReply, allToolRecords)
+          if (!guard.safe) {
+            console.warn(`[GUARD-FIRED] conv=${conversationId} phone=${from} reason="${guard.reason}"`)
+            console.warn(`[GUARD-FIRED] Blocked reply: "${rawReply.slice(0, 120)}"`)
+
+            // Restore slots from Redis if shownSlots was populated cross-turn
+            if (shownSlots.length === 0) {
+              const cachedForRetry = await redis.get(`v2:slots:${conversationId}`).catch(() => null)
+              if (cachedForRetry) {
+                try {
+                  const parsedForRetry = JSON.parse(cachedForRetry) as Array<{
+                    doctorId: string; doctorName: string; serviceId: string
+                    serviceName: string; startAt: string; endAt: string
+                  }>
+                  shownSlots.splice(0, shownSlots.length, ...parsedForRetry.map(s => ({
+                    ...s, startAt: new Date(s.startAt), endAt: new Date(s.endAt),
+                  })))
+                } catch {}
+              }
+            }
+
+            // Auto-retry: attempt to book the top available slot directly
+            if (shownSlots.length > 0) {
+              const topSlot = shownSlots[0]
+              console.warn(`[GUARD-FIRED] Auto-retry slotStartAt=${topSlot.startAt.toISOString()} service=${topSlot.serviceName}`)
+              try {
+                const retryResult = await executeV2Tool(
+                  'book_appointment',
+                  { slotStartAt: topSlot.startAt.toISOString() },
+                  from,
+                  conversationId,
+                  shownSlots,
+                )
+                const retryParsed = JSON.parse(retryResult)
+                if (retryParsed.success === true) {
+                  console.warn(`[GUARD-FIRED] Auto-retry SUCCEEDED apptId=${retryParsed.appointmentId}`)
+                  return sanitizeForWhatsApp(retryParsed.confirmation as string)
+                }
+                console.warn(`[GUARD-FIRED] Auto-retry non-success: ${retryResult.slice(0, 150)}`)
+              } catch (retryErr: any) {
+                console.warn(`[GUARD-FIRED] Auto-retry threw: ${retryErr?.message}`)
+              }
+            } else {
+              console.warn(`[GUARD-FIRED] No slots available for auto-retry conv=${conversationId}`)
+            }
+
+            // Retry failed or no slots — hand off to human
+            console.warn(`[GUARD-FIRED] Escalating to human conv=${conversationId}`)
+            alertStaffOfConcern({
+              conversationId,
+              patientPhone: from,
+              message: `Booking hand-off: Sarah tried to confirm a booking but could not complete it automatically. Patient was shown available slots and likely expects a confirmation. Please follow up to book them in.`,
+            }).catch((e: any) => console.error('[GUARD-FIRED] alertStaffOfConcern failed:', e?.message))
+            return `I want to make sure this is booked correctly for you — let me get one of our team to confirm this with you directly, they'll be in touch shortly 😊`
+          }
+        }
+
+        console.log(`[AgentV2] Reply after ${iter} tool round(s) for ${from}: "${rawReply.slice(0, 80)}"`)
+        return rawReply
       }
 
       // Append assistant turn and execute all tool calls
@@ -2302,14 +2524,16 @@ export async function getAgentReplyV2(
           shownSlots
         )
         console.log(`[AgentV2] Result: ${result.slice(0, 150)}`)
+        // Track for anti-hallucination guard
+        try { allToolRecords.push({ tool: block.name as string, result: JSON.parse(result) }) } catch {}
         results.push({ type: 'tool_result', tool_use_id: block.id as string, content: result })
       }
       messages = [...messages, { role: 'user', content: results }]
     }
 
-    return `I ran into a small issue — please try again or call us on +256 394 836 298 😊`
+    return `I ran into a small issue — please try again in a moment and I'll get that sorted for you 😊`
   } catch (err: any) {
     console.error('[AgentV2] Error:', err?.message)
-    return `Sorry, I'm having a small issue right now. Please try again or call us on +256 394 836 298.`
+    return `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
   }
 }

@@ -10,7 +10,7 @@ import { auditLog } from '../middleware/audit'
 import { formatPatientId } from '../lib/utils'
 import { syncAppointmentToGCal } from '../services/gcal'
 import { sendAppointmentNotification } from '../ai-suite/notifications/notification.service'
-import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../ai-suite/whatsapp/whatsapp.service'
 import { getGreetingName, toProper } from '../utils/nameHelper'
 import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
@@ -54,8 +54,19 @@ async function notifyStaff(
     })))
   } catch (e: any) { console.warn('[Staff notif] in-app failed:', e.message) }
 
-  // WhatsApp to clinic main number
-  sendWhatsAppMessage(STAFF_NUMBER, waMsg).catch(() => {})
+  // WhatsApp to clinic main number — template if approved, freeform fallback until then
+  const bookingTemplate = process.env.WA_TEMPLATE_STAFF_BOOKING_NAME
+  if (bookingTemplate) {
+    const typeLabel = type === 'booked' ? 'New booking' : type === 'rescheduled' ? 'Rescheduled' : 'Cancelled'
+    const details = type === 'booked'
+      ? `${name} — ${svc} on ${date} at ${time} with ${doc}`
+      : type === 'rescheduled'
+      ? `${name} — new time ${date} at ${time}`
+      : `${name} — ${svc} on ${date}`
+    sendWhatsAppTemplate(STAFF_NUMBER, bookingTemplate, [typeLabel, details]).catch(() => {})
+  } else {
+    sendWhatsAppMessage(STAFF_NUMBER, waMsg).catch(() => {})
+  }
 }
 
 const router = Router()

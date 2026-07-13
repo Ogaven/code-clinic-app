@@ -64,7 +64,7 @@ export async function createEscalation(params: {
         data: {
           userId: u.id,
           type:   'ESCALATION',
-          title:  '🚨 Agent Escalation — Needs Attention',
+          title:  '🚨 Patient Needs Team Follow-up — Please Action',
           body:   `${params.reason.slice(0, 160)} | ${params.channel} | ${params.phoneNumber}`,
           href:   '/receptionist/dashboard',
         },
@@ -82,21 +82,26 @@ export function getSafeEscalationResponse(channel: 'VOICE' | 'WHATSAPP'): string
   return "Let me connect you with our receptionist right away. Please hold for just a moment."
 }
 
-// ── Notify Julian via WhatsApp ─────────────────────────────────
+// ── Notify staff via WhatsApp ──────────────────────────────────
 
 export async function notifyJulian(patientPhone: string, patientMessage: string): Promise<void> {
-  const julianPhone = process.env.JULIAN_PHONE || process.env.JULIAN_WHATSAPP || '+256741087667'
+  const staffPhone = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
   try {
     // Dynamic import avoids circular dependency (whatsapp.service → escalation → whatsapp.service)
-    const { sendWhatsAppMessage } = await import('../../../ai-suite/whatsapp/whatsapp.service')
-    const body =
-      `Hi Julian 👋 A patient on WhatsApp needs your attention.\n\n` +
-      `📞 Phone: ${patientPhone}\n` +
-      `💬 Message: "${patientMessage.slice(0, 200)}"\n\n` +
-      `Please check the inbox and follow up. 🙏`
-    await sendWhatsAppMessage(julianPhone, body)
-    console.log(`[Escalation] Julian notified about ${patientPhone}`)
+    const { sendWhatsAppMessage, sendWhatsAppTemplate } = await import('../../../ai-suite/whatsapp/whatsapp.service')
+    const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
+    if (templateName) {
+      await sendWhatsAppTemplate(staffPhone, templateName, [patientPhone, patientPhone, patientMessage.slice(0, 200)])
+    } else {
+      const body =
+        `🚨 A patient on WhatsApp needs your attention.\n\n` +
+        `📞 Phone: ${patientPhone}\n` +
+        `💬 Message: "${patientMessage.slice(0, 200)}"\n\n` +
+        `Please check the inbox and follow up.`
+      await sendWhatsAppMessage(staffPhone, body)
+    }
+    console.log(`[Escalation] Staff notified about ${patientPhone}`)
   } catch (err: any) {
-    console.error('[Escalation] Failed to notify Julian:', err.message)
+    console.error('[Escalation] Failed to notify staff:', err.message)
   }
 }
