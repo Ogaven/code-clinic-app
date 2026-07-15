@@ -568,6 +568,13 @@ export async function handleInboundCall(req: any, res: any): Promise<void> {
   const offerSdp = (req.body as string | undefined) ?? ''
   console.log(`[SIP] Offer SDP snippet: ${offerSdp.slice(0, 200).replace(/\r\n/g, ' | ')}`)
 
+  const agentSetting = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
+  if (agentSetting?.value === 'false') {
+    console.log(`[SIP] Calling agents disabled — declining inbound call from ${callerNumber}`)
+    res.send(486)
+    return
+  }
+
   try {
     const dialog = await srf.createUAS(req, res, { localSdp: buildLocalSdp() })
 
