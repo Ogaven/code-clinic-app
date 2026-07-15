@@ -406,6 +406,13 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
 
   // ─── Status transition side-effects ───────────────────────────────────────
   try {
+    // Confirm to patient via WhatsApp when staff mark appointment CONFIRMED
+    if (status === 'CONFIRMED') {
+      sendAppointmentNotification(appointment.id, 'booked').catch((e: any) =>
+        console.error('[CONFIRMED] Patient WhatsApp notification failed:', e?.message)
+      )
+    }
+
     // Notify doctor when patient arrives
     if (status === 'ARRIVED' || status === 'CHECKED_IN') {
       await prisma.notification.create({

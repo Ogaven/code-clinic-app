@@ -41,6 +41,7 @@ export async function getAvailableSlots(
   doctorId?: string,
   daysAhead = 7,
   startDayOffset = 0,
+  aiWindowOnly = false,  // when true: restrict to Mon-Fri 09:00-16:00 and Sat 09:00-12:00 EAT
 ): Promise<AvailableSlot[]> {
   const service = await prisma.service.findUnique({ where: { id: serviceId } })
   if (!service) return []
@@ -79,9 +80,9 @@ export async function getAvailableSlots(
 
   if (doctors.length === 0) return []
 
-  // Batch-fetch all conflicts for the entire range in one round-trip
+  // Batch-fetch all conflicts + doctor_schedules for the entire range in one round-trip
   const doctorIds = doctors.map(d => d.id)
-  const [existingAppts, blockedTimes] = await Promise.all([
+  const [existingAppts, blockedTimes, allDoctorSchedules] = await Promise.all([
     prisma.appointment.findMany({
       where: {
         doctorId: { in: doctorIds },
@@ -99,7 +100,18 @@ export async function getAvailableSlots(
       },
       select: { doctorId: true, startAt: true, endAt: true },
     }),
+    prisma.doctorSchedule.findMany({
+      where:  { doctorId: { in: doctorIds } },
+      select: { doctorId: true, dayOfWeek: true, isOpen: true, openTime: true, closeTime: true },
+    }),
   ])
+
+  // Group schedules by doctorId — if a doctor has ≥1 row they have a configured schedule
+  const schedulesByDoctor = new Map<string, typeof allDoctorSchedules>()
+  for (const s of allDoctorSchedules) {
+    if (!schedulesByDoctor.has(s.doctorId)) schedulesByDoctor.set(s.doctorId, [])
+    schedulesByDoctor.get(s.doctorId)!.push(s)
+  }
 
   const slots: AvailableSlot[] = []
 
@@ -111,30 +123,55 @@ export async function getAvailableSlots(
     for (const doctor of doctors) {
       if (slots.length >= 20) break
 
-      const workingDays = JSON.parse(doctor.workingDays) as number[]
-      if (!workingDays.includes(weekday)) continue
-
-      const hours = getWorkingHours(doctor.workingHours, weekday)
-      if (!hours) continue
+      // Resolve open hours: doctor_schedules is source of truth; fall back to workingDays
+      // only if the doctor has no schedule rows at all (never been configured via UI).
+      const doctorSched = schedulesByDoctor.get(doctor.id)
+      let openTime: string
+      let closeTime: string
+      if (doctorSched && doctorSched.length > 0) {
+        const dayRow = doctorSched.find(s => s.dayOfWeek === weekday)
+        if (!dayRow || !dayRow.isOpen) continue
+        const fallback = getWorkingHours(doctor.workingHours, weekday)
+        openTime  = dayRow.openTime  ?? fallback?.start ?? '08:00'
+        closeTime = dayRow.closeTime ?? fallback?.end   ?? '18:00'
+      } else {
+        const workingDays = JSON.parse(doctor.workingDays) as number[]
+        if (!workingDays.includes(weekday)) continue
+        const hours = getWorkingHours(doctor.workingHours, weekday)
+        if (!hours) continue
+        openTime  = hours.start
+        closeTime = hours.end
+      }
 
       const doctorAppts  = existingAppts.filter(a => a.doctorId === doctor.id)
       const doctorBlocks = blockedTimes.filter(b => b.doctorId === doctor.id)
       const doctorName   = `Dr ${doctor.user.firstName} ${doctor.user.lastName}`
 
       // Walk through slots from working-hours start to end
-      let slotStart = new Date(`${dateStr}T${hours.start}:00+03:00`)
-      const dayEnd  = new Date(`${dateStr}T${hours.end}:00+03:00`)
+      let slotStart = new Date(`${dateStr}T${openTime}:00+03:00`)
+      const dayEnd  = new Date(`${dateStr}T${closeTime}:00+03:00`)
 
       while (slotStart < dayEnd && slots.length < 20) {
         const slotEnd = new Date(slotStart.getTime() + durationMs)
         if (slotEnd > dayEnd) break
 
         if (slotStart >= minStart) {
+          // AI booking window: Mon-Fri 09:00-16:00, Sat 09:00-12:00 EAT
+          let inAiWindow = true
+          if (aiWindowOnly) {
+            const eat  = new Date(slotStart.getTime() + 3 * 60 * 60 * 1000)
+            const wday = eat.getUTCDay()   // 0=Sun, 6=Sat
+            const mins = eat.getUTCHours() * 60 + eat.getUTCMinutes()
+            inAiWindow =
+              (wday >= 1 && wday <= 5 && mins >= 9 * 60 && mins < 16 * 60) ||
+              (wday === 6 && mins >= 9 * 60 && mins < 12 * 60)
+          }
+
           const conflict =
             doctorAppts.some(a  => a.startAt < slotEnd && a.endAt > slotStart) ||
             doctorBlocks.some(b => b.startAt < slotEnd && b.endAt > slotStart)
 
-          if (!conflict) {
+          if (!conflict && inAiWindow) {
             slots.push({
               doctorId:    doctor.id,
               doctorName,
@@ -225,6 +262,25 @@ export async function createAppointment(
 
   const service = await prisma.service.findUnique({ where: { id: serviceId } })
   if (!service) throw new Error('Service not found')
+
+  // Near-term duplicate guard: block if this patient already has an active appointment
+  // starting within the next 48 hours (prevents rapid-fire duplicate bookings).
+  const now48h = new Date(Date.now() + 48 * 60 * 60 * 1000)
+  const nearTermAppt = await prisma.appointment.findFirst({
+    where: {
+      patientId: resolvedPatientId,
+      status: { notIn: ['CANCELLED', 'CANCELLED_RESCHEDULED', 'COMPLETED', 'NO_SHOW'] },
+      startAt: { gte: new Date(), lt: now48h },
+    },
+    include: { doctor: { include: { user: { select: { firstName: true, lastName: true } } } } },
+    orderBy: { startAt: 'asc' },
+  })
+  if (nearTermAppt) {
+    const docName = `Dr ${nearTermAppt.doctor.user.firstName} ${nearTermAppt.doctor.user.lastName}`
+    const dateStr = nearTermAppt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+    const timeStr = nearTermAppt.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+    throw new Error(`NEAR_TERM_DUPLICATE: Patient already has a pending appointment on ${dateStr} at ${timeStr} with ${docName} (ID: ${nearTermAppt.id})`)
+  }
 
   const endAt = new Date(startAt.getTime() + service.durationMins * 60_000)
 

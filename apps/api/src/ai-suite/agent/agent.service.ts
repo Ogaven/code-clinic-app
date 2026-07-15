@@ -1846,8 +1846,11 @@ Sarah: [calls book_appointment] "Done! Confirmed for Saturday 9:30am with Dr Bab
 10. PATIENT BIRTHDAY — call get_patient_info once per conversation (on the first inbound message or when you first greet the patient). If any record returns isBirthdayToday:true, open your response with a warm birthday greeting before handling their actual request.
 11. NO AVAILABILITY LOOP: check_availability is ONLY for booking requests. Never call it to answer questions about clinic hours, pricing, or services. If you already told the patient no slots exist for a requested date, say so once, offer an alternative, then drop it. If they then ask about anything else, answer THAT — do not call check_availability again or repeat the unavailability finding.
 
+OUTSIDE-HOURS BOOKING REQUESTS:
+If a patient asks for a specific time and check_availability returns no slots in that window — before saying nothing is available, consider whether they have asked for an evening or late-afternoon time. If that seems likely, say warmly: "Let me get my colleague Julian to sort that specific time for you — she'll get back to you shortly 😊" then call flag_clinical_concern with the patient's requested day and time so Julian can book it manually. Never tell the patient you cannot book that time yourself.
+
 BOOKING CONFIRMATION — CRITICAL:
-After book_appointment returns success:true, the "confirmation" field contains the full booking summary. You MUST output that text exactly as it appears — word for word. Do NOT paraphrase or summarise.
+After book_appointment returns success:true, the "confirmation" field contains the message to send to the patient. You MUST output that text exactly as it appears — word for word. Do NOT paraphrase or summarise. The confirmation indicates the booking is noted and pending — this is intentional.
 
 SERVICE NAME TRANSPARENCY:
 When search_services resolves a query, the tool returns the real service name (e.g. "Stain Removal" for "cleaning"). Always echo this name naturally before showing slots: "Got it — I'll book that as a Stain Removal (our professional cleaning) for [person] 😊 Here are the available slots:" This lets the patient confirm before committing.
@@ -2088,7 +2091,7 @@ async function executeV2Tool(
           startOffset    = Math.max(0, Math.round((new Date(dateParam + 'T00:00:00Z').getTime() - new Date(todayStr + 'T00:00:00Z').getTime()) / msPerDay))
         }
         const daysAhead = (toolInput.daysAhead as number | undefined) ?? (dateParam ? 1 : 7)
-        const slots = await getAvailableSlots(serviceId, doctorId, daysAhead, startOffset)
+        const slots = await getAvailableSlots(serviceId, doctorId, daysAhead, startOffset, true)
         const top5  = slots.slice(0, 5)
         shownSlots.splice(0, shownSlots.length, ...top5)
         // Persist slots cross-turn so the patient can reply in a subsequent message
@@ -2172,7 +2175,11 @@ async function executeV2Tool(
           })))).catch((e: any) => console.error('[V2] In-app notification failed:', e?.message))
         const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
         sendWhatsAppMessage(staffNumber, `📋 New booking: ${pName} — ${appt.service.name} on ${dateStr} at ${timeStr} with ${docName}`).catch((e: any) => console.error('[V2] Staff WhatsApp notification failed:', e?.message))
-        return JSON.stringify({ success: true, appointmentId: appt.id, confirmation: formatConfirmation(appt) })
+        const drFirst     = appt.doctor.user.firstName
+        const pendingConf = isClinicOpenNow()
+          ? `I've got that noted for ${dateStr} at ${timeStr} with Dr ${drFirst} 😊 My colleague Julian will just confirm this with you shortly.`
+          : `I've got that noted for ${dateStr} at ${timeStr} with Dr ${drFirst} 😊 My colleague Julian will confirm this first thing when we're open.`
+        return JSON.stringify({ success: true, appointmentId: appt.id, confirmation: pendingConf })
       }
 
       case 'cancel_appointment': {
