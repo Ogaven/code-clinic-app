@@ -3,11 +3,13 @@ import {
   getAvailableSlots,
   getServices,
   getDoctors,
+  createAppointment,
 } from '../booking/booking.service'
 import { prisma } from '../../lib/prisma'
+import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 
 // Phrase that marks an escalation has already been sent in this conversation
-const ESCALATION_PHRASE = 'Please call or WhatsApp us on +256 709 740457 and our team will help you'
+const ESCALATION_PHRASE = 'Please call or WhatsApp us on +256741087667 and our team will help you'
 
 // ── Tool definitions ───────────────────────────────────────────────────────────
 
@@ -19,7 +21,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_available_slots',
-    description: 'Check available appointment slots for a specific date — useful for telling a visitor what times are generally open. Do NOT use this to actually book; use save_booking_request for that.',
+    description: 'Check available appointment slots for a specific date. Use this to show a visitor real available times. Do NOT use this to actually book — use book_appointment after the visitor picks a slot.',
     input_schema: {
       type: 'object',
       properties: {
@@ -32,7 +34,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'save_booking_request',
-    description: 'Save a booking request for a website visitor. Call this as soon as you have their name and phone number (and optionally their preferred service/doctor/date). This creates a Lead so our team calls them back to confirm. Website visitors are NOT yet patients in the system — never try to look them up or book directly.',
+    description: 'FALLBACK ONLY: Save a booking request as a Lead when the visitor cannot pick a specific time slot (e.g. "call me anytime"). Use book_appointment instead whenever the visitor has confirmed a real slot.',
     input_schema: {
       type: 'object',
       properties: {
@@ -43,6 +45,21 @@ const TOOLS: Anthropic.Tool[] = [
         preferredDate:    { type: 'string', description: 'Preferred date or time if mentioned, e.g. "Tuesday afternoon" or "2026-06-03"' },
       },
       required: ['visitorName', 'visitorPhone'],
+    },
+  },
+  {
+    name: 'book_appointment',
+    description: 'Book a real confirmed appointment for a website visitor. Call this ONLY after the visitor has confirmed a specific slot from the list you showed them. Use the exact serviceId, doctorId, and slotStartAt values returned by get_available_slots.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        visitorName:  { type: 'string', description: 'Full name of the visitor' },
+        visitorPhone: { type: 'string', description: 'Phone number of the visitor' },
+        serviceId:    { type: 'string', description: 'Service ID from get_available_slots result' },
+        doctorId:     { type: 'string', description: 'Doctor ID from the chosen slot in get_available_slots result' },
+        slotStartAt:  { type: 'string', description: 'Exact slot start time as ISO string from get_available_slots result' },
+      },
+      required: ['visitorName', 'visitorPhone', 'serviceId', 'doctorId', 'slotStartAt'],
     },
   },
   {
@@ -116,6 +133,43 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
         })
       }
 
+      case 'book_appointment': {
+        const { visitorName, visitorPhone, serviceId, doctorId, slotStartAt } = input as {
+          visitorName: string; visitorPhone: string; serviceId: string; doctorId: string; slotStartAt: string
+        }
+        const digits     = visitorPhone.replace(/\D/g, '')
+        const normalized = digits.startsWith('256') ? '+' + digits
+          : digits.startsWith('0') && digits.length === 10 ? '+256' + digits.slice(1)
+          : digits.length === 9 ? '+256' + digits
+          : '+' + digits
+
+        const startAt = new Date(slotStartAt)
+        if (isNaN(startAt.getTime())) {
+          return JSON.stringify({ error: 'Invalid slot time — please use the exact ISO string from get_available_slots.' })
+        }
+
+        const firstName = visitorName.trim().split(' ')[0]
+        const appt = await createAppointment(null, doctorId, serviceId, startAt, normalized, firstName)
+
+        const dateStr = appt.startAt.toLocaleDateString('en-UG', {
+          weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi',
+        })
+        const timeStr = appt.startAt.toLocaleTimeString('en-US', {
+          hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
+        })
+        const docName = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
+        const confirmation = `Your appointment is confirmed for ${dateStr} at ${timeStr} with ${docName} at Code Clinic. See you then! 😊`
+
+        const staffNum = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+        sendWhatsAppMessage(
+          staffNum,
+          `📅 Website Booking\nName: ${visitorName}\nPhone: ${normalized}\nService: ${appt.service.name}\nTime: ${dateStr} at ${timeStr}\nDoctor: ${docName}`,
+          '',
+        ).catch(() => {})
+
+        return JSON.stringify({ success: true, confirmation, appointmentId: appt.id })
+      }
+
       case 'save_booking_request': {
         const { visitorName, visitorPhone, serviceRequested, doctorPreference, preferredDate } = input as {
           visitorName: string; visitorPhone: string; serviceRequested?: string
@@ -140,6 +194,13 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
           },
         })
 
+        const staffNum = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+        sendWhatsAppMessage(
+          staffNum,
+          `🔔 Website Lead (needs callback)\nName: ${visitorName}\nPhone: ${visitorPhone}\n${notes}`,
+          '',
+        ).catch(() => {})
+
         return JSON.stringify({ success: true, message: 'Booking request saved — team will call back to confirm.' })
       }
 
@@ -157,6 +218,11 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
             lastMessage: conversationSummary.slice(0, 200),
           },
         })
+
+        const staffNum = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+        const staffMsg = `🚨 Website Escalation\nName: ${patientName}${patientPhone ? '\nPhone: ' + patientPhone : ''}\nSummary: ${conversationSummary.slice(0, 200)}`
+        sendWhatsAppMessage(staffNum, staffMsg, '').catch(() => {})
+
         return JSON.stringify({ success: true, message: 'Lead created — staff will follow up.' })
       }
 
@@ -182,7 +248,7 @@ You have ALREADY escalated this conversation and given the visitor the phone num
 Escalate when: the visitor explicitly asks to speak to a human or doctor, reports an emergency, makes a complaint, or you genuinely cannot help after a couple of exchanges.
 Steps (do these ONCE per conversation — never repeat):
 1. Call the escalate_to_human tool with the visitor's details and a short summary.
-2. Then send exactly this — word for word, nothing added: "Please call or WhatsApp us on +256 709 740457 and our team will help you!"`
+2. Then send exactly this — word for word, nothing added: "Please call or WhatsApp us on +256741087667 and our team will help you!"`
 
   return `You are Sarah, a warm and friendly receptionist at Code Clinic dental clinic in Kamwokya, Kampala, Uganda.
 
@@ -213,7 +279,7 @@ You are a human receptionist, not a robot. Never say you are AI or automated. If
 === CLINIC INFO ===
 Name: Code Clinic
 Location: Old Kira Road, opposite Police Playground, Kamwokya, Kampala
-Phone and WhatsApp: +256 709 740457
+Phone and WhatsApp: +256741087667
 Email: dentist@codeclinic.ug
 Website: codeclinic.ug
 Hours: Monday to Friday 8am to 6pm, Saturday 9am to 2pm, Sunday closed
@@ -223,21 +289,25 @@ Visitors on this chat are members of the public who found us online. They are NO
 
 === WHAT YOU CAN DO ===
 Answer questions about our services, prices, and doctors — use get_services for accurate info.
-Tell them generally when we have availability — use get_available_slots if they ask about a specific date.
-Collect their name and phone number for a booking request — use save_booking_request to log it as a Lead so our team calls them back to confirm.
+Check real availability — use get_available_slots to show a visitor actual open slots.
+Book a real confirmed appointment — use book_appointment once the visitor picks a specific slot.
+As a fallback when a visitor cannot pick a specific time, use save_booking_request so our team calls them back.
 Give our location, hours, contact details.
 Escalate complex or urgent issues.
 
 === WHAT YOU CANNOT DO ===
 You CANNOT look up whether someone is already a patient — do not try, do not mention it.
-You CANNOT book directly into the appointment system for website visitors — they are not in the system yet.
 You CANNOT access or modify existing appointment records for website visitors.
 
 === BOOKING FLOW ===
 When a visitor wants an appointment:
-1. Ask for their name and phone number (and preferred service or doctor if they haven't said).
-2. Once you have their name and phone, call save_booking_request immediately.
-3. After the tool succeeds, reply with exactly this (adapt the name): "Perfect! I've noted your details, [name]. Our team will call you back to confirm your appointment. Alternatively you can call or WhatsApp us directly on +256 709 740457 😊"
+1. Ask for their name and phone number if you don't have them yet.
+2. Find out what service they want — call get_services to confirm details and get the serviceId.
+3. Ask for their preferred date, then call get_available_slots with that date and the serviceId to get real slots.
+4. Present 2-3 options conversationally: "I have Tuesday at 10am with Dr Angella or Wednesday at 2pm with Dr Arnold — which suits you?"
+5. Once they confirm a slot, call book_appointment with their name, phone, and the exact serviceId, doctorId, and slotStartAt from the get_available_slots result.
+6. After book_appointment succeeds, output the "confirmation" field from the tool result exactly as written.
+FALLBACK: If the visitor genuinely cannot pick a specific time (e.g. "call me anytime"), use save_booking_request instead — our team will call them to arrange a time.
 Do NOT ask them to log in, do NOT say you cannot find them, do NOT mention databases.
 
 === CONFIDENTIALITY ===
@@ -258,7 +328,7 @@ export async function getWebsiteAgentReply(
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    return `Hi! I've received your message and a team member will be with you shortly. For urgent matters please call us on +256 709 740457 😊`
+    return `Hi! I've received your message and a team member will be with you shortly. For urgent matters please call us on +256741087667 😊`
   }
 
   // Load recent conversation history
@@ -331,9 +401,9 @@ export async function getWebsiteAgentReply(
       currentMessages.push({ role: 'user', content: toolResults })
     }
 
-    return `Let me get that sorted for you — if it's urgent please call or WhatsApp us on +256 709 740457 😊`
+    return `Let me get that sorted for you — if it's urgent please call or WhatsApp us on +256741087667 😊`
   } catch (err: any) {
     console.error('[WebsiteAgent] error:', err)
-    return `Sorry, I'm having a small issue right now. Please try again or call the clinic directly on +256 709 740457 😊`
+    return `Sorry, I'm having a small issue right now. Please try again or call the clinic directly on +256741087667 😊`
   }
 }
