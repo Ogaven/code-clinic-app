@@ -96,7 +96,7 @@ DOCTOR PREFERENCE — APPEARANCE/GENDER/ETHNICITY/AGE:
 
 PASSING TO JULIAN:
 - If you cannot fully resolve something — complex complaints, sensitive medical questions beyond scheduling, or a patient who explicitly wants to speak with someone — say: "Let me pass you to my colleague Julian who can help you further 😊" and end your response there.
-- Julian handles handovers. After hours, tell the patient Julian or the team will follow up when the clinic opens.
+- Julian (she/her) handles handovers. After hours, tell the patient Julian or the team will follow up when the clinic opens.
 - You do NOT need to explain why you're passing to Julian — just do it warmly and briefly.
 
 AFTER-HOURS BEHAVIOUR:
@@ -2150,9 +2150,18 @@ async function executeV2Tool(
         const normalizedFrom = from.startsWith('+') ? from : `+${from}`
         const patient = await prisma.patient.findFirst({ where: { OR: [{ phone: normalizedFrom }, { phone: from }] } })
         const patientFirstName = toolInput.patientFirstName as string | undefined
+        // Fallback: if no explicit name and no existing patient, use waDisplayName from the conversation
+        let resolvedFirstName = patientFirstName
+        if (!resolvedFirstName && !patient) {
+          const conv = await prisma.aiConversation.findUnique({ where: { id: conversationId }, select: { waDisplayName: true } })
+          const wa = conv?.waDisplayName?.trim()
+          if (wa && wa.length > 0 && !/^\+?\d/.test(wa)) {
+            resolvedFirstName = wa.split(' ')[0]
+          }
+        }
         let appt: Awaited<ReturnType<typeof createAppointment>>
         try {
-          appt = await createAppointment(patient?.id ?? null, matched.doctorId, matched.serviceId, matched.startAt, normalizedFrom, patientFirstName)
+          appt = await createAppointment(patient?.id ?? null, matched.doctorId, matched.serviceId, matched.startAt, normalizedFrom, resolvedFirstName)
         } catch (bookErr: any) {
           if (bookErr.message?.startsWith('NEAR_TERM_DUPLICATE:')) {
             const raw    = bookErr.message.replace('NEAR_TERM_DUPLICATE: Patient already has a pending appointment ', '')
@@ -2177,8 +2186,8 @@ async function executeV2Tool(
         sendWhatsAppMessage(staffNumber, `📋 New booking: ${pName} — ${appt.service.name} on ${dateStr} at ${timeStr} with ${docName}`).catch((e: any) => console.error('[V2] Staff WhatsApp notification failed:', e?.message))
         const drFirst     = appt.doctor.user.firstName
         const pendingConf = isClinicOpenNow()
-          ? `I've got that noted for ${dateStr} at ${timeStr} with Dr ${drFirst} 😊 My colleague Julian will just confirm this with you shortly.`
-          : `I've got that noted for ${dateStr} at ${timeStr} with Dr ${drFirst} 😊 My colleague Julian will confirm this first thing when we're open.`
+          ? `I've got that noted for ${dateStr} at ${timeStr} with Dr ${drFirst} 😊 My colleague Julian will confirm this with you shortly — she'll be in touch!`
+          : `I've got that noted for ${dateStr} at ${timeStr} with Dr ${drFirst} 😊 My colleague Julian will confirm this first thing when we're open — she'll be in touch!`
         return JSON.stringify({ success: true, appointmentId: appt.id, confirmation: pendingConf })
       }
 
