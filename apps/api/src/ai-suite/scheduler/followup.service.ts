@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachable } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { getGreetingName, isMinor, normalizeRelation } from '../../utils/nameHelper'
+import { resolveOutboundRecipient } from './guardian-routing.service'
 
 const ADMIN_WHATSAPP = '+256763430276'
 
@@ -122,7 +123,7 @@ export async function checkAndSendFollowups(): Promise<void> {
       patient: { isActive: true },
     },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } } },
       doctor:  { include: { user: { select: { firstName: true } } } },
       service: { select: { name: true } },
     },
@@ -181,10 +182,16 @@ export async function checkAndSendFollowups(): Promise<void> {
     const message = personalized ?? genericMessage
 
     // ── Send ──────────────────────────────────────────────────────────────────
+    const routing = await resolveOutboundRecipient(patient, greetName)
+    if (!routing.ok) {
+      console.warn(`[Followup] Skipping ${patient.firstName} — minor with no active guardian`)
+      continue
+    }
+    const recipientPhone = routing.recipient.phone
     try {
-      await sendWhatsAppMessage(patient.phone, message)
+      await sendWhatsAppMessage(recipientPhone, message)
     } catch (err: any) {
-      console.error(`[Followup] Send failed for ${patient.phone}:`, err.message ?? err)
+      console.error(`[Followup] Send failed for ${recipientPhone}:`, err.message ?? err)
       continue
     }
 
@@ -226,7 +233,7 @@ export async function checkAndSendFollowups(): Promise<void> {
     })
 
     console.log(
-      `[Followup] Sent to ${patient.firstName} ${patient.lastName} (${patient.phone}) via ${channel}`
+      `[Followup] Sent to ${patient.firstName} ${patient.lastName} (${recipientPhone}) via ${channel}`
     )
   }
 }
@@ -323,7 +330,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     missedAppts = await prisma.appointment.findMany({
       where: { startAt: { gte: startOfYesterday, lte: endOfYesterday }, status: { in: ['CANCELLED', 'NO_SHOW'] } },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } } },
         doctor:  { include: { user: { select: { firstName: true } } } },
       },
     })
@@ -367,10 +374,16 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       ? `Hello ${addr}, this is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, we noticed ${greetName} missed an appointment yesterday with Dr ${doctorFirst}. We hope everything is okay. Would you like to reschedule? We would love to see ${greetName}.`
       : `Hello ${addr}, we noticed you missed your appointment yesterday with Dr ${doctorFirst}. We hope everything is okay 😊 Would you like to reschedule? We would love to see you.`
 
+    const missedRouting = await resolveOutboundRecipient(patient, greetName)
+    if (!missedRouting.ok) {
+      console.warn(`[PostApptFollowup] Skipping ${patient.firstName} (missed) — minor with no active guardian`)
+      continue
+    }
+    const recipientPhone = missedRouting.recipient.phone
     try {
-      await sendWhatsAppMessage(patient.phone, msg)
+      await sendWhatsAppMessage(recipientPhone, msg)
     } catch (err: any) {
-      console.error(`[PostApptFollowup] Missed appt send failed for ${patient.phone}:`, err.message)
+      console.error(`[PostApptFollowup] Missed appt send failed for ${recipientPhone}:`, err.message)
       await notifyReceptionistUnreachable(`${patient.firstName} ${patient.lastName}`, patient.phone)
       continue
     }
@@ -388,7 +401,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     appointments = await prisma.appointment.findMany({
       where: { startAt: { gte: startOfYesterday, lte: endOfYesterday }, status: { in: ['COMPLETED', 'CONFIRMED'] }, ...(forceRun ? {} : { followUpSent: false }) },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } } },
         doctor:  { include: { user: { select: { firstName: true } } } },
         service: { select: { name: true } },
       },
@@ -442,8 +455,11 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       const nudge = minor
         ? `Hello ${addr2}, just checking in on ${greetName2} 😊 Feel free to reply if you have any questions, we are here for you!`
         : `Hello ${greetName2}, just checking in 😊 How are you doing? Feel free to reply anytime!`
+      const nudgeRouting = await resolveOutboundRecipient(patient, getGreetingName(patient))
+      if (!nudgeRouting.ok) continue
+      const recipientPhoneNudge = nudgeRouting.recipient.phone
       try {
-        await sendWhatsAppMessage(patient.phone, nudge)
+        await sendWhatsAppMessage(recipientPhoneNudge, nudge)
         const c = await prisma.aiConversation.findFirst({ where: { phoneNumber: patient.phone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
         if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', content: nudge } })
         counts.sent++
@@ -486,9 +502,15 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     }
 
     // Stage 1 — send immediately
+    const stage1Routing = await resolveOutboundRecipient(patient, greetName)
+    if (!stage1Routing.ok) {
+      console.warn(`[PostApptFollowup] Skipping ${patient.firstName} (stage 1) — minor with no active guardian`)
+      continue
+    }
+    const recipientPhone = stage1Routing.recipient.phone
     const stage1SentAt = new Date()
     try {
-      await sendWhatsAppMessage(patient.phone, stage1)
+      await sendWhatsAppMessage(recipientPhone, stage1)
       await prisma.aiMessage.create({ data: { conversationId: convId, role: 'AGENT', content: stage1 } })
       await prisma.appointment.update({ where: { id: appt.id }, data: { followUpSent: true } })
       await prisma.aiScheduledMessage.create({
@@ -497,12 +519,12 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       counts.sent++
       console.log(`[PostApptFollowup] Stage 1 sent to ${patient.firstName} ${patient.lastName}`)
     } catch (err: any) {
-      console.error(`[PostApptFollowup] Stage 1 failed for ${patient.phone}:`, err.message)
+      console.error(`[PostApptFollowup] Stage 1 failed for ${recipientPhone}:`, err.message)
       await notifyReceptionistUnreachable(`${patient.firstName} ${patient.lastName}`, patient.phone)
       continue
     }
 
-    const patientPhone    = patient.phone
+    const patientPhone    = recipientPhone
     const patientFullName = `${patient.firstName} ${patient.lastName}`
     const personalizedStage2 = await generatePersonalizedFollowup({
       patientName:       greetName,
@@ -574,7 +596,7 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
         status:  { in: ['PENDING', 'CONFIRMED'] },
       },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } } },
         doctor:  { include: { user: { select: { firstName: true } } } },
         service: { select: { name: true } },
       },
@@ -615,10 +637,16 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
       ? `Hello ${addr}, this is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, just a reminder that ${greetName} has an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel.`
       : `Hello ${greetName}, this is Sarah from Code Clinic. You have an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
 
+    const confirmRouting = await resolveOutboundRecipient(patient, greetName)
+    if (!confirmRouting.ok) {
+      console.warn(`[ApptConfirmation] Skipping ${patient.firstName} — minor with no active guardian`)
+      continue
+    }
+    const recipientPhone = confirmRouting.recipient.phone
     try {
-      await sendWhatsAppMessage(patient.phone, msg)
+      await sendWhatsAppMessage(recipientPhone, msg)
     } catch (err: any) {
-      console.error(`[ApptConfirmation] Send failed for ${patient.phone}:`, err.message)
+      console.error(`[ApptConfirmation] Send failed for ${recipientPhone}:`, err.message)
       continue
     }
 
@@ -649,7 +677,7 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
         createdAt:  { gte: windowStart },
       },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } } },
       },
       take: 50,
     })
@@ -691,13 +719,19 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
       ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
       : null
     const firstName = getGreetingName(patient) || 'there'
-    const addr      = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : firstName
+    const missedCallRouting = await resolveOutboundRecipient(patient, firstName)
+    if (!missedCallRouting.ok) {
+      console.warn(`[MissedCallFollowup] Skipping ${patient.firstName} — minor with no active guardian`)
+      continue
+    }
+    const addr           = missedCallRouting.recipient.isGuardian ? missedCallRouting.recipient.name : firstName
+    const recipientPhone = missedCallRouting.recipient.phone
     try {
       try {
-        await sendWhatsAppTemplate(patient.phone, templateName, [addr])
+        await sendWhatsAppTemplate(recipientPhone, templateName, [addr])
       } catch {
         await sendWhatsAppMessage(
-          patient.phone,
+          recipientPhone,
           `Hello ${addr} 😊 We noticed you tried reaching us at Code Clinic earlier. Sorry we missed you! How can we help? Just reply here or call us on +256 394 836 298.`
         )
       }
@@ -738,7 +772,7 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
         none: { startAt: { gte: ninetyDaysAgo } },
       },
     },
-    select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true },
+    select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } },
     take: 100,
   })
 
@@ -765,13 +799,19 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
       ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
       : null
     const firstName = getGreetingName(patient) || 'there'
-    const addr      = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : firstName
+    const reactivationRouting = await resolveOutboundRecipient(patient, firstName)
+    if (!reactivationRouting.ok) {
+      console.warn(`[Reactivation] Skipping ${patient.firstName} — minor with no active guardian`)
+      continue
+    }
+    const addr           = reactivationRouting.recipient.isGuardian ? reactivationRouting.recipient.name : firstName
+    const recipientPhone = reactivationRouting.recipient.phone
     try {
       try {
-        await sendWhatsAppTemplate(patient.phone, templateName, [addr])
+        await sendWhatsAppTemplate(recipientPhone, templateName, [addr])
       } catch {
         await sendWhatsAppMessage(
-          patient.phone,
+          recipientPhone,
           minor
             ? `Hello ${addr} 😊 It has been a while since ${firstName} visited Code Clinic. We hope everything is well! When ready, just reply or call us on +256 394 836 298.`
             : `Hello ${addr} 😊 It has been a while since we have seen you at Code Clinic. We hope you are doing well! When you are ready for your next visit, we are here for you. Just reply or call us on +256 394 836 298.`

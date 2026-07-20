@@ -32,7 +32,7 @@ export function getGreetingName(patient: { firstName?: string | null; lastName?:
 export function isMinor(dob: Date | null | undefined): boolean {
   if (!dob) return false
   const age = (Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-  return age < 16
+  return age < 18
 }
 
 export function normalizeRelation(relation: string | null | undefined): string {

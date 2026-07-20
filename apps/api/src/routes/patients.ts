@@ -814,6 +814,96 @@ router.post('/:id/merge', requireAuth, adminAndReceptionist, async (req, res) =>
   }
 })
 
+// ── Guardian / FamilyAccount management ──────────────────────────────────────
+// GET /patients/:id/guardians — list guardians for the patient's family account
+router.get('/:id/guardians', requireAuth, adminAndReceptionist, async (req, res) => {
+  try {
+    const patient = await prisma.patient.findUnique({
+      where: { id: req.params.id },
+      select: { familyAccountId: true },
+    })
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+    if (!patient.familyAccountId) { res.json({ guardians: [] }); return }
+    const guardians = await prisma.guardian.findMany({
+      where: { familyAccountId: patient.familyAccountId },
+      orderBy: [{ isCommunicationContact: 'desc' }, { createdAt: 'asc' }],
+    })
+    res.json({ guardians })
+  } catch { res.status(500).json({ error: 'Failed to fetch guardians' }) }
+})
+
+// POST /patients/:id/family-account — create a family account and link this patient to it
+router.post('/:id/family-account', requireAuth, adminAndReceptionist, async (req, res) => {
+  try {
+    const patient = await prisma.patient.findUnique({ where: { id: req.params.id } })
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+    if (patient.familyAccountId) {
+      res.status(409).json({ error: 'Patient already linked to a family account', familyAccountId: patient.familyAccountId })
+      return
+    }
+    const name = req.body.name || `${patient.firstName} ${patient.lastName} Family`
+    const account = await prisma.familyAccount.create({ data: { name } })
+    await prisma.patient.update({ where: { id: req.params.id }, data: { familyAccountId: account.id } })
+    res.status(201).json({ familyAccount: account })
+  } catch { res.status(500).json({ error: 'Failed to create family account' }) }
+})
+
+// POST /patients/:id/guardians — add a guardian to the patient's family account
+router.post('/:id/guardians', requireAuth, adminAndReceptionist, async (req, res) => {
+  try {
+    const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, select: { familyAccountId: true } })
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+    if (!patient.familyAccountId) {
+      res.status(422).json({ error: 'Patient must be linked to a family account first' })
+      return
+    }
+    const { firstName, lastName, phone, email, relationship, isCommunicationContact } = req.body
+    if (!firstName || !lastName || !phone || !relationship) {
+      res.status(400).json({ error: 'firstName, lastName, phone, and relationship are required' })
+      return
+    }
+    const guardian = await prisma.guardian.create({
+      data: {
+        familyAccountId: patient.familyAccountId,
+        firstName, lastName, phone,
+        email: email || null,
+        relationship,
+        isCommunicationContact: isCommunicationContact !== false,
+      },
+    })
+    res.status(201).json({ guardian })
+  } catch { res.status(500).json({ error: 'Failed to add guardian' }) }
+})
+
+// PATCH /patients/:id/guardians/:guardianId — update a guardian
+router.patch('/:id/guardians/:guardianId', requireAuth, adminAndReceptionist, async (req, res) => {
+  try {
+    const { guardianId } = req.params
+    const { firstName, lastName, phone, email, relationship, isCommunicationContact, isActive } = req.body
+    const guardian = await prisma.guardian.update({
+      where: { id: guardianId },
+      data: {
+        ...(firstName !== undefined && { firstName }),
+        ...(lastName  !== undefined && { lastName }),
+        ...(phone     !== undefined && { phone }),
+        ...(email     !== undefined && { email }),
+        ...(relationship !== undefined && { relationship }),
+        ...(isCommunicationContact !== undefined && { isCommunicationContact }),
+        ...(isActive !== undefined && { isActive }),
+      },
+    })
+    res.json({ guardian })
+  } catch { res.status(500).json({ error: 'Failed to update guardian' }) }
+})
+
+// DELETE /patients/:id/guardians/:guardianId — deactivate (soft-delete) a guardian
+router.delete('/:id/guardians/:guardianId', requireAuth, adminAndReceptionist, async (req, res) => {
+  try {
+    await prisma.guardian.update({ where: { id: req.params.guardianId }, data: { isActive: false } })
+    res.json({ ok: true })
+  } catch { res.status(500).json({ error: 'Failed to deactivate guardian' }) }
+})
+
 // POST /patients/:id/avatar
 router.post('/:id/avatar', requireAuth, uploadLimiter, upload.single('avatar'), async (req, res) => {
   try {

@@ -63,6 +63,18 @@ enum Gender {
   OTHER
 }
 
+enum EligibilityStatus {
+  ACTIVE
+  TERMINATED
+  ON_LEAVE
+}
+
+enum BalancePayer {
+  EMPLOYEE
+  EMPLOYER
+  SPLIT
+}
+
 enum PatientStatus {
   NEW_LEAD
   UPCOMING
@@ -210,11 +222,13 @@ model Patient {
   guardianId            String?
   isMinor               Boolean  @default(false)
   relationship          String?       // "child" | "spouse" | "dependent" | "other"
+  familyAccountId       String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
   guardian              Patient?  @relation("GuardianDependents", fields: [guardianId], references: [id])
   dependents            Patient[] @relation("GuardianDependents")
+  familyAccount         FamilyAccount? @relation(fields: [familyAccountId], references: [id])
 
   appointments          Appointment[]
   invoices              Invoice[]
@@ -231,11 +245,15 @@ model Patient {
   activities            PatientActivity[]
   aiConversations       AiConversation[]
   aiScheduledMessages   AiScheduledMessage[]
+  patientSponsors       PatientSponsor[]
+  patientConsents       PatientConsent[]
+  botMessageLogs        BotMessageLog[]
 
   @@index([isActive, createdAt])
   @@index([lastName, firstName])
   @@index([status])
   @@index([guardianId])
+  @@index([familyAccountId])
   @@map("patients")
 }
 
@@ -255,6 +273,7 @@ model Service {
   updatedAt      DateTime @updatedAt
 
   appointments   Appointment[]
+  feeSchedules   FeeSchedule[]
 
   @@unique([name])
   @@map("services")
@@ -984,4 +1003,146 @@ model MessageTemplate {
   @@index([category])
   @@index([isActive])
   @@map("message_templates")
+}
+
+// ─────────────────────────────────────────────
+// PHASE 1 — Family Account & Guardian system
+// ─────────────────────────────────────────────
+
+model FamilyAccount {
+  id        String    @id @default(cuid())
+  name      String                          // e.g. "Kato Family"
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  patients  Patient[]
+  guardians Guardian[]
+
+  @@map("family_accounts")
+}
+
+model Guardian {
+  id                     String        @id @default(cuid())
+  familyAccountId        String
+  familyAccount          FamilyAccount @relation(fields: [familyAccountId], references: [id])
+  firstName              String
+  lastName               String
+  phone                  String
+  email                  String?
+  relationship           String        // "parent" | "spouse" | "sibling" | "legal_guardian" | "other"
+  isCommunicationContact Boolean       @default(true)  // receives bot messages on behalf of minors
+  isActive               Boolean       @default(true)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  @@index([familyAccountId, isCommunicationContact, isActive])
+  @@map("guardians")
+}
+
+// ─────────────────────────────────────────────
+// PHASE 2 — Sponsor / corporate billing
+// ─────────────────────────────────────────────
+
+model SponsorOrganization {
+  id           String   @id @default(cuid())
+  name         String
+  contactName  String?
+  contactPhone String?
+  contactEmail String?
+  address      String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  feeSchedules    FeeSchedule[]
+  patientSponsors PatientSponsor[]
+
+  @@map("sponsor_organizations")
+}
+
+model FeeSchedule {
+  id              String              @id @default(cuid())
+  organizationId  String
+  organization    SponsorOrganization @relation(fields: [organizationId], references: [id])
+  serviceId       String?
+  service         Service?            @relation(fields: [serviceId], references: [id])
+  negotiatedRate  Int?                // UGX, null = full price
+  coveragePercent Int?                // 0–100, null = not applicable
+  notes           String?
+  effectiveFrom   DateTime            @default(now())
+  effectiveTo     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([organizationId])
+  @@map("fee_schedules")
+}
+
+model PatientSponsor {
+  id             String              @id @default(cuid())
+  patientId      String
+  patient        Patient             @relation(fields: [patientId], references: [id])
+  organizationId String
+  organization   SponsorOrganization @relation(fields: [organizationId], references: [id])
+  employeeId     String?             // employee ID at the sponsor org
+  department     String?
+  eligibility    EligibilityStatus   @default(ACTIVE)
+  balancePayer   BalancePayer        @default(EMPLOYEE)
+  startDate      DateTime
+  endDate        DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([patientId, organizationId])
+  @@index([organizationId, eligibility])
+  @@map("patient_sponsors")
+}
+
+// ─────────────────────────────────────────────
+// PHASE 3 — Consent, OTP, immutable bot log
+// ─────────────────────────────────────────────
+
+model BotMessageLog {
+  id             String   @id @default(cuid())
+  patientId      String?
+  patient        Patient? @relation(fields: [patientId], references: [id])
+  recipientPhone String
+  channel        String   // "WHATSAPP" | "SMS"
+  templateType   String   // one of the approved template types
+  messageBody    String
+  sentAt         DateTime @default(now())
+  deliveryStatus String?
+
+  @@index([patientId, sentAt])
+  @@map("bot_message_logs")
+}
+
+model PatientConsent {
+  id          String    @id @default(cuid())
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id])
+  consentType String    // "TERMS_OF_SERVICE" | "MARKETING" | "DATA_PROCESSING" | "BOT_COMMUNICATION"
+  granted     Boolean
+  grantedAt   DateTime  @default(now())
+  ipAddress   String?
+  userAgent   String?
+  revokedAt   DateTime?
+
+  @@index([patientId, consentType])
+  @@map("patient_consents")
+}
+
+model PhoneVerification {
+  id         String    @id @default(cuid())
+  phone      String
+  otpHash    String    // bcrypt hash of the OTP — never store raw
+  purpose    String    // "IDENTITY" | "BOOKING_CONFIRM" | "GUARDIAN_LINK"
+  expiresAt  DateTime
+  verified   Boolean   @default(false)
+  verifiedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([phone, verified])
+  @@map("phone_verifications")
 }

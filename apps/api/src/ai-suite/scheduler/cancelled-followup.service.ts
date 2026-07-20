@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
+import { resolveOutboundRecipient } from './guardian-routing.service'
 
 function greet(firstName: string): string {
   const n = firstName?.trim()
@@ -32,7 +33,7 @@ export async function checkAndSendCancelledFollowups(): Promise<void> {
         startAt:      { gte: lookback, lte: cutoff },  // 24h–30d ago only
       },
       include: {
-        patient: { select: { id: true, firstName: true, phone: true } },
+        patient: { select: { id: true, firstName: true, phone: true, dob: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } } },
       },
     })
   } catch (err: any) {
@@ -100,13 +101,21 @@ export async function checkAndSendCancelledFollowups(): Promise<void> {
       continue
     }
 
-    const name = greet(patient.firstName)
-    const msg  = appt.status === 'NO_SHOW' ? NO_SHOW_MSG(name) : CANCEL_MSG(name)
+    const name    = greet(patient.firstName)
+    const routing = await resolveOutboundRecipient(patient, name)
+    if (!routing.ok) {
+      console.warn(`[CancelledFollowup] Skipping ${patient.firstName} — minor with no active guardian`)
+      continue
+    }
+    const recipientPhone = routing.recipient.phone
+    const msg = appt.status === 'NO_SHOW'
+      ? NO_SHOW_MSG(routing.recipient.isGuardian ? routing.recipient.name : name)
+      : CANCEL_MSG(routing.recipient.isGuardian ? routing.recipient.name : name)
 
     try {
-      await sendWhatsAppMessage(patient.phone, msg)
+      await sendWhatsAppMessage(recipientPhone, msg)
     } catch (err: any) {
-      console.error(`[CancelledFollowup] WhatsApp send failed for ${patient.phone}:`, err.message)
+      console.error(`[CancelledFollowup] WhatsApp send failed for ${recipientPhone}:`, err.message)
       continue
     }
 

@@ -1,6 +1,7 @@
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
-import { getGreetingName, isMinor, normalizeRelation } from '../../utils/nameHelper'
+import { getGreetingName, normalizeRelation } from '../../utils/nameHelper'
+import { resolveOutboundRecipient } from './guardian-routing.service'
 
 // ── checkAndSendReminders ─────────────────────────────────────────────────────
 // Runs every hour. Finds appointments starting 23–25 hours from now and sends a
@@ -19,7 +20,7 @@ export async function checkAndSendReminders(): Promise<void> {
       patient: { isActive: true },
     },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } } },
       doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
       service: { select: { name: true } },
     },
@@ -48,36 +49,32 @@ export async function checkAndSendReminders(): Promise<void> {
     })
     if (alreadySent) continue
 
+    // ── Resolve recipient (guardian routing for minors) ───────────────────────
+    const channel   = 'WHATSAPP'
+    const greetName = getGreetingName(patient)
+    const routing   = await resolveOutboundRecipient(patient, greetName)
+    if (!routing.ok) {
+      console.warn(`[Reminder] Skipping ${patient.firstName} — minor with no active guardian (MINOR_NO_GUARDIAN)`)
+      continue
+    }
+    const { phone: recipientPhone, name: recipientName, isGuardian } = routing.recipient
+
     // ── Build message ─────────────────────────────────────────────────────────
-    const channel = 'WHATSAPP'
     const time = appt.startAt.toLocaleTimeString('en-UG', {
       hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
     })
     const dayDate = appt.startAt.toLocaleDateString('en-UG', {
       weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi',
     })
-    const doctor        = `Dr ${appt.doctor.user.firstName}`
-    const greetName     = getGreetingName(patient)
-    const minor         = isMinor(patient.dob)
-    const guardianName  = minor && patient.nextOfKinName
-      ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
-      : null
-    const relation      = normalizeRelation(patient.nextOfKinRelation)
+    const doctor   = `Dr ${appt.doctor.user.firstName}`
+    const relation = normalizeRelation(patient.nextOfKinRelation)
 
     let message: string
     let templateAddr: string
-    if (minor && guardianName) {
-      templateAddr = guardianName
+    if (isGuardian) {
+      templateAddr = recipientName
       message =
-        `Hi ${guardianName}! 😊 This is Sarah from Code Clinic, just a friendly reminder that ${greetName}'s appointment is tomorrow:\n\n` +
-        `📅 ${dayDate} at ${time}\n` +
-        `👨‍⚕️ with ${doctor} for ${appt.service.name}\n` +
-        `📍 Code Clinic, Kamwokya.\n\n` +
-        `Reply YES to confirm or NO if you'd like to reschedule.`
-    } else if (minor) {
-      templateAddr = greetName
-      message =
-        `Hi there! 😊 This is Sarah from Code Clinic, just confirming ${greetName}'s appointment tomorrow:\n\n` +
+        `Hi ${recipientName}! 😊 This is Sarah from Code Clinic, just a friendly reminder that ${greetName}'s appointment is tomorrow:\n\n` +
         `📅 ${dayDate} at ${time}\n` +
         `👨‍⚕️ with ${doctor} for ${appt.service.name}\n` +
         `📍 Code Clinic, Kamwokya.\n\n` +
@@ -97,7 +94,7 @@ export async function checkAndSendReminders(): Promise<void> {
       const templateName = process.env.WA_TEMPLATE_REMINDER_NAME
       if (templateName) {
         try {
-          await sendWhatsAppTemplate(patient.phone, templateName, [
+          await sendWhatsAppTemplate(recipientPhone, templateName, [
             templateAddr,
             dayDate,
             time,
@@ -105,13 +102,13 @@ export async function checkAndSendReminders(): Promise<void> {
             doctor,
           ])
         } catch {
-          await sendWhatsAppMessage(patient.phone, message)
+          await sendWhatsAppMessage(recipientPhone, message)
         }
       } else {
-        await sendWhatsAppMessage(patient.phone, message)
+        await sendWhatsAppMessage(recipientPhone, message)
       }
     } catch (err: any) {
-      console.error(`[Reminder] Send failed for ${patient.phone}:`, err.message ?? err)
+      console.error(`[Reminder] Send failed for ${recipientPhone}:`, err.message ?? err)
       continue
     }
 
@@ -167,7 +164,7 @@ export async function checkAndSendReminders(): Promise<void> {
       patient: { isActive: true },
     },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } } },
       doctor:  { include: { user: { select: { firstName: true } } } },
     },
   })
@@ -187,21 +184,21 @@ export async function checkAndSendReminders(): Promise<void> {
     })
     if (alreadySent1h) continue
 
-    const minor1h    = isMinor(pat1h.dob)
     const name1h     = getGreetingName(pat1h)
-    const guardian1h = minor1h && pat1h.nextOfKinName
-      ? getGreetingName({ firstName: pat1h.nextOfKinName, lastName: '' })
-      : null
-    const addressee1h = guardian1h ?? name1h
-    const doc1h       = `Dr ${appt1h.doctor.user.firstName}`
-    const msg1h       = minor1h
-      ? `Hi ${addressee1h}! Just a friendly reminder that ${name1h}'s appointment with ${doc1h} is in 1 hour 😊 See you soon!`
+    const routing1h  = await resolveOutboundRecipient(pat1h, name1h)
+    if (!routing1h.ok) {
+      console.warn(`[Reminder 1h] Skipping ${pat1h.firstName} — minor with no active guardian`)
+      continue
+    }
+    const { phone: recipientPhone1h, name: addr1h, isGuardian: isGuardian1h } = routing1h.recipient
+    const doc1h  = `Dr ${appt1h.doctor.user.firstName}`
+    const msg1h  = isGuardian1h
+      ? `Hi ${addr1h}! Just a friendly reminder that ${name1h}'s appointment with ${doc1h} is in 1 hour 😊 See you soon!`
       : `Hi ${name1h}! Just a friendly reminder that your appointment with ${doc1h} is in 1 hour 😊 See you soon!`
-
     try {
-      await sendWhatsAppMessage(pat1h.phone, msg1h)
+      await sendWhatsAppMessage(recipientPhone1h, msg1h)
     } catch (err: any) {
-      console.error(`[Reminder 1h] Send failed for ${pat1h.phone}:`, err.message ?? err)
+      console.error(`[Reminder 1h] Send failed for ${recipientPhone1h}:`, err.message ?? err)
       continue
     }
 
