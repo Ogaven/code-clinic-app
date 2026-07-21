@@ -472,6 +472,7 @@ export async function sendWhatsAppTemplate(
     [process.env.WA_TEMPLATE_POST_APPT_NAME        || 'cc_post_appointment_followup']: process.env.WA_TEMPLATE_POST_APPT_ATRID,
     [process.env.WA_TEMPLATE_MISSED_CALL_NAME      || 'cc_missed_call_followup']:     process.env.WA_TEMPLATE_MISSED_CALL_ATRID,
     [process.env.WA_TEMPLATE_REACTIVATION_NAME     || 'cc_patient_reactivation']:     process.env.WA_TEMPLATE_REACTIVATION_ATRID,
+    [process.env.WA_TEMPLATE_AFTER_HOURS_NAME      || 'cc_after_hours_followup']:     process.env.WA_TEMPLATE_AFTER_HOURS_ATRID,
   }
 
   const atrid = atridByName[templateName]

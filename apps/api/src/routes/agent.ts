@@ -23,6 +23,12 @@ router.post('/whatsapp/webhook', async (req, res) => {
     res.status(200).json({ received: true })
     const body      = req.body
 
+    // ── Template approval/rejection webhooks from AT ─────────────────────────
+    if (body.templateId && body.templateStatus && !body.from) {
+      console.log(`[AT Template] Status update: ${body.templateId} → ${body.templateStatus} (${body.templateName || 'unknown name'})`)
+      return
+    }
+
     // ── Delivery receipts (READ/DELIVERED) — save to DB ─────────────────────
     if (body.status && !body.from && !body.data?.from) {
       const recipientPhone = body.phoneNumber || body.to || body.data?.phoneNumber
