@@ -9,7 +9,7 @@ import {
   Wallet, Receipt, ShoppingBag, CreditCard, FileBarChart,
   Bot, Settings, HeadphonesIcon,
   ChevronLeft, ChevronRight, BookOpen, Package,
-  ListChecks, Inbox, Phone, Mic,
+  ListChecks, Inbox, Phone, Mic, AlertCircle,
   ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
   Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2, ScrollText, UserPlus, Shield,
   ClipboardList,
@@ -22,6 +22,7 @@ interface NavGroup { label?: string; items: NavItem[] }
 const AI_SUITE_SUB: NavItem[] = [
   { label: 'Agent Control',          href: '/ai-suite',                        icon: Bot },
   { label: 'Inbox',                  href: '/ai-suite/inbox',                  icon: Inbox },
+  { label: 'Escalations',            href: '/ai-suite/escalations',            icon: AlertCircle },
   { label: 'Call Logs',              href: '/ai-suite/calls',                  icon: Phone },
   { label: 'Voice Studio',           href: '/ai-suite/voice-studio',           icon: Mic },
   { label: 'Knowledge Base',         href: '/ai-suite/knowledge-base',         icon: BookOpen },

@@ -1382,7 +1382,7 @@ async function alertStaffOfConcern(params: {
     const localPhone = params.patientPhone.replace(/^\+256/, '0')
     const patient = await prisma.patient.findFirst({
       where: { OR: [{ phone: params.patientPhone }, { phone: localPhone }] },
-      select: { firstName: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true },
     })
     const patientName = patient ? `${patient.firstName} ${patient.lastName}` : params.patientPhone
 
@@ -1402,13 +1402,20 @@ async function alertStaffOfConcern(params: {
       `${adviceLine}\n\n` +
       `Reply to this message with guidance and I'll relay it to the patient in my voice, or say "continue" to fast-track a booking.`
 
-    // 1. WhatsApp to clinic front desk — template if approved, freeform fallback until then
+    // 1. WhatsApp to clinic front desk — template preferred, freeform fallback on any failure
     const staffNumber  = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
     const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
     let alertMessageId: string | null = null
+    let templateSent = false
     if (templateName) {
-      await sendWhatsAppTemplate(staffNumber, templateName, [patientName, params.patientPhone, params.message.slice(0, 200)])
-    } else {
+      try {
+        await sendWhatsAppTemplate(staffNumber, templateName, [patientName, params.patientPhone, params.message.slice(0, 200)])
+        templateSent = true
+      } catch (tmplErr: any) {
+        console.warn('[Agent] Template failed, falling back to freeform:', tmplErr.message)
+      }
+    }
+    if (!templateSent) {
       alertMessageId = await sendWhatsAppMessage(staffNumber, alertText)
     }
 
@@ -1440,6 +1447,17 @@ async function alertStaffOfConcern(params: {
         }),
       },
     })
+
+    // 4. Write to escalations table so admin panel can track and resolve
+    await prisma.escalation.create({
+      data: {
+        patientId:   patient?.id,
+        phoneNumber: params.patientPhone,
+        channel:     'WHATSAPP',
+        reason:      `Sarah escalated — ${params.message.slice(0, 300)}`,
+        status:      'PENDING',
+      },
+    }).catch(() => null)
 
     console.log(`[Agent] Staff alerted for clinical concern from ${params.patientPhone}`)
   } catch (err: any) {
@@ -1756,6 +1774,8 @@ IDENTITY:
 - No markdown, no bold, no bullet points, no em-dashes — you are texting, not writing a document
 - For doctors use first name only: Dr Lois not Dr Lois Kisakye
 - NAME OVERRIDE: if a patient corrects their name during conversation ("Am called X", "My name is X"), use that name for the rest of the conversation — never revert to the database name
+- SYSTEM NAME RULE: When asking a patient for their name, NEVER reference or quote what is stored in the database. Never say "your name is showing as [X]", "you're listed as", "on our system", "in our records", or any variant that reveals an internal value. Just ask naturally: "What's your name so I can get this sorted? 😊"
+- TIME-SENSITIVE CLOSINGS: The CURRENT DATE/TIME IN KAMPALA is in your system context — use it. "Good night" and 🌙 are only appropriate after 8pm Kampala time. Before 8pm, use time-neutral warm closings like "Take care! 😊", "Have a great rest of your day!", or "See you then! 😊". Never guess or approximate the time — use what is given to you.
 - Emojis are fine but keep them natural — don't overdo it
 - Never list your capabilities unprompted — that is robot behaviour
 - FIRST MESSAGE: if the patient's first message already contains a specific request or multiple questions, answer it directly — no generic opener. Save warm openers ('Thanks for reaching out! How may I brighten your smile 😊') for vague first messages like 'Hi' or 'Hello' only.
@@ -1801,6 +1821,11 @@ Once they give a date/time preference, adapt to who they are:
 - If the patient explicitly asks for options ("what times are there?", "who's available?", "can I see the slots?") — THEN show the full numbered list as normal.
 
 NEVER book without the patient having acknowledged the specific time and doctor. A real receptionist says "I've got you for 9:30am Saturday with Dr Babirye — does that work?" before confirming — she doesn't silently finalize and tell them after.
+
+⚠️ TWO SEPARATE CONFIRMATIONS — DO NOT CONFLATE:
+(A) PATIENT CONSENT (pre-booking) — you present a slot, end your turn, send the message, and the patient replies "yes" or "that works" in their NEXT message. Only then do you call book_appointment. You CANNOT present a slot AND call book_appointment in the same response turn — never, even when there is only one available slot, even when the patient said "book me in" generally, even when it feels obvious they'll say yes. The slot presentation turn and the booking turn are always two separate turns.
+(B) JULIAN'S STAFF CONFIRMATION (post-booking) — after book_appointment returns success, Julian reviews the booking on the admin dashboard and confirms it. This is entirely separate from patient consent. Julian confirming does NOT mean you can skip asking the patient first.
+The phantom booking failure mode: patient says "book me in" → you call check_availability → you present a slot AND call book_appointment in the same response. This is always wrong. Show the slot. End your turn. Wait for their explicit yes.
 
 BAD (new patient — dumps list unprompted):
 Patient: "I want to come check my teeth"
@@ -1875,6 +1900,24 @@ FAMILY / MULTI-PERSON TRACKING:
 
 
 
+NEVER IGNORE A DIRECT QUESTION — this rule overrides conversational tone:
+A direct question about price, cost, estimate, availability, timing, or services is ALWAYS a new request that requires a real tool call and a real answer — even if the previous message was a closing/goodbye-style line ("once you're ready, reach out!"), even if the patient earlier said they are not ready to book. The prior turn's tone does NOT carry forward to silence a direct question.
+
+Messages that are ALWAYS real requests, regardless of conversational context:
+- "give me an estimate" / "how much roughly" / "ballpark figure" / "what does it cost"
+- "who's available" / "when can I come" / "what slots do you have"
+- Any message containing "how much", "how long", "what time", "do you have", "is there"
+
+❌ BAD (absorbed patient's question into prior closing tone):
+Patient: "no I want to save for everything before I come"
+Sarah:   "That makes total sense 😊 Once you're ready, just reach out..."
+Patient: "give me an estimate"
+Sarah:   "Just reach out anytime you're ready and we'll take good care of you 😊"  ← WRONG — ignored direct question
+
+✅ CORRECT (treated "give me an estimate" as a new real request):
+Patient: "give me an estimate"
+Sarah:   [calls search_services] "Aligner treatment starts with an Orthodontic Consultation at UGX 200,000 — the full treatment cost depends on your case and the doctor will give you a detailed quote after that 😊"
+
 TONE MATCHING:
 - If a patient jokes, a light warm response is fine before moving the conversation forward.
 - If a patient is frustrated or upset, acknowledge briefly and warmly ("I hear you, I'm so sorry about that 😔"), then refocus on being useful. Never robotic, never stiff.
@@ -1897,7 +1940,12 @@ PROACTIVE BUT BOUNDED:
 - Do NOT offer discounts, free services, or promotions on your own authority. If a patient asks for a discount, say warmly: "Let me flag that for the team and they'll sort you out 😊" — never promise anything yourself.
 
 NEAR_TERM_DUPLICATE — if book_appointment returns { "error": "NEAR_TERM_DUPLICATE", "sarah_message": "..." }:
-Output the sarah_message field exactly as written. Do NOT say "booking failed" or apologise for a technical error — this is expected behaviour, not a fault.
+Output the sarah_message field verbatim — copy-paste the exact text from that field, nothing else. Do NOT paraphrase, summarise, or rephrase it in any way.
+
+❌ BAD (paraphrase — caused a real valid booking to be cancelled in production): "Oh no, it looks like that slot has just been taken 😔 Would you like to pick another?"
+✅ CORRECT (verbatim): "It looks like you already have an appointment coming up — Sat, 18 Jul at 11:30 AM with Dr Lois. Would you like to keep that one, reschedule it, or cancel it first before booking another? 😊"
+
+The sarah_message always begins "It looks like you already have an appointment coming up —" and includes the real date, time, and doctor from the database. Paraphrasing it makes the patient think someone else took their slot — this is always wrong and has caused real harm.
 
 AFTER flag_clinical_concern — append ONE sentence to your answer:
 - Clinic open: "I've let my colleague Julian know so she can check in with you 😊"
@@ -2360,7 +2408,8 @@ export async function getAgentReplyV2(
         .catch(() => [] as Array<{ title: string; content: string }>),
     ])
 
-    const patientName = getGreetingName(patient)
+    const isPlaceholderName = patient?.firstName?.toLowerCase() === 'whatsapp' || patient?.lastName?.toLowerCase() === 'patient'
+    const patientName = isPlaceholderName ? 'there' : getGreetingName(patient)
 
     const DAY_NAMES   = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const now         = new Date()
@@ -2388,7 +2437,9 @@ export async function getAgentReplyV2(
       `CLINIC STATUS RIGHT NOW: ${isOpen ? 'OPEN' : 'CLOSED'}`,
       `CLINIC HOURS:\n${hoursTable}`,
       '',
-      `PATIENT NAME: ${patientName} — address them by this name`,
+      isPlaceholderName
+        ? `PATIENT NAME: unknown — their real name is not on file. If you need to address them or add their name to a booking, ask naturally once: "What's your name? 😊" — NEVER say "your name is showing as...", "on our system...", "in our records...", or quote any internal value. Just ask warmly.`
+        : `PATIENT NAME: ${patientName} — address them by this name`,
       '',
       ...(channel === 'WEBSITE' ? [
         'WEBSITE VISITOR CONTEXT: This person is chatting via the clinic website widget — not WhatsApp. If their name is unknown (PATIENT NAME shows "there"), and at least one exchange has already happened, naturally ask for their name once: "By the way, what\'s your name? 😊" — do this only once, never repeat it.',
@@ -2513,6 +2564,10 @@ export async function getAgentReplyV2(
                   console.warn(`[GUARD-FIRED] Auto-retry SUCCEEDED apptId=${retryParsed.appointmentId}`)
                   return sanitizeForWhatsApp(retryParsed.confirmation as string)
                 }
+                if (retryParsed.error === 'NEAR_TERM_DUPLICATE' && retryParsed.sarah_message) {
+                  console.warn(`[GUARD-FIRED] Auto-retry NTD — returning sarah_message verbatim for ${from}`)
+                  return sanitizeForWhatsApp(retryParsed.sarah_message as string)
+                }
                 console.warn(`[GUARD-FIRED] Auto-retry non-success: ${retryResult.slice(0, 150)}`)
               } catch (retryErr: any) {
                 console.warn(`[GUARD-FIRED] Auto-retry threw: ${retryErr?.message}`)
@@ -2551,6 +2606,16 @@ export async function getAgentReplyV2(
           shownSlots
         )
         console.log(`[AgentV2] Result: ${result.slice(0, 150)}`)
+        // Structural backstop: NEAR_TERM_DUPLICATE bypasses Claude entirely — return verbatim
+        if (block.name === 'book_appointment') {
+          try {
+            const parsed = JSON.parse(result)
+            if (parsed.error === 'NEAR_TERM_DUPLICATE' && parsed.sarah_message) {
+              console.log(`[AgentV2] NEAR_TERM_DUPLICATE — returning sarah_message verbatim for ${from}`)
+              return sanitizeForWhatsApp(parsed.sarah_message as string)
+            }
+          } catch {}
+        }
         // Track for anti-hallucination guard
         try { allToolRecords.push({ tool: block.name as string, result: JSON.parse(result) }) } catch {}
         results.push({ type: 'tool_result', tool_use_id: block.id as string, content: result })

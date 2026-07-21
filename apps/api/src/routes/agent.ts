@@ -370,34 +370,68 @@ router.get('/memory/:patient_id', requireAuth, async (req, res) => {
 // ESCALATIONS
 // ════════════════════════════════════════════
 
-// GET /agent/escalations
+// GET /agent/escalations — list with patient name, status filter
 router.get('/escalations', requireAuth, async (req, res) => {
   try {
-    const { status = 'PENDING' } = req.query
-    const escalations = await prisma.escalation.findMany({
-      where: { status: status as string },
+    const { status } = req.query
+    const where: any = {}
+    if (status && status !== 'all') where.status = String(status).toUpperCase()
+
+    const rows = await prisma.escalation.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: 200,
     })
-    res.json({ escalations })
+
+    const patientIds = [...new Set(rows.map(r => r.patientId).filter(Boolean))] as string[]
+    const patients   = patientIds.length
+      ? await prisma.patient.findMany({
+          where: { id: { in: patientIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : []
+    const patMap = Object.fromEntries(patients.map(p => [p.id, p]))
+
+    res.json(rows.map(r => ({
+      ...r,
+      patientName: r.patientId && patMap[r.patientId]
+        ? `${patMap[r.patientId].firstName} ${patMap[r.patientId].lastName}`
+        : null,
+    })))
   } catch (err: any) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// PUT /agent/escalations/:id/resolve
-router.put('/escalations/:id/resolve', requireAuth, async (req, res) => {
+// POST /agent/escalations/:id/resolve
+router.post('/escalations/:id/resolve', requireAuth, async (req, res) => {
   try {
-    const user = req.user!
-    const escalation = await prisma.escalation.update({
+    const user    = (req as any).user
+    const updated = await prisma.escalation.update({
       where: { id: req.params.id },
-      data: {
-        status:    'RESOLVED',
-        handledBy: user.id,
-        handledAt: new Date(),
-      },
+      data:  { status: 'RESOLVED', handledBy: user?.email || user?.id || 'admin', handledAt: new Date() },
     })
-    res.json({ success: true, escalation })
+    res.json(updated)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /agent/escalations/:id/message — send WhatsApp to patient or staff
+router.post('/escalations/:id/message', requireAuth, async (req, res) => {
+  try {
+    const { to, message } = req.body as { to: string; message: string }
+    if (!to || !message?.trim()) return res.status(400).json({ error: 'to and message required' })
+
+    const esc = await prisma.escalation.findUnique({ where: { id: req.params.id } })
+    if (!esc) return res.status(404).json({ error: 'Escalation not found' })
+
+    const toPhone = to === 'patient' ? esc.phoneNumber
+                  : to === 'julian'  ? (process.env.STAFF_WHATSAPP_NUMBER || '+256394836298')
+                  : to
+
+    await sendWhatsAppMessage(toPhone, message.trim())
+    res.json({ success: true, sentTo: toPhone })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
   }

@@ -42,6 +42,7 @@ const pageTitles: Record<string, string> = {
   '/reports/case-acceptance':     'Case Acceptance Rate',
   '/ai-suite':                    'Agent Control',
   '/ai-suite/inbox':              'Inbox',
+  '/ai-suite/escalations':       'Escalations',
   '/ai-suite/calls':              'Call Logs',
   '/ai-suite/voice-studio':       'Voice Studio',
   '/ai-suite/knowledge-base':     'Knowledge Base',

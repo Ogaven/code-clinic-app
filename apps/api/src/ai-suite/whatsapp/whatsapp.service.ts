@@ -352,15 +352,18 @@ export async function processInbound(from: string, text: string, wamid: string):
     }
 
     // ── 8. After-hours follow-up queue ───────────────────────────────────────
-    // If clinic is closed and this is a known patient, queue a morning check-in
-    // so the team can proactively follow up when they open at 8am EAT.
+    // Short messages (< 5 words) get MISSED_CALL_FOLLOWUP; longer ones get
+    // MORNING_FOLLOWUP. Only one entry per patient — checked across both modes
+    // so rapid repeat messages can never produce duplicate morning send-outs.
     if (!isClinicOpen() && patient) {
+      const wordCount = text.trim().split(/\s+/).filter(Boolean).length
+      const mode      = wordCount < 5 ? 'MISSED_CALL_FOLLOWUP' : 'MORNING_FOLLOWUP'
       try {
         const existing = await prisma.outboundQueue.findFirst({
           where: {
-            patientId:  patient.id,
-            agentMode:  'MORNING_FOLLOWUP',
-            status:     'PENDING',
+            patientId:    patient.id,
+            agentMode:    { in: ['MORNING_FOLLOWUP', 'MISSED_CALL_FOLLOWUP'] },
+            status:       'PENDING',
             scheduledFor: { gt: new Date() },
           },
         })
@@ -369,8 +372,10 @@ export async function processInbound(from: string, text: string, wamid: string):
             data: {
               patientId:    patient.id,
               phoneNumber:  from,
-              agentMode:    'MORNING_FOLLOWUP',
-              reason:       `After-hours message: ${text.slice(0, 200)}`,
+              agentMode:    mode,
+              reason:       mode === 'MISSED_CALL_FOLLOWUP'
+                ? `Short after-hours message: "${text.slice(0, 100)}"`
+                : `After-hours message: ${text.slice(0, 200)}`,
               scheduledFor: getNext8amUTC(),
               status:       'PENDING',
             },
@@ -378,36 +383,6 @@ export async function processInbound(from: string, text: string, wamid: string):
         }
       } catch (err: any) {
         console.error('[WhatsApp] After-hours queue error:', err.message)
-      }
-
-      // If message is very short (< 5 words) it may indicate a missed-call attempt —
-      // queue a dedicated missed_call_followup template for morning delivery.
-      const wordCount = text.trim().split(/\s+/).filter(Boolean).length
-      if (wordCount < 5) {
-        try {
-          const existingMissed = await prisma.outboundQueue.findFirst({
-            where: {
-              patientId:  patient.id,
-              agentMode:  'MISSED_CALL_FOLLOWUP',
-              status:     'PENDING',
-              scheduledFor: { gt: new Date() },
-            },
-          })
-          if (!existingMissed) {
-            await prisma.outboundQueue.create({
-              data: {
-                patientId:    patient.id,
-                phoneNumber:  from,
-                agentMode:    'MISSED_CALL_FOLLOWUP',
-                reason:       `Short after-hours message: "${text.slice(0, 100)}"`,
-                scheduledFor: getNext8amUTC(),
-                status:       'PENDING',
-              },
-            })
-          }
-        } catch (err: any) {
-          console.error('[WhatsApp] Missed call queue error:', err.message)
-        }
       }
     }
 
@@ -470,8 +445,10 @@ export async function notifyReceptionistUnreachable(patientName: string, phone: 
   }
 }
 
-// Send a WhatsApp template message (for approved AT templates).
-// Falls back silently — callers should send plain text on catch if needed.
+// Send a WhatsApp template message via AT's chat API.
+// Uses Meta-native template body format sent directly (bypasses SDK Joi validation which
+// only accepts AT raindrop IDs, not Meta WABA template names).
+// Callers must provide their own freeform fallback on throw.
 export async function sendWhatsAppTemplate(
   to: string,
   templateName: string,
@@ -483,27 +460,46 @@ export async function sendWhatsAppTemplate(
 
   if (!apiKey || !username || !waNumber) {
     console.error('[WhatsApp] Missing AT credentials for template send')
-    return
+    throw new Error('Missing AT credentials')
   }
 
   const normalizedTo = formatUgandaPhone(to)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const AfricasTalking = require('africastalking')
-  const at = AfricasTalking({ apiKey, username })
-  await at.WHATSAPP.sendMessage({
+  const axios = require('axios')
+
+  // Direct HTTP to AT chat endpoint with Meta-native template format.
+  // The AT SDK v0.8 only supports raindrop IDs (internal AT IDs) which we don't have.
+  // Our templates were registered in Meta Business Manager, not AT's raindrop system.
+  // This direct call tests whether AT's backend accepts the WABA template name natively.
+  const payload = {
     waNumber,
     phoneNumber: normalizedTo,
+    username,
     body: {
       type: 'template',
       template: {
-        name: templateName,
-        language: { code: 'en' },
-        components: [{
-          type: 'body',
-          parameters: params.map(p => ({ type: 'text', text: p })),
-        }],
+        name:       templateName,
+        language:   { code: 'en' },
+        components: [
+          {
+            type:       'body',
+            parameters: params.map(p => ({ type: 'text', text: String(p) })),
+          },
+        ],
       },
     },
-  })
-  console.log(`[WhatsApp] Template '${templateName}' sent to ${to}`)
+  }
+
+  try {
+    const resp = await axios.post(
+      'https://chat.africastalking.com/whatsapp/message/send',
+      payload,
+      { headers: { apiKey, Accept: 'application/json', 'Content-Type': 'application/json' } },
+    )
+    console.log(`[WhatsApp] Template '${templateName}' sent to ${to}:`, JSON.stringify(resp.data))
+  } catch (err: any) {
+    const detail = err?.response?.data ?? err?.message ?? 'unknown'
+    console.error(`[WhatsApp] Template '${templateName}' failed:`, JSON.stringify(detail))
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
+  }
 }

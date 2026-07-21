@@ -28,7 +28,7 @@ async function notifyStaff(
   const doc  = `Dr. ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
   const svc  = appt.service.name
   const date = appt.startAt.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
-  const time = appt.startAt.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+  const time = appt.startAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).toLowerCase()
   const name = `${toProper(p.firstName)} ${toProper(p.lastName)}`.trim()
 
   let waMsg = '', notifTitle = '', notifBody = ''
@@ -54,7 +54,7 @@ async function notifyStaff(
     })))
   } catch (e: any) { console.warn('[Staff notif] in-app failed:', e.message) }
 
-  // WhatsApp to clinic main number — template if approved, freeform fallback until then
+  // WhatsApp to clinic main number — template preferred, freeform fallback on failure
   const bookingTemplate = process.env.WA_TEMPLATE_STAFF_BOOKING_NAME
   if (bookingTemplate) {
     const typeLabel = type === 'booked' ? 'New booking' : type === 'rescheduled' ? 'Rescheduled' : 'Cancelled'
@@ -63,7 +63,8 @@ async function notifyStaff(
       : type === 'rescheduled'
       ? `${name} — new time ${date} at ${time}`
       : `${name} — ${svc} on ${date}`
-    sendWhatsAppTemplate(STAFF_NUMBER, bookingTemplate, [typeLabel, details]).catch(() => {})
+    sendWhatsAppTemplate(STAFF_NUMBER, bookingTemplate, [typeLabel, details])
+      .catch(() => sendWhatsAppMessage(STAFF_NUMBER, waMsg).catch(() => {}))
   } else {
     sendWhatsAppMessage(STAFF_NUMBER, waMsg).catch(() => {})
   }

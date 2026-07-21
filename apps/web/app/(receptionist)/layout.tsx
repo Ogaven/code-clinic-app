@@ -31,6 +31,7 @@ const navTop: NavItem[] = [
       { label: 'Call Logs',              href: '/receptionist/ai-suite/calls',                  icon: Phone,        permKey: 'callLogs' },
       { label: 'Voice Studio',           href: '/receptionist/ai-suite/voice-studio',           icon: Mic,          permKey: 'voiceStudio' },
       { label: 'Knowledge Base',         href: '/receptionist/ai-suite/knowledge',              icon: BookOpen,     permKey: 'knowledgeBase' },
+      { label: 'Escalations',             href: '/receptionist/ai-suite/escalations',            icon: AlertCircle,  permKey: 'aiSuiteInbox' },
       { label: 'Follow-up Dashboard',    href: '/receptionist/ai-suite/followup-dashboard',     icon: ListChecks,   permKey: 'aiSuiteFollowup' },
       { label: 'Confirmation Dashboard', href: '/receptionist/ai-suite/confirmation-dashboard', icon: CalendarDays, permKey: 'aiSuiteConfirmation' },
       { label: 'Settings',               href: '/receptionist/ai-suite/settings',               icon: Settings },

@@ -90,16 +90,27 @@ export async function notifyJulian(patientPhone: string, patientMessage: string)
     // Dynamic import avoids circular dependency (whatsapp.service → escalation → whatsapp.service)
     const { sendWhatsAppMessage, sendWhatsAppTemplate } = await import('../../../ai-suite/whatsapp/whatsapp.service')
     const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
+    const freeformBody =
+      `🚨 Code Clinic Alert — Patient needs your attention.\n\n` +
+      `📞 Phone: ${patientPhone}\n` +
+      `💬 Message: "${patientMessage.slice(0, 200)}"\n\n` +
+      `Please check the AI Suite inbox and follow up.`
+
     if (templateName) {
-      await sendWhatsAppTemplate(staffPhone, templateName, [patientPhone, patientPhone, patientMessage.slice(0, 200)])
-    } else {
-      const body =
-        `🚨 A patient on WhatsApp needs your attention.\n\n` +
-        `📞 Phone: ${patientPhone}\n` +
-        `💬 Message: "${patientMessage.slice(0, 200)}"\n\n` +
-        `Please check the inbox and follow up.`
-      await sendWhatsAppMessage(staffPhone, body)
+      const localPhone = patientPhone.replace(/^\+256/, '0')
+      const patient = await prisma.patient.findFirst({
+        where: { OR: [{ phone: patientPhone }, { phone: localPhone }] },
+        select: { firstName: true, lastName: true },
+      })
+      const patientName = patient ? `${patient.firstName} ${patient.lastName}` : patientPhone
+      try {
+        await sendWhatsAppTemplate(staffPhone, templateName, [patientName, patientPhone, patientMessage.slice(0, 200)])
+        return
+      } catch (tmplErr: any) {
+        console.warn('[Escalation] Template failed, falling back to freeform:', tmplErr.message)
+      }
     }
+    await sendWhatsAppMessage(staffPhone, freeformBody)
     console.log(`[Escalation] Staff notified about ${patientPhone}`)
   } catch (err: any) {
     console.error('[Escalation] Failed to notify staff:', err.message)
