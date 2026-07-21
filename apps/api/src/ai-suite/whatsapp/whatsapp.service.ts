@@ -445,9 +445,9 @@ export async function notifyReceptionistUnreachable(patientName: string, phone: 
   }
 }
 
-// Send a WhatsApp template message via AT's chat API.
-// Uses Meta-native template body format sent directly (bypasses SDK Joi validation which
-// only accepts AT raindrop IDs, not Meta WABA template names).
+// Send a WhatsApp template message via AT's raindrop system.
+// Templates must be registered with AT first (via AT's /whatsapp/template/send API) to get
+// an ATRid, then approved by Meta before they can be sent. Set ATRid env vars once obtained.
 // Callers must provide their own freeform fallback on throw.
 export async function sendWhatsAppTemplate(
   to: string,
@@ -459,47 +459,47 @@ export async function sendWhatsAppTemplate(
   const waNumber = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
 
   if (!apiKey || !username || !waNumber) {
-    console.error('[WhatsApp] Missing AT credentials for template send')
     throw new Error('Missing AT credentials')
+  }
+
+  // Map template names → ATRids (AT's internal raindrop IDs, obtained by registering
+  // each template via AT's API). ATRid env vars are set once AT approves the submission.
+  const atridByName: Record<string, string | undefined> = {
+    [process.env.WA_TEMPLATE_REMINDER_NAME         || 'cc_appointment_reminder']:    process.env.WA_TEMPLATE_REMINDER_ATRID,
+    [process.env.WA_TEMPLATE_STAFF_ALERT_NAME      || 'cc_staff_concern']:            process.env.WA_TEMPLATE_STAFF_ALERT_ATRID,
+    [process.env.WA_TEMPLATE_STAFF_BOOKING_NAME    || 'cc_staff_booking_update']:     process.env.WA_TEMPLATE_STAFF_BOOKING_ATRID,
+    [process.env.WA_TEMPLATE_BOOKING_CONFIRM_NAME  || 'cc_booking_confirmation']:     process.env.WA_TEMPLATE_BOOKING_ATRID,
+    [process.env.WA_TEMPLATE_POST_APPT_NAME        || 'cc_post_appointment_followup']: process.env.WA_TEMPLATE_POST_APPT_ATRID,
+    [process.env.WA_TEMPLATE_MISSED_CALL_NAME      || 'cc_missed_call_followup']:     process.env.WA_TEMPLATE_MISSED_CALL_ATRID,
+    [process.env.WA_TEMPLATE_REACTIVATION_NAME     || 'cc_patient_reactivation']:     process.env.WA_TEMPLATE_REACTIVATION_ATRID,
+  }
+
+  const atrid = atridByName[templateName]
+  if (!atrid) {
+    throw new Error(`No ATRid for template '${templateName}' — register via AT template API first`)
   }
 
   const normalizedTo = formatUgandaPhone(to)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const axios = require('axios')
-
-  // Direct HTTP to AT chat endpoint with Meta-native template format.
-  // The AT SDK v0.8 only supports raindrop IDs (internal AT IDs) which we don't have.
-  // Our templates were registered in Meta Business Manager, not AT's raindrop system.
-  // This direct call tests whether AT's backend accepts the WABA template name natively.
-  const payload = {
-    waNumber,
-    phoneNumber: normalizedTo,
-    username,
-    body: {
-      type: 'template',
-      template: {
-        name:       templateName,
-        language:   { code: 'en' },
-        components: [
-          {
-            type:       'body',
-            parameters: params.map(p => ({ type: 'text', text: String(p) })),
-          },
-        ],
-      },
-    },
-  }
+  const AfricasTalking = require('africastalking')
+  const at = AfricasTalking({ apiKey, username })
 
   try {
-    const resp = await axios.post(
-      'https://chat.africastalking.com/whatsapp/message/send',
-      payload,
-      { headers: { apiKey, Accept: 'application/json', 'Content-Type': 'application/json' } },
-    )
-    console.log(`[WhatsApp] Template '${templateName}' sent to ${to}:`, JSON.stringify(resp.data))
+    const result = await at.WHATSAPP.sendMessage({
+      waNumber:    `+${waNumber.replace(/^\+/, '')}`,
+      phoneNumber: normalizedTo,
+      body: {
+        templateId:  atrid,
+        headerValue: ' ',
+        bodyValues:  params,
+      },
+    })
+    console.log(`[WhatsApp] Template '${templateName}' (${atrid}) sent to ${to}:`, JSON.stringify(result))
   } catch (err: any) {
-    const detail = err?.response?.data ?? err?.message ?? 'unknown'
-    console.error(`[WhatsApp] Template '${templateName}' failed:`, JSON.stringify(detail))
-    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
+    const detail = typeof err === 'string' ? err
+      : err?.message ? err.message
+      : JSON.stringify(err)
+    console.error(`[WhatsApp] Template '${templateName}' failed:`, detail)
+    throw new Error(detail)
   }
 }
