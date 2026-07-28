@@ -4,11 +4,37 @@ import { processInbound } from './whatsapp.service'
 // into a single processInbound call. Prevents concurrent agent replies when
 // a patient sends several messages in quick succession.
 //
-// Safe for single-instance (PM2 fork mode) — uses in-memory Map.
+// Also provides wamid-level idempotency: the same Meta wamid can arrive via
+// BOTH the Africa's Talking webhook AND the WhatsApp Cloud API webhook for
+// the same number. Deduplicating on wamid prevents double agent replies.
+//
+// Safe for single-instance (PM2 fork mode) — uses in-memory Maps.
 // If the app ever runs in cluster mode, replace with Redis-backed state.
 
-const DEBOUNCE_MS = 1500   // wait this long after the last message
-const MAX_WAIT_MS = 8000   // flush unconditionally after this long
+const DEBOUNCE_MS  = 1500    // wait this long after the last message
+const MAX_WAIT_MS  = 8000    // flush unconditionally after this long
+const WAMID_TTL_MS = 60_000  // ignore duplicate wamids within this window
+
+// ── Wamid dedup cache ─────────────────────────────────────────────────────────
+const seenWamids = new Map<string, number>() // wamid → expiry timestamp
+
+function isWamidSeen(wamid: string): boolean {
+  if (!wamid) return false
+  const exp = seenWamids.get(wamid)
+  if (exp === undefined) return false
+  if (Date.now() > exp) { seenWamids.delete(wamid); return false }
+  return true
+}
+
+function markWamidSeen(wamid: string): void {
+  if (!wamid) return
+  seenWamids.set(wamid, Date.now() + WAMID_TTL_MS)
+  // Periodically prune expired entries so the Map doesn't grow unboundedly
+  if (seenWamids.size > 500) {
+    const now = Date.now()
+    for (const [k, exp] of seenWamids) { if (now > exp) seenWamids.delete(k) }
+  }
+}
 
 interface BufferEntry {
   messages:       Array<{ text: string; wamid: string }>
@@ -45,6 +71,13 @@ function flush(from: string): void {
 }
 
 export function enqueueMessage(from: string, text: string, wamid: string, phoneNumberId?: string): void {
+  // Deduplicate: same wamid arriving from both AT and Cloud API webhooks must only process once
+  if (isWamidSeen(wamid)) {
+    console.log(`[MessageBuffer] Duplicate wamid ...${wamid.slice(-16)} from ${from} — skipping (dual-webhook dedup)`)
+    return
+  }
+  markWamidSeen(wamid)
+
   const existing = buffer.get(from)
 
   if (existing) {

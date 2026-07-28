@@ -3,7 +3,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import { requireAuth } from '../middleware/auth'
-import { processInbound, sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { enqueueMessage } from '../ai-suite/whatsapp/message-buffer'
 import { handleStaffReply, STAFF_NUMBER, type AlertMeta } from '../ai-suite/whatsapp/staff-relay.service'
 import { handleInboundCall, triggerOutboundCall, handleRecordingComplete } from '../services/agent/channels/voice-channel'
 import { runAgent } from '../services/agent/unified-agent'
@@ -73,7 +74,9 @@ router.post('/whatsapp/webhook', async (req, res) => {
     const rawFrom   = body.from    || body.data?.from    || body.phoneNumber
     const rawText   = body.text    || body.data?.text    || body.body?.message || body.message
     const mediaType = body.messageType || body.data?.messageType || ''
-    const msgId     = body.id      || body.messageId     || body.data?.id     || ''
+    // gatewayId is the actual Meta wamid — use it for dedup so AT and Cloud API
+    // webhooks for the same message collapse to one processing call in the buffer.
+    const msgId     = body.gatewayId || body.id || body.messageId || body.data?.id || ''
 
     // Neutral fallbacks — used only when Claude processing fails
     const MEDIA_DESCRIPTIONS: Record<string, string> = {
@@ -241,7 +244,9 @@ router.post('/whatsapp/webhook', async (req, res) => {
       return
     }
 
-    await processInbound(from, text, msgId)
+    // Route through the same buffer as the Cloud API webhook so wamid-level
+    // dedup fires when both AT and Cloud API deliver the same message.
+    enqueueMessage(from, text, msgId)
   } catch (err: any) {
     console.error('[WEBHOOK] WhatsApp error:', err.message)
   }
