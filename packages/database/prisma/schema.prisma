@@ -852,16 +852,18 @@ model AppSetting {
 // ─────────────────────────────────────────────
 
 model AiConversation {
-  id            String   @id @default(cuid())
-  patientId     String?
-  patient       Patient? @relation(fields: [patientId], references: [id])
-  channel       String             // WHATSAPP | SMS | VOICE | WEBSITE | FACEBOOK | INSTAGRAM
-  phoneNumber   String
-  waDisplayName String?            // WhatsApp display name from Meta webhook contacts field
-  status        ConversationStatus @default(ACTIVE)
-  agentEnabled  Boolean            @default(true)
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  id                String   @id @default(cuid())
+  patientId         String?
+  patient           Patient? @relation(fields: [patientId], references: [id])
+  channel           String             // WHATSAPP | SMS | VOICE | WEBSITE | FACEBOOK | INSTAGRAM
+  phoneNumber       String
+  waDisplayName     String?            // WhatsApp display name from Meta webhook contacts field
+  displayName       String?            // Real name for FB/IG users (FB DM: from Graph API; comments: from.name in payload)
+  profilePictureUrl String?            // Profile picture URL — available for Facebook DMs only; null for comment users (API restriction)
+  status            ConversationStatus @default(ACTIVE)
+  agentEnabled      Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   messages     AiMessage[]
 
@@ -914,6 +916,10 @@ model AiAgentConfig {
   smsApiKey     String?
   smsUsername   String?
   smsSenderId   String?
+  fbDmsEnabled        Boolean  @default(true)
+  igDmsEnabled        Boolean  @default(true)
+  fbCommentsEnabled   Boolean  @default(true)
+  igCommentsEnabled   Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

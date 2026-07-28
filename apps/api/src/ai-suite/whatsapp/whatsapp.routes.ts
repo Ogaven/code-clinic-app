@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
-import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import { processInbound, sendWhatsAppMessage } from './whatsapp.service'
+import { enqueueMessage } from './message-buffer'
 import { handleStaffReply, STAFF_NUMBER, type AlertMeta } from './staff-relay.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
@@ -79,8 +79,9 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
     for (const entry of body.entry ?? []) {
       for (const change of entry.changes ?? []) {
-        const messages     = change.value?.messages
+        const messages      = change.value?.messages
         const waDisplayName = change.value?.contacts?.[0]?.profile?.name ?? null
+        const phoneNumberId = change.value?.metadata?.phone_number_id as string | undefined
         if (!messages?.length) continue
 
         const seenFroms = new Set<string>()
@@ -166,7 +167,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
               continue
             }
 
-            await processInbound(from, text, msg.id)
+            enqueueMessage(from, text, msg.id, phoneNumberId)
             continue
           }
 
@@ -194,7 +195,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
             continue
           }
 
-          // ── Audio / Voice note → OGG→MP3 via FFmpeg → Claude → Sarah flow ────
+          // ── Audio / Voice note → Whisper transcription → Sarah flow ──────────
           if (msg.type === 'audio' && msg.audio?.id) {
             let handled = false
             try {
@@ -202,39 +203,33 @@ router.post('/webhook', async (req: Request, res: Response) => {
               if (media) {
                 const ts      = Date.now()
                 const oggPath = `/tmp/voice-${ts}.ogg`
-                const mp3Path = `/tmp/voice-${ts}.mp3`
                 try {
                   fs.writeFileSync(oggPath, Buffer.from(media.buffer))
-                  execFileSync('ffmpeg', ['-y', '-i', oggPath, mp3Path], { stdio: 'ignore' })
-                  const mp3Buffer = fs.readFileSync(mp3Path)
-                  const base64    = mp3Buffer.toString('base64')
 
-                  const audioRes = await anthropic.messages.create({
-                    model:      'claude-sonnet-4-6',
-                    max_tokens: 300,
-                    system:     'You are a transcription assistant. Transcribe the audio exactly as spoken. Return only the transcribed text with no preamble.',
-                    messages: [{
-                      role:    'user',
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      content: [{ type: 'document', source: { type: 'base64', media_type: 'audio/mpeg', data: base64 } } as any],
-                    }],
+                  const audioBlob = new Blob([fs.readFileSync(oggPath)], { type: 'audio/ogg' })
+                  const formData  = new FormData()
+                  formData.append('file', audioBlob, 'voice.ogg')
+                  formData.append('model', 'whisper-1')
+
+                  const whisperRes    = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                    method:  'POST',
+                    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+                    body:    formData,
                   })
-
-                  const block         = audioRes.content[0]
-                  const transcription = block?.type === 'text' ? block.text.trim() : null
+                  const result        = await whisperRes.json() as { text?: string; error?: unknown }
+                  const transcription = typeof result.text === 'string' ? result.text.trim() : null
 
                   if (transcription) {
-                    console.log('[Claude Audio] Transcribed:', transcription.slice(0, 80))
-                    await processInbound(from, `[Voice note transcribed]: ${transcription}`, msg.id)
+                    console.log('[Whisper] Transcribed:', transcription.slice(0, 80))
+                    enqueueMessage(from, `[Voice note]: ${transcription}`, msg.id)
                     handled = true
                   }
                 } finally {
                   try { fs.unlinkSync(oggPath) } catch {}
-                  try { fs.unlinkSync(mp3Path) } catch {}
                 }
               }
             } catch (err) {
-              console.warn('[Claude Audio] Transcription failed:', err)
+              console.warn('[Whisper] Transcription failed:', err)
             }
 
             if (!handled) {
@@ -416,6 +411,7 @@ interface WhatsAppWebhookPayload {
       value: {
         messages?: WhatsAppMessage[]
         contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>
+        metadata?: { phone_number_id?: string; display_phone_number?: string }
       }
       field: string
     }>

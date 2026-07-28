@@ -11,7 +11,10 @@ export async function triggerDebtOutreach(
   balanceAmount: number,
   currency       = 'UGX',
 ): Promise<void> {
-  const patient = await prisma.patient.findUnique({ where: { id: patientId } })
+  const patient = await prisma.patient.findUnique({
+    where:   { id: patientId },
+    include: { guardian: { select: { phone: true } } },
+  })
   if (!patient) throw new Error(`Patient ${patientId} not found`)
 
   // Dedup: skip if messaged in the last 7 days
@@ -50,7 +53,8 @@ export async function triggerDebtOutreach(
   const message =
     `Hi ${patient.firstName} 😊 Hope you're doing well! I'm reaching out from Code Clinic regarding your account. I noticed there's an outstanding balance of ${currency} ${formatted} on your account. I completely understand that things can get busy — no pressure at all. I just wanted to check in and see if there's anything we can do to make it easier for you to sort this out. Feel free to reply and we can figure something out together 🙏`
 
-  await sendWhatsAppMessage(patient.phone, message)
+  const recipientPhone = patient.guardian?.phone || patient.phone
+  await sendWhatsAppMessage(recipientPhone, message)
 
   await prisma.aiScheduledMessage.create({
     data: {

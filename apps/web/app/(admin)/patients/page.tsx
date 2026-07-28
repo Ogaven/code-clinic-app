@@ -75,6 +75,7 @@ const EMPTY_FORM = {
   allergies: '',
   medicalHistory: [] as string[],
   referralSource: '',
+  consentBotComms: true,
 }
 
 // ── Page ─────────────────────────────────────────────────────────
@@ -937,6 +938,21 @@ export default function PatientsPage() {
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Consent */}
+              <div className="pt-1">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={(form as any).consentBotComms}
+                    onChange={e => setForm(f => ({ ...f, consentBotComms: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                  />
+                  <span className="text-xs text-gray-600 dark:text-white/60 leading-relaxed">
+                    Patient consents to receive automated appointment reminders and follow-up messages via WhatsApp. They can opt out at any time by replying STOP.
+                  </span>
+                </label>
               </div>
 
               {formError && <p className="text-xs text-red-500 font-medium">{formError}</p>}

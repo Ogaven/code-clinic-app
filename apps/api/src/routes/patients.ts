@@ -270,6 +270,11 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
         ...(importSource ? { importSource, status: 'ACTIVE' as any } : {}),
       },
     })
+    // Default opt-in for bot communications — fire-and-forget (non-blocking)
+    prisma.patientConsent.create({
+      data: { patientId: patient.id, consentType: 'BOT_COMMUNICATION', granted: req.body.consentBotComms !== false },
+    }).catch((e: Error) => console.error('[PatientCreate] Consent record failed:', e.message))
+
     logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'PATIENT', entityId: patient.id, entityName: `${patient.firstName} ${patient.lastName}`, req })
     res.status(201).json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })
   } catch { res.status(500).json({ error: 'Failed to create patient' }) }
@@ -481,6 +486,7 @@ router.post('/bulk-delete', requireAuth, adminAndReceptionist, async (req, res) 
       // Invoices and payments
       await tx.payment.deleteMany({ where: { patientId: { in: ids } } })
       await tx.invoice.deleteMany({ where: { patientId: { in: ids } } })
+      await tx.patientSponsor.deleteMany({ where: { patientId: { in: ids } } })
       // Patient rows (TreatmentPlan/Note/DentalChart/PatientDocument/PatientActivity have onDelete:Cascade)
       const result = await tx.patient.deleteMany({ where: { id: { in: ids } } })
       deleted = result.count
@@ -736,6 +742,7 @@ router.delete('/:id', requireAuth, adminAndReceptionist, auditLog('patients'), a
       // Invoices and payments
       await tx.payment.deleteMany({ where: { patientId: id } })
       await tx.invoice.deleteMany({ where: { patientId: id } })
+      await tx.patientSponsor.deleteMany({ where: { patientId: id } })
       // Patient row (TreatmentPlan/Note/DentalChart/PatientDocument/PatientActivity have onDelete:Cascade)
       await tx.patient.delete({ where: { id } })
     })

@@ -16,7 +16,7 @@ VISIT CONTEXT:
 GOAL:
 1. Check how the patient is feeling
 2. Ask if they are following any instructions from the doctor
-3. If they report pain or complications → escalate with HIGH urgency immediately
+3. If they report pain or complications → flag for the team with HIGH urgency immediately
 4. Offer to book a follow-up appointment if appropriate
 5. Thank them for choosing Code Clinic
 

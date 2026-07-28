@@ -12,7 +12,7 @@ import {
   ListChecks, Inbox, Phone, Mic, AlertCircle,
   ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
   Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2, ScrollText, UserPlus, Shield,
-  ClipboardList,
+  ClipboardList, BarChart2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -28,6 +28,7 @@ const AI_SUITE_SUB: NavItem[] = [
   { label: 'Knowledge Base',         href: '/ai-suite/knowledge-base',         icon: BookOpen },
   { label: 'Follow-up Dashboard',    href: '/ai-suite/followup-dashboard',     icon: ListChecks },
   { label: 'Confirmation Dashboard', href: '/ai-suite/confirmation-dashboard', icon: CalendarDays },
+  { label: 'Analytics & Costs',       href: '/ai-suite/analytics',              icon: BarChart2 },
   { label: 'Settings',               href: '/ai-suite/settings',               icon: Settings },
 ]
 
@@ -53,6 +54,7 @@ const adminNav: NavGroup[] = [
       { label: 'Payroll',   href: '/accounts/payroll',   icon: CreditCard },
       { label: 'Stocks',    href: '/stocks',             icon: Package },
       { label: 'Reports',   href: '/accounts/reports',   icon: FileBarChart },
+      { label: 'Sponsors',  href: '/admin/sponsors',     icon: Building2 },
     ],
   },
   {

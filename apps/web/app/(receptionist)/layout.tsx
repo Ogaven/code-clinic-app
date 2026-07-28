@@ -34,6 +34,7 @@ const navTop: NavItem[] = [
       { label: 'Escalations',             href: '/receptionist/ai-suite/escalations',            icon: AlertCircle,  permKey: 'aiSuiteInbox' },
       { label: 'Follow-up Dashboard',    href: '/receptionist/ai-suite/followup-dashboard',     icon: ListChecks,   permKey: 'aiSuiteFollowup' },
       { label: 'Confirmation Dashboard', href: '/receptionist/ai-suite/confirmation-dashboard', icon: CalendarDays, permKey: 'aiSuiteConfirmation' },
+      { label: 'Analytics & Costs',       href: '/receptionist/ai-suite/analytics',              icon: BarChart2 },
       { label: 'Settings',               href: '/receptionist/ai-suite/settings',               icon: Settings },
     ],
   },

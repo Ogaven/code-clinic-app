@@ -104,6 +104,51 @@ router.get('/verify', requireAuth, adminOnly, async (req, res) => {
   }
 })
 
+// GET /audit-logs/bot-messages — paginated bot message audit log (admin only)
+router.get('/bot-messages', requireAuth, adminOnly, async (req, res) => {
+  try {
+    const { page = '1', limit = '50', q, status: deliveryStatus, from, to } = req.query as Record<string, string>
+
+    const where: any = {}
+    if (deliveryStatus) where.deliveryStatus = deliveryStatus
+    if (from || to) {
+      where.sentAt = {}
+      if (from) where.sentAt.gte = new Date(from)
+      if (to)   where.sentAt.lte = new Date(new Date(to).setHours(23, 59, 59, 999))
+    }
+    if (q) {
+      where.OR = [
+        { recipientPhone: { contains: q, mode: 'insensitive' } },
+        { templateType:   { contains: q, mode: 'insensitive' } },
+        { messageBody:    { contains: q, mode: 'insensitive' } },
+        { patient: { OR: [
+          { firstName: { contains: q, mode: 'insensitive' } },
+          { lastName:  { contains: q, mode: 'insensitive' } },
+        ]}},
+      ]
+    }
+
+    const pageNum  = Math.max(1, Number(page))
+    const limitNum = Math.min(100, Math.max(1, Number(limit)))
+
+    const [total, logs] = await Promise.all([
+      prisma.botMessageLog.count({ where }),
+      prisma.botMessageLog.findMany({
+        where,
+        include: { patient: { select: { firstName: true, lastName: true, patientNumber: true } } },
+        orderBy: { sentAt: 'desc' },
+        skip:    (pageNum - 1) * limitNum,
+        take:    limitNum,
+      }),
+    ])
+
+    res.json({ logs, total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) })
+  } catch (e) {
+    console.error('[bot-messages]', e)
+    res.status(500).json({ error: 'Failed to fetch bot message logs' })
+  }
+})
+
 // GET /audit-logs/patient/:patientId — per-patient audit trail (admin only)
 router.get('/patient/:patientId', requireAuth, adminOnly, async (req, res) => {
   try {

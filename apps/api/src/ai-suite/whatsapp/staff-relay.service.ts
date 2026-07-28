@@ -91,7 +91,7 @@ export async function handleStaffReply(
     await createAppointment(patient?.id ?? null, slot.doctorId, slot.serviceId, slot.startAt, patientPhone)
     clearBookingState(patientPhone)
 
-    const time        = new Date(slot.startAt).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
+    const time        = new Date(slot.startAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).toLowerCase()
     const drFirstName = slot.doctorName.replace(/^Dr\s+/, '').split(' ')[0]
 
     const patientMsg  = `Good news, ${firstName}! Our team can fit you in TODAY at ${time} with Dr ${drFirstName} 😊 Please come in as soon as you're able. We're at Code Clinic, Kiira Road, Kamwokya 📍`

@@ -254,6 +254,7 @@ When using open_page or highlight_element tools, explain what you're doing in na
       tools: TOOLS,
       messages,
     })
+    console.log(`[ASSISTANT] call1 in=${firstResponse.usage.input_tokens} out=${firstResponse.usage.output_tokens}`)
 
     const clientActions: any[] = []
 
@@ -281,6 +282,7 @@ When using open_page or highlight_element tools, explain what you're doing in na
         tools: TOOLS,
         messages: [...messages, { role: 'assistant', content: firstResponse.content }, toolResults],
       })
+      console.log(`[ASSISTANT] call2 in=${finalResponse.usage.input_tokens} out=${finalResponse.usage.output_tokens}`)
 
       const text = finalResponse.content.find(b => b.type === 'text') as Anthropic.TextBlock | undefined
       res.json({ content: text?.text || 'Done!', clientActions })

@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
-import { resolveOutboundRecipient } from './guardian-routing.service'
+import { resolveOutboundRecipient, alertStaffMinorNoGuardian, hasOutboundConsent } from './guardian-routing.service'
 
 function greet(firstName: string): string {
   const n = firstName?.trim()
@@ -62,6 +62,11 @@ export async function checkAndSendCancelledFollowups(): Promise<void> {
       continue
     }
 
+    if (!(await hasOutboundConsent(patient.id))) {
+      console.log(`[CancelledFollowup] Skipping ${patient.firstName} — opted out of bot communications`)
+      continue
+    }
+
     // Patient already has a future appointment?
     const futureAppt = await prisma.appointment.findFirst({
       where: {
@@ -105,6 +110,7 @@ export async function checkAndSendCancelledFollowups(): Promise<void> {
     const routing = await resolveOutboundRecipient(patient, name)
     if (!routing.ok) {
       console.warn(`[CancelledFollowup] Skipping ${patient.firstName} — minor with no active guardian`)
+      await alertStaffMinorNoGuardian(`${patient.firstName}`, 'cancelled-appointment follow-up')
       continue
     }
     const recipientPhone = routing.recipient.phone

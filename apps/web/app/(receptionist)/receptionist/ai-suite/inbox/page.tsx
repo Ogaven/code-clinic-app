@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import NextImage from 'next/image'
 import {
   Search, Send, Paperclip, Smile, X, Loader2,
   MessageSquare, Instagram, Facebook, Globe, Bot, UserCheck,
@@ -23,18 +24,23 @@ function authH(json = false) {
 type Conversation = {
   id: string; channel: string; phoneNumber: string; status: string
   agentEnabled: boolean; patientName: string | null; waDisplayName: string | null
-  lastMessage: { role: string; content: string; createdAt: string } | null
+  displayName: string | null
+  profilePictureUrl: string | null
+  postCaption: string | null
+  lastMessage: { id: string; role: string; content: string; createdAt: string; metadata?: string | null } | null
   createdAt: string; updatedAt: string
 }
 type Message = { id: string; role: 'USER' | 'AGENT'; content: string; createdAt: string }
 
 // ── Channel config ─────────────────────────────────────────────────────────────
-type ChannelKey = 'WHATSAPP' | 'INSTAGRAM' | 'FACEBOOK' | 'WEBSITE'
-const CHANNELS: { key: ChannelKey; label: string; icon: React.ComponentType<any>; apiVal: string; color: string }[] = [
-  { key: 'WHATSAPP',  label: 'WhatsApp',  icon: MessageSquare, apiVal: 'whatsapp',  color: '#25D366' },
-  { key: 'INSTAGRAM', label: 'Instagram', icon: Instagram,     apiVal: 'instagram', color: '#E4405F' },
-  { key: 'FACEBOOK',  label: 'Facebook',  icon: Facebook,      apiVal: 'facebook',  color: '#1877F2' },
-  { key: 'WEBSITE',   label: 'Website',   icon: Globe,         apiVal: 'website',   color: '#6366f1' },
+type ChannelKey = 'WHATSAPP' | 'INSTAGRAM' | 'FACEBOOK' | 'WEBSITE' | 'FB_COMMENTS' | 'IG_COMMENTS'
+const CHANNELS: { key: ChannelKey; label: string; icon: React.ComponentType<any>; imgSrc: string; apiVal: string; color: string }[] = [
+  { key: 'WHATSAPP',    label: 'WhatsApp',    icon: MessageSquare, imgSrc: '/icons/whatsapp.png',  apiVal: 'whatsapp',         color: '#25D366' },
+  { key: 'INSTAGRAM',   label: 'Instagram',   icon: Instagram,     imgSrc: '/icons/instagram.png', apiVal: 'instagram',        color: '#E4405F' },
+  { key: 'FACEBOOK',    label: 'Facebook',    icon: Facebook,      imgSrc: '/icons/facebook.png',  apiVal: 'facebook',         color: '#1877F2' },
+  { key: 'WEBSITE',     label: 'Website',     icon: Globe,         imgSrc: '/icons/website.png',   apiVal: 'website',          color: '#6366f1' },
+  { key: 'FB_COMMENTS', label: 'FB Comments', icon: Facebook,      imgSrc: '/icons/facebook.png',  apiVal: 'facebook_comment', color: '#1877F2' },
+  { key: 'IG_COMMENTS', label: 'IG Comments', icon: Instagram,     imgSrc: '/icons/instagram.png', apiVal: 'instagram_comment', color: '#E4405F' },
 ]
 
 // ── Avatar ─────────────────────────────────────────────────────────────────────
@@ -51,8 +57,16 @@ function avatarColor(seed: string): string {
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0
   return PALETTE[Math.abs(h) % PALETTE.length]
 }
-function Avatar({ name, size = 40, borderColor }: { name: string | null | undefined; size?: number; borderColor?: string }) {
+function Avatar({ name, size = 40, borderColor, pictureUrl }: { name: string | null | undefined; size?: number; borderColor?: string; pictureUrl?: string | null }) {
+  const [imgOk, setImgOk] = useState(true)
   const safe = name || '?'
+  if (pictureUrl && imgOk) {
+    return (
+      <img src={pictureUrl} alt={safe} referrerPolicy="no-referrer" onError={() => setImgOk(false)}
+        className="rounded-full object-cover flex-shrink-0"
+        style={{ width: size, height: size, boxShadow: borderColor ? `0 0 0 2px ${borderColor}` : undefined }} />
+    )
+  }
   return (
     <div className="rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
       style={{ width: size, height: size, background: avatarColor(safe), fontSize: size * 0.35, boxShadow: borderColor ? `0 0 0 2px ${borderColor}` : undefined }}>
@@ -98,6 +112,7 @@ function msgTimestamp(iso: string): string {
 function convLabel(conv: Conversation, channel: ChannelKey): string {
   if (conv.patientName) return conv.patientName
   if (channel === 'WHATSAPP' && conv.waDisplayName) return conv.waDisplayName
+  if (conv.displayName) return conv.displayName
   const id = conv.phoneNumber || ''
   if (channel === 'WHATSAPP') return id || 'Unknown'
   if (channel === 'INSTAGRAM') return `@${id.slice(0, 10)}`
@@ -186,16 +201,20 @@ const WA_WALLPAPER = `url("data:image/svg+xml,%3Csvg width='60' height='60' view
 
 // ── Light channel header backgrounds ──────────────────────────────────────────
 const HEADER_BG: Record<ChannelKey, string> = {
-  WHATSAPP:  '#075E54',
-  INSTAGRAM: 'linear-gradient(135deg,#833AB4,#E4405F)',
-  FACEBOOK:  '#1877F2',
-  WEBSITE:   '#6366f1',
+  WHATSAPP:    '#075E54',
+  INSTAGRAM:   'linear-gradient(135deg,#833AB4,#E4405F)',
+  FACEBOOK:    '#1877F2',
+  WEBSITE:     '#6366f1',
+  FB_COMMENTS: '#1877F2',
+  IG_COMMENTS: 'linear-gradient(135deg,#833AB4,#E4405F)',
 }
 const BUBBLE_BG: Record<ChannelKey, string> = {
-  WHATSAPP:  '#d9fdd3',
-  INSTAGRAM: 'linear-gradient(135deg,#833AB4,#E4405F)',
-  FACEBOOK:  '#1877F2',
-  WEBSITE:   '#6366f1',
+  WHATSAPP:    '#d9fdd3',
+  INSTAGRAM:   'linear-gradient(135deg,#833AB4,#E4405F)',
+  FACEBOOK:    '#1877F2',
+  WEBSITE:     '#6366f1',
+  FB_COMMENTS: '#1877F2',
+  IG_COMMENTS: 'linear-gradient(135deg,#833AB4,#E4405F)',
 }
 
 // ── Composer ──────────────────────────────────────────────────────────────────
@@ -303,6 +322,217 @@ function fireInboxNotification(title: string, body: string) {
     const n = new Notification(title, opts)
     n.onclick = () => { window.focus(); window.location.href = url }
   } catch {}
+}
+
+// ── Threaded post view — types ─────────────────────────────────────────────────
+type PostMsg  = { id: string; role: string; content: string; createdAt: string; metadata?: string | null }
+type PostConv = { id: string; displayName: string | null; profilePictureUrl: string | null; agentEnabled: boolean; updatedAt: string; messages: PostMsg[] }
+type PostThread = { postId: string; caption: string | null; thumbnailUrl: string | null; latestAt: string; commentCount: number; conversations: PostConv[] }
+
+// ── Single commenter thread inside a post ─────────────────────────────────────
+function CommentThread({ conv, onRefresh }: { conv: PostConv; onRefresh: () => void }) {
+  const [reply,    setReply]    = useState('')
+  const [sending,  setSending]  = useState(false)
+  const [toggling, setToggling] = useState(false)
+  const name = conv.displayName || 'Anonymous'
+
+  async function sendReply() {
+    if (!reply.trim() || sending) return
+    setSending(true)
+    try {
+      await fetch(`${API}/ai-suite/conversations/${conv.id}/send`, {
+        method: 'POST', headers: authH(true), body: JSON.stringify({ text: reply.trim() }),
+      })
+      setReply(''); onRefresh()
+    } catch {} finally { setSending(false) }
+  }
+
+  async function doToggle() {
+    setToggling(true)
+    const ep = conv.agentEnabled ? 'takeover' : 'handback'
+    try {
+      await fetch(`${API}/ai-suite/${ep}/${conv.id}`, { method: 'POST', headers: authH() })
+      onRefresh()
+    } catch {} finally { setToggling(false) }
+  }
+
+  return (
+    <div className="border border-gray-100 rounded-2xl overflow-hidden bg-white shadow-sm">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+        <div className="flex items-center gap-2.5">
+          <Avatar name={name} size={30} pictureUrl={conv.profilePictureUrl} />
+          <div>
+            <p className="text-sm font-semibold text-gray-800 leading-tight">{name}</p>
+            <p className="text-[10px] text-gray-400">{fmtTime(conv.updatedAt)}</p>
+          </div>
+        </div>
+        <button onClick={doToggle} disabled={toggling}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-white flex-shrink-0"
+          style={{ background: conv.agentEnabled ? '#F59E0B' : '#06b6d4' }}>
+          {toggling ? <Loader2 size={11} className="animate-spin" /> :
+            conv.agentEnabled ? <><UserCheck size={11} /> Take Over</> : <><Bot size={11} /> Hand Back</>}
+        </button>
+      </div>
+      <div className="px-4 py-3 space-y-2.5">
+        {conv.messages.map(msg => {
+          const isAgent = msg.role === 'AGENT'
+          return (
+            <div key={msg.id} className={cn('flex items-start gap-2', isAgent ? 'pl-5' : '')}>
+              {isAgent
+                ? <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5"><Bot size={12} className="text-blue-600" /></div>
+                : <Avatar name={name} size={24} pictureUrl={conv.profilePictureUrl} />}
+              <div className="flex-1 min-w-0">
+                <div className={cn('inline-block px-3 py-2 rounded-2xl text-sm leading-snug',
+                  isAgent ? 'bg-blue-50 text-gray-800' : 'bg-gray-100 text-gray-800')}>
+                  {msg.content}
+                </div>
+                <p className="text-[10px] text-gray-400 mt-0.5 pl-1">{msgTimestamp(msg.createdAt)}</p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      {!conv.agentEnabled && (
+        <div className="px-4 pb-3 flex items-end gap-2 border-t border-gray-50 pt-2">
+          <textarea value={reply} onChange={e => setReply(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply() } }}
+            placeholder="Reply publicly as Code Clinic…" rows={1}
+            className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-xl resize-none outline-none focus:border-blue-400 bg-gray-50 placeholder-gray-400" />
+          <button onClick={sendReply} disabled={sending || !reply.trim()}
+            className="p-2 rounded-xl text-white flex-shrink-0 disabled:opacity-40"
+            style={{ background: '#1877F2' }}>
+            {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Post-grouped comment view ──────────────────────────────────────────────────
+function CommentPostView({ channel, accent }: { channel: 'FB_COMMENTS' | 'IG_COMMENTS'; accent: string }) {
+  const apiChannel = channel === 'FB_COMMENTS' ? 'facebook_comment' : 'instagram_comment'
+  const [posts,      setPosts]     = useState<PostThread[]>([])
+  const [loading,    setLoading]   = useState(true)
+  const [selPost,    setSelPost]   = useState<PostThread | null>(null)
+  const [mobilePane, setMobilePane]= useState<'list' | 'thread'>('list')
+  const selPostId = useRef<string | null>(null)
+
+  const fetchPosts = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/ai-suite/posts?channel=${apiChannel}`, { headers: authH() })
+      if (!res.ok) return
+      const data: PostThread[] = await res.json()
+      setPosts(data)
+      if (selPostId.current) {
+        const updated = data.find(p => p.postId === selPostId.current)
+        if (updated) setSelPost(updated)
+      }
+    } catch {} finally { setLoading(false) }
+  }, [apiChannel])
+
+  useEffect(() => {
+    setPosts([]); setSelPost(null); setLoading(true); selPostId.current = null
+    fetchPosts()
+    const t = setInterval(fetchPosts, 15000)
+    return () => clearInterval(t)
+  }, [channel])
+
+  function selectPost(p: PostThread) { setSelPost(p); selPostId.current = p.postId; setMobilePane('thread') }
+
+  const ch = CHANNELS.find(c => c.key === channel)!
+  const ChIcon = ch.icon
+
+  const PostList = (
+    <div className="flex flex-col h-full bg-white">
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ background: HEADER_BG[channel] }}>
+        <div className="flex items-center gap-2">
+          <ChIcon size={16} className="text-white" />
+          <span className="text-sm font-bold text-white">{ch.label}</span>
+        </div>
+        <span className="text-xs text-white/70">{posts.length} post{posts.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-16"><Loader2 size={22} className="animate-spin" style={{ color: accent }} /></div>
+        ) : posts.length === 0 ? (
+          <div className="px-4 py-16 text-center">
+            <ChIcon size={32} className="mx-auto mb-3 text-gray-200" />
+            <p className="text-sm text-gray-400">No {ch.label} yet</p>
+          </div>
+        ) : posts.map(post => (
+          <button key={post.postId} onClick={() => selectPost(post)}
+            className="w-full flex items-start gap-3 px-4 py-3 border-b border-gray-50 text-left transition-colors hover:bg-gray-50"
+            style={selPost?.postId === post.postId ? { backgroundColor: accent + '15' } : undefined}>
+            <div className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden bg-gray-100 border border-gray-100">
+              {post.thumbnailUrl
+                ? <img src={post.thumbnailUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                : <div className="w-full h-full flex items-center justify-center"><ChIcon size={16} className="text-gray-300" /></div>}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-1 mb-1">
+                <p className="text-xs font-semibold text-gray-800 leading-snug line-clamp-2 flex-1">
+                  {post.caption ? post.caption.slice(0, 60) + (post.caption.length > 60 ? '…' : '') : 'Post'}
+                </p>
+                <span className="text-[10px] text-gray-400 flex-shrink-0 whitespace-nowrap pl-1">{fmtTime(post.latestAt)}</span>
+              </div>
+              <span className="inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                {post.commentCount} comment{post.commentCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+
+  const ThreadPanel = selPost ? (
+    <div className="flex flex-col h-full bg-gray-50">
+      <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 bg-white border-b border-gray-100 shadow-sm">
+        <button onClick={() => setMobilePane('list')} className="md:hidden text-gray-400 hover:text-gray-600 mr-1"><ChevronLeft size={18} /></button>
+        {selPost.thumbnailUrl
+          ? <img src={selPost.thumbnailUrl} alt="" referrerPolicy="no-referrer"
+              className="w-10 h-10 rounded-xl object-cover flex-shrink-0 border border-gray-100"
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          : <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0"><ChIcon size={16} style={{ color: accent }} /></div>}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-bold text-gray-800 line-clamp-2 leading-snug">
+            {selPost.caption ? selPost.caption.slice(0, 100) + (selPost.caption.length > 100 ? '…' : '') : 'Post'}
+          </p>
+          <p className="text-[10px] text-gray-400 mt-0.5">
+            {selPost.commentCount} comment{selPost.commentCount !== 1 ? 's' : ''} · {fmtTime(selPost.latestAt)}
+          </p>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {selPost.conversations.length === 0
+          ? <p className="text-sm text-gray-400 text-center py-8">No comments yet</p>
+          : selPost.conversations.map(conv => (
+              <CommentThread key={conv.id} conv={conv} onRefresh={fetchPosts} />
+            ))}
+      </div>
+    </div>
+  ) : (
+    <div className="flex flex-col items-center justify-center h-full gap-3 bg-gray-50">
+      <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: accent + '20' }}>
+        <ChIcon size={28} style={{ color: accent }} />
+      </div>
+      <p className="text-gray-600 text-sm font-semibold">Select a post to see its comments</p>
+    </div>
+  )
+
+  return (
+    <div className="flex h-full overflow-hidden">
+      <div className={cn('w-full md:w-[300px] flex-shrink-0 h-full border-r border-gray-100',
+        mobilePane === 'list' ? 'flex' : 'hidden md:flex')}>
+        {PostList}
+      </div>
+      <div className={cn('flex-1 h-full min-w-0',
+        mobilePane === 'thread' ? 'flex' : 'hidden md:flex')}>
+        {ThreadPanel}
+      </div>
+    </div>
+  )
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────────
@@ -495,8 +725,8 @@ function InboxPage() {
                 active ? 'bg-green-50' : 'hover:bg-gray-50')}>
               <div className="relative">
                 <Avatar name={name} size={46} />
-                <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center shadow-sm border-2 border-white bg-[#25D366]">
-                  <MessageSquare size={9} className="text-white" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-white shadow-sm overflow-hidden flex items-center justify-center bg-white">
+                  <NextImage src="/icons/whatsapp.png" alt="WhatsApp" width={16} height={16} className="block w-full h-full object-contain mix-blend-multiply" />
                 </span>
               </div>
               <div className="flex-1 min-w-0">
@@ -634,15 +864,16 @@ function InboxPage() {
           const time    = fmtTime(last?.createdAt ?? conv.updatedAt)
           const active  = sel?.id === conv.id
           const preview = last ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No messages'
+          const isCommentCh = channel === 'FB_COMMENTS' || channel === 'IG_COMMENTS'
           return (
             <button key={conv.id} onClick={() => selectConv(conv)}
               className={cn('w-full flex items-center gap-3 px-4 py-3 border-b border-gray-50 text-left transition-colors hover:bg-gray-50')}
               style={active ? { backgroundColor: accent + '15' } : undefined}>
               <div className="relative">
-                <Avatar name={name} size={46} />
-                <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center shadow-sm border-2 border-white flex-shrink-0"
-                  style={{ background: channel === 'INSTAGRAM' ? 'linear-gradient(135deg,#833AB4,#E4405F)' : accent }}>
-                  <ChIcon size={9} className="text-white" />
+                <Avatar name={name} size={46} pictureUrl={conv.profilePictureUrl} />
+                <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-white shadow-sm overflow-hidden flex items-center justify-center bg-white flex-shrink-0">
+                  <NextImage src={ch.imgSrc} alt={ch.label} width={16} height={16}
+                    className={cn('block w-full h-full object-contain', ch.key === 'INSTAGRAM' ? 'rounded-full' : 'mix-blend-multiply')} />
                 </span>
               </div>
               <div className="flex-1 min-w-0">
@@ -656,6 +887,9 @@ function InboxPage() {
                     <span className="ml-2 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-amber-400">!</span>
                   )}
                 </div>
+                {isCommentCh && conv.postCaption && (
+                  <p className="text-[10px] text-gray-300 truncate mt-0.5">📄 {conv.postCaption.slice(0, 55)}</p>
+                )}
               </div>
             </button>
           )
@@ -670,7 +904,7 @@ function InboxPage() {
         <button onClick={() => { setSel(null); setMobileView('list') }} className="md:hidden text-gray-500 hover:text-gray-700 mr-1">
           <ChevronLeft size={20} />
         </button>
-        <Avatar name={convLabel(sel, channel)} size={40} />
+        <Avatar name={convLabel(sel, channel)} size={40} pictureUrl={sel.profilePictureUrl} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-gray-800 truncate">{convLabel(sel, channel)}</p>
           <p className="text-[11px] text-gray-400">
@@ -693,7 +927,7 @@ function InboxPage() {
           const media    = parseBubble(msg.content)
           return (
             <div key={msg.id} className={cn('flex items-end gap-2', isAgent ? 'justify-end' : 'justify-start')}>
-              {!isAgent && <Avatar name={convLabel(sel, channel)} size={28} />}
+              {!isAgent && <Avatar name={convLabel(sel, channel)} size={28} pictureUrl={sel.profilePictureUrl} />}
               <div className={cn('max-w-[65%] flex flex-col', isAgent ? 'items-end' : 'items-start')}>
                 <div className={cn('px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm',
                   isAgent ? 'rounded-tr-sm text-white' : 'rounded-tl-sm text-gray-800 bg-white border border-gray-100')}
@@ -741,14 +975,24 @@ function InboxPage() {
       {/* Channel tab bar */}
       <div className="flex-shrink-0 flex items-center border-b border-gray-200 bg-white px-1">
         {CHANNELS.map(c => {
-          const Icon   = c.icon
           const active = channel === c.key
           return (
             <button key={c.key} onClick={() => { setChannel(c.key); setMobileView('list') }}
-              className={cn('flex items-center gap-1.5 px-4 py-3 text-sm font-semibold border-b-2 -mb-px transition-all',
-                active ? 'border-current' : 'border-transparent text-gray-400 hover:text-gray-600')}>
-              <Icon size={14} style={active ? { color: c.color } : undefined} />
-              <span className="hidden sm:inline" style={active ? { color: c.color } : undefined}>{c.label}</span>
+              className={cn('flex items-center gap-2 px-4 py-1.5 text-sm font-semibold border-b-2 -mb-px transition-all',
+                active ? 'border-current' : 'border-transparent text-gray-400 hover:text-gray-600')}
+              style={active ? { color: c.color } : undefined}>
+              <NextImage
+                src={c.imgSrc}
+                alt={c.label}
+                width={45}
+                height={45}
+                className={cn(
+                  'object-contain flex-shrink-0 transition-opacity',
+                  c.key === 'INSTAGRAM' ? 'rounded-full' : 'mix-blend-multiply',
+                  active ? 'opacity-100' : 'opacity-35'
+                )}
+              />
+              <span className="hidden sm:inline">{c.label}</span>
             </button>
           )
         })}
@@ -778,20 +1022,26 @@ function InboxPage() {
 
       {/* Split pane */}
       <div className="flex-1 flex overflow-hidden">
-        <div className={cn(
-          'w-full md:w-[340px] flex-shrink-0 h-full border-r border-gray-100',
-          sel ? 'hidden md:flex' : 'flex',
-          mobileView === 'list' ? 'flex' : 'hidden md:flex',
-        )}>
-          {ConvList}
-        </div>
-        <div className={cn(
-          'flex-1 h-full min-w-0',
-          !sel ? 'hidden md:flex' : 'flex',
-          mobileView === 'chat' ? 'flex' : 'hidden md:flex',
-        )}>
-          {ChatPanel}
-        </div>
+        {(channel === 'FB_COMMENTS' || channel === 'IG_COMMENTS') ? (
+          <CommentPostView channel={channel as 'FB_COMMENTS' | 'IG_COMMENTS'} accent={accent} />
+        ) : (
+          <>
+            <div className={cn(
+              'w-full md:w-[340px] flex-shrink-0 h-full border-r border-gray-100',
+              sel ? 'hidden md:flex' : 'flex',
+              mobileView === 'list' ? 'flex' : 'hidden md:flex',
+            )}>
+              {ConvList}
+            </div>
+            <div className={cn(
+              'flex-1 h-full min-w-0',
+              !sel ? 'hidden md:flex' : 'flex',
+              mobileView === 'chat' ? 'flex' : 'hidden md:flex',
+            )}>
+              {ChatPanel}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

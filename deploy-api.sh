@@ -22,6 +22,17 @@ NODE_OPTIONS='--max-old-space-size=3072' pnpm --filter api build
 echo '[deploy-api] Copying compiled dist/ to server...'
 scp -r apps/api/dist "$SERVER:$REMOTE_DIR/apps/api/"
 
+# startup.js runs `prisma db push --schema=<this file>` on every restart.
+# Without copying the schema here, the server keeps an old schema and drops
+# any tables/columns added since the last manual schema update.
+echo '[deploy-api] Copying Prisma schema to server...'
+scp packages/database/prisma/schema.prisma "$SERVER:$REMOTE_DIR/packages/database/prisma/schema.prisma"
+
+# Regenerate Prisma client on the server so the runtime types match the new schema.
+# Without this, any newly added model fields cause "Unknown argument" Prisma errors.
+echo '[deploy-api] Regenerating Prisma client on server...'
+ssh "$SERVER" "cd $REMOTE_DIR && packages/database/node_modules/.bin/prisma generate --schema=packages/database/prisma/schema.prisma"
+
 echo '[deploy-api] Restarting API on server...'
 ssh "$SERVER" "pm2 restart codeclinic-api"
 

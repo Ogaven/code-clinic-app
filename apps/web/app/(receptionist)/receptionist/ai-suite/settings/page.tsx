@@ -1536,6 +1536,92 @@ function WebsiteChatbotSection() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// CHANNEL AUTO-REPLY TOGGLES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+type ChannelToggles = {
+  fbDmsEnabled: boolean; igDmsEnabled: boolean
+  fbCommentsEnabled: boolean; igCommentsEnabled: boolean
+}
+
+function ChannelTogglesSection() {
+  const [toggles, setToggles] = useState<ChannelToggles>({
+    fbDmsEnabled: true, igDmsEnabled: true, fbCommentsEnabled: true, igCommentsEnabled: true,
+  })
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(false)
+  const [saved,   setSaved]   = useState(false)
+
+  useEffect(() => {
+    fetch(`${API}/ai-suite/channel-toggles`, { headers: authH() })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setToggles(d) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function toggle(key: keyof ChannelToggles) {
+    const next = { ...toggles, [key]: !toggles[key] }
+    setToggles(next)
+    setSaving(true); setSaved(false)
+    try {
+      await fetch(`${API}/ai-suite/channel-toggles`, {
+        method: 'PATCH', headers: authH(true), body: JSON.stringify(next),
+      })
+      setSaved(true); setTimeout(() => setSaved(false), 2500)
+    } catch {} finally { setSaving(false) }
+  }
+
+  const rows: { key: keyof ChannelToggles; label: string; desc: string; color: string }[] = [
+    { key: 'fbDmsEnabled',      label: 'Facebook DMs',        desc: 'Auto-reply to Messenger direct messages',   color: '#1877F2' },
+    { key: 'igDmsEnabled',      label: 'Instagram DMs',       desc: 'Auto-reply to Instagram direct messages',   color: '#E4405F' },
+    { key: 'fbCommentsEnabled', label: 'Facebook Comments',   desc: 'Auto-reply to Facebook post comments',      color: '#1877F2' },
+    { key: 'igCommentsEnabled', label: 'Instagram Comments',  desc: 'Auto-reply to Instagram post comments',     color: '#E4405F' },
+  ]
+
+  return (
+    <SectionCard
+      icon={<div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#6366f118' }}><Facebook size={16} className="text-[#6366f1]" /></div>}
+      label="Social Channel Auto-Reply"
+      expandedDefault
+    >
+      {loading ? (
+        <div className="flex justify-center py-6"><Loader2 size={16} className="animate-spin text-gray-300" /></div>
+      ) : (
+        <div className="space-y-0">
+          <p className="text-xs text-gray-400 dark:text-white/40 mb-4 leading-relaxed">
+            Flip a channel off to silence Sarah on that platform. Messages are always saved — staff can still reply manually via Take Over.
+          </p>
+          {rows.map(row => (
+            <div key={row.key} className="flex items-center justify-between py-3.5 border-b border-gray-50 dark:border-white/5 last:border-0">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: row.color + '18' }}>
+                  {row.key.startsWith('fb') ? <Facebook size={14} style={{ color: row.color }} /> : <Instagram size={14} style={{ color: row.color }} />}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-white">{row.label}</p>
+                  <p className="text-xs text-gray-400 dark:text-white/40">{row.desc}</p>
+                </div>
+              </div>
+              <button onClick={() => toggle(row.key)} disabled={saving}
+                className={cn('relative inline-flex w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 focus:outline-none disabled:opacity-70 cursor-pointer',
+                  toggles[row.key] ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-white/15')}>
+                <span className={cn('absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200',
+                  toggles[row.key] ? 'translate-x-5' : 'translate-x-0')} />
+              </button>
+            </div>
+          ))}
+          <div className="flex items-center gap-2 pt-3">
+            {saving && <span className="text-xs text-gray-400 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Saving…</span>}
+            {!saving && saved && <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1"><CheckCircle2 size={11} /> Saved</span>}
+          </div>
+        </div>
+      )}
+    </SectionCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1570,6 +1656,7 @@ export default function ConnectionsPage() {
       <WhatsAppPanel onManage={num => setManagingNumber(num)} />
 
       <div className="space-y-5 max-w-3xl">
+        <ChannelTogglesSection />
         <FacebookSection      toast={showToast} />
         <InstagramSection     toast={showToast} />
         <SmsSection           toast={showToast} />

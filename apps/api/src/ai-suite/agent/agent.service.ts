@@ -1868,6 +1868,7 @@ Sarah: [calls book_appointment] "Done! Confirmed for Saturday 9:30am with Dr Bab
 6. NEVER ask for the patient's last name or age. The booking system only needs their phone (already known).
 7. CANCELLATIONS: call get_patient_appointments to find the appointment, confirm with patient, then call cancel_appointment. If the patient gave no reason, ask lightly once (e.g. 'No problem at all — mind me asking what changed? 😊') then proceed regardless.
 8. APPOINTMENT QUERIES — any time the patient asks about their appointment (time, date, doctor, "when is my next appointment", "what did I book", rescheduling questions): call get_patient_appointments RIGHT NOW. NEVER answer from memory or earlier in this conversation — a receptionist may have changed the appointment since this chat started and the live DB is the only source of truth.
+   CRITICAL: NEVER deflect a routine appointment query ("what time is my appointment?", "when am I booked?") to "someone will follow up" or "a colleague will confirm this". This is always answerable from the DB. Saying "someone will confirm" for an appointment query triggers a false clinical alert. Always answer directly from get_patient_appointments.
 9. DOCTOR AVAILABILITY — if the patient asks whether a specific doctor comes in on a certain day, or who is available today: call get_doctors_available_today. Never state a doctor's schedule from memory.
 10. PATIENT BIRTHDAY — call get_patient_info once per conversation (on the first inbound message or when you first greet the patient). If any record returns isBirthdayToday:true, open your response with a warm birthday greeting before handling their actual request.
 11. NO AVAILABILITY LOOP: check_availability is ONLY for booking requests. Never call it to answer questions about clinic hours, pricing, or services. If you already told the patient no slots exist for a requested date, say so once, offer an alternative, then drop it. If they then ask about anything else, answer THAT — do not call check_availability again or repeat the unavailability finding.
@@ -2395,17 +2396,76 @@ export async function getAgentReplyV2(
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return `Hi! I've received your message and a team member will be with you shortly.`
 
+  const todayKey  = `ratelimit:${from}:${new Date().toISOString().slice(0, 10)}`
+  const current   = await redis.get(todayKey)
+  const callCount = current ? parseInt(current, 10) + 1 : 1
+  await redis.setex(todayKey, 86400, String(callCount))
+  if (callCount > 25) {
+    const eatNow    = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
+    const eatHour   = eatNow.getHours()
+    const eatDow    = eatNow.getDay() // 0=Sun,6=Sat
+    const isSat     = eatDow === 6
+    const isWeekday = eatDow >= 1 && eatDow <= 5
+    const isOpen    = (isWeekday && eatHour >= 8 && eatHour < 18) || (isSat && eatHour >= 8 && eatHour < 14)
+    return isOpen
+      ? `Hi! I've noted everything from our conversation 😊 My colleague Julian will follow up with you shortly.`
+      : `Hi! I've noted everything and will make sure the team picks this up first thing when we open 😊 Feel free to call us on +256 394 836 298 if it's urgent.`
+  }
+
   try {
+    // ── Post-booking short-circuit ────────────────────────────────────────────
+    // If Sarah just confirmed a booking and the patient sends a polite close
+    // (no question, no change signal, short), skip Claude entirely to prevent
+    // the re-check-availability bug where Sarah sees the now-taken slot as a
+    // booking failure and sends a contradictory message.
+    const lastAgentMsg = await prisma.aiMessage.findFirst({
+      where:   { conversationId, role: 'AGENT' },
+      orderBy: { createdAt: 'desc' },
+      select:  { content: true },
+    })
+    if (lastAgentMsg?.content.includes("You're booked ✅")) {
+      const msg = latestMessage.trim()
+      const hasNewRequest =
+        msg.length > 60 ||
+        /[?]/.test(msg) ||
+        /\b(change|reschedule|actually|instead|cancel|wait|also|another|different|wrong|mistake|move)\b/i.test(msg) ||
+        /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|morning|afternoon|evening)\b/i.test(msg) ||
+        /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(msg)
+      if (!hasNewRequest) {
+        const closes = [
+          `You're welcome! See you then 😊`,
+          `See you then! 😊`,
+          `My pleasure! See you soon 😊`,
+        ]
+        const reply = closes[Math.floor(Math.random() * closes.length)]
+        console.log(`[Agent] Post-booking close from ${from}: "${msg.slice(0, 50)}" → short-circuit`)
+        return reply
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const kbKeywords = latestMessage.split(/\s+/).filter(w => w.length >= 4).slice(0, 5)
+
     const [patient, dbMessages, menu, allHours, kbEntries] = await Promise.all([
       prisma.patient.findFirst({ where: { phone: from }, select: { firstName: true, lastName: true } }),
-      prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 30 })
+      prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 10 })
         .then(msgs => msgs.reverse()),
       getCachedMenu(),
       prisma.workingHours.findMany({ orderBy: { dayOfWeek: 'asc' } }).catch(
         () => [] as Array<{ dayOfWeek: number; isOpen: boolean; openTime: string; closeTime: string }>
       ),
-      prisma.aiKnowledgeBase.findMany({ orderBy: { createdAt: 'asc' }, select: { title: true, content: true } })
-        .catch(() => [] as Array<{ title: string; content: string }>),
+      kbKeywords.length > 0
+        ? prisma.aiKnowledgeBase.findMany({
+            where: {
+              OR: kbKeywords.flatMap(kw => [
+                { title: { contains: kw, mode: 'insensitive' } },
+                { content: { contains: kw, mode: 'insensitive' } },
+              ]),
+            },
+            take: 5,
+            select: { title: true, content: true },
+          }).catch(() => [] as Array<{ title: string; content: string }>)
+        : Promise.resolve([] as Array<{ title: string; content: string }>),
     ])
 
     const isPlaceholderName = patient?.firstName?.toLowerCase() === 'whatsapp' || patient?.lastName?.toLowerCase() === 'patient'
@@ -2431,6 +2491,18 @@ export async function getAgentReplyV2(
       : '(clinic hours not configured)'
 
     const systemPrompt = [
+      // ── Comment override must come FIRST — before the full Sarah base ─────────
+      ...(channel === 'FACEBOOK_COMMENT' || channel === 'INSTAGRAM_COMMENT' ? [
+        'CRITICAL INSTRUCTION — PUBLIC COMMENT MODE:',
+        `This response will be posted as a PUBLIC comment on a ${channel === 'FACEBOOK_COMMENT' ? 'Facebook Page post' : 'Instagram post'}, visible to all followers. ALL standard response rules are suspended. Only these rules apply:`,
+        '• Write EXACTLY 1-2 SHORT sentences. No lists. No bullet points. No paragraphs.',
+        '• For ANY question about services, prices, appointments, or personal matters: reply only with "Hi! 😊 Send us a DM and we\'ll help you out!"',
+        '• For simple questions about hours or location: answer in one brief sentence only.',
+        '• NEVER list multiple services. NEVER give detailed information publicly.',
+        '• NEVER say "I have noted", "flagged", "Julian will follow up", "the team will", or anything about internal process.',
+        '• Do NOT use tools. Do NOT look up patient records.',
+        '',
+      ] : []),
       SARAH_V2_SYSTEM_BASE,
       '',
       `CURRENT DATE/TIME IN KAMPALA: ${eatDateTime}`,
@@ -2441,6 +2513,10 @@ export async function getAgentReplyV2(
         ? `PATIENT NAME: unknown — their real name is not on file. If you need to address them or add their name to a booking, ask naturally once: "What's your name? 😊" — NEVER say "your name is showing as...", "on our system...", "in our records...", or quote any internal value. Just ask warmly.`
         : `PATIENT NAME: ${patientName} — address them by this name`,
       '',
+      ...(channel === 'FACEBOOK' || channel === 'INSTAGRAM' ? [
+        `SOCIAL MEDIA CONTEXT: This person is messaging via ${channel === 'FACEBOOK' ? 'Facebook Messenger' : 'Instagram DM'} — NOT WhatsApp. Never suggest they "WhatsApp us" or call our WhatsApp number to message you. If they need human support, say "drop us a message here and one of our team will reply shortly 😊". If their name is unknown, ask naturally once during the conversation.`,
+        '',
+      ] : []),
       ...(channel === 'WEBSITE' ? [
         'WEBSITE VISITOR CONTEXT: This person is chatting via the clinic website widget — not WhatsApp. If their name is unknown (PATIENT NAME shows "there"), and at least one exchange has already happened, naturally ask for their name once: "By the way, what\'s your name? 😊" — do this only once, never repeat it.',
         '',
@@ -2457,9 +2533,21 @@ export async function getAgentReplyV2(
       ] : []),
       ...((() => {
         const DEFAULT_KB = 'Clinic Contact & Hours: Code Clinic is located on Kiira Road, opposite Police Playground, Kamwokya, Kampala. WhatsApp: +256741087667. Phone: +256 394 836 298. Email: dentist@codeclinic.ug. Open Monday to Friday 8am–6pm, Saturday 8am–2pm, closed Sunday.'
-        const entries = kbEntries.length > 0
-          ? kbEntries.map(e => `${e.title}: ${e.content}`).join('\n\n')
-          : DEFAULT_KB
+        let entries: string
+        if (kbEntries.length === 0) {
+          entries = DEFAULT_KB
+        } else {
+          const words = latestMessage.toLowerCase().split(/\W+/).filter(w => w.length > 3)
+          const scored = kbEntries
+            .map(e => {
+              const text = `${e.title} ${e.content}`.toLowerCase()
+              const score = words.filter(w => text.includes(w)).length
+              return { e, score }
+            })
+            .sort((a, b) => b.score - a.score)
+          const top = scored.slice(0, 5).map(s => s.e)
+          entries = top.map(e => `${e.title}: ${e.content}`).join('\n\n')
+        }
         return ['CLINIC KNOWLEDGE BASE (use this for questions about the clinic, services, procedures, policies):', entries, '']
       })()),
       'AVAILABLE SERVICES (use search_services to get IDs for check_availability):',
@@ -2505,7 +2593,7 @@ export async function getAgentReplyV2(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let messages: any[] = apiMessages
 
-    for (let iter = 0; iter < 8; iter++) {
+    for (let iter = 0; iter < 4; iter++) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response: any = await client.messages.create({
         model:      'claude-sonnet-4-6',
@@ -2628,4 +2716,85 @@ export async function getAgentReplyV2(
     console.error('[AgentV2] Error:', err?.message)
     return `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
   }
+}
+
+// ── Dedicated public comment reply ────────────────────────────────────────────
+// Uses a minimal prompt with NO Sarah base — prevents service-listing and
+// internal-process language from leaking into publicly-visible comment replies.
+
+export async function getCommentReply(
+  conversationId: string,
+  text:           string,
+  channel:        'FACEBOOK_COMMENT' | 'INSTAGRAM_COMMENT',
+  postCaption?:   string,
+): Promise<string> {
+  const FALLBACK = "Hi! 😊 Send us a DM and we'll help you out!"
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return FALLBACK
+
+  // ── EAT date context (UTC+3) ──────────────────────────────────────────────
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  const nowEAT      = new Date(Date.now() + 3 * 60 * 60 * 1000) // shift to EAT
+  const todayIdx    = nowEAT.getUTCDay()
+  const tomorrowIdx = (todayIdx + 1) % 7
+  const todayName   = DAYS[todayIdx]
+  const tomorrowName = DAYS[tomorrowIdx]
+  const hour        = nowEAT.getUTCHours()
+  const isOpenNow   = (todayIdx >= 1 && todayIdx <= 5 && hour >= 8 && hour < 18) ||
+                      (todayIdx === 6 && hour >= 8 && hour < 14)
+  const openStatus  = isOpenNow ? 'currently OPEN' : 'currently CLOSED'
+
+  // ── Conversation history (last 6 messages, skip the one just saved) ───────
+  const recentMsgs = await prisma.aiMessage.findMany({
+    where:   { conversationId },
+    orderBy: { createdAt: 'desc' },
+    take:    7,
+  })
+  // Reverse to chronological order; drop the last (most recent) since it's the
+  // current comment we just stored — it will be passed as the final user turn.
+  const historyMsgs = recentMsgs.slice(1).reverse()
+
+  const platform    = channel === 'FACEBOOK_COMMENT' ? 'Facebook' : 'Instagram'
+  const postContext = postCaption
+    ? `\nThis comment is on a post about: "${postCaption.slice(0, 200)}"\nYou may reference the post topic briefly if it's relevant and helpful — but never list treatments or prices.`
+    : ''
+  const system = `You are the Code Clinic social media account writing a reply to a public ${platform} comment.
+This reply will be PUBLICLY VISIBLE to all followers. Keep it short, warm, and professional.
+
+Current date/time: ${todayName}, ${nowEAT.toISOString().slice(0, 10)}, ${String(hour).padStart(2, '0')}:${String(nowEAT.getUTCMinutes()).padStart(2, '0')} EAT. We are ${openStatus}.
+Tomorrow is ${tomorrowName}.
+Opening hours: Mon–Fri 8am–6pm, Sat 8am–2pm, closed Sunday.
+Location: Kiira Road, Kamwokya, Kampala.${postContext}
+
+RULES (mandatory):
+1. Maximum 2 short sentences. No bullet points, no lists, no paragraphs.
+2. For ANY question about services, treatments, prices, appointments, or personal/medical topics: reply ONLY with: "Hi! 😊 Send us a DM and we'll help you out!"
+3. For hours/location/day questions: use the real date context above to answer specifically (e.g. "Yes, we're open on ${tomorrowName}!").
+4. NEVER mention staff names, say "I've noted", "flagged", "the team will follow up", or describe any internal process.
+5. Use friendly language and one emoji where natural.`
+
+  // Build messages array with history for multi-turn context
+  const messages: { role: 'user' | 'assistant'; content: string }[] = []
+  for (const msg of historyMsgs) {
+    messages.push({
+      role:    msg.role === 'USER' ? 'user' : 'assistant',
+      content: msg.content,
+    })
+  }
+  messages.push({ role: 'user', content: text })
+
+  try {
+    const client = new Anthropic({ apiKey })
+    const response = await client.messages.create({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 100,
+      system,
+      messages,
+    })
+    const block = response.content[0]
+    if (block.type === 'text' && block.text.trim()) return block.text.trim()
+  } catch (err: any) {
+    console.error(`[${channel}] getCommentReply error:`, err?.message)
+  }
+  return FALLBACK
 }

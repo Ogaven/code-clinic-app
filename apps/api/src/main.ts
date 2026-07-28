@@ -58,7 +58,8 @@ import facebookRouter    from './ai-suite/facebook/facebook.routes'
 import configRouter      from './ai-suite/config/config.routes'
 import connectionsRouter from './ai-suite/connections/connections.routes'
 import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
-import metaUsageRouter from './ai-suite/meta/meta-usage.routes'
+import metaUsageRouter          from './ai-suite/meta/meta-usage.routes'
+import channelAnalyticsRouter   from './ai-suite/meta/channel-analytics.routes'
 
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
@@ -239,6 +240,7 @@ app.use('/ai-suite',              facebookRouter)
 //                   GET  /ai-suite/website/messages/:sessionId
 app.use('/ai-suite/website',      websiteRouter)
 app.use('/ai-suite',              metaUsageRouter)
+app.use('/ai-suite',              channelAnalyticsRouter)
 
 // ─── Chat widget ─────────────────────────────────────────────
 // Embeddable <script src="https://api.../widget.js"> snippet

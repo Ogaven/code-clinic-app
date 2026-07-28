@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { processSocialMessage } from '../ai-suite/facebook/facebook.routes'
+import { processSocialMessage, processComment } from '../ai-suite/facebook/facebook.routes'
 
 const router = Router()
 
@@ -26,12 +26,31 @@ router.post('/facebook', async (req, res) => {
     if (body.object !== 'page') return
 
     for (const entry of body.entry ?? []) {
+      // Messenger DMs
       for (const event of entry.messaging ?? []) {
         if (!event.message?.text) continue
         const senderId = String(event.sender.id)
         const text     = String(event.message.text)
         console.log(`[Webhooks] Facebook message from ${senderId}: ${text}`)
         await processSocialMessage(senderId, text, 'FACEBOOK')
+      }
+      // Page feed comments
+      for (const change of entry.changes ?? []) {
+        if (change.field !== 'feed') continue
+        const v = change.value
+        if (v?.item !== 'comment' || v?.verb !== 'add' || !v?.message) continue
+        // Never process comments authored by the Page itself (prevents self-reply loops)
+        if (String(v.from?.id ?? '') === '532091973485208') continue
+        console.log(`[Webhooks] Facebook comment from ${v.from?.id}: ${v.message}`)
+        await processComment(
+          String(v.comment_id ?? ''),
+          String(v.post_id    ?? ''),
+          String(v.from?.id   ?? ''),
+          String(v.from?.name ?? ''),
+          String(v.message),
+          'FACEBOOK_COMMENT',
+          v.parent_id ? String(v.parent_id) : undefined,
+        )
       }
     }
   } catch (err) {

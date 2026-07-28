@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachable } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { getGreetingName, isMinor, normalizeRelation } from '../../utils/nameHelper'
-import { resolveOutboundRecipient } from './guardian-routing.service'
+import { resolveOutboundRecipient, alertStaffMinorNoGuardian, hasOutboundConsent } from './guardian-routing.service'
 
 const ADMIN_WHATSAPP = '+256763430276'
 
@@ -150,6 +150,11 @@ export async function checkAndSendFollowups(): Promise<void> {
     })
     if (alreadySent) continue
 
+    if (!(await hasOutboundConsent(patient.id))) {
+      console.log(`[Followup] Skipping ${patient.firstName} — opted out of bot communications`)
+      continue
+    }
+
     // ── Build message ─────────────────────────────────────────────────────────
     const channel           = 'WHATSAPP'
     const doctorFirst       = appt.doctor.user.firstName
@@ -185,6 +190,7 @@ export async function checkAndSendFollowups(): Promise<void> {
     const routing = await resolveOutboundRecipient(patient, greetName)
     if (!routing.ok) {
       console.warn(`[Followup] Skipping ${patient.firstName} — minor with no active guardian`)
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'post-visit follow-up')
       continue
     }
     const recipientPhone = routing.recipient.phone
@@ -261,6 +267,11 @@ export async function processAfterHoursQueue(): Promise<void> {
   console.log(`[AfterHoursQueue] Processing ${entries.length} morning follow-up(s)`)
 
   for (const entry of entries) {
+    if (entry.patient?.id && !(await hasOutboundConsent(entry.patient.id))) {
+      console.log(`[AfterHoursQueue] Skipping ${entry.patient.firstName} — opted out of bot communications`)
+      continue
+    }
+
     const minor             = isMinor(entry.patient?.dob)
     const guardianFirstName = minor && entry.patient?.nextOfKinName
       ? getGreetingName({ firstName: entry.patient.nextOfKinName, lastName: '' })
@@ -362,6 +373,12 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       // Not replied — send again (fall through to re-send)
     }
 
+    if (!(await hasOutboundConsent(patient.id))) {
+      console.log(`[PostApptFollowup] Skipping ${patient.firstName} (missed) — opted out of bot communications`)
+      counts.skipped++
+      continue
+    }
+
     const minor             = isMinor(patient.dob)
     const guardianFirstName = minor && patient.nextOfKinName
       ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
@@ -377,6 +394,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     const missedRouting = await resolveOutboundRecipient(patient, greetName)
     if (!missedRouting.ok) {
       console.warn(`[PostApptFollowup] Skipping ${patient.firstName} (missed) — minor with no active guardian`)
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'missed-appointment follow-up')
       continue
     }
     const recipientPhone = missedRouting.recipient.phone
@@ -417,6 +435,13 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
   for (const appt of appointments) {
     const patient           = appt.patient
     const doctorFirst       = appt.doctor.user.firstName
+
+    if (!(await hasOutboundConsent(patient.id))) {
+      console.log(`[PostApptFollowup] Skipping ${patient.firstName} — opted out of bot communications`)
+      counts.skipped++
+      continue
+    }
+
     const minor             = isMinor(patient.dob)
     const guardianFirstName = minor && patient.nextOfKinName
       ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
@@ -456,7 +481,10 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
         ? `Hello ${addr2}, just checking in on ${greetName2} 😊 Feel free to reply if you have any questions, we are here for you!`
         : `Hello ${greetName2}, just checking in 😊 How are you doing? Feel free to reply anytime!`
       const nudgeRouting = await resolveOutboundRecipient(patient, getGreetingName(patient))
-      if (!nudgeRouting.ok) continue
+      if (!nudgeRouting.ok) {
+        await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'follow-up nudge')
+        continue
+      }
       const recipientPhoneNudge = nudgeRouting.recipient.phone
       try {
         await sendWhatsAppMessage(recipientPhoneNudge, nudge)
@@ -505,6 +533,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     const stage1Routing = await resolveOutboundRecipient(patient, greetName)
     if (!stage1Routing.ok) {
       console.warn(`[PostApptFollowup] Skipping ${patient.firstName} (stage 1) — minor with no active guardian`)
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'post-appointment follow-up')
       continue
     }
     const recipientPhone = stage1Routing.recipient.phone
@@ -623,6 +652,11 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     })
     if (alreadySent) continue
 
+    if (!(await hasOutboundConsent(patient.id))) {
+      console.log(`[ApptConfirmation] Skipping ${patient.firstName} — opted out of bot communications`)
+      continue
+    }
+
     const minor             = isMinor(patient.dob)
     const guardianFirstName = minor && patient.nextOfKinName
       ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
@@ -632,7 +666,7 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     const greetName    = getGreetingName(patient)
     const addr         = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : greetName
     const start        = new Date(appt.startAt)
-    const timeStr      = start.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
+    const timeStr      = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).toLowerCase()
     const msg          = minor
       ? `Hello ${addr}, this is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, just a reminder that ${greetName} has an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel.`
       : `Hello ${greetName}, this is Sarah from Code Clinic. You have an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
@@ -640,6 +674,7 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     const confirmRouting = await resolveOutboundRecipient(patient, greetName)
     if (!confirmRouting.ok) {
       console.warn(`[ApptConfirmation] Skipping ${patient.firstName} — minor with no active guardian`)
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'appointment confirmation')
       continue
     }
     const recipientPhone = confirmRouting.recipient.phone
@@ -713,6 +748,11 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
     })
     if (recentBooking) continue
 
+    if (!(await hasOutboundConsent(patient.id))) {
+      console.log(`[MissedCallFollowup] Skipping ${patient.firstName} — opted out of bot communications`)
+      continue
+    }
+
     const templateName      = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
     const minor             = isMinor(patient.dob)
     const guardianFirstName = minor && patient.nextOfKinName
@@ -722,6 +762,7 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
     const missedCallRouting = await resolveOutboundRecipient(patient, firstName)
     if (!missedCallRouting.ok) {
       console.warn(`[MissedCallFollowup] Skipping ${patient.firstName} — minor with no active guardian`)
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'missed-call follow-up')
       continue
     }
     const addr           = missedCallRouting.recipient.isGuardian ? missedCallRouting.recipient.name : firstName
@@ -793,6 +834,11 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
     })
     if (alreadySent) continue
 
+    if (!(await hasOutboundConsent(patient.id))) {
+      console.log(`[Reactivation] Skipping ${patient.firstName} — opted out of bot communications`)
+      continue
+    }
+
     const templateName      = process.env.WA_TEMPLATE_REACTIVATION_NAME || 'cc_patient_reactivation'
     const minor             = isMinor(patient.dob)
     const guardianFirstName = minor && patient.nextOfKinName
@@ -802,6 +848,7 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
     const reactivationRouting = await resolveOutboundRecipient(patient, firstName)
     if (!reactivationRouting.ok) {
       console.warn(`[Reactivation] Skipping ${patient.firstName} — minor with no active guardian`)
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'reactivation message')
       continue
     }
     const addr           = reactivationRouting.recipient.isGuardian ? reactivationRouting.recipient.name : firstName

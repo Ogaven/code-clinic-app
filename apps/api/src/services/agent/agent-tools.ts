@@ -200,20 +200,37 @@ async function handle_get_doctor_availability(input: {
   const dayStart = new Date(`${input.date}T00:00:00`)
   const dayEnd   = new Date(`${input.date}T23:59:59`)
 
-  // Check if doctor works on this day (0=Sun, 1=Mon ... 6=Sat)
+  // Check if doctor works on this day — doctor_schedules is source of truth;
+  // fall back to workingDays only if no schedule rows exist for this doctor.
   const dayOfWeek = dayStart.getDay()
-  const workingDays: number[] = JSON.parse(doctor.workingDays || '[1,2,3,4,5]')
-  if (!workingDays.includes(dayOfWeek)) {
-    return {
-      doctor_name: `Dr. ${doctor.user.firstName} ${doctor.user.lastName}`,
-      available_slots: [],
-      message: 'Doctor does not work on this day',
-    }
-  }
+  const doctorScheduleRows = await prisma.doctorSchedule.findMany({
+    where:  { doctorId: input.doctor_id },
+    select: { dayOfWeek: true, isOpen: true, openTime: true, closeTime: true },
+  })
 
-  const workingHours: { start: string; end: string } = JSON.parse(
-    doctor.workingHours || '{"start":"08:00","end":"18:00"}'
-  )
+  let workingHours: { start: string; end: string }
+  if (doctorScheduleRows.length > 0) {
+    const dayRow = doctorScheduleRows.find(s => s.dayOfWeek === dayOfWeek)
+    if (!dayRow || !dayRow.isOpen) {
+      return {
+        doctor_name: `Dr. ${doctor.user.firstName} ${doctor.user.lastName}`,
+        available_slots: [],
+        message: 'Doctor does not work on this day',
+      }
+    }
+    const fallback: { start: string; end: string } = JSON.parse(doctor.workingHours || '{"start":"08:00","end":"18:00"}')
+    workingHours = { start: dayRow.openTime ?? fallback.start, end: dayRow.closeTime ?? fallback.end }
+  } else {
+    const workingDays: number[] = JSON.parse(doctor.workingDays || '[1,2,3,4,5]')
+    if (!workingDays.includes(dayOfWeek)) {
+      return {
+        doctor_name: `Dr. ${doctor.user.firstName} ${doctor.user.lastName}`,
+        available_slots: [],
+        message: 'Doctor does not work on this day',
+      }
+    }
+    workingHours = JSON.parse(doctor.workingHours || '{"start":"08:00","end":"18:00"}')
+  }
 
   const [existingAppts, blockedTimes] = await Promise.all([
     prisma.appointment.findMany({
@@ -254,16 +271,31 @@ async function handle_get_all_doctors() {
     where: { isActive: true },
     include: { user: { select: { firstName: true, lastName: true, email: true } } },
   })
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+  // Fetch all configured schedules for active doctors in one query
+  const doctorIds = doctors.map(d => d.id)
+  const allSchedules = await prisma.doctorSchedule.findMany({
+    where:  { doctorId: { in: doctorIds } },
+    select: { doctorId: true, dayOfWeek: true, isOpen: true },
+  })
+  const schedByDoctor = new Map<string, typeof allSchedules>()
+  for (const s of allSchedules) {
+    if (!schedByDoctor.has(s.doctorId)) schedByDoctor.set(s.doctorId, [])
+    schedByDoctor.get(s.doctorId)!.push(s)
+  }
 
   return doctors.map(d => {
-    const workingDays: number[] = JSON.parse(d.workingDays || '[1,2,3,4,5]')
+    const rows = schedByDoctor.get(d.id)
+    const workingDays: number[] = rows && rows.length > 0
+      ? rows.filter(s => s.isOpen).map(s => s.dayOfWeek)
+      : JSON.parse(d.workingDays || '[1,2,3,4,5]')
     const workingHours = JSON.parse(d.workingHours || '{"start":"08:00","end":"18:00"}')
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     return {
       id: d.id,
       name: `Dr. ${d.user.firstName} ${d.user.lastName}`,
       specialisation: d.specialisation,
-      working_days: workingDays.map(n => dayNames[n]).join(', '),
+      working_days: workingDays.sort().map((n: number) => dayNames[n]).join(', '),
       working_hours: `${workingHours.start} – ${workingHours.end}`,
       colour: d.colour,
     }
@@ -282,13 +314,34 @@ async function handle_get_doctors_available_today(input: { date?: string }) {
     include: { user: { select: { firstName: true, lastName: true } } },
   })
 
+  // Batch-fetch all schedule rows for these doctors — source of truth
+  const doctorIds = doctors.map(d => d.id)
+  const allSchedules = await prisma.doctorSchedule.findMany({
+    where:  { doctorId: { in: doctorIds } },
+    select: { doctorId: true, dayOfWeek: true, isOpen: true, openTime: true, closeTime: true },
+  })
+  const schedByDoctor = new Map<string, typeof allSchedules>()
+  for (const s of allSchedules) {
+    if (!schedByDoctor.has(s.doctorId)) schedByDoctor.set(s.doctorId, [])
+    schedByDoctor.get(s.doctorId)!.push(s)
+  }
+
   const available = []
 
   for (const doctor of doctors) {
-    const workingDays: number[]                        = JSON.parse(doctor.workingDays || '[1,2,3,4,5]')
-    const workingHours: { start: string; end: string } = JSON.parse(doctor.workingHours || '{"start":"08:00","end":"18:00"}')
+    const rows = schedByDoctor.get(doctor.id)
+    let workingHours: { start: string; end: string }
 
-    if (!workingDays.includes(dayOfWeek)) continue
+    if (rows && rows.length > 0) {
+      const dayRow = rows.find(s => s.dayOfWeek === dayOfWeek)
+      if (!dayRow || !dayRow.isOpen) continue
+      const fallback: { start: string; end: string } = JSON.parse(doctor.workingHours || '{"start":"08:00","end":"18:00"}')
+      workingHours = { start: dayRow.openTime ?? fallback.start, end: dayRow.closeTime ?? fallback.end }
+    } else {
+      const workingDays: number[] = JSON.parse(doctor.workingDays || '[1,2,3,4,5]')
+      if (!workingDays.includes(dayOfWeek)) continue
+      workingHours = JSON.parse(doctor.workingHours || '{"start":"08:00","end":"18:00"}')
+    }
 
     const [existingAppts, blockedTimes] = await Promise.all([
       prisma.appointment.findMany({
@@ -327,20 +380,58 @@ async function handle_get_doctors_available_today(input: { date?: string }) {
   }
 }
 
-async function handle_get_services() {
+async function handle_get_services(ctx: ToolContext) {
   const services = await prisma.service.findMany({
     where: { isActive: true },
     orderBy: [{ category: 'asc' }, { name: 'asc' }],
   })
-  return services.map(s => ({
-    id: s.id,
-    name: s.name,
-    category: s.category,
-    duration_minutes: s.durationMins,
-    price_ugx: s.priceUGX,
-    price_usd: s.priceUSD,
-    vat_applicable: s.vatApplicable,
-  }))
+
+  // Look up whether this patient has an active sponsor with negotiated rates
+  let sponsorRates: Record<string, number> = {}
+  if (ctx.phoneNumber) {
+    const patient = await prisma.patient.findFirst({ where: { phone: ctx.phoneNumber }, select: { id: true } })
+    if (patient) {
+      const now = new Date()
+      const sponsorLink = await prisma.patientSponsor.findFirst({
+        where: {
+          patientId:   patient.id,
+          eligibility: 'ACTIVE',
+          startDate:   { lte: now },
+          OR: [{ endDate: null }, { endDate: { gte: now } }],
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (sponsorLink) {
+        const schedules = await prisma.feeSchedule.findMany({
+          where: {
+            organizationId: sponsorLink.organizationId,
+            serviceId:      { not: null },
+            effectiveFrom:  { lte: now },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
+          },
+        })
+        for (const s of schedules) {
+          if (s.serviceId && s.negotiatedRate != null) {
+            sponsorRates[s.serviceId] = s.negotiatedRate
+          }
+        }
+      }
+    }
+  }
+
+  return services.map(s => {
+    const negotiatedRate = sponsorRates[s.id]
+    return {
+      id:               s.id,
+      name:             s.name,
+      category:         s.category,
+      duration_minutes: s.durationMins,
+      price_ugx:        negotiatedRate ?? s.priceUGX,
+      price_usd:        s.priceUSD,
+      vat_applicable:   s.vatApplicable,
+      ...(negotiatedRate != null ? { sponsor_rate: true, standard_price_ugx: s.priceUGX } : {}),
+    }
+  })
 }
 
 async function handle_get_patient_balance(input: { patient_id: string }) {
@@ -677,7 +768,7 @@ async function handle_escalate_to_human(
         data: {
           userId: u.id,
           type: 'ESCALATION',
-          title: `${urgencyEmoji} Agent Escalation — ${input.urgency} Priority`,
+          title: `${urgencyEmoji} Patient Flagged for Follow-up — ${input.urgency} Priority`,
           body: `${input.reason.slice(0, 180)} | Phone: ${ctx.phoneNumber}`,
           href: '/receptionist/dashboard',
         },
@@ -927,7 +1018,7 @@ export async function executeAgentTool(
       case 'get_doctor_availability':    return await handle_get_doctor_availability(input)
       case 'get_all_doctors':              return await handle_get_all_doctors()
       case 'get_doctors_available_today': return await handle_get_doctors_available_today(input)
-      case 'get_services':               return await handle_get_services()
+      case 'get_services':               return await handle_get_services(ctx)
       case 'get_patient_balance':        return await handle_get_patient_balance(input)
       case 'book_appointment':           return await handle_book_appointment(input, ctx)
       case 'reschedule_appointment':     return await handle_reschedule_appointment(input, ctx)

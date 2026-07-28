@@ -39,12 +39,23 @@ router.post('/whatsapp/webhook', async (req, res) => {
           const normPhone = digits.startsWith('256') ? `+${digits}`
                           : digits.startsWith('0') && digits.length === 10 ? `+256${digits.slice(1)}`
                           : `+${digits}`
-          const recent = await prisma.aiScheduledMessage.findFirst({
-            where: { patient: { phone: normPhone }, sent: true },
-            orderBy: { createdAt: 'desc' },
-          })
+          const [recent, recentBotLog] = await Promise.all([
+            prisma.aiScheduledMessage.findFirst({
+              where: { patient: { phone: normPhone }, sent: true },
+              orderBy: { createdAt: 'desc' },
+            }),
+            prisma.botMessageLog.findFirst({
+              where: { recipientPhone: { in: [normPhone, recipientPhone] } },
+              orderBy: { sentAt: 'desc' },
+            }),
+          ])
           if (recent) {
             await prisma.aiScheduledMessage.update({ where: { id: recent.id }, data: { deliveryStatus: status } })
+          }
+          if (recentBotLog) {
+            await prisma.botMessageLog.update({ where: { id: recentBotLog.id }, data: { deliveryStatus: status } })
+          }
+          if (recent || recentBotLog) {
             console.log(`[AT] Delivery status saved: ${status} for ${normPhone}`)
           }
         } catch (e: any) {

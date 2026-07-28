@@ -1,9 +1,120 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Search, ChevronLeft, ChevronRight, Download, ShieldCheck, ShieldAlert, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, Download, ShieldCheck, ShieldAlert, ChevronDown, ChevronUp, MessageSquare, ClipboardList } from 'lucide-react'
 
 const API = '/api-proxy'
+
+// ── Bot message log types ─────────────────────────────────────────────────────
+
+interface BotMessageLog {
+  id: string
+  recipientPhone: string
+  channel: string
+  templateType: string
+  messageBody: string
+  sentAt: string
+  deliveryStatus: string | null
+  patient: { firstName: string; lastName: string; patientNumber: number } | null
+}
+
+interface BotPageData {
+  logs: BotMessageLog[]
+  total: number
+  page: number
+  limit: number
+  pages: number
+}
+
+// ── Delivery status badge ─────────────────────────────────────────────────────
+
+function DeliveryBadge({ status }: { status: string | null }) {
+  if (!status) return <span className="text-xs text-gray-400">pending</span>
+  const styles: Record<string, string> = {
+    read:      'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    delivered: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+    sent:      'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+    failed:    'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  }
+  return (
+    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[status] || styles['sent']}`}>
+      {status}
+    </span>
+  )
+}
+
+// ── Template type badge ───────────────────────────────────────────────────────
+
+const TEMPLATE_COLORS: Record<string, string> = {
+  appointment_reminder:   'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  booking_confirmation:   'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  followup_feedback:      'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+  reactivation:           'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  staff_alert:            'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  general_reply:          'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+  consent_update:         'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+  cancellation_notice:    'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300',
+}
+
+function TemplateBadge({ type }: { type: string }) {
+  const style = TEMPLATE_COLORS[type] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+  return (
+    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${style}`}>
+      {type.replace(/_/g, ' ')}
+    </span>
+  )
+}
+
+// ── Bot message row ───────────────────────────────────────────────────────────
+
+function BotRow({ log }: { log: BotMessageLog }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <>
+      <tr
+        className="hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors cursor-pointer"
+        onClick={() => setExpanded(e => !e)}
+      >
+        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+          {eatTime(log.sentAt)}
+        </td>
+        <td className="px-4 py-3">
+          {log.patient ? (
+            <div>
+              <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                {log.patient.firstName} {log.patient.lastName}
+              </div>
+              <div className="text-[10px] text-gray-400">#{log.patient.patientNumber} · {log.recipientPhone}</div>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 dark:text-gray-400">{log.recipientPhone}</div>
+          )}
+        </td>
+        <td className="px-4 py-3">
+          <TemplateBadge type={log.templateType} />
+        </td>
+        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200 max-w-xs truncate">
+          {log.messageBody}
+        </td>
+        <td className="px-4 py-3">
+          <DeliveryBadge status={log.deliveryStatus} />
+        </td>
+        <td className="px-4 py-3 w-6">
+          {expanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="bg-gray-50 dark:bg-gray-800/60">
+          <td colSpan={6} className="px-6 pb-4 pt-2">
+            <p className="text-xs font-mono text-gray-700 dark:text-gray-200 whitespace-pre-wrap bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-3">
+              {log.messageBody}
+            </p>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
 
 // ── Human-readable sentence builder ─────────────────────────────────────────
 
@@ -230,6 +341,9 @@ function LogRow({ log }: { log: AuditLog }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AuditLogPage() {
+  const [activeTab, setActiveTab] = useState<'human' | 'bot'>('human')
+
+  // ── Human audit log state ─────────────────────────────────────────────────
   const [data, setData]         = useState<PageData | null>(null)
   const [loading, setLoading]   = useState(true)
   const [page, setPage]         = useState(1)
@@ -242,6 +356,35 @@ export default function AuditLogPage() {
   const [verifying, setVerifying] = useState(false)
   const [verifyResult, setVerifyResult] = useState<{ intact: boolean; total: number; tampered: number } | null>(null)
   const [exporting, setExporting] = useState(false)
+
+  // ── Bot message log state ─────────────────────────────────────────────────
+  const [botData, setBotData]       = useState<BotPageData | null>(null)
+  const [botLoading, setBotLoading] = useState(false)
+  const [botPage, setBotPage]       = useState(1)
+  const [botSearch, setBotSearch]   = useState('')
+  const [botStatus, setBotStatus]   = useState('')
+  const [botFrom, setBotFrom]       = useState('')
+  const [botTo, setBotTo]           = useState('')
+
+  const loadBot = useCallback(async () => {
+    setBotLoading(true)
+    try {
+      const token = localStorage.getItem('cc_token') || ''
+      const params = new URLSearchParams({ page: String(botPage), limit: '50' })
+      if (botSearch) params.set('q',      botSearch)
+      if (botStatus) params.set('status', botStatus)
+      if (botFrom)   params.set('from',   botFrom)
+      if (botTo)     params.set('to',     botTo)
+      const res = await fetch(`${API}/audit-logs/bot-messages?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) setBotData(await res.json())
+    } finally {
+      setBotLoading(false)
+    }
+  }, [botPage, botSearch, botStatus, botFrom, botTo])
+
+  useEffect(() => { if (activeTab === 'bot') loadBot() }, [activeTab, loadBot])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -319,7 +462,7 @@ export default function AuditLogPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Audit Log</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Tamper-evident record of all clinical actions</p>
+          <p className="text-xs text-gray-400 mt-0.5">Tamper-evident record of all clinical and bot actions</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -348,6 +491,134 @@ export default function AuditLogPage() {
           </button>
         </div>
       </div>
+
+      {/* Tab switcher */}
+      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => setActiveTab('human')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'human'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+          }`}
+        >
+          <ClipboardList size={14} /> Human Actions
+        </button>
+        <button
+          onClick={() => setActiveTab('bot')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'bot'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+          }`}
+        >
+          <MessageSquare size={14} /> Bot Messages
+          {botData && <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full">{botData.total.toLocaleString()}</span>}
+        </button>
+      </div>
+
+      {/* ── BOT MESSAGES TAB ── */}
+      {activeTab === 'bot' && (
+        <div className="space-y-4">
+          {/* Bot filters */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search patient, phone, message…"
+                  value={botSearch}
+                  onChange={e => { setBotSearch(e.target.value); setBotPage(1) }}
+                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <select
+                value={botStatus}
+                onChange={e => { setBotStatus(e.target.value); setBotPage(1) }}
+                className="py-2 px-3 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Statuses</option>
+                <option value="sent">Sent</option>
+                <option value="delivered">Delivered</option>
+                <option value="read">Read</option>
+                <option value="failed">Failed</option>
+              </select>
+              <input
+                type="date"
+                value={botFrom}
+                onChange={e => { setBotFrom(e.target.value); setBotPage(1) }}
+                className="py-2 px-3 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-gray-400 text-sm self-center">to</span>
+              <input
+                type="date"
+                value={botTo}
+                onChange={e => { setBotTo(e.target.value); setBotPage(1) }}
+                className="py-2 px-3 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {(botSearch || botStatus || botFrom || botTo) && (
+                <button
+                  onClick={() => { setBotSearch(''); setBotStatus(''); setBotFrom(''); setBotTo(''); setBotPage(1) }}
+                  className="py-2 px-3 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-lg"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Bot messages table */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            {botLoading ? (
+              <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>
+            ) : !botData || botData.logs.length === 0 ? (
+              <div className="py-16 text-center text-gray-400 text-sm">No bot messages found</div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750">
+                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">Time (EAT)</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Recipient</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Type</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Message</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Delivery</th>
+                        <th className="px-4 py-3 w-6" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {botData.logs.map(log => <BotRow key={log.id} log={log} />)}
+                    </tbody>
+                  </table>
+                </div>
+                {botData.pages > 1 && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+                    <span className="text-xs text-gray-400">
+                      {((botData.page - 1) * botData.limit) + 1}–{Math.min(botData.page * botData.limit, botData.total)} of {botData.total.toLocaleString()}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setBotPage(p => Math.max(1, p - 1))} disabled={botData.page <= 1}
+                        className="p-1.5 rounded border border-gray-200 dark:border-gray-600 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <ChevronLeft size={14} />
+                      </button>
+                      <span className="text-xs text-gray-600 dark:text-gray-300">Page {botData.page} / {botData.pages}</span>
+                      <button onClick={() => setBotPage(p => Math.min(botData.pages, p + 1))} disabled={botData.page >= botData.pages}
+                        className="p-1.5 rounded border border-gray-200 dark:border-gray-600 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── HUMAN ACTIONS TAB ── */}
+      {activeTab === 'human' && (<>
 
       {/* Verify result banner */}
       {verifyResult && (
@@ -499,6 +770,8 @@ export default function AuditLogPage() {
           </>
         )}
       </div>
+
+      </>)}
     </div>
   )
 }

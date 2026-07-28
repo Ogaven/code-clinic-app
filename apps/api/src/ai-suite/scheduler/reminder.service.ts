@@ -1,7 +1,7 @@
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { getGreetingName, normalizeRelation } from '../../utils/nameHelper'
-import { resolveOutboundRecipient } from './guardian-routing.service'
+import { resolveOutboundRecipient, alertStaffMinorNoGuardian, hasOutboundConsent } from './guardian-routing.service'
 
 // ── checkAndSendReminders ─────────────────────────────────────────────────────
 // Runs every hour. Finds appointments starting 23–25 hours from now and sends a
@@ -49,20 +49,26 @@ export async function checkAndSendReminders(): Promise<void> {
     })
     if (alreadySent) continue
 
+    if (!(await hasOutboundConsent(patient.id))) {
+      console.log(`[Reminder] Skipping ${patient.firstName} — opted out of bot communications`)
+      continue
+    }
+
     // ── Resolve recipient (guardian routing for minors) ───────────────────────
     const channel   = 'WHATSAPP'
     const greetName = getGreetingName(patient)
     const routing   = await resolveOutboundRecipient(patient, greetName)
     if (!routing.ok) {
-      console.warn(`[Reminder] Skipping ${patient.firstName} — minor with no active guardian (MINOR_NO_GUARDIAN)`)
+      console.warn(`[Reminder] Skipping ${patient.firstName} — minor with no active guardian`)
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'reminder')
       continue
     }
     const { phone: recipientPhone, name: recipientName, isGuardian } = routing.recipient
 
     // ── Build message ─────────────────────────────────────────────────────────
-    const time = appt.startAt.toLocaleTimeString('en-UG', {
-      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
-    })
+    const time = appt.startAt.toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
+    }).toLowerCase()
     const dayDate = appt.startAt.toLocaleDateString('en-UG', {
       weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi',
     })
@@ -184,10 +190,16 @@ export async function checkAndSendReminders(): Promise<void> {
     })
     if (alreadySent1h) continue
 
+    if (!(await hasOutboundConsent(pat1h.id))) {
+      console.log(`[Reminder 1h] Skipping ${pat1h.firstName} — opted out of bot communications`)
+      continue
+    }
+
     const name1h     = getGreetingName(pat1h)
     const routing1h  = await resolveOutboundRecipient(pat1h, name1h)
     if (!routing1h.ok) {
       console.warn(`[Reminder 1h] Skipping ${pat1h.firstName} — minor with no active guardian`)
+      await alertStaffMinorNoGuardian(`${pat1h.firstName} ${pat1h.lastName}`, '1-hour reminder')
       continue
     }
     const { phone: recipientPhone1h, name: addr1h, isGuardian: isGuardian1h } = routing1h.recipient

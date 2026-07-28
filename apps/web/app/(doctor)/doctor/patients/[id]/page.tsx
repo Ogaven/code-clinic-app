@@ -656,6 +656,9 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
   const [form, setForm] = useState({ serviceId: '', toothNumber: '', quantity: 1, costPerUnit: 0, discount: 0, notes: '', status: 'Planned' })
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ serviceId: '', toothNumber: '', quantity: 1, costPerUnit: 0, discount: 0, notes: '', status: 'Planned' })
+  const [noteEditingId, setNoteEditingId] = useState<string | null>(null)
+  const [noteEditValue, setNoteEditValue] = useState('')
+  const [noteSavedId, setNoteSavedId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`/api-proxy/clinical/patients/${patientId}/treatment-plans`, { headers: { Authorization: `Bearer ${token}` } })
@@ -698,6 +701,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
 
   function handleStartEdit(p: any) {
     setEditingId(p.id)
+    setNoteEditingId(null)
     setEditForm({ serviceId: p.serviceId || '', toothNumber: p.toothNumber || '', quantity: p.quantity || 1, costPerUnit: p.costPerUnit || 0, discount: p.discount || 0, notes: p.notes || '', status: p.status || 'Planned' })
   }
 
@@ -713,6 +717,23 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
       setPlans(prev => prev.map(p => p.id === editingId ? updated : p))
     } catch { return }
     setEditingId(null)
+  }
+
+  async function handleSaveNote(planId: string) {
+    const plan = plans.find(p => p.id === planId)
+    if (!plan) return
+    try {
+      const res = await fetch(`/api-proxy/clinical/patients/${patientId}/treatment-plans/${planId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...plan, notes: noteEditValue }),
+      })
+      if (!res.ok) return
+      const updated = await res.json()
+      setPlans(prev => prev.map(p => p.id === planId ? updated : p))
+    } catch { return }
+    setNoteEditingId(null)
+    setNoteSavedId(planId)
+    setTimeout(() => setNoteSavedId(prev => prev === planId ? null : prev), 2000)
   }
 
   const statusStyles: Record<string, string> = {
@@ -863,7 +884,37 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-center">{p.discount > 0 ? `UGX ${p.discount.toLocaleString()}` : '—'}</td>
                     <td className="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white text-right">{formatUGX(total)}</td>
                     <td className="px-4 py-3 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-GB')}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 max-w-[180px]" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{p.notes || '—'}</td>
+                    <td className="px-4 py-3 text-sm max-w-[220px]">
+                      {noteEditingId === p.id ? (
+                        <div className="space-y-1.5">
+                          <textarea
+                            autoFocus
+                            value={noteEditValue}
+                            onChange={e => setNoteEditValue(e.target.value)}
+                            className="w-full text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 resize-none"
+                            rows={3}
+                          />
+                          <div className="flex gap-1.5">
+                            <button onClick={() => handleSaveNote(p.id)}
+                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-emerald-600 rounded hover:bg-emerald-700">
+                              <Save size={11} /> Save
+                            </button>
+                            <button onClick={() => setNoteEditingId(null)}
+                              className="px-2 py-1 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white">Cancel</button>
+                          </div>
+                        </div>
+                      ) : noteSavedId === p.id ? (
+                        <span className="text-emerald-600 dark:text-emerald-400 text-xs font-semibold">Saved ✓</span>
+                      ) : (
+                        <div className="flex items-start gap-1 group/note cursor-pointer"
+                          onClick={() => { setNoteEditingId(p.id); setNoteEditValue(p.notes || '') }}>
+                          <span className="text-slate-500 dark:text-slate-400 flex-1" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
+                            {p.notes || <span className="text-slate-300 dark:text-white/20 italic text-xs">Add notes…</span>}
+                          </span>
+                          <Pencil size={11} className="flex-shrink-0 mt-0.5 text-slate-300 dark:text-white/20 opacity-0 group-hover/note:opacity-100 transition-opacity" />
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button onClick={() => handleStartEdit(p)} className="p-1 text-slate-400 hover:text-slate-600"><Pencil size={14} /></button>

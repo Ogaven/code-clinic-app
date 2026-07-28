@@ -657,6 +657,9 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
   const [form, setForm] = useState({ serviceId: '', toothNumber: '', quantity: 1, costPerUnit: 0, discount: 0, notes: '', status: 'Planned' })
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ serviceId: '', toothNumber: '', quantity: 1, costPerUnit: 0, discount: 0, notes: '', status: 'Planned' })
+  const [noteEditingId, setNoteEditingId] = useState<string | null>(null)
+  const [noteEditValue, setNoteEditValue] = useState('')
+  const [noteSavedId, setNoteSavedId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`/api-proxy/clinical/patients/${patientId}/treatment-plans`, { headers: { Authorization: `Bearer ${token}` } })
@@ -699,6 +702,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
 
   function handleStartEdit(p: any) {
     setEditingId(p.id)
+    setNoteEditingId(null)
     setEditForm({ serviceId: p.serviceId || '', toothNumber: p.toothNumber || '', quantity: p.quantity || 1, costPerUnit: p.costPerUnit || 0, discount: p.discount || 0, notes: p.notes || '', status: p.status || 'Planned' })
   }
 
@@ -714,6 +718,23 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
       setPlans(prev => prev.map(p => p.id === editingId ? updated : p))
     } catch { return }
     setEditingId(null)
+  }
+
+  async function handleSaveNote(planId: string) {
+    const plan = plans.find(p => p.id === planId)
+    if (!plan) return
+    try {
+      const res = await fetch(`/api-proxy/clinical/patients/${patientId}/treatment-plans/${planId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...plan, notes: noteEditValue }),
+      })
+      if (!res.ok) return
+      const updated = await res.json()
+      setPlans(prev => prev.map(p => p.id === planId ? updated : p))
+    } catch { return }
+    setNoteEditingId(null)
+    setNoteSavedId(planId)
+    setTimeout(() => setNoteSavedId(prev => prev === planId ? null : prev), 2000)
   }
 
   const statusStyles: Record<string, string> = {
@@ -864,7 +885,37 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-center">{p.discount > 0 ? `UGX ${p.discount.toLocaleString()}` : '—'}</td>
                     <td className="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white text-right">{formatUGX(total)}</td>
                     <td className="px-4 py-3 text-xs text-slate-400">{new Date(p.dateAdded || p.createdAt).toLocaleDateString('en-GB')}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 max-w-[180px]" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{p.notes || '—'}</td>
+                    <td className="px-4 py-3 text-sm max-w-[220px]">
+                      {noteEditingId === p.id ? (
+                        <div className="space-y-1.5">
+                          <textarea
+                            autoFocus
+                            value={noteEditValue}
+                            onChange={e => setNoteEditValue(e.target.value)}
+                            className="w-full text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 resize-none"
+                            rows={3}
+                          />
+                          <div className="flex gap-1.5">
+                            <button onClick={() => handleSaveNote(p.id)}
+                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-emerald-600 rounded hover:bg-emerald-700">
+                              <Save size={11} /> Save
+                            </button>
+                            <button onClick={() => setNoteEditingId(null)}
+                              className="px-2 py-1 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white">Cancel</button>
+                          </div>
+                        </div>
+                      ) : noteSavedId === p.id ? (
+                        <span className="text-emerald-600 dark:text-emerald-400 text-xs font-semibold">Saved ✓</span>
+                      ) : (
+                        <div className="flex items-start gap-1 group/note cursor-pointer"
+                          onClick={() => { setNoteEditingId(p.id); setNoteEditValue(p.notes || '') }}>
+                          <span className="text-slate-500 dark:text-slate-400 flex-1" style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>
+                            {p.notes || <span className="text-slate-300 dark:text-white/20 italic text-xs">Add notes…</span>}
+                          </span>
+                          <Pencil size={11} className="flex-shrink-0 mt-0.5 text-slate-300 dark:text-white/20 opacity-0 group-hover/note:opacity-100 transition-opacity" />
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button onClick={() => handleStartEdit(p)} className="p-1 text-slate-400 hover:text-slate-600"><Pencil size={14} /></button>
@@ -1124,6 +1175,201 @@ function AppointmentsTab({ patient, token }: { patient: any; token: string | nul
   )
 }
 
+// ─── Sponsor Section (inside Billing Tab) ─────────────────────────────────
+
+function SponsorSection({ patientId, token }: { patientId: string; token: string | null }) {
+  const [links,   setLinks]   = useState<any[]>([])
+  const [orgs,    setOrgs]    = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [modal,   setModal]   = useState<'add' | any | null>(null)
+  const [saving,  setSaving]  = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [error,   setError]   = useState<string | null>(null)
+  const [form,    setForm]    = useState({
+    organizationId: '', employeeId: '', department: '',
+    eligibility: 'ACTIVE', balancePayer: 'EMPLOYEE',
+    startDate: new Date().toISOString().slice(0, 10), endDate: '',
+  })
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`/api-proxy/sponsors/patients/${patientId}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+      fetch(`/api-proxy/sponsors`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+    ]).then(([linksData, orgsData]) => {
+      setLinks(Array.isArray(linksData) ? linksData : [])
+      setOrgs(Array.isArray(orgsData) ? orgsData : [])
+    }).catch(() => {}).finally(() => setLoading(false))
+  }, [patientId, token])
+
+  function openAdd() {
+    setForm({ organizationId: '', employeeId: '', department: '', eligibility: 'ACTIVE', balancePayer: 'EMPLOYEE', startDate: new Date().toISOString().slice(0, 10), endDate: '' })
+    setError(null); setModal('add')
+  }
+
+  function openEdit(link: any) {
+    setForm({
+      organizationId: link.organizationId,
+      employeeId:     link.employeeId   ?? '',
+      department:     link.department   ?? '',
+      eligibility:    link.eligibility,
+      balancePayer:   link.balancePayer,
+      startDate:      link.startDate.slice(0, 10),
+      endDate:        link.endDate ? link.endDate.slice(0, 10) : '',
+    })
+    setError(null); setModal(link)
+  }
+
+  async function save() {
+    if (!form.organizationId) { setError('Select a sponsor organization'); return }
+    setSaving(true); setError(null)
+    try {
+      const r = await fetch(`/api-proxy/sponsors/patients/${patientId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...form, endDate: form.endDate || null }),
+      })
+      const data = await r.json()
+      if (!r.ok) { setError(data.error || 'Save failed'); return }
+      setLinks(prev => {
+        const exists = prev.find(l => l.id === data.id)
+        return exists ? prev.map(l => l.id === data.id ? data : l) : [data, ...prev]
+      })
+      setModal(null)
+    } catch (e: any) { setError(e.message) } finally { setSaving(false) }
+  }
+
+  async function remove(link: any) {
+    if (!confirm(`Remove sponsor link with ${link.organization?.name}?`)) return
+    setDeleting(link.id)
+    try {
+      await fetch(`/api-proxy/sponsors/patients/${patientId}/${link.id}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+      })
+      setLinks(prev => prev.filter(l => l.id !== link.id))
+    } catch {} finally { setDeleting(null) }
+  }
+
+  const eligibilityBadge = (e: string) => ({
+    ACTIVE: 'bg-green-100 text-green-700', TERMINATED: 'bg-red-100 text-red-700', ON_LEAVE: 'bg-yellow-100 text-yellow-700',
+  }[e] || 'bg-gray-100 text-gray-600')
+
+  return (
+    <div className="mt-4 bg-white dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Sponsor / Insurance</h3>
+        <button onClick={openAdd} className="flex items-center gap-1 text-xs text-[#1A237E] hover:underline font-medium">
+          <Plus size={13} /> Add Sponsor
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="text-xs text-slate-400">Loading…</p>
+      ) : links.length === 0 ? (
+        <p className="text-xs text-slate-400 italic">No sponsor linked — standard pricing applies.</p>
+      ) : (
+        <div className="space-y-2">
+          {links.map(link => (
+            <div key={link.id} className="flex items-center gap-3 border border-slate-100 dark:border-white/10 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm text-slate-800 dark:text-white">{link.organization?.name}</span>
+                  <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', eligibilityBadge(link.eligibility))}>
+                    {link.eligibility}
+                  </span>
+                </div>
+                <div className="flex gap-3 text-xs text-slate-400 mt-0.5">
+                  {link.employeeId && <span>ID: {link.employeeId}</span>}
+                  {link.department && <span>{link.department}</span>}
+                  <span>Payer: {link.balancePayer}</span>
+                  <span>From: {new Date(link.startDate).toLocaleDateString('en-GB')}</span>
+                  {link.endDate && <span>To: {new Date(link.endDate).toLocaleDateString('en-GB')}</span>}
+                </div>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <button onClick={() => openEdit(link)} className="p-1 text-slate-400 hover:text-blue-600 rounded"><Pencil size={13} /></button>
+                <button onClick={() => remove(link)} disabled={deleting === link.id} className="p-1 text-slate-400 hover:text-red-600 rounded disabled:opacity-40">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {modal !== null && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">{modal === 'add' ? 'Add Sponsor Link' : 'Edit Sponsor Link'}</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600">Sponsor Organization *</label>
+                <select className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1A237E]"
+                  value={form.organizationId} onChange={e => setForm(f => ({ ...f, organizationId: e.target.value }))}
+                  disabled={modal !== 'add'}
+                >
+                  <option value="">— Select —</option>
+                  {orgs.filter(o => o.isActive).map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Employee ID</label>
+                  <input className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1A237E]"
+                    value={form.employeeId} onChange={e => setForm(f => ({ ...f, employeeId: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Department</label>
+                  <input className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1A237E]"
+                    value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Eligibility</label>
+                  <select className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1A237E]"
+                    value={form.eligibility} onChange={e => setForm(f => ({ ...f, eligibility: e.target.value }))}>
+                    <option value="ACTIVE">Active</option>
+                    <option value="TERMINATED">Terminated</option>
+                    <option value="ON_LEAVE">On Leave</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Balance Payer</label>
+                  <select className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1A237E]"
+                    value={form.balancePayer} onChange={e => setForm(f => ({ ...f, balancePayer: e.target.value }))}>
+                    <option value="EMPLOYEE">Employee</option>
+                    <option value="EMPLOYER">Employer</option>
+                    <option value="SPLIT">Split</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Start Date *</label>
+                  <input type="date" className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1A237E]"
+                    value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">End Date</label>
+                  <input type="date" className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1A237E]"
+                    value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+            {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setModal(null)} className="flex-1 border border-gray-200 rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={save} disabled={saving} className="flex-1 bg-[#1A237E] text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-[#151b6b] disabled:opacity-50">
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Billing Tab ──────────────────────────────────────────────────────────
 
 function BillingTab({ patient, token }: { patient: any; token: string | null }) {
@@ -1204,6 +1450,7 @@ function BillingTab({ patient, token }: { patient: any; token: string | null }) 
         </table>
         {invoices.length === 0 && <p className="text-center p-8 text-sm text-slate-400">No billing history found.</p>}
       </div>
+      <SponsorSection patientId={patient.id} token={token} />
     </div>
   )
 }

@@ -4,6 +4,45 @@ import { setBookingState } from '../booking/booking.state'
 import { createEscalation, notifyJulian } from '../../services/agent/guards/escalation'
 import { formatUgandaPhone } from '../sms/sms.service'
 import { prisma } from '../../lib/prisma'
+import { hasOutboundConsent } from '../scheduler/guardian-routing.service'
+
+// ── Classify outbound message type for audit log ──────────────────────────────
+
+function classifyMessage(body: string): string {
+  const b = body.toLowerCase()
+  if (b.startsWith('🔔') || b.includes('lead enquiry') || b.includes('minor') && b.includes('guardian')) return 'staff_alert'
+  if (b.includes('appointment') && (b.includes('tomorrow') || b.includes('reminder') || b.includes('today'))) return 'appointment_reminder'
+  if (b.includes('rate') || b.includes('feedback') || b.includes('how was')) return 'followup_feedback'
+  if (b.includes('we miss') || b.includes('been a while') || b.includes('due for')) return 'reactivation'
+  if (b.includes('confirmed') || b.includes('booking confirmed') || b.includes('booked for')) return 'booking_confirmation'
+  if (b.includes('cancelled') || b.includes('canceled')) return 'cancellation_notice'
+  if (b.includes('opted out') || b.includes('unsubscribed') || b.includes('re-subscribed')) return 'consent_update'
+  return 'general_reply'
+}
+
+// ── Fire-and-forget bot message audit log ─────────────────────────────────────
+
+function logOutboundMessage(to: string, body: string, templateType: string): void {
+  ;(async () => {
+    try {
+      const patient = await prisma.patient.findFirst({
+        where: { OR: [{ phone: to }, { phone: to.replace(/^\+/, '') }, { phone: `+${to.replace(/^\+/, '')}` }] },
+        select: { id: true },
+      })
+      await prisma.botMessageLog.create({
+        data: {
+          patientId:     patient?.id ?? null,
+          recipientPhone: to,
+          channel:        'WHATSAPP',
+          templateType,
+          messageBody:    body.slice(0, 4000),
+        },
+      })
+    } catch (e: any) {
+      console.error('[BotLog] Failed to write audit entry:', e?.message)
+    }
+  })()
+}
 
 // ── Strip markdown from Sarah's replies before sending via WhatsApp ──────────
 
@@ -51,12 +90,43 @@ function isClinicOpen(): boolean {
 }
 
 
-export async function processInbound(from: string, text: string, wamid: string): Promise<void> {
+export async function processInbound(from: string, text: string, wamid: string, phoneNumberId?: string): Promise<void> {
+  // Normalize to E.164: Meta webhook delivers numbers WITHOUT '+' (e.g. 256785703926).
+  // Africa's Talking delivers WITH '+'. Always use the '+' form so every DB lookup matches.
+  if (!from.startsWith('+')) from = `+${from}`
+
   try {
     // ── 1. Identify patient by phone number ──────────────────────────────────
     const patient = await prisma.patient.findFirst({
       where: { phone: from },
     })
+
+    // ── 1b. Opt-out / opt-in detection ──────────────────────────────────────
+    // Check before anything else so STOP is honoured even in human-takeover convos.
+    const trimmedText = text.trim().toLowerCase()
+    const STOP_WORDS  = ['stop', 'unsubscribe', 'optout', 'opt out', 'opt-out']
+    if (STOP_WORDS.includes(trimmedText)) {
+      if (patient) {
+        await prisma.patientConsent.create({
+          data: { patientId: patient.id, consentType: 'BOT_COMMUNICATION', granted: false },
+        })
+      }
+      await sendWhatsAppMessage(from,
+        `You've been unsubscribed from automated appointment reminders and updates from Code Clinic.\n\nIf you change your mind, reply START at any time. You can still message us whenever you need help 😊`
+      )
+      return
+    }
+    if (trimmedText === 'start') {
+      if (patient) {
+        await prisma.patientConsent.create({
+          data: { patientId: patient.id, consentType: 'BOT_COMMUNICATION', granted: true },
+        })
+      }
+      await sendWhatsAppMessage(from,
+        `Welcome back! 😊 You've been re-subscribed to appointment reminders and updates from Code Clinic.`
+      )
+      return
+    }
 
     // ── 2. Find or create an active conversation for this number ─────────────
     let conversation = await prisma.aiConversation.findFirst({
@@ -136,6 +206,10 @@ export async function processInbound(from: string, text: string, wamid: string):
       where: { id: conversation.id },
       data:  { updatedAt: new Date() },
     })
+
+    // Notify staff of new or unattended conversations (fire-and-forget)
+    const patientName = patient ? `${patient.firstName} ${patient.lastName}` : from
+    maybeNotifyStaff(conversation.id, from, patientName, 'WHATSAPP', isNewConversation)
 
     // ── 4. New conversation greeting ─────────────────────────────────────────
     // First-ever message from this number: send opening greeting, store it, return.
@@ -395,8 +469,14 @@ export async function processInbound(from: string, text: string, wamid: string):
       },
     })
 
-    // ── 10. Deliver Sarah's reply via Africa's Talking ────────────────────────
-    await sendWhatsAppMessage(from, stripMarkdown(agentReply), wamid)
+    // ── 10. Deliver Sarah's reply ─────────────────────────────────────────────
+    // Kenya number (1163288503545718) bypasses Africa's Talking and sends directly
+    // via Meta Graph API. All other numbers continue through the AT path unchanged.
+    if (phoneNumberId === '1163288503545718') {
+      await sendWhatsAppMessageDirect(from, stripMarkdown(agentReply), phoneNumberId)
+    } else {
+      await sendWhatsAppMessage(from, stripMarkdown(agentReply), wamid)
+    }
 
   } catch (err) {
     console.error('[WhatsApp] processInbound error:', err)
@@ -423,7 +503,35 @@ export async function sendWhatsAppMessage(to: string, body: string, _replyToMess
   // AT returns the Meta wamid in one of these shapes depending on API version
   const msgId: string | null = resp?.messageId ?? resp?.data?.messageId ?? resp?.recipients?.[0]?.messageId ?? null
   console.log(`[WhatsApp] Sent to ${normalizedTo}: ${body.slice(0, 60)}... (msgId: ${msgId ?? 'unknown'})`)
+  // Audit every outbound message — fire-and-forget so it never blocks delivery
+  logOutboundMessage(to, body, classifyMessage(body))
   return msgId
+}
+
+// Direct Meta Cloud API send — used for numbers not provisioned on Africa's Talking.
+// Sends from the given phoneNumberId using WHATSAPP_TOKEN. Zero AT involvement.
+export async function sendWhatsAppMessageDirect(to: string, body: string, phoneNumberId: string): Promise<string | null> {
+  const token = process.env.WHATSAPP_TOKEN
+  if (!token) {
+    console.error('[WhatsApp Direct] Missing WHATSAPP_TOKEN')
+    return null
+  }
+  const normalizedTo = to.startsWith('+') ? to.slice(1) : to
+  try {
+    const res = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ messaging_product: 'whatsapp', to: normalizedTo, type: 'text', text: { body } }),
+    })
+    const json = await res.json() as { messages?: Array<{ id: string }> }
+    const msgId = json.messages?.[0]?.id ?? null
+    console.log(`[WhatsApp Direct] Sent to +${normalizedTo}: ${body.slice(0, 60)}... (msgId: ${msgId ?? 'unknown'})`)
+    logOutboundMessage(to, body, classifyMessage(body))
+    return msgId
+  } catch (err: any) {
+    console.error('[WhatsApp Direct] Send failed:', err.message)
+    return null
+  }
 }
 
 export async function notifyReceptionistUnreachable(patientName: string, phone: string): Promise<void> {
@@ -442,6 +550,53 @@ export async function notifyReceptionistUnreachable(patientName: string, phone: 
     }
   } catch (e: any) {
     console.error('[WhatsApp] Failed to notify receptionist:', e?.message || JSON.stringify(e) || 'unknown error')
+  }
+}
+
+// Fire-and-forget: create in-app notifications for RECEPTIONIST + ADMIN if this conversation
+// is new OR has had no agent reply in the last hour (i.e. staff haven't attended to it).
+export async function maybeNotifyStaff(
+  conversationId: string,
+  phone: string,
+  displayName: string,
+  channel: 'WHATSAPP' | 'FACEBOOK' | 'INSTAGRAM' | 'FACEBOOK_COMMENT' | 'INSTAGRAM_COMMENT',
+  isNew: boolean,
+): Promise<void> {
+  try {
+    let shouldNotify = isNew
+    if (!shouldNotify) {
+      const lastAgentMsg = await prisma.aiMessage.findFirst({
+        where: { conversationId, role: 'AGENT' },
+        orderBy: { createdAt: 'desc' },
+      })
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+      shouldNotify = !lastAgentMsg || lastAgentMsg.createdAt < oneHourAgo
+    }
+    if (!shouldNotify) return
+
+    const channelLabel = channel.charAt(0) + channel.slice(1).toLowerCase()
+    const staff = await prisma.user.findMany({
+      where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
+    })
+    await Promise.all(
+      staff.map(u => {
+        const href = u.role === 'RECEPTIONIST'
+          ? `/receptionist/ai-suite/inbox?phone=${encodeURIComponent(phone)}`
+          : `/ai-suite/inbox?phone=${encodeURIComponent(phone)}`
+        return prisma.notification.create({
+          data: {
+            userId: u.id,
+            type:   'MESSAGE',
+            title:  `New ${channelLabel} message`,
+            body:   `Message from ${displayName !== phone ? displayName : phone} via ${channelLabel}`,
+            href,
+            isRead: false,
+          },
+        })
+      })
+    )
+  } catch (e: any) {
+    console.error('[Notify] maybeNotifyStaff failed:', e?.message)
   }
 }
 
@@ -496,6 +651,8 @@ export async function sendWhatsAppTemplate(
       },
     })
     console.log(`[WhatsApp] Template '${templateName}' (${atrid}) sent to ${to}:`, JSON.stringify(result))
+    // Audit the template send — body is template name + params for traceability
+    logOutboundMessage(to, `[Template: ${templateName}] ${params.join(' | ')}`, templateName)
   } catch (err: any) {
     const detail = typeof err === 'string' ? err
       : err?.message ? err.message

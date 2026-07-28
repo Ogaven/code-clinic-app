@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma'
 import { isMinor } from '../../utils/nameHelper'
+import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 
 export type PatientForRouting = {
   id: string
@@ -86,6 +87,22 @@ export async function resolveOutboundRecipient(
 }
 
 /**
+ * Send a real WhatsApp alert to staff whenever a minor patient has no active
+ * communication-contact guardian. Every missed communication is a real gap —
+ * alert fires every time so nothing slips through silently.
+ */
+export async function alertStaffMinorNoGuardian(
+  patientFullName: string,
+  messageType: string,
+): Promise<void> {
+  const staffNum = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+  const msg = `⚠️ ${patientFullName} is a minor with no guardian contact on file — a ${messageType} could not be sent. Please add guardian info and follow up manually.`
+  await sendWhatsAppMessage(staffNum, msg).catch((err: Error) => {
+    console.error(`[GuardianRouting] Staff alert failed for ${patientFullName}:`, err.message)
+  })
+}
+
+/**
  * Insert-only audit log for every outbound bot message.
  * There is NO update or delete path for this table — ever.
  */
@@ -107,4 +124,18 @@ export async function logBotMessage(opts: {
       deliveryStatus: opts.deliveryStatus ?? null,
     },
   })
+}
+
+/**
+ * Returns true if the patient has consented to automated bot communications,
+ * or has no consent record (default opt-in for operational healthcare comms).
+ * Returns false if the patient has explicitly opted out.
+ */
+export async function hasOutboundConsent(patientId: string): Promise<boolean> {
+  const record = await prisma.patientConsent.findFirst({
+    where:   { patientId, consentType: 'BOT_COMMUNICATION' },
+    orderBy: { grantedAt: 'desc' },
+  })
+  if (!record) return true          // No record → default opted-in
+  return record.granted === true    // Last explicit choice wins
 }
