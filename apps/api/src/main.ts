@@ -40,9 +40,9 @@ import webhooksRouter from './routes/webhooks'
 import auditRouter from './routes/audit'
 import aiReportsRouter from './routes/ai-reports'
 import permissionsRouter from './routes/permissions'
-import manychatRouter from './routes/manychat'
 import reportsRouter from './routes/reports'
 import templatesRouter from './routes/templates'
+import sponsorsRouter from './routes/sponsors'
 
 // AI Suite routers
 import aiSuiteRouter     from './ai-suite/whatsapp/whatsapp.routes'
@@ -58,6 +58,7 @@ import facebookRouter    from './ai-suite/facebook/facebook.routes'
 import configRouter      from './ai-suite/config/config.routes'
 import connectionsRouter from './ai-suite/connections/connections.routes'
 import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
+import metaUsageRouter from './ai-suite/meta/meta-usage.routes'
 
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
@@ -180,8 +181,8 @@ app.use('/setup',        setupRouter)
 app.use('/clinical',     clinicalRouter)
 app.use('/pre-visit',    previsitRouter)
 app.use('/audit-logs',   auditRouter)
+app.use('/sponsors',     sponsorsRouter)
 app.use('/ai-suite',     aiReportsRouter)
-app.use('/manychat',     manychatRouter)
 app.use('/reports',      reportsRouter)
 
 // ─── Webhooks (Meta, etc.) ────────────────────────────────────
@@ -237,6 +238,7 @@ app.use('/ai-suite',              facebookRouter)
 // Website chatbot:  POST /ai-suite/website/message
 //                   GET  /ai-suite/website/messages/:sessionId
 app.use('/ai-suite/website',      websiteRouter)
+app.use('/ai-suite',              metaUsageRouter)
 
 // ─── Chat widget ─────────────────────────────────────────────
 // Embeddable <script src="https://api.../widget.js"> snippet
