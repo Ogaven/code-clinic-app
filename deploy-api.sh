@@ -20,6 +20,9 @@ echo '[deploy-api] Building API locally (tsc)...'
 NODE_OPTIONS='--max-old-space-size=3072' pnpm --filter api build
 
 echo '[deploy-api] Copying compiled dist/ to server...'
+# Delete dist on server first, then copy fresh — prevents scp skipping unchanged files
+# (scp -r on Windows Git Bash can silently skip files that appear unchanged)
+ssh "$SERVER" "rm -rf $REMOTE_DIR/apps/api/dist"
 scp -r apps/api/dist "$SERVER:$REMOTE_DIR/apps/api/"
 
 # startup.js runs `prisma db push --schema=<this file>` on every restart.
