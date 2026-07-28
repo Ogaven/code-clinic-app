@@ -35,12 +35,34 @@ function hasBookingConfirmationLanguage(text: string): boolean {
     /confirmation\s+number/i,
     /appointment\s+is\s+confirmed/i,
     /booked\s+you\s+in/i,
+    // WhatsApp/V2-style confirmations
+    /you'?re\s+(all\s+set|booked|confirmed)\b/i,
+    /you\s+are\s+(all\s+set|booked|confirmed)\b/i,
+    /i'?ve?\s+(booked|scheduled|confirmed)\s+your\b/i,
+    /your\s+appointment\s+.{0,50}(confirmed|booked|scheduled)\b/i,
+    /see\s+you\s+(on|at)\s+\w/i,
+    /booked\s+(for|at)\s+\d/i,
   ]
   return patterns.some(p => p.test(text))
 }
 
 function hasCancellationLanguage(text: string): boolean {
   return /appointment\s+(has\s+been\s+)?cancelled/i.test(text)
+}
+
+function hasBookingDenialLanguage(text: string): boolean {
+  const patterns = [
+    /nothing.{0,40}(booked|booking|been\s+made)/i,
+    /no\s+appointment.{0,40}(exists|found|made|on\s+file|has\s+been)/i,
+    /haven'?t.{0,30}booked/i,
+    /not.{0,30}booked\s+(yet|anything|an?\s+appointment)/i,
+    /don'?t\s+(see|have|find).{0,30}appointment/i,
+    /no\s+booking.{0,40}(found|exists|on\s+file|has\s+been\s+made)/i,
+    /there('?s|\s+is)\s+no\s+appointment/i,
+    /you\s+(don'?t|do\s+not).{0,30}have\s+(an?|any)\s+appointment/i,
+    /i\s+(don'?t|do\s+not).{0,30}(see|have|find).{0,30}appointment/i,
+  ]
+  return patterns.some(p => p.test(text))
 }
 
 // ── Extractors from tool results ────────────────────────────────
@@ -117,6 +139,19 @@ function getAllDoctorNamesFromTools(tools: ToolRecord[]): string[] {
     }
     // book_appointment → confirmation_details.doctor
     if (t.result.confirmation_details?.doctor) addName(t.result.confirmation_details.doctor)
+    // check_availability → { slots: [{ doctorName: 'Dr ...' }] }
+    if (Array.isArray(t.result.slots)) {
+      for (const slot of t.result.slots) {
+        if (slot.doctorName) addName(slot.doctorName)
+      }
+    }
+    // search_doctors → { fullName: 'Dr ...' } or { availableDoctors: [{ name: 'Dr ...' }] }
+    if (t.result.fullName) addName(t.result.fullName)
+    if (Array.isArray(t.result.availableDoctors)) {
+      for (const d of t.result.availableDoctors) {
+        if (d.name) addName(d.name)
+      }
+    }
   }
   return names
 }
@@ -136,8 +171,15 @@ export async function antiHallucinationGuard(
   responseText: string,
   toolResults: ToolRecord[]
 ): Promise<GuardResult> {
-  // If no tools were called and response mentions specifics — that's fine for greetings/general talk
-  if (toolResults.length === 0) return { safe: true }
+  // If no tools were called:
+  // - denial language ("nothing has been booked", "you have no appointment") without a DB lookup → unsafe
+  // - everything else (greetings, general questions) → safe
+  if (toolResults.length === 0) {
+    if (hasBookingDenialLanguage(responseText)) {
+      return { safe: false, reason: 'Response claims no appointment exists but no lookup tool was called to verify' }
+    }
+    return { safe: true }
+  }
 
   // 1. Did any tool return an error?
   const { hasError, toolName } = anyToolHadError(toolResults)
@@ -170,7 +212,8 @@ export async function antiHallucinationGuard(
   if (mentionedDoctors.length > 0) {
     const confirmedDoctors = getAllDoctorNamesFromTools(toolResults)
     const doctorToolsCalled = toolResults.some(t =>
-      ['get_all_doctors', 'get_patient_appointments', 'get_patient_by_phone', 'book_appointment', 'get_doctor_availability'].includes(t.tool)
+      ['get_all_doctors', 'get_patient_appointments', 'get_patient_by_phone', 'book_appointment',
+       'get_doctor_availability', 'get_doctors_available_today', 'check_availability', 'search_doctors'].includes(t.tool)
     )
     if (!doctorToolsCalled) {
       return { safe: false, reason: 'Doctor name mentioned but no doctor lookup tool was called' }
@@ -187,6 +230,15 @@ export async function antiHallucinationGuard(
   if (hasBookingConfirmationLanguage(responseText)) {
     const bookingCall = toolResults.find(t => t.tool === 'book_appointment')
     if (!bookingCall) {
+      // Exception: if get_patient_appointments returned existing appointments,
+      // "booked" language is Claude reporting the patient's EXISTING appointment —
+      // not claiming a new booking. This is always safe.
+      const existingApptLookup = toolResults.find(
+        t => t.tool === 'get_patient_appointments' &&
+             Array.isArray(t.result?.appointments) &&
+             t.result.appointments.length > 0
+      )
+      if (existingApptLookup) return { safe: true }
       return { safe: false, reason: 'Booking confirmed in response but book_appointment tool was not called' }
     }
     if (!bookingCall.result?.success) {
