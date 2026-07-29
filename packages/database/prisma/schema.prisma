@@ -879,10 +879,12 @@ model AiMessage {
   role           String         // USER | AGENT | SYSTEM
   content        String
   metadata       String?        // JSON
+  wamid          String?        // WhatsApp message ID — used for restart-safe dedup across dual-webhook deliveries
   createdAt      DateTime       @default(now())
 
   @@index([conversationId])
   @@index([conversationId, createdAt])
+  @@index([wamid])
   @@map("ai_messages")
 }
 
@@ -1151,4 +1153,12 @@ model PhoneVerification {
 
   @@index([phone, verified])
   @@map("phone_verifications")
+}
+
+model ProcessedWamid {
+  wamid       String   @id
+  processedAt DateTime @default(now())
+
+  @@index([processedAt])
+  @@map("processed_wamids")
 }
