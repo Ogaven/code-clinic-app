@@ -96,22 +96,6 @@ export async function processInbound(from: string, text: string, wamid: string, 
   if (!from.startsWith('+')) from = `+${from}`
 
   try {
-    // ── 0. Wamid dedup — restart-safe DB check ───────────────────────────────
-    // The in-memory buffer (message-buffer.ts) catches duplicates within a
-    // single process lifetime. This DB check covers the restart-gap scenario:
-    // AT and Cloud API each deliver the same wamid; if PM2 restarts between
-    // the two deliveries the in-memory map is gone but the DB record persists.
-    if (wamid) {
-      const already = await prisma.aiMessage.findFirst({
-        where: { wamid, createdAt: { gte: new Date(Date.now() - 120_000) } },
-        select: { id: true },
-      })
-      if (already) {
-        console.log(`[WhatsApp] DB-dedup: wamid ...${wamid.slice(-16)} already in DB — skipping`)
-        return
-      }
-    }
-
     // ── 1. Identify patient by phone number ──────────────────────────────────
     const patient = await prisma.patient.findFirst({
       where: { phone: from },

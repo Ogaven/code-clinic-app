@@ -219,6 +219,7 @@ model Patient {
   medicalHistory        String?
   status                PatientStatus @default(NEW_LEAD)
   importSource          String?       // "SHEET" | "CSV" — set on bulk import, null for manual registrations
+  patientType           String?       // "NEW" | "EXISTING" — manually set by staff at registration
   guardianId            String?
   isMinor               Boolean  @default(false)
   relationship          String?       // "child" | "spouse" | "dependent" | "other"
@@ -879,12 +880,11 @@ model AiMessage {
   role           String         // USER | AGENT | SYSTEM
   content        String
   metadata       String?        // JSON
-  wamid          String?        // WhatsApp message ID — used for restart-safe dedup across dual-webhook deliveries
+  wamid          String?        // WhatsApp message ID stored for observability
   createdAt      DateTime       @default(now())
 
   @@index([conversationId])
   @@index([conversationId, createdAt])
-  @@index([wamid])
   @@map("ai_messages")
 }
 
