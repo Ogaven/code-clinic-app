@@ -238,13 +238,6 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                         </button>
                       )
                     })()}
-                    {appointment.status === 'CONFIRMED' && (
-                      <button onClick={() => changeStatus('PENDING')} disabled={!!loading}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors disabled:opacity-60">
-                        {loading === 'PENDING' ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
-                        Revert to Pending
-                      </button>
-                    )}
                     <button onClick={() => changeStatus('NO_SHOW')} disabled={!!loading}
                       className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-60">
                       {loading === 'NO_SHOW' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}
@@ -259,6 +252,15 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                       className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-700 text-xs font-semibold rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-60">
                       {loading === 'CANCELLED_RESCHEDULED' ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />}
                       Cancel &amp; Rescheduled
+                    </button>
+                  </div>
+                )}
+                {appointment.status !== 'PENDING' && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button onClick={() => changeStatus('PENDING')} disabled={!!loading}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 text-slate-600 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors disabled:opacity-60">
+                      {loading === 'PENDING' ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                      Revert to Pending
                     </button>
                   </div>
                 )}

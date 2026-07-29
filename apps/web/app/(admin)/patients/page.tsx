@@ -75,6 +75,7 @@ const EMPTY_FORM = {
   allergies: '',
   medicalHistory: [] as string[],
   referralSource: '',
+  patientType: 'NEW' as 'NEW' | 'EXISTING',
   consentBotComms: true,
 }
 
@@ -938,6 +939,29 @@ export default function PatientsPage() {
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Patient Type */}
+              <div className="pt-1">
+                <p className="text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Patient Type</p>
+                <div className="flex gap-2">
+                  {(['NEW', 'EXISTING'] as const).map(type => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, patientType: type }))}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
+                        form.patientType === type
+                          ? type === 'NEW'
+                            ? 'bg-emerald-500 text-white border-emerald-500'
+                            : 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white dark:bg-white/5 text-gray-500 dark:text-white/40 border-gray-200 dark:border-white/10 hover:border-gray-300'
+                      }`}
+                    >
+                      {type === 'NEW' ? 'New Patient' : 'Existing / Old Patient'}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Consent */}

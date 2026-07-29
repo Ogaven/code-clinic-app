@@ -152,16 +152,30 @@ function currentMondayStr(): string {
   return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`
 }
 
+function currentMonthStr(): string {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`
+}
+
+function parseMonthRange(monthStr: string): { start: Date; end: Date } {
+  const [y, m] = monthStr.split('-').map(Number)
+  return { start: new Date(y, m - 1, 1, 0, 0, 0, 0), end: new Date(y, m, 0, 23, 59, 59, 999) }
+}
+
 // GET /reports/clinical?view=daily&date=YYYY-MM-DD
 // GET /reports/clinical?view=weekly&weekStart=YYYY-MM-DD
+// GET /reports/clinical?view=monthly&month=YYYY-MM
 router.get('/clinical', requireAuth, async (req, res) => {
   try {
-    const view = ((req.query.view as string) || 'daily') as 'daily' | 'weekly'
+    const view = ((req.query.view as string) || 'daily') as 'daily' | 'weekly' | 'monthly'
     let start: Date, end: Date
 
     if (view === 'weekly') {
       const ws = (req.query.weekStart as string) || currentMondayStr()
       ;({ start, end } = parseWeekRange(ws))
+    } else if (view === 'monthly') {
+      const ms = (req.query.month as string) || currentMonthStr()
+      ;({ start, end } = parseMonthRange(ms))
     } else {
       const ds = (req.query.date as string) || todayDateStr()
       ;({ start, end } = parseDayRange(ds))
@@ -169,13 +183,15 @@ router.get('/clinical', requireAuth, async (req, res) => {
 
     const label = view === 'weekly'
       ? `Week of ${start.toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' })}`
+      : view === 'monthly'
+      ? start.toLocaleDateString('en-GB', { month:'long', year:'numeric' })
       : start.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
 
     // All appointments in the period
     const appts = await prisma.appointment.findMany({
       where: { startAt: { gte: start, lte: end } },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true, patientType: true } },
         doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
         service: { select: { id: true, name: true, category: true } },
       },
@@ -189,9 +205,13 @@ router.get('/clinical', requireAuth, async (req, res) => {
     const pending        = appts.filter((a: any) => a.status === 'PENDING').length
     const cancelled      = appts.filter((a: any) => a.status === 'CANCELLED').length
     const noShows        = appts.filter((a: any) => a.status === 'NO_SHOW').length
+    const rescheduled    = appts.filter((a: any) => a.status === 'RESCHEDULED' || a.status === 'CANCELLED_RESCHEDULED').length
 
-    // New vs Returning — check if each seen patient has any prior completed appointment
-    const seenIds = [...new Set(seen.map((a: any) => a.patientId as string))]
+    // New vs Returning — use explicit patientType when set, else fall back to prior-appointment check
+    const seenWithType    = seen.filter((a: any) => a.patient.patientType != null)
+    const seenUnclassified = seen.filter((a: any) => a.patient.patientType == null)
+
+    const seenIds = [...new Set(seenUnclassified.map((a: any) => a.patientId as string))]
     const priorRows = seenIds.length
       ? await prisma.appointment.findMany({
           where: {
@@ -202,9 +222,11 @@ router.get('/clinical', requireAuth, async (req, res) => {
           select: { patientId: true },
         })
       : []
-    const withPrior       = new Set((priorRows as any[]).map(a => a.patientId))
-    const newPatients      = seen.filter((a: any) => !withPrior.has(a.patientId)).length
-    const returningPatients = seen.filter((a: any) => withPrior.has(a.patientId)).length
+    const withPrior        = new Set((priorRows as any[]).map(a => a.patientId))
+    const newPatients      = seenWithType.filter((a: any) => a.patient.patientType === 'NEW').length
+                           + seenUnclassified.filter((a: any) => !withPrior.has(a.patientId)).length
+    const returningPatients = seenWithType.filter((a: any) => a.patient.patientType === 'EXISTING').length
+                           + seenUnclassified.filter((a: any) => withPrior.has(a.patientId)).length
 
     // Cancelled / No-show that haven't rebooked any future appointment
     const dnAppts = appts.filter((a: any) => a.status === 'CANCELLED' || a.status === 'NO_SHOW')
@@ -266,7 +288,7 @@ router.get('/clinical', requireAuth, async (req, res) => {
     res.json({
       period:  { view, start: start.toISOString(), end: end.toISOString(), label },
       metrics: { totalScheduled, totalSeen: seen.length, newPatients, returningPatients,
-                 reviews, confirmed, pending, cancelled, noShows, cancelledNotRescheduled },
+                 reviews, confirmed, pending, cancelled, rescheduled, noShows, cancelledNotRescheduled },
       followUpList,
     })
   } catch (e: any) {

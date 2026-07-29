@@ -28,6 +28,7 @@ const createPatientSchema = z.object({
   medicalHistory:     z.union([z.string(), z.array(z.string())]).optional(),
   referralSource:     z.string().optional().or(z.literal('')),
   importSource:       z.string().optional(),
+  patientType:        z.enum(['NEW', 'EXISTING']).optional(),
   status:             z.enum(['NEW_LEAD','UPCOMING','ACTIVE','DUE_RECALL','LAPSED','DORMANT','BALANCE_OWING']).optional(),
 })
 
@@ -247,7 +248,7 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
     const {
       firstName, lastName, phone, email, gender, dob, address, district,
       nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
-      referralSource, importSource,
+      referralSource, importSource, patientType,
     } = req.body
     if (!firstName || !lastName || !phone) {
       res.status(400).json({ error: 'firstName, lastName and phone are required' }); return
@@ -267,6 +268,7 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
         allergies:         allergies         || undefined,
         medicalHistory:    medHistory        || undefined,
         referralSource:    referralSource    || undefined,
+        patientType:       patientType       || 'NEW',
         ...(importSource ? { importSource, status: 'ACTIVE' as any } : {}),
       },
     })
@@ -681,7 +683,7 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
     const {
       firstName, lastName, phone, email, gender, dob, address, district, isActive,
       nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
-      referralSource, status, guardianId, isMinor, relationship,
+      referralSource, status, guardianId, isMinor, relationship, patientType,
     } = req.body
     // Prevent a patient from being their own guardian
     if (guardianId !== undefined && guardianId === req.params.id) {
@@ -696,6 +698,7 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
         nextOfKinName, nextOfKinPhone, nextOfKinRelation,
         allergies, medicalHistory,
         referralSource: referralSource || null,
+        ...(patientType !== undefined ? { patientType: patientType || null } : {}),
         ...(status ? { status: status as any } : {}),
         ...(guardianId !== undefined ? { guardianId: guardianId || null } : {}),
         ...(isMinor !== undefined ? { isMinor } : {}),

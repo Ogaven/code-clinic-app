@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, RefreshCw, Download, Printer, MessageCircle, CheckCircle2,
   Calendar, ChevronLeft, ChevronRight, Users, UserCheck, UserPlus,
-  RotateCcw, Clock, XCircle, PhoneOff, CalendarX, FileText,
+  RotateCcw, Clock, XCircle, PhoneOff, CalendarX, FileText, Repeat2,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -19,6 +19,7 @@ interface Metrics {
   confirmed: number
   pending: number
   cancelled: number
+  rescheduled: number
   noShows: number
   cancelledNotRescheduled: number
 }
@@ -65,6 +66,17 @@ function addDays(dateStr: string, n: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function currentMonthStr(): string {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
+}
+
+function addMonths(monthStr: string, n: number): string {
+  const [y, m] = monthStr.split('-').map(Number)
+  const d = new Date(y, m - 1 + n, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi',
@@ -88,9 +100,10 @@ function cleanPhone(phone: string): string {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ClinicalReportPage() {
-  const [view, setView]           = useState<'daily' | 'weekly'>('daily')
+  const [view, setView]           = useState<'daily' | 'weekly' | 'monthly'>('daily')
   const [date, setDate]           = useState(todayStr)
   const [weekStart, setWeekStart] = useState(() => getMondayStr())
+  const [month, setMonth]         = useState(() => currentMonthStr())
   const [data, setData]           = useState<ClinicalReport | null>(null)
   const [loading, setLoading]     = useState(true)
   const [contacted, setContacted] = useState<Record<string, string>>({})
@@ -102,6 +115,8 @@ export default function ClinicalReportPage() {
     try {
       const params = view === 'weekly'
         ? new URLSearchParams({ view: 'weekly', weekStart })
+        : view === 'monthly'
+        ? new URLSearchParams({ view: 'monthly', month })
         : new URLSearchParams({ view: 'daily', date })
       const res = await fetch(`/api-proxy/reports/clinical?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -116,7 +131,7 @@ export default function ClinicalReportPage() {
       setContacted(init)
     } catch {}
     setLoading(false)
-  }, [view, date, weekStart, token])
+  }, [view, date, weekStart, month, token])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -143,7 +158,8 @@ export default function ClinicalReportPage() {
     const blob = new Blob([csv], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a'); a.href = url
-    a.download = `clinical-followup-${view === 'weekly' ? weekStart : date}.csv`
+    const slug = view === 'weekly' ? weekStart : view === 'monthly' ? month : date
+    a.download = `clinical-followup-${slug}.csv`
     a.click(); URL.revokeObjectURL(url)
   }
 
@@ -234,7 +250,8 @@ export default function ClinicalReportPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `clinical-report-${view === 'weekly' ? weekStart : date}.docx`
+    const docSlug = view === 'weekly' ? weekStart : view === 'monthly' ? month : date
+    a.download = `clinical-report-${docSlug}.docx`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -253,6 +270,7 @@ export default function ClinicalReportPage() {
       `✔️ Confirmed: ${m.confirmed}`,
       `⏳ Pending: ${m.pending}`,
       `❌ Cancelled: ${m.cancelled}`,
+      `🔁 Rescheduled: ${m.rescheduled}`,
       `⚠️ No-Shows: ${m.noShows}`,
       `📞 Needs Follow-up: ${data.followUpList.length}`,
     ]
@@ -277,6 +295,7 @@ export default function ClinicalReportPage() {
     { label: 'Confirmed',                   value: m.confirmed,               color: '#14B8A6', Icon: CheckCircle2  },
     { label: 'Pending',                     value: m.pending,                 color: '#94A3B8', Icon: Clock         },
     { label: 'Cancelled',                   value: m.cancelled,               color: '#EF4444', Icon: XCircle       },
+    { label: 'Rescheduled',                 value: m.rescheduled,             color: '#A855F7', Icon: Repeat2       },
     { label: 'No-Shows',                    value: m.noShows,                 color: '#F97316', Icon: PhoneOff      },
     { label: 'Cancelled & Not Rescheduled', value: m.cancelledNotRescheduled, color: '#DC2626', Icon: CalendarX     },
   ]
@@ -327,7 +346,7 @@ export default function ClinicalReportPage() {
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
               style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
               <Printer size={14} />
-              {view === 'weekly' ? 'Generate Weekly PDF' : 'Print Daily Report'}
+              {view === 'monthly' ? 'Generate Monthly PDF' : view === 'weekly' ? 'Generate Weekly PDF' : 'Print Daily Report'}
             </button>
             <button onClick={fetchData}
               className="p-2.5 rounded-xl border border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors">
@@ -339,14 +358,14 @@ export default function ClinicalReportPage() {
         {/* ── View toggle + date controls ────────────────────────────────────── */}
         <div className="flex items-center gap-3 flex-wrap no-print">
           <div className="flex bg-gray-100 dark:bg-white/10 rounded-xl p-1 gap-1">
-            {(['daily', 'weekly'] as const).map(v => (
+            {(['daily', 'weekly', 'monthly'] as const).map(v => (
               <button key={v} onClick={() => setView(v)}
                 className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${
                   view === v
                     ? 'bg-white dark:bg-white/20 text-clinic-navy dark:text-white shadow-sm'
                     : 'text-gray-400 hover:text-gray-600 dark:hover:text-white/80'
                 }`}>
-                {v === 'daily' ? 'Daily' : 'Weekly'}
+                {v === 'daily' ? 'Daily' : v === 'weekly' ? 'Weekly' : 'Monthly'}
               </button>
             ))}
           </div>
@@ -364,7 +383,7 @@ export default function ClinicalReportPage() {
                 <ChevronRight size={14} className="text-gray-400" />
               </button>
             </div>
-          ) : (
+          ) : view === 'weekly' ? (
             <div className="flex items-center gap-1 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5">
               <button onClick={() => setWeekStart(w => addDays(w, -7))}
                 className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
@@ -381,6 +400,22 @@ export default function ClinicalReportPage() {
                 )}
               </div>
               <button onClick={() => setWeekStart(w => addDays(w, 7))}
+                className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+                <ChevronRight size={14} className="text-gray-400" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-2 py-1.5">
+              <button onClick={() => setMonth(m => addMonths(m, -1))}
+                className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+                <ChevronLeft size={14} className="text-gray-400" />
+              </button>
+              <div className="flex items-center gap-1.5 mx-2">
+                <Calendar size={13} className="text-gray-400 flex-shrink-0" />
+                <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+                  className="text-sm bg-transparent text-gray-700 dark:text-gray-200 focus:outline-none" />
+              </div>
+              <button onClick={() => setMonth(m => addMonths(m, 1))}
                 className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
                 <ChevronRight size={14} className="text-gray-400" />
               </button>
@@ -402,9 +437,9 @@ export default function ClinicalReportPage() {
         </div>
 
         {/* ── Metric cards ───────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {loading
-            ? Array.from({ length: 10 }).map((_, i) => (
+            ? Array.from({ length: 11 }).map((_, i) => (
                 <div key={i} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm">
                   <div className="h-2.5 bg-gray-100 dark:bg-white/10 rounded animate-pulse mb-3 w-16" />
                   <div className="h-7 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-10" />
