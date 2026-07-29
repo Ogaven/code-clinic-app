@@ -46,7 +46,8 @@ async function isWamidSeenDb(wamid: string): Promise<boolean> {
       where: { wamid, processedAt: { gte: new Date(Date.now() - WAMID_TTL_MS) } },
     })
     return row !== null
-  } catch {
+  } catch (err) {
+    console.error('[MessageBuffer] isWamidSeenDb error:', err instanceof Error ? err.message : String(err))
     return false  // DB failure must never block message processing
   }
 }

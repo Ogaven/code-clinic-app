@@ -48,8 +48,6 @@ export async function runStartup() {
     console.log('[startup] Admin credentials updated.')
   } catch (e: any) {
     console.error('[startup] Seed error:', e.message?.split('\n')[0])
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
