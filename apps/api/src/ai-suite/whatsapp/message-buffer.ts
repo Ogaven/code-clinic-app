@@ -14,7 +14,7 @@ import { prisma } from '../../lib/prisma'
 
 const DEBOUNCE_MS  = 1500
 const MAX_WAIT_MS  = 8000
-const WAMID_TTL_MS = 120_000   // 2 minutes — covers any plausible AT → restart → Cloud API gap
+const WAMID_TTL_MS = 6 * 60 * 60 * 1000   // 6 hours — covers AT → restart → Cloud API re-delivery gap
 
 // ── Layer 1: in-memory fast path ──────────────────────────────────────────────
 const seenWamids = new Map<string, number>()  // wamid → expiry timestamp
