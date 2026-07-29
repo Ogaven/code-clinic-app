@@ -450,12 +450,10 @@ export async function sendSocialReply(
     return
   }
 
-  // Instagram DMs require the IG Business Account ID as the sender endpoint;
-  // Facebook Messenger uses /me/messages (resolves to the Page via Page token).
-  const igAccountId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID ?? '17841404690443540'
-  const sendUrl = channel === 'INSTAGRAM'
-    ? `https://graph.facebook.com/${GRAPH_VERSION}/${igAccountId}/messages`
-    : `https://graph.facebook.com/${GRAPH_VERSION}/me/messages`
+  // Both Facebook and Instagram DMs use /me/messages with the Page token.
+  // The /{ig-acct-id}/messages endpoint returns error #3 (capability) even with
+  // instagram_manage_messages scope; /me/messages resolves correctly for both.
+  const sendUrl = `https://graph.facebook.com/${GRAPH_VERSION}/me/messages`
 
   const res = await fetch(sendUrl, {
     method:  'POST',
