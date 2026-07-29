@@ -20,10 +20,12 @@ echo '[deploy-api] Building API locally (tsc)...'
 NODE_OPTIONS='--max-old-space-size=3072' pnpm --filter api build
 
 echo '[deploy-api] Copying compiled dist/ to server...'
-# Delete dist on server first, then copy fresh — prevents scp skipping unchanged files
-# (scp -r on Windows Git Bash can silently skip files that appear unchanged)
+# tar | ssh is used instead of scp -r because:
+#   1. scp on Windows Git Bash silently skips unchanged files (no fresh copy guarantee)
+#   2. scp can't create new nested subdirectories if the parent didn't exist before
+# tar creates the full directory tree atomically and correctly every time.
 ssh "$SERVER" "rm -rf $REMOTE_DIR/apps/api/dist"
-scp -r apps/api/dist "$SERVER:$REMOTE_DIR/apps/api/"
+(cd apps/api && tar -czf - dist) | ssh "$SERVER" "cd $REMOTE_DIR/apps/api && tar -xzf -"
 
 # startup.js runs `prisma db push --schema=<this file>` on every restart.
 # Without copying the schema here, the server keeps an old schema and drops
