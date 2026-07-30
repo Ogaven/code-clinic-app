@@ -23,6 +23,7 @@ router.post('/facebook', async (req, res) => {
 
   try {
     const body = req.body as any
+    console.log(`[Webhooks] FB raw: object=${body.object} entries=${body.entry?.length ?? 0}`)
     if (body.object !== 'page') return
 
     for (const entry of body.entry ?? []) {
@@ -36,6 +37,7 @@ router.post('/facebook', async (req, res) => {
       }
       // Page feed comments
       for (const change of entry.changes ?? []) {
+        console.log(`[Webhooks] FB change: field=${change.field} item=${change.value?.item} verb=${change.value?.verb} from=${change.value?.from?.id}`)
         if (change.field !== 'feed') continue
         const v = change.value
         if (v?.item !== 'comment' || v?.verb !== 'add' || !v?.message) continue
