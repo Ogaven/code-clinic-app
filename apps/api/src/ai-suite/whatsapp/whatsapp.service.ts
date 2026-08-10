@@ -471,8 +471,8 @@ export async function processInbound(from: string, text: string, wamid: string, 
     })
 
     // ── 10. Deliver Sarah's reply ─────────────────────────────────────────────
-    // Kenya number (1163288503545718) bypasses Africa's Talking and sends directly
-    // via Meta Graph API. All other numbers continue through the AT path unchanged.
+    // Kenya number gets its own phone_number_id; Uganda (and all others) go through
+    // sendWhatsAppMessage which now routes via Meta Cloud API directly.
     if (phoneNumberId === '1163288503545718') {
       await sendWhatsAppMessageDirect(from, stripMarkdown(agentReply), phoneNumberId)
     } else {
@@ -484,29 +484,15 @@ export async function processInbound(from: string, text: string, wamid: string, 
   }
 }
 
-// Exported so schedulers (reminder, followup) can send outbound WhatsApp messages
+// Exported so schedulers (reminder, followup) can send outbound WhatsApp messages.
+// Routes through Meta Cloud API directly — Africa's Talking is no longer used.
 export async function sendWhatsAppMessage(to: string, body: string, _replyToMessageId?: string): Promise<string | null> {
-  const apiKey   = process.env.AT_API_KEY
-  const username = process.env.AT_USERNAME
-  const waNumber = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
-
-  if (!apiKey || !username || !waNumber) {
-    console.error('[WhatsApp] Missing AT_API_KEY, AT_USERNAME, or WHATSAPP_PHONE_NUMBER env vars')
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  if (!phoneNumberId) {
+    console.error('[WhatsApp] Missing WHATSAPP_PHONE_NUMBER_ID env var')
     return null
   }
-
-  const normalizedTo = formatUgandaPhone(to)
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const AfricasTalking = require('africastalking')
-  const at = AfricasTalking({ apiKey, username })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const resp: any = await at.WHATSAPP.sendMessage({ waNumber, phoneNumber: normalizedTo, body: { message: body } })
-  // AT returns the Meta wamid in one of these shapes depending on API version
-  const msgId: string | null = resp?.messageId ?? resp?.data?.messageId ?? resp?.recipients?.[0]?.messageId ?? null
-  console.log(`[WhatsApp] Sent to ${normalizedTo}: ${body.slice(0, 60)}... (msgId: ${msgId ?? 'unknown'})`)
-  // Audit every outbound message — fire-and-forget so it never blocks delivery
-  logOutboundMessage(to, body, classifyMessage(body))
-  return msgId
+  return sendWhatsAppMessageDirect(to, body, phoneNumberId)
 }
 
 // Direct Meta Cloud API send — used for numbers not provisioned on Africa's Talking.
@@ -601,64 +587,49 @@ export async function maybeNotifyStaff(
   }
 }
 
-// Send a WhatsApp template message via AT's raindrop system.
-// Templates must be registered with AT first (via AT's /whatsapp/template/send API) to get
-// an ATRid, then approved by Meta before they can be sent. Set ATRid env vars once obtained.
-// Callers must provide their own freeform fallback on throw.
+// Send a WhatsApp template message via Meta Cloud API directly.
+// All cc_* templates are APPROVED in Meta. Callers must provide their own freeform
+// fallback on throw — the throw-on-error contract is preserved from the old AT path.
 export async function sendWhatsAppTemplate(
   to: string,
   templateName: string,
   params: string[],
 ): Promise<void> {
-  const apiKey   = process.env.AT_API_KEY
-  const username = process.env.AT_USERNAME
-  const waNumber = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
-
-  if (!apiKey || !username || !waNumber) {
-    throw new Error('Missing AT credentials')
+  const token         = process.env.WHATSAPP_TOKEN
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  if (!token || !phoneNumberId) {
+    throw new Error('Missing WHATSAPP_TOKEN or WHATSAPP_PHONE_NUMBER_ID')
   }
 
-  // Map template names → ATRids (AT's internal raindrop IDs, obtained by registering
-  // each template via AT's API). ATRid env vars are set once AT approves the submission.
-  const atridByName: Record<string, string | undefined> = {
-    [process.env.WA_TEMPLATE_REMINDER_NAME         || 'cc_appointment_reminder']:    process.env.WA_TEMPLATE_REMINDER_ATRID,
-    [process.env.WA_TEMPLATE_STAFF_ALERT_NAME      || 'cc_staff_concern']:            process.env.WA_TEMPLATE_STAFF_ALERT_ATRID,
-    [process.env.WA_TEMPLATE_STAFF_BOOKING_NAME    || 'cc_staff_booking_update']:     process.env.WA_TEMPLATE_STAFF_BOOKING_ATRID,
-    [process.env.WA_TEMPLATE_BOOKING_CONFIRM_NAME  || 'cc_booking_confirmation']:     process.env.WA_TEMPLATE_BOOKING_ATRID,
-    [process.env.WA_TEMPLATE_POST_APPT_NAME        || 'cc_post_appointment_followup']: process.env.WA_TEMPLATE_POST_APPT_ATRID,
-    [process.env.WA_TEMPLATE_MISSED_CALL_NAME      || 'cc_missed_call_followup']:     process.env.WA_TEMPLATE_MISSED_CALL_ATRID,
-    [process.env.WA_TEMPLATE_REACTIVATION_NAME     || 'cc_patient_reactivation']:     process.env.WA_TEMPLATE_REACTIVATION_ATRID,
-    [process.env.WA_TEMPLATE_AFTER_HOURS_NAME      || 'cc_after_hours_followup']:     process.env.WA_TEMPLATE_AFTER_HOURS_ATRID,
+  const normalizedTo = to.startsWith('+') ? to.slice(1) : to
+  const components   = params.length > 0 ? [{
+    type:       'body',
+    parameters: params.map(p => ({ type: 'text', text: p })),
+  }] : []
+
+  const res = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      messaging_product: 'whatsapp',
+      to:                normalizedTo,
+      type:              'template',
+      template:          { name: templateName, language: { code: 'en' }, components },
+    }),
+  })
+
+  const json = await res.json() as {
+    messages?: Array<{ id: string }>
+    error?:    { message: string; code: number }
   }
 
-  const atrid = atridByName[templateName]
-  if (!atrid) {
-    throw new Error(`No ATRid for template '${templateName}' — register via AT template API first`)
-  }
-
-  const normalizedTo = formatUgandaPhone(to)
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const AfricasTalking = require('africastalking')
-  const at = AfricasTalking({ apiKey, username })
-
-  try {
-    const result = await at.WHATSAPP.sendMessage({
-      waNumber:    `+${waNumber.replace(/^\+/, '')}`,
-      phoneNumber: normalizedTo,
-      body: {
-        templateId:  atrid,
-        headerValue: ' ',
-        bodyValues:  params,
-      },
-    })
-    console.log(`[WhatsApp] Template '${templateName}' (${atrid}) sent to ${to}:`, JSON.stringify(result))
-    // Audit the template send — body is template name + params for traceability
-    logOutboundMessage(to, `[Template: ${templateName}] ${params.join(' | ')}`, templateName)
-  } catch (err: any) {
-    const detail = typeof err === 'string' ? err
-      : err?.message ? err.message
-      : JSON.stringify(err)
+  if (json.error) {
+    const detail = `#${json.error.code} ${json.error.message}`
     console.error(`[WhatsApp] Template '${templateName}' failed:`, detail)
     throw new Error(detail)
   }
+
+  const msgId = json.messages?.[0]?.id ?? null
+  console.log(`[WhatsApp] Template '${templateName}' sent to +${normalizedTo} (wamid: ${msgId ?? 'unknown'})`)
+  logOutboundMessage(to, `[Template: ${templateName}] ${params.join(' | ')}`, templateName)
 }
