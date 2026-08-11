@@ -169,12 +169,20 @@ router.get('/posts', async (req, res) => {
         }
       }
       if (!postId) continue
+
+      // Use the real last-message time, not conv.updatedAt — creating a
+      // message doesn't bump the parent conversation row, so relying on
+      // updatedAt buries fresh comments on reused threads under old ones.
+      const lastMsgAt = conv.messages.length
+        ? conv.messages[conv.messages.length - 1].createdAt
+        : conv.updatedAt
+
       const entry = postMap.get(postId)
       if (!entry) {
-        postMap.set(postId, { postId, caption, latestAt: conv.updatedAt, convs: [conv] })
+        postMap.set(postId, { postId, caption, latestAt: lastMsgAt, convs: [conv] })
       } else {
         entry.convs.push(conv)
-        if (conv.updatedAt > entry.latestAt) entry.latestAt = conv.updatedAt
+        if (lastMsgAt > entry.latestAt) entry.latestAt = lastMsgAt
         if (!entry.caption && caption) entry.caption = caption
       }
     }

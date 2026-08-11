@@ -274,6 +274,16 @@ export async function processComment(
       },
     })
 
+    // Creating a message does NOT bump the parent conversation's updatedAt —
+    // touch it explicitly so reused threads (repeat commenters) sort by real
+    // last-activity instead of whenever the conversation row was last written.
+    if (!isNew) {
+      await prisma.aiConversation.update({
+        where: { id: conversation.id },
+        data:  { updatedAt: new Date() },
+      })
+    }
+
     maybeNotifyStaff(conversation.id, fromId, fromName || fromId, channel, isNew)
 
     // ── Channel kill-switch ───────────────────────────────────────────────────
@@ -404,6 +414,15 @@ export async function processSocialMessage(
     await prisma.aiMessage.create({
       data: { conversationId: conversation.id, role: 'USER', content: text },
     })
+
+    // Creating a message does NOT bump the parent conversation's updatedAt —
+    // touch it explicitly so reused threads sort by real last-activity.
+    if (!isNew) {
+      await prisma.aiConversation.update({
+        where: { id: conversation.id },
+        data:  { updatedAt: new Date() },
+      })
+    }
 
     // Notify staff of new or unattended conversations (fire-and-forget)
     maybeNotifyStaff(conversation.id, senderId, resolvedName || senderId, channel, isNew)
