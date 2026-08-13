@@ -108,13 +108,26 @@ function msgTimestamp(iso: string): string {
 //   INSTAGRAM → Meta PSID (numeric string)
 //   FACEBOOK  → Meta PSID (numeric string)
 //   WEBSITE   → session UUID
+// Numbers can reach the UI in several raw forms — Meta webhook wa_id (digits,
+// no +), or a manually-entered patient/guardian phone that was never run
+// through backend normalization (e.g. local "0712..." format). Naive "+"
+// prefixing upstream turns the latter into malformed "+0712...". Never
+// display that — always resolve to a clean +256... (or +<digits>) format.
+function formatPhoneDisplay(raw: string): string {
+  if (!raw) return 'Unknown'
+  let digits = raw.replace(/\D/g, '')
+  if (!digits) return raw
+  if (digits.startsWith('0') && digits.length >= 9) digits = '256' + digits.slice(1)
+  return `+${digits}`
+}
+
 // Returns a human-readable label for the conversation list.
 function convLabel(conv: Conversation, channel: ChannelKey): string {
   if (conv.patientName) return conv.patientName
   if (channel === 'WHATSAPP' && conv.waDisplayName) return conv.waDisplayName
   if (conv.displayName) return conv.displayName
   const id = conv.phoneNumber || ''
-  if (channel === 'WHATSAPP') return id || 'Unknown'
+  if (channel === 'WHATSAPP') return formatPhoneDisplay(id)
   if (channel === 'INSTAGRAM') return `@${id.slice(0, 10)}`
   if (channel === 'FACEBOOK')  return `FB User ${id.slice(0, 8)}`
   if (channel === 'WEBSITE')   return `Visitor ${id.slice(0, 8)}`
@@ -763,7 +776,7 @@ function InboxPage() {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-white truncate">{convLabel(sel, 'WHATSAPP')}</p>
           <p className="text-[11px]" style={{ color: '#90cbb7' }}>
-            {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'} · {sel.phoneNumber}
+            {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'} · {formatPhoneDisplay(sel.phoneNumber)}
           </p>
         </div>
         <button onClick={toggleTakeover}
@@ -908,7 +921,7 @@ function InboxPage() {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-gray-800 truncate">{convLabel(sel, channel)}</p>
           <p className="text-[11px] text-gray-400">
-            {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'}{channel === 'WHATSAPP' ? ` · ${sel.phoneNumber}` : ''}
+            {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'}{channel === 'WHATSAPP' ? ` · ${formatPhoneDisplay(sel.phoneNumber)}` : ''}
           </p>
         </div>
         <button onClick={toggleTakeover}
