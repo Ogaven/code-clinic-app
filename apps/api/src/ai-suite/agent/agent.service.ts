@@ -1373,6 +1373,7 @@ async function alertStaffOfConcern(params: {
   sarahAdvice?:   string
   serviceName?:   string
   doctorName?:    string
+  channel?:       string
 }): Promise<void> {
   try {
     // Dedup: don't fire again if already alerted (and not yet resolved) within 2 hours
@@ -1462,7 +1463,7 @@ async function alertStaffOfConcern(params: {
       data: {
         patientId:   patient?.id,
         phoneNumber: params.patientPhone,
-        channel:     'WHATSAPP',
+        channel:     params.channel ?? 'WHATSAPP',
         reason:      `Sarah escalated — ${params.message.slice(0, 300)}`,
         status:      'PENDING',
       },
@@ -2105,7 +2106,8 @@ async function executeV2Tool(
   toolInput:      Record<string, unknown>,
   from:           string,
   conversationId: string,
-  shownSlots:     AvailableSlot[]
+  shownSlots:     AvailableSlot[],
+  channel?:       string
 ): Promise<string> {
   try {
     switch (toolName) {
@@ -2329,7 +2331,7 @@ async function executeV2Tool(
         if (recentFlag) {
           return JSON.stringify({ alerted: false, alreadyNotified: true, clinicStatus: isClinicOpenNow() ? 'open' : 'closed' })
         }
-        await alertStaffOfConcern({ conversationId, patientPhone: from, message: toolInput.summary as string, sarahAdvice: toolInput.sarahAdvice as string | undefined })
+        await alertStaffOfConcern({ conversationId, patientPhone: from, message: toolInput.summary as string, sarahAdvice: toolInput.sarahAdvice as string | undefined, channel })
         return JSON.stringify({ alerted: true, clinicStatus: isClinicOpenNow() ? 'open' : 'closed' })
       }
 
@@ -2679,6 +2681,7 @@ export async function getAgentReplyV2(
               conversationId,
               patientPhone: from,
               message: `Booking hand-off: Sarah tried to confirm a booking but could not complete it automatically. Patient was shown available slots and likely expects a confirmation. Please follow up to book them in.`,
+              channel,
             }).catch((e: any) => console.error('[GUARD-FIRED] alertStaffOfConcern failed:', e?.message))
             return `I want to make sure this is booked correctly for you — let me get one of our team to confirm this with you directly, they'll be in touch shortly 😊`
           }
@@ -2700,7 +2703,8 @@ export async function getAgentReplyV2(
           (block.input ?? {}) as Record<string, unknown>,
           from,
           conversationId,
-          shownSlots
+          shownSlots,
+          channel
         )
         console.log(`[AgentV2] Result: ${result.slice(0, 150)}`)
         // Structural backstop: NEAR_TERM_DUPLICATE bypasses Claude entirely — return verbatim
@@ -2735,6 +2739,7 @@ export async function getCommentReply(
   conversationId: string,
   text:           string,
   channel:        'FACEBOOK_COMMENT' | 'INSTAGRAM_COMMENT',
+  fromId:         string,
   postCaption?:   string,
 ): Promise<string> {
   const FALLBACK = "Hi! 😊 Send us a DM and we'll help you out!"
@@ -2767,7 +2772,6 @@ export async function getCommentReply(
   const postContext = postCaption
     ? `\nThis comment is on a post about: "${postCaption.slice(0, 200)}"\nYou may reference the post topic briefly if it's relevant and helpful.`
     : ''
-  const menu = await getCachedMenu()
   const system = `You are the Code Clinic social media account writing a reply to a public ${platform} comment.
 This reply will be PUBLICLY VISIBLE to all followers. Keep it short, warm, and professional.
 
@@ -2776,20 +2780,19 @@ Tomorrow is ${tomorrowName}.
 Opening hours: Mon–Fri 8am–6pm, Sat 8am–2pm, closed Sunday.
 Location: Kiira Road, Kamwokya, Kampala.${postContext}
 
-REAL SERVICES & PRICING (use these exact figures — never invent a price or service not listed here):
-${menu.services}
-
 RULES (mandatory):
 1. Maximum 2 short sentences. No bullet points, no lists, no paragraphs.
-2. Answer simple, safe public questions directly and honestly using the real information above — pricing for a specific service (e.g. "How much for a cleaning?" / "How much are braces?"), hours, location, or whether a service exists. Give a real number when you have one.
-3. Never dump the full price list — if asked broadly what services are offered, name one or two examples and invite a DM for the rest.
-4. Reserve the DM deflection ONLY for things that genuinely need privacy: a specific patient's medical symptoms/concerns, personal contact or scheduling details, complaints, or anything requiring back-and-forth. For those only, reply ONLY with: "Hi! 😊 Send us a DM and we'll help you out!"
-5. For hours/location/day questions: use the real date context above to answer specifically (e.g. "Yes, we're open on ${tomorrowName}!").
-6. NEVER mention staff names, say "I've noted", "flagged", "the team will follow up", or describe any internal process.
-7. Use friendly language and one emoji where natural.`
+2. Answer simple, safe public questions directly and honestly — pricing for a specific service (e.g. "How much for a cleaning?" / "How much are braces?"), hours, location, or whether a service exists. Always call search_services to get the real price before quoting one — never invent a number, and never quote a stale or remembered figure.
+3. Never dump the full price list — if asked broadly what services are offered, name one or two examples (using search_services) and invite a DM for the rest.
+4. Reserve the DM deflection ONLY for things that genuinely need privacy: a specific patient's medical symptoms/concerns, personal contact or scheduling details, complaints, or anything requiring back-and-forth. For those only, reply with: "Hi! 😊 Send us a DM and we'll help you out!"
+5. If this comment describes a genuine clinical/medical concern (pain, swelling, bleeding, medication issue, dental emergency), call flag_clinical_concern with a brief summary so staff are alerted internally — then still give the DM deflection reply publicly. Do NOT call flag_clinical_concern for administrative questions like pricing, hours, or general info.
+6. For hours/location/day questions: use the real date context above to answer specifically (e.g. "Yes, we're open on ${tomorrowName}!").
+7. NEVER mention staff names, say "I've noted", "flagged", "the team will follow up", or describe any internal process.
+8. Use friendly language and one emoji where natural.`
 
   // Build messages array with history for multi-turn context
-  const messages: { role: 'user' | 'assistant'; content: string }[] = []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let messages: any[] = []
   for (const msg of historyMsgs) {
     messages.push({
       role:    msg.role === 'USER' ? 'user' : 'assistant',
@@ -2798,16 +2801,45 @@ RULES (mandatory):
   }
   messages.push({ role: 'user', content: text })
 
+  const COMMENT_TOOLS = V2_TOOLS.filter(t => t.name === 'search_services' || t.name === 'flag_clinical_concern')
+
   try {
     const client = new Anthropic({ apiKey })
-    const response = await client.messages.create({
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 100,
-      system,
-      messages,
-    })
-    const block = response.content[0]
-    if (block.type === 'text' && block.text.trim()) return block.text.trim()
+    for (let iter = 0; iter < 3; iter++) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response: any = await client.messages.create({
+        model:      'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        system,
+        tools:      COMMENT_TOOLS,
+        messages,
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolBlocks: any[] = (response.content ?? []).filter((b: any) => b.type === 'tool_use')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const textBlock: any    = (response.content ?? []).find((b: any) => b.type === 'text')
+
+      if (toolBlocks.length === 0) {
+        if (textBlock && textBlock.text.trim()) return textBlock.text.trim()
+        break
+      }
+
+      messages = [...messages, { role: 'assistant', content: response.content }]
+      const results: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = []
+      for (const block of toolBlocks) {
+        console.log(`[${channel}] Comment tool: ${block.name}(${JSON.stringify(block.input ?? {}).slice(0, 100)})`)
+        const result = await executeV2Tool(
+          block.name as string,
+          (block.input ?? {}) as Record<string, unknown>,
+          fromId,
+          conversationId,
+          [],
+          channel,
+        )
+        results.push({ type: 'tool_result', tool_use_id: block.id as string, content: result })
+      }
+      messages = [...messages, { role: 'user', content: results }]
+    }
   } catch (err: any) {
     console.error(`[${channel}] getCommentReply error:`, err?.message)
   }

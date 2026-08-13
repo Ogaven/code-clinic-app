@@ -300,7 +300,7 @@ export async function processComment(
       return
     }
 
-    const reply = await getCommentReply(conversation.id, text, channel, postCaption ?? undefined)
+    const reply = await getCommentReply(conversation.id, text, channel, fromId, postCaption ?? undefined)
 
     await prisma.aiMessage.create({
       data: {
