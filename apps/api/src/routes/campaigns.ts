@@ -1,7 +1,10 @@
 import { Router } from 'express'
+import Anthropic from '@anthropic-ai/sdk'
 import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 const router = Router()
 
@@ -136,6 +139,127 @@ router.post('/whatsapp/broadcast', requireAuth, async (req, res) => {
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: 'Failed to create campaign' })
+  }
+})
+
+// ── Birthday endpoints ───────────────────────────────────────────────────────
+
+// GET /campaigns/birthdays/today — patients whose birthday is today + sent status
+router.get('/birthdays/today', requireAuth, async (_req, res) => {
+  try {
+    const now        = new Date()
+    const todayMonth = now.getMonth() + 1
+    const todayDay   = now.getDate()
+
+    const todayStart = new Date(now)
+    todayStart.setHours(0, 0, 0, 0)
+
+    const patients = await prisma.$queryRaw<Array<{
+      id:        string
+      firstName: string
+      lastName:  string
+      phone:     string
+      dob:       Date
+    }>>`
+      SELECT id, "firstName", "lastName", phone, dob
+      FROM patients
+      WHERE EXTRACT(MONTH FROM dob) = ${todayMonth}
+        AND EXTRACT(DAY FROM dob)   = ${todayDay}
+        AND "isActive" = true
+        AND phone IS NOT NULL
+        AND phone != ''
+      ORDER BY "firstName"
+    `
+
+    const sentLogs = await prisma.botMessageLog.findMany({
+      where: { templateType: 'BIRTHDAY', sentAt: { gte: todayStart } },
+      select: { recipientPhone: true },
+    })
+    const sentPhones = new Set(sentLogs.map(l => l.recipientPhone))
+
+    res.json(patients.map(p => ({
+      id:        p.id,
+      firstName: p.firstName,
+      lastName:  p.lastName,
+      phone:     p.phone,
+      dob:       p.dob,
+      sentToday: sentPhones.has(p.phone),
+    })))
+  } catch (err: any) {
+    console.error('[Birthdays] Error fetching today:', err)
+    res.status(500).json({ error: 'Failed to fetch birthday patients' })
+  }
+})
+
+// POST /campaigns/birthdays/:patientId/generate — Claude-drafted birthday message
+router.post('/birthdays/:patientId/generate', requireAuth, async (req, res) => {
+  try {
+    const patient = await prisma.patient.findUnique({
+      where:  { id: req.params.patientId },
+      select: { id: true, firstName: true, dob: true },
+    })
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+
+    const age    = patient.dob ? new Date().getFullYear() - new Date(patient.dob).getFullYear() : null
+    const ageStr = age ? ` who is turning ${age} today` : ''
+
+    const response = await anthropic.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 200,
+      messages:   [{
+        role:    'user',
+        content: `Write a warm, friendly WhatsApp birthday message for a dental clinic patient named ${patient.firstName}${ageStr}. The clinic is Code Clinic in Kampala, Uganda. Keep it personal and under 100 words. Include a gentle promotional nudge such as mentioning a birthday discount or a free check-up offer. Plain text only — no markdown, no asterisks, no bullet points.`,
+      }],
+    })
+
+    const block = response.content[0]
+    const draft = block?.type === 'text' ? block.text : null
+    if (!draft) { res.status(500).json({ error: 'No response from AI' }); return }
+
+    res.json({ draft })
+  } catch (err: any) {
+    console.error('[Birthdays] Generate error:', err)
+    res.status(500).json({ error: err.message || 'Failed to generate message' })
+  }
+})
+
+// POST /campaigns/birthdays/:patientId/send — explicit staff-triggered send only
+router.post('/birthdays/:patientId/send', requireAuth, async (req, res) => {
+  try {
+    const { message } = req.body
+    if (!message?.trim()) { res.status(400).json({ error: 'Message required' }); return }
+
+    const patient = await prisma.patient.findUnique({
+      where:  { id: req.params.patientId },
+      select: { id: true, firstName: true, lastName: true, phone: true },
+    })
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+
+    const alreadySent = await prisma.botMessageLog.findFirst({
+      where: { recipientPhone: patient.phone, templateType: 'BIRTHDAY', sentAt: { gte: todayStart } },
+    })
+    if (alreadySent) { res.status(409).json({ error: 'Birthday message already sent today' }); return }
+
+    await sendWhatsAppMessage(patient.phone, message.trim())
+
+    await prisma.botMessageLog.create({
+      data: {
+        patientId:      patient.id,
+        recipientPhone: patient.phone,
+        channel:        'WHATSAPP',
+        templateType:   'BIRTHDAY',
+        messageBody:    message.trim(),
+        deliveryStatus: 'sent',
+      },
+    })
+
+    res.json({ ok: true })
+  } catch (err: any) {
+    console.error('[Birthdays] Send error:', err)
+    res.status(500).json({ error: err.message || 'Failed to send' })
   }
 })
 

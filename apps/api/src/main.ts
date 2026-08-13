@@ -69,6 +69,7 @@ import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurtu
 // DISABLED by Vine 2026-07-11 — sent unwanted messages; do not re-enable without explicit approval
 // import { checkAndSendCancelledFollowups }  from './ai-suite/scheduler/cancelled-followup.service'
 import { updatePatientStatuses }           from './ai-suite/scheduler/patient-status.service'
+import { checkAndSendBirthdayAlerts }     from './ai-suite/scheduler/birthday.service'
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
 
 // Lock process timezone to EAT (UTC+3) — must be set before any Date operations.
@@ -340,6 +341,9 @@ runStartup().then(() => {
     updatePatientStatuses().catch(err => console.error('[PatientStatus] Scheduler error:', err))
   }, TWENTY_FOUR_HOURS)
   setInterval(() => {
+    checkAndSendBirthdayAlerts().catch(err => console.error('[Birthday] Scheduler error:', err))
+  }, TWENTY_FOUR_HOURS)
+  setInterval(() => {
     checkAndSendReactivationMessages().catch(err => console.error('[Reactivation] Scheduler error:', err))
   }, ONE_HOUR)
   // 24-hour follow-up for cancelled / no-show patients who haven't rebooked
@@ -368,6 +372,7 @@ runStartup().then(() => {
     checkAndSendFollowups().catch(err => console.error('[Followup] Initial run error:', err))
     checkAndSendLeadNurtureMessages().catch(err => console.error('[LeadNurture] Initial run error:', err))
     updatePatientStatuses().catch(err => console.error('[PatientStatus] Initial run error:', err))
+    checkAndSendBirthdayAlerts().catch(err => console.error('[Birthday] Initial run error:', err))
   }, 2 * 60 * 1000)
 
   app.listen(PORT, () => {
