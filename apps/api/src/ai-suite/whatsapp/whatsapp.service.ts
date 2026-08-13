@@ -97,6 +97,16 @@ function logAgentMessageToConversation(to: string, content: string): void {
   })()
 }
 
+// ── Detect a bare greeting with no real content ──────────────────────────────
+// Deliberately a tight allowlist, not a broad heuristic: anything not matched
+// here is treated as substantive and goes to the real agent. Swallowing a real
+// patient message is far worse than the real agent handling an easy greeting.
+
+function isGreetingOnly(text: string): boolean {
+  const t = text.trim().toLowerCase().replace(/[!.?~]+$/g, '').trim()
+  return /^(hi+|hello+|hey+|hiya|yo|sup|howdy|hallo|good morning|good afternoon|good evening|morning|afternoon|evening)$/.test(t)
+}
+
 // ── Strip markdown from Sarah's replies before sending via WhatsApp ──────────
 
 function stripMarkdown(text: string): string {
@@ -266,9 +276,11 @@ export async function processInbound(from: string, text: string, wamid: string, 
     maybeNotifyStaff(conversation.id, from, patientName, 'WHATSAPP', isNewConversation)
 
     // ── 4. New conversation greeting ─────────────────────────────────────────
-    // First-ever message from this number: send opening greeting, store it, return.
-    // Their actual request will be processed on the next message.
-    if (isNewConversation) {
+    // First-ever message from this number: if it's just a greeting with no real
+    // content, send the canned opener and wait for their actual request. If the
+    // first message already contains real content, skip straight to the real
+    // agent below — never silently swallow a substantive first message.
+    if (isNewConversation && isGreetingOnly(text)) {
       const greeting = `Hello 😊 Thanks for reaching out to Code Clinic, this is Sarah. How may I brighten your smile today?`
       await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: greeting },
