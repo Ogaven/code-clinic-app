@@ -1,4 +1,4 @@
-import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 
 export type NotificationType = 'booked' | 'rescheduled' | 'cancelled' | 'reminder'
@@ -92,7 +92,24 @@ export async function sendAppointmentNotification(
       console.warn(`[Notification] Skipping '${type}' — patient ${p.firstName} ${p.lastName} has no phone number`)
       return
     }
-    await sendWhatsAppMessage(recipientPhone, message)
+    if (type === 'booked') {
+      const templateName = process.env.WA_TEMPLATE_BOOKING_CONFIRM_NAME
+      const templateAddr = recipientName ? recipientName.split(' ')[0] : toProperCase(p.firstName)
+      let templateSent = false
+      if (templateName) {
+        try {
+          await sendWhatsAppTemplate(recipientPhone, templateName, [
+            templateAddr, dayDate, time, svc, doc,
+          ], false)
+          templateSent = true
+        } catch (tmplErr: any) {
+          console.warn(`[Notification] Template '${templateName}' failed, falling back to freeform:`, tmplErr?.message)
+        }
+      }
+      if (!templateSent) await sendWhatsAppMessage(recipientPhone, message)
+    } else {
+      await sendWhatsAppMessage(recipientPhone, message)
+    }
     const logTarget = recipientName
       ? `guardian ${recipientName} (${recipientPhone}) re: ${patientName}`
       : `${patientName} (${recipientPhone})`

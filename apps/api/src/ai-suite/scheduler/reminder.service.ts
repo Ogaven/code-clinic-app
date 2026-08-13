@@ -106,7 +106,7 @@ export async function checkAndSendReminders(): Promise<void> {
             time,
             appt.service.name,
             doctor,
-          ])
+          ], false)
         } catch {
           await sendWhatsAppMessage(recipientPhone, message)
         }

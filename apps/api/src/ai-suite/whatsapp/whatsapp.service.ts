@@ -550,41 +550,44 @@ export async function processInbound(from: string, text: string, wamid: string, 
 }
 
 // Exported so schedulers (reminder, followup) can send outbound WhatsApp messages.
-// Routes through Meta Cloud API directly — Africa's Talking is no longer used.
-export async function sendWhatsAppMessage(to: string, body: string, _replyToMessageId?: string, logToConversation: boolean = true): Promise<string | null> {
+// Routes through Meta Cloud API directly. Throws on failure — callers must catch.
+export async function sendWhatsAppMessage(to: string, body: string, _replyToMessageId?: string, logToConversation: boolean = true): Promise<string> {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-  if (!phoneNumberId) {
-    console.error('[WhatsApp] Missing WHATSAPP_PHONE_NUMBER_ID env var')
-    return null
-  }
+  if (!phoneNumberId) throw new Error('Missing WHATSAPP_PHONE_NUMBER_ID env var')
   return sendWhatsAppMessageDirect(to, body, phoneNumberId, logToConversation)
 }
 
 // Direct Meta Cloud API send — used for numbers not provisioned on Africa's Talking.
 // Sends from the given phoneNumberId using WHATSAPP_TOKEN. Zero AT involvement.
-export async function sendWhatsAppMessageDirect(to: string, body: string, phoneNumberId: string, logToConversation: boolean = true): Promise<string | null> {
+// Throws on any failure (Meta API error or network error) so callers can surface it.
+export async function sendWhatsAppMessageDirect(to: string, body: string, phoneNumberId: string, logToConversation: boolean = true): Promise<string> {
   const token = process.env.WHATSAPP_TOKEN
-  if (!token) {
-    console.error('[WhatsApp Direct] Missing WHATSAPP_TOKEN')
-    return null
-  }
+  if (!token) throw new Error('Missing WHATSAPP_TOKEN env var')
+
   const normalizedTo = to.startsWith('+') ? to.slice(1) : to
-  try {
-    const res = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ messaging_product: 'whatsapp', to: normalizedTo, type: 'text', text: { body } }),
-    })
-    const json = await res.json() as { messages?: Array<{ id: string }> }
-    const msgId = json.messages?.[0]?.id ?? null
-    console.log(`[WhatsApp Direct] Sent to +${normalizedTo}: ${body.slice(0, 60)}... (msgId: ${msgId ?? 'unknown'})`)
-    logOutboundMessage(to, body, classifyMessage(body))
-    if (logToConversation) logAgentMessageToConversation(to, body)
-    return msgId
-  } catch (err: any) {
-    console.error('[WhatsApp Direct] Send failed:', err.message)
-    return null
+
+  const res = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ messaging_product: 'whatsapp', to: normalizedTo, type: 'text', text: { body } }),
+  })
+  const json = await res.json() as {
+    messages?: Array<{ id: string }>
+    error?:    { message: string; code: number; error_subcode?: number }
   }
+
+  // Meta can return HTTP 200 with an error object — treat this as a real failure
+  if (json.error) {
+    const detail = `#${json.error.code} ${json.error.message}`
+    console.error(`[WhatsApp Direct] FAILED to +${normalizedTo}:`, detail)
+    throw new Error(detail)
+  }
+
+  const msgId = json.messages?.[0]?.id ?? 'unknown'
+  console.log(`[WhatsApp Direct] Sent to +${normalizedTo}: ${body.slice(0, 60)}… (msgId: ${msgId})`)
+  logOutboundMessage(to, body, classifyMessage(body))
+  if (logToConversation) logAgentMessageToConversation(to, body)
+  return msgId
 }
 
 export async function notifyReceptionistUnreachable(patientName: string, phone: string): Promise<void> {
@@ -660,9 +663,11 @@ export async function sendWhatsAppTemplate(
   to: string,
   templateName: string,
   params: string[],
+  logToConversation: boolean = true,
+  phoneNumberIdOverride?: string,
 ): Promise<void> {
   const token         = process.env.WHATSAPP_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const phoneNumberId = phoneNumberIdOverride ?? process.env.WHATSAPP_PHONE_NUMBER_ID
   if (!token || !phoneNumberId) {
     throw new Error('Missing WHATSAPP_TOKEN or WHATSAPP_PHONE_NUMBER_ID')
   }
@@ -699,5 +704,5 @@ export async function sendWhatsAppTemplate(
   console.log(`[WhatsApp] Template '${templateName}' sent to +${normalizedTo} (wamid: ${msgId ?? 'unknown'})`)
   const logText = `[Template: ${templateName}] ${params.join(' | ')}`
   logOutboundMessage(to, logText, templateName)
-  logAgentMessageToConversation(to, logText)
+  if (logToConversation) logAgentMessageToConversation(to, logText)
 }
