@@ -256,7 +256,7 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
     const medHistory = Array.isArray(medicalHistory) ? medicalHistory.join(', ') : (medicalHistory ?? undefined)
     const patient = await prisma.patient.create({
       data: {
-        firstName, lastName, phone,
+        firstName, lastName, phone: normalizePhone(phone),
         email:             email             || undefined,
         gender:            gender            || undefined,
         dob:               dob               ? new Date(dob) : undefined,
@@ -692,7 +692,7 @@ router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), 
     const patient = await prisma.patient.update({
       where: { id: req.params.id },
       data: {
-        firstName, lastName, phone, email, gender,
+        firstName, lastName, phone: phone ? normalizePhone(phone) : phone, email, gender,
         dob: dob ? new Date(dob) : undefined,
         address, district, isActive,
         nextOfKinName, nextOfKinPhone, nextOfKinRelation,
@@ -875,7 +875,7 @@ router.post('/:id/guardians', requireAuth, adminAndReceptionist, async (req, res
     const guardian = await prisma.guardian.create({
       data: {
         familyAccountId: patient.familyAccountId,
-        firstName, lastName, phone,
+        firstName, lastName, phone: normalizePhone(phone),
         email: email || null,
         relationship,
         isCommunicationContact: isCommunicationContact !== false,
@@ -895,7 +895,7 @@ router.patch('/:id/guardians/:guardianId', requireAuth, adminAndReceptionist, as
       data: {
         ...(firstName !== undefined && { firstName }),
         ...(lastName  !== undefined && { lastName }),
-        ...(phone     !== undefined && { phone }),
+        ...(phone     !== undefined && { phone: normalizePhone(phone) }),
         ...(email     !== undefined && { email }),
         ...(relationship !== undefined && { relationship }),
         ...(isCommunicationContact !== undefined && { isCommunicationContact }),
