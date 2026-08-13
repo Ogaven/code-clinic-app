@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma'
 import { getGreetingName, isMinor, normalizeRelation } from '../../utils/nameHelper'
 import { resolveOutboundRecipient, alertStaffMinorNoGuardian, hasOutboundConsent } from './guardian-routing.service'
 
-const ADMIN_WHATSAPP = '+256763430276'
+const ADMIN_WHATSAPP = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
 
 // Dedup flag: reset each deploy/restart (acceptable for a weekly report)
 let weekendReportSentOn: string | null = null

@@ -4,7 +4,7 @@ import { clearBookingState } from '../booking/booking.state'
 import { sendWhatsAppMessage } from './whatsapp.service'
 import { prisma } from '../../lib/prisma'
 
-export const STAFF_NUMBER = '+256763430276'
+export const STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
 
 export interface AlertMeta {
   alertMessageId: string | null
