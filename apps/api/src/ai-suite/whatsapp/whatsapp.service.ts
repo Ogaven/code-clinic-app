@@ -44,6 +44,59 @@ function logOutboundMessage(to: string, body: string, templateType: string): voi
   })()
 }
 
+// ── Write outbound template/scheduler sends into Sarah's own conversation memory ──
+// botMessageLog is an audit trail only — getAgentReplyV2 reads aiMessage for context,
+// so without this, Sarah has no memory of anything sent outside a live reply turn.
+// Not called for live replies in processInbound — those are already logged at the
+// point of generation, before delivery, to avoid double-logging the same message.
+
+function logAgentMessageToConversation(to: string, content: string): void {
+  ;(async () => {
+    try {
+      const from = to.startsWith('+') ? to : `+${to}`
+
+      let conversation = await prisma.aiConversation.findFirst({
+        where:   { phoneNumber: from, channel: 'WHATSAPP', status: 'ACTIVE' },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      if (!conversation) {
+        const recentConv = await prisma.aiConversation.findFirst({
+          where: {
+            phoneNumber: from,
+            channel:     'WHATSAPP',
+            updatedAt:   { gte: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+          },
+          orderBy: { updatedAt: 'desc' },
+        })
+        if (recentConv) {
+          conversation = await prisma.aiConversation.update({
+            where: { id: recentConv.id },
+            data:  { status: 'ACTIVE' },
+          })
+        } else {
+          const patient = await prisma.patient.findFirst({ where: { phone: from } })
+          conversation = await prisma.aiConversation.create({
+            data: {
+              patientId:    patient?.id ?? null,
+              channel:      'WHATSAPP',
+              phoneNumber:  from,
+              status:       'ACTIVE',
+              agentEnabled: true,
+            },
+          })
+        }
+      }
+
+      await prisma.aiMessage.create({
+        data: { conversationId: conversation.id, role: 'AGENT', content },
+      })
+    } catch (e: any) {
+      console.error('[WhatsApp] Failed to log outbound message to conversation:', e?.message)
+    }
+  })()
+}
+
 // ── Strip markdown from Sarah's replies before sending via WhatsApp ──────────
 
 function stripMarkdown(text: string): string {
@@ -474,9 +527,9 @@ export async function processInbound(from: string, text: string, wamid: string, 
     // Kenya number gets its own phone_number_id; Uganda (and all others) go through
     // sendWhatsAppMessage which now routes via Meta Cloud API directly.
     if (phoneNumberId === '1163288503545718') {
-      await sendWhatsAppMessageDirect(from, stripMarkdown(agentReply), phoneNumberId)
+      await sendWhatsAppMessageDirect(from, stripMarkdown(agentReply), phoneNumberId, false)
     } else {
-      await sendWhatsAppMessage(from, stripMarkdown(agentReply), wamid)
+      await sendWhatsAppMessage(from, stripMarkdown(agentReply), wamid, false)
     }
 
   } catch (err) {
@@ -486,18 +539,18 @@ export async function processInbound(from: string, text: string, wamid: string, 
 
 // Exported so schedulers (reminder, followup) can send outbound WhatsApp messages.
 // Routes through Meta Cloud API directly — Africa's Talking is no longer used.
-export async function sendWhatsAppMessage(to: string, body: string, _replyToMessageId?: string): Promise<string | null> {
+export async function sendWhatsAppMessage(to: string, body: string, _replyToMessageId?: string, logToConversation: boolean = true): Promise<string | null> {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
   if (!phoneNumberId) {
     console.error('[WhatsApp] Missing WHATSAPP_PHONE_NUMBER_ID env var')
     return null
   }
-  return sendWhatsAppMessageDirect(to, body, phoneNumberId)
+  return sendWhatsAppMessageDirect(to, body, phoneNumberId, logToConversation)
 }
 
 // Direct Meta Cloud API send — used for numbers not provisioned on Africa's Talking.
 // Sends from the given phoneNumberId using WHATSAPP_TOKEN. Zero AT involvement.
-export async function sendWhatsAppMessageDirect(to: string, body: string, phoneNumberId: string): Promise<string | null> {
+export async function sendWhatsAppMessageDirect(to: string, body: string, phoneNumberId: string, logToConversation: boolean = true): Promise<string | null> {
   const token = process.env.WHATSAPP_TOKEN
   if (!token) {
     console.error('[WhatsApp Direct] Missing WHATSAPP_TOKEN')
@@ -514,6 +567,7 @@ export async function sendWhatsAppMessageDirect(to: string, body: string, phoneN
     const msgId = json.messages?.[0]?.id ?? null
     console.log(`[WhatsApp Direct] Sent to +${normalizedTo}: ${body.slice(0, 60)}... (msgId: ${msgId ?? 'unknown'})`)
     logOutboundMessage(to, body, classifyMessage(body))
+    if (logToConversation) logAgentMessageToConversation(to, body)
     return msgId
   } catch (err: any) {
     console.error('[WhatsApp Direct] Send failed:', err.message)
@@ -631,5 +685,7 @@ export async function sendWhatsAppTemplate(
 
   const msgId = json.messages?.[0]?.id ?? null
   console.log(`[WhatsApp] Template '${templateName}' sent to +${normalizedTo} (wamid: ${msgId ?? 'unknown'})`)
-  logOutboundMessage(to, `[Template: ${templateName}] ${params.join(' | ')}`, templateName)
+  const logText = `[Template: ${templateName}] ${params.join(' | ')}`
+  logOutboundMessage(to, logText, templateName)
+  logAgentMessageToConversation(to, logText)
 }
