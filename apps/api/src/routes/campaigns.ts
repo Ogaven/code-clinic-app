@@ -2,7 +2,11 @@ import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
-import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { sendWhatsAppMessage, sendWhatsAppMessageDirect, sendWhatsAppTemplate } from '../ai-suite/whatsapp/whatsapp.service'
+
+// Kenya WABA has no billing block and APPROVED templates — use it for all birthday sends
+const KENYA_PHONE_NUMBER_ID = '1163288503545718'
+const BIRTHDAY_TEMPLATE     = 'cc_birthday_greeting'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -191,9 +195,13 @@ router.get('/birthdays/today', requireAuth, async (_req, res) => {
   }
 })
 
-// POST /campaigns/birthdays/:patientId/generate — Claude-drafted birthday message
+// POST /campaigns/birthdays/:patientId/generate — Claude-drafted birthday message body
+// Returns ONLY the middle personalized section — the template wrapper (greeting +
+// clinic signature) is added automatically on send.
 router.post('/birthdays/:patientId/generate', requireAuth, async (req, res) => {
   try {
+    const { styleHint } = req.body as { styleHint?: string }
+
     const patient = await prisma.patient.findUnique({
       where:  { id: req.params.patientId },
       select: { id: true, firstName: true, dob: true },
@@ -202,18 +210,27 @@ router.post('/birthdays/:patientId/generate', requireAuth, async (req, res) => {
 
     const age    = patient.dob ? new Date().getFullYear() - new Date(patient.dob).getFullYear() : null
     const ageStr = age ? ` who is turning ${age} today` : ''
+    const styleLine = styleHint?.trim()
+      ? `\nStyle/tone guidance from staff: "${styleHint.trim()}"`
+      : ''
 
     const response = await anthropic.messages.create({
       model:      'claude-sonnet-4-6',
       max_tokens: 200,
       messages:   [{
         role:    'user',
-        content: `Write a warm, friendly WhatsApp birthday message for a dental clinic patient named ${patient.firstName}${ageStr}. The clinic is Code Clinic in Kampala, Uganda. Keep it personal and under 100 words. Include a gentle promotional nudge such as mentioning a birthday discount or a free check-up offer. Plain text only — no markdown, no asterisks, no bullet points.`,
+        content: `Write the personalized body of a birthday WhatsApp message for a dental clinic patient named ${patient.firstName}${ageStr}. The clinic is Code Clinic in Kampala, Uganda.
+
+The message is automatically prefixed with "Happy Birthday from Code Clinic! 🎂" and signed "— The Code Clinic Team, Kampala 🦷". Write ONLY the middle 2-3 sentence body — do NOT include any greeting, "Happy Birthday", or clinic signature.
+
+Include a warm personal touch and a gentle promotional nudge (e.g. a complimentary birthday check-up this month).${styleLine}
+
+Plain text only — no markdown, no asterisks, no bullet points.`,
       }],
     })
 
     const block = response.content[0]
-    const draft = block?.type === 'text' ? block.text : null
+    const draft = block?.type === 'text' ? block.text.trim() : null
     if (!draft) { res.status(500).json({ error: 'No response from AI' }); return }
 
     res.json({ draft })
@@ -223,7 +240,9 @@ router.post('/birthdays/:patientId/generate', requireAuth, async (req, res) => {
   }
 })
 
-// POST /campaigns/birthdays/:patientId/send — explicit staff-triggered send only
+// POST /campaigns/birthdays/:patientId/send — explicit staff-triggered send only.
+// Routes via approved cc_birthday_greeting template on Kenya WABA (no 24h window limit,
+// no billing block). Falls back to freeform on the same WABA if template is still pending.
 router.post('/birthdays/:patientId/send', requireAuth, async (req, res) => {
   try {
     const { message } = req.body
@@ -243,7 +262,18 @@ router.post('/birthdays/:patientId/send', requireAuth, async (req, res) => {
     })
     if (alreadySent) { res.status(409).json({ error: 'Birthday message already sent today' }); return }
 
-    await sendWhatsAppMessage(patient.phone, message.trim())
+    const body = message.trim()
+    let sentVia = 'template'
+
+    try {
+      // Preferred path: approved template bypasses 24h re-engagement window
+      await sendWhatsAppTemplate(patient.phone, BIRTHDAY_TEMPLATE, [body], true, KENYA_PHONE_NUMBER_ID)
+    } catch (templateErr: any) {
+      // Template pending approval or rejected — fall back to freeform on Kenya WABA
+      console.warn(`[Birthdays] Template send failed (${templateErr.message}), falling back to freeform`)
+      await sendWhatsAppMessageDirect(patient.phone, body, KENYA_PHONE_NUMBER_ID)
+      sentVia = 'freeform'
+    }
 
     await prisma.botMessageLog.create({
       data: {
@@ -251,15 +281,16 @@ router.post('/birthdays/:patientId/send', requireAuth, async (req, res) => {
         recipientPhone: patient.phone,
         channel:        'WHATSAPP',
         templateType:   'BIRTHDAY',
-        messageBody:    message.trim(),
+        messageBody:    body,
         deliveryStatus: 'sent',
       },
     })
 
-    res.json({ ok: true })
+    console.log(`[Birthdays] Sent to ${patient.firstName} ${patient.lastName} via ${sentVia}`)
+    res.json({ ok: true, sentVia })
   } catch (err: any) {
     console.error('[Birthdays] Send error:', err)
-    res.status(500).json({ error: err.message || 'Failed to send' })
+    res.status(500).json({ error: err.message || 'Failed to send — WhatsApp returned an error' })
   }
 })
 

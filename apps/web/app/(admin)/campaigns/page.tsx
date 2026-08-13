@@ -59,12 +59,13 @@ export default function CampaignsPage() {
   const [histLoading,  setHistLoading]  = useState(true)
 
   // Birthdays
-  const [bdPatients,   setBdPatients]   = useState<any[]>([])
-  const [bdLoading,    setBdLoading]    = useState(false)
-  const [bdMessages,   setBdMessages]   = useState<Record<string, string>>({})
-  const [bdGenerating, setBdGenerating] = useState<Record<string, boolean>>({})
-  const [bdSending,    setBdSending]    = useState<Record<string, boolean>>({})
-  const [bdSent,       setBdSent]       = useState<Set<string>>(new Set())
+  const [bdPatients,    setBdPatients]    = useState<any[]>([])
+  const [bdLoading,     setBdLoading]     = useState(false)
+  const [bdMessages,    setBdMessages]    = useState<Record<string, string>>({})
+  const [bdStyleHints,  setBdStyleHints]  = useState<Record<string, string>>({})
+  const [bdGenerating,  setBdGenerating]  = useState<Record<string, boolean>>({})
+  const [bdSending,     setBdSending]     = useState<Record<string, boolean>>({})
+  const [bdSent,        setBdSent]        = useState<Set<string>>(new Set())
 
   // Templates
   const [mainTab,      setMainTab]      = useState<'send' | 'templates' | 'birthdays'>('send')
@@ -204,6 +205,7 @@ export default function CampaignsPage() {
     try {
       const r = await fetch(`${API}/campaigns/birthdays/${patientId}/generate`, {
         method: 'POST', headers: authH as any,
+        body: JSON.stringify({ styleHint: bdStyleHints[patientId] || '' }),
       })
       const d = await r.json()
       if (d.draft) {
@@ -557,24 +559,47 @@ export default function CampaignsPage() {
                     </div>
 
                     {!isSent && (
-                      <button
-                        onClick={() => generateBirthdayMessage(p.id)}
-                        disabled={genBusy}
-                        className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-blue-300 dark:border-blue-700 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 transition-colors"
-                      >
-                        {genBusy ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                        {genBusy ? 'Generating...' : msg ? 'Regenerate' : 'Generate Message'}
-                      </button>
+                      <div className="space-y-2">
+                        {/* Style hint input */}
+                        <input
+                          value={bdStyleHints[p.id] ?? ''}
+                          onChange={e => setBdStyleHints(h => ({ ...h, [p.id]: e.target.value }))}
+                          placeholder='Style hint (optional) — e.g. "keep it short", "make it funny"'
+                          className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        />
+                        <button
+                          onClick={() => generateBirthdayMessage(p.id)}
+                          disabled={genBusy}
+                          className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-blue-300 dark:border-blue-700 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 transition-colors"
+                        >
+                          {genBusy ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                          {genBusy ? 'Generating...' : msg ? 'Regenerate' : 'Generate Message'}
+                        </button>
+                      </div>
                     )}
 
                     {!isSent && (
-                      <textarea
-                        value={msg}
-                        onChange={e => setBdMessages(m => ({ ...m, [p.id]: e.target.value }))}
-                        placeholder="Type or generate a birthday message..."
-                        rows={4}
-                        className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                      />
+                      <div>
+                        {/* Template wrapper preview */}
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Message preview</p>
+                        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-xs">
+                          <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/60 text-gray-400 italic select-none">
+                            Happy Birthday from Code Clinic! 🎂
+                          </div>
+                          <div className="px-3 py-0.5 border-t border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                            <textarea
+                              value={msg}
+                              onChange={e => setBdMessages(m => ({ ...m, [p.id]: e.target.value }))}
+                              placeholder="Your personalised message will appear here after generating…"
+                              rows={4}
+                              className="w-full py-2 bg-transparent text-gray-700 dark:text-gray-300 resize-none focus:outline-none"
+                            />
+                          </div>
+                          <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/60 text-gray-400 italic select-none">
+                            — The Code Clinic Team, Kampala 🦷
+                          </div>
+                        </div>
+                      </div>
                     )}
 
                     {isSent ? (
