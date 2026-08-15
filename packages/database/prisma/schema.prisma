@@ -880,11 +880,13 @@ model AiMessage {
   role           String         // USER | AGENT | SYSTEM
   content        String
   metadata       String?        // JSON
-  wamid          String?        // WhatsApp message ID stored for observability
+  wamid          String?        // WhatsApp message ID (USER: dedup; AGENT: delivery status correlation)
+  status         String?        // sent | delivered | read | failed — AGENT messages only
   createdAt      DateTime       @default(now())
 
   @@index([conversationId])
   @@index([conversationId, createdAt])
+  @@index([wamid])              // fast lookup when Meta posts a statuses[] update
   @@map("ai_messages")
 }
 

@@ -6,7 +6,7 @@ import NextImage from 'next/image'
 import {
   Search, Send, Paperclip, Smile, X, Loader2,
   MessageSquare, Instagram, Facebook, Globe, Bot, UserCheck,
-  Image as ImageIcon, FileText, Music, Video as VideoIcon, Check,
+  Image as ImageIcon, FileText, Music, Video as VideoIcon, Check, CheckCheck,
   ChevronLeft, Bell,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -30,7 +30,7 @@ type Conversation = {
   lastMessage: { id: string; role: string; content: string; createdAt: string; metadata?: string | null } | null
   createdAt: string; updatedAt: string
 }
-type Message = { id: string; role: 'USER' | 'AGENT'; content: string; createdAt: string }
+type Message = { id: string; role: 'USER' | 'AGENT'; content: string; createdAt: string; status?: string | null; wamid?: string | null }
 
 // ── Channel config ─────────────────────────────────────────────────────────────
 type ChannelKey = 'WHATSAPP' | 'INSTAGRAM' | 'FACEBOOK' | 'WEBSITE' | 'FB_COMMENTS' | 'IG_COMMENTS'
@@ -136,11 +136,13 @@ function convLabel(conv: Conversation, channel: ChannelKey): string {
 
 // ── Media bubble ───────────────────────────────────────────────────────────────
 function parseBubble(content: string) {
-  if (content.startsWith('__MEDIA_IMAGE__:'))                            return 'image'
-  if (/\[Patient sent an image\]|\[image\]/i.test(content))              return 'image'
-  if (/\[Patient sent an audio\]|\[audio\]|\[voice\]/i.test(content))   return 'audio'
-  if (/\[Patient sent a video\]|\[video\]/i.test(content))              return 'video'
-  if (/\[Patient sent a document\]|\[document\]|\[file\]/i.test(content)) return 'document'
+  if (content.startsWith('__MEDIA_IMAGE__:'))                                    return 'image'
+  if (/\[Patient sent an image\]|\[image\]/i.test(content))                      return 'image'
+  if (/\[Patient sent an audio\]|\[audio\]|\[voice\]/i.test(content))           return 'audio'
+  if (/\[Patient sent a video\]|\[video\]/i.test(content))                      return 'video'
+  if (/\[Patient sent a document\]|\[document\]|\[file\]/i.test(content))       return 'document'
+  if (/\[Patient sent a sticker\]/i.test(content))                               return 'sticker'
+  if (/^Reacted with /i.test(content))                                           return 'reaction'
   return null
 }
 function MediaBubble({ type, content }: { type: string; content?: string }) {
@@ -160,6 +162,13 @@ function MediaBubble({ type, content }: { type: string; content?: string }) {
       </div>
     )
   }
+  if (type === 'sticker') {
+    return <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-black/10"><span className="text-xl">🎭</span><span className="text-xs font-semibold">Sticker</span></div>
+  }
+  if (type === 'reaction' && content) {
+    const emoji = content.replace(/^Reacted with /i, '').trim()
+    return <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-black/10 text-sm">{emoji}</div>
+  }
   const cfg: Record<string, { Icon: any; label: string }> = {
     image:    { Icon: ImageIcon,  label: 'Image'      },
     audio:    { Icon: Music,      label: 'Voice note'  },
@@ -172,6 +181,13 @@ function MediaBubble({ type, content }: { type: string; content?: string }) {
       <Icon size={15} /><span className="text-xs font-semibold">{label}</span>
     </div>
   )
+}
+
+function MsgStatus({ status }: { status?: string | null }) {
+  if (status === 'read')      return <CheckCheck size={12} className="text-[#53bdeb]" />
+  if (status === 'delivered') return <CheckCheck size={12} className="text-gray-400" />
+  if (status === 'failed')    return <X size={10} className="text-red-400" />
+  return <Check size={12} className="text-gray-400" />
 }
 
 // ── Emoji picker ───────────────────────────────────────────────────────────────
@@ -806,7 +822,7 @@ function InboxPage() {
                   {media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                   <div className={cn('flex items-center gap-1 mt-0.5', isAgent ? 'justify-end' : 'justify-start')}>
                     <span className="text-[10px] text-gray-400">{msgTimestamp(msg.createdAt)}</span>
-                    {isAgent && <Check size={12} className="text-gray-400" />}
+                    {isAgent && <MsgStatus status={msg.status} />}
                   </div>
                 </div>
                 {showTime && <div />}
