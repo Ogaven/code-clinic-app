@@ -2585,10 +2585,11 @@ export async function getAgentReplyV2(
       const response: any = await client.messages.create({
         model:      'claude-sonnet-4-6',
         max_tokens: 1024,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         system: [
           { type: 'text', text: SARAH_V2_SYSTEM_BASE, cache_control: { type: 'ephemeral' } },
           { type: 'text', text: dynamicSystemPrompt },
-        ],
+        ] as any,
         tools:      V2_TOOLS_CACHED,
         messages,
       })

@@ -42,6 +42,8 @@ function hasBookingConfirmationLanguage(text: string): boolean {
     /your\s+appointment\s+.{0,50}(confirmed|booked|scheduled)\b/i,
     /see\s+you\s+(on|at)\s+\w/i,
     /booked\s+(for|at)\s+\d/i,
+    // V2 booking confirmation phrase
+    /got\s+that\s+noted\s+for\b/i,
   ]
   return patterns.some(p => p.test(text))
 }
