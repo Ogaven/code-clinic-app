@@ -127,7 +127,7 @@ export async function handleStaffReply(
 
     const anthropic = new Anthropic({ apiKey })
     const res = await anthropic.messages.create({
-      model:      'claude-sonnet-4-6',
+      model:      'claude-haiku-4-5-20251001',
       max_tokens: 200,
       system:     'You are Sarah, a warm dental assistant at Code Clinic in Kampala. Write in plain conversational text only. No em dashes, no asterisks, no markdown.',
       messages: [{
