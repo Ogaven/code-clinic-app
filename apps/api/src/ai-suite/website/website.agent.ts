@@ -9,7 +9,7 @@ import { prisma } from '../../lib/prisma'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 
 // Phrase that marks an escalation has already been sent in this conversation
-const ESCALATION_PHRASE = 'Please call or WhatsApp us on +256741087667 and our team will help you'
+const ESCALATION_PHRASE = 'Please call us on +256394836298, or WhatsApp us on +256741087667, and our team will help you'
 
 // ── Tool definitions ───────────────────────────────────────────────────────────
 
@@ -248,7 +248,7 @@ You have ALREADY escalated this conversation and given the visitor the phone num
 Escalate when: the visitor explicitly asks to speak to a human or doctor, reports an emergency, makes a complaint, or you genuinely cannot help after a couple of exchanges.
 Steps (do these ONCE per conversation — never repeat):
 1. Call the escalate_to_human tool with the visitor's details and a short summary.
-2. Then send exactly this — word for word, nothing added: "Please call or WhatsApp us on +256741087667 and our team will help you!"`
+2. Then send exactly this — word for word, nothing added: "Please call us on +256394836298, or WhatsApp us on +256741087667, and our team will help you!"`
 
   return `You are Sarah, a warm and friendly receptionist at Code Clinic dental clinic in Kamwokya, Kampala, Uganda.
 
@@ -279,12 +279,13 @@ You are a human receptionist, not a robot. Never say you are AI or automated. If
 === CLINIC INFO ===
 Name: Code Clinic
 Location: Old Kira Road, opposite Police Playground, Kamwokya, Kampala
-Phone and WhatsApp: +256741087667
+Phone (calls/SMS): +256394836298
+WhatsApp (chat only): +256741087667
 Email: dentist@codeclinic.ug
 Website: codeclinic.ug
 Hours: Monday to Friday 8am to 6pm, Saturday 9am to 2pm, Sunday closed
 
-PHONE NUMBER — CRITICAL: The ONLY correct phone number is +256741087667. Never state any other number, even if you think you recall one. If a visitor asks for the number, give only +256741087667.
+PHONE NUMBERS — CRITICAL: +256394836298 is the number for calls and SMS. +256741087667 is WhatsApp chat only — you cannot call it. On weekends the phone line is not staffed, so WhatsApp is the only way to reach us. Never give any other numbers. If asked "what number can I call?", give +256394836298 for weekdays/Saturday, and explain we are on WhatsApp only on Sundays.
 
 === WHO YOU ARE TALKING TO ===
 Visitors on this chat are members of the public who found us online. They are NOT registered patients in our system yet. NEVER say you "cannot find them in the database" or that they "don't exist in our records" — that would be confusing and rude. Treat them like a new walk-in calling for the first time.
@@ -330,7 +331,7 @@ export async function getWebsiteAgentReply(
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    return `Hi! I've received your message and a team member will be with you shortly. For urgent matters please call us on +256741087667 😊`
+    return `Hi! I've received your message and a team member will be with you shortly. For urgent matters please call us on +256394836298 😊`
   }
 
   // Load recent conversation history
@@ -403,9 +404,9 @@ export async function getWebsiteAgentReply(
       currentMessages.push({ role: 'user', content: toolResults })
     }
 
-    return `Let me get that sorted for you — if it's urgent please call or WhatsApp us on +256741087667 😊`
+    return `Let me get that sorted for you — if it's urgent please call us on +256394836298 😊`
   } catch (err: any) {
     console.error('[WebsiteAgent] error:', err)
-    return `Sorry, I'm having a small issue right now. Please try again or call the clinic directly on +256741087667 😊`
+    return `Sorry, I'm having a small issue right now. Please try again or call the clinic directly on +256394836298 😊`
   }
 }

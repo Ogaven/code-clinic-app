@@ -12,6 +12,8 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 // ── Log conversation + send reply without going through full processInbound ──────
 async function sendDirectReply(from: string, inboundText: string, reply: string, wamid: string): Promise<void> {
+  // Normalize to E.164 — webhook delivers without '+', must match processInbound's convention
+  if (!from.startsWith('+')) from = `+${from}`
   try {
     const patient = await prisma.patient.findFirst({ where: { phone: from } })
     let conv = await prisma.aiConversation.findFirst({
@@ -82,6 +84,19 @@ router.post('/webhook', async (req: Request, res: Response) => {
         const messages      = change.value?.messages
         const waDisplayName = change.value?.contacts?.[0]?.profile?.name ?? null
         const phoneNumberId = change.value?.metadata?.phone_number_id as string | undefined
+
+        // ── Delivery status updates (sent / delivered / read / failed) ──────────
+        const statuses = change.value?.statuses
+        if (statuses?.length) {
+          for (const s of statuses) {
+            if (!s.id || !s.status) continue
+            if (!['sent', 'delivered', 'read', 'failed'].includes(s.status)) continue
+            prisma.aiMessage
+              .updateMany({ where: { wamid: s.id }, data: { status: s.status } })
+              .catch(() => {})
+          }
+        }
+
         if (!messages?.length) continue
 
         const seenFroms = new Set<string>()
@@ -172,6 +187,22 @@ router.post('/webhook', async (req: Request, res: Response) => {
           }
 
           console.log('[Sarah Media]', msg.type, 'from', from)
+
+          // ── Reaction → store as USER note, no agent reply ─────────────────────
+          if (msg.type === 'reaction') {
+            const emoji    = msg.reaction?.emoji ?? '👍'
+            const normFrom = from.startsWith('+') ? from : `+${from}`
+            const conv = await prisma.aiConversation.findFirst({
+              where:   { phoneNumber: normFrom, channel: 'WHATSAPP', status: 'ACTIVE' },
+              orderBy: { createdAt: 'desc' },
+            })
+            if (conv) {
+              prisma.aiMessage.create({
+                data: { conversationId: conv.id, role: 'USER', content: `Reacted with ${emoji}`, wamid: msg.id },
+              }).catch(() => {})
+            }
+            continue
+          }
 
           // ── Sticker → fixed friendly reply ─────────────────────────────────
           if (msg.type === 'sticker') {
@@ -342,10 +373,12 @@ router.post('/webhook', async (req: Request, res: Response) => {
         }
 
         // Persist WhatsApp display name for unrecognised contacts (fire-and-forget)
+        // Normalize before lookup — webhook delivers without '+' but conversations are stored with '+'
         if (waDisplayName) {
-          for (const from of seenFroms) {
+          for (const rawFrom of seenFroms) {
+            const normFrom = rawFrom.startsWith('+') ? rawFrom : `+${rawFrom}`
             prisma.aiConversation.updateMany({
-              where: { phoneNumber: from, channel: 'WHATSAPP', waDisplayName: null },
+              where: { phoneNumber: { in: [normFrom, rawFrom] }, channel: 'WHATSAPP', waDisplayName: null },
               data:  { waDisplayName },
             }).catch(() => {})
           }
@@ -401,6 +434,15 @@ interface WhatsAppMessage {
   video?:    { id: string; mime_type: string; caption?: string }
   sticker?:  { id: string; mime_type: string }
   location?: { latitude: number; longitude: number; name?: string; address?: string }
+  reaction?: { message_id: string; emoji: string }
+}
+
+interface WhatsAppStatusUpdate {
+  id:           string   // wamid of the message
+  status:       string   // sent | delivered | read | failed
+  timestamp:    string
+  recipient_id: string
+  errors?:      Array<{ code: number; title: string }>
 }
 
 interface WhatsAppWebhookPayload {
@@ -410,6 +452,7 @@ interface WhatsAppWebhookPayload {
     changes: Array<{
       value: {
         messages?: WhatsAppMessage[]
+        statuses?: WhatsAppStatusUpdate[]
         contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>
         metadata?: { phone_number_id?: string; display_phone_number?: string }
       }

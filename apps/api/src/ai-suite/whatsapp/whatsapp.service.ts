@@ -50,7 +50,7 @@ function logOutboundMessage(to: string, body: string, templateType: string): voi
 // Not called for live replies in processInbound — those are already logged at the
 // point of generation, before delivery, to avoid double-logging the same message.
 
-function logAgentMessageToConversation(to: string, content: string): void {
+function logAgentMessageToConversation(to: string, content: string, wamid?: string): void {
   ;(async () => {
     try {
       const from = to.startsWith('+') ? to : `+${to}`
@@ -89,7 +89,7 @@ function logAgentMessageToConversation(to: string, content: string): void {
       }
 
       await prisma.aiMessage.create({
-        data: { conversationId: conversation.id, role: 'AGENT', content },
+        data: { conversationId: conversation.id, role: 'AGENT', content, wamid: wamid || undefined, status: wamid ? 'sent' : undefined },
       })
     } catch (e: any) {
       console.error('[WhatsApp] Failed to log outbound message to conversation:', e?.message)
@@ -281,6 +281,23 @@ export async function processInbound(from: string, text: string, wamid: string, 
     // first message already contains real content, skip straight to the real
     // agent below — never silently swallow a substantive first message.
     if (isNewConversation && isGreetingOnly(text)) {
+      // Race guard: concurrent webhook deliveries can each create a new conversation before
+      // the other's conversation is visible in the DB. Check across ALL conversations for this
+      // phone number — if any AGENT message was sent in the last 60s, a greeting already went out.
+      const alreadyGreeted = await prisma.aiMessage.findFirst({
+        where: {
+          role:      'AGENT',
+          createdAt: { gte: new Date(Date.now() - 60 * 1000) },
+          conversation: {
+            phoneNumber: { in: [from, from.replace(/^\+/, '')] },
+            channel:     'WHATSAPP',
+          },
+        },
+      })
+      if (alreadyGreeted) {
+        console.log(`[WhatsApp] Skipping duplicate greeting for ${from} — already sent within last 60s`)
+        return
+      }
       const greeting = `Hello 😊 Thanks for reaching out to Code Clinic, this is Sarah. How may I brighten your smile today?`
       await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: greeting },
@@ -586,7 +603,7 @@ export async function sendWhatsAppMessageDirect(to: string, body: string, phoneN
   const msgId = json.messages?.[0]?.id ?? 'unknown'
   console.log(`[WhatsApp Direct] Sent to +${normalizedTo}: ${body.slice(0, 60)}… (msgId: ${msgId})`)
   logOutboundMessage(to, body, classifyMessage(body))
-  if (logToConversation) logAgentMessageToConversation(to, body)
+  if (logToConversation) logAgentMessageToConversation(to, body, msgId !== 'unknown' ? msgId : undefined)
   return msgId
 }
 
@@ -704,5 +721,5 @@ export async function sendWhatsAppTemplate(
   console.log(`[WhatsApp] Template '${templateName}' sent to +${normalizedTo} (wamid: ${msgId ?? 'unknown'})`)
   const logText = `[Template: ${templateName}] ${params.join(' | ')}`
   logOutboundMessage(to, logText, templateName)
-  if (logToConversation) logAgentMessageToConversation(to, logText)
+  if (logToConversation) logAgentMessageToConversation(to, logText, msgId ?? undefined)
 }
