@@ -1204,52 +1204,6 @@ async function handleAwaitingSlotConfirmation(
         }))))
         .catch(() => {})
 
-      // Send booking confirmation template (best-effort — never block the reply)
-      const templateName = process.env.WA_TEMPLATE_BOOKING_CONFIRM_NAME
-      if (templateName && process.env.AT_API_KEY && process.env.AT_USERNAME) {
-        const waNumber = process.env.AT_WHATSAPP_NUMBER || process.env.WHATSAPP_PHONE_NUMBER
-        if (waNumber) {
-          const patientName = getGreetingName(patient)
-          const apptDate = appt.startAt.toLocaleDateString('en-UG', {
-            weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi',
-          })
-          const apptTime = appt.startAt.toLocaleTimeString('en-US', {
-            hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
-          })
-          const apptService = appt.service.name
-          const apptDoctor  = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const AfricasTalking = require('africastalking')
-            const at = AfricasTalking({ apiKey: process.env.AT_API_KEY, username: process.env.AT_USERNAME })
-            await at.WHATSAPP.sendMessage({
-              waNumber,
-              phoneNumber: from,
-              body: {
-                type: 'template',
-                template: {
-                  name: templateName,
-                  language: { code: 'en' },
-                  components: [{
-                    type: 'body',
-                    parameters: [
-                      { type: 'text', text: patientName },
-                      { type: 'text', text: apptDate },
-                      { type: 'text', text: apptTime },
-                      { type: 'text', text: apptService },
-                      { type: 'text', text: apptDoctor },
-                    ],
-                  }],
-                },
-              },
-            })
-            console.log(`[Booking] Confirmation template sent to ${from}`)
-          } catch (tErr: any) {
-            console.warn('[Booking] Template send failed (non-critical):', tErr.message)
-          }
-        }
-      }
-
       return formatConfirmation(appt)
     }
   } catch (err: any) {

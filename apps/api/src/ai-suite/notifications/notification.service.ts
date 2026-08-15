@@ -93,6 +93,20 @@ export async function sendAppointmentNotification(
       return
     }
     if (type === 'booked') {
+      // Dedup: skip if a booking confirmation was already sent to this phone in the last 5 minutes.
+      // Prevents double-sends from create+confirm happening in rapid succession.
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
+      const recentConfirm = await prisma.botMessageLog.findFirst({
+        where: {
+          recipientPhone:  { in: [recipientPhone, recipientPhone.replace(/^\+/, ''), `+${recipientPhone.replace(/^\+/, '')}`] },
+          templateType:    { in: ['cc_booking_confirmation', 'booking_confirmation'] },
+          sentAt:          { gte: fiveMinutesAgo },
+        },
+      })
+      if (recentConfirm) {
+        console.log(`[Notification] Skipping 'booked' for ${patientName} — confirmation already sent within last 5 minutes`)
+        return
+      }
       const templateName = process.env.WA_TEMPLATE_BOOKING_CONFIRM_NAME
       const templateAddr = recipientName ? recipientName.split(' ')[0] : toProperCase(p.firstName)
       let templateSent = false
