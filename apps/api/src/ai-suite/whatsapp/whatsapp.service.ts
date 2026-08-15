@@ -153,7 +153,26 @@ function isClinicOpen(): boolean {
 }
 
 
-export async function processInbound(from: string, text: string, wamid: string, phoneNumberId?: string): Promise<void> {
+// Per-phone-number lock. AT and Meta Cloud API can both deliver the same inbound
+// event concurrently (different wamids, different buffer keys), so two calls can
+// race the conversation-lookup-or-create step and both conclude "new conversation".
+// A time-window check (e.g. "any AGENT message in the last 60s") is itself a
+// check-then-act race — it narrows the window but does not close it. Serializing
+// calls per phone number closes it: the second call cannot start its own
+// findFirst-or-create until the first has fully committed. Safe because the API
+// runs as a single PM2 fork-mode process — no cross-process coordination needed.
+const inFlightByPhone = new Map<string, Promise<void>>()
+
+export function processInbound(from: string, text: string, wamid: string, phoneNumberId?: string): Promise<void> {
+  const key   = from.startsWith('+') ? from : `+${from}`
+  const prior = inFlightByPhone.get(key) ?? Promise.resolve()
+  const run   = prior.catch(() => {}).then(() => processInboundLocked(from, text, wamid, phoneNumberId))
+  inFlightByPhone.set(key, run)
+  run.finally(() => { if (inFlightByPhone.get(key) === run) inFlightByPhone.delete(key) })
+  return run
+}
+
+async function processInboundLocked(from: string, text: string, wamid: string, phoneNumberId?: string): Promise<void> {
   // Normalize to E.164: Meta webhook delivers numbers WITHOUT '+' (e.g. 256785703926).
   // Africa's Talking delivers WITH '+'. Always use the '+' form so every DB lookup matches.
   if (!from.startsWith('+')) from = `+${from}`
@@ -302,7 +321,7 @@ export async function processInbound(from: string, text: string, wamid: string, 
       await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: greeting },
       })
-      await sendWhatsAppMessage(from, greeting, wamid)
+      await sendWhatsAppMessage(from, greeting, wamid, false)
       return
     }
 
@@ -369,7 +388,7 @@ export async function processInbound(from: string, text: string, wamid: string, 
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid)
+          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false)
           return
         }
 
@@ -400,7 +419,7 @@ export async function processInbound(from: string, text: string, wamid: string, 
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid)
+          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false)
           return
         }
 
@@ -426,7 +445,7 @@ export async function processInbound(from: string, text: string, wamid: string, 
           await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid)
+          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false)
           return
         }
       }
@@ -467,7 +486,7 @@ export async function processInbound(from: string, text: string, wamid: string, 
         await prisma.aiMessage.create({
           data: { conversationId: conversation.id, role: 'AGENT', content: buttonResponse },
         })
-        await sendWhatsAppMessage(from, stripMarkdown(buttonResponse))
+        await sendWhatsAppMessage(from, stripMarkdown(buttonResponse), undefined, false)
         return
       }
     }
