@@ -2055,6 +2055,16 @@ const V2_TOOLS: Anthropic.Tool[] = [
   },
 ]
 
+// Same tool set as V2_TOOLS, with a cache breakpoint on the last entry — the tool
+// definitions never change, so Anthropic can reuse them across calls instead of
+// reprocessing every tool schema on every request. Kept separate from V2_TOOLS so
+// getCommentReply's COMMENT_TOOLS filter (which reuses V2_TOOLS) is unaffected.
+const V2_TOOLS_CACHED: Anthropic.Tool[] = V2_TOOLS.map((tool, i) =>
+  i === V2_TOOLS.length - 1
+    ? { ...tool, cache_control: { type: 'ephemeral' as const } }
+    : tool
+)
+
 async function executeV2Tool(
   toolName:       string,
   toolInput:      Record<string, unknown>,
@@ -2187,7 +2197,12 @@ async function executeV2Tool(
               sarah_message: `It looks like you already have an appointment coming up — ${detail}. Would you like to keep that one, reschedule it, or cancel it first before booking another? 😊`,
             })
           }
-          throw bookErr
+          console.error('[V2] book_appointment error:', bookErr?.message)
+          return JSON.stringify({
+            success: false,
+            error:   'SLOT_UNAVAILABLE',
+            sarah_message: `Oh no — it looks like that slot was just taken! 😅 Want me to check what other times are available?`,
+          })
         }
         const pName   = patient ? `${toProper(patient.firstName)} ${toProper(patient.lastName)}`.trim() : 'New patient'
         const docName = `Dr ${appt.doctor.user.firstName} ${appt.doctor.user.lastName}`
@@ -2388,7 +2403,10 @@ export async function getAgentReplyV2(
       orderBy: { createdAt: 'desc' },
       select:  { content: true },
     })
-    if (lastAgentMsg?.content.includes("You're booked ✅")) {
+    if (
+      lastAgentMsg?.content.includes("You're booked ✅") ||
+      lastAgentMsg?.content.includes("I've got that noted for")
+    ) {
       const msg = latestMessage.trim()
       const hasNewRequest =
         msg.length > 60 ||
@@ -2455,7 +2473,12 @@ export async function getAgentReplyV2(
       ? allHours.map(h => `${DAY_NAMES[h.dayOfWeek]}: ${h.isOpen ? `${h.openTime} – ${h.closeTime}` : 'Closed'}`).join('\n')
       : '(clinic hours not configured)'
 
-    const systemPrompt = [
+    // SARAH_V2_SYSTEM_BASE is a constant — identical on every single call, regardless
+    // of channel, patient, or message. Cached as its own block so Anthropic reuses it
+    // instead of reprocessing the full ~200-line persona/rules prompt every request.
+    // Everything below varies per-call (date/time, patient name, KB, channel context)
+    // and stays uncached in a second block appended after it.
+    const dynamicSystemPrompt = [
       // ── Comment override must come FIRST — before the full Sarah base ─────────
       ...(channel === 'FACEBOOK_COMMENT' || channel === 'INSTAGRAM_COMMENT' ? [
         'CRITICAL INSTRUCTION — PUBLIC COMMENT MODE:',
@@ -2468,7 +2491,6 @@ export async function getAgentReplyV2(
         '• Do NOT use tools. Do NOT look up patient records.',
         '',
       ] : []),
-      SARAH_V2_SYSTEM_BASE,
       '',
       `CURRENT DATE/TIME IN KAMPALA: ${eatDateTime}`,
       `CLINIC STATUS RIGHT NOW: ${isOpen ? 'OPEN' : 'CLOSED'}`,
@@ -2563,8 +2585,11 @@ export async function getAgentReplyV2(
       const response: any = await client.messages.create({
         model:      'claude-sonnet-4-6',
         max_tokens: 1024,
-        system:     systemPrompt,
-        tools:      V2_TOOLS,
+        system: [
+          { type: 'text', text: SARAH_V2_SYSTEM_BASE, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: dynamicSystemPrompt },
+        ],
+        tools:      V2_TOOLS_CACHED,
         messages,
       })
 
@@ -2665,8 +2690,8 @@ export async function getAgentReplyV2(
         if (block.name === 'book_appointment') {
           try {
             const parsed = JSON.parse(result)
-            if (parsed.error === 'NEAR_TERM_DUPLICATE' && parsed.sarah_message) {
-              console.log(`[AgentV2] NEAR_TERM_DUPLICATE — returning sarah_message verbatim for ${from}`)
+            if (!parsed.success && parsed.sarah_message) {
+              console.log(`[AgentV2] book_appointment failed (${parsed.error ?? 'unknown'}) — returning sarah_message verbatim for ${from}`)
               return sanitizeForWhatsApp(parsed.sarah_message as string)
             }
           } catch {}
