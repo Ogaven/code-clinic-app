@@ -29,7 +29,9 @@ async function sendDirectReply(from: string, inboundText: string, reply: string,
     if (!agentOn) return
     await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'USER', content: inboundText } })
     await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'AGENT', content: reply } })
-    await sendWhatsAppMessage(from, reply, wamid)
+    // logToConversation=false: already logged explicitly above — sendWhatsAppMessage's
+    // default logging would otherwise double-write this same reply to ai_messages.
+    await sendWhatsAppMessage(from, reply, wamid, false)
   } catch (err: any) {
     console.error('[WhatsApp] sendDirectReply error:', err.message)
   }

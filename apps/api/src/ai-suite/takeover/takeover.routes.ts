@@ -232,7 +232,7 @@ router.post('/conversations/:conversationId/send', async (req, res) => {
     })
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' })
 
-    await prisma.aiMessage.create({
+    const msgRecord = await prisma.aiMessage.create({
       data: {
         conversationId: req.params.conversationId,
         role:    'AGENT',
@@ -242,10 +242,14 @@ router.post('/conversations/:conversationId/send', async (req, res) => {
 
     if (conversation.channel === 'WHATSAPP') {
       const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
-      await sendWhatsAppMessage(conversation.phoneNumber, text.trim())
+      // logToConversation:false — message already created above; we just need the wamid back
+      const wamid = await sendWhatsAppMessage(conversation.phoneNumber, text.trim(), undefined, false)
+      if (wamid && wamid !== 'unknown') {
+        await prisma.aiMessage.update({ where: { id: msgRecord.id }, data: { wamid, status: 'sent' } })
+      }
     } else if (conversation.channel === 'SMS') {
       const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
-      await sendWhatsAppMessage(conversation.phoneNumber, text.trim())
+      await sendWhatsAppMessage(conversation.phoneNumber, text.trim(), undefined, false)
     } else if (conversation.channel === 'FACEBOOK' || conversation.channel === 'INSTAGRAM') {
       const { sendSocialReply } = await import('../facebook/facebook.routes')
       await sendSocialReply(conversation.phoneNumber, text.trim(), conversation.channel as 'FACEBOOK' | 'INSTAGRAM')
