@@ -863,6 +863,7 @@ model AiConversation {
   profilePictureUrl String?            // Profile picture URL — available for Facebook DMs only; null for comment users (API restriction)
   status            ConversationStatus @default(ACTIVE)
   agentEnabled      Boolean            @default(true)
+  archivedAt        DateTime?          // Staff-initiated archive — null means active/visible in the default inbox list
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 

@@ -32,11 +32,16 @@ router.post('/handback/:conversationId', async (req, res) => {
 
 // GET /ai-suite/conversations
 // Returns conversations filtered by ?channel=whatsapp|instagram|facebook|website
+// By default excludes archived conversations; ?archived=true returns only archived ones.
 // Ordered by most recently updated conversation first.
 router.get('/conversations', async (req, res) => {
   try {
-    const channelParam = (req.query.channel as string | undefined)?.toUpperCase()
-    const where = channelParam ? { channel: channelParam } : {}
+    const channelParam  = (req.query.channel as string | undefined)?.toUpperCase()
+    const wantsArchived = req.query.archived === 'true'
+    const where: any = {
+      ...(channelParam ? { channel: channelParam } : {}),
+      archivedAt: wantsArchived ? { not: null } : null,
+    }
     const conversations = await prisma.aiConversation.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
@@ -72,6 +77,7 @@ router.get('/conversations', async (req, res) => {
           postCaption,
           status:           c.status,
           agentEnabled:     c.agentEnabled,
+          archivedAt:       (c as any).archivedAt ?? null,
           patientName:      c.patient
             ? `${c.patient.firstName} ${c.patient.lastName}`
             : null,
@@ -84,6 +90,102 @@ router.get('/conversations', async (req, res) => {
   } catch (err: any) {
     console.error('[Takeover] conversations list error:', err.message)
     res.status(500).json({ error: 'Failed to fetch conversations' })
+  }
+})
+
+// POST /ai-suite/conversations
+// Staff starts a new outbound WhatsApp conversation to a number not yet in the system.
+// Reuses an existing ACTIVE conversation for the number if one already exists (same
+// dedup convention as the inbound webhook path) instead of creating a duplicate contact.
+function normalizePhoneForNewChat(raw: string): string {
+  const digits = raw.replace(/\D/g, '')
+  if (digits.startsWith('256') && digits.length >= 12) return `+${digits}`
+  if (digits.startsWith('0')   && digits.length >= 9)  return `+256${digits.slice(1)}`
+  if (digits.length === 9)                              return `+256${digits}`
+  return raw.startsWith('+') ? raw : `+${digits}`
+}
+
+router.post('/conversations', async (req, res) => {
+  try {
+    const { phoneNumber, displayName } = req.body as { phoneNumber?: string; displayName?: string }
+    if (!phoneNumber?.trim()) return res.status(400).json({ error: 'phoneNumber required' })
+
+    const normalized = normalizePhoneForNewChat(phoneNumber.trim())
+    if (!/^\+\d{9,15}$/.test(normalized)) {
+      return res.status(400).json({ error: 'Could not parse a valid phone number' })
+    }
+
+    let conversation = await prisma.aiConversation.findFirst({
+      where:   { phoneNumber: normalized, channel: 'WHATSAPP' },
+      orderBy: { createdAt: 'desc' },
+    })
+    let isNew = false
+
+    if (!conversation) {
+      const patient = await prisma.patient.findFirst({ where: { phone: normalized } })
+      conversation = await prisma.aiConversation.create({
+        data: {
+          patientId:    patient?.id ?? null,
+          channel:      'WHATSAPP',
+          phoneNumber:  normalized,
+          status:       'ACTIVE',
+          agentEnabled: false, // staff-initiated — stays in human takeover until they hand back
+          displayName:  displayName?.trim() || undefined,
+        } as any,
+      })
+      isNew = true
+    } else if ((conversation as any).archivedAt) {
+      // Reusing an archived thread — surface it again
+      conversation = await prisma.aiConversation.update({
+        where: { id: conversation.id },
+        data:  { archivedAt: null, status: 'ACTIVE' } as any,
+      })
+    }
+
+    res.json({ id: conversation.id, phoneNumber: conversation.phoneNumber, isNew })
+  } catch (err: any) {
+    console.error('[Takeover] create conversation error:', err.message)
+    res.status(500).json({ error: 'Failed to start conversation' })
+  }
+})
+
+// DELETE /ai-suite/conversations/:conversationId
+// Permanently removes a conversation and its messages (cascade).
+router.delete('/conversations/:conversationId', async (req, res) => {
+  try {
+    await prisma.aiConversation.delete({ where: { id: req.params.conversationId } })
+    res.json({ success: true })
+  } catch (err: any) {
+    console.error('[Takeover] delete conversation error:', err.message)
+    res.status(500).json({ error: 'Failed to delete conversation' })
+  }
+})
+
+// PATCH /ai-suite/conversations/:conversationId/archive
+router.patch('/conversations/:conversationId/archive', async (req, res) => {
+  try {
+    const conv = await prisma.aiConversation.update({
+      where: { id: req.params.conversationId },
+      data:  { archivedAt: new Date() } as any,
+    })
+    res.json({ success: true, archivedAt: (conv as any).archivedAt })
+  } catch (err: any) {
+    console.error('[Takeover] archive conversation error:', err.message)
+    res.status(500).json({ error: 'Failed to archive conversation' })
+  }
+})
+
+// PATCH /ai-suite/conversations/:conversationId/unarchive
+router.patch('/conversations/:conversationId/unarchive', async (req, res) => {
+  try {
+    await prisma.aiConversation.update({
+      where: { id: req.params.conversationId },
+      data:  { archivedAt: null } as any,
+    })
+    res.json({ success: true })
+  } catch (err: any) {
+    console.error('[Takeover] unarchive conversation error:', err.message)
+    res.status(500).json({ error: 'Failed to unarchive conversation' })
   }
 })
 

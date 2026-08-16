@@ -7,7 +7,7 @@ import {
   Search, Send, Paperclip, Smile, X, Loader2,
   MessageSquare, Instagram, Facebook, Globe, Bot, UserCheck,
   Image as ImageIcon, FileText, Music, Video as VideoIcon, Check, CheckCheck,
-  ChevronLeft, Bell,
+  ChevronLeft, Bell, Plus, Archive, ArchiveRestore, Trash2, MoreVertical,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -27,6 +27,7 @@ type Conversation = {
   displayName: string | null
   profilePictureUrl: string | null
   postCaption: string | null
+  archivedAt: string | null
   lastMessage: { id: string; role: string; content: string; createdAt: string; metadata?: string | null } | null
   createdAt: string; updatedAt: string
 }
@@ -336,6 +337,118 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
   )
 }
 
+// ── Chat management: archive / unarchive / delete ────────────────────────────
+function ChatMenu({ sel, onChanged, dark = true }: { sel: Conversation; onChanged: () => void; dark?: boolean }) {
+  const [open, setOpen]   = useState(false)
+  const [busy, setBusy]   = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
+  const archived = !!sel.archivedAt
+
+  async function doArchiveToggle() {
+    setBusy(true)
+    try {
+      await fetch(`${API}/ai-suite/conversations/${sel.id}/${archived ? 'unarchive' : 'archive'}`, {
+        method: 'PATCH', headers: authH(),
+      })
+      setOpen(false)
+      onChanged()
+    } catch {} finally { setBusy(false) }
+  }
+
+  async function doDelete() {
+    if (!window.confirm('Permanently delete this conversation and all its messages? This cannot be undone.')) return
+    setBusy(true)
+    try {
+      await fetch(`${API}/ai-suite/conversations/${sel.id}`, { method: 'DELETE', headers: authH() })
+      setOpen(false)
+      onChanged()
+    } catch {} finally { setBusy(false) }
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)} disabled={busy}
+        className={cn('w-8 h-8 flex items-center justify-center rounded-full transition-colors flex-shrink-0',
+          dark ? 'text-white/80 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100')}
+        title="Chat options">
+        <MoreVertical size={17} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-10 z-50 w-48 rounded-xl shadow-2xl border border-gray-100 bg-white overflow-hidden text-gray-700">
+          <button onClick={doArchiveToggle} disabled={busy}
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-gray-50 transition-colors text-left">
+            {archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+            {archived ? 'Unarchive' : 'Archive'}
+          </button>
+          <button onClick={doDelete} disabled={busy}
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-red-50 text-red-600 transition-colors text-left border-t border-gray-100">
+            <Trash2 size={15} />
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── New outbound WhatsApp chat ───────────────────────────────────────────────
+function NewChatModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const [phone,   setPhone]   = useState('')
+  const [name,    setName]    = useState('')
+  const [busy,    setBusy]    = useState(false)
+  const [error,   setError]   = useState('')
+
+  async function submit() {
+    if (!phone.trim() || busy) return
+    setBusy(true); setError('')
+    try {
+      const res = await fetch(`${API}/ai-suite/conversations`, {
+        method: 'POST', headers: authH(true),
+        body: JSON.stringify({ phoneNumber: phone.trim(), displayName: name.trim() || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Could not start chat'); return }
+      onCreated(data.id)
+      onClose()
+    } catch { setError('Could not reach the server') } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-gray-800">Start new WhatsApp chat</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+        </div>
+        <label className="block text-xs font-semibold text-gray-500 mb-1">Phone number</label>
+        <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 0712345678 or +256712345678"
+          className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#25D366] mb-3" autoFocus />
+        <label className="block text-xs font-semibold text-gray-500 mb-1">Name (optional)</label>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Contact name"
+          className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#25D366] mb-1" />
+        {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+        <p className="text-[11px] text-gray-400 mt-2">
+          If this number hasn't messaged the clinic before, WhatsApp may block the first message
+          until they reply (24-hour messaging policy) — the chat will still be created so you can
+          have it ready.
+        </p>
+        <button onClick={submit} disabled={busy || !phone.trim()}
+          className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold text-white bg-[#25D366] hover:bg-[#1fb959] disabled:opacity-50 transition-colors">
+          {busy ? 'Starting…' : 'Start Chat'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Inbox push notification ────────────────────────────────────────────────────
 function fireInboxNotification(title: string, body: string) {
   if (typeof window === 'undefined') return
@@ -584,6 +697,9 @@ function InboxPage() {
   const prevConvId     = useRef<string | null>(null)
   const prevConvsRef   = useRef<Map<string, string>>(new Map())
   const [notifPerm, setNotifPerm] = useState<string>('default')
+  const [showArchived, setShowArchived] = useState(false)
+  const [showNewChat,  setShowNewChat]  = useState(false)
+  const pendingSelectId = useRef<string | null>(null)
 
   // Deduplicate: one entry per phone number, keep most-recently-updated
   function dedupeByPhone(data: Conversation[]): Conversation[] {
@@ -599,7 +715,7 @@ function InboxPage() {
   const fetchConvs = useCallback(async () => {
     try {
       const ch  = CHANNELS.find(c => c.key === channel)?.apiVal || 'whatsapp'
-      const res = await fetch(`${API}/ai-suite/conversations?channel=${ch}`, { headers: authH() })
+      const res = await fetch(`${API}/ai-suite/conversations?channel=${ch}${showArchived ? '&archived=true' : ''}`, { headers: authH() })
       if (!res.ok) return
       const data: Conversation[] = await res.json()
       const deduped = dedupeByPhone(data)
@@ -621,12 +737,28 @@ function InboxPage() {
         prevConvsRef.current.set(conv.id, lm ? lm.createdAt : conv.updatedAt)
       }
       setConvs(deduped)
-      if (sel) {
+      if (pendingSelectId.current) {
+        const toSelect = deduped.find(c => c.id === pendingSelectId.current)
+        if (toSelect) { setSel(toSelect); setMobileView('chat'); pendingSelectId.current = null }
+      } else if (sel) {
         const updated = deduped.find(c => c.id === sel.id)
-        if (updated) setSel(updated)
+        // Not found here anymore (deleted, or archived/unarchived out of the current view) — deselect.
+        setSel(updated ?? null)
       }
     } catch {} finally { setLoadingC(false) }
-  }, [channel, sel?.id])
+  }, [channel, showArchived, sel?.id])
+
+  // After a chat-management action (archive/unarchive/delete/new chat), refresh
+  // the list immediately rather than waiting for the next poll tick.
+  function handleConvChanged() {
+    fetchConvs()
+  }
+
+  function handleNewChatCreated(id: string) {
+    setShowArchived(false)
+    pendingSelectId.current = id
+    fetchConvs()
+  }
 
   const fetchMsgs = useCallback(async (id: string) => {
     setLoadingM(true)
@@ -643,7 +775,7 @@ function InboxPage() {
     fetchConvs()
     pollConv.current = setInterval(fetchConvs, 10000)
     return () => { if (pollConv.current) clearInterval(pollConv.current) }
-  }, [channel])
+  }, [channel, showArchived])
 
   useEffect(() => {
     if ('Notification' in window) setNotifPerm(Notification.permission)
@@ -723,14 +855,25 @@ function InboxPage() {
     <div className="flex flex-col h-full bg-white">
       <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ background: '#075E54' }}>
         <span className="text-sm font-bold text-white">WhatsApp</span>
-        <span className="text-xs text-white/60">{filtered.length} chats</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-white/60">{filtered.length} chats</span>
+          <button onClick={() => setShowNewChat(true)} title="Start new chat"
+            className="w-7 h-7 flex items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors">
+            <Plus size={16} />
+          </button>
+        </div>
       </div>
-      <div className="px-3 py-2 flex-shrink-0 bg-white border-b border-gray-100">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#f0f2f5]">
+      <div className="px-3 py-2 flex-shrink-0 bg-white border-b border-gray-100 flex items-center gap-2">
+        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl bg-[#f0f2f5]">
           <Search size={14} className="text-gray-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search or start new chat"
             className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none" />
         </div>
+        <button onClick={() => setShowArchived(a => !a)}
+          className={cn('flex-shrink-0 text-[11px] font-semibold px-2.5 py-2 rounded-xl transition-colors',
+            showArchived ? 'bg-[#075E54] text-white' : 'bg-[#f0f2f5] text-gray-500 hover:bg-gray-200')}>
+          {showArchived ? 'Active' : 'Archived'}
+        </button>
       </div>
       <div className="flex-1 overflow-y-auto">
         {loadingC ? (
@@ -783,18 +926,17 @@ function InboxPage() {
         <button onClick={() => { setSel(null); setMobileView('list') }} className="md:hidden text-white/70 hover:text-white mr-1">
           <ChevronLeft size={20} />
         </button>
-        <div className="relative">
-          <Avatar name={convLabel(sel, 'WHATSAPP')} size={40} />
-          {sel.status === 'active' && (
-            <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[#25D366] border-2 border-[#075E54]" />
-          )}
-        </div>
+        {/* No online/last-seen indicator — WhatsApp's Business API does not expose
+            contact presence to businesses (a peer-to-peer WhatsApp privacy feature,
+            never extended to the Cloud API). Showing a dot here would be fake. */}
+        <Avatar name={convLabel(sel, 'WHATSAPP')} size={40} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-white truncate">{convLabel(sel, 'WHATSAPP')}</p>
           <p className="text-[11px]" style={{ color: '#90cbb7' }}>
             {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'} · {formatPhoneDisplay(sel.phoneNumber)}
           </p>
         </div>
+        <ChatMenu sel={sel} onChanged={handleConvChanged} />
         <button onClick={toggleTakeover}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all hover:opacity-90"
           style={{ background: isHuman ? '#06b6d4' : '#F59E0B' }}>
@@ -870,12 +1012,18 @@ function InboxPage() {
         </div>
         <span className="text-xs text-white/70">{filtered.length} chats</span>
       </div>
-      <div className="px-3 py-2 flex-shrink-0 border-b border-gray-100">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100">
+      <div className="px-3 py-2 flex-shrink-0 border-b border-gray-100 flex items-center gap-2">
+        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100">
           <Search size={14} className="text-gray-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search conversations"
             className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none" />
         </div>
+        <button onClick={() => setShowArchived(a => !a)}
+          className={cn('flex-shrink-0 text-[11px] font-semibold px-2.5 py-2 rounded-xl transition-colors',
+            showArchived ? 'text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}
+          style={showArchived ? { background: accent } : undefined}>
+          {showArchived ? 'Active' : 'Archived'}
+        </button>
       </div>
       <div className="flex-1 overflow-y-auto">
         {loadingC ? (
@@ -940,6 +1088,7 @@ function InboxPage() {
             {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'}{channel === 'WHATSAPP' ? ` · ${formatPhoneDisplay(sel.phoneNumber)}` : ''}
           </p>
         </div>
+        <ChatMenu sel={sel} onChanged={handleConvChanged} dark={false} />
         <button onClick={toggleTakeover}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5"
           style={{ background: isHuman ? '#06b6d4' : accent }}>
@@ -1072,6 +1221,10 @@ function InboxPage() {
           </>
         )}
       </div>
+
+      {showNewChat && (
+        <NewChatModal onClose={() => setShowNewChat(false)} onCreated={handleNewChatCreated} />
+      )}
     </div>
   )
 }
