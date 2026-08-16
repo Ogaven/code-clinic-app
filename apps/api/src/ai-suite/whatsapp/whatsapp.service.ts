@@ -420,6 +420,7 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
           await sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false)
+          notifyJulian(from, `📅 ${patient.firstName} ${patient.lastName} wants to reschedule — replied to reminder: "${text.slice(0, 200)}". Sarah is handling rebooking.`).catch(() => {})
           return
         }
 
@@ -446,6 +447,7 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
           await sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false)
+          notifyJulian(from, `❌ ${patient.firstName} ${patient.lastName} cancelled their appointment via reminder reply: "${text.slice(0, 200)}". Appointment marked CANCELLED.`).catch(() => {})
           return
         }
       }

@@ -63,7 +63,7 @@ import channelAnalyticsRouter   from './ai-suite/meta/channel-analytics.routes'
 
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
-import { checkAndSendReminders }           from './ai-suite/scheduler/reminder.service'
+import { checkAndSendReminders, checkAndAlertNoResponders } from './ai-suite/scheduler/reminder.service'
 import { checkAndSendFollowups, processAfterHoursQueue, checkAndSendPostAppointmentFollowups, checkAndSendMissedCallFollowups, checkAndSendReactivationMessages, checkAndSendAppointmentConfirmations, checkAndSendWeekendReport } from './ai-suite/scheduler/followup.service'
 import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
 // DISABLED by Vine 2026-07-11 — sent unwanted messages; do not re-enable without explicit approval
@@ -319,6 +319,9 @@ runStartup().then(() => {
     checkAndSendReminders().catch(err => console.error('[Reminder] Scheduler error:', err))
   }, ONE_HOUR)
   setInterval(() => {
+    checkAndAlertNoResponders().catch(err => console.error('[NoShowAlert] Scheduler error:', err))
+  }, ONE_HOUR)
+  setInterval(() => {
     checkAndSendFollowups().catch(err => console.error('[Followup] Scheduler error:', err))
   }, ONE_HOUR)
   setInterval(() => {
@@ -369,6 +372,7 @@ runStartup().then(() => {
   // Run once 2 minutes after startup (gives DB time to settle after migrations)
   setTimeout(() => {
     checkAndSendReminders().catch(err => console.error('[Reminder] Initial run error:', err))
+    checkAndAlertNoResponders().catch(err => console.error('[NoShowAlert] Initial run error:', err))
     checkAndSendFollowups().catch(err => console.error('[Followup] Initial run error:', err))
     checkAndSendLeadNurtureMessages().catch(err => console.error('[LeadNurture] Initial run error:', err))
     updatePatientStatuses().catch(err => console.error('[PatientStatus] Initial run error:', err))
