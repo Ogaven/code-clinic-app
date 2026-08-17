@@ -2580,7 +2580,15 @@ export async function getAgentReplyV2(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let messages: any[] = apiMessages
 
-    for (let iter = 0; iter < 4; iter++) {
+    // Compound requests (e.g. cancel + look up service/doctor + recheck availability
+    // + book) can genuinely need 5-6 sequential tool round-trips before a final
+    // reply. At 4, real bookings were exhausting the cap before ever reaching
+    // book_appointment and falling through to the generic "small issue" fallback —
+    // reproduced from real logs (McKenna Sage, 2026-08-16 ~18:42 UTC): 5 tool calls
+    // (get_patient_appointments, cancel_appointment, search_services,
+    // search_doctors, check_availability) consumed all 4 iterations with no
+    // booking ever attempted.
+    for (let iter = 0; iter < 8; iter++) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response: any = await client.messages.create({
         model:      'claude-sonnet-4-6',

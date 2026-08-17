@@ -399,6 +399,86 @@ function ChatMenu({ sel, onChanged, dark = true }: { sel: Conversation; onChange
   )
 }
 
+// ── Per-row archive / delete menu ────────────────────────────────────────────
+// Fixed-positioned dropdown so it escapes the list's overflow-y:auto clipping.
+function RowChatMenu({ conv, onChanged }: { conv: Conversation; onChanged: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [pos,  setPos]  = useState({ x: 0, y: 0 })
+  const [busy, setBusy] = useState(false)
+  const btnRef  = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return
+      if (btnRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  function openMenu(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!btnRef.current) return
+    const r   = btnRef.current.getBoundingClientRect()
+    const dropH = 88
+    const y   = r.bottom + 4 + dropH > window.innerHeight ? r.top - dropH - 4 : r.bottom + 4
+    setPos({ x: r.right, y })
+    setOpen(o => !o)
+  }
+
+  const archived = !!conv.archivedAt
+
+  async function doArchive(e: React.MouseEvent) {
+    e.stopPropagation()
+    setBusy(true)
+    try {
+      await fetch(`${API}/ai-suite/conversations/${conv.id}/${archived ? 'unarchive' : 'archive'}`, {
+        method: 'PATCH', headers: authH(),
+      })
+      setOpen(false); onChanged()
+    } catch {} finally { setBusy(false) }
+  }
+
+  async function doDelete(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!window.confirm('Permanently delete this conversation? This cannot be undone.')) return
+    setBusy(true)
+    try {
+      await fetch(`${API}/ai-suite/conversations/${conv.id}`, { method: 'DELETE', headers: authH() })
+      setOpen(false); onChanged()
+    } catch {} finally { setBusy(false) }
+  }
+
+  return (
+    <>
+      <button ref={btnRef} onClick={openMenu} disabled={busy}
+        className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
+        title="Archive or delete">
+        {busy ? <Loader2 size={11} className="animate-spin text-gray-400" /> : <MoreVertical size={14} />}
+      </button>
+      {open && (
+        <div ref={menuRef}
+          className="fixed z-[200] w-40 rounded-xl shadow-2xl border border-gray-100 bg-white overflow-hidden"
+          style={{ left: pos.x - 160, top: pos.y }}>
+          <button onClick={doArchive} disabled={busy}
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors text-left">
+            {archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+            {archived ? 'Unarchive' : 'Archive'}
+          </button>
+          <button onClick={doDelete} disabled={busy}
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-red-600 hover:bg-red-50 transition-colors text-left border-t border-gray-100">
+            <Trash2 size={13} />
+            Delete
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── New outbound WhatsApp chat ───────────────────────────────────────────────
 function NewChatModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const [phone,   setPhone]   = useState('')
@@ -700,6 +780,23 @@ function InboxPage() {
   const [showArchived, setShowArchived] = useState(false)
   const [showNewChat,  setShowNewChat]  = useState(false)
   const pendingSelectId = useRef<string | null>(null)
+  const listPanelRef    = useRef<HTMLDivElement>(null)
+
+  function onDividerMouseDown(e: React.MouseEvent) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = listPanelRef.current?.offsetWidth ?? 320
+    const onMove = (ev: MouseEvent) => {
+      const newW = Math.min(520, Math.max(240, startW + ev.clientX - startX))
+      if (listPanelRef.current) listPanelRef.current.style.width = `${newW}px`
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   // Deduplicate: one entry per phone number, keep most-recently-updated
   function dedupeByPhone(data: Conversation[]): Conversation[] {
@@ -857,9 +954,10 @@ function InboxPage() {
         <span className="text-sm font-bold text-white">WhatsApp</span>
         <div className="flex items-center gap-3">
           <span className="text-xs text-white/60">{filtered.length} chats</span>
-          <button onClick={() => setShowNewChat(true)} title="Start new chat"
-            className="w-7 h-7 flex items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors">
-            <Plus size={16} />
+          <button onClick={() => setShowNewChat(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-white bg-white/20 hover:bg-white/30 transition-colors">
+            <Plus size={13} />
+            New Chat
           </button>
         </div>
       </div>
@@ -883,7 +981,11 @@ function InboxPage() {
         ) : filtered.length === 0 ? (
           <div className="px-4 py-16 text-center">
             <MessageSquare size={32} className="mx-auto mb-3 text-gray-200" />
-            <p className="text-sm text-gray-400">No WhatsApp conversations yet</p>
+            <p className="text-sm text-gray-400 mb-4">No WhatsApp conversations yet</p>
+            <button onClick={() => setShowNewChat(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#25D366] hover:bg-[#1fb959] transition-colors">
+              <Plus size={14} /> Start a new chat
+            </button>
           </div>
         ) : filtered.map(conv => {
           const name    = convLabel(conv, 'WHATSAPP')
@@ -892,10 +994,13 @@ function InboxPage() {
           const active  = sel?.id === conv.id
           const preview = last ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No messages'
           return (
-            <button key={conv.id} onClick={() => selectConv(conv)}
-              className={cn('w-full flex items-center gap-3 px-4 py-3 border-b border-gray-50 text-left transition-colors',
-                active ? 'bg-green-50' : 'hover:bg-gray-50')}>
-              <div className="relative">
+            <div key={conv.id}
+              className={cn('flex items-center gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer transition-colors select-none',
+                active ? 'bg-green-50' : 'hover:bg-gray-50')}
+              onClick={() => selectConv(conv)}
+              role="button" tabIndex={0}
+              onKeyDown={e => { if (e.key === 'Enter') selectConv(conv) }}>
+              <div className="relative flex-shrink-0">
                 <Avatar name={name} size={46} />
                 <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-white shadow-sm overflow-hidden flex items-center justify-center bg-white">
                   <NextImage src="/icons/whatsapp.png" alt="WhatsApp" width={16} height={16} className="block w-full h-full object-contain mix-blend-multiply" />
@@ -913,7 +1018,10 @@ function InboxPage() {
                   )}
                 </div>
               </div>
-            </button>
+              <div onClick={e => e.stopPropagation()} className="flex-shrink-0 ml-1">
+                <RowChatMenu conv={conv} onChanged={handleConvChanged} />
+              </div>
+            </div>
           )
         })}
       </div>
@@ -1043,10 +1151,13 @@ function InboxPage() {
           const preview = last ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No messages'
           const isCommentCh = channel === 'FB_COMMENTS' || channel === 'IG_COMMENTS'
           return (
-            <button key={conv.id} onClick={() => selectConv(conv)}
-              className={cn('w-full flex items-center gap-3 px-4 py-3 border-b border-gray-50 text-left transition-colors hover:bg-gray-50')}
-              style={active ? { backgroundColor: accent + '15' } : undefined}>
-              <div className="relative">
+            <div key={conv.id}
+              className={cn('flex items-center gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer transition-colors hover:bg-gray-50 select-none')}
+              style={active ? { backgroundColor: accent + '15' } : undefined}
+              onClick={() => selectConv(conv)}
+              role="button" tabIndex={0}
+              onKeyDown={e => { if (e.key === 'Enter') selectConv(conv) }}>
+              <div className="relative flex-shrink-0">
                 <Avatar name={name} size={46} pictureUrl={conv.profilePictureUrl} />
                 <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-white shadow-sm overflow-hidden flex items-center justify-center bg-white flex-shrink-0">
                   <NextImage src={ch.imgSrc} alt={ch.label} width={16} height={16}
@@ -1068,7 +1179,10 @@ function InboxPage() {
                   <p className="text-[10px] text-gray-300 truncate mt-0.5">📄 {conv.postCaption.slice(0, 55)}</p>
                 )}
               </div>
-            </button>
+              <div onClick={e => e.stopPropagation()} className="flex-shrink-0 ml-1">
+                <RowChatMenu conv={conv} onChanged={handleConvChanged} />
+              </div>
+            </div>
           )
         })}
       </div>
@@ -1204,12 +1318,20 @@ function InboxPage() {
           <CommentPostView channel={channel as 'FB_COMMENTS' | 'IG_COMMENTS'} accent={accent} />
         ) : (
           <>
-            <div className={cn(
-              'w-full md:w-[340px] flex-shrink-0 h-full border-r border-gray-100',
+            <div ref={listPanelRef} className={cn(
+              'w-full md:w-[320px] flex-shrink-0 h-full border-r border-gray-100',
               sel ? 'hidden md:flex' : 'flex',
               mobileView === 'list' ? 'flex' : 'hidden md:flex',
             )}>
               {ConvList}
+            </div>
+            {/* Drag handle — desktop only */}
+            <div
+              onMouseDown={onDividerMouseDown}
+              title="Drag to resize"
+              className="hidden md:flex w-[5px] cursor-col-resize flex-shrink-0 items-center justify-center group"
+              style={{ touchAction: 'none' }}>
+              <div className="w-[3px] h-10 rounded-full bg-gray-200 group-hover:bg-[#25D366] transition-colors" />
             </div>
             <div className={cn(
               'flex-1 h-full min-w-0',
