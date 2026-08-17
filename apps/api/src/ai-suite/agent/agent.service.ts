@@ -294,6 +294,7 @@ interface ContextPackage {
   patientName: string
   conversationHistory: string
   appointments: string
+  guardianContext: string
   knowledgeBase: string
   services: string
   doctors: string
@@ -397,6 +398,51 @@ function isClinicOpenNow(): boolean {
   return mins >= 8 * 60 && mins < 18 * 60
 }
 
+// ── Guardian context ──────────────────────────────────────────────────────────
+// The phone number texting in is looked up as a Patient record, but that patient
+// can themselves be the guardian of one or more minor dependents (Patient.guardianId
+// self-reference). Without this, Sarah only ever knows about the guardian's OWN
+// (often empty) appointment history and has no way to reference the child she's
+// actually the point of contact for — replies come out generic instead of grounded
+// ("since seeing Dr Steven" requires knowing which dependent saw which doctor).
+async function getGuardianDependentsContext(guardianPatientId: string): Promise<string> {
+  const dependents = await prisma.patient.findMany({
+    where: { guardianId: guardianPatientId },
+    select: { id: true, firstName: true, lastName: true, relationship: true },
+  })
+  if (dependents.length === 0) return ''
+
+  const lines = await Promise.all(dependents.map(async dep => {
+    const [lastCompleted, nextUpcoming] = await Promise.all([
+      prisma.appointment.findFirst({
+        where: { patientId: dep.id, status: 'COMPLETED' },
+        orderBy: { startAt: 'desc' },
+        include: { doctor: { include: { user: { select: { firstName: true, lastName: true } } } }, service: { select: { name: true } } },
+      }),
+      prisma.appointment.findFirst({
+        where: { patientId: dep.id, startAt: { gt: new Date() }, status: { notIn: ['CANCELLED'] } },
+        orderBy: { startAt: 'asc' },
+        include: { doctor: { include: { user: { select: { firstName: true, lastName: true } } } }, service: { select: { name: true } } },
+      }),
+    ])
+    const name = getGreetingName(dep)
+    const rel  = dep.relationship || 'dependent'
+    const fmt  = (a: NonNullable<typeof lastCompleted>) =>
+      `${a.service.name} with Dr ${a.doctor.user.firstName} ${a.doctor.user.lastName} on ${a.startAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
+    const parts: string[] = []
+    if (lastCompleted) parts.push(`most recent completed visit: ${fmt(lastCompleted)}`)
+    if (nextUpcoming)  parts.push(`upcoming: ${fmt(nextUpcoming)}`)
+    return `- ${name} (their ${rel}): ${parts.length ? parts.join('; ') : 'no visit history yet'}`
+  }))
+
+  return (
+    `This person is the registered guardian/contact for the following patient(s) — ` +
+    `use this to make replies genuinely relevant (e.g. ask how the child is doing since their last visit, ` +
+    `reference the right doctor by name) instead of generic small talk:\n` +
+    lines.join('\n')
+  )
+}
+
 // ── buildContext ──────────────────────────────────────────────────────────────
 
 async function buildContext(
@@ -460,8 +506,9 @@ async function buildContext(
   }
 
   const knowledgeBase = kbResults.map((k: { content: string }) => k.content).join('\n\n')
+  const guardianContext = patient ? await getGuardianDependentsContext(patient.id) : ''
 
-  return { patientName, conversationHistory, appointments, knowledgeBase, ...menu }
+  return { patientName, conversationHistory, appointments, guardianContext, knowledgeBase, ...menu }
 }
 
 // ── Intent detection ──────────────────────────────────────────────────────────
@@ -1653,6 +1700,7 @@ export async function getAgentReply(
       `Phone: ${from}`,
       'Recent appointments:',
       context.appointments,
+      ...(context.guardianContext ? ['', 'GUARDIAN CONTEXT:', context.guardianContext] : []),
       ...(context.knowledgeBase ? ['', 'CLINIC KNOWLEDGE BASE:', context.knowledgeBase] : []),
       '',
       `CONVERSATION HISTORY: ${context.conversationHistory ? 'Shown in the messages above — you already know this person. Do NOT re-introduce yourself.' : 'No prior messages — this is the first contact.'}`,
@@ -1750,6 +1798,11 @@ NEVER FABRICATE — this rule overrides everything:
 - Never quote a phone number, balance, appointment detail, or doctor schedule from your memory — always verify via a tool
 - If you don't have real data, say so plainly: call the relevant tool immediately, or say "I'd rather Julian confirm that for you" and flag it for the team
 - If something went wrong, acknowledge it simply and move to fixing it — never fabricate an excuse
+
+APPOINTMENT LOOKUP RULE — CRITICAL:
+- On ANY message that mentions cancelling, rescheduling, "can't make it", or otherwise implies the patient already has a booking — you MUST call get_patient_appointments BEFORE saying anything about whether an appointment exists. This applies even on a brand-new conversation thread where you have no prior context.
+- NEVER say "I don't see any appointments", "I'm not seeing any upcoming appointments", or anything similar without having actually called get_patient_appointments on this turn first. Real patients with real upcoming appointments have been wrongly told they have none — this is never acceptable.
+- If get_patient_appointments genuinely returns no results, only then say so — and offer to check under a different name or number rather than assuming the appointment doesn't exist.
 
 DOCTOR RANKING RULE — CRITICAL:
 - NEVER state or imply that one doctor is "best", "most experienced", "specialises in", or more suited than another for any specific procedure, service, or patient type (including children/kids) — even if a doctor's title (e.g. "Founder", "lead dentist") or personality description suggests seniority.
@@ -2252,9 +2305,17 @@ async function executeV2Tool(
       }
 
       case 'get_patient_appointments': {
+        // Real patient records exist in all three formats (+256..., 256..., 0...)
+        // depending on when/how they were entered. Checking only two identical-
+        // looking variants of the same E.164 string missed the local "0..." format
+        // entirely — confirmed root cause of real "no appointments found" replies
+        // to patients (e.g. Ruth Ovon, phone stored as "0704996443") who genuinely
+        // had upcoming appointments.
         const normalizedFrom2 = from.startsWith('+') ? from : `+${from}`
+        const bareDigits2     = normalizedFrom2.replace(/^\+/, '')
+        const localFormat2    = normalizedFrom2.replace(/^\+256/, '0')
         const patients2 = await prisma.patient.findMany({
-          where: { OR: [{ phone: normalizedFrom2 }, { phone: from }] },
+          where: { OR: [{ phone: normalizedFrom2 }, { phone: bareDigits2 }, { phone: localFormat2 }] },
           select: { id: true, firstName: true },
         })
         if (patients2.length === 0) return JSON.stringify({ appointments: [] })
@@ -2430,7 +2491,7 @@ export async function getAgentReplyV2(
     const kbKeywords = latestMessage.split(/\s+/).filter(w => w.length >= 4).slice(0, 5)
 
     const [patient, dbMessages, menu, allHours, kbEntries] = await Promise.all([
-      prisma.patient.findFirst({ where: { phone: from }, select: { firstName: true, lastName: true } }),
+      prisma.patient.findFirst({ where: { phone: from }, select: { id: true, firstName: true, lastName: true } }),
       prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 10 })
         .then(msgs => msgs.reverse()),
       getCachedMenu(),
@@ -2453,6 +2514,7 @@ export async function getAgentReplyV2(
 
     const isPlaceholderName = patient?.firstName?.toLowerCase() === 'whatsapp' || patient?.lastName?.toLowerCase() === 'patient'
     const patientName = isPlaceholderName ? 'there' : getGreetingName(patient)
+    const guardianContext = patient ? await getGuardianDependentsContext(patient.id) : ''
 
     const DAY_NAMES   = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const now         = new Date()
@@ -2500,6 +2562,7 @@ export async function getAgentReplyV2(
         ? `PATIENT NAME: unknown — their real name is not on file. If you need to address them or add their name to a booking, ask naturally once: "What's your name? 😊" — NEVER say "your name is showing as...", "on our system...", "in our records...", or quote any internal value. Just ask warmly.`
         : `PATIENT NAME: ${patientName} — address them by this name`,
       '',
+      ...(guardianContext ? ['GUARDIAN CONTEXT:', guardianContext, ''] : []),
       ...(channel === 'FACEBOOK' || channel === 'INSTAGRAM' ? [
         `SOCIAL MEDIA CONTEXT: This person is messaging via ${channel === 'FACEBOOK' ? 'Facebook Messenger' : 'Instagram DM'} — NOT WhatsApp. Never suggest they "WhatsApp us" or call our WhatsApp number to message you. If they need human support, say "drop us a message here and one of our team will reply shortly 😊". If their name is unknown, ask naturally once during the conversation.`,
         '',
