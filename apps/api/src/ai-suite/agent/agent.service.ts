@@ -437,8 +437,12 @@ async function getGuardianDependentsContext(guardianPatientId: string): Promise<
 
   return (
     `This person is the registered guardian/contact for the following patient(s) — ` +
-    `use this to make replies genuinely relevant (e.g. ask how the child is doing since their last visit, ` +
-    `reference the right doctor by name) instead of generic small talk:\n` +
+    `DO NOT reply with generic small talk ("hope you're doing well", "how can I help today") when ` +
+    `you have this available. If this is a new or early conversation and their message is a vague opener ` +
+    `(a greeting, "just checking in", "hey", etc.) with no specific request, proactively open by asking ` +
+    `about the dependent's wellbeing since their last visit and naming the doctor — e.g. "Hope Mercy's ` +
+    `doing well since seeing Dr Steven!" — instead of a generic greeting. If their message is a specific ` +
+    `question, just answer it normally, weaving in this context only where it's naturally relevant:\n` +
     lines.join('\n')
   )
 }
