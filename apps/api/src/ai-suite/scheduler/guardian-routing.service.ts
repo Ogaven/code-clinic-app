@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma'
-import { isMinor } from '../../utils/nameHelper'
+import { getGreetingName, isMinor } from '../../utils/nameHelper'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 
 export type PatientForRouting = {
@@ -11,14 +11,19 @@ export type PatientForRouting = {
   // legacy fallback fields (kept for backwards compat while data migrates)
   guardianId: string | null
   guardian: { phone: string } | null
+  // optional: present when callers include them in their DB select
+  nextOfKinName?: string | null
+  nextOfKinRelation?: string | null
 }
 
 export type OutboundRecipient = {
   phone: string
-  /** Display name to use in greeting (e.g. "Dear Kato,") */
+  /** Greeting-appropriate first name (e.g. "Grace") or title ("Mummy") */
   name: string
   /** Whether messages go to a guardian rather than the patient directly */
   isGuardian: boolean
+  /** Raw relation string from DB — pass to guardianTitle() for warm titles */
+  relation?: string | null
 }
 
 export type RoutingResult =
@@ -53,7 +58,7 @@ export async function resolveOutboundRecipient(
         isCommunicationContact: true,
         isActive: true,
       },
-      select: { firstName: true, lastName: true, phone: true },
+      select: { firstName: true, lastName: true, phone: true, relationship: true },
     })
 
     if (guardian) {
@@ -61,8 +66,9 @@ export async function resolveOutboundRecipient(
         ok: true,
         recipient: {
           phone: guardian.phone,
-          name: `${guardian.firstName} ${guardian.lastName}`.trim(),
+          name: getGreetingName({ firstName: guardian.firstName, lastName: guardian.lastName }),
           isGuardian: true,
+          relation: guardian.relationship ?? undefined,
         },
       }
     }
@@ -72,12 +78,16 @@ export async function resolveOutboundRecipient(
 
   // Legacy: guardianId self-reference on Patient (pre-family-account data)
   if (patient.guardian?.phone) {
+    const guardianName = patient.nextOfKinName
+      ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
+      : patientDisplayName
     return {
       ok: true,
       recipient: {
         phone: patient.guardian.phone,
-        name: patientDisplayName,
+        name: guardianName,
         isGuardian: true,
+        relation: patient.nextOfKinRelation ?? undefined,
       },
     }
   }

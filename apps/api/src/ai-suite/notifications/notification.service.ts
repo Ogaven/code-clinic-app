@@ -10,7 +10,12 @@ function toProperCase(name: string): string {
 export async function sendAppointmentNotification(
   appointmentId: string,
   type: NotificationType,
+  notify: boolean = true,
 ): Promise<void> {
+  if (!notify) {
+    console.log(`[Notification] Skipping '${type}' for appointment ${appointmentId} — staff chose not to notify`)
+    return
+  }
   try {
     const appt = await prisma.appointment.findUnique({
       where: { id: appointmentId },
@@ -122,6 +127,27 @@ export async function sendAppointmentNotification(
       }
       if (!templateSent) await sendWhatsAppMessage(recipientPhone, message)
     } else {
+      // Dedup for rescheduled/cancelled: these go out freeform (not via a
+      // distinctly-typed template), so classifyMessage() buckets them as generic
+      // 'general_reply' in botMessageLog and the 'booked' dedup above never sees
+      // them. Without this, a staff correction (reschedule the wrong slot, then
+      // immediately fix it) or an accidental double status-change sends the same
+      // "your appointment has been rescheduled/cancelled" message twice in a row.
+      if (type === 'rescheduled' || type === 'cancelled') {
+        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000)
+        const marker = type === 'rescheduled' ? 'has been rescheduled to' : 'has been cancelled'
+        const recentSame = await prisma.botMessageLog.findFirst({
+          where: {
+            recipientPhone: { in: [recipientPhone, recipientPhone.replace(/^\+/, ''), `+${recipientPhone.replace(/^\+/, '')}`] },
+            messageBody:    { contains: marker },
+            sentAt:         { gte: twoMinutesAgo },
+          },
+        })
+        if (recentSame) {
+          console.log(`[Notification] Skipping '${type}' for ${patientName} — same notification already sent within last 2 minutes`)
+          return
+        }
+      }
       await sendWhatsAppMessage(recipientPhone, message)
     }
     const logTarget = recipientName

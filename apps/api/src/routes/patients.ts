@@ -592,6 +592,54 @@ router.get('/:id/family-balance', requireAuth, async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to fetch family balance' }) }
 })
 
+// GET /patients/:id/ai-conversation — preview for the Patient Profile Overview tab.
+// Prefers a conversation directly linked via patientId; falls back to matching the
+// patient's own phone number (both +/no-+ forms) for older conversations that predate
+// the patient record being linked, or were created before the patientId FK was set.
+router.get('/:id/ai-conversation', requireAuth, async (req, res) => {
+  try {
+    const patient = await prisma.patient.findUnique({
+      where: { id: req.params.id },
+      select: { phone: true },
+    })
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+
+    let conversation = await prisma.aiConversation.findFirst({
+      where: { patientId: req.params.id },
+      orderBy: { updatedAt: 'desc' },
+    })
+
+    if (!conversation && patient.phone) {
+      const bareDigits = patient.phone.replace(/^\+/, '')
+      conversation = await prisma.aiConversation.findFirst({
+        where: { phoneNumber: { in: [patient.phone, bareDigits, `+${bareDigits}`] } },
+        orderBy: { updatedAt: 'desc' },
+      })
+    }
+
+    if (!conversation) { res.json({ found: false }); return }
+
+    const messages = await prisma.aiMessage.findMany({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { id: true, role: true, content: true, createdAt: true },
+    })
+
+    res.json({
+      found:          true,
+      conversationId: conversation.id,
+      channel:        conversation.channel,
+      phoneNumber:    conversation.phoneNumber,
+      updatedAt:      conversation.updatedAt,
+      messages:       messages.reverse(),
+    })
+  } catch (err: any) {
+    console.error('[Patients] ai-conversation fetch error:', err.message)
+    res.status(500).json({ error: 'Failed to fetch AI conversation' })
+  }
+})
+
 // GET /patients/:id/timeline
 router.get('/:id/timeline', requireAuth, async (req, res) => {
   try {

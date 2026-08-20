@@ -48,3 +48,22 @@ export function normalizeRelation(relation: string | null | undefined): string {
   }
   return map[r] || 'guardian'
 }
+
+// Returns a warm relational title suitable for greeting a minor's guardian.
+// "mum" → "Mummy", "dad" → "Daddy", "aunt" + name → "Auntie Grace", etc.
+// Falls back to the guardian's first name, then 'there'.
+export function guardianTitle(
+  relation: string | null | undefined,
+  firstName: string | null | undefined,
+): string {
+  const r = (relation || '').trim().toLowerCase()
+  const name = firstName && firstName.trim() ? firstName.trim() : null
+
+  if (r === 'mum' || r === 'mother' || r === 'mom' || r === 'mama') return 'Mummy'
+  if (r === 'dad' || r === 'father' || r === 'papa' || r === 'baba') return 'Daddy'
+  if (r === 'aunt' || r === 'auntie' || r === 'aunty') return name ? `Auntie ${name}` : 'Auntie'
+  if (r === 'uncle') return name ? `Uncle ${name}` : 'Uncle'
+  if (r === 'grandma' || r === 'grandmother' || r === 'granny') return 'Grandma'
+  if (r === 'grandpa' || r === 'grandfather') return 'Grandpa'
+  return name || 'there'
+}

@@ -56,6 +56,44 @@ router.get('/conversations', async (req, res) => {
       },
     })
 
+    // Secondary patient lookup for unlinked conversations (phone-format mismatch
+    // means patientId was never set even though a patient record exists).
+    const unlinkedPhones = conversations
+      .filter(c => !c.patientId && c.phoneNumber)
+      .map(c => c.phoneNumber as string)
+
+    const phoneVariants: string[] = []
+    for (const p of unlinkedPhones) {
+      phoneVariants.push(p)
+      phoneVariants.push(p.startsWith('+') ? p.slice(1) : `+${p}`)
+    }
+
+    const secondaryPatients = phoneVariants.length
+      ? await prisma.patient.findMany({
+          where: {
+            phone: { in: phoneVariants },
+            NOT: [
+              { lastName: '.' },
+              { lastName: { contains: 'Patient' } },
+              { firstName: { contains: '@' } },
+            ],
+          },
+          select: { firstName: true, lastName: true, phone: true },
+        })
+      : []
+
+    const phoneToPatientName = new Map<string, string>()
+    for (const p of secondaryPatients) {
+      const name = `${p.firstName} ${p.lastName}`.trim().replace(/\s+\.\s*$/, '').trim()
+      if (!name) continue
+      phoneToPatientName.set(p.phone, name)
+      phoneToPatientName.set(p.phone.startsWith('+') ? p.phone.slice(1) : `+${p.phone}`, name)
+    }
+
+    function formatPatientName(firstName: string, lastName: string): string {
+      return `${firstName} ${lastName}`.trim().replace(/\s+\.\s*$/, '').trim()
+    }
+
     res.json(
       conversations.map(c => {
         let postCaption: string | null = null
@@ -67,6 +105,9 @@ router.get('/conversations', async (req, res) => {
             } catch {}
           }
         }
+        const patientName = c.patient
+          ? formatPatientName(c.patient.firstName, c.patient.lastName)
+          : (c.phoneNumber ? (phoneToPatientName.get(c.phoneNumber) ?? null) : null)
         return {
           id:               c.id,
           channel:          c.channel,
@@ -78,9 +119,7 @@ router.get('/conversations', async (req, res) => {
           status:           c.status,
           agentEnabled:     c.agentEnabled,
           archivedAt:       (c as any).archivedAt ?? null,
-          patientName:      c.patient
-            ? `${c.patient.firstName} ${c.patient.lastName}`
-            : null,
+          patientName:      patientName || null,
           lastMessage: c.messages[0] ?? null,
           createdAt:   c.createdAt,
           updatedAt:   c.updatedAt,

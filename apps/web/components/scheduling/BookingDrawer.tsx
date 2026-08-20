@@ -41,6 +41,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
   const [notes,       setNotes]       = useState('')
   const [showNewPt,   setShowNewPt]   = useState(false)
   const [svcSearch,   setSvcSearch]   = useState('')
+  const [notifyPatient, setNotifyPatient] = useState(true)
 
   // New patient form
   const [newFirst,    setNewFirst]    = useState('')
@@ -133,7 +134,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
       const endAt   = new Date(new Date(startAt).getTime() + selDuration * 60000).toISOString()
       const res  = await fetch(`${API}/scheduling/appointments`, {
         method: 'POST', headers,
-        body: JSON.stringify({ patientId: selPatient.id, doctorId: selDoctor.id, serviceId: selService.id, startAt, endAt, notes }),
+        body: JSON.stringify({ patientId: selPatient.id, doctorId: selDoctor.id, serviceId: selService.id, startAt, endAt, notes, notify: notifyPatient }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Booking failed'); return }
@@ -150,6 +151,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
       setPatientQ(''); setPatients([]); setNotes(''); setError(null)
       setShowNewPt(false)
       setNewFirst(''); setNewLast(''); setNewPhone(''); setNewEmail(''); setNewDob(''); setNewDistrict('')
+      setNotifyPatient(true)
     }, 300)
   }
 
@@ -387,6 +389,17 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
               {selDate    && <span className="bg-gray-100 dark:bg-white/10 dark:text-gray-300 px-2 py-1 rounded-lg font-medium">{selDate} {selTime}</span>}
             </div>
           )}
+
+          {/* Notify toggle */}
+          <label className="flex items-center gap-2 cursor-pointer select-none mb-1">
+            <input type="checkbox" checked={notifyPatient} onChange={(e) => setNotifyPatient(e.target.checked)} className="sr-only peer" />
+            <div className="w-9 h-5 bg-gray-200 dark:bg-gray-700 peer-checked:bg-clinic-blue rounded-full transition-colors relative flex-shrink-0">
+              <div className={cn('absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform', notifyPatient && 'translate-x-4')} />
+            </div>
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+              {notifyPatient ? 'Send WhatsApp notification to patient' : "Don't notify patient"}
+            </span>
+          </label>
 
           <div className="flex gap-3">
             <button onClick={handleClose}

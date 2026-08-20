@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachable } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
-import { getGreetingName, isMinor, normalizeRelation } from '../../utils/nameHelper'
+import { getGreetingName, guardianTitle, isMinor, normalizeRelation } from '../../utils/nameHelper'
 import { resolveOutboundRecipient, alertStaffMinorNoGuardian, hasOutboundConsent } from './guardian-routing.service'
 
 const ADMIN_WHATSAPP = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
@@ -165,7 +165,9 @@ export async function checkAndSendFollowups(): Promise<void> {
       : null
     const relation  = normalizeRelation(patient.nextOfKinRelation)
     const greetName = getGreetingName(patient)
-    const addr      = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : greetName
+    const addr      = minor && guardianFirstName
+      ? guardianTitle(patient.nextOfKinRelation, guardianFirstName)
+      : minor ? 'there' : greetName
 
     const note = await prisma.treatmentNote.findFirst({
       where: { patientId: patient.id },
@@ -177,7 +179,7 @@ export async function checkAndSendFollowups(): Promise<void> {
       serviceName:       naturalServiceName(appt.service?.name),
       noteContent:       note?.content ?? null,
       isGuardianMessage: minor && !!guardianFirstName,
-      guardianAddress:   guardianFirstName ?? undefined,
+      guardianAddress:   minor && guardianFirstName ? addr : undefined,
       childName:         minor ? greetName : undefined,
     })
 
@@ -277,7 +279,9 @@ export async function processAfterHoursQueue(): Promise<void> {
       ? getGreetingName({ firstName: entry.patient.nextOfKinName, lastName: '' })
       : null
     const patientName = getGreetingName(entry.patient) || 'there'
-    const name        = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : patientName
+    const name        = minor && guardianFirstName
+      ? guardianTitle(entry.patient?.nextOfKinRelation, guardianFirstName)
+      : minor ? 'there' : patientName
 
     let templateName: string | undefined
     let message: string
@@ -386,7 +390,9 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     const relation  = normalizeRelation(patient.nextOfKinRelation)
     const doctorFirst  = appt.doctor.user.firstName
     const greetName    = getGreetingName(patient)
-    const addr         = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : greetName
+    const addr         = minor && guardianFirstName
+      ? guardianTitle(patient.nextOfKinRelation, guardianFirstName)
+      : minor ? 'there' : greetName
     const msg          = minor && guardianFirstName
       ? `Hello ${addr}, this is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, we noticed ${greetName} missed an appointment yesterday with Dr ${doctorFirst}. We hope everything is okay. Would you like to reschedule? We would love to see ${greetName}.`
       : `Hello ${addr}, we noticed you missed your appointment yesterday with Dr ${doctorFirst}. We hope everything is okay 😊 Would you like to reschedule? We would love to see you.`
@@ -476,7 +482,9 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       if (patientReplied) { counts.skipped++; console.log(`[PostApptFollowup] Skipping ${patient.firstName} — already replied`); continue }
       // Not replied — send gentle nudge
       const greetName2 = getGreetingName(patient)
-      const addr2 = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : greetName2
+      const addr2 = minor && guardianFirstName
+        ? guardianTitle(patient.nextOfKinRelation, guardianFirstName)
+        : minor ? 'there' : greetName2
       const nudge = minor
         ? `Hello ${addr2}, just checking in on ${greetName2} 😊 Feel free to reply if you have any questions, we are here for you!`
         : `Hello ${greetName2}, just checking in 😊 How are you doing? Feel free to reply anytime!`
@@ -506,7 +514,8 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     const greetName = getGreetingName(patient)
     let stage1: string
     if (minor) {
-      const addr = guardianFirstName ? `Hello ${guardianFirstName},` : `Hello,`
+      const guardianAddr = guardianFirstName ? guardianTitle(patient.nextOfKinRelation, guardianFirstName) : null
+      const addr = guardianAddr ? `Hello ${guardianAddr},` : `Hello,`
       stage1 = isFirstContact
         ? `${addr} Good morning. This is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, I am reaching out regarding ${greetName}'s recent visit.`
         : `${addr} Good morning 😊 I am checking in on ${greetName}.`
@@ -561,7 +570,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       serviceName:       naturalServiceName(appt.service?.name),
       noteContent:       latestNoteC?.content ?? null,
       isGuardianMessage: minor && !!guardianFirstName,
-      guardianAddress:   guardianFirstName ?? undefined,
+      guardianAddress:   minor && guardianFirstName ? guardianTitle(patient.nextOfKinRelation, guardianFirstName) : undefined,
       childName:         minor ? greetName : undefined,
     })
     const stage2 = personalizedStage2 ?? `How are you doing? Hope you are feeling well after your visit yesterday with Dr ${doctorFirst} 😊`
@@ -664,7 +673,9 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     const relation  = normalizeRelation(patient.nextOfKinRelation)
     const doctorFirst  = appt.doctor.user.firstName
     const greetName    = getGreetingName(patient)
-    const addr         = minor && guardianFirstName ? guardianFirstName : minor ? 'there' : greetName
+    const addr         = minor && guardianFirstName
+      ? guardianTitle(patient.nextOfKinRelation, guardianFirstName)
+      : minor ? 'there' : greetName
     const start        = new Date(appt.startAt)
     const timeStr      = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).toLowerCase()
     const msg          = minor
@@ -765,7 +776,9 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
       await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'missed-call follow-up')
       continue
     }
-    const addr           = missedCallRouting.recipient.isGuardian ? missedCallRouting.recipient.name : firstName
+    const addr           = missedCallRouting.recipient.isGuardian
+      ? guardianTitle(missedCallRouting.recipient.relation, missedCallRouting.recipient.name)
+      : firstName
     const recipientPhone = missedCallRouting.recipient.phone
     try {
       try {
@@ -851,7 +864,9 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
       await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'reactivation message')
       continue
     }
-    const addr           = reactivationRouting.recipient.isGuardian ? reactivationRouting.recipient.name : firstName
+    const addr           = reactivationRouting.recipient.isGuardian
+      ? guardianTitle(reactivationRouting.recipient.relation, reactivationRouting.recipient.name)
+      : firstName
     const recipientPhone = reactivationRouting.recipient.phone
     try {
       try {

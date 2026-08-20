@@ -12,6 +12,7 @@ import { cn, formatUGX, formatPhone, getInitials } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
 import TimelineTab from '@/components/patients/TimelineTab'
 import GuardianSection from '@/components/patients/GuardianSection'
+import RecentAiConversation from '@/components/patients/RecentAiConversation'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -1784,6 +1785,9 @@ function OverviewTab({ patient, onSwitchTab, token, onUpdate }: { patient: any; 
 
       {/* Family / Guardian */}
       <GuardianSection patient={patient} token={token} onUpdate={onUpdate} basePath="/admin/patients" />
+
+      {/* Recent AI Conversation */}
+      <RecentAiConversation patientId={patient.id} token={token} inboxBasePath="/ai-suite/inbox" />
 
       {/* Recent appointments */}
       {patient.appointments?.length > 0 && (

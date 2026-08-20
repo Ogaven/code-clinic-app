@@ -11,6 +11,7 @@ import {
 import { cn, formatUGX, formatPhone, getInitials } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
 import TimelineTab from '@/components/patients/TimelineTab'
+import RecentAiConversation from '@/components/patients/RecentAiConversation'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -1418,7 +1419,7 @@ function formatDobAge(dob: string) {
   return `${birth.toLocaleDateString('en-GB')} (${agePart})`
 }
 
-function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab: ActiveTab) => void }) {
+function OverviewTab({ patient, onSwitchTab, token }: { patient: any; onSwitchTab: (tab: ActiveTab) => void; token: string | null }) {
   const totalSpent = (patient.invoices || []).reduce((s: number, inv: any) => s + inv.paidUGX, 0)
   const outstanding = (patient.invoices || []).reduce((s: number, inv: any) => s + (inv.totalUGX - inv.paidUGX), 0)
   const lastVisit = patient.appointments?.slice().sort((a: any, b: any) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())[0]
@@ -1538,6 +1539,9 @@ function OverviewTab({ patient, onSwitchTab }: { patient: any; onSwitchTab: (tab
       {!patient.nextOfKinName && (
         <p className="text-xs text-slate-400 italic">No next of kin recorded. Edit patient to add.</p>
       )}
+
+      {/* Recent AI Conversation */}
+      <RecentAiConversation patientId={patient.id} token={token} inboxBasePath="/receptionist/ai-suite/inbox" />
 
       {/* Recent appointments */}
       {patient.appointments?.length > 0 && (
@@ -1825,7 +1829,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'overview': return <OverviewTab patient={patient} onSwitchTab={switchTab} />
+      case 'overview': return <OverviewTab patient={patient} onSwitchTab={switchTab} token={token} />
       case 'appointments': return <AppointmentsTab patient={patient} token={token} />
       case 'dental': return <DentalChartTab patientId={id!} token={token} />
       case 'perio': return <PerioChartTab patientId={id!} token={token} />

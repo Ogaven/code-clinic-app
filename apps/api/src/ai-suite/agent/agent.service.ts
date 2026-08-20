@@ -20,7 +20,7 @@ import {
 import { prisma } from '../../lib/prisma'
 import { redis } from '../../lib/redis'
 import { antiHallucinationGuard, type ToolRecord } from '../../services/agent/guards/anti-hallucination'
-import { getGreetingName, toProper } from '../../utils/nameHelper'
+import { getGreetingName, guardianTitle, isMinor, normalizeRelation, toProper } from '../../utils/nameHelper'
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 
 function sanitizeForClaude(content: string): string {
@@ -2495,7 +2495,7 @@ export async function getAgentReplyV2(
     const kbKeywords = latestMessage.split(/\s+/).filter(w => w.length >= 4).slice(0, 5)
 
     const [patient, dbMessages, menu, allHours, kbEntries] = await Promise.all([
-      prisma.patient.findFirst({ where: { phone: from }, select: { id: true, firstName: true, lastName: true } }),
+      prisma.patient.findFirst({ where: { phone: from }, select: { id: true, firstName: true, lastName: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } }),
       prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 10 })
         .then(msgs => msgs.reverse()),
       getCachedMenu(),
@@ -2519,6 +2519,26 @@ export async function getAgentReplyV2(
     const isPlaceholderName = patient?.firstName?.toLowerCase() === 'whatsapp' || patient?.lastName?.toLowerCase() === 'patient'
     const patientName = isPlaceholderName ? 'there' : getGreetingName(patient)
     const guardianContext = patient ? await getGuardianDependentsContext(patient.id) : ''
+
+    const patientIsMinor = !isPlaceholderName && patient?.dob ? isMinor(patient.dob) : false
+    let minorPatientContext = ''
+    if (patient && patientIsMinor) {
+      const nokName   = patient.nextOfKinName
+        ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
+        : null
+      const title     = guardianTitle(patient.nextOfKinRelation, nokName)
+      const relation  = normalizeRelation(patient.nextOfKinRelation)
+      const ageYears  = Math.floor(
+        (Date.now() - new Date(patient.dob!).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+      )
+      minorPatientContext =
+        `MINOR PATIENT — ADDRESS GUARDIAN, NOT CHILD:\n` +
+        `The patient on record is ${patientName} (${ageYears} years old), a minor.\n` +
+        `The person texting is their ${relation}${patient.nextOfKinName ? ` (${patient.nextOfKinName})` : ''}.\n` +
+        `CRITICAL: Address this person as "${title}" — NEVER use "${patientName}" as a greeting (that is the child's name).\n` +
+        `When discussing appointments, say "${patientName}'s appointment" not "your appointment".\n` +
+        `When asking about wellbeing, ask how ${patientName} is doing, not how "you" are doing.`
+    }
 
     const DAY_NAMES   = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const now         = new Date()
@@ -2564,8 +2584,11 @@ export async function getAgentReplyV2(
       '',
       isPlaceholderName
         ? `PATIENT NAME: unknown — their real name is not on file. If you need to address them or add their name to a booking, ask naturally once: "What's your name? 😊" — NEVER say "your name is showing as...", "on our system...", "in our records...", or quote any internal value. Just ask warmly.`
-        : `PATIENT NAME: ${patientName} — address them by this name`,
+        : patientIsMinor && minorPatientContext
+          ? `PATIENT NAME: (minor — see MINOR PATIENT context below — do NOT greet them as "${patientName}", that is the child's name)`
+          : `PATIENT NAME: ${patientName} — address them by this name`,
       '',
+      ...(minorPatientContext ? [minorPatientContext, ''] : []),
       ...(guardianContext ? ['GUARDIAN CONTEXT:', guardianContext, ''] : []),
       ...(channel === 'FACEBOOK' || channel === 'INSTAGRAM' ? [
         `SOCIAL MEDIA CONTEXT: This person is messaging via ${channel === 'FACEBOOK' ? 'Facebook Messenger' : 'Instagram DM'} — NOT WhatsApp. Never suggest they "WhatsApp us" or call our WhatsApp number to message you. If they need human support, say "drop us a message here and one of our team will reply shortly 😊". If their name is unknown, ask naturally once during the conversation.`,

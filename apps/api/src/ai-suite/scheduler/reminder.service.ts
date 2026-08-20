@@ -1,6 +1,6 @@
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
-import { getGreetingName, normalizeRelation } from '../../utils/nameHelper'
+import { getGreetingName, guardianTitle, normalizeRelation } from '../../utils/nameHelper'
 import { resolveOutboundRecipient, alertStaffMinorNoGuardian, hasOutboundConsent } from './guardian-routing.service'
 import { notifyJulian } from '../../services/agent/guards/escalation'
 
@@ -79,9 +79,10 @@ export async function checkAndSendReminders(): Promise<void> {
     let message: string
     let templateAddr: string
     if (isGuardian) {
-      templateAddr = recipientName
+      const title = guardianTitle(routing.recipient.relation, recipientName)
+      templateAddr = title
       message =
-        `Hi ${recipientName}! 😊 This is Sarah from Code Clinic, just a friendly reminder that ${greetName}'s appointment is tomorrow:\n\n` +
+        `Hi ${title}! 😊 This is Sarah from Code Clinic, just a friendly reminder that ${greetName}'s appointment is tomorrow:\n\n` +
         `📅 ${dayDate} at ${time}\n` +
         `👨‍⚕️ with ${doctor} for ${appt.service.name}\n` +
         `📍 Code Clinic, Kamwokya.\n\n` +
@@ -204,9 +205,10 @@ export async function checkAndSendReminders(): Promise<void> {
       continue
     }
     const { phone: recipientPhone1h, name: addr1h, isGuardian: isGuardian1h } = routing1h.recipient
-    const doc1h  = `Dr ${appt1h.doctor.user.firstName}`
-    const msg1h  = isGuardian1h
-      ? `Hi ${addr1h}! Just a friendly reminder that ${name1h}'s appointment with ${doc1h} is in 1 hour 😊 See you soon!`
+    const doc1h    = `Dr ${appt1h.doctor.user.firstName}`
+    const title1h  = isGuardian1h ? guardianTitle(routing1h.recipient.relation, addr1h) : addr1h
+    const msg1h    = isGuardian1h
+      ? `Hi ${title1h}! Just a friendly reminder that ${name1h}'s appointment with ${doc1h} is in 1 hour 😊 See you soon!`
       : `Hi ${name1h}! Just a friendly reminder that your appointment with ${doc1h} is in 1 hour 😊 See you soon!`
     try {
       await sendWhatsAppMessage(recipientPhone1h, msg1h)

@@ -63,6 +63,7 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
   const [editNotes,    setEditNotes]    = useState('')
   const [saving,       setSaving]       = useState(false)
   const [saveError,    setSaveError]    = useState('')
+  const [notifyPatient, setNotifyPatient] = useState(true)
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   const autoEditCalledRef = useRef<string | null>(null)
@@ -106,7 +107,7 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
       const res = await fetch(`/api-proxy/scheduling/appointments/${appointment!.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, notify: notifyPatient }),
       })
       if (res.ok) { onStatusChange?.(appointment!.id, status); onClose() }
     } finally { setLoading(null) }
@@ -119,7 +120,7 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
       const [hh, mm] = editTime.split(':')
       const startAt = new Date(`${editDate}T${hh}:${mm}:00+03:00`)
       const endAt   = new Date(startAt.getTime() + editDuration * 60000)
-      const body: any = { startAt: startAt.toISOString(), endAt: endAt.toISOString(), notes: editNotes }
+      const body: any = { startAt: startAt.toISOString(), endAt: endAt.toISOString(), notes: editNotes, notify: notifyPatient }
       if (editDoctor)  body.doctorId  = editDoctor
       if (editService) body.serviceId = editService
       const res = await fetch(`/api-proxy/scheduling/appointments/${appointment!.id}`, {
@@ -226,6 +227,17 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                   </div>
                 )}
 
+                {canEdit && (
+                  <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
+                    <input type="checkbox" checked={notifyPatient} onChange={(e) => setNotifyPatient(e.target.checked)} className="sr-only peer" />
+                    <div className="w-9 h-5 bg-gray-200 dark:bg-gray-700 peer-checked:bg-clinic-blue rounded-full transition-colors relative flex-shrink-0">
+                      <div className={cn('absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform', notifyPatient && 'translate-x-4')} />
+                    </div>
+                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                      {notifyPatient ? 'Notify patient of this action' : "Don't notify patient"}
+                    </span>
+                  </label>
+                )}
                 {canEdit && (
                   <div className="flex flex-wrap gap-2 pt-2">
                     {STATUS_NEXT[appointment.status] && (() => {
@@ -341,6 +353,16 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                 {saveError && (
                   <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
                 )}
+
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={notifyPatient} onChange={(e) => setNotifyPatient(e.target.checked)} className="sr-only peer" />
+                  <div className="w-9 h-5 bg-gray-200 dark:bg-gray-700 peer-checked:bg-clinic-blue rounded-full transition-colors relative flex-shrink-0">
+                    <div className={cn('absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform', notifyPatient && 'translate-x-4')} />
+                  </div>
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {notifyPatient ? 'Send WhatsApp notification to patient' : "Don't notify patient"}
+                  </span>
+                </label>
 
                 <div className="flex gap-2 pt-1">
                   <button onClick={saveReschedule} disabled={saving}

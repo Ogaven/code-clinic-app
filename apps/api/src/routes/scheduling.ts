@@ -201,10 +201,11 @@ const createApptSchema = z.object({
   startAt:   z.string().datetime(),
   endAt:     z.string().datetime().optional(),   // client-selected duration; use when provided
   notes:     z.string().optional(),
+  notify:    z.boolean().optional(),             // staff toggle — defaults to true (send) when omitted
 })
 
 router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSchema), auditLog('appointments'), async (req, res) => {
-  const { patientId, doctorId, serviceId, startAt, endAt: endAtStr, notes } = req.body
+  const { patientId, doctorId, serviceId, startAt, endAt: endAtStr, notes, notify } = req.body
 
   const service = await prisma.service.findUnique({ where: { id: serviceId } })
   if (!service) { res.status(404).json({ error: 'Service not found' }); return }
@@ -234,7 +235,7 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
   syncAppointmentToGCal(appointment).catch(() => {})
 
   // WhatsApp booking confirmation to patient (fire-and-forget)
-  sendAppointmentNotification(appointment.id, 'booked').catch(() => {})
+  sendAppointmentNotification(appointment.id, 'booked', notify !== false).catch(() => {})
 
   // Staff notifications (fire-and-forget)
   notifyStaff(prisma, 'booked', appointment).catch(() => {})
@@ -252,6 +253,7 @@ const rescheduleSchema = z.object({
   serviceId:   z.string().uuid().optional(),
   notes:       z.string().optional(),
   status:      z.string().optional(),
+  notify:      z.boolean().optional(),             // staff toggle — defaults to true (send) when omitted
 })
 
 const PATCH_VALID_STATUSES = [
@@ -325,11 +327,11 @@ router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(reschedul
 
   // WhatsApp patient notification + staff notification (fire-and-forget)
   if (req.body.status === 'CANCELLED') {
-    sendAppointmentNotification(updated.id, 'cancelled').catch(() => {})
+    sendAppointmentNotification(updated.id, 'cancelled', req.body.notify !== false).catch(() => {})
     notifyStaff(prisma, 'cancelled', updated).catch(() => {})
     logAudit({ userId: req.user!.id, actionType: 'CANCEL', entityType: 'APPOINTMENT', entityId: updated.id, entityName: apptName, severity: 'WARNING', req })
   } else if (rawStart || req.body.doctorId) {
-    sendAppointmentNotification(updated.id, 'rescheduled').catch(() => {})
+    sendAppointmentNotification(updated.id, 'rescheduled', req.body.notify !== false).catch(() => {})
     notifyStaff(prisma, 'rescheduled', updated).catch(() => {})
     logAudit({
       userId: req.user!.id, actionType: 'RESCHEDULE', entityType: 'APPOINTMENT', entityId: updated.id, entityName: apptName,
@@ -406,11 +408,20 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
   } catch { /* non-critical */ }
 
   // ─── Status transition side-effects ───────────────────────────────────────
+  const notify = req.body.notify !== false // staff toggle — defaults to true (send) when omitted
   try {
     // Confirm to patient via WhatsApp when staff mark appointment CONFIRMED
     if (status === 'CONFIRMED') {
-      sendAppointmentNotification(appointment.id, 'booked').catch((e: any) =>
+      sendAppointmentNotification(appointment.id, 'booked', notify).catch((e: any) =>
         console.error('[CONFIRMED] Patient WhatsApp notification failed:', e?.message)
+      )
+    }
+
+    // Notify patient when staff mark appointment CANCELLED — this is the route the
+    // primary UI's Cancel button actually hits; previously sent nothing at all.
+    if (status === 'CANCELLED') {
+      sendAppointmentNotification(appointment.id, 'cancelled', notify).catch((e: any) =>
+        console.error('[CANCELLED] Patient WhatsApp notification failed:', e?.message)
       )
     }
 

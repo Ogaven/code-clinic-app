@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils'
 import TimelineTab from '@/components/patients/TimelineTab'
 import GuardianSection from '@/components/patients/GuardianSection'
+import RecentAiConversation from '@/components/patients/RecentAiConversation'
 
 const toProperCase = (str: string) => str.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 
@@ -420,6 +421,9 @@ function OverviewTab({ patient, onRefresh, token }: { patient: any; onRefresh: (
             )}
             {/* Family / Guardian */}
             <GuardianSection patient={patient} token={token} onUpdate={onRefresh} basePath="/receptionist/patients" />
+
+            {/* Recent AI Conversation */}
+            <RecentAiConversation patientId={patient.id} token={token} inboxBasePath="/receptionist/ai-suite/inbox" />
 
             {patient.allergies && (
               <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-700/20 rounded-xl px-3 py-2.5">

@@ -75,7 +75,9 @@ function logAgentMessageToConversation(to: string, content: string, wamid?: stri
             data:  { status: 'ACTIVE' },
           })
         } else {
-          const patient = await prisma.patient.findFirst({ where: { phone: from } })
+          const patient = await prisma.patient.findFirst({
+            where: { OR: [{ phone: from }, { phone: from.replace(/^\+/, '') }, { phone: `+${from.replace(/^\+/, '')}` }] },
+          })
           conversation = await prisma.aiConversation.create({
             data: {
               patientId:    patient?.id ?? null,
@@ -180,7 +182,7 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
   try {
     // ── 1. Identify patient by phone number ──────────────────────────────────
     const patient = await prisma.patient.findFirst({
-      where: { phone: from },
+      where: { OR: [{ phone: from }, { phone: from.replace(/^\+/, '') }, { phone: `+${from.replace(/^\+/, '')}` }] },
     })
 
     // ── 1b. Opt-out / opt-in detection ──────────────────────────────────────
