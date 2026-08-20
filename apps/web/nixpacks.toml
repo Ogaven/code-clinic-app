@@ -5,7 +5,10 @@ nixPkgs = ['nodejs_20']
 cmds = ['npm install -g pnpm@9', 'pnpm install --frozen-lockfile']
 
 [phases.build]
-cmds = ['pnpm --filter web run build']
+cmds = [
+  'pnpm --filter web run build',
+  'cp -r apps/web/public/. apps/web/.next/standalone/apps/web/public/'
+]
 
 [start]
 cmd = 'node apps/web/.next/standalone/apps/web/server.js'
