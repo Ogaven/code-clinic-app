@@ -103,14 +103,14 @@ self.addEventListener('fetch', (e) => {
 
 // ── Push Notification Handler ─────────────────────────────────
 self.addEventListener('push', (e) => {
-  let data = { title: 'Code Clinic', body: 'You have a new notification.', icon: '/icon.png', badge: '/icon.png' }
+  let data = { title: 'Code Clinic', body: 'You have a new notification.', icon: '/icon-192.png', badge: '/icon-192.png' }
   try { if (e.data) data = { ...data, ...e.data.json() } } catch {}
 
   e.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: data.icon || '/icon.png',
-      badge: '/icon.png',
+      icon: data.icon || '/icon-192.png',
+      badge: '/icon-192.png',
       vibrate: [100, 50, 100],
       data: { url: data.url || '/receptionist/dashboard', timestamp: Date.now() },
       actions: [

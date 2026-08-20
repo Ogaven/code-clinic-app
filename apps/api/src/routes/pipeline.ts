@@ -14,6 +14,11 @@ const VALID_STAGES = [
   'Follow-up Due',
 ]
 
+// Same vocabulary as the Treatment Plan status dropdown in the patient profile
+// (apps/web/.../patients/[id]/page.tsx) and Case Acceptance's report (reports.ts).
+// Kept in sync deliberately — this is the shared source of truth all three read.
+const VALID_STATUSES = ['Planned', 'In Progress', 'Completed', 'On Hold', 'Declined', 'Cancelled']
+
 // GET /pipeline/treatment
 // Returns all treatment plans enriched with service name, doctor name, computed value,
 // days since creation, plus aggregate metrics for the dashboard strip.
@@ -136,6 +141,47 @@ router.patch('/treatment/:id/stage', requireAuth, async (req, res) => {
   } catch (e) {
     console.error('[Pipeline] stage update error:', e)
     res.status(500).json({ error: 'Failed to update stage' })
+  }
+})
+
+// PATCH /pipeline/treatment/:id/status — moves a card between Pipeline's board
+// columns AND updates the real Treatment Plan status in one write, since the
+// board now reads/writes this same field (not the separate `stage` column).
+router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
+  try {
+    const { status } = req.body
+    if (!status || !VALID_STATUSES.includes(status)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }); return
+    }
+    const plan = await prisma.treatmentPlan.update({
+      where: { id: req.params.id },
+      data:  { status },
+    })
+    res.json({ id: plan.id, status: plan.status })
+  } catch (e) {
+    console.error('[Pipeline] status update error:', e)
+    res.status(500).json({ error: 'Failed to update status' })
+  }
+})
+
+// PATCH /pipeline/treatment/bulk-status — apply the same status to multiple plans
+router.patch('/treatment/bulk-status', requireAuth, async (req, res) => {
+  try {
+    const { ids, status } = req.body as { ids: string[]; status: string }
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'ids must be a non-empty array' }); return
+    }
+    if (!status || !VALID_STATUSES.includes(status)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }); return
+    }
+    const result = await prisma.treatmentPlan.updateMany({
+      where: { id: { in: ids } },
+      data:  { status },
+    })
+    res.json({ updated: result.count })
+  } catch (e) {
+    console.error('[Pipeline] bulk status update error:', e)
+    res.status(500).json({ error: 'Failed to bulk update statuses' })
   }
 })
 

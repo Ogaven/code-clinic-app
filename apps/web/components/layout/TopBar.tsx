@@ -295,6 +295,16 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
               style={{ color: dark ? '#C8D8F0' : '#374151' }}>
               <span className="text-base">🔑</span> Change Password
             </button>
+            {!installed && (
+              <button onClick={() => {
+                setProfileOpen(false)
+                if (installPrompt) { handleInstall() } else { setInstallOpen(true) }
+              }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
+                style={{ color: '#29ABE2' }}>
+                <Download size={15} /> Download App
+              </button>
+            )}
             <div className="my-1" style={{ borderTop: `1px solid ${bdr}` }} />
             <button onClick={() => {
               localStorage.removeItem('cc_token')

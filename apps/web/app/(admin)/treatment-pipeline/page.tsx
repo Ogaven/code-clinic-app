@@ -55,7 +55,7 @@ interface NeedsReviewData {
   total:       number
 }
 
-// ── Stage config ─────────────────────────────────────────────────────────────
+// ── Stage config (Needs Review section only — untouched, still stage-based) ───
 
 const STAGES = [
   { id: 'Consulted',              label: 'Consulted',              headerColor: '#6B7280', headerBg: '#F3F4F6' },
@@ -65,6 +65,19 @@ const STAGES = [
   { id: 'Completed',              label: 'Completed',              headerColor: '#1E3A5F', headerBg: '#BAE6FD' },
   { id: 'Declined',               label: 'Declined',               headerColor: '#991B1B', headerBg: '#FEE2E2' },
   { id: 'Follow-up Due',          label: 'Follow-up Due',          headerColor: '#5B21B6', headerBg: '#EDE9FE' },
+]
+
+// ── Status config — the board's columns. Same 6 values as the Treatment Plan
+// status dropdown (patient profile) and Case Acceptance's report, so all three
+// stay genuinely in sync — this is the shared field, not a separate copy.
+
+const STATUSES = [
+  { id: 'Planned',     label: 'Planned',     headerColor: '#1D4ED8', headerBg: '#DBEAFE' },
+  { id: 'In Progress', label: 'In Progress', headerColor: '#92400E', headerBg: '#FDE68A' },
+  { id: 'Completed',   label: 'Completed',   headerColor: '#065F46', headerBg: '#D1FAE5' },
+  { id: 'On Hold',     label: 'On Hold',     headerColor: '#854D0E', headerBg: '#FEF9C3' },
+  { id: 'Declined',    label: 'Declined',    headerColor: '#9F1239', headerBg: '#FFE4E6' },
+  { id: 'Cancelled',   label: 'Cancelled',   headerColor: '#991B1B', headerBg: '#FEE2E2' },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -77,8 +90,7 @@ function fmtUGX(n: number) {
   return `UGX ${n}`
 }
 
-function urgencyBorderColor(daysSince: number, stage: string) {
-  if (stage === 'Accepted & Unscheduled') return daysSince > 7  ? '#EF4444' : '#F59E0B'
+function urgencyBorderColor(daysSince: number) {
   if (daysSince > 14) return '#F59E0B'
   if (daysSince > 7)  return '#D1D5DB'
   return '#E5E7EB'
@@ -101,7 +113,7 @@ export default function TreatmentPipelinePage() {
   const [needsReview,    setNeedsReview]    = useState<NeedsReviewData | null>(null)
   const [reviewOpen,     setReviewOpen]     = useState(false)
   const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set())
-  const [bulkStage,      setBulkStage]      = useState('')
+  const [bulkStatus,     setBulkStatus]     = useState('')
   const [bulkLoading,    setBulkLoading]    = useState(false)
 
   const load = useCallback(async () => {
@@ -132,34 +144,34 @@ export default function TreatmentPipelinePage() {
 
   const handleDragEnd = () => { setDragId(null); setDropOver(null) }
 
-  // Move via modal (touch fallback)
-  async function handleMove(planId: string, targetStage: string) {
+  // Move via modal (touch fallback) — updates the real Treatment Plan status
+  async function handleMove(planId: string, targetStatus: string) {
     const plan = plans.find(p => p.id === planId)
-    if (!plan || plan.stage === targetStage) { setMovePlan(null); return }
+    if (!plan || plan.status === targetStatus) { setMovePlan(null); return }
 
     // Optimistic update
-    setPlans(prev => prev.map(p => p.id === planId ? { ...p, stage: targetStage } : p))
+    setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: targetStatus } : p))
     setMovePlan(null)
 
     try {
-      await fetch(`${API}/pipeline/treatment/${planId}/stage`, {
+      await fetch(`${API}/pipeline/treatment/${planId}/status`, {
         method:  'PATCH',
         headers: authH as any,
-        body:    JSON.stringify({ stage: targetStage }),
+        body:    JSON.stringify({ status: targetStatus }),
       })
     } catch {
       // Revert on failure
-      setPlans(prev => prev.map(p => p.id === planId ? { ...p, stage: plan.stage } : p))
+      setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: plan.status } : p))
     }
   }
 
-  const handleDragOver = (e: React.DragEvent, stageId: string) => {
+  const handleDragOver = (e: React.DragEvent, statusId: string) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
-    setDropOver(stageId)
+    setDropOver(statusId)
   }
 
-  const handleDrop = async (e: React.DragEvent, targetStage: string) => {
+  const handleDrop = async (e: React.DragEvent, targetStatus: string) => {
     e.preventDefault()
     const planId = e.dataTransfer.getData('planId') || dragId
     setDragId(null)
@@ -167,20 +179,21 @@ export default function TreatmentPipelinePage() {
     if (!planId) return
 
     const plan = plans.find(p => p.id === planId)
-    if (!plan || plan.stage === targetStage) return
+    if (!plan || plan.status === targetStatus) return
 
-    // Optimistic update
-    setPlans(prev => prev.map(p => p.id === planId ? { ...p, stage: targetStage } : p))
+    // Optimistic update — this is the write that keeps Treatment Plan status,
+    // Pipeline's board, and Case Acceptance's report all reading one live field.
+    setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: targetStatus } : p))
 
     try {
-      await fetch(`${API}/pipeline/treatment/${planId}/stage`, {
+      await fetch(`${API}/pipeline/treatment/${planId}/status`, {
         method:  'PATCH',
         headers: authH as any,
-        body:    JSON.stringify({ stage: targetStage }),
+        body:    JSON.stringify({ status: targetStatus }),
       })
     } catch {
       // Revert on failure
-      setPlans(prev => prev.map(p => p.id === planId ? { ...p, stage: plan.stage } : p))
+      setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: plan.status } : p))
     }
   }
 
@@ -194,17 +207,17 @@ export default function TreatmentPipelinePage() {
     })
   }
 
-  async function handleBulkStage(stage: string) {
-    if (!stage || selectedIds.size === 0) return
+  async function handleBulkStatus(status: string) {
+    if (!status || selectedIds.size === 0) return
     setBulkLoading(true)
     const ids = Array.from(selectedIds)
-    setPlans(prev => prev.map(p => ids.includes(p.id) ? { ...p, stage } : p))
+    setPlans(prev => prev.map(p => ids.includes(p.id) ? { ...p, status } : p))
     setSelectedIds(new Set())
     try {
-      await fetch(`${API}/pipeline/treatment/bulk`, {
+      await fetch(`${API}/pipeline/treatment/bulk-status`, {
         method:  'PATCH',
         headers: authH as any,
-        body:    JSON.stringify({ ids, stage }),
+        body:    JSON.stringify({ ids, status }),
       })
     } catch { load() }
     setBulkLoading(false)
@@ -255,8 +268,8 @@ export default function TreatmentPipelinePage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const plansByStage = (stageId: string) => plans.filter(p => p.stage === stageId)
-  const stageTotal   = (stageId: string) => plansByStage(stageId).reduce((s, p) => s + p.value, 0)
+  const plansByStatus = (statusId: string) => plans.filter(p => p.status === statusId)
+  const statusTotal   = (statusId: string) => plansByStatus(statusId).reduce((s, p) => s + p.value, 0)
 
   return (
     <div className="flex flex-col h-full gap-5">
@@ -315,23 +328,23 @@ export default function TreatmentPipelinePage() {
           <span className="text-sm font-bold text-gray-700">{selectedIds.size} plan{selectedIds.size !== 1 ? 's' : ''} selected</span>
           <div className="flex items-center gap-2 flex-1">
             <select
-              value={bulkStage}
-              onChange={e => setBulkStage(e.target.value)}
+              value={bulkStatus}
+              onChange={e => setBulkStatus(e.target.value)}
               className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-clinic-blue/20"
             >
-              <option value="">Move to stage…</option>
-              {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+              <option value="">Move to status…</option>
+              {STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
             <button
-              disabled={!bulkStage || bulkLoading}
-              onClick={() => handleBulkStage(bulkStage)}
+              disabled={!bulkStatus || bulkLoading}
+              onClick={() => handleBulkStatus(bulkStatus)}
               className="text-xs font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40"
               style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}
             >
               {bulkLoading ? '…' : 'Apply'}
             </button>
             <button
-              onClick={() => handleBulkStage('Completed')}
+              onClick={() => handleBulkStatus('Completed')}
               disabled={bulkLoading}
               className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors disabled:opacity-40"
             >
@@ -369,62 +382,62 @@ export default function TreatmentPipelinePage() {
           style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
         >
           <div className="flex flex-col sm:flex-row gap-3 sm:h-full">
-            {STAGES.map(stage => {
-              const stagePlans = plansByStage(stage.id)
-              const total      = stageTotal(stage.id)
-              const isOver     = dropOver === stage.id
+            {STATUSES.map(status => {
+              const statusPlans = plansByStatus(status.id)
+              const total       = statusTotal(status.id)
+              const isOver      = dropOver === status.id
 
               return (
                 <div
-                  key={stage.id}
+                  key={status.id}
                   className="flex flex-col rounded-2xl overflow-hidden w-full sm:flex-shrink-0 sm:w-[280px] transition-all duration-150"
                   style={{
                     background: isOver ? '#F0F9FF' : '#F9FAFB',
                     border:    `1px solid ${isOver ? '#BAE6FD' : '#E5E7EB'}`,
                     boxShadow: isOver ? '0 0 0 2px #29ABE2' : 'none',
                   }}
-                  onDragOver={e  => handleDragOver(e, stage.id)}
+                  onDragOver={e  => handleDragOver(e, status.id)}
                   onDragLeave={() => setDropOver(null)}
-                  onDrop={e      => handleDrop(e, stage.id)}
+                  onDrop={e      => handleDrop(e, status.id)}
                 >
                   {/* Column header */}
                   <div
                     className="px-3 py-2.5 flex items-center justify-between flex-shrink-0"
-                    style={{ background: stage.headerBg }}
+                    style={{ background: status.headerBg }}
                   >
                     <div className="flex items-center gap-2">
                       <span
                         className="w-2 h-2 rounded-full"
-                        style={{ background: stage.headerColor }}
+                        style={{ background: status.headerColor }}
                       />
                       <span
                         className="text-xs font-bold truncate"
-                        style={{ color: stage.headerColor }}
+                        style={{ color: status.headerColor }}
                       >
-                        {stage.label}
+                        {status.label}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {total > 0 && (
                         <span
                           className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
-                          style={{ background: stage.headerColor + '18', color: stage.headerColor }}
+                          style={{ background: status.headerColor + '18', color: status.headerColor }}
                         >
                           {fmtUGX(total)}
                         </span>
                       )}
                       <span
                         className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black"
-                        style={{ background: stage.headerColor, color: 'white' }}
+                        style={{ background: status.headerColor, color: 'white' }}
                       >
-                        {stagePlans.length}
+                        {statusPlans.length}
                       </span>
                     </div>
                   </div>
 
                   {/* Cards */}
                   <div className="sm:flex-1 sm:overflow-y-auto p-2 space-y-2">
-                    {stagePlans.length === 0 && (
+                    {statusPlans.length === 0 && (
                       <div
                         className="h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-xs text-gray-300"
                         style={{ borderColor: isOver ? '#29ABE2' : '#E5E7EB' }}
@@ -432,7 +445,7 @@ export default function TreatmentPipelinePage() {
                         Drop here
                       </div>
                     )}
-                    {stagePlans.map(plan => (
+                    {statusPlans.map(plan => (
                       <PlanCard
                         key={plan.id}
                         plan={plan}
@@ -484,7 +497,7 @@ function PlanCard({
   onToggleSelect: () => void
 }) {
   const [showHistory, setShowHistory] = useState(false)
-  const borderColor = urgencyBorderColor(plan.daysSince, plan.stage)
+  const borderColor = urgencyBorderColor(plan.daysSince)
   const urgentText  = plan.daysSince > 14
     ? 'text-red-500'
     : plan.daysSince > 7
@@ -562,7 +575,7 @@ function PlanCard({
           onClick={e => { e.stopPropagation(); onMove() }}
           onDragStart={e => e.stopPropagation()}
           className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-gray-400 hover:text-clinic-blue hover:bg-blue-50 transition-colors flex-shrink-0"
-          title="Move to another stage"
+          title="Move to another status"
         >
           <ArrowLeftRight size={10} />
           <span className="hidden sm:inline">Move</span>
@@ -582,7 +595,7 @@ function PlanCard({
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-            <span className="text-[10px] text-gray-400">Current stage: <span className="font-semibold text-blue-600">{plan.stage}</span></span>
+            <span className="text-[10px] text-gray-400">Current status: <span className="font-semibold text-blue-600">{plan.status}</span></span>
           </div>
         </div>
       )}
@@ -598,7 +611,7 @@ function MoveModal({
   onClose,
 }: {
   plan:    Plan
-  onMove:  (planId: string, stage: string) => void
+  onMove:  (planId: string, status: string) => void
   onClose: () => void
 }) {
   return (
@@ -613,7 +626,7 @@ function MoveModal({
         {/* Header */}
         <div className="flex items-start justify-between px-4 pt-4 pb-3 border-b border-gray-100">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-gray-900">Move to stage</p>
+            <p className="text-sm font-bold text-gray-900">Move to status</p>
             <p className="text-xs text-gray-500 truncate mt-0.5">
               {plan.patient.firstName} {plan.patient.lastName} · {plan.treatmentName}
             </p>
@@ -626,19 +639,19 @@ function MoveModal({
           </button>
         </div>
 
-        {/* Stage list */}
+        {/* Status list */}
         <div className="p-3 space-y-1 max-h-[60vh] overflow-y-auto">
-          {STAGES.filter(s => s.id !== plan.stage).map(stage => (
+          {STATUSES.filter(s => s.id !== plan.status).map(status => (
             <button
-              key={stage.id}
-              onClick={() => onMove(plan.id, stage.id)}
+              key={status.id}
+              onClick={() => onMove(plan.id, status.id)}
               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
             >
               <span
                 className="w-3 h-3 rounded-full flex-shrink-0"
-                style={{ background: stage.headerColor }}
+                style={{ background: status.headerColor }}
               />
-              <span className="text-sm font-medium text-gray-700">{stage.label}</span>
+              <span className="text-sm font-medium text-gray-700">{status.label}</span>
             </button>
           ))}
         </div>
