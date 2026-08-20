@@ -11,6 +11,7 @@ import { uploadAvatar, deleteFile } from '../services/storage/r2'
 import { uploadLimiter } from '../middleware/rateLimit'
 import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
+import { normalizePhone, phoneVariants } from '../utils/phone'
 
 const createPatientSchema = z.object({
   firstName:          z.string().min(1),
@@ -115,16 +116,6 @@ function parseDob(raw: string): Date | null {
   return null
 }
 
-function normalizePhone(raw: string): string {
-  // Strip spaces, dashes, parentheses but keep leading +
-  const stripped = raw.trim()
-  const digits   = stripped.replace(/\D/g, '')
-  if (stripped.startsWith('+'))          return '+' + digits          // +256... → keep
-  if (digits.startsWith('256') && digits.length >= 12) return '+' + digits  // 256772... → +256772...
-  if (digits.startsWith('0')   && digits.length >= 9)  return '+256' + digits.slice(1)  // 0772... → +256772...
-  return stripped  // unknown format — leave unchanged
-}
-
 function cleanError(msg: string): string {
   // Strip Prisma boilerplate — keep only the human-readable part
   const lines = msg.split('\n')
@@ -153,7 +144,13 @@ router.get('/', requireAuth, async (req, res) => {
             OR: [
               { firstName: { contains: q,                       mode: 'insensitive' } },
               { lastName:  { contains: q,                       mode: 'insensitive' } },
-              { phone:     { contains: q.replace(/[\s-]/g, '')                      } },
+              // A query that looks like a real (near-)complete number is matched against
+              // every historical phone format so a search in local "0..." form still finds
+              // patients stored as "+256...", and vice versa. Shorter typeahead digit
+              // strings fall back to a plain substring match.
+              ...(q.replace(/\D/g, '').length >= 9
+                ? phoneVariants(q).map(v => ({ phone: { contains: v } }))
+                : [{ phone: { contains: q.replace(/[\s-]/g, '') } }]),
               { email:     { contains: q,                       mode: 'insensitive' } },
             ],
           }
@@ -610,9 +607,8 @@ router.get('/:id/ai-conversation', requireAuth, async (req, res) => {
     })
 
     if (!conversation && patient.phone) {
-      const bareDigits = patient.phone.replace(/^\+/, '')
       conversation = await prisma.aiConversation.findFirst({
-        where: { phoneNumber: { in: [patient.phone, bareDigits, `+${bareDigits}`] } },
+        where: { phoneNumber: { in: phoneVariants(patient.phone) } },
         orderBy: { updatedAt: 'desc' },
       })
     }

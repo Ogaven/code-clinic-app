@@ -1,5 +1,6 @@
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
+import { phoneVariants } from '../../utils/phone'
 
 export type NotificationType = 'booked' | 'rescheduled' | 'cancelled' | 'reminder'
 
@@ -103,7 +104,7 @@ export async function sendAppointmentNotification(
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
       const recentConfirm = await prisma.botMessageLog.findFirst({
         where: {
-          recipientPhone:  { in: [recipientPhone, recipientPhone.replace(/^\+/, ''), `+${recipientPhone.replace(/^\+/, '')}`] },
+          recipientPhone:  { in: phoneVariants(recipientPhone) },
           templateType:    { in: ['cc_booking_confirmation', 'booking_confirmation'] },
           sentAt:          { gte: fiveMinutesAgo },
         },
@@ -138,7 +139,7 @@ export async function sendAppointmentNotification(
         const marker = type === 'rescheduled' ? 'has been rescheduled to' : 'has been cancelled'
         const recentSame = await prisma.botMessageLog.findFirst({
           where: {
-            recipientPhone: { in: [recipientPhone, recipientPhone.replace(/^\+/, ''), `+${recipientPhone.replace(/^\+/, '')}`] },
+            recipientPhone: { in: phoneVariants(recipientPhone) },
             messageBody:    { contains: marker },
             sentAt:         { gte: twoMinutesAgo },
           },
@@ -156,10 +157,9 @@ export async function sendAppointmentNotification(
     console.log(`[Notification] Sent '${type}' to ${logTarget}`)
 
     // Log to ai_messages so Sarah has full visibility of system-sent messages
-    const rawPhone = recipientPhone.replace(/^\+/, '')
     const conv = await prisma.aiConversation.findFirst({
       where: {
-        OR: [{ phoneNumber: recipientPhone }, { phoneNumber: rawPhone }],
+        phoneNumber: { in: phoneVariants(recipientPhone) },
         channel: 'WHATSAPP',
       },
       orderBy: { updatedAt: 'desc' },

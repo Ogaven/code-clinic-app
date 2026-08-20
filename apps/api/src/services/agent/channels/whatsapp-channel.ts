@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { runAgent } from '../unified-agent'
 import { prisma } from '../../../lib/prisma'
+import { normalizePhone } from '../../../utils/phone'
 
 // ── In-memory session store (Redis-upgradeable) ────────────────
 // Key: phone number → { history, lastActive }
@@ -134,7 +135,7 @@ export async function handleWhatsAppWebhook(body: any): Promise<void> {
   }
 
   // Normalise phone number
-  const phoneNumber = normalisePhone(from)
+  const phoneNumber = normalizePhone(from)
 
   console.log(`[WHATSAPP] Inbound from ${phoneNumber}: ${text.slice(0, 80)}`)
 
@@ -214,12 +215,3 @@ export async function sendMissedCallWhatsApp(
   await sendWhatsAppMessage(phone, message)
 }
 
-// ── Normalise phone to +256 format ───────────────────────────
-
-function normalisePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '')
-  if (digits.startsWith('256')) return `+${digits}`
-  if (digits.startsWith('0') && digits.length === 10) return `+256${digits.slice(1)}`
-  if (digits.length === 9) return `+256${digits}`
-  return `+${digits}` // best effort
-}

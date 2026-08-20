@@ -10,6 +10,7 @@ import { handleInboundCall, triggerOutboundCall, handleRecordingComplete } from 
 import { runAgent } from '../services/agent/unified-agent'
 // import { runReminderJob, runFollowupJob, runDebtJob, processQueue } from '../services/agent/scheduler' // disabled
 import { prisma } from '../lib/prisma'
+import { normalizePhone, phoneVariants } from '../utils/phone'
 
 const router    = Router()
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -36,17 +37,14 @@ router.post('/whatsapp/webhook', async (req, res) => {
       const status = (body.status as string).toLowerCase()
       if (recipientPhone && ['sent', 'delivered', 'read', 'failed'].includes(status)) {
         try {
-          const digits = String(recipientPhone).replace(/\D/g, '')
-          const normPhone = digits.startsWith('256') ? `+${digits}`
-                          : digits.startsWith('0') && digits.length === 10 ? `+256${digits.slice(1)}`
-                          : `+${digits}`
+          const normPhone = normalizePhone(String(recipientPhone))
           const [recent, recentBotLog] = await Promise.all([
             prisma.aiScheduledMessage.findFirst({
-              where: { patient: { phone: normPhone }, sent: true },
+              where: { patient: { phone: { in: phoneVariants(normPhone) } }, sent: true },
               orderBy: { createdAt: 'desc' },
             }),
             prisma.botMessageLog.findFirst({
-              where: { recipientPhone: { in: [normPhone, recipientPhone] } },
+              where: { recipientPhone: { in: phoneVariants(normPhone) } },
               orderBy: { sentAt: 'desc' },
             }),
           ])
@@ -192,11 +190,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
       return
     }
     // Normalise AT phone (e.g. "256741087667") to E.164 (+256741087667)
-    const digits = String(rawFrom).replace(/\D/g, '')
-    const from   = digits.startsWith('256')              ? `+${digits}`
-                 : digits.startsWith('0') && digits.length === 10 ? `+256${digits.slice(1)}`
-                 : digits.length === 9                   ? `+256${digits}`
-                 : `+${digits}`
+    const from = normalizePhone(String(rawFrom))
 
     // ── Staff routing: AT has no reply-context IDs — find ALL unresolved alerts
     // within 4 hours. Multiple open alerts → ask staff to specify; exactly one → route.

@@ -2,17 +2,6 @@ import { getAgentReply } from '../agent/agent.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 
-// ── Phone number normalisation (Uganda) ───────────────────────────────────────
-
-export function formatUgandaPhone(phone: string): string {
-  const cleaned = phone.replace(/[\s\-().]/g, '')
-  if (cleaned.startsWith('+'))   return cleaned           // +256... already correct
-  if (cleaned.startsWith('256')) return `+${cleaned}`     // 256... → +256...
-  if (cleaned.startsWith('0'))   return `+256${cleaned.slice(1)}`  // 07... → +2567...
-  if (/^[74]/.test(cleaned))     return `+256${cleaned}`  // 7... or 4... → +2567... / +2564...
-  return cleaned
-}
-
 // ── Send SMS — redirected to WhatsApp ─────────────────────────────────────────
 
 export async function sendSMS(to: string, message: string): Promise<void> {

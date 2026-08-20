@@ -7,6 +7,7 @@ import {
 } from '../booking/booking.service'
 import { prisma } from '../../lib/prisma'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
+import { normalizePhone } from '../../utils/phone'
 
 // Phrase that marks an escalation has already been sent in this conversation
 const ESCALATION_PHRASE = 'Please call us on +256394836298, or WhatsApp us on +256741087667, and our team will help you'
@@ -137,11 +138,7 @@ async function executeTool(name: string, input: Record<string, any>): Promise<st
         const { visitorName, visitorPhone, serviceId, doctorId, slotStartAt } = input as {
           visitorName: string; visitorPhone: string; serviceId: string; doctorId: string; slotStartAt: string
         }
-        const digits     = visitorPhone.replace(/\D/g, '')
-        const normalized = digits.startsWith('256') ? '+' + digits
-          : digits.startsWith('0') && digits.length === 10 ? '+256' + digits.slice(1)
-          : digits.length === 9 ? '+256' + digits
-          : '+' + digits
+        const normalized = normalizePhone(visitorPhone)
 
         const startAt = new Date(slotStartAt)
         if (isNaN(startAt.getTime())) {

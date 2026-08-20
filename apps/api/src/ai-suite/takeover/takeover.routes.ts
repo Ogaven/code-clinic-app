@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { takeoverConversation, handbackConversation } from './takeover.service'
 import { prisma } from '../../lib/prisma'
 import { fetchPostThumbnail } from '../facebook/facebook.routes'
+import { normalizePhone, phoneVariants } from '../../utils/phone'
 
 const router = Router()
 
@@ -136,32 +137,24 @@ router.get('/conversations', async (req, res) => {
 // Staff starts a new outbound WhatsApp conversation to a number not yet in the system.
 // Reuses an existing ACTIVE conversation for the number if one already exists (same
 // dedup convention as the inbound webhook path) instead of creating a duplicate contact.
-function normalizePhoneForNewChat(raw: string): string {
-  const digits = raw.replace(/\D/g, '')
-  if (digits.startsWith('256') && digits.length >= 12) return `+${digits}`
-  if (digits.startsWith('0')   && digits.length >= 9)  return `+256${digits.slice(1)}`
-  if (digits.length === 9)                              return `+256${digits}`
-  return raw.startsWith('+') ? raw : `+${digits}`
-}
-
 router.post('/conversations', async (req, res) => {
   try {
     const { phoneNumber, displayName } = req.body as { phoneNumber?: string; displayName?: string }
     if (!phoneNumber?.trim()) return res.status(400).json({ error: 'phoneNumber required' })
 
-    const normalized = normalizePhoneForNewChat(phoneNumber.trim())
+    const normalized = normalizePhone(phoneNumber.trim())
     if (!/^\+\d{9,15}$/.test(normalized)) {
       return res.status(400).json({ error: 'Could not parse a valid phone number' })
     }
 
     let conversation = await prisma.aiConversation.findFirst({
-      where:   { phoneNumber: normalized, channel: 'WHATSAPP' },
+      where:   { phoneNumber: { in: phoneVariants(normalized) }, channel: 'WHATSAPP' },
       orderBy: { createdAt: 'desc' },
     })
     let isNew = false
 
     if (!conversation) {
-      const patient = await prisma.patient.findFirst({ where: { phone: normalized } })
+      const patient = await prisma.patient.findFirst({ where: { phone: { in: phoneVariants(normalized) } } })
       conversation = await prisma.aiConversation.create({
         data: {
           patientId:    patient?.id ?? null,

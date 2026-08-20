@@ -8,6 +8,7 @@ import { clinicalStaff } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
 import { formatPatientId } from '../lib/utils'
+import { phoneVariants } from '../utils/phone'
 import { syncAppointmentToGCal } from '../services/gcal'
 import { sendAppointmentNotification } from '../ai-suite/notifications/notification.service'
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../ai-suite/whatsapp/whatsapp.service'
@@ -868,12 +869,16 @@ router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('f
         }
 
         // ── Patient ──────────────────────────────────────────────────────────
-        // Match on last 9 digits of phone (handles +256 vs 0 prefix differences).
+        // Try the canonical format variants first; CSV data from third-party import
+        // sources can be malformed, so fall back to a last-9-digits suffix match.
         const phoneDigits = phone.replace(/\D/g, '').slice(-9)
         let patientCreated = false
-        let patient = (phoneDigits.length >= 7)
-          ? await prisma.patient.findFirst({ where: { phone: { endsWith: phoneDigits } } })
+        let patient = phone
+          ? await prisma.patient.findFirst({ where: { phone: { in: phoneVariants(phone) } } })
           : null
+        if (!patient && phoneDigits.length >= 7) {
+          patient = await prisma.patient.findFirst({ where: { phone: { endsWith: phoneDigits } } })
+        }
         if (!patient && patientName) {
           const nameParts  = patientName.split(' ')
           const firstName  = nameParts[0] ?? ''

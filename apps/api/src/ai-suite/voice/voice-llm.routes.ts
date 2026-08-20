@@ -21,6 +21,7 @@ import { Router }    from 'express'
 import Anthropic     from '@anthropic-ai/sdk'
 import { prisma }    from '../../lib/prisma'
 import { runAgent }  from '../../services/agent/unified-agent'
+import { normalizePhone, phoneVariants } from '../../utils/phone'
 
 const router = Router()
 
@@ -36,7 +37,7 @@ router.post('/llm', async (req, res) => {
     }
 
     // ── Extract per-session metadata injected by sip.service / voice-channel ──
-    const callerPhone  = body.custom_llm_extra_body?.caller_phone  ?? 'unknown'
+    const callerPhone  = normalizePhone(body.custom_llm_extra_body?.caller_phone ?? 'unknown')
     const callId       = body.custom_llm_extra_body?.call_id       ?? `voice-${Date.now()}`
     const agentMode    = body.custom_llm_extra_body?.agent_mode    ?? 'INBOUND'
     const queueItemId  = body.custom_llm_extra_body?.queue_item_id ?? undefined
@@ -54,13 +55,13 @@ router.post('/llm', async (req, res) => {
 
     // ── Look up or create conversation in DB ────────────────────────────────
     let conversation = await prisma.aiConversation.findFirst({
-      where:   { phoneNumber: callerPhone, channel: 'VOICE', status: 'ACTIVE' },
+      where:   { phoneNumber: { in: phoneVariants(callerPhone) }, channel: 'VOICE', status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
     }).catch(() => null)
 
     if (!conversation) {
       const patient = await prisma.patient.findFirst({
-        where: { phone: callerPhone },
+        where: { phone: { in: phoneVariants(callerPhone) } },
       }).catch(() => null)
 
       conversation = await prisma.aiConversation.create({

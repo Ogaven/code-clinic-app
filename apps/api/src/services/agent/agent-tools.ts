@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { searchKnowledge } from '../knowledge/rag'
 import nodemailer from 'nodemailer'
 import { prisma } from '../../lib/prisma'
+import { phoneVariants } from '../../utils/phone'
 
 async function sendEmail(opts: { to: string; subject: string; text: string }) {
   try {
@@ -105,12 +106,8 @@ export interface ToolContext {
 // ── TOOL HANDLERS ──────────────────────────────────────────────
 
 async function handle_get_patient_by_phone(input: { phone_number: string }) {
-  const raw   = input.phone_number.trim()
-  const intl  = raw.startsWith('+256') ? raw : '+256' + raw.replace(/^0/, '')
-  const local = raw.startsWith('0')    ? raw : '0'   + raw.replace(/^\+256/, '')
-
   const patient = await prisma.patient.findFirst({
-    where: { OR: [{ phone: intl }, { phone: local }] },
+    where: { phone: { in: phoneVariants(input.phone_number) } },
     include: {
       invoices: { where: { status: { in: ['UNPAID', 'PARTIAL', 'OVERDUE'] } } },
       appointments: {

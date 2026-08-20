@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth'
 import { requireRole } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { phoneVariants } from '../utils/phone'
 
 const router = Router()
 
@@ -15,10 +16,15 @@ router.get('/leads', requireAuth, async (req: Request, res: Response) => {
     if (source && source !== 'all') where.source = String(source)
     if (status && status !== 'all') where.status = String(status)
     if (q) {
+      const qStr = String(q)
       where.OR = [
-        { name:  { contains: String(q), mode: 'insensitive' } },
-        { phone: { contains: String(q).replace(/[\s-]/g, '') } },
-        { email: { contains: String(q), mode: 'insensitive' } },
+        { name:  { contains: qStr, mode: 'insensitive' } },
+        // Matched against every historical phone format for near-complete numbers;
+        // shorter typeahead digit strings fall back to a plain substring match.
+        ...(qStr.replace(/\D/g, '').length >= 9
+          ? phoneVariants(qStr).map(v => ({ phone: { contains: v } }))
+          : [{ phone: { contains: qStr.replace(/[\s-]/g, '') } }]),
+        { email: { contains: qStr, mode: 'insensitive' } },
       ]
     }
     const leads = await prisma.lead.findMany({

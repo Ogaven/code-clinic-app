@@ -3,6 +3,7 @@ import { findSoonestAvailableSlot, createAppointment } from '../booking/booking.
 import { clearBookingState } from '../booking/booking.state'
 import { sendWhatsAppMessage } from './whatsapp.service'
 import { prisma } from '../../lib/prisma'
+import { phoneVariants } from '../../utils/phone'
 
 export const STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
 
@@ -83,9 +84,8 @@ export async function handleStaffReply(
       return 'NO_SLOTS'
     }
 
-    const localPhone = patientPhone.replace(/^\+256/, '0')
     const patient = await prisma.patient.findFirst({
-      where: { OR: [{ phone: patientPhone }, { phone: localPhone }] },
+      where: { phone: { in: phoneVariants(patientPhone) } },
     })
 
     await createAppointment(patient?.id ?? null, slot.doctorId, slot.serviceId, slot.startAt, patientPhone)

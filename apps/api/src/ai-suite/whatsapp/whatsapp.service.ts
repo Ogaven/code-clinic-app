@@ -2,8 +2,8 @@ import { getAgentReplyV2 } from '../agent/agent.service'
 import { isAgentEnabled, takeoverConversation } from '../takeover/takeover.service'
 import { setBookingState } from '../booking/booking.state'
 import { createEscalation, notifyJulian } from '../../services/agent/guards/escalation'
-import { formatUgandaPhone } from '../sms/sms.service'
 import { prisma } from '../../lib/prisma'
+import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { hasOutboundConsent } from '../scheduler/guardian-routing.service'
 
 // ── Classify outbound message type for audit log ──────────────────────────────
@@ -26,7 +26,7 @@ function logOutboundMessage(to: string, body: string, templateType: string): voi
   ;(async () => {
     try {
       const patient = await prisma.patient.findFirst({
-        where: { OR: [{ phone: to }, { phone: to.replace(/^\+/, '') }, { phone: `+${to.replace(/^\+/, '')}` }] },
+        where: { phone: { in: phoneVariants(to) } },
         select: { id: true },
       })
       await prisma.botMessageLog.create({
@@ -76,7 +76,7 @@ function logAgentMessageToConversation(to: string, content: string, wamid?: stri
           })
         } else {
           const patient = await prisma.patient.findFirst({
-            where: { OR: [{ phone: from }, { phone: from.replace(/^\+/, '') }, { phone: `+${from.replace(/^\+/, '')}` }] },
+            where: { phone: { in: phoneVariants(from) } },
           })
           conversation = await prisma.aiConversation.create({
             data: {
@@ -177,12 +177,12 @@ export function processInbound(from: string, text: string, wamid: string, phoneN
 async function processInboundLocked(from: string, text: string, wamid: string, phoneNumberId?: string): Promise<void> {
   // Normalize to E.164: Meta webhook delivers numbers WITHOUT '+' (e.g. 256785703926).
   // Africa's Talking delivers WITH '+'. Always use the '+' form so every DB lookup matches.
-  if (!from.startsWith('+')) from = `+${from}`
+  from = normalizePhone(from)
 
   try {
     // ── 1. Identify patient by phone number ──────────────────────────────────
     const patient = await prisma.patient.findFirst({
-      where: { OR: [{ phone: from }, { phone: from.replace(/^\+/, '') }, { phone: `+${from.replace(/^\+/, '')}` }] },
+      where: { phone: { in: phoneVariants(from) } },
     })
 
     // ── 1b. Opt-out / opt-in detection ──────────────────────────────────────
@@ -310,7 +310,7 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
           role:      'AGENT',
           createdAt: { gte: new Date(Date.now() - 60 * 1000) },
           conversation: {
-            phoneNumber: { in: [from, from.replace(/^\+/, '')] },
+            phoneNumber: { in: phoneVariants(from) },
             channel:     'WHATSAPP',
           },
         },

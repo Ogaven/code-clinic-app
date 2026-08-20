@@ -21,6 +21,7 @@ import { prisma } from '../../lib/prisma'
 import { redis } from '../../lib/redis'
 import { antiHallucinationGuard, type ToolRecord } from '../../services/agent/guards/anti-hallucination'
 import { getGreetingName, guardianTitle, isMinor, normalizeRelation, toProper } from '../../utils/nameHelper'
+import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 
 function sanitizeForClaude(content: string): string {
@@ -1394,9 +1395,8 @@ async function alertStaffOfConcern(params: {
     if (recentAlert) return
 
     // Resolve patient name from DB; fall back to phone number
-    const localPhone = params.patientPhone.replace(/^\+256/, '0')
     const patient = await prisma.patient.findFirst({
-      where: { OR: [{ phone: params.patientPhone }, { phone: localPhone }] },
+      where: { phone: { in: phoneVariants(params.patientPhone) } },
       select: { id: true, firstName: true, lastName: true },
     })
     const patientName = patient ? `${patient.firstName} ${patient.lastName}` : params.patientPhone
@@ -2229,8 +2229,8 @@ async function executeV2Tool(
             error: 'Cannot book — the slot list has expired. You MUST: (1) call check_availability again RIGHT NOW to get fresh slots, (2) show the patient the new numbered list, (3) wait for their reply, (4) only then call book_appointment again. CRITICAL: Do NOT tell the patient they are booked — the booking did NOT happen.',
           })
         }
-        const normalizedFrom = from.startsWith('+') ? from : `+${from}`
-        const patient = await prisma.patient.findFirst({ where: { OR: [{ phone: normalizedFrom }, { phone: from }] } })
+        const normalizedFrom = normalizePhone(from)
+        const patient = await prisma.patient.findFirst({ where: { phone: { in: phoneVariants(from) } } })
         const patientFirstName = toolInput.patientFirstName as string | undefined
         // Fallback: if no explicit name and no existing patient, use waDisplayName from the conversation
         let resolvedFirstName = patientFirstName
@@ -2309,17 +2309,11 @@ async function executeV2Tool(
       }
 
       case 'get_patient_appointments': {
-        // Real patient records exist in all three formats (+256..., 256..., 0...)
-        // depending on when/how they were entered. Checking only two identical-
-        // looking variants of the same E.164 string missed the local "0..." format
-        // entirely — confirmed root cause of real "no appointments found" replies
-        // to patients (e.g. Ruth Ovon, phone stored as "0704996443") who genuinely
-        // had upcoming appointments.
-        const normalizedFrom2 = from.startsWith('+') ? from : `+${from}`
-        const bareDigits2     = normalizedFrom2.replace(/^\+/, '')
-        const localFormat2    = normalizedFrom2.replace(/^\+256/, '0')
+        // phoneVariants() checks every historical stored format (+256..., 256..., 0...) --
+        // this is what previously fixed a real "no appointments found" bug (Ruth Ovon,
+        // phone stored as "0704996443"), now guaranteed everywhere via the shared utility.
         const patients2 = await prisma.patient.findMany({
-          where: { OR: [{ phone: normalizedFrom2 }, { phone: bareDigits2 }, { phone: localFormat2 }] },
+          where: { phone: { in: phoneVariants(from) } },
           select: { id: true, firstName: true },
         })
         if (patients2.length === 0) return JSON.stringify({ appointments: [] })
@@ -2405,9 +2399,8 @@ async function executeV2Tool(
       }
 
       case 'get_patient_info': {
-        const normPhone3 = from.startsWith('+') ? from : `+${from}`
         const patients3  = await prisma.patient.findMany({
-          where: { OR: [{ phone: normPhone3 }, { phone: from }] },
+          where: { phone: { in: phoneVariants(from) } },
           select: { firstName: true, dob: true },
         })
         if (patients3.length === 0) return JSON.stringify({ found: false })

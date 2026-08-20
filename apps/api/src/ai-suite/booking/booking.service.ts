@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma'
+import { normalizePhone, phoneVariants } from '../../utils/phone'
 
 export interface AvailableSlot {
   doctorId: string
@@ -245,16 +246,15 @@ export async function createAppointment(
   patientFirstName?: string,
 ) {
   // Appointment.patientId is non-nullable — find or create patient from phone
+  const normalizedPhone = normalizePhone(phone)
   let resolvedPatientId = patientId
   if (!resolvedPatientId) {
-    // Try exact match, then local-number match (handles +256 vs 0 prefix)
-    const localDigits = phone.replace(/^\+256/, '0')
     let patient = await prisma.patient.findFirst({
-      where: { OR: [{ phone }, { phone: localDigits }] },
+      where: { phone: { in: phoneVariants(normalizedPhone) } },
     })
     if (!patient) {
       patient = await prisma.patient.create({
-        data: { firstName: patientFirstName ?? 'WhatsApp', lastName: 'Patient', phone },
+        data: { firstName: patientFirstName ?? 'WhatsApp', lastName: 'Patient', phone: normalizedPhone },
       })
     }
     resolvedPatientId = patient.id

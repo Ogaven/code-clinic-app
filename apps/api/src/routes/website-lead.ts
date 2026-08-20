@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { normalizePhone, phoneVariants } from '../utils/phone'
 
 const router = Router()
 
@@ -16,17 +17,12 @@ router.post('/', async (req, res) => {
     const { name, phone, source } = req.body
     if (!name || !phone) return
 
-    // Normalize phone: strip spaces, ensure starts with + or 256
-    const digits = String(phone).replace(/\D/g, '')
-    const normalized = digits.startsWith('256') ? '+' + digits
-      : digits.startsWith('0') && digits.length === 10 ? '+256' + digits.slice(1)
-      : digits.length === 9 ? '+256' + digits
-      : '+' + digits
+    const normalized = normalizePhone(String(phone))
 
     // Check if already contacted in last 24 hours (avoid spam)
     const recentConv = await prisma.aiConversation.findFirst({
       where: {
-        phoneNumber: normalized,
+        phoneNumber: { in: phoneVariants(normalized) },
         channel:     'WHATSAPP',
         createdAt:   { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       },
@@ -40,7 +36,7 @@ router.post('/', async (req, res) => {
     const firstName = name.trim().split(' ')[0]
 
     // Check if existing patient
-    const patient = await prisma.patient.findFirst({ where: { phone: normalized } })
+    const patient = await prisma.patient.findFirst({ where: { phone: { in: phoneVariants(normalized) } } })
 
     // Create conversation record
     const conv = await prisma.aiConversation.create({

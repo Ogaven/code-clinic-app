@@ -1,4 +1,5 @@
 import { prisma } from '../../../lib/prisma'
+import { phoneVariants } from '../../../utils/phone'
 
 // ── Emergency keyword detection ────────────────────────────────
 
@@ -97,9 +98,8 @@ export async function notifyJulian(patientPhone: string, patientMessage: string)
       `Please check the AI Suite inbox and follow up.`
 
     if (templateName) {
-      const localPhone = patientPhone.replace(/^\+256/, '0')
       const patient = await prisma.patient.findFirst({
-        where: { OR: [{ phone: patientPhone }, { phone: localPhone }] },
+        where: { phone: { in: phoneVariants(patientPhone) } },
         select: { firstName: true, lastName: true },
       })
       const patientName = patient ? `${patient.firstName} ${patient.lastName}` : patientPhone

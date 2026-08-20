@@ -11,6 +11,7 @@ import {
 } from './audio-codec'
 import { createConvAISession, getOrCreateAgentId } from './elevenlabs-conv-ai.service'
 import { prisma } from '../../lib/prisma'
+import { normalizePhone } from '../../utils/phone'
 
 // ── drachtio-srf ──────────────────────────────────────────────────────────────
 // drachtio-srf connects to a drachtio-server process which handles SIP signaling.
@@ -174,12 +175,10 @@ export function initializeSIP(): void {
 }
 
 // ── formatToE164 ──────────────────────────────────────────────────────────────
+// SIP/telephony provider wants bare digits (no leading +) -- same canonical
+// digit-parsing as everywhere else, just stripped of the + for this one payload.
 export function formatToE164(phone: string): string {
-  const cleaned = phone.replace(/[\s\-().+]/g, '')
-  if (cleaned.startsWith('256'))   return cleaned
-  if (cleaned.startsWith('0'))     return `256${cleaned.slice(1)}`
-  if (/^[74]/.test(cleaned))       return `256${cleaned}`
-  return cleaned
+  return normalizePhone(phone).replace(/^\+/, '')
 }
 
 // ── buildLocalSdp ─────────────────────────────────────────────────────────────
