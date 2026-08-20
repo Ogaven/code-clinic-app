@@ -387,7 +387,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto relative">
+        <main className="flex-1 overflow-y-auto relative pb-16 md:pb-0">
           {children}
           <DoctorChatbot />
         </main>

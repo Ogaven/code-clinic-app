@@ -223,6 +223,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const [permsMap, setPermsMap] = useState<Record<string, boolean>>({})
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [collapsed, setCol]     = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const [showProfile, setProf]  = useState(false)
   const [unread, setUnread]     = useState(0)
   const [search, setSearch]     = useState('')
@@ -291,6 +292,9 @@ export default function ReceptionistLayout({ children }: { children: React.React
     if (!stored) return
     refreshAvatar(JSON.parse(stored))
   }, [pathname])
+
+  // Close the mobile nav drawer after navigating to a new page
+  useEffect(() => { setMobileOpen(false) }, [pathname])
 
   // Immediately update avatar when an upload completes in the same tab
   useEffect(() => {
@@ -481,8 +485,8 @@ export default function ReceptionistLayout({ children }: { children: React.React
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
       {/* ── Mobile overlay ──────────────────────────────────── */}
-      {!collapsed && (
-        <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setCol(true)}>
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setMobileOpen(false)}>
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
         </div>
       )}
@@ -492,23 +496,30 @@ export default function ReceptionistLayout({ children }: { children: React.React
         className={cn(
           'rec-sidebar flex flex-col h-screen flex-shrink-0 transition-all duration-300 z-50',
           'fixed lg:sticky top-0',
-          collapsed ? '-translate-x-full lg:translate-x-0 w-[220px] lg:w-[64px]' : 'translate-x-0 w-[220px]',
+          'w-[220px]',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          'lg:translate-x-0',
+          collapsed ? 'lg:w-[64px]' : 'lg:w-[220px]',
         )}
       >
         {/* Logo */}
-        <Link href="/receptionist/dashboard"
-          className={cn(
-            'flex items-center transition-all duration-200',
-            'border-b border-gray-100 dark:border-white/8',
-            collapsed ? 'justify-center px-2 py-3' : 'px-4 py-3 gap-2',
-          )}>
-          {collapsed ? (
-            <img src="/icon.png" alt="Code Clinic" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" />
-          ) : (
+        <div className={cn(
+          'flex items-center justify-between px-4 py-3 transition-all duration-200',
+          'border-b border-gray-100 dark:border-white/8',
+          collapsed && 'lg:justify-center lg:px-2 lg:py-3',
+        )}>
+          <Link href="/receptionist/dashboard" className={cn('flex items-center gap-2', collapsed && 'lg:justify-center')}>
+            {collapsed ? (
+              <img src="/icon.png" alt="Code Clinic" className="hidden lg:block w-8 h-8 rounded-lg object-contain flex-shrink-0" />
+            ) : null}
             <Image src="/logo.png" alt="Code Clinic" width={105} height={32}
-              className="object-contain dark:brightness-0 dark:invert" priority />
-          )}
-        </Link>
+              className={cn('object-contain dark:brightness-0 dark:invert', collapsed && 'lg:hidden')} priority />
+          </Link>
+          <button onClick={() => setMobileOpen(false)}
+            className="lg:hidden w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors flex-shrink-0">
+            <X size={16} />
+          </button>
+        </div>
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto sidebar-nav py-3 px-2 flex flex-col">
@@ -646,10 +657,10 @@ export default function ReceptionistLayout({ children }: { children: React.React
             </button>
           )}
 
-          {/* Collapse toggle */}
+          {/* Collapse toggle (desktop icon-rail only — mobile uses the drawer's X / overlay to close) */}
           <button
             onClick={() => setCol(!collapsed)}
-            className="w-full flex items-center justify-center px-3 py-2 rounded-xl rec-nav-item transition-all text-xs font-medium">
+            className="hidden lg:flex w-full items-center justify-center px-3 py-2 rounded-xl rec-nav-item transition-all text-xs font-medium">
             {collapsed ? <ChevronRight size={15} /> : (
               <div className="flex items-center gap-2">
                 <ChevronLeft size={15} />
@@ -674,7 +685,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
         <header className="h-14 flex items-center gap-3 px-4 bg-white dark:bg-[#0a1f4a]/80 dark:backdrop-blur-md border-b border-gray-100 dark:border-white/8 flex-shrink-0 z-20">
 
           {/* Hamburger (mobile) */}
-          <button onClick={() => setCol(false)}
+          <button onClick={() => setMobileOpen(true)}
             className="lg:hidden w-9 h-9 rounded-xl flex items-center justify-center bg-gray-50 dark:bg-white/8 border border-gray-200 dark:border-white/10 flex-shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
               className="text-gray-700 dark:text-white">
