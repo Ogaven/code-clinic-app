@@ -8,7 +8,7 @@ import { clinicalStaff } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
 import { formatPatientId } from '../lib/utils'
-import { phoneVariants } from '../utils/phone'
+import { normalizePhone, phoneVariants } from '../utils/phone'
 import { syncAppointmentToGCal } from '../services/gcal'
 import { sendAppointmentNotification } from '../ai-suite/notifications/notification.service'
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../ai-suite/whatsapp/whatsapp.service'
@@ -894,7 +894,7 @@ router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('f
             data: {
               firstName:    parts[0] || 'Unknown',
               lastName:     parts.slice(1).join(' ') || '.',
-              phone:        phone || '',
+              phone:        phone ? normalizePhone(phone) : '',
               email:        email || undefined,
               importSource: 'CSV',
             },

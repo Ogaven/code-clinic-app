@@ -8,6 +8,7 @@ import {
   Save, Sun, Moon, Monitor, Shield, Mail, Phone, MessageSquare,
   Smartphone, Globe, LogOut, Trash2, CheckCircle2, AlertCircle,
   Link2, RefreshCw, Calendar, Unlink, Wifi, WifiOff, RotateCw,
+  QrCode, Download,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { subscribeToPush } from '@/lib/push'
@@ -88,6 +89,8 @@ export default function SettingsPage() {
   // Integrations
   const [gcal,       setGcal]       = useState<GCalStatus>({ connected: false })
   const [gcalLoading, setGcalLoad]  = useState(false)
+  const [previsitQr, setPrevisitQr] = useState<{ url: string; qrDataUrl: string } | null>(null)
+  const [previsitQrLoading, setPrevisitQrLoading] = useState(false)
   const [syncing,    setSyncing]    = useState(false)
 
   const API = '/api-proxy'
@@ -135,7 +138,18 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (tab === 'integrations') fetchGCalStatus()
+    if (tab === 'integrations' && !previsitQr) fetchPrevisitQr()
   }, [tab])
+
+  async function fetchPrevisitQr() {
+    setPrevisitQrLoading(true)
+    try {
+      const token = localStorage.getItem('cc_token')
+      const res = await fetch('/api-proxy/pre-visit/qr', { headers: { Authorization: `Bearer ${token}` } })
+      if (res.ok) setPrevisitQr(await res.json())
+    } catch {}
+    finally { setPrevisitQrLoading(false) }
+  }
 
   function showToast(msg: string, type: 'ok' | 'err') {
     setToast({ msg, type })
@@ -801,6 +815,44 @@ export default function SettingsPage() {
                       </p>
                     </>
                   )}
+                </div>
+              </div>
+
+              {/* Pre-Visit Walk-In QR Code */}
+              <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm overflow-hidden">
+                <div className="px-6 py-5 border-b border-gray-100 dark:border-white/8 flex items-center gap-4">
+                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+                    <QrCode size={20} className="text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-base font-black text-gray-800 dark:text-white">Walk-In Intake QR Code</h2>
+                    <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Print and display at reception — new patients scan it, fill in their details, and a patient profile is created automatically. No import step.</p>
+                  </div>
+                </div>
+                <div className="px-6 py-5 flex flex-col sm:flex-row items-center gap-6">
+                  {previsitQrLoading ? (
+                    <div className="w-40 h-40 flex items-center justify-center flex-shrink-0">
+                      <RefreshCw size={20} className="animate-spin text-gray-300" />
+                    </div>
+                  ) : previsitQr ? (
+                    <img src={previsitQr.qrDataUrl} alt="Pre-visit intake QR code" className="w-40 h-40 rounded-xl border border-gray-100 dark:border-white/10 flex-shrink-0" />
+                  ) : (
+                    <button onClick={fetchPrevisitQr}
+                      className="w-40 h-40 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/10 text-gray-400 text-xs font-bold flex-shrink-0">
+                      <QrCode size={22} /> Generate
+                    </button>
+                  )}
+                  <div className="flex-1 space-y-3 text-center sm:text-left">
+                    <p className="text-xs text-gray-500 dark:text-white/50 break-all">{previsitQr?.url || 'Scanning opens a blank intake form — no appointment or patient link required.'}</p>
+                    {previsitQr && (
+                      <a href={previsitQr.qrDataUrl} download="code-clinic-walk-in-qr.png"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black text-white transition-all hover:-translate-y-0.5"
+                        style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+                        <Download size={14} /> Download PNG
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

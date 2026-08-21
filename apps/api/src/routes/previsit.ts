@@ -1,7 +1,25 @@
 import { Router } from 'express'
+import QRCode from 'qrcode'
 import { prisma } from '../lib/prisma'
+import { normalizePhone, phoneVariants } from '../utils/phone'
+import { requireAuth } from '../middleware/auth'
+import { env } from '../lib/env'
 
 const router = Router()
+
+// GET /pre-visit/qr — staff-only. QR code for the public walk-in intake form
+// (no ?appt=/?phone= params -- scanning it opens a blank form that creates a
+// new patient directly, no CSV/Sheet import step involved).
+router.get('/qr', requireAuth, async (_req, res) => {
+  try {
+    const webUrl = env.APP_URL.split(',')[0].trim()
+    const intakeUrl = `${webUrl}/pre-visit`
+    const qrDataUrl = await QRCode.toDataURL(intakeUrl, { width: 480, margin: 2 })
+    res.json({ url: intakeUrl, qrDataUrl })
+  } catch (e: any) {
+    res.status(500).json({ error: 'Failed to generate QR code' })
+  }
+})
 
 // GET /pre-visit/:apptId — public, no auth
 router.get('/:apptId', async (req, res) => {
@@ -42,8 +60,10 @@ router.post('/submit', async (req, res) => {
   }
 
   try {
-    // Find or create patient by phone
-    let patient = await prisma.patient.findFirst({ where: { phone } })
+    const normalizedPhone = normalizePhone(phone)
+
+    // Find or create patient by phone (checks every historical stored format)
+    let patient = await prisma.patient.findFirst({ where: { phone: { in: phoneVariants(normalizedPhone) } } })
 
     if (patient) {
       patient = await prisma.patient.update({
@@ -59,7 +79,7 @@ router.post('/submit', async (req, res) => {
     } else {
       patient = await prisma.patient.create({
         data: {
-          firstName, lastName, phone,
+          firstName, lastName, phone: normalizedPhone,
           dob: dob ? new Date(dob) : undefined,
           gender, address, district,
           nextOfKinName, nextOfKinPhone, nextOfKinRelation,
@@ -68,17 +88,31 @@ router.post('/submit', async (req, res) => {
       })
     }
 
-    // Add notes to appointment if chiefComplaint provided
-    if (apptId && (chiefComplaint || currentMedications)) {
+    if (chiefComplaint || currentMedications) {
       const note = [
-        chiefComplaint   ? `Chief complaint: ${chiefComplaint}` : '',
+        chiefComplaint     ? `Chief complaint: ${chiefComplaint}`         : '',
         currentMedications ? `Current medications: ${currentMedications}` : '',
       ].filter(Boolean).join('\n')
 
-      await prisma.appointment.update({
-        where: { id: apptId },
-        data: { notes: note },
-      }).catch(() => {})
+      if (apptId) {
+        // Booked visit — attach to the appointment the doctor will see pre-visit
+        await prisma.appointment.update({
+          where: { id: apptId },
+          data: { notes: note },
+        }).catch(() => {})
+      } else {
+        // Walk-in QR intake — no appointment yet, log on the patient's timeline
+        // instead of silently discarding it
+        await prisma.patientActivity.create({
+          data: {
+            patientId: patient.id,
+            userId:    'pre-visit-form',
+            userName:  'Pre-Visit Form (Self-Service)',
+            action:    'Submitted intake form',
+            metadata:  note,
+          },
+        }).catch(() => {})
+      }
     }
 
     res.json({ success: true, patientId: patient.id })

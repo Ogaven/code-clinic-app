@@ -302,7 +302,7 @@ router.post('/import-csv', requireAuth, async (req, res) => {
           continue
         }
 
-        const existing = await prisma.patient.findFirst({ where: { phone: normalizedPhone } })
+        const existing = await prisma.patient.findFirst({ where: { phone: { in: phoneVariants(normalizedPhone) } } })
         if (existing) { skipped++; continue }
 
         let genderEnum: 'MALE' | 'FEMALE' | undefined
@@ -420,7 +420,7 @@ router.post('/import-sheet', requireAuth, async (req, res) => {
         // parseDob returns null for invalid dates — never skip a row for bad DOB
         const dobDate = parseDob(dob) ?? undefined
 
-        const existing = await prisma.patient.findFirst({ where: { phone: normalizedPhone } })
+        const existing = await prisma.patient.findFirst({ where: { phone: { in: phoneVariants(normalizedPhone) } } })
         if (existing) {
           await prisma.patient.update({
             where: { id: existing.id },
