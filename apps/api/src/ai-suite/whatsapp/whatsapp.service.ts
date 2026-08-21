@@ -5,6 +5,7 @@ import { createEscalation, notifyJulian } from '../../services/agent/guards/esca
 import { prisma } from '../../lib/prisma'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { hasOutboundConsent } from '../scheduler/guardian-routing.service'
+import { sendPushToUser } from '../../services/push.service'
 
 // ── Classify outbound message type for audit log ──────────────────────────────
 
@@ -674,21 +675,18 @@ export async function maybeNotifyStaff(
     const staff = await prisma.user.findMany({
       where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
     })
+    const title = `New ${channelLabel} message`
+    const body  = `Message from ${displayName !== phone ? displayName : phone} via ${channelLabel}`
+
     await Promise.all(
-      staff.map(u => {
+      staff.map(async u => {
         const href = u.role === 'RECEPTIONIST'
           ? `/receptionist/ai-suite/inbox?phone=${encodeURIComponent(phone)}`
           : `/ai-suite/inbox?phone=${encodeURIComponent(phone)}`
-        return prisma.notification.create({
-          data: {
-            userId: u.id,
-            type:   'MESSAGE',
-            title:  `New ${channelLabel} message`,
-            body:   `Message from ${displayName !== phone ? displayName : phone} via ${channelLabel}`,
-            href,
-            isRead: false,
-          },
+        await prisma.notification.create({
+          data: { userId: u.id, type: 'MESSAGE', title, body, href, isRead: false },
         })
+        sendPushToUser(u.id, { title, body, url: href }).catch(() => {})
       })
     )
   } catch (e: any) {

@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { AlertTriangle, CheckCircle2, Send, RefreshCw, Loader2, MessageSquare, X, Phone, MessageCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -19,8 +20,11 @@ type Escalation = {
 
 type MsgTarget = 'patient' | 'julian'
 
-export default function EscalationsPage() {
+function EscalationsPageInner() {
   const API = '/api-proxy'
+  const searchParams = useSearchParams()
+  const phoneParam   = searchParams.get('phone')
+  const highlightRef = useRef<HTMLDivElement | null>(null)
   function authH(json = false) {
     const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
     const h: Record<string, string> = { Authorization: `Bearer ${t}` }
@@ -54,6 +58,15 @@ export default function EscalationsPage() {
   }, [filter])
 
   useEffect(() => { load() }, [load])
+
+  // Deep-link from a push/in-app notification: scroll to and highlight the
+  // escalation for this phone number once the list has loaded.
+  useEffect(() => {
+    if (!phoneParam || rows.length === 0) return
+    if (filter !== 'all' && !rows.some(r => r.phoneNumber === phoneParam)) setFilter('all')
+    const t = setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)
+    return () => clearTimeout(t)
+  }, [phoneParam, rows])
 
   async function resolve(id: string) {
     setResolving(id)
@@ -156,7 +169,13 @@ export default function EscalationsPage() {
         <div className="space-y-3">
           {displayed.map(esc => (
             <div key={esc.id}
-              className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+              ref={esc.phoneNumber === phoneParam ? highlightRef : undefined}
+              className={cn(
+                'bg-white dark:bg-white/5 rounded-2xl border shadow-sm overflow-hidden transition-all',
+                esc.phoneNumber === phoneParam
+                  ? 'border-amber-400 dark:border-amber-500 ring-2 ring-amber-300/60 dark:ring-amber-500/30'
+                  : 'border-gray-100 dark:border-white/10',
+              )}>
               <div className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -284,5 +303,13 @@ export default function EscalationsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function EscalationsPage() {
+  return (
+    <Suspense>
+      <EscalationsPageInner />
+    </Suspense>
   )
 }

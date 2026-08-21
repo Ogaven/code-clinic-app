@@ -10,6 +10,7 @@ import {
   Link2, RefreshCw, Calendar, Unlink, Wifi, WifiOff, RotateCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { subscribeToPush } from '@/lib/push'
 
 type Tab = 'profile' | 'security' | 'notifications' | 'appearance' | 'integrations'
 
@@ -216,16 +217,12 @@ export default function SettingsPage() {
 
   async function enablePushNotifications() {
     if (!('Notification' in window)) { showToast('Browser does not support notifications', 'err'); return }
-    let perm: NotificationPermission
-    try {
-      perm = await Notification.requestPermission()
-    } catch {
-      showToast('Notifications not supported on this browser', 'err')
-      return
-    }
-    setNotifPerm(perm)
-    setNotifPush(perm === 'granted')
-    if (perm === 'granted') {
+
+    const result = await subscribeToPush()
+    setNotifPerm(Notification.permission)
+    setNotifPush(result.ok)
+
+    if (result.ok) {
       const opts = { body: 'You will now receive Code Clinic alerts.', icon: '/icon.png' }
       if (navigator.serviceWorker && navigator.serviceWorker.controller) {
         navigator.serviceWorker.ready.then(reg => reg.showNotification('Notifications enabled!', opts)).catch(() => {})
@@ -233,8 +230,12 @@ export default function SettingsPage() {
         try { new Notification('Notifications enabled!', opts) } catch {}
       }
       showToast('Push notifications enabled!', 'ok')
-    } else {
+    } else if (result.reason === 'denied') {
       showToast('Permission denied in browser settings', 'err')
+    } else if (result.reason === 'unsupported') {
+      showToast('Push isn’t supported on this browser', 'err')
+    } else {
+      showToast('Could not enable push notifications — try again', 'err')
     }
   }
 

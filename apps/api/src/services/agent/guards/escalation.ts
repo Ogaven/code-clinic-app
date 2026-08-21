@@ -1,5 +1,6 @@
 import { prisma } from '../../../lib/prisma'
 import { phoneVariants } from '../../../utils/phone'
+import { sendPushToUser } from '../../push.service'
 
 // ── Emergency keyword detection ────────────────────────────────
 
@@ -56,21 +57,20 @@ export async function createEscalation(params: {
   // Notify all RECEPTIONIST + ADMIN users
   const staff = await prisma.user.findMany({
     where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
-    select: { id: true },
+    select: { id: true, role: true },
   })
 
+  const title = '🚨 Patient Needs Team Follow-up — Please Action'
+  const body  = `${params.reason.slice(0, 160)} | ${params.channel} | ${params.phoneNumber}`
+
   await Promise.all(
-    staff.map(u =>
-      prisma.notification.create({
-        data: {
-          userId: u.id,
-          type:   'ESCALATION',
-          title:  '🚨 Patient Needs Team Follow-up — Please Action',
-          body:   `${params.reason.slice(0, 160)} | ${params.channel} | ${params.phoneNumber}`,
-          href:   '/receptionist/dashboard',
-        },
-      })
-    )
+    staff.map(async u => {
+      const href = u.role === 'RECEPTIONIST'
+        ? `/receptionist/ai-suite/escalations?phone=${encodeURIComponent(params.phoneNumber)}`
+        : `/ai-suite/escalations?phone=${encodeURIComponent(params.phoneNumber)}`
+      await prisma.notification.create({ data: { userId: u.id, type: 'ESCALATION', title, body, href } })
+      sendPushToUser(u.id, { title, body, url: href }).catch(() => {})
+    })
   )
 }
 

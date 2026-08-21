@@ -43,6 +43,7 @@ import permissionsRouter from './routes/permissions'
 import reportsRouter from './routes/reports'
 import templatesRouter from './routes/templates'
 import sponsorsRouter from './routes/sponsors'
+import pushRouter from './routes/push'
 
 // AI Suite routers
 import aiSuiteRouter     from './ai-suite/whatsapp/whatsapp.routes'
@@ -184,6 +185,7 @@ app.use('/clinical',     clinicalRouter)
 app.use('/pre-visit',    previsitRouter)
 app.use('/audit-logs',   auditRouter)
 app.use('/sponsors',     sponsorsRouter)
+app.use('/push',         pushRouter)
 app.use('/ai-suite',     aiReportsRouter)
 app.use('/reports',      reportsRouter)
 

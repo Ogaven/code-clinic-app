@@ -27,6 +27,11 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID:     z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   SENTRY_DSN:           z.string().optional(),
+
+  // Web push — app degrades gracefully (push send becomes a no-op) when absent
+  VAPID_PUBLIC_KEY:  z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT:     z.string().optional(),
 })
 
 export type Env = z.infer<typeof envSchema>

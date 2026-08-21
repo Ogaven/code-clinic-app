@@ -113,6 +113,7 @@ model User {
   appointments      Appointment[]  @relation("CreatedBy")
   treatmentNotes    TreatmentNote[]
   messageTemplates  MessageTemplate[]
+  pushSubscriptions PushSubscription[]
 
   @@index([isActive])
   @@map("users")
@@ -652,6 +653,21 @@ model Notification {
   @@index([userId, isRead])
   @@index([userId, createdAt])
   @@map("notifications")
+}
+
+// One row per subscribed browser/device (a user can have several).
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 model InternalMessage {

@@ -121,6 +121,18 @@ self.addEventListener('push', (e) => {
   )
 })
 
+// Browsers occasionally rotate/invalidate a push subscription (expiry, key
+// rotation). Re-subscribe immediately so the device keeps receiving push --
+// the backend row is stale until the user's next "Enable Notifications"
+// click or app session re-syncs it, a bounded, self-healing gap.
+self.addEventListener('pushsubscriptionchange', (e) => {
+  const oldKey = e.oldSubscription && e.oldSubscription.options && e.oldSubscription.options.applicationServerKey
+  if (!oldKey) return
+  e.waitUntil(
+    self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: oldKey }).catch(() => {})
+  )
+})
+
 self.addEventListener('notificationclick', (e) => {
   e.notification.close()
   if (e.action === 'dismiss') return
