@@ -58,7 +58,7 @@ const ROUTE_FEATURE: Array<[string, string]> = [
   ['/audit-log',                                             'auditLog'],
 ]
 
-const PUBLIC_PATHS = ['/', '/login', '/setup', '/privacy.html', '/terms.html', '/privacy', '/terms', '/chatbot-widget']
+const PUBLIC_PATHS = ['/', '/login', '/setup', '/privacy.html', '/terms.html', '/privacy', '/terms', '/chatbot-widget', '/pre-visit']
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -67,6 +67,7 @@ export function middleware(request: NextRequest) {
   if (PUBLIC_PATHS.some(p => pathname === p)) return NextResponse.next()
   if (pathname.startsWith('/auth/'))   return NextResponse.next()
   if (pathname.startsWith('/widget/')) return NextResponse.next()
+  if (pathname.startsWith('/quiz/'))   return NextResponse.next()
 
   const token = request.cookies.get('cc_token')?.value
   if (!token) {
