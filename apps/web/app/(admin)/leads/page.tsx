@@ -20,7 +20,7 @@ interface Lead {
 }
 
 // ── Constants ────────────────────────────────────────────────────
-const SOURCES = ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'WEBSITE', 'WALKIN', 'OTHER'] as const
+const SOURCES = ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'WEBSITE', 'QUIZ', 'WALKIN', 'OTHER'] as const
 const STATUSES = ['NEW', 'CONTACTED', 'QUALIFIED', 'CONVERTED', 'LOST'] as const
 
 const SOURCE_STYLE: Record<string, string> = {
@@ -28,6 +28,7 @@ const SOURCE_STYLE: Record<string, string> = {
   FACEBOOK:  'bg-blue-100 text-blue-700',
   INSTAGRAM: 'bg-pink-100 text-pink-700',
   WEBSITE:   'bg-purple-100 text-purple-700',
+  QUIZ:      'bg-fuchsia-100 text-fuchsia-700',
   WALKIN:    'bg-amber-100 text-amber-700',
   OTHER:     'bg-gray-100 text-gray-600',
 }
@@ -37,6 +38,7 @@ const SOURCE_LABEL: Record<string, string> = {
   FACEBOOK:  'Facebook',
   INSTAGRAM: 'Instagram',
   WEBSITE:   'Website',
+  QUIZ:      'Quiz',
   WALKIN:    'Walk-in',
   OTHER:     'Other',
 }

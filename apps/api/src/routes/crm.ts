@@ -148,61 +148,10 @@ router.delete('/leads/:id', requireAuth, requireRole('ADMIN'), async (req: Reque
   }
 })
 
-// ── Quizzes ──────────────────────────────────────────────────────
-
-router.get('/quizzes', requireAuth, async (_req: Request, res: Response) => {
-  try {
-    const quizzes = await prisma.quiz.findMany({ orderBy: { createdAt: 'desc' } })
-    res.json(quizzes)
-  } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch quizzes' })
-  }
-})
-
-router.post('/quizzes', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
-  const { title, questions, resultText } = req.body
-  if (!title) return res.status(400).json({ error: 'Title is required' })
-  try {
-    const quiz = await prisma.quiz.create({
-      data: { title, questions: questions || [], resultText: resultText || {} },
-    })
-    res.status(201).json(quiz)
-  } catch (e) {
-    res.status(500).json({ error: 'Failed to create quiz' })
-  }
-})
-
-router.post('/quizzes/:id/submit', async (req: Request, res: Response) => {
-  const { answers, name, phone, email } = req.body
-  try {
-    const quiz = await prisma.quiz.findUnique({ where: { id: req.params.id } })
-    if (!quiz) return res.status(404).json({ error: 'Quiz not found' })
-
-    const score = Array.isArray(answers) ? answers.reduce((s: number, a: any) => s + (a.score || 0), 0) : 0
-
-    const lead = await prisma.lead.create({
-      data: {
-        name:   name  || 'Quiz Submission',
-        phone:  phone || null,
-        email:  email || null,
-        source: 'WEBSITE',
-        stage:  'NEW',
-        status: 'NEW',
-        score,
-        notes: `Quiz: ${quiz.title}`,
-      },
-    })
-
-    const resultText = (quiz.resultText as unknown) as Record<string, string>
-    const resultKeys = Object.keys(resultText).map(Number).sort((a, b) => b - a)
-    const matchedKey = resultKeys.find(k => score >= k)
-    const result = matchedKey !== undefined ? resultText[String(matchedKey)] : 'Thank you for completing the quiz!'
-
-    res.json({ lead, score, result })
-  } catch (e) {
-    res.status(500).json({ error: 'Failed to submit quiz' })
-  }
-})
+// Quiz Funnels moved to routes/quiz-funnels.ts (mounted at /quiz-funnels) --
+// this stub passed raw objects into Quiz's String-typed questions/resultText
+// columns, which Prisma would reject at runtime, and never populated
+// Lead.quizId/quizAnswers. Superseded, not extended.
 
 // ── QR Captures ──────────────────────────────────────────────────
 

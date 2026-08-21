@@ -12,7 +12,7 @@ import {
   ListChecks, Inbox, Phone, Mic, AlertCircle,
   ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
   Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2, ScrollText, UserPlus, Shield,
-  ClipboardList, BarChart2,
+  ClipboardList, BarChart2, HelpCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -63,6 +63,7 @@ const adminNav: NavGroup[] = [
       { label: 'AI Suite',            href: '/ai-suite',            icon: Bot,      sub: AI_SUITE_SUB },
       { label: 'Leads',              href: '/leads',               icon: UserPlus },
       { label: 'Campaigns',           href: '/campaigns',           icon: Megaphone },
+      { label: 'Quiz Funnels',        href: '/quiz-funnels',        icon: HelpCircle },
       { label: 'Treatment Pipeline',  href: '/treatment-pipeline',  icon: Kanban },
       { label: 'Referrals',           href: '/referrals',           icon: Share2 },
     ],

@@ -16,7 +16,7 @@ const pageTitles: Record<string, string> = {
   '/ai-suite/escalations': 'Escalations', '/ai-suite/calls': 'Call Logs', '/ai-suite/voice-studio': 'Voice Studio',
   '/ai-suite/knowledge-base': 'Knowledge Base', '/ai-suite/settings': 'AI Settings', '/ai-suite/followup-dashboard': 'Follow-ups',
   '/ai-suite/confirmation-dashboard': 'Confirmations', '/ai-suite/analytics': 'Analytics & Costs', '/campaigns': 'Campaigns',
-  '/leads': 'Leads', '/treatment-pipeline': 'Treatment Pipeline', '/referrals': 'Referrals', '/settings': 'Settings',
+  '/leads': 'Leads', '/quiz-funnels': 'Quiz Funnels', '/treatment-pipeline': 'Treatment Pipeline', '/referrals': 'Referrals', '/settings': 'Settings',
   '/profile': 'My Profile',
 }
 
