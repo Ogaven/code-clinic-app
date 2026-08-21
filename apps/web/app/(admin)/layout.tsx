@@ -3,6 +3,7 @@
 import TopBar from '@/components/layout/TopBar'
 import SarahChatbot from '@/components/SarahChatbot'
 import { AppTheme, applyTheme, readTheme } from '@/lib/theme'
+import { cn } from '@/lib/utils'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
@@ -16,6 +17,7 @@ const pageTitles: Record<string, string> = {
   '/ai-suite/knowledge-base': 'Knowledge Base', '/ai-suite/settings': 'AI Settings', '/ai-suite/followup-dashboard': 'Follow-ups',
   '/ai-suite/confirmation-dashboard': 'Confirmations', '/ai-suite/analytics': 'Analytics & Costs', '/campaigns': 'Campaigns',
   '/leads': 'Leads', '/treatment-pipeline': 'Treatment Pipeline', '/referrals': 'Referrals', '/settings': 'Settings',
+  '/profile': 'My Profile',
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -33,7 +35,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (current.role === 'DOCTOR') { router.replace('/doctor/dashboard'); return }
     if (current.role === 'DEVELOPER') { router.replace('/developer/dashboard'); return }
     if (current.role === 'ACCOUNTS') {
-      const allowed = ['/accounts', '/stocks', '/settings', '/support']
+      const allowed = ['/accounts', '/stocks', '/settings', '/support', '/profile']
       if (!allowed.some(prefix => pathname === prefix || pathname.startsWith(prefix + '/'))) { router.replace('/accounts/dashboard'); return }
     }
     setUser(current)
@@ -63,7 +65,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const title = pageTitles[pathname] || (pathname.startsWith('/patients/') ? 'Patient Profile' : null)
     || Object.entries(pageTitles).find(([key]) => pathname.startsWith(key + '/'))?.[1] || 'Overview'
 
-  return <div className={dark ? 'flex h-screen flex-col overflow-hidden bg-transparent' : 'flex h-screen flex-col overflow-hidden bg-clinic-bg'}>
+  return <div className={cn('cc-admin-shell flex h-screen flex-col overflow-hidden', dark ? 'bg-transparent' : 'bg-clinic-bg')}>
     <TopBar title={title} user={user} theme={theme} onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }} />
     <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
     <SarahChatbot />

@@ -410,9 +410,11 @@
 .dark .conversations-ui [class~="bg-blue-100"] { background-color: rgba(59,130,246,0.12) !important; }
 .dark .conversations-ui [class~="text-blue-600"] { color: #7cb3ff !important; }
 .dark .conversations-ui [class~="bg-gray-200"] { background-color: #1b3050 !important; }
+.dark .conversations-ui [class~="bg-[#f0f2f5]"] { background-color: #10233d !important; }
 .dark .conversations-ui [class~="border-gray-50"],
 .dark .conversations-ui [class~="border-gray-100"],
 .dark .conversations-ui [class~="border-gray-200"],
+.dark .conversations-ui [class~="border-b-gray-50"],
 .dark .conversations-ui [class~="border-blue-400"] { border-color: rgba(255,255,255,0.09) !important; }
 .dark .conversations-ui [class~="text-gray-800"],
 .dark .conversations-ui [class~="text-gray-700"],
@@ -424,3 +426,23 @@
 .dark .conversations-ui [class~="hover:bg-gray-100"]:hover { background-color: rgba(255,255,255,0.06) !important; }
 .dark .conversations-ui input,
 .dark .conversations-ui textarea { color: #e8f0fa; }
+
+/* ── Admin/Accounts shell typography ───────────────────────────────────────
+   Crisper, Inter-based enterprise type system, scoped to the redesigned
+   Admin/Accounts shell only — Doctor and Receptionist keep their existing
+   Plus Jakarta Sans look untouched. No new font dependency: Inter is already
+   loaded via the Google Fonts <link> in app/layout.tsx and is Tailwind's
+   configured font-sans. */
+.cc-admin-shell {
+  font-family: 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+.cc-admin-shell h1, .cc-admin-shell h2, .cc-admin-shell h3, .cc-admin-shell h4 {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.cc-admin-shell .font-bold { font-weight: 600; }

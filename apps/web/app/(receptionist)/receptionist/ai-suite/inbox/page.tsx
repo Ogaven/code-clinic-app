@@ -991,13 +991,13 @@ function InboxPage() {
           const preview = last ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No messages'
           return (
             <div key={conv.id}
-              className={cn('flex items-center gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer transition-colors select-none',
-                active ? 'bg-green-50' : 'hover:bg-gray-50')}
+              className={cn('flex items-center gap-3 border-b border-l-[3px] border-b-gray-50 px-3.5 py-3 cursor-pointer transition-colors select-none dark:border-b-white/[0.04]',
+                active ? 'border-l-[#25D366] bg-[#f4fbf3] dark:bg-[#0f2a1c]' : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-white/[0.04]')}
               onClick={() => selectConv(conv)}
               role="button" tabIndex={0}
               onKeyDown={e => { if (e.key === 'Enter') selectConv(conv) }}>
               <div className="relative flex-shrink-0">
-                <Avatar name={name} size={46} />
+                <Avatar name={name} size={44} />
                 <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-white shadow-sm overflow-hidden flex items-center justify-center bg-white">
                   <NextImage src="/icons/whatsapp.png" alt="WhatsApp" width={16} height={16} className="block w-full h-full object-contain mix-blend-multiply" />
                 </span>
@@ -1007,10 +1007,10 @@ function InboxPage() {
                   <span className="text-sm font-semibold text-gray-800 truncate">{name}</span>
                   <span className="text-[11px] flex-shrink-0 ml-1 text-gray-400">{time}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-gray-400 truncate flex-1">{preview}</p>
                   {!conv.agentEnabled && (
-                    <span className="ml-2 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-amber-400">!</span>
+                    <span className="flex-shrink-0 h-2 w-2 rounded-full bg-amber-400" title="Needs a human reply" />
                   )}
                 </div>
               </div>
@@ -1035,14 +1035,17 @@ function InboxPage() {
             never extended to the Cloud API). Showing a dot here would be fake. */}
         <Avatar name={convLabel(sel, 'WHATSAPP')} size={40} />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-white truncate">{convLabel(sel, 'WHATSAPP')}</p>
-          <p className="text-[11px]" style={{ color: '#90cbb7' }}>
-            {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'} · {formatPhoneDisplay(sel.phoneNumber)}
-          </p>
+          <p className="text-sm font-semibold text-white truncate">{convLabel(sel, 'WHATSAPP')}</p>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px]" style={{ color: '#90cbb7' }}>
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-1.5 py-0.5 font-medium text-white/85">
+              {sel.agentEnabled ? '🤖 AI handling' : '👤 Human handling'}
+            </span>
+            <span className="truncate">{formatPhoneDisplay(sel.phoneNumber)}</span>
+          </div>
         </div>
         <ChatMenu sel={sel} onChanged={handleConvChanged} />
         <button onClick={toggleTakeover}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all hover:opacity-90"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-90"
           style={{ background: isHuman ? '#06b6d4' : '#F59E0B' }}>
           {isHuman ? <><Bot size={13} /> Hand Back</> : <><UserCheck size={13} /> Take Over</>}
         </button>
@@ -1148,13 +1151,14 @@ function InboxPage() {
           const isCommentCh = channel === 'FB_COMMENTS' || channel === 'IG_COMMENTS'
           return (
             <div key={conv.id}
-              className={cn('flex items-center gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer transition-colors hover:bg-gray-50 select-none')}
-              style={active ? { backgroundColor: accent + '15' } : undefined}
+              className={cn('flex items-center gap-3 border-b border-l-[3px] border-b-gray-50 px-3.5 py-3 cursor-pointer transition-colors select-none dark:border-b-white/[0.04]',
+                active ? 'dark:bg-white/[0.05]' : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-white/[0.04]')}
+              style={{ borderLeftColor: active ? accent : 'transparent', backgroundColor: active ? accent + '0d' : undefined }}
               onClick={() => selectConv(conv)}
               role="button" tabIndex={0}
               onKeyDown={e => { if (e.key === 'Enter') selectConv(conv) }}>
               <div className="relative flex-shrink-0">
-                <Avatar name={name} size={46} pictureUrl={conv.profilePictureUrl} />
+                <Avatar name={name} size={44} pictureUrl={conv.profilePictureUrl} />
                 <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-white shadow-sm overflow-hidden flex items-center justify-center bg-white flex-shrink-0">
                   <NextImage src={ch.imgSrc} alt={ch.label} width={16} height={16}
                     className={cn('block w-full h-full object-contain', ch.key === 'INSTAGRAM' ? 'rounded-full' : 'mix-blend-multiply')} />
@@ -1165,10 +1169,10 @@ function InboxPage() {
                   <span className="text-sm font-semibold text-gray-800 truncate">{name}</span>
                   <span className="text-[11px] flex-shrink-0 ml-1 text-gray-400">{time}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-gray-400 truncate flex-1">{preview}</p>
                   {!conv.agentEnabled && (
-                    <span className="ml-2 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-amber-400">!</span>
+                    <span className="flex-shrink-0 h-2 w-2 rounded-full bg-amber-400" title="Needs a human reply" />
                   )}
                 </div>
                 {isCommentCh && conv.postCaption && (
@@ -1193,10 +1197,13 @@ function InboxPage() {
         </button>
         <Avatar name={convLabel(sel, channel)} size={40} pictureUrl={sel.profilePictureUrl} />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-gray-800 truncate">{convLabel(sel, channel)}</p>
-          <p className="text-[11px] text-gray-400">
-            {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'}{channel === 'WHATSAPP' ? ` · ${formatPhoneDisplay(sel.phoneNumber)}` : ''}
-          </p>
+          <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{convLabel(sel, channel)}</p>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-400">
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 font-medium text-gray-500 dark:bg-white/10 dark:text-slate-300">
+              {sel.agentEnabled ? '🤖 AI handling' : '👤 Human handling'}
+            </span>
+            {channel === 'WHATSAPP' && <span className="truncate">{formatPhoneDisplay(sel.phoneNumber)}</span>}
+          </div>
         </div>
         <ChatMenu sel={sel} onChanged={handleConvChanged} dark={dark} />
         <button onClick={toggleTakeover}
@@ -1261,23 +1268,23 @@ function InboxPage() {
   return (
     <div className="conversations-ui flex flex-col h-full overflow-hidden bg-white dark:bg-[#08162f]">
       {/* Channel tab bar */}
-      <div className="flex-shrink-0 flex items-center border-b border-gray-200 bg-white px-1">
+      <div className="flex-shrink-0 flex items-center gap-0.5 border-b border-gray-200 bg-white px-2 py-1.5">
         {CHANNELS.map(c => {
           const active = channel === c.key
           return (
             <button key={c.key} onClick={() => { setChannel(c.key); setMobileView('list') }}
-              className={cn('flex items-center gap-2 px-4 py-1.5 text-sm font-semibold border-b-2 -mb-px transition-all',
-                active ? 'border-current' : 'border-transparent text-gray-400 hover:text-gray-600')}
-              style={active ? { color: c.color } : undefined}>
+              className={cn('flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all',
+                active ? 'font-semibold' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:hover:bg-white/5')}
+              style={active ? { color: c.color, backgroundColor: c.color + '12' } : undefined}>
               <NextImage
                 src={c.imgSrc}
                 alt={c.label}
-                width={45}
-                height={45}
+                width={30}
+                height={30}
                 className={cn(
                   'object-contain flex-shrink-0 transition-opacity',
                   c.key === 'INSTAGRAM' ? 'rounded-full' : 'mix-blend-multiply dark:mix-blend-normal',
-                  active ? 'opacity-100' : 'opacity-35'
+                  active ? 'opacity-100' : 'opacity-40'
                 )}
               />
               <span className="hidden sm:inline">{c.label}</span>

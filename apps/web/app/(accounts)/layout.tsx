@@ -2,6 +2,7 @@
 
 import TopBar from '@/components/layout/TopBar'
 import { AppTheme, applyTheme, readTheme } from '@/lib/theme'
+import { cn } from '@/lib/utils'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
@@ -47,7 +48,7 @@ export default function AccountsLayout({ children }: { children: React.ReactNode
   }, [])
 
   const title = pageTitles[pathname] || Object.entries(pageTitles).find(([key]) => pathname.startsWith(key + '/'))?.[1] || 'Accounts'
-  return <div className={dark ? 'flex h-screen flex-col overflow-hidden bg-transparent' : 'flex h-screen flex-col overflow-hidden bg-clinic-bg'}>
+  return <div className={cn('cc-admin-shell flex h-screen flex-col overflow-hidden', dark ? 'bg-transparent' : 'bg-clinic-bg')}>
     <TopBar title={title} user={user} theme={theme} onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }} />
     <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
   </div>
