@@ -7,7 +7,7 @@ import {
   Search, Send, Paperclip, Smile, X, Loader2,
   MessageSquare, Instagram, Facebook, Globe, Bot, UserCheck,
   Image as ImageIcon, FileText, Music, Video as VideoIcon, Check, CheckCheck,
-  ChevronLeft, Bell, Plus, Archive, ArchiveRestore, Trash2, MoreVertical,
+  ChevronLeft, Plus, Archive, ArchiveRestore, Trash2, MoreVertical,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -759,6 +759,7 @@ function CommentPostView({ channel, accent }: { channel: 'FB_COMMENTS' | 'IG_COM
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 function InboxPage() {
+  const [dark, setDark] = useState(false)
   const searchParams = useSearchParams()
   const phoneParam   = searchParams.get('phone')
   const [channel,    setChannel]    = useState<ChannelKey>('WHATSAPP')
@@ -776,7 +777,6 @@ function InboxPage() {
   const isNearBottom   = useRef(true)
   const prevConvId     = useRef<string | null>(null)
   const prevConvsRef   = useRef<Map<string, string>>(new Map())
-  const [notifPerm, setNotifPerm] = useState<string>('default')
   const [showArchived, setShowArchived] = useState(false)
   const [showNewChat,  setShowNewChat]  = useState(false)
   const pendingSelectId = useRef<string | null>(null)
@@ -875,17 +875,13 @@ function InboxPage() {
   }, [channel, showArchived])
 
   useEffect(() => {
-    if ('Notification' in window) setNotifPerm(Notification.permission)
-    else setNotifPerm('not-supported')
+    const syncTheme = () => setDark(document.documentElement.classList.contains('dark'))
+    syncTheme()
+    const observer = new MutationObserver(syncTheme)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    window.addEventListener('cc-theme', syncTheme)
+    return () => { observer.disconnect(); window.removeEventListener('cc-theme', syncTheme) }
   }, [])
-
-  async function handleEnableNotif() {
-    if (!('Notification' in window)) return
-    try {
-      const perm = await Notification.requestPermission()
-      setNotifPerm(perm)
-    } catch {}
-  }
 
   useEffect(() => {
     if (pollMsg.current) clearInterval(pollMsg.current)
@@ -1054,7 +1050,7 @@ function InboxPage() {
 
       <div className="flex-1 overflow-y-auto min-h-0 px-4 pt-4 pb-20 space-y-1.5"
         onScroll={handleMessagesScroll}
-        style={{ background: '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
+        style={{ background: dark ? '#0b1f38' : '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-400" /></div>
         )}
@@ -1084,7 +1080,7 @@ function InboxPage() {
       </div>
 
       {!isHuman ? (
-        <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 border-t border-gray-200" style={{ background: '#f9fafb' }}>
+        <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 border-t border-gray-200" style={{ background: dark ? '#0c1b32' : '#f9fafb' }}>
           <Bot size={18} className="text-[#25D366] flex-shrink-0" />
           <p className="flex-1 text-xs text-gray-500">AI is handling this — click <strong className="text-amber-500">Take Over</strong> to reply manually</p>
           <button onClick={toggleTakeover} className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-amber-400 hover:bg-amber-500 transition-colors">
@@ -1092,16 +1088,16 @@ function InboxPage() {
           </button>
         </div>
       ) : (
-        <Composer sel={sel!} fetchMsgs={fetchMsgs} channel={channel} accent={accent} dark={false} />
+        <Composer sel={sel!} fetchMsgs={fetchMsgs} channel={channel} accent={accent} dark={dark} />
       )}
     </div>
   ) : (
     <div className="flex flex-col items-center justify-center h-full gap-3"
-      style={{ background: '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
+      style={{ background: dark ? '#0b1f38' : '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
       <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: '#25D36620' }}>
         <MessageSquare size={36} className="text-[#25D366]" />
       </div>
-      <p className="text-gray-600 text-sm font-semibold">Select a conversation to start</p>
+      <p className="text-gray-600 dark:text-slate-300 text-sm font-semibold">Select a conversation to start</p>
       <p className="text-gray-400 text-xs">WhatsApp</p>
     </div>
   )
@@ -1202,7 +1198,7 @@ function InboxPage() {
             {sel.agentEnabled ? '🤖 AI is handling' : '👤 Human handling'}{channel === 'WHATSAPP' ? ` · ${formatPhoneDisplay(sel.phoneNumber)}` : ''}
           </p>
         </div>
-        <ChatMenu sel={sel} onChanged={handleConvChanged} dark={false} />
+        <ChatMenu sel={sel} onChanged={handleConvChanged} dark={dark} />
         <button onClick={toggleTakeover}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5"
           style={{ background: isHuman ? '#06b6d4' : accent }}>
@@ -1245,7 +1241,7 @@ function InboxPage() {
           </button>
         </div>
       ) : (
-        <Composer sel={sel!} fetchMsgs={fetchMsgs} channel={channel} accent={accent} dark={false} />
+        <Composer sel={sel!} fetchMsgs={fetchMsgs} channel={channel} accent={accent} dark={dark} />
       )}
     </div>
   ) : (
@@ -1254,7 +1250,7 @@ function InboxPage() {
         <ChIcon size={36} style={{ color: accent }} />
       </div>
       <p className="text-gray-600 text-sm font-semibold">Select a conversation to start</p>
-      <p className="text-gray-400 text-xs">AI Suite Inbox — {ch.label}</p>
+      <p className="text-gray-400 text-xs">Conversations — {ch.label}</p>
     </div>
   )
 
@@ -1263,7 +1259,7 @@ function InboxPage() {
   const ChatPanel = channel === 'WHATSAPP' ? WaChatPanel : LightChatPanel
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="conversations-ui flex flex-col h-full overflow-hidden bg-white dark:bg-[#08162f]">
       {/* Channel tab bar */}
       <div className="flex-shrink-0 flex items-center border-b border-gray-200 bg-white px-1">
         {CHANNELS.map(c => {
@@ -1280,7 +1276,7 @@ function InboxPage() {
                 height={45}
                 className={cn(
                   'object-contain flex-shrink-0 transition-opacity',
-                  c.key === 'INSTAGRAM' ? 'rounded-full' : 'mix-blend-multiply',
+                  c.key === 'INSTAGRAM' ? 'rounded-full' : 'mix-blend-multiply dark:mix-blend-normal',
                   active ? 'opacity-100' : 'opacity-35'
                 )}
               />
@@ -1288,28 +1284,6 @@ function InboxPage() {
             </button>
           )
         })}
-        {notifPerm !== 'not-supported' && (
-          notifPerm === 'granted' ? (
-            <span className="ml-auto mr-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 rounded-xl flex-shrink-0"
-              title="Browser notifications are enabled">
-              <Bell size={13} />
-              <span className="hidden sm:inline">Notifications ON</span>
-            </span>
-          ) : notifPerm === 'denied' ? (
-            <span className="ml-auto mr-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-500 bg-red-50 rounded-xl flex-shrink-0"
-              title="Notifications are blocked — open browser site settings to allow them">
-              <Bell size={13} />
-              <span className="hidden sm:inline">Notifications blocked</span>
-            </span>
-          ) : (
-            <button onClick={handleEnableNotif}
-              className="ml-auto mr-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors flex-shrink-0"
-              title="Get notified when new messages arrive">
-              <Bell size={13} />
-              <span className="hidden sm:inline">Enable notifications</span>
-            </button>
-          )
-        )}
       </div>
 
       {/* Split pane */}

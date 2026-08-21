@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import { Camera, Save, Lock, Mail, User, AlertCircle, CheckCircle, Loader2, Eye, EyeOff } from 'lucide-react'
+import Link from 'next/link'
+import { Camera, Save, Lock, Mail, User, AlertCircle, CheckCircle, Loader2, Eye, EyeOff, UserCog, Shield, ScrollText } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 
 const roleColors: Record<string, string> = {
@@ -287,6 +288,26 @@ export default function SettingsPage() {
           </button>
         </div>
       </form>
+
+      {user.role === 'ADMIN' && (
+        <section className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 p-6">
+          <h3 className="font-bold text-clinic-navy dark:text-white mb-1">Practice Administration</h3>
+          <p className="text-xs text-gray-400 mb-4">Manage staff access and review operational activity.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { href: '/employees', label: 'Staff List', icon: UserCog },
+              { href: '/admin/staff/permissions', label: 'Staff Permissions', icon: Shield },
+              { href: '/audit-log', label: 'Audit Log', icon: ScrollText },
+            ].map(({ href, label, icon: Icon }) => (
+              <Link key={href} href={href}
+                className="flex items-center gap-3 rounded-xl border border-gray-100 dark:border-white/10 p-3 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:border-cyan-300 hover:bg-cyan-50/50 dark:hover:bg-cyan-400/5 transition-colors">
+                <span className="grid h-9 w-9 place-items-center rounded-lg bg-cyan-50 dark:bg-cyan-400/10 text-cyan-600 dark:text-cyan-300"><Icon size={16} /></span>
+                {label}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── Danger Zone ── */}
       <div className="rounded-2xl border border-red-200 p-6" style={{ background: 'rgba(254,242,242,0.5)' }}>

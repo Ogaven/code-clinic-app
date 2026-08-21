@@ -27,7 +27,7 @@ const navTop: NavItem[] = [
     label: 'AI Suite',   href: '/receptionist/ai-suite',     icon: Bot,
     sub: [
       { label: 'Agent Control',          href: '/receptionist/ai-suite',                        icon: Bot },
-      { label: 'Inbox',                  href: '/receptionist/ai-suite/inbox',                  icon: Inbox,        permKey: 'aiSuiteInbox' },
+      { label: 'Conversations',          href: '/receptionist/ai-suite/inbox',                  icon: Inbox,        permKey: 'aiSuiteInbox' },
       { label: 'Call Logs',              href: '/receptionist/ai-suite/calls',                  icon: Phone,        permKey: 'callLogs' },
       { label: 'Voice Studio',           href: '/receptionist/ai-suite/voice-studio',           icon: Mic,          permKey: 'voiceStudio' },
       { label: 'Knowledge Base',         href: '/receptionist/ai-suite/knowledge',              icon: BookOpen,     permKey: 'knowledgeBase' },
@@ -844,7 +844,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
           { href: '/receptionist/dashboard',      icon: LayoutDashboard, label: 'Home' },
           { href: '/receptionist/scheduling',     icon: CalendarDays,    label: 'Schedule',  permKey: 'scheduling' },
           { href: '/receptionist/patients',       icon: Users,           label: 'Patients',  permKey: 'patients' },
-          { href: '/receptionist/ai-suite/inbox', icon: Inbox,           label: 'Inbox',     permKey: 'aiSuiteInbox' },
+          { href: '/receptionist/ai-suite/inbox', icon: Inbox,           label: 'Conversations', permKey: 'aiSuiteInbox' },
           { href: '/receptionist/flow',           icon: Zap,             label: 'Flow',      permKey: 'liveFlow' },
         ].filter(item => allowed(item.permKey)).map(({ href, icon: Icon, label }) => {
           const active = pathname === href || pathname.startsWith(href + '/')

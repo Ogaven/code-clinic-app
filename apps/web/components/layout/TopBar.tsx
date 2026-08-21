@@ -1,77 +1,94 @@
 'use client'
 
-import { Search, Bell, ChevronDown, Sun, Moon, Download, Smartphone, Monitor, X } from 'lucide-react'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { getInitials } from '@/lib/utils'
+import Image from 'next/image'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
+import { Bell, Check, LogOut, Menu, Monitor, Moon, Palette, Search, Settings, Sun, User, X } from 'lucide-react'
+import { cn, getInitials } from '@/lib/utils'
+import { AppTheme, saveTheme } from '@/lib/theme'
+
+type UserInfo = { firstName: string; lastName: string; role: string; avatarUrl?: string | null }
+type NavLink = { label: string; href?: string; children?: NavLink[]; disabled?: boolean }
 
 interface TopBarProps {
   title: string
-  dark?: boolean
-  onThemeToggle?: (dark: boolean) => void
-  user?: { firstName: string; lastName: string; role: string; avatarUrl?: string | null }
+  theme: AppTheme
+  user?: UserInfo
+  onThemeChange: (theme: AppTheme, dark: boolean) => void
 }
 
 const roleLabels: Record<string, string> = {
-  ADMIN: 'Administrator', DOCTOR: 'Doctor', RECEPTIONIST: 'Receptionist',
-  ACCOUNTS: 'Accounts', DEVELOPER: 'Developer',
-}
-const roleColors: Record<string, string> = {
-  ADMIN: '#1A237E', DOCTOR: '#29ABE2', RECEPTIONIST: '#10B981',
-  ACCOUNTS: '#F59E0B', DEVELOPER: '#8B5CF6',
-}
-const TYPE_DOT: Record<string, string> = {
-  APPOINTMENT: '#29ABE2', INVOICE: '#F59E0B', AI: '#10B981', SYSTEM: '#6B7280',
+  ADMIN: 'Administrator', ACCOUNTS: 'Accounts', DOCTOR: 'Doctor', RECEPTIONIST: 'Receptionist', DEVELOPER: 'Developer',
 }
 
-function timeAgo(dateStr: string): string {
-  const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000)
-  if (mins < 1)   return 'just now'
-  if (mins < 60)  return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24)   return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
+const NAV: NavLink[] = [
+  { label: 'Overview', href: '/dashboard' },
+  { label: 'Patients', href: '/patients' },
+  { label: 'Appointments', href: '/scheduling' },
+  { label: 'Treatments', children: [{ label: 'Treatment Pipeline', href: '/treatment-pipeline' }] },
+  { label: 'Billing', children: [
+    { label: 'Accounts', href: '/accounts/dashboard' }, { label: 'Sales', href: '/accounts/invoices' },
+    { label: 'Expenses', href: '/accounts/expenses' }, { label: 'Payroll', href: '/accounts/payroll' }, { label: 'Stocks', href: '/stocks' },
+  ] },
+  { label: 'AI Suite', children: [
+    { label: 'Conversations', href: '/ai-suite/inbox' }, { label: 'Knowledge Base', href: '/ai-suite/knowledge-base' },
+    { label: 'Escalations', href: '/ai-suite/escalations' }, { label: 'Follow-ups', href: '/ai-suite/followup-dashboard' },
+    { label: 'Confirmations', href: '/ai-suite/confirmation-dashboard' }, { label: 'Reminders', disabled: true },
+    { label: 'Settings', href: '/ai-suite/settings', children: [
+      { label: 'Agent Control', href: '/ai-suite' }, { label: 'Call Logs', href: '/ai-suite/calls' },
+      { label: 'Voice Studio', href: '/ai-suite/voice-studio' }, { label: 'Analytics & Costs', href: '/ai-suite/analytics' },
+    ] },
+  ] },
+  { label: 'CRM', children: [{ label: 'Leads', href: '/leads' }, { label: 'Campaigns', href: '/campaigns' }, { label: 'Referrals', href: '/referrals' }] },
+  { label: 'Reports', children: [
+    { label: 'Case Acceptance', href: '/reports/case-acceptance' }, { label: 'Patient Live Flow', href: '/reports/patient-flow' },
+    { label: 'Daily / Weekly Reports', href: '/reports/clinical' },
+  ] },
+]
+
+const TYPE_DOT: Record<string, string> = { APPOINTMENT: '#29ABE2', INVOICE: '#F59E0B', AI: '#10B981', SYSTEM: '#6B7280' }
+
+function isActive(pathname: string, item: NavLink): boolean {
+  if (item.href === '/dashboard') return pathname === '/dashboard' || pathname === '/admin/dashboard'
+  if (item.href && (pathname === item.href || pathname.startsWith(item.href + '/'))) return true
+  return item.children?.some(child => isActive(pathname, child)) || false
 }
 
-export default function TopBar({ title, user, dark = false, onThemeToggle }: TopBarProps) {
+function timeAgo(value: string) {
+  const mins = Math.floor((Date.now() - new Date(value).getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  if (mins < 1440) return `${Math.floor(mins / 60)}h ago`
+  return `${Math.floor(mins / 1440)}d ago`
+}
+
+export default function TopBar({ title, user, theme, onThemeChange }: TopBarProps) {
+  const pathname = usePathname()
   const router = useRouter()
-  const [notifOpen,    setNotifOpen]    = useState(false)
-  const [installOpen,  setInstallOpen]  = useState(false)
-  const [profileOpen,  setProfileOpen]  = useState(false)
-  const [search,       setSearch]       = useState('')
-  const [installPrompt, setInstallPrompt] = useState<any>(null)
-  const [installed,    setInstalled]    = useState(false)
-  const [isIOS,        setIsIOS]        = useState(false)
-  const [isAndroid,    setIsAndroid]    = useState(false)
+  const searchInput = useRef<HTMLInputElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<any[]>([])
+  const [searching, setSearching] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
-  const [unread,       setUnread]       = useState(0)
+  const [unread, setUnread] = useState(0)
 
-  useEffect(() => {
-    const ua  = navigator.userAgent
-    setIsIOS(/iPad|iPhone|iPod/.test(ua))
-    setIsAndroid(/Android/.test(ua))
-
-    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e) }
-    window.addEventListener('beforeinstallprompt', handler)
-    window.addEventListener('appinstalled', () => {
-      setInstalled(true)
-      localStorage.setItem('app_installed', 'true')
-    })
-    if (window.matchMedia('(display-mode: standalone)').matches) setInstalled(true)
-    if (localStorage.getItem('app_installed') === 'true') setInstalled(true)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
-
+  useEffect(() => { setMenuOpen(false); setSearchOpen(false); setProfileOpen(false); setNotifOpen(false) }, [pathname])
+  useEffect(() => { if (searchOpen) setTimeout(() => searchInput.current?.focus(), 40) }, [searchOpen])
   useEffect(() => {
     fetchNotifications()
-    const t = setInterval(fetchNotifications, 30000)
-    return () => clearInterval(t)
+    const timer = setInterval(fetchNotifications, 30000)
+    return () => clearInterval(timer)
   }, [])
 
   async function fetchNotifications() {
+    const token = localStorage.getItem('cc_token')
+    if (!token) return
     try {
-      const token = localStorage.getItem('cc_token')
-      if (!token) return
       const res = await fetch('/api-proxy/receptionist/notifications', { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) return
       const data = await res.json()
@@ -80,315 +97,127 @@ export default function TopBar({ title, user, dark = false, onThemeToggle }: Top
     } catch {}
   }
 
-  async function markOneRead(id: string) {
+  async function handleSearch(value: string) {
+    setQuery(value)
+    if (value.trim().length < 2) { setResults([]); return }
+    setSearching(true)
     try {
       const token = localStorage.getItem('cc_token')
-      await fetch(`/api-proxy/receptionist/notifications/${id}/read`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } })
-    } catch {}
+      const res = await fetch(`/api-proxy/patients?q=${encodeURIComponent(value.trim())}&limit=8`, { headers: { Authorization: `Bearer ${token}` } })
+      if (res.ok) { const data = await res.json(); setResults(Array.isArray(data) ? data : data.data || []) }
+    } catch {} finally { setSearching(false) }
   }
 
   async function markAllRead() {
-    try {
+    const token = localStorage.getItem('cc_token')
+    try { await fetch('/api-proxy/receptionist/notifications/mark-read', { method: 'PUT', headers: { Authorization: `Bearer ${token}` } }) } catch {}
+    setUnread(0); setNotifications(items => items.map(item => ({ ...item, isRead: true })))
+  }
+
+  async function openNotification(item: any) {
+    if (!item.isRead) {
+      setUnread(value => Math.max(0, value - 1))
+      setNotifications(items => items.map(value => value.id === item.id ? { ...value, isRead: true } : value))
       const token = localStorage.getItem('cc_token')
-      await fetch('/api-proxy/receptionist/notifications/mark-read', { method: 'PUT', headers: { Authorization: `Bearer ${token}` } })
-      setUnread(0)
-      setNotifications(n => n.map(x => ({ ...x, isRead: true })))
-    } catch {}
-  }
-
-  async function handleInstall() {
-    if (installPrompt) {
-      installPrompt.prompt()
-      const { outcome } = await installPrompt.userChoice
-      if (outcome === 'accepted') setInstalled(true)
-      setInstallPrompt(null)
+      fetch(`/api-proxy/receptionist/notifications/${item.id}/read`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } }).catch(() => {})
     }
+    setNotifOpen(false)
+    if (item.href) router.push(item.href)
   }
 
-  function toggleTheme() {
-    const next = !dark
-    localStorage.setItem('cc_theme', next ? 'dark' : 'light')
-    document.documentElement.classList.toggle('dark', next)
-    onThemeToggle?.(next)
-    window.dispatchEvent(new CustomEvent('cc-theme', { detail: next ? 'dark' : 'light' }))
+  function chooseTheme(next: AppTheme) {
+    const dark = saveTheme(next)
+    onThemeChange(next, dark)
   }
 
-  const initials  = user ? getInitials(user.firstName, user.lastName) : '??'
-  const roleColor = user ? (roleColors[user.role] || '#1A237E') : '#1A237E'
-  const bg        = dark ? 'rgba(10,18,60,0.85)'      : 'rgba(255,255,255,0.85)'
-  const bdr       = dark ? 'rgba(255,255,255,0.08)'   : 'rgba(229,231,235,0.9)'
-  const titleC    = dark ? '#E0E8FF'  : '#1A237E'
-  const searchBg  = dark ? 'rgba(255,255,255,0.06)'   : '#F3F4F6'
-  const searchBdr = dark ? 'rgba(255,255,255,0.1)'    : '#E5E7EB'
-  const searchCl  = dark ? '#C8D8F0'  : '#374151'
-  const iconCl    = dark ? '#8BA0C0'  : '#6B7280'
-  const nameCl    = dark ? '#E0E8FF'  : '#111827'
-  const btnBg     = dark ? 'rgba(255,255,255,0.08)'   : 'rgba(255,255,255,0.9)'
-  const btnBdr    = dark ? 'rgba(255,255,255,0.12)'   : '#E5E7EB'
-  const dropBg    = dark ? 'rgba(12,20,75,0.97)'      : '#fff'
+  function signOut() {
+    localStorage.removeItem('cc_token'); localStorage.removeItem('cc_user')
+    document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
+    window.location.href = '/login'
+  }
+
+  const initials = user ? getInitials(user.firstName, user.lastName) : 'CC'
+  const iconButton = 'relative grid h-10 w-10 place-items-center rounded-full border border-gray-200/80 bg-white/70 text-gray-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-300 dark:hover:bg-white/10'
 
   return (
     <>
-    <header className="h-[60px] flex items-center justify-between px-5 sticky top-0 z-20 gap-4 flex-shrink-0"
-      style={{ background: bg, backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderBottom: `1px solid ${bdr}`, transition: 'background 0.3s' }}>
+      <header className="relative z-40 flex h-[76px] flex-shrink-0 items-center gap-3 border-b border-gray-200/70 bg-white/75 px-4 backdrop-blur-xl dark:border-white/10 dark:bg-[#07152f]/80 lg:px-6">
+        <Link href={user?.role === 'ACCOUNTS' ? '/accounts/dashboard' : '/dashboard'} className="flex w-[128px] flex-shrink-0 items-center" aria-label="Code Clinic home">
+          <Image src="/logo.png" alt="Code Clinic" width={118} height={38} className="object-contain dark:brightness-0 dark:invert" priority />
+        </Link>
 
-      <h1 className="text-[17px] font-bold whitespace-nowrap flex-shrink-0"
-        style={{ fontFamily: 'Plus Jakarta Sans', color: titleC }}>{title}</h1>
-
-      <div className="flex-1 max-w-md">
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: iconCl }} />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search patients, appointments, invoices..."
-            className="w-full pl-9 pr-4 py-2 rounded-xl text-xs outline-none transition-all"
-            style={{ background: searchBg, border: `1px solid ${searchBdr}`, color: searchCl }} />
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2 flex-shrink-0">
-
-        {/* Install / Download button — device-aware */}
-        {!installed && (
-          <button
-            onClick={() => {
-              if (installPrompt && (isAndroid || !isIOS)) { handleInstall() }
-              else { setInstallOpen(true) }
-            }}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:scale-105"
-            style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)', color: 'white', boxShadow: '0 2px 8px rgba(41,171,226,0.4)' }}>
-            <Download size={13} />
-            {isIOS ? 'Add to Home Screen' : 'Install App'}
-          </button>
-        )}
-
-        {/* Theme */}
-        <button onClick={toggleTheme}
-          className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105"
-          style={{ background: btnBg, border: `1px solid ${btnBdr}` }}>
-          {dark ? <Sun size={15} color="#FCD34D" /> : <Moon size={15} color="#1A237E" />}
-        </button>
-
-        {/* Notifications */}
-        <div className="relative">
-          <button onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false) }}
-            className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105"
-            style={{ background: btnBg, border: `1px solid ${btnBdr}` }}>
-            <Bell size={28} style={{ color: iconCl }} />
-            {unread > 0 && (
-              <span className="absolute flex items-center justify-center text-white text-[10px] font-bold bg-red-500 rounded-full"
-                style={{ top: -4, right: -4, minWidth: 18, height: 18, padding: '0 4px' }}>
-                {unread > 9 ? '9+' : unread}
-              </span>
-            )}
-          </button>
-        </div>
-
-        <div className="w-px h-6" style={{ background: bdr }} />
-
-        {/* Profile — clickable dropdown */}
-        {user && (
-          <div className="relative">
-            <button onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false) }}
-              className="flex items-center gap-2.5 cursor-pointer group">
-              {user.avatarUrl ? (
-                <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-xl object-cover object-top" style={{ border: `2px solid ${bdr}` }} />
+        <nav className="mx-auto hidden h-12 items-center gap-0.5 rounded-full border border-white/70 bg-white/65 px-2 shadow-[0_8px_28px_rgba(15,23,42,0.09)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.07] xl:flex" aria-label="Primary navigation">
+          {NAV.map(item => (
+            <div key={item.label} className="group/item relative h-full" tabIndex={item.children ? 0 : undefined}>
+              {item.href ? (
+                <Link href={item.href} className={cn('flex h-full items-center rounded-full px-3 text-[11px] font-bold uppercase text-gray-500 transition focus:outline-none focus:ring-2 focus:ring-cyan-400/50 dark:text-slate-300', isActive(pathname, item) ? 'bg-clinic-navy text-white shadow-sm dark:bg-cyan-400 dark:text-[#07152f]' : 'hover:bg-white hover:text-clinic-navy dark:hover:bg-white/10 dark:hover:text-white')}>{item.label}</Link>
               ) : (
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
-                  style={{ background: `linear-gradient(135deg,${roleColor},${roleColor}99)` }}>
-                  {initials}
-                </div>
+                <button className={cn('flex h-full items-center rounded-full px-3 text-[11px] font-bold uppercase text-gray-500 transition focus:outline-none focus:ring-2 focus:ring-cyan-400/50 dark:text-slate-300', isActive(pathname, item) ? 'bg-clinic-navy text-white shadow-sm dark:bg-cyan-400 dark:text-[#07152f]' : 'hover:bg-white hover:text-clinic-navy dark:hover:bg-white/10 dark:hover:text-white')} aria-haspopup="menu">{item.label}</button>
               )}
-              <div className="hidden md:block">
-                <p className="text-[13px] font-semibold leading-tight" style={{ color: nameCl }}>
-                  {user.role === 'DOCTOR' ? 'Dr. ' : ''}{user.firstName} {user.lastName}
-                </p>
-                <p className="text-[10px] font-medium" style={{ color: roleColor }}>{roleLabels[user.role] || user.role}</p>
-              </div>
-              <ChevronDown size={13} className="hidden md:block" style={{ color: iconCl }} />
-            </button>
-
-          </div>
-        )}
-      </div>
-
-      {/* Install guide modal */}
-      {installOpen && (
-        <>
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={() => setInstallOpen(false)} />
-          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[340px] rounded-3xl shadow-2xl p-6"
-            style={{ background: dropBg, border: `1px solid ${bdr}` }}>
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="font-bold text-base" style={{ color: titleC, fontFamily: 'Plus Jakarta Sans' }}>Install Code Clinic</h3>
-              <button onClick={() => setInstallOpen(false)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/10">
-                <X size={15} style={{ color: iconCl }} />
-              </button>
+              {item.children && <Dropdown item={item} pathname={pathname} />}
             </div>
+          ))}
+        </nav>
 
-            {/* Android / Chrome */}
-            <div className="rounded-2xl p-4 mb-3" style={{ background: dark ? 'rgba(255,255,255,0.05)' : '#F8FAFF', border: `1px solid ${bdr}` }}>
-              <div className="flex items-center gap-2 mb-2">
-                <Smartphone size={16} style={{ color: '#29ABE2' }} />
-                <p className="font-bold text-sm" style={{ color: titleC }}>Android / Chrome</p>
-              </div>
-              <ol className="text-xs space-y-1" style={{ color: dark ? '#93C5FD' : '#4B5563' }}>
-                <li>1. Tap the <strong>⋮ menu</strong> in Chrome</li>
-                <li>2. Tap <strong>"Add to Home screen"</strong></li>
-                <li>3. Tap <strong>"Add"</strong> — done!</li>
-              </ol>
-            </div>
+        <div className="ml-auto flex items-center gap-2 xl:ml-0">
+          <button className={iconButton} onClick={() => { setSearchOpen(true); setNotifOpen(false); setProfileOpen(false) }} title="Search"><Search size={18} /></button>
+          <button className={iconButton} onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false) }} title="Notifications">
+            <Bell size={18} />{unread > 0 && <span className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}
+          </button>
+          {user && <button onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false) }} className="hidden items-center gap-2 rounded-full border border-transparent p-1 pr-2 text-left transition hover:border-gray-200 hover:bg-white/70 dark:hover:border-white/10 dark:hover:bg-white/[0.06] sm:flex">
+            {user.avatarUrl ? <img src={user.avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover object-top" /> : <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-clinic-navy to-clinic-blue text-[11px] font-bold text-white">{initials}</span>}
+            <span className="hidden min-w-0 lg:block"><span className="block max-w-[110px] truncate text-xs font-bold text-gray-800 dark:text-white">{user.firstName} {user.lastName}</span><span className="block text-[10px] text-gray-400">{roleLabels[user.role] || user.role}</span></span>
+          </button>}
+          <button className={cn(iconButton, 'xl:hidden')} onClick={() => setMenuOpen(true)} title="Open navigation"><Menu size={19} /></button>
+        </div>
+        <span className="sr-only">{title}</span>
+      </header>
 
-            {/* iPhone / Safari */}
-            <div className="rounded-2xl p-4 mb-3" style={{ background: dark ? 'rgba(255,255,255,0.05)' : '#F8FAFF', border: `1px solid ${bdr}` }}>
-              <div className="flex items-center gap-2 mb-2">
-                <Smartphone size={16} style={{ color: '#6B7280' }} />
-                <p className="font-bold text-sm" style={{ color: titleC }}>iPhone / Safari</p>
-              </div>
-              <ol className="text-xs space-y-1" style={{ color: dark ? '#93C5FD' : '#4B5563' }}>
-                <li>1. Tap the <strong>Share button</strong> (□↑)</li>
-                <li>2. Scroll down → <strong>"Add to Home Screen"</strong></li>
-                <li>3. Tap <strong>"Add"</strong> — done!</li>
-              </ol>
-            </div>
-
-            {/* Desktop */}
-            <div className="rounded-2xl p-4 mb-4" style={{ background: dark ? 'rgba(255,255,255,0.05)' : '#F8FAFF', border: `1px solid ${bdr}` }}>
-              <div className="flex items-center gap-2 mb-2">
-                <Monitor size={16} style={{ color: '#1A237E' }} />
-                <p className="font-bold text-sm" style={{ color: titleC }}>Desktop (Chrome / Edge)</p>
-              </div>
-              <ol className="text-xs space-y-1" style={{ color: dark ? '#93C5FD' : '#4B5563' }}>
-                <li>1. Look for the <strong>install icon ⊕</strong> in the address bar</li>
-                <li>2. Click it → <strong>"Install"</strong></li>
-                <li>3. App opens in its own window!</li>
-              </ol>
-            </div>
-
-            {installPrompt && (
-              <button onClick={() => { handleInstall(); setInstallOpen(false) }}
-                className="w-full py-3 rounded-2xl font-bold text-white text-sm"
-                style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 6px 20px rgba(41,171,226,0.4)' }}>
-                Install Now on This Device
-              </button>
-            )}
-          </div>
-        </>
-      )}
-    </header>
-
-      {/* Profile dropdown — outside <header> to escape its stacking context */}
-      {profileOpen && user && (
-        <>
-          <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setProfileOpen(false)} />
-          <div className="fixed rounded-2xl shadow-xl overflow-hidden py-1"
-            style={{ top: 64, right: 16, width: 208, zIndex: 9999, background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
-            <div className="px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
-              <p className="font-bold text-sm" style={{ color: titleC }}>{user.firstName} {user.lastName}</p>
-              <p className="text-[11px]" style={{ color: roleColor }}>{roleLabels[user.role]}</p>
-            </div>
-            <button onClick={() => { router.push('/settings'); setProfileOpen(false) }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
-              style={{ color: dark ? '#C8D8F0' : '#374151' }}>
-              <span className="text-base">👤</span> Edit Profile
-            </button>
-            <button onClick={() => { router.push('/settings'); setProfileOpen(false) }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
-              style={{ color: dark ? '#C8D8F0' : '#374151' }}>
-              <span className="text-base">🔑</span> Change Password
-            </button>
-            {!installed && (
-              <button onClick={() => {
-                setProfileOpen(false)
-                if (installPrompt) { handleInstall() } else { setInstallOpen(true) }
-              }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
-                style={{ color: '#29ABE2' }}>
-                <Download size={15} /> Download App
-              </button>
-            )}
-            <div className="my-1" style={{ borderTop: `1px solid ${bdr}` }} />
-            <button onClick={() => {
-              localStorage.removeItem('cc_token')
-              localStorage.removeItem('cc_user')
-              document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
-              window.location.href = '/login'
-            }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium hover:bg-red-500/10 transition-colors text-red-400">
-              <span className="text-base">🚪</span> Sign Out
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* Notification dropdown — outside <header> to escape its stacking context */}
-      {notifOpen && (
-        <>
-          <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setNotifOpen(false)} />
-          <div className="fixed rounded-2xl shadow-2xl overflow-hidden"
-            style={{ top: 64, right: 16, width: 380, zIndex: 9999, background: dropBg, border: `1px solid ${bdr}`, backdropFilter: 'blur(20px)' }}>
-
-            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${bdr}` }}>
-              <p className="font-bold text-sm" style={{ color: titleC }}>Notifications</p>
-              {unread > 0 && (
-                <button onClick={markAllRead}
-                  className="text-[11px] font-semibold px-2 py-1 rounded-lg transition-colors hover:opacity-70"
-                  style={{ color: '#29ABE2', background: dark ? 'rgba(41,171,226,0.12)' : 'rgba(41,171,226,0.08)' }}>
-                  Mark all read
-                </button>
-              )}
-            </div>
-
-            <div className="divide-y overflow-y-auto" style={{ borderColor: bdr, maxHeight: 360 }}>
-              {notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 gap-2">
-                  <Bell size={28} style={{ color: iconCl, opacity: 0.35 }} />
-                  <p className="text-xs font-medium" style={{ color: iconCl }}>No notifications yet</p>
-                </div>
-              ) : notifications.slice(0, 6).map((n: any) => (
-                <div key={n.id}
-                  onClick={() => {
-                    if (!n.isRead) {
-                      setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x))
-                      setUnread(u => Math.max(0, u - 1))
-                      markOneRead(n.id)
-                    }
-                    setNotifOpen(false)
-                    if (n.href) { router.push(n.href) }
-                  }}
-                  className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-                  style={{ background: !n.isRead ? (dark ? 'rgba(41,171,226,0.07)' : 'rgba(59,130,246,0.05)') : 'transparent' }}>
-                  <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: TYPE_DOT[n.type] || '#6B7280' }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold leading-snug" style={{ color: dark ? '#C8D8F0' : '#1f2937' }}>{n.title}</p>
-                    <p className="text-[11px] leading-snug mt-0.5 line-clamp-2" style={{ color: dark ? '#8BA0C0' : '#6B7280' }}>{n.body}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-1">
-                    <span className="text-[10px] whitespace-nowrap" style={{ color: iconCl }}>{timeAgo(n.createdAt)}</span>
-                    {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {user?.role && (() => {
-              const NOTIF_ROUTES: Record<string, string> = {
-                RECEPTIONIST: '/receptionist/notifications',
-                DOCTOR:       '/doctor/notifications',
-                ADMIN:        '/admin/notifications',
-                ACCOUNTS:     '/accounts/notifications',
-              }
-              const dest = NOTIF_ROUTES[user.role]
-              if (!dest) return null
-              return (
-                <div className="px-4 py-2.5 text-center" style={{ borderTop: `1px solid ${bdr}` }}>
-                  <button onClick={() => { router.push(dest); setNotifOpen(false) }}
-                    className="text-xs font-semibold hover:underline" style={{ color: '#29ABE2' }}>
-                    View all notifications
-                  </button>
-                </div>
-              )
-            })()}
-          </div>
-        </>
-      )}
+      {searchOpen && <SearchOverlay query={query} results={results} searching={searching} inputRef={searchInput} onQuery={handleSearch} onClose={() => { setSearchOpen(false); setQuery(''); setResults([]) }} onSelect={(id: string) => { router.push(`/patients/${id}`); setSearchOpen(false) }} />}
+      {notifOpen && <PopoverBackdrop onClose={() => setNotifOpen(false)}><div className="fixed right-4 top-[70px] z-[101] w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0c1b38]">
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-white/10"><strong className="text-sm dark:text-white">Notifications</strong>{unread > 0 && <button onClick={markAllRead} className="text-xs font-semibold text-cyan-600">Mark all read</button>}</div>
+        <div className="max-h-[380px] overflow-y-auto">{notifications.length === 0 ? <div className="py-12 text-center text-xs text-gray-400">No notifications yet</div> : notifications.slice(0, 8).map(item => <button key={item.id} onClick={() => openNotification(item)} className={cn('flex w-full gap-3 border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50 dark:border-white/5 dark:hover:bg-white/5', !item.isRead && 'bg-cyan-50/60 dark:bg-cyan-400/[0.06]')}><span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full" style={{ background: TYPE_DOT[item.type] || '#94a3b8' }} /><span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-gray-800 dark:text-slate-200">{item.title}</span><span className="mt-0.5 line-clamp-2 block text-[11px] text-gray-500 dark:text-slate-400">{item.body}</span></span><span className="text-[9px] text-gray-400">{timeAgo(item.createdAt)}</span></button>)}</div>
+      </div></PopoverBackdrop>}
+      {profileOpen && user && <PopoverBackdrop onClose={() => setProfileOpen(false)}><ProfileMenu user={user} theme={theme} onTheme={chooseTheme} onNavigate={href => { router.push(href); setProfileOpen(false) }} onSignOut={signOut} /></PopoverBackdrop>}
+      {menuOpen && <MobileMenu pathname={pathname} user={user} theme={theme} onTheme={chooseTheme} onNavigate={href => { router.push(href); setMenuOpen(false) }} onSignOut={signOut} onClose={() => setMenuOpen(false)} />}
     </>
   )
+}
+
+function Dropdown({ item, pathname }: { item: NavLink; pathname: string }) {
+  return <div role="menu" className="invisible absolute left-1/2 top-[calc(100%-2px)] w-64 -translate-x-1/2 translate-y-2 pt-3 opacity-0 transition duration-150 group-hover/item:visible group-hover/item:translate-y-0 group-hover/item:opacity-100 group-focus-within/item:visible group-focus-within/item:translate-y-0 group-focus-within/item:opacity-100">
+    <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white/95 p-2 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1a36]/95">
+      {item.children?.map(child => <div key={child.label}>
+        {child.disabled ? <div className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm text-gray-400"><span>{child.label}</span><span className="text-[9px] font-bold uppercase">Unavailable</span></div> : <Link href={child.href || '#'} className={cn('block rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10', isActive(pathname, child) && 'bg-cyan-50 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300')}>{child.label}</Link>}
+        {child.children && <div className="mb-1 ml-3 border-l border-gray-200 pl-2 dark:border-white/10">{child.children.map(nested => <Link key={nested.label} href={nested.href || '#'} className="block rounded-lg px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white">{nested.label}</Link>)}</div>}
+      </div>)}
+    </div>
+  </div>
+}
+
+function PopoverBackdrop({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  return <><button className="fixed inset-0 z-[100] cursor-default" onClick={onClose} aria-label="Close menu" />{children}</>
+}
+
+function SearchOverlay({ query, results, searching, inputRef, onQuery, onClose, onSelect }: any) {
+  return <div className="fixed inset-0 z-[120] flex justify-center bg-slate-950/35 px-4 pt-[12vh] backdrop-blur-sm" onMouseDown={onClose}>
+    <div className="h-fit w-full max-w-2xl overflow-hidden rounded-2xl border border-white/40 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0b1a36]" onMouseDown={e => e.stopPropagation()}>
+      <div className="flex items-center gap-3 border-b border-gray-100 px-4 dark:border-white/10"><Search size={19} className="text-gray-400" /><input ref={inputRef} value={query} onChange={e => onQuery(e.target.value)} placeholder="Search patients..." className="h-14 flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-white" /><button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"><X size={16} /></button></div>
+      <div className="max-h-[420px] overflow-y-auto p-2">{query.trim().length < 2 ? <p className="px-3 py-10 text-center text-xs text-gray-400">Enter at least two characters to find a patient.</p> : searching ? <p className="px-3 py-10 text-center text-xs text-gray-400">Searching...</p> : results.length === 0 ? <p className="px-3 py-10 text-center text-xs text-gray-400">No patients found.</p> : results.map((patient: any) => <button key={patient.id} onClick={() => onSelect(patient.id)} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-white/[0.06]"><span className="grid h-9 w-9 place-items-center rounded-full bg-cyan-100 text-xs font-bold text-cyan-700">{patient.firstName?.[0]}{patient.lastName?.[0]}</span><span><span className="block text-sm font-semibold text-gray-800 dark:text-white">{patient.firstName} {patient.lastName}</span><span className="block text-xs text-gray-400">{patient.phone || patient.email || 'Patient record'}</span></span></button>)}</div>
+    </div>
+  </div>
+}
+
+function ProfileMenu({ user, theme, onTheme, onNavigate, onSignOut }: { user: UserInfo; theme: AppTheme; onTheme: (theme: AppTheme) => void; onNavigate: (href: string) => void; onSignOut: () => void }) {
+  return <div className="fixed right-4 top-[70px] z-[101] w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl dark:border-white/10 dark:bg-[#0c1b38]">
+    <div className="px-3 py-2"><p className="text-sm font-bold text-gray-900 dark:text-white">{user.firstName} {user.lastName}</p><p className="text-[11px] text-gray-400">{roleLabels[user.role] || user.role}</p></div>
+    <button onClick={() => onNavigate('/settings')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><User size={15} /> My Profile</button>
+    <div className="my-1 border-t border-gray-100 pt-2 dark:border-white/10"><p className="flex items-center gap-2 px-3 pb-2 text-[10px] font-bold uppercase text-gray-400"><Palette size={13} /> Appearance</p><div className="grid grid-cols-3 gap-1">{([['light', Sun], ['dark', Moon], ['system', Monitor]] as const).map(([value, Icon]) => <button key={value} onClick={() => onTheme(value)} className={cn('flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] capitalize text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/10', theme === value && 'bg-cyan-50 font-bold text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300')}><span className="relative"><Icon size={15} />{theme === value && <Check size={8} className="absolute -right-2 -top-1" />}</span>{value}</button>)}</div></div>
+    <button onClick={() => onNavigate('/settings')} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><Settings size={15} /> Settings</button>
+    <button onClick={onSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><LogOut size={15} /> Sign Out</button>
+  </div>
+}
+
+function MobileMenu({ pathname, user, theme, onTheme, onNavigate, onSignOut, onClose }: { pathname: string; user?: UserInfo; theme: AppTheme; onTheme: (theme: AppTheme) => void; onNavigate: (href: string) => void; onSignOut: () => void; onClose: () => void }) {
+  return <div className="fixed inset-0 z-[130] bg-slate-950/45 backdrop-blur-sm" onMouseDown={onClose}><div className="ml-auto flex h-full w-[min(360px,90vw)] flex-col bg-white shadow-2xl dark:bg-[#08162f]" onMouseDown={e => e.stopPropagation()}><div className="flex h-[68px] items-center justify-between border-b border-gray-100 px-5 dark:border-white/10"><strong className="text-sm dark:text-white">Navigation</strong><button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full hover:bg-gray-100 dark:text-white dark:hover:bg-white/10"><X size={18} /></button></div><div className="flex-1 overflow-y-auto p-3">{NAV.map(item => <div key={item.label} className="mb-1">{item.href ? <Link href={item.href} className={cn('block rounded-xl px-3 py-3 text-sm font-bold text-gray-700 dark:text-slate-200', isActive(pathname, item) && 'bg-cyan-50 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300')}>{item.label}</Link> : <><p className="px-3 pb-1 pt-3 text-[10px] font-bold uppercase text-gray-400">{item.label}</p><div className="ml-2 border-l border-gray-200 pl-2 dark:border-white/10">{item.children?.map(child => child.disabled ? <span key={child.label} className="flex justify-between rounded-lg px-3 py-2 text-sm text-gray-400">{child.label}<span className="text-[9px] uppercase">Unavailable</span></span> : <div key={child.label}><Link href={child.href || '#'} className="block rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10">{child.label}</Link>{child.children?.map(nested => <Link key={nested.label} href={nested.href || '#'} className="ml-3 block rounded-lg px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10">{nested.label}</Link>)}</div>)}</div></>}</div>)}</div>{user && <div className="border-t border-gray-100 p-3 dark:border-white/10"><p className="px-2 pb-2 text-xs font-bold text-gray-800 dark:text-white">{user.firstName} {user.lastName}<span className="ml-2 font-normal text-gray-400">{roleLabels[user.role] || user.role}</span></p><button onClick={() => onNavigate('/settings')} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"><User size={15} /> My Profile</button><div className="my-2 grid grid-cols-3 gap-1">{([['light', Sun], ['dark', Moon], ['system', Monitor]] as const).map(([value, Icon]) => <button key={value} onClick={() => onTheme(value)} className={cn('flex items-center justify-center gap-1 rounded-lg py-2 text-[10px] capitalize text-gray-500 dark:text-slate-400', theme === value && 'bg-cyan-50 font-bold text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300')}><Icon size={13} />{value}</button>)}</div><button onClick={onSignOut} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><LogOut size={15} /> Sign Out</button></div>}</div></div>
 }

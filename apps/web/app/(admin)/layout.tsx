@@ -1,180 +1,71 @@
 'use client'
 
-import Sidebar from '@/components/layout/Sidebar'
 import TopBar from '@/components/layout/TopBar'
 import SarahChatbot from '@/components/SarahChatbot'
+import { AppTheme, applyTheme, readTheme } from '@/lib/theme'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Menu, X } from 'lucide-react'
 
 const pageTitles: Record<string, string> = {
-  '/dashboard':                   'Dashboard',
-  '/scheduling':                  'Scheduling',
-  '/appointments':                'Appointments',
-  '/patients':                    'Patients',
-  '/stocks':                      'Stocks & Inventory',
-  '/employees':                   'Staff List',
-  '/audit-log':                   'Audit Log',
-  '/accounts':                    'Accounts',
-  '/accounts/dashboard':          'Dashboard',
-  '/accounts/chart-of-accounts':  'Chart of Accounts',
-  '/accounts/invoices':           'Sales & Income',
-  '/accounts/expenses':           'Expenses',
-  '/accounts/reconciliation':     'Bank Reconciliation',
-  '/accounts/journal':            'Journal Entries',
-  '/accounts/ledger':             'General Ledger',
-  '/accounts/live-checkout':      'Live Checkout',
-  '/accounts/receivables':        'Patient Balances',
-  '/accounts/bills':              'Bills',
-  '/accounts/payables':           'Supplier Balances',
-  '/accounts/payroll':            'Salary Expenses',
-  '/accounts/payroll/staff':      'Staff Records',
-  '/accounts/reports':            'Reports',
-  '/accounts/reports/pl':         'Profit & Loss',
-  '/accounts/reports/balance':    'Balance Sheet',
-  '/accounts/reports/cashflow':   'Cash Flow',
-  '/accounts/reports/tax':        'Tax Report',
-  '/accounts/reports/monthly':    'Monthly Summary',
-  '/accounts/reports/annual':     'Annual Summary',
-  '/reports':                     'Clinical Reports',
-  '/reports/clinical':            'Daily / Weekly Clinical Report',
-  '/reports/patient-flow':        'Patient Flow Report',
-  '/reports/case-acceptance':     'Case Acceptance Rate',
-  '/ai-suite':                    'Agent Control',
-  '/ai-suite/inbox':              'Inbox',
-  '/ai-suite/escalations':       'Escalations',
-  '/ai-suite/calls':              'Call Logs',
-  '/ai-suite/voice-studio':       'Voice Studio',
-  '/ai-suite/knowledge-base':     'Knowledge Base',
-  '/ai-suite/settings':           'AI Settings',
-  '/ai-suite/recordings':         'Call Recordings',
-  '/ai-suite/agent-config':       'Agent Config',
-  '/campaigns':                   'Campaigns',
-  '/treatment-pipeline':          'Treatment Pipeline',
-  '/referrals':                   'Referral Sources',
-  '/settings':                    'Settings',
-  '/support':                     'Customer Support',
+  '/dashboard': 'Overview', '/admin/dashboard': 'Overview', '/scheduling': 'Appointments', '/appointments': 'Appointments',
+  '/patients': 'Patients', '/stocks': 'Stocks & Inventory', '/employees': 'Staff List', '/audit-log': 'Audit Log',
+  '/admin/staff/permissions': 'Staff Permissions', '/accounts': 'Accounts', '/reports': 'Reports',
+  '/reports/clinical': 'Daily / Weekly Reports', '/reports/patient-flow': 'Patient Live Flow',
+  '/reports/case-acceptance': 'Case Acceptance', '/ai-suite': 'Agent Control', '/ai-suite/inbox': 'Conversations',
+  '/ai-suite/escalations': 'Escalations', '/ai-suite/calls': 'Call Logs', '/ai-suite/voice-studio': 'Voice Studio',
+  '/ai-suite/knowledge-base': 'Knowledge Base', '/ai-suite/settings': 'AI Settings', '/ai-suite/followup-dashboard': 'Follow-ups',
+  '/ai-suite/confirmation-dashboard': 'Confirmations', '/ai-suite/analytics': 'Analytics & Costs', '/campaigns': 'Campaigns',
+  '/leads': 'Leads', '/treatment-pipeline': 'Treatment Pipeline', '/referrals': 'Referrals', '/settings': 'Settings',
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const router   = useRouter()
-  const [user, setUser]       = useState<any>(null)
-  const [dark, setDark]       = useState(false)
-  const [mobileOpen, setMob]  = useState(false)
+  const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [theme, setTheme] = useState<AppTheme>('system')
+  const [dark, setDark] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
     if (!stored) { router.push('/login'); return }
-    const u = JSON.parse(stored)
-    if (u.role === 'RECEPTIONIST') { router.replace('/receptionist/dashboard'); return }
-    if (u.role === 'DOCTOR')       { router.replace('/doctor/dashboard'); return }
-    if (u.role === 'DEVELOPER')    { router.replace('/developer/dashboard'); return }
-    // Accounts users can only access /accounts/*, /stocks, /settings, /support
-    if (u.role === 'ACCOUNTS') {
+    const current = JSON.parse(stored)
+    if (current.role === 'RECEPTIONIST') { router.replace('/receptionist/dashboard'); return }
+    if (current.role === 'DOCTOR') { router.replace('/doctor/dashboard'); return }
+    if (current.role === 'DEVELOPER') { router.replace('/developer/dashboard'); return }
+    if (current.role === 'ACCOUNTS') {
       const allowed = ['/accounts', '/stocks', '/settings', '/support']
-      const ok = allowed.some(p => pathname === p || pathname.startsWith(p + '/'))
-      if (!ok) { router.replace('/accounts/dashboard'); return }
+      if (!allowed.some(prefix => pathname === prefix || pathname.startsWith(prefix + '/'))) { router.replace('/accounts/dashboard'); return }
     }
-    setUser(u)
-    const isDark = localStorage.getItem('cc_theme') === 'dark'
-    setDark(isDark)
-    document.documentElement.classList.toggle('dark', isDark)
+    setUser(current)
+    const saved = readTheme()
+    setTheme(saved); setDark(applyTheme(saved))
 
-    // Always refresh avatar from the server so stale/updated URLs are picked up
     const token = localStorage.getItem('cc_token')
-    if (token) {
-      fetch('/api-proxy/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          if (data?.avatarUrl !== undefined) {
-            setUser((prev: any) => prev ? { ...prev, avatarUrl: data.avatarUrl } : prev)
-            localStorage.setItem('cc_user', JSON.stringify({ ...u, avatarUrl: data.avatarUrl }))
-          }
-        })
-        .catch(() => {})
-    }
-  }, [])
-
-  // Keep TopBar avatar in sync whenever an avatar upload fires the event
-  useEffect(() => {
-    const onAvatarUpdate = (e: Event) => {
-      const url = (e as CustomEvent).detail as string
-      setUser((prev: any) => prev ? { ...prev, avatarUrl: url } : prev)
-    }
-    window.addEventListener('cc-avatar-updated', onAvatarUpdate)
-    return () => window.removeEventListener('cc-avatar-updated', onAvatarUpdate)
+    if (token) fetch('/api-proxy/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (data?.avatarUrl !== undefined) {
+          setUser((previous: any) => previous ? { ...previous, avatarUrl: data.avatarUrl } : previous)
+          localStorage.setItem('cc_user', JSON.stringify({ ...current, avatarUrl: data.avatarUrl }))
+        }
+      }).catch(() => {})
   }, [])
 
   useEffect(() => {
-    function onTheme(e: Event) { setDark((e as CustomEvent).detail === 'dark') }
-    window.addEventListener('cc-theme', onTheme)
-    return () => window.removeEventListener('cc-theme', onTheme)
+    const onAvatar = (event: Event) => setUser((previous: any) => previous ? { ...previous, avatarUrl: (event as CustomEvent).detail } : previous)
+    const onTheme = (event: Event) => { const next = (event as CustomEvent).detail as AppTheme; setTheme(next); setDark(applyTheme(next)) }
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const onSystem = () => { if (readTheme() === 'system') setDark(applyTheme('system')) }
+    window.addEventListener('cc-avatar-updated', onAvatar); window.addEventListener('cc-theme', onTheme); media.addEventListener('change', onSystem)
+    return () => { window.removeEventListener('cc-avatar-updated', onAvatar); window.removeEventListener('cc-theme', onTheme); media.removeEventListener('change', onSystem) }
   }, [])
 
-  // Close mobile sidebar when route changes
-  useEffect(() => { setMob(false) }, [pathname])
+  const title = pageTitles[pathname] || (pathname.startsWith('/patients/') ? 'Patient Profile' : null)
+    || Object.entries(pageTitles).find(([key]) => pathname.startsWith(key + '/'))?.[1] || 'Overview'
 
-  // Exact match first, then prefix match for dynamic routes (e.g. /patients/[id])
-  const title = pageTitles[pathname]
-    || (pathname.startsWith('/patients/') ? 'Patient Profile' : null)
-    || Object.entries(pageTitles).find(([k]) => pathname.startsWith(k + '/'))?.[1]
-    || 'Dashboard'
-
-  return (
-    <div className={`flex h-screen overflow-hidden transition-colors duration-300 ${dark ? 'bg-transparent' : 'bg-clinic-bg'}`}>
-
-      {/* Mobile sidebar overlay */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setMob(false)} />
-          <div className="absolute left-0 top-0 h-full z-50">
-            <Sidebar role={user?.role} dark={dark} />
-          </div>
-          <button onClick={() => setMob(false)}
-            className="absolute top-4 right-4 z-50 w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center">
-            <X size={18} color="white" />
-          </button>
-        </div>
-      )}
-
-      {/* Desktop sidebar (hidden on mobile) */}
-      <div className="hidden lg:block">
-        <Sidebar role={user?.role} dark={dark} />
-      </div>
-
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile top bar with hamburger */}
-        <div className="flex lg:hidden items-center gap-3 px-4 h-14 border-b flex-shrink-0"
-          style={{ background: dark ? 'rgba(10,18,60,0.95)' : 'white', borderColor: dark ? 'rgba(255,255,255,0.08)' : '#E5E7EB' }}>
-          <button onClick={() => setMob(true)}
-            className="w-9 h-9 rounded-xl flex items-center justify-center"
-            style={{ background: dark ? 'rgba(255,255,255,0.08)' : '#F3F4F6' }}>
-            <Menu size={18} color={dark ? '#C8D8F0' : '#1A237E'} />
-          </button>
-          <span className="font-bold text-sm flex-1" style={{ color: dark ? '#E0E8FF' : '#1A237E', fontFamily: 'Plus Jakarta Sans' }}>
-            {title}
-          </span>
-          {user?.avatarUrl ? (
-            <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
-          ) : (
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-              {user ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` : 'A'}
-            </div>
-          )}
-        </div>
-
-        {/* Desktop top bar */}
-        <div className="hidden lg:block">
-          <TopBar title={title} user={user} dark={dark} onThemeToggle={(d) => setDark(d)} />
-        </div>
-
-        <main className={`flex-1 overflow-y-auto p-4 lg:p-6 transition-colors duration-300 ${dark ? 'bg-transparent' : ''}`}>
-          {children}
-        </main>
-      </div>
-      <SarahChatbot />
-    </div>
-  )
+  return <div className={dark ? 'flex h-screen flex-col overflow-hidden bg-transparent' : 'flex h-screen flex-col overflow-hidden bg-clinic-bg'}>
+    <TopBar title={title} user={user} theme={theme} onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }} />
+    <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+    <SarahChatbot />
+  </div>
 }

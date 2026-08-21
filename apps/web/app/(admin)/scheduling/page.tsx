@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CalendarDays, Users, Stethoscope, Plug, Settings, X, Upload } from 'lucide-react'
+import { CalendarDays, ListChecks, Users, Stethoscope, Settings, X, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MultiDoctorCalendar  from '@/components/scheduling/MultiDoctorCalendar'
 import BookingDrawer        from '@/components/scheduling/BookingDrawer'
@@ -13,15 +13,16 @@ import ProvidersScheduleTab from '@/components/scheduling/ProvidersScheduleTab'
 import SpecialDaysTab       from '@/components/scheduling/SpecialDaysTab'
 import ImportTab            from '@/components/scheduling/ImportTab'
 import ConnectionsTab       from '@/components/scheduling/ConnectionsTab'
+import AppointmentsPage     from '@/app/(receptionist)/receptionist/appointments/page'
 
-type Tab = 'calendar' | 'doctors' | 'services' | 'connections' | 'settings'
-type SettingsSub = 'working-hours' | 'doctors-schedule' | 'special-days'
+type Tab = 'calendar' | 'appointments' | 'doctors' | 'services' | 'settings'
+type SettingsSub = 'working-hours' | 'doctors-schedule' | 'special-days' | 'connections'
 
 const TABS: { key: Tab; label: string; Icon: React.ElementType }[] = [
   { key: 'calendar',    label: 'Calendar',    Icon: CalendarDays },
+  { key: 'appointments', label: 'Appointments', Icon: ListChecks   },
   { key: 'doctors',     label: 'Doctors',     Icon: Users        },
   { key: 'services',    label: 'Services',    Icon: Stethoscope  },
-  { key: 'connections', label: 'Connections', Icon: Plug         },
   { key: 'settings',    label: 'Settings',    Icon: Settings     },
 ]
 
@@ -29,6 +30,7 @@ const SETTINGS_SUBS: { key: SettingsSub; label: string }[] = [
   { key: 'working-hours',    label: 'Working Hours'    },
   { key: 'doctors-schedule', label: 'Doctors Schedule' },
   { key: 'special-days',     label: 'Special Days'     },
+  { key: 'connections',      label: 'Connections'      },
 ]
 
 export default function SchedulingPage() {
@@ -90,9 +92,9 @@ export default function SchedulingPage() {
             onClickAppointment={setSelectedAppt}
           />
         )}
+        {tab === 'appointments' && <div className="flex-1 overflow-y-auto p-3"><AppointmentsPage /></div>}
         {tab === 'doctors'     && <DoctorsTab />}
         {tab === 'services'    && <ServicesTab />}
-        {tab === 'connections' && <ConnectionsTab />}
         {tab === 'settings' && (
           <div className="flex flex-col flex-1 overflow-hidden">
             <div className="flex-shrink-0 flex gap-1 border-b border-gray-100 dark:border-white/8 px-4 bg-white dark:bg-white/3">
@@ -112,6 +114,7 @@ export default function SchedulingPage() {
               {settingsSub === 'working-hours'    && <WorkingHoursTab />}
               {settingsSub === 'doctors-schedule' && <ProvidersScheduleTab />}
               {settingsSub === 'special-days'     && <SpecialDaysTab />}
+              {settingsSub === 'connections'      && <ConnectionsTab />}
             </div>
           </div>
         )}

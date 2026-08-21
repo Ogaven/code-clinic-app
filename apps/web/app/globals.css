@@ -400,3 +400,27 @@
   -webkit-backdrop-filter: blur(12px) !important;
   box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important;
 }
+
+/* Shared Conversations surfaces use one scoped dark palette in Admin and Receptionist. */
+.dark .conversations-ui [class~="bg-white"] { background-color: #0c1b32 !important; }
+.dark .conversations-ui [class~="bg-gray-50"] { background-color: #08162a !important; }
+.dark .conversations-ui [class~="bg-gray-100"] { background-color: #13243b !important; }
+.dark .conversations-ui [class~="bg-green-50"] { background-color: rgba(34,197,94,0.12) !important; }
+.dark .conversations-ui [class~="bg-blue-50"],
+.dark .conversations-ui [class~="bg-blue-100"] { background-color: rgba(59,130,246,0.12) !important; }
+.dark .conversations-ui [class~="text-blue-600"] { color: #7cb3ff !important; }
+.dark .conversations-ui [class~="bg-gray-200"] { background-color: #1b3050 !important; }
+.dark .conversations-ui [class~="border-gray-50"],
+.dark .conversations-ui [class~="border-gray-100"],
+.dark .conversations-ui [class~="border-gray-200"],
+.dark .conversations-ui [class~="border-blue-400"] { border-color: rgba(255,255,255,0.09) !important; }
+.dark .conversations-ui [class~="text-gray-800"],
+.dark .conversations-ui [class~="text-gray-700"],
+.dark .conversations-ui [class~="text-gray-600"] { color: #dbe8f7 !important; }
+.dark .conversations-ui [class~="text-gray-500"] { color: #9fb0c7 !important; }
+.dark .conversations-ui [class~="text-gray-400"],
+.dark .conversations-ui [class~="text-gray-300"] { color: #7f93ad !important; }
+.dark .conversations-ui [class~="hover:bg-gray-50"]:hover,
+.dark .conversations-ui [class~="hover:bg-gray-100"]:hover { background-color: rgba(255,255,255,0.06) !important; }
+.dark .conversations-ui input,
+.dark .conversations-ui textarea { color: #e8f0fa; }
