@@ -25,6 +25,7 @@ import campaignsRouter, { runScheduledCampaigns } from './routes/campaigns'
 import pipelineRouter from './routes/pipeline'
 import developerRouter from './routes/developer'
 import integrationsRouter from './routes/integrations'
+import businessProfileRouter from './routes/business-profile'
 import receptionistRouter from './routes/receptionist'
 import assistantRouter from './routes/assistant'
 import agentRouter from './routes/agent'
@@ -175,6 +176,7 @@ app.use('/pipeline',     pipelineRouter)
 app.use('/developer',    developerRouter)
 app.use('/integrations', integrationsRouter)
 app.use('/api/integrations', integrationsRouter)  // alias for OAuth callbacks configured with /api/ prefix
+app.use('/business-profile', businessProfileRouter)
 app.use('/receptionist', receptionistRouter)
 app.use('/assistant',    assistantRouter)
 app.use('/agent',        agentRouter)
