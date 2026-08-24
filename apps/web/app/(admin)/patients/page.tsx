@@ -16,7 +16,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
   static getDerivedStateFromError() { return { hasError: true } }
   render() {
     if (this.state.hasError) return (
-      <div className="flex flex-col items-center justify-center h-full py-20 text-gray-400">
+      <div className="flex flex-col items-center justify-center h-full py-20 text-gray-400 dark:text-white/40">
         <User size={40} className="mb-3 opacity-30" />
         <p className="font-semibold">Something went wrong loading patients.</p>
         <button onClick={() => this.setState({ hasError: false })} className="mt-3 text-sm text-cyan-600 hover:underline">Try again</button>
@@ -138,6 +138,13 @@ export default function PatientsPage() {
   }, [token]) // eslint-disable-line
 
   useEffect(() => { fetchPatients() }, []) // eslint-disable-line
+
+  useEffect(() => {
+    if (!showAdd) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setShowAdd(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showAdd])
 
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); setPageInput('1'); fetchPatients(search, 1, activeFilter) }, 300)
@@ -387,7 +394,7 @@ export default function PatientsPage() {
         <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-gray-100 dark:border-white/8">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h1 className="text-lg font-black text-gray-800 dark:text-white">Patients</h1>
+              <h1 className="text-lg font-semibold text-gray-800 dark:text-white">Patients</h1>
               <p className="text-xs text-gray-400 dark:text-white/40">{total} total</p>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
@@ -481,7 +488,7 @@ export default function PatientsPage() {
               <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : patients.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+            <div className="flex flex-col items-center justify-center h-32 text-gray-400 dark:text-white/40">
               <User size={28} className="mb-2 text-gray-200 dark:text-white/10" />
               <p className="text-sm">No patients found</p>
             </div>
@@ -714,7 +721,7 @@ export default function PatientsPage() {
                   </Link>
                   <button onClick={() => setSelected(null)}
                     className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
-                    <X size={16} className="text-gray-400" />
+                    <X size={16} className="text-gray-400 dark:text-white/40" />
                   </button>
                 </div>
               </div>
@@ -817,13 +824,13 @@ export default function PatientsPage() {
 
       {/* ── Add patient modal ─────────────────────────────────── */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAdd(false)}>
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-black text-gray-800 dark:text-white">New Patient</h2>
               <button onClick={() => setShowAdd(false)}
                 className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors">
-                <X size={16} className="text-gray-400" />
+                <X size={16} className="text-gray-400 dark:text-white/40" />
               </button>
             </div>
 
@@ -1031,7 +1038,7 @@ export default function PatientsPage() {
                 onClick={() => { setShowSheetModal(false); setSheetStep('url'); setSheetPreview(null); setSheetResult(null) }}
                 className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/8 transition-colors"
               >
-                <X size={16} className="text-gray-400" />
+                <X size={16} className="text-gray-400 dark:text-white/40" />
               </button>
             </div>
 

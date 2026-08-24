@@ -24,13 +24,13 @@ const SOURCES = ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'WEBSITE', 'QUIZ', 'WALKIN
 const STATUSES = ['NEW', 'CONTACTED', 'QUALIFIED', 'CONVERTED', 'LOST'] as const
 
 const SOURCE_STYLE: Record<string, string> = {
-  WHATSAPP:  'bg-green-100 text-green-700',
-  FACEBOOK:  'bg-blue-100 text-blue-700',
-  INSTAGRAM: 'bg-pink-100 text-pink-700',
-  WEBSITE:   'bg-purple-100 text-purple-700',
-  QUIZ:      'bg-fuchsia-100 text-fuchsia-700',
-  WALKIN:    'bg-amber-100 text-amber-700',
-  OTHER:     'bg-gray-100 text-gray-600',
+  WHATSAPP:  'bg-green-100 text-green-700 dark:bg-green-400/15 dark:text-green-300',
+  FACEBOOK:  'bg-blue-100 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300',
+  INSTAGRAM: 'bg-pink-100 text-pink-700 dark:bg-pink-400/15 dark:text-pink-300',
+  WEBSITE:   'bg-purple-100 text-purple-700 dark:bg-purple-400/15 dark:text-purple-300',
+  QUIZ:      'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-400/15 dark:text-fuchsia-300',
+  WALKIN:    'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300',
+  OTHER:     'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60',
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -44,11 +44,11 @@ const SOURCE_LABEL: Record<string, string> = {
 }
 
 const STATUS_STYLE: Record<string, string> = {
-  NEW:       'bg-slate-100 text-slate-600',
-  CONTACTED: 'bg-blue-100 text-blue-600',
-  QUALIFIED: 'bg-cyan-100 text-cyan-700',
-  CONVERTED: 'bg-emerald-100 text-emerald-700',
-  LOST:      'bg-red-100 text-red-500',
+  NEW:       'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/60',
+  CONTACTED: 'bg-blue-100 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300',
+  QUALIFIED: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-400/15 dark:text-cyan-300',
+  CONVERTED: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300',
+  LOST:      'bg-red-100 text-red-500 dark:bg-red-400/15 dark:text-red-300',
 }
 
 function fmtDate(iso: string) {
@@ -166,7 +166,7 @@ export default function LeadsPage() {
     setBusy(false)
   }
 
-  const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
+  const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -185,7 +185,7 @@ export default function LeadsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-black text-gray-800">Leads</h1>
+          <h1 className="text-xl font-semibold text-gray-800 dark:text-white">Leads</h1>
           <p className="text-xs text-gray-400 mt-0.5">Enquiries that haven't booked yet — manage and convert to patients</p>
         </div>
         <button
@@ -197,14 +197,14 @@ export default function LeadsPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 space-y-3">
         {/* Search */}
         <div className="relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search by name, phone, or email..."
-            className="w-full pl-8 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+            className="w-full pl-8 pr-4 py-2 text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 dark:text-white dark:placeholder-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
           />
         </div>
 
@@ -215,7 +215,7 @@ export default function LeadsPage() {
             {(['all', ...SOURCES] as string[]).map(s => (
               <button key={s} onClick={() => setSrcFilter(s)}
                 className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all',
-                  srcFilter === s ? 'bg-cyan-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}>
+                  srcFilter === s ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/12')}>
                 {s === 'all' ? 'All' : SOURCE_LABEL[s] ?? s}
               </button>
             ))}
@@ -227,7 +227,7 @@ export default function LeadsPage() {
             {(['all', ...STATUSES] as string[]).map(s => (
               <button key={s} onClick={() => setStFilter(s)}
                 className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all',
-                  stFilter === s ? 'bg-cyan-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}>
+                  stFilter === s ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/12')}>
                 {s === 'all' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
               </button>
             ))}
@@ -236,13 +236,13 @@ export default function LeadsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 p-12 text-gray-300">
+          <div className="flex items-center justify-center gap-2 p-12 text-gray-300 dark:text-white/20">
             <RefreshCw size={18} className="animate-spin" /> Loading…
           </div>
         ) : leads.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-gray-300">
+          <div className="flex flex-col items-center justify-center p-12 text-gray-300 dark:text-white/20">
             <UserCheck size={36} className="mb-3 opacity-30" />
             <p className="text-sm font-medium">No leads found</p>
             <p className="text-xs mt-1">New enquiries via WhatsApp, Facebook, or Instagram appear here automatically</p>
@@ -251,29 +251,29 @@ export default function LeadsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Name / Phone</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Source</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Status</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden md:table-cell">Last Message</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden sm:table-cell">Date</th>
-                  <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-widest text-gray-400">Actions</th>
+                <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/10">
+                  <th className="px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Name / Phone</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Source</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Status</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 hidden md:table-cell">Last Message</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 hidden sm:table-cell">Date</th>
+                  <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-gray-50 dark:divide-white/5">
                 {leads.map(lead => (
                   <tr
                     key={lead.id}
                     onClick={() => setViewLead(lead)}
-                    className="hover:bg-gray-50/60 transition-colors cursor-pointer"
+                    className="hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors cursor-pointer"
                   >
                     <td className="px-5 py-3.5">
-                      <p className="font-semibold text-gray-800">{lead.name || <span className="italic text-gray-400">Unknown</span>}</p>
-                      {lead.phone && <p className="text-xs text-gray-400 mt-0.5">{lead.phone}</p>}
-                      {lead.email && <p className="text-xs text-gray-400">{lead.email}</p>}
+                      <p className="font-semibold text-gray-800 dark:text-white">{lead.name || <span className="italic text-gray-400 dark:text-white/30">Unknown</span>}</p>
+                      {lead.phone && <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">{lead.phone}</p>}
+                      {lead.email && <p className="text-xs text-gray-400 dark:text-white/40">{lead.email}</p>}
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', SOURCE_STYLE[lead.source] ?? 'bg-gray-100 text-gray-600')}>
+                      <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', SOURCE_STYLE[lead.source] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60')}>
                         {SOURCE_LABEL[lead.source] ?? lead.source}
                       </span>
                     </td>
@@ -285,28 +285,28 @@ export default function LeadsPage() {
                         disabled={lead.status === 'CONVERTED'}
                         className={cn(
                           'text-[11px] font-bold px-2.5 py-1 rounded-full border-0 cursor-pointer outline-none',
-                          STATUS_STYLE[lead.status] ?? 'bg-gray-100 text-gray-600',
+                          STATUS_STYLE[lead.status] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60',
                           lead.status === 'CONVERTED' && 'cursor-not-allowed opacity-80',
                         )}
                       >
-                        {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
+                        {STATUSES.map(s => <option key={s} value={s} className="dark:bg-[#152040]">{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
                       </select>
                     </td>
                     <td className="px-4 py-3.5 hidden md:table-cell max-w-[220px]">
                       {lead.lastMessage ? (
-                        <p className="text-xs text-gray-500 line-clamp-2">{lead.lastMessage}</p>
+                        <p className="text-xs text-gray-500 dark:text-white/50 line-clamp-2">{lead.lastMessage}</p>
                       ) : (
-                        <span className="text-xs text-gray-300">—</span>
+                        <span className="text-xs text-gray-300 dark:text-white/20">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3.5 hidden sm:table-cell text-xs text-gray-400 whitespace-nowrap">
+                    <td className="px-4 py-3.5 hidden sm:table-cell text-xs text-gray-400 dark:text-white/40 whitespace-nowrap">
                       {fmtDate(lead.updatedAt)}
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
                         <button
                           onClick={() => setViewLead(lead)}
-                          className="p-1.5 rounded-lg text-gray-300 hover:text-cyan-500 hover:bg-cyan-50 transition-colors">
+                          className="p-1.5 rounded-lg text-gray-300 dark:text-white/30 hover:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-400/10 transition-colors">
                           <Eye size={13} />
                         </button>
                         {lead.phone && !lead.phone.startsWith('ws_') && (
@@ -314,20 +314,20 @@ export default function LeadsPage() {
                             href={waLink(lead.phone)}
                             target="_blank" rel="noreferrer"
                             onClick={e => e.stopPropagation()}
-                            className="p-1.5 rounded-lg text-gray-300 hover:text-green-600 hover:bg-green-50 transition-colors">
+                            className="p-1.5 rounded-lg text-gray-300 dark:text-white/30 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-400/10 transition-colors">
                             <WhatsAppIcon size={13} />
                           </a>
                         )}
                         {lead.status !== 'CONVERTED' && lead.status !== 'LOST' && (
                           <button
                             onClick={() => setConverting(lead)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors whitespace-nowrap">
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors whitespace-nowrap">
                             <UserCheck size={12} /> Convert
                           </button>
                         )}
                         <button
                           onClick={() => setDeleting(lead)}
-                          className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                          className="p-1.5 rounded-lg text-gray-300 dark:text-white/30 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-400/10 transition-colors">
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -336,7 +336,7 @@ export default function LeadsPage() {
                 ))}
               </tbody>
             </table>
-            <div className="px-5 py-2.5 border-t border-gray-50 text-xs text-gray-400">
+            <div className="px-5 py-2.5 border-t border-gray-50 dark:border-white/5 text-xs text-gray-400 dark:text-white/40">
               {leads.length} lead{leads.length !== 1 ? 's' : ''}
             </div>
           </div>
@@ -345,42 +345,42 @@ export default function LeadsPage() {
 
       {/* ── Add Lead modal ────────────────────────────────────── */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAdd(false)}>
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-black text-gray-800">Add Lead</h2>
+              <h2 className="text-lg font-bold text-gray-800 dark:text-white">Add Lead</h2>
               <button onClick={() => setShowAdd(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
+                className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
                 <X size={16} className="text-gray-400" />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Full Name</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Full Name</label>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder="e.g. Jane Doe" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Phone</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Phone</label>
                 <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} placeholder="+256 700 000 000" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Email</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Email</label>
                 <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="email@example.com" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Source *</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Source *</label>
                 <select value={form.source} onChange={e => setForm(f => ({ ...f, source: e.target.value }))} className={inputCls}>
-                  {SOURCES.map(s => <option key={s} value={s}>{SOURCE_LABEL[s]}</option>)}
+                  {SOURCES.map(s => <option key={s} value={s} className="dark:bg-[#152040]">{SOURCE_LABEL[s]}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Notes</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1">Notes</label>
                 <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3}
                   className={inputCls} placeholder="What did they enquire about?" />
               </div>
               <div className="flex gap-3 pt-1">
                 <button onClick={() => setShowAdd(false)}
-                  className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors">
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                   Cancel
                 </button>
                 <button onClick={addLead} disabled={busy}
@@ -396,21 +396,21 @@ export default function LeadsPage() {
 
       {/* ── Convert confirmation ──────────────────────────────── */}
       {converting && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setConverting(null)}>
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                <UserCheck size={18} className="text-emerald-600" />
+              <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-400/15 flex items-center justify-center flex-shrink-0">
+                <UserCheck size={18} className="text-emerald-600 dark:text-emerald-300" />
               </div>
-              <h2 className="text-base font-black text-gray-800">Convert to Patient</h2>
+              <h2 className="text-base font-bold text-gray-800 dark:text-white">Convert to Patient</h2>
             </div>
-            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+            <p className="text-sm text-gray-600 dark:text-white/60 mb-6 leading-relaxed">
               Create a patient record for <strong>{converting.name || converting.phone || 'this lead'}</strong>?
               The lead will be marked as Converted and they'll appear in the Patients list.
             </p>
             <div className="flex gap-3">
               <button onClick={() => setConverting(null)} disabled={busy}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
                 Cancel
               </button>
               <button onClick={convertLead} disabled={busy}
@@ -425,25 +425,25 @@ export default function LeadsPage() {
       {/* ── Lead detail modal ────────────────────────────────── */}
       {viewLead && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setViewLead(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-black text-gray-800">Lead Details</h2>
-              <button onClick={() => setViewLead(null)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
+              <h2 className="text-base font-bold text-gray-800 dark:text-white">Lead Details</h2>
+              <button onClick={() => setViewLead(null)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
                 <X size={16} className="text-gray-400" />
               </button>
             </div>
 
             {/* Identity */}
             <div className="space-y-2">
-              <p className="text-lg font-black text-gray-800">{viewLead.name || <span className="italic text-gray-400">Unknown name</span>}</p>
+              <p className="text-lg font-bold text-gray-800 dark:text-white">{viewLead.name || <span className="italic text-gray-400 dark:text-white/30">Unknown name</span>}</p>
               {viewLead.phone && !viewLead.phone.startsWith('ws_') && (
                 <a href={waLink(viewLead.phone)} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-2 text-sm text-green-600 font-semibold hover:underline">
+                  className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 font-semibold hover:underline">
                   <Phone size={13} /> {viewLead.phone}
                 </a>
               )}
               {viewLead.email && (
-                <a href={`mailto:${viewLead.email}`} className="flex items-center gap-2 text-sm text-blue-600 font-semibold hover:underline">
+                <a href={`mailto:${viewLead.email}`} className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-semibold hover:underline">
                   <Mail size={13} /> {viewLead.email}
                 </a>
               )}
@@ -451,31 +451,31 @@ export default function LeadsPage() {
 
             {/* Badges */}
             <div className="flex items-center gap-2">
-              <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', SOURCE_STYLE[viewLead.source] ?? 'bg-gray-100 text-gray-600')}>
+              <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', SOURCE_STYLE[viewLead.source] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60')}>
                 {SOURCE_LABEL[viewLead.source] ?? viewLead.source}
               </span>
-              <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', STATUS_STYLE[viewLead.status] ?? 'bg-gray-100 text-gray-600')}>
+              <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', STATUS_STYLE[viewLead.status] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60')}>
                 {viewLead.status.charAt(0) + viewLead.status.slice(1).toLowerCase()}
               </span>
-              <span className="text-[10px] text-gray-400 ml-auto">{fmtDate(viewLead.createdAt)}</span>
+              <span className="text-[10px] text-gray-400 dark:text-white/30 ml-auto">{fmtDate(viewLead.createdAt)}</span>
             </div>
 
             {/* Full message */}
             {viewLead.lastMessage && (
-              <div className="bg-gray-50 rounded-2xl p-4">
+              <div className="bg-gray-50 dark:bg-white/5 rounded-2xl p-4">
                 <div className="flex items-center gap-1.5 mb-2">
                   <MessageSquare size={12} className="text-gray-400" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Message</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Message</span>
                 </div>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{viewLead.lastMessage}</p>
+                <p className="text-sm text-gray-700 dark:text-white/70 whitespace-pre-wrap leading-relaxed">{viewLead.lastMessage}</p>
               </div>
             )}
 
             {/* Notes */}
             {viewLead.notes && (
-              <div className="bg-amber-50 rounded-2xl p-4">
-                <span className="text-[10px] font-black uppercase tracking-widest text-amber-500 block mb-2">Notes</span>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{viewLead.notes}</p>
+              <div className="bg-amber-50 dark:bg-amber-400/10 rounded-2xl p-4">
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-500 dark:text-amber-300 block mb-2">Notes</span>
+                <p className="text-sm text-gray-700 dark:text-white/70 whitespace-pre-wrap leading-relaxed">{viewLead.notes}</p>
               </div>
             )}
 
@@ -484,13 +484,13 @@ export default function LeadsPage() {
               {viewLead.status !== 'CONVERTED' && viewLead.status !== 'LOST' && (
                 <button
                   onClick={() => { setViewLead(null); setConverting(viewLead) }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors">
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors">
                   <UserCheck size={14} /> Convert to Patient
                 </button>
               )}
               <button
                 onClick={() => setViewLead(null)}
-                className="px-4 py-2.5 rounded-xl text-sm font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                className="px-4 py-2.5 rounded-xl text-sm font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                 Close
               </button>
             </div>
@@ -500,20 +500,20 @@ export default function LeadsPage() {
 
       {/* ── Delete confirmation ───────────────────────────────── */}
       {deleting && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setDeleting(null)}>
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center flex-shrink-0">
-                <Trash2 size={18} className="text-red-600" />
+              <div className="w-10 h-10 rounded-2xl bg-red-100 dark:bg-red-400/15 flex items-center justify-center flex-shrink-0">
+                <Trash2 size={18} className="text-red-600 dark:text-red-300" />
               </div>
-              <h2 className="text-base font-black text-gray-800">Delete Lead</h2>
+              <h2 className="text-base font-bold text-gray-800 dark:text-white">Delete Lead</h2>
             </div>
-            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+            <p className="text-sm text-gray-600 dark:text-white/60 mb-6 leading-relaxed">
               Permanently delete lead <strong>{deleting.name || deleting.phone || 'Unknown'}</strong>? This cannot be undone.
             </p>
             <div className="flex gap-3">
               <button onClick={() => setDeleting(null)} disabled={busy}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
                 Cancel
               </button>
               <button onClick={deleteLead} disabled={busy}

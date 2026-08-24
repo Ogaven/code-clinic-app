@@ -428,21 +428,33 @@
 .dark .conversations-ui textarea { color: #e8f0fa; }
 
 /* ── Admin/Accounts shell typography ───────────────────────────────────────
-   Crisper, Inter-based enterprise type system, scoped to the redesigned
-   Admin/Accounts shell only — Doctor and Receptionist keep their existing
-   Plus Jakarta Sans look untouched. No new font dependency: Inter is already
-   loaded via the Google Fonts <link> in app/layout.tsx and is Tailwind's
-   configured font-sans. */
+   Standardised on Questrial (self-hosted via next/font/local, see
+   app/fonts/questrial.ts — no npm font package added), scoped to the
+   redesigned Admin/Accounts shell only via the --font-questrial variable
+   applied on that shell's wrapper div. Doctor and Receptionist keep their
+   existing Plus Jakarta Sans look untouched — they don't carry the
+   variable, so this block never reaches them. Falls back to Inter (already
+   loaded for the rest of the app) if the variable isn't present.
+
+   Questrial ships ONE real weight (400/Regular) — no bold face exists.
+   Rather than let the browser synthesize a fake bold (which looks blurry
+   on a geometric sans like this), every weight utility in this scope is
+   flattened to 400 and font-synthesis is disabled outright. Hierarchy is
+   carried by size, colour and spacing instead — see individual components. */
 .cc-admin-shell {
-  font-family: 'Inter', system-ui, sans-serif;
-  letter-spacing: -0.011em;
+  font-family: var(--font-questrial), 'Inter', system-ui, sans-serif;
+  font-synthesis: none;
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 .cc-admin-shell h1, .cc-admin-shell h2, .cc-admin-shell h3, .cc-admin-shell h4 {
-  font-family: 'Inter', system-ui, sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  font-family: var(--font-questrial), 'Inter', system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.008em;
 }
-.cc-admin-shell .font-bold { font-weight: 600; }
+.cc-admin-shell .font-bold,
+.cc-admin-shell .font-semibold,
+.cc-admin-shell .font-black,
+.cc-admin-shell .font-medium { font-weight: 400; }

@@ -3,97 +3,129 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
-  Plus, Calendar, Download, Bot, Users, Mic, Keyboard, Image as ImageIcon, ArrowUpRight,
+  Plus, Calendar, Download, Users, TrendingUp, TrendingDown, ArrowUpRight,
+  UserCheck, Megaphone, Share2,
 } from 'lucide-react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts'
 import { cn, formatUGX, getGreeting } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
 
-// ── All data below is fetched from real, already-existing Code Clinic APIs —
-//    nothing in this file is mocked. Two slots in the reference layout
-//    (Patient Satisfaction, Utilisation rings) have no backing data source
-//    anywhere in this codebase; rather than invent numbers, they render an
-//    honest "no data" state — see report. ──────────────────────────────────
+// ── Everything below is real, live Code Clinic data reused from existing
+//    APIs — EXCEPT the Financial Snapshot, which uses explicitly
+//    user-approved placeholder figures (see "DEMO DATA" block) because the
+//    Accounts application isn't finished yet. Nothing here is written to
+//    the database and no Accounts API is touched. ──────────────────────────
 
 interface DashMetrics {
   activeThisMonth: number; activeLastMonth: number
   newPatientsThisMonth: number; returningPatientsThisMonth: number
-  noShowRate: number; noShowCount: number; totalWeekAppts: number
   lapsedCount: number
 }
-interface DashCharts {
-  aiPerformance: { conversationsHandled: number; appointmentsBooked: number; messagesSent: number }
-}
+interface DashCharts { aiPerformance: { conversationsHandled: number; appointmentsBooked: number; messagesSent: number } }
 interface DashData { metrics: DashMetrics; charts: DashCharts }
-interface DentalData { treatmentsCompleted: number }
-interface UpcomingAppt {
+interface PipelineEntry { count: number; totalUGX: number }
+interface DentalData { pipeline: Record<string, PipelineEntry> }
+interface Appt {
   id: string; startAt: string; status: string
   patient: { firstName: string; lastName: string }
   doctor: { user: { firstName: string; lastName: string } }
   service: { name: string; colour: string }
 }
-interface FinanceData {
-  monthRevenue: number; monthExpenses: number
-  trend: { month: string; revenue: number; expenses: number }[]
-}
+interface FollowupReport { messages: any[] }
 interface MiniPatient { id: string; firstName: string; lastName: string; avatarUrl?: string | null }
+interface Lead { id: string; status: string; createdAt: string }
+interface Campaign { id: string; status: string; sentCount: number }
+interface ReferralStats { stats: { source: string; count: number; thisMonth: number }[] }
 
-const CATEGORY_FILTERS = { active: 'ACTIVE', returning: 'returning', fresh: 'new_patient', lapsed: 'LAPSED' } as const
+const PIPELINE_STATUSES = [
+  { key: 'Planned', label: 'Planned', color: '#1D4ED8' },
+  { key: 'In Progress', label: 'In Progress', color: '#92400E' },
+  { key: 'Completed', label: 'Completed', color: '#065F46' },
+  { key: 'On Hold', label: 'On Hold', color: '#854D0E' },
+  { key: 'Declined', label: 'Declined', color: '#9F1239' },
+  { key: 'Cancelled', label: 'Cancelled', color: '#991B1B' },
+]
 
-// ── Compact KPI card — matches the 3-card row in the reference ─────────────
-function KpiCard({ icon: Icon, value, label, color }: { icon: React.ElementType; value: string; label: string; color: string }) {
-  return (
-    <div className="flex flex-col justify-between rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
-      <div className="flex items-start justify-between">
-        <span />
-        <span className="grid h-8 w-8 place-items-center rounded-xl" style={{ background: color + '15', color }}>
-          <Icon size={15} />
-        </span>
-      </div>
-      <div>
-        <p className="text-2xl font-semibold leading-none text-clinic-navy dark:text-white">{value}</p>
-        <p className="mt-1 text-[11px] text-gray-400">{label}</p>
-      </div>
-    </div>
-  )
-}
+// Same live-flow grouping the real <LivePatientFlow /> component uses
+// (apps/web/components/scheduling/LivePatientFlow.tsx) — reused here, not reinvented.
+const FLOW_STAGES = [
+  { key: 'arrived', label: 'Arrived', statuses: ['ARRIVED', 'CHECKED_IN'], color: '#3B82F6' },
+  { key: 'waiting', label: 'Waiting', statuses: ['WAITING'], color: '#EAB308' },
+  { key: 'session', label: 'In Session', statuses: ['IN_OPERATORY', 'IN_CHAIR', 'WITH_PROVIDER'], color: '#F97316' },
+  { key: 'checkout', label: 'Checkout', statuses: ['READY_CHECKOUT'], color: '#A855F7' },
+]
 
-// ── Semicircle gauge ─────────────────────────────────────────────────────
+const WEEK_STATUSES = [
+  { key: 'CONFIRMED', label: 'Confirmed', color: '#2563EB' },
+  { key: 'PENDING', label: 'Pending', color: '#D97706' },
+  { key: 'NO_SHOW', label: 'No-show', color: '#DC2626' },
+  { key: 'RESCHEDULED', label: 'Rescheduled', color: '#7C3AED' },
+  { key: 'CANCELLED', label: 'Cancelled', color: '#6B7280' },
+]
+
+const CATEGORY_FILTERS = { total: '', seen: 'ACTIVE', returning: 'returning', fresh: 'new_patient' } as const
+
 function Gauge({ pct, color }: { pct: number | null; color: string }) {
   const clamped = pct === null ? 0 : Math.max(0, Math.min(100, pct))
-  const r = 50, cx = 60, cy = 58
+  const r = 52, cx = 62, cy = 60
   const circumference = Math.PI * r
   const offset = circumference * (1 - clamped / 100)
   const arc = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`
   return (
-    <svg width="120" height="66" viewBox="0 0 120 66" className="mx-auto">
-      <path d={arc} fill="none" stroke="currentColor" strokeWidth="10" strokeLinecap="round" className="text-gray-100 dark:text-white/10" />
+    <svg width="124" height="68" viewBox="0 0 124 68" className="mx-auto">
+      <path d={arc} fill="none" stroke="currentColor" strokeWidth="12" strokeLinecap="round" className="text-gray-100 dark:text-white/10" />
       {pct !== null && (
-        <path d={arc} fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"
+        <path d={arc} fill="none" stroke={color} strokeWidth="12" strokeLinecap="round"
           strokeDasharray={circumference} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
       )}
     </svg>
   )
 }
 
-function dateISOToday() {
-  return new Date().toLocaleDateString('en-GB', { timeZone: 'Africa/Nairobi', weekday: 'long', day: 'numeric', month: 'long' })
+function Ring({ pct, color, size = 52 }: { pct: number | null; color: string; size?: number }) {
+  const r = (size - 8) / 2, cx = size / 2, cy = size / 2
+  const c = 2 * Math.PI * r
+  const offset = pct === null ? c : c * (1 - Math.max(0, Math.min(100, pct)) / 100)
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-gray-100 dark:text-white/10" />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={offset} transform={`rotate(-90 ${cx} ${cy})`} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+    </svg>
+  )
+}
+
+function CompactCard({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{title}</p>
+        {action}
+      </div>
+      {children}
+    </div>
+  )
 }
 
 export default function DashboardPage() {
-  const [user, setUser]           = useState<any>(null)
-  const [dashData, setDashData]   = useState<DashData | null>(null)
+  const [user, setUser] = useState<any>(null)
+  const [dashData, setDashData] = useState<DashData | null>(null)
   const [dentalData, setDentalData] = useState<DentalData | null>(null)
-  const [finance, setFinance]     = useState<FinanceData | null>(null)
-  const [upcoming, setUpcoming]   = useState<UpcomingAppt[] | null>(null)
-  const [avatars, setAvatars]     = useState<Record<string, MiniPatient[]>>({})
+  const [weekAppts, setWeekAppts] = useState<Appt[] | null>(null)
+  const [todayAppts, setTodayAppts] = useState<Appt[] | null>(null)
+  const [upcoming, setUpcoming] = useState<Appt[] | null>(null)
+  const [followups, setFollowups] = useState<FollowupReport | null>(null)
+  const [totalPatients, setTotalPatients] = useState<number | null>(null)
+  const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
+  const [leads, setLeads] = useState<Lead[] | null>(null)
+  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null)
+  const [referrals, setReferrals] = useState<ReferralStats | null>(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
     if (stored) setUser(JSON.parse(stored))
-
     const token = localStorage.getItem('cc_token')
     if (!token) return
     const auth = { Authorization: `Bearer ${token}` }
@@ -104,47 +136,85 @@ export default function DashboardPage() {
     fetch('/api-proxy/clinical/analytics/dental-dashboard', { headers: auth })
       .then(r => r.json()).then(d => { if (d && !d.error) setDentalData(d) }).catch(() => {})
 
-    // Reuses the existing Accounts dashboard endpoint (open to any authenticated
-    // role) for real revenue/expenses — the only place that data exists.
-    fetch('/api-proxy/accounts/dashboard', { headers: auth })
-      .then(r => r.ok ? r.json() : null).then(d => { if (d) setFinance(d) }).catch(() => {})
+    // This week's date range (Mon–Sun), real appointments, reused endpoint —
+    // powers both the "Appointments This Week" breakdown and nothing else.
+    const now = new Date()
+    const dow = now.getDay()
+    const monday = new Date(now); monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1))
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
+    const iso = (d: Date) => d.toISOString().slice(0, 10)
+    fetch(`/api-proxy/scheduling/appointments?startDate=${iso(monday)}&endDate=${iso(sunday)}`, { headers: auth })
+      .then(r => r.ok ? r.json() : []).then(d => { if (Array.isArray(d)) setWeekAppts(d) }).catch(() => {})
 
-    // Reuses the same scheduling/appointments endpoint the Appointments workspace uses.
+    // Today's appointments — reused for both Live Flow and Upcoming Appointments.
     fetch('/api-proxy/scheduling/appointments', { headers: auth })
-      .then(r => r.ok ? r.json() : []).then(d => { if (Array.isArray(d)) setUpcoming(d) }).catch(() => {})
+      .then(r => r.ok ? r.json() : []).then(d => {
+        if (Array.isArray(d)) { setTodayAppts(d); setUpcoming(d) }
+      }).catch(() => {})
 
-    // Reuses the same patients endpoint/filters the Patients page uses, just to
-    // pull a few real avatars per category — not for the counts themselves.
+    fetch('/api-proxy/ai-suite/followup-report', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d) setFollowups(d) }).catch(() => {})
+
+    fetch('/api-proxy/patients?limit=1', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d && typeof d.total === 'number') setTotalPatients(d.total) }).catch(() => {})
+
     Object.entries(CATEGORY_FILTERS).forEach(([key, filter]) => {
-      fetch(`/api-proxy/patients?filter=${filter}&limit=3`, { headers: auth })
+      const qs = filter ? `filter=${filter}&limit=3` : 'limit=3'
+      fetch(`/api-proxy/patients?${qs}`, { headers: auth })
         .then(r => r.ok ? r.json() : null)
         .then(d => { const rows = Array.isArray(d) ? d : d?.data; if (Array.isArray(rows)) setAvatars(prev => ({ ...prev, [key]: rows })) })
         .catch(() => {})
     })
+
+    fetch('/api-proxy/crm/leads', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (Array.isArray(d)) setLeads(d) }).catch(() => {})
+    fetch('/api-proxy/campaigns', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (Array.isArray(d)) setCampaigns(d) }).catch(() => {})
+    fetch('/api-proxy/patients/referral-stats', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d?.stats) setReferrals(d) }).catch(() => {})
   }, [])
 
-  const greeting    = getGreeting()
-  const name        = user ? user.firstName : ''
-  const isDoctor    = user?.role === 'DOCTOR'
+  const greeting = getGreeting()
+  const name = user ? user.firstName : ''
+  const isDoctor = user?.role === 'DOCTOR'
   const displayName = isDoctor ? `Dr. ${name}` : name
   const m = dashData?.metrics
 
-  const netIncome = finance ? finance.monthRevenue - finance.monthExpenses : null
+  // ── DEMO DATA — explicitly approved by the user for this card only. The
+  // Accounts application isn't finished, so there's no reliable real
+  // Revenue/Expenses/Net Income source yet. NOT written to the database,
+  // NOT read from any Accounts API. Replace with real Accounts data once
+  // that module is ready. ─────────────────────────────────────────────────
+  const DEMO_FINANCE = {
+    revenue: 58_320_000, expenses: 24_000_000, netIncome: 34_320_000,
+    trend: [
+      { month: 'Jan', revenue: 21_000_000 }, { month: 'Feb', revenue: 24_500_000 },
+      { month: 'Mar', revenue: 27_800_000 }, { month: 'Apr', revenue: 29_100_000 },
+      { month: 'May', revenue: 26_400_000 }, { month: 'Jun', revenue: 34_320_000 },
+    ],
+  }
 
-  const futureAppts = (upcoming ?? []).filter(a => new Date(a.startAt).getTime() >= Date.now() && a.status !== 'CANCELLED').slice(0, 6)
+  const weekCounts = WEEK_STATUSES.map(s => ({ ...s, count: (weekAppts ?? []).filter(a => a.status === s.key).length }))
+  const flowCounts = FLOW_STAGES.map(s => ({ ...s, count: (todayAppts ?? []).filter(a => s.statuses.includes(a.status)).length }))
+  const futureAppts = (upcoming ?? [])
+    .filter(a => new Date(a.startAt).getTime() >= Date.now() && a.status !== 'CANCELLED')
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+    .slice(0, 6)
+
+  const newLeads = leads ? leads.filter(l => Date.now() - new Date(l.createdAt).getTime() < 7 * 86400000).length : null
+  const convertedLeads = leads ? leads.filter(l => l.status === 'CONVERTED').length : null
+  const activeCampaigns = campaigns ? campaigns.filter(c => c.status !== 'DRAFT').length : null
+  const referralPatients = referrals ? referrals.stats.filter(s => s.source !== 'Not Recorded').reduce((sum, s) => sum + s.count, 0) : null
+  const conversionRate = leads && leads.length > 0 && convertedLeads !== null ? Math.round((convertedLeads / leads.length) * 100) : null
 
   return (
     <div className="animate-fade-in space-y-3">
 
-      {/* ── ROW 1 — greeting + actions | 3 KPI cards ── */}
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.4fr_1fr]">
-        <div>
+      {/* ═══ ROW 1 — Welcome + actions | KPI | KPI | KPI ═══ */}
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_1fr_1fr_1fr]">
+        <div className="flex flex-col justify-center">
           <h2 className="text-xl font-semibold leading-tight text-clinic-navy dark:text-white">{greeting}, {displayName}! 👋</h2>
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <span className="flex items-center gap-1.5 rounded-full bg-clinic-navy px-3 py-1.5 text-[11px] font-semibold text-white dark:bg-white/10">
-              <span className="grid h-4 w-4 place-items-center rounded-full bg-white/20 text-[9px]">{new Date().getDate()}</span>
-              {dateISOToday()}
-            </span>
             <Link href="/patients" className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
               <Plus size={12} /> New Patient
             </Link>
@@ -152,122 +222,173 @@ export default function DashboardPage() {
               <Calendar size={12} /> Schedule Appointment
             </Link>
             <Link href="/reports" className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-clinic-navy transition hover:-translate-y-0.5 dark:border-white/10 dark:bg-white/5 dark:text-white">
-              <Download size={12} /> Download Report
+              <Download size={12} /> Reports
             </Link>
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5">
-          <KpiCard icon={Calendar} value={m ? m.totalWeekAppts.toString() : '—'} label="Appointments This Week" color="#29ABE2" />
-          <KpiCard icon={Calendar} value={m ? m.noShowCount.toString() : '—'} label="No-show Appointments" color="#EF4444" />
-          <KpiCard icon={Calendar} value={dentalData ? dentalData.treatmentsCompleted.toString() : '—'} label="Treatments Completed" color="#10B981" />
+        {/* Card 1 — Appointments This Week + real status breakdown */}
+        <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-start justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Appointments This Week</p>
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-300"><Calendar size={13} /></span>
+          </div>
+          <p className="mt-1 text-2xl font-semibold leading-none text-clinic-navy dark:text-white">{weekAppts ? weekAppts.length : '—'}</p>
+          <div className="mt-2 space-y-1">
+            {weekCounts.map(s => (
+              <div key={s.key} className="flex items-center justify-between text-[10px]">
+                <span className="flex items-center gap-1 text-gray-400"><span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />{s.label}</span>
+                <span className="font-semibold text-gray-600 dark:text-slate-300">{weekAppts ? s.count : '—'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Card 2 — Treatment Pipeline summary (reused pipeline data, logic untouched) */}
+        <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-start justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Treatment Pipeline</p>
+            <Link href="/treatment-pipeline" className="grid h-7 w-7 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-300"><ArrowUpRight size={13} /></Link>
+          </div>
+          <p className="mt-1 text-2xl font-semibold leading-none text-clinic-navy dark:text-white">
+            {dentalData ? Object.values(dentalData.pipeline).reduce((s, p) => s + p.count, 0) : '—'}
+          </p>
+          <div className="mt-2 space-y-1">
+            {PIPELINE_STATUSES.map(s => (
+              <div key={s.key} className="flex items-center justify-between text-[10px]">
+                <span className="flex items-center gap-1 text-gray-400"><span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />{s.label}</span>
+                <span className="font-semibold text-gray-600 dark:text-slate-300">{dentalData ? (dentalData.pipeline[s.key]?.count ?? 0) : '—'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Card 3 — Patient Live Flow (same grouping as the real <LivePatientFlow/>) */}
+        <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-start justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Patient Live Flow</p>
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300"><UserCheck size={13} /></span>
+          </div>
+          <p className="mt-1 text-2xl font-semibold leading-none text-clinic-navy dark:text-white">
+            {todayAppts ? flowCounts.reduce((s, f) => s + f.count, 0) : '—'}
+          </p>
+          <div className="mt-2 space-y-1">
+            {flowCounts.map(s => (
+              <div key={s.key} className="flex items-center justify-between text-[10px]">
+                <span className="flex items-center gap-1 text-gray-400"><span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />{s.label}</span>
+                <span className="font-semibold text-gray-600 dark:text-slate-300">{todayAppts ? s.count : '—'}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* ── ROW 2 — Patient Satisfaction | Financial Snapshot | Sarah AI Assistant ── */}
+      {/* ═══ ROW 2 — Patient Satisfaction | Financial Snapshot | CRM Growth ═══ */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[0.85fr_1.6fr_0.85fr]">
 
-        {/* Patient Satisfaction — no review/rating data exists anywhere in this
-            codebase (checked the Prisma schema and every API route). Rather
-            than invent a rating, this renders an honest empty state. */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Patient Satisfaction</p>
+        {/* Patient Satisfaction — Google Reviews-ready card. A real, authorized
+            GBP connection already exists server-side (see
+            apps/api/src/routes/business-profile.ts and GET
+            /business-profile/reviews/summary?accountId=&locationId=), but
+            Google's Basic API Access approval is still pending, so no live
+            rating can be shown honestly yet. Layout below is the FINAL
+            shape — swapping the `pending` block for real
+            averageRating/totalReviewCount/recentReviewCount from that
+            endpoint (once an accountId/locationId are known — see
+            GET /business-profile/verify) requires no redesign, only
+            replacing this one branch. */}
+        <CompactCard title="Patient Satisfaction" action={<span className="rounded-full bg-gray-50 px-2 py-0.5 text-[9px] font-semibold text-gray-400 dark:bg-white/5 dark:text-white/30">Google Reviews</span>}>
           <Gauge pct={null} color="#D1D5DB" />
-          <p className="-mt-1 text-center text-xl font-semibold text-gray-300 dark:text-white/20">No data</p>
-          <p className="text-center text-[10px] text-gray-400">Review data not tracked yet</p>
-        </div>
+          <p className="-mt-1 text-center text-xl font-semibold text-gray-300 dark:text-white/20">—<span className="text-xs font-normal text-gray-300 dark:text-white/20">/5</span></p>
+          <p className="text-center text-[10px] text-gray-400">Google Reviews pending API approval</p>
+          <p className="mt-2 text-center text-[10px] font-semibold text-gray-300 dark:text-white/20">View all reviews</p>
+        </CompactCard>
 
-        {/* Financial Snapshot — real Revenue/Expenses/Net Income + real 6-month
-            trend, reused from the existing Accounts dashboard endpoint. */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Financial Snapshot</p>
-            <span className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-semibold text-gray-500 dark:border-white/10 dark:text-slate-400">Jan – Jun</span>
-          </div>
+        {/* Financial Snapshot — DEMO DATA, see comment above */}
+        <CompactCard title="Financial Snapshot" action={<span className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-semibold text-gray-500 dark:border-white/10 dark:text-slate-400">Jan – Jun</span>}>
           <div className="flex gap-4">
             <div className="flex-shrink-0 space-y-2">
               <div>
-                <p className="text-lg font-semibold text-clinic-navy dark:text-white">{finance ? formatUGX(finance.monthRevenue) : '—'}</p>
+                <p className="text-lg font-semibold text-clinic-navy dark:text-white">{formatUGX(DEMO_FINANCE.revenue)}</p>
                 <p className="text-[10px] text-gray-400">Revenue</p>
               </div>
               <div>
-                <p className="text-base font-semibold text-gray-500 dark:text-slate-300">{finance ? formatUGX(finance.monthExpenses) : '—'}</p>
+                <p className="text-base font-semibold text-gray-500 dark:text-slate-300">{formatUGX(DEMO_FINANCE.expenses)}</p>
                 <p className="text-[10px] text-gray-400">Expenses</p>
               </div>
               <div>
-                <p className="text-base font-semibold" style={{ color: netIncome !== null && netIncome >= 0 ? '#10B981' : '#EF4444' }}>{netIncome !== null ? formatUGX(netIncome) : '—'}</p>
+                <p className="text-base font-semibold text-emerald-600 dark:text-emerald-400">{formatUGX(DEMO_FINANCE.netIncome)}</p>
                 <p className="text-[10px] text-gray-400">Net Income</p>
               </div>
             </div>
             <div className="min-w-0 flex-1">
-              {!finance ? (
-                <div className="h-[128px] animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
-              ) : (
-                <ResponsiveContainer width="100%" height={128}>
-                  <BarChart data={finance.trend} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-                    <YAxis hide />
-                    <Tooltip formatter={(v: number, key: string) => [formatUGX(v), key === 'revenue' ? 'Revenue' : 'Expenses']} contentStyle={{ borderRadius: 8, fontSize: 11 }} />
-                    <Bar dataKey="revenue" fill="#93C5FD" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+              <ResponsiveContainer width="100%" height={128}>
+                <BarChart data={DEMO_FINANCE.trend} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  <YAxis hide />
+                  <Tooltip formatter={(v: number) => [formatUGX(v), 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 11 }} />
+                  <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
+                    {DEMO_FINANCE.trend.map((_, i, arr) => <Cell key={i} fill={i === arr.length - 1 ? '#1A237E' : '#93C5FD'} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="mt-1 text-center text-[9px] text-gray-300 dark:text-white/20">Demo financial data — Accounts module not yet finished</p>
             </div>
           </div>
-        </div>
+        </CompactCard>
 
-        {/* Sarah AI Assistant — real conversation/booking stats from the AI Suite */}
-        <Link href="/ai-suite/inbox" className="flex flex-col justify-between rounded-2xl p-4 text-white shadow-sm transition hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+        {/* CRM / Growth summary — real Leads/Referrals/Campaigns, replaces the old Sarah card */}
+        <Link href="/leads" className="flex flex-col justify-between rounded-2xl p-4 text-white shadow-sm transition hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg,#0c1e50,#1A237E 45%,#29ABE2)' }}>
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-100">Sarah AI Assistant</p>
-            <ArrowUpRight size={15} className="text-white/70" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-100">Growth &amp; CRM</p>
+            <span className="grid h-7 w-7 place-items-center rounded-full bg-white/15"><Share2 size={13} /></span>
           </div>
-          <div className="my-3 rounded-2xl bg-white/15 p-3 backdrop-blur-sm">
-            <div className="flex items-start gap-2">
-              <span className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-full bg-white/25"><Bot size={13} /></span>
-              <p className="rounded-xl rounded-tl-none bg-white/20 px-2.5 py-1.5 text-[11px] leading-snug text-white">Hi, I&apos;m Sarah — how can I help today?</p>
+          <div className="my-2 space-y-2">
+            <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
+              <span className="flex items-center gap-1.5 text-[11px] text-blue-100"><Users size={12} /> New Leads (7d)</span>
+              <span className="text-sm font-semibold text-white">{newLeads ?? '—'}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
+              <span className="flex items-center gap-1.5 text-[11px] text-blue-100"><UserCheck size={12} /> Converted</span>
+              <span className="text-sm font-semibold text-white">{convertedLeads ?? '—'}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
+              <span className="flex items-center gap-1.5 text-[11px] text-blue-100"><Share2 size={12} /> Referral Patients</span>
+              <span className="text-sm font-semibold text-white">{referralPatients ?? '—'}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
+              <span className="flex items-center gap-1.5 text-[11px] text-blue-100"><Megaphone size={12} /> Active Campaigns</span>
+              <span className="text-sm font-semibold text-white">{activeCampaigns ?? '—'}</span>
             </div>
           </div>
-          <div className="space-y-1.5">
-            {[
-              { label: 'Conversations', value: dashData?.charts.aiPerformance.conversationsHandled },
-              { label: 'Bookings by Sarah', value: dashData?.charts.aiPerformance.appointmentsBooked },
-            ].map(row => (
-              <div key={row.label} className="flex items-center justify-between text-[11px]">
-                <span className="text-blue-100">{row.label}</span>
-                <span className="font-semibold text-white">{row.value ?? '—'}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 flex items-center gap-2 border-t border-white/15 pt-3 text-white/70">
-            <Keyboard size={13} /> <Mic size={13} /> <ImageIcon size={13} />
+          <div className="flex items-center justify-between border-t border-white/15 pt-2">
+            <span className="text-[10px] text-blue-100">{conversionRate !== null ? `${conversionRate}% lead conversion` : 'Conversion — unavailable'}</span>
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-white/80">Open CRM <ArrowUpRight size={12} /></span>
           </div>
         </Link>
       </div>
 
-      {/* ── ROW 3 — Patients Overview | Upcoming Appointments | Utilisation ── */}
+      {/* ═══ ROW 3 — Patients Overview | Upcoming Appointments | Utilization AI Summary ═══ */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.05fr_1.3fr_0.85fr]">
 
-        {/* Patients Overview — real Active/Returning/New/Lapsed, real avatars */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Patients Overview</p>
-            <Link href="/patients" className="text-[11px] font-semibold text-clinic-blue hover:underline dark:text-cyan-400">View all patients</Link>
-          </div>
+        {/* Patients Overview — real Total/Seen/Returning/New + real avatars */}
+        <CompactCard title="Patients Overview" action={<Link href="/patients" className="text-[11px] font-semibold text-clinic-blue hover:underline dark:text-cyan-400">View all patients</Link>}>
           {!m ? (
             <div className="h-32 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
           ) : (() => {
             const segs = [
-              { key: 'active', label: 'Active', value: m.activeThisMonth, color: '#1A237E', delta: m.activeThisMonth - m.activeLastMonth },
-              { key: 'returning', label: 'Returning', value: m.returningPatientsThisMonth, color: '#29ABE2', delta: null as number | null },
-              { key: 'fresh', label: 'New', value: m.newPatientsThisMonth, color: '#10B981', delta: null as number | null },
-              { key: 'lapsed', label: 'Lapsed', value: m.lapsedCount, color: '#EF4444', delta: null as number | null },
+              { key: 'total', label: 'Total', value: totalPatients, color: '#1A237E', delta: null as number | null },
+              { key: 'seen', label: 'Seen', value: m.activeThisMonth, color: '#29ABE2', delta: m.activeThisMonth - m.activeLastMonth },
+              { key: 'returning', label: 'Returning', value: m.returningPatientsThisMonth, color: '#10B981', delta: null as number | null },
+              { key: 'fresh', label: 'New', value: m.newPatientsThisMonth, color: '#F59E0B', delta: null as number | null },
             ]
-            const total = Math.max(segs.slice(0, 3).reduce((s, x) => s + x.value, 0), 1)
+            const barTotal = Math.max(m.activeThisMonth + m.returningPatientsThisMonth + m.newPatientsThisMonth, 1)
             return (
               <>
                 <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
-                  {segs.slice(0, 3).map(s => s.value > 0 && <div key={s.key} style={{ width: `${(s.value / total) * 100}%`, background: s.color }} />)}
+                  <div style={{ width: `${(m.activeThisMonth / barTotal) * 100}%`, background: '#29ABE2' }} />
+                  <div style={{ width: `${(m.returningPatientsThisMonth / barTotal) * 100}%`, background: '#10B981' }} />
+                  <div style={{ width: `${(m.newPatientsThisMonth / barTotal) * 100}%`, background: '#F59E0B' }} />
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   {segs.map(s => {
@@ -279,11 +400,11 @@ export default function DashboardPage() {
                             <Avatar key={p.id} firstName={p.firstName} lastName={p.lastName} avatarUrl={p.avatarUrl} size="xs" />
                           )) : <span className="grid h-6 w-6 place-items-center rounded-full bg-gray-100 text-gray-300 dark:bg-white/5"><Users size={11} /></span>}
                         </div>
-                        <p className="text-lg font-semibold leading-tight text-clinic-navy dark:text-white">{s.value}</p>
+                        <p className="text-lg font-semibold leading-tight text-clinic-navy dark:text-white">{s.value ?? '—'}</p>
                         <p className="text-[10px] text-gray-400">{s.label} Patients</p>
                         {s.delta !== null && (
-                          <span className={cn('mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-semibold', s.delta >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' : 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400')}>
-                            {s.delta >= 0 ? '+' : ''}{s.delta} vs last month
+                          <span className={cn('mt-0.5 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold', s.delta >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' : 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400')}>
+                            {s.delta >= 0 ? <TrendingUp size={9} /> : <TrendingDown size={9} />}{s.delta >= 0 ? '+' : ''}{s.delta} vs last month
                           </span>
                         )}
                       </div>
@@ -293,14 +414,10 @@ export default function DashboardPage() {
               </>
             )
           })()}
-        </div>
+        </CompactCard>
 
         {/* Upcoming Appointments — real scheduling data, compact timeline */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Upcoming Appointments</p>
-            <Link href="/scheduling" className="text-[11px] font-semibold text-clinic-blue hover:underline dark:text-cyan-400">View all</Link>
-          </div>
+        <CompactCard title="Upcoming Appointments" action={<Link href="/scheduling" className="text-[11px] font-semibold text-clinic-blue hover:underline dark:text-cyan-400">View all</Link>}>
           {upcoming === null ? (
             <div className="h-36 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
           ) : futureAppts.length === 0 ? (
@@ -331,8 +448,9 @@ export default function DashboardPage() {
                     const left = pctOf(new Date(a.startAt).getTime())
                     const top = 10 + (i % 3) * 30
                     const time = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true })
+                    const isNearest = i === 0
                     return (
-                      <div key={a.id} className="absolute flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-white shadow-sm" style={{ left: `${left}%`, top, background: a.service.colour || '#29ABE2' }} title={`${time} · ${a.patient.firstName} ${a.patient.lastName} · ${a.service.name}`}>
+                      <div key={a.id} className={cn('absolute flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-white shadow-sm', isNearest && 'ring-2 ring-clinic-blue ring-offset-1 dark:ring-cyan-400 dark:ring-offset-slate-900')} style={{ left: `${left}%`, top, background: a.service.colour || '#29ABE2' }} title={`${time} · ${a.patient.firstName} ${a.patient.lastName} · ${a.service.name}`}>
                         <Avatar firstName={a.patient.firstName} lastName={a.patient.lastName} size="xs" colour="rgba(255,255,255,0.3)" />
                         <span className="whitespace-nowrap text-[10px] font-semibold">{a.patient.firstName}</span>
                       </div>
@@ -345,29 +463,39 @@ export default function DashboardPage() {
               </div>
             )
           })()}
-        </div>
+        </CompactCard>
 
-        {/* Today's Utilisation AI Summary — no capacity/utilisation data exists
-            anywhere in this codebase (no working-hours-vs-booked capacity model
-            wired to this dashboard), so each ring shows an honest empty state
-            rather than an invented percentage. */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <p className="mb-4 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Today&apos;s Utilization AI Summary</p>
+        {/* Today's Utilization AI Summary — real AI Bookings/Follow-ups counts;
+            Reminders has no read endpoint anywhere in this codebase (confirmed),
+            so it shows a truthful unavailable state rather than a fake number.
+            None of the three have a real capacity/target denominator, so the
+            rings are plain activity indicators, not percentages-of-something. */}
+        <CompactCard title="Today's Utilization AI Summary">
           <div className="grid grid-cols-3 gap-2 text-center">
-            {['Provider', 'Room', 'Equipment'].map(label => (
-              <div key={label}>
-                <div className="relative mx-auto h-[52px] w-[52px]">
-                  <svg width="52" height="52" viewBox="0 0 52 52">
-                    <circle cx="26" cy="26" r="22" fill="none" stroke="currentColor" strokeWidth="6" className="text-gray-100 dark:text-white/10" />
-                  </svg>
-                  <span className="absolute inset-0 grid place-items-center text-xs font-semibold text-gray-300 dark:text-white/20">—</span>
-                </div>
-                <p className="mt-1.5 text-[10px] text-gray-400">{label}</p>
+            <div>
+              <div className="relative mx-auto h-[52px] w-[52px]">
+                <Ring pct={dashData ? 100 : null} color="#1A237E" />
+                <span className="absolute inset-0 grid place-items-center text-xs font-semibold text-clinic-navy dark:text-white">{dashData ? dashData.charts.aiPerformance.appointmentsBooked : '—'}</span>
               </div>
-            ))}
+              <p className="mt-1.5 text-[10px] text-gray-400">AI Bookings</p>
+            </div>
+            <div>
+              <div className="relative mx-auto h-[52px] w-[52px]">
+                <Ring pct={followups ? 100 : null} color="#10B981" />
+                <span className="absolute inset-0 grid place-items-center text-xs font-semibold text-clinic-navy dark:text-white">{followups ? followups.messages.length : '—'}</span>
+              </div>
+              <p className="mt-1.5 text-[10px] text-gray-400">Follow-ups</p>
+            </div>
+            <div>
+              <div className="relative mx-auto h-[52px] w-[52px]">
+                <Ring pct={null} color="#D1D5DB" />
+                <span className="absolute inset-0 grid place-items-center text-xs font-semibold text-gray-300 dark:text-white/20">—</span>
+              </div>
+              <p className="mt-1.5 text-[10px] text-gray-400">Reminders</p>
+            </div>
           </div>
-          <p className="mt-3 text-center text-[10px] text-gray-400">Capacity data not tracked yet</p>
-        </div>
+          <p className="mt-3 text-center text-[10px] text-gray-400">Reminders has no readable backend endpoint yet</p>
+        </CompactCard>
       </div>
     </div>
   )

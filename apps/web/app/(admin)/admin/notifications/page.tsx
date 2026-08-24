@@ -59,7 +59,7 @@ export default function AdminNotificationsPage() {
   return (
     <div className="space-y-4 p-4 md:p-6 pb-24 md:pb-6 animate-fade-in">
       <div className="flex items-center gap-3">
-        <Link href="/admin/dashboard"
+        <Link href="/dashboard"
           className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 transition-colors">
           <ArrowLeft size={16} />
         </Link>

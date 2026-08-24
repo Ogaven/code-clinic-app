@@ -84,7 +84,7 @@ export default function LoginPage() {
       setAuthCookie(data.accessToken)
       const ROLE_HOME: Record<string, string> = {
         RECEPTIONIST: '/receptionist/dashboard',
-        ADMIN:        '/admin/dashboard',
+        ADMIN:        '/dashboard',
         DOCTOR:       '/doctor/dashboard',
         ACCOUNTS:     '/accounts/dashboard',
         DEVELOPER:    '/developer/dashboard',

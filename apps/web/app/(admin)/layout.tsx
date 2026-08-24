@@ -4,6 +4,7 @@ import TopBar from '@/components/layout/TopBar'
 import SarahChatbot from '@/components/SarahChatbot'
 import { AppTheme, applyTheme, readTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
+import { questrial } from '../fonts/questrial'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
@@ -65,7 +66,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const title = pageTitles[pathname] || (pathname.startsWith('/patients/') ? 'Patient Profile' : null)
     || Object.entries(pageTitles).find(([key]) => pathname.startsWith(key + '/'))?.[1] || 'Overview'
 
-  return <div className={cn('cc-admin-shell flex h-screen flex-col overflow-hidden', dark ? 'bg-transparent' : 'bg-clinic-bg')}>
+  return <div className={cn('cc-admin-shell flex h-screen flex-col overflow-hidden', questrial.variable, dark ? 'bg-transparent' : 'bg-clinic-bg')}>
     <TopBar title={title} user={user} theme={theme} onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }} />
     <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
     <SarahChatbot />

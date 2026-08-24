@@ -5,6 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowLeft, Camera, Save, Eye, EyeOff, Sun, Moon, Monitor, CheckCircle } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
+import AvatarCropModal from '@/components/ui/AvatarCropModal'
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const DAY_KEYS = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY']
@@ -25,6 +26,7 @@ export default function DoctorProfilePage() {
   const [specialisation, setSpec]     = useState('')
   const [avatarUrl, setAvatarUrl]     = useState<string | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
+  const [cropSrc, setCropSrc]         = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Availability
@@ -86,10 +88,14 @@ export default function DoctorProfilePage() {
     if (!doctor || !token) return
     setSaving(true)
     try {
-      await fetch(`/api-proxy/employees/${user.id}`, {
+      // /auth/me is self-scoped and works for any role — the previous
+      // /employees/:id call is admin-only and was silently 403'ing for
+      // doctors, so name changes never reached the database.
+      const res = await fetch(`/api-proxy/auth/me`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ firstName, lastName, phone }),
       })
+      if (!res.ok) { showToast('Failed to save profile'); return }
       await fetch(`/api-proxy/doctors/${doctor.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ specialisation }),
@@ -97,7 +103,7 @@ export default function DoctorProfilePage() {
       const stored = JSON.parse(localStorage.getItem('cc_user') || '{}')
       localStorage.setItem('cc_user', JSON.stringify({ ...stored, firstName, lastName, phone }))
       showToast('Profile saved!')
-    } catch {} finally { setSaving(false) }
+    } catch { showToast('Network error') } finally { setSaving(false) }
   }
 
   async function saveAvailability() {
@@ -128,15 +134,21 @@ export default function DoctorProfilePage() {
     } catch { setPwdError('Network error') } finally { setPwdSaving(false) }
   }
 
-  async function handleAvatarFile(file: File) {
+  function handleAvatarFile(file: File) {
     if (!file || !token || !user) return
     if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { showToast('Only JPEG, PNG, WebP allowed'); return }
-    setAvatarUploading(true)
     const reader = new FileReader()
-    reader.onload = e => { if (e.target?.result) setAvatarUrl(e.target.result as string) }
+    reader.onload = e => { if (e.target?.result) setCropSrc(e.target.result as string) }
     reader.readAsDataURL(file)
+  }
+
+  async function uploadAvatarBlob(blob: Blob) {
+    if (!token || !user) return
+    setCropSrc(null)
+    setAvatarUploading(true)
+    setAvatarUrl(URL.createObjectURL(blob))
     try {
-      const form = new FormData(); form.append('avatar', file)
+      const form = new FormData(); form.append('avatar', blob, 'avatar.jpg')
       const r = await fetch(`/api-proxy/employees/${user.id}/avatar`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
       })
@@ -365,6 +377,9 @@ export default function DoctorProfilePage() {
           </div>
         )}
       </div>
+      {cropSrc && (
+        <AvatarCropModal src={cropSrc} onCancel={() => setCropSrc(null)} onConfirm={uploadAvatarBlob} />
+      )}
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Camera, Save, Lock, Mail, User, AlertCircle, CheckCircle, Loader2, Eye, EyeOff } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
+import AvatarCropModal from '@/components/ui/AvatarCropModal'
 
 const roleColors: Record<string, string> = {
   ADMIN: '#1A237E', DOCTOR: '#29ABE2', RECEPTIONIST: '#10B981',
@@ -13,6 +14,7 @@ export default function ProfilePage() {
   const [user,      setUser]      = useState<any>(null)
   const [preview,   setPreview]   = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [cropSrc,   setCropSrc]   = useState<string | null>(null)
   const [saving,    setSaving]    = useState(false)
   const [toast,     setToast]     = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
@@ -46,20 +48,23 @@ export default function ProfilePage() {
     setTimeout(() => setToast(null), 3500)
   }
 
-  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5MB', 'error'); return }
-
-    // Preview immediately
     const reader = new FileReader()
-    reader.onload = ev => setPreview(ev.target?.result as string)
+    reader.onload = ev => setCropSrc(ev.target?.result as string)
     reader.readAsDataURL(file)
+    e.target.value = ''
+  }
 
+  async function uploadAvatarBlob(blob: Blob) {
+    setCropSrc(null)
+    setPreview(URL.createObjectURL(blob))
     setUploading(true)
     try {
       const form = new FormData()
-      form.append('avatar', file)
+      form.append('avatar', blob, 'avatar.jpg')
       const res = await fetch(`/api-proxy/employees/${user.id}/avatar`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -87,10 +92,13 @@ export default function ProfilePage() {
     e.preventDefault()
     setSaving(true)
     try {
-      const res = await fetch(`/api-proxy/employees/${user.id}`, {
+      // Uses /auth/me (self-scoped, works for every role) rather than the
+      // admin-only /employees/:id — that endpoint silently 403'd for non-admin
+      // self-edits, which is why name changes never actually reached the DB.
+      const res = await fetch(`/api-proxy/auth/me`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName, lastName, email }),
+        body: JSON.stringify({ firstName, lastName }),
       })
       if (res.ok) {
         const updated = { ...user, firstName, lastName, email }
@@ -218,10 +226,10 @@ export default function ProfilePage() {
           <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Email Address</label>
           <div className="relative">
             <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="your@email.com" required
-              className={cn(inputCls, 'pl-10')} />
+            <input type="email" value={email} disabled
+              className={cn(inputCls, 'pl-10 cursor-not-allowed opacity-60')} />
           </div>
+          <p className="mt-1 text-[11px] text-gray-400">Your login email can&apos;t be changed here — contact an administrator.</p>
         </div>
 
         <div className="flex justify-end pt-2">
@@ -304,6 +312,10 @@ export default function ProfilePage() {
           Log Out All Sessions
         </button>
       </div>
+
+      {cropSrc && (
+        <AvatarCropModal src={cropSrc} onCancel={() => setCropSrc(null)} onConfirm={uploadAvatarBlob} />
+      )}
 
     </div>
   )

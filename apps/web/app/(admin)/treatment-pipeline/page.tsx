@@ -115,6 +115,15 @@ export default function TreatmentPipelinePage() {
   const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set())
   const [bulkStatus,     setBulkStatus]     = useState('')
   const [bulkLoading,    setBulkLoading]    = useState(false)
+  const [dark,           setDark]           = useState(false)
+
+  useEffect(() => {
+    const sync = () => setDark(document.documentElement.classList.contains('dark'))
+    sync()
+    const observer = new MutationObserver(sync)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -283,6 +292,7 @@ export default function TreatmentPipelinePage() {
           icon={<TrendingUp size={18} />}
           color="#1A237E"
           loading={loading}
+          dark={dark}
         />
         <MetricCard
           label="Accepted Value"
@@ -291,6 +301,7 @@ export default function TreatmentPipelinePage() {
           icon={<CheckCircle2 size={18} />}
           color="#065F46"
           loading={loading}
+          dark={dark}
         />
         <MetricCard
           label="Money at Risk"
@@ -300,6 +311,7 @@ export default function TreatmentPipelinePage() {
           color="#92400E"
           loading={loading}
           highlight={!!metrics && metrics.moneyAtRisk > 0}
+          dark={dark}
         />
         <MetricCard
           label="Avg Days to Schedule"
@@ -308,6 +320,7 @@ export default function TreatmentPipelinePage() {
           icon={<Clock size={18} />}
           color="#5B21B6"
           loading={loading}
+          dark={dark}
         />
       </div>
 
@@ -324,13 +337,13 @@ export default function TreatmentPipelinePage() {
 
       {/* ── Bulk action toolbar ────────────────────────────────────────── */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-2xl shadow-lg flex-shrink-0">
-          <span className="text-sm font-bold text-gray-700">{selectedIds.size} plan{selectedIds.size !== 1 ? 's' : ''} selected</span>
+        <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg flex-shrink-0">
+          <span className="text-sm font-bold text-gray-700 dark:text-white">{selectedIds.size} plan{selectedIds.size !== 1 ? 's' : ''} selected</span>
           <div className="flex items-center gap-2 flex-1">
             <select
               value={bulkStatus}
               onChange={e => setBulkStatus(e.target.value)}
-              className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-clinic-blue/20"
+              className="text-xs px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-clinic-blue/20"
             >
               <option value="">Move to status…</option>
               {STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -346,19 +359,19 @@ export default function TreatmentPipelinePage() {
             <button
               onClick={() => handleBulkStatus('Completed')}
               disabled={bulkLoading}
-              className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors disabled:opacity-40"
+              className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors disabled:opacity-40"
             >
               <CheckCircle2 size={11} className="inline mr-1" />Complete
             </button>
             <button
               onClick={handleBulkDelete}
               disabled={bulkLoading}
-              className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors disabled:opacity-40 ml-auto"
+              className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-400/15 dark:text-red-300 dark:hover:bg-red-400/25 transition-colors disabled:opacity-40 ml-auto"
             >
               <Trash2 size={11} className="inline mr-1" />Delete
             </button>
           </div>
-          <button onClick={() => setSelectedIds(new Set())} className="text-gray-400 hover:text-gray-600">
+          <button onClick={() => setSelectedIds(new Set())} className="text-gray-400 hover:text-gray-600 dark:hover:text-white">
             <X size={16} />
           </button>
         </div>
@@ -366,15 +379,15 @@ export default function TreatmentPipelinePage() {
 
       {/* ── Kanban board ──────────────────────────────────────────────── */}
       {loading ? (
-        <div className="flex-1 flex items-center justify-center text-gray-400 gap-2">
+        <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-white/40 gap-2">
           <RefreshCw size={18} className="animate-spin" />
           <span className="text-sm">Loading pipeline...</span>
         </div>
       ) : plans.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+        <div className="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-white/40">
           <Kanban size={40} className="mb-3 opacity-25" />
           <p className="text-sm font-semibold">No treatment plans yet</p>
-          <p className="text-xs mt-1 text-gray-300">Plans appear here once added from a patient's clinical tab</p>
+          <p className="text-xs mt-1 text-gray-300 dark:text-white/20">Plans appear here once added from a patient's clinical tab</p>
         </div>
       ) : (
         <div
@@ -392,8 +405,8 @@ export default function TreatmentPipelinePage() {
                   key={status.id}
                   className="flex flex-col rounded-2xl overflow-hidden w-full sm:flex-shrink-0 sm:w-[280px] transition-all duration-150"
                   style={{
-                    background: isOver ? '#F0F9FF' : '#F9FAFB',
-                    border:    `1px solid ${isOver ? '#BAE6FD' : '#E5E7EB'}`,
+                    background: dark ? (isOver ? 'rgba(41,171,226,0.08)' : 'rgba(255,255,255,0.03)') : (isOver ? '#F0F9FF' : '#F9FAFB'),
+                    border:    `1px solid ${dark ? (isOver ? 'rgba(41,171,226,0.4)' : 'rgba(255,255,255,0.08)') : (isOver ? '#BAE6FD' : '#E5E7EB')}`,
                     boxShadow: isOver ? '0 0 0 2px #29ABE2' : 'none',
                   }}
                   onDragOver={e  => handleDragOver(e, status.id)}
@@ -403,7 +416,7 @@ export default function TreatmentPipelinePage() {
                   {/* Column header */}
                   <div
                     className="px-3 py-2.5 flex items-center justify-between flex-shrink-0"
-                    style={{ background: status.headerBg }}
+                    style={{ background: dark ? status.headerColor + '26' : status.headerBg }}
                   >
                     <div className="flex items-center gap-2">
                       <span
@@ -412,7 +425,7 @@ export default function TreatmentPipelinePage() {
                       />
                       <span
                         className="text-xs font-bold truncate"
-                        style={{ color: status.headerColor }}
+                        style={{ color: dark ? '#fff' : status.headerColor }}
                       >
                         {status.label}
                       </span>
@@ -421,7 +434,7 @@ export default function TreatmentPipelinePage() {
                       {total > 0 && (
                         <span
                           className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
-                          style={{ background: status.headerColor + '18', color: status.headerColor }}
+                          style={{ background: status.headerColor + '18', color: dark ? '#fff' : status.headerColor }}
                         >
                           {fmtUGX(total)}
                         </span>
@@ -439,8 +452,8 @@ export default function TreatmentPipelinePage() {
                   <div className="sm:flex-1 sm:overflow-y-auto p-2 space-y-2">
                     {statusPlans.length === 0 && (
                       <div
-                        className="h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-xs text-gray-300"
-                        style={{ borderColor: isOver ? '#29ABE2' : '#E5E7EB' }}
+                        className="h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-xs text-gray-300 dark:text-white/15"
+                        style={{ borderColor: isOver ? '#29ABE2' : dark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' }}
                       >
                         Drop here
                       </div>
@@ -449,6 +462,7 @@ export default function TreatmentPipelinePage() {
                       <PlanCard
                         key={plan.id}
                         plan={plan}
+                        dark={dark}
                         isDragging={dragId === plan.id}
                         isSelected={selectedIds.has(plan.id)}
                         onDragStart={handleDragStart}
@@ -469,6 +483,7 @@ export default function TreatmentPipelinePage() {
       {movePlan && (
         <MoveModal
           plan={movePlan}
+          dark={dark}
           onMove={handleMove}
           onClose={() => setMovePlan(null)}
         />
@@ -481,6 +496,7 @@ export default function TreatmentPipelinePage() {
 
 function PlanCard({
   plan,
+  dark,
   isDragging,
   isSelected,
   onDragStart,
@@ -489,6 +505,7 @@ function PlanCard({
   onToggleSelect,
 }: {
   plan:           Plan
+  dark:           boolean
   isDragging:     boolean
   isSelected:     boolean
   onDragStart:    (e: React.DragEvent, id: string) => void
@@ -511,16 +528,16 @@ function PlanCard({
       draggable
       onDragStart={e => onDragStart(e, plan.id)}
       onDragEnd={onDragEnd}
-      className="bg-white rounded-xl p-3 select-none transition-all duration-150"
+      className="bg-white dark:bg-[#152040] rounded-xl p-3 select-none transition-all duration-150"
       style={{
         boxShadow:   isDragging
           ? '0 8px 20px rgba(0,0,0,0.15)'
           : isSelected
           ? '0 0 0 2px #29ABE2'
-          : '0 1px 3px rgba(0,0,0,0.06)',
+          : dark ? '0 1px 3px rgba(0,0,0,0.3)' : '0 1px 3px rgba(0,0,0,0.06)',
         opacity:     isDragging ? 0.6 : 1,
         cursor:      'grab',
-        border:      `1px solid ${isSelected ? '#BAE6FD' : '#F3F4F6'}`,
+        border:      `1px solid ${isSelected ? '#BAE6FD' : dark ? 'rgba(255,255,255,0.08)' : '#F3F4F6'}`,
         borderLeft:  `3px solid ${borderColor}`,
       }}
     >
@@ -535,38 +552,38 @@ function PlanCard({
           className="mt-0.5 w-3.5 h-3.5 rounded accent-cyan-500 cursor-pointer flex-shrink-0"
         />
         <div className="flex items-start justify-between gap-1 flex-1 min-w-0">
-          <p className="text-sm font-bold text-gray-900 leading-tight truncate">
+          <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight truncate">
             {plan.patient.firstName} {plan.patient.lastName}
           </p>
-          <span className="text-[10px] font-mono text-gray-400 flex-shrink-0 mt-0.5">
+          <span className="text-[10px] font-mono text-gray-400 dark:text-white/40 flex-shrink-0 mt-0.5">
             {fmtCC(plan.patient.patientNumber)}
           </span>
         </div>
       </div>
 
       {/* Treatment */}
-      <p className="text-[11px] text-gray-600 truncate leading-tight pl-5">
+      <p className="text-[11px] text-gray-600 dark:text-white/60 truncate leading-tight pl-5">
         {plan.treatmentName}
         {plan.toothNumber && (
-          <span className="text-gray-400"> · Tooth {plan.toothNumber}</span>
+          <span className="text-gray-400 dark:text-white/40"> · Tooth {plan.toothNumber}</span>
         )}
       </p>
 
       {/* Value */}
-      <p className="text-sm font-bold mt-1.5 mb-1 pl-5" style={{ color: '#1A237E' }}>
+      <p className="text-sm font-bold mt-1.5 mb-1 pl-5" style={{ color: dark ? '#7CB3FF' : '#1A237E' }}>
         {fmtUGX(plan.value)}
       </p>
 
       {/* Doctor + days + actions */}
       <div className="flex items-center justify-between gap-1 pl-5">
-        <p className="text-[10px] text-gray-400 truncate flex-1">{plan.doctorName}</p>
+        <p className="text-[10px] text-gray-400 dark:text-white/40 truncate flex-1">{plan.doctorName}</p>
         <span className={`text-[10px] font-semibold flex-shrink-0 ${urgentText}`}>
           {plan.daysSince}d
         </span>
         <button
           onClick={e => { e.stopPropagation(); setShowHistory(v => !v) }}
           onDragStart={e => e.stopPropagation()}
-          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-gray-400 hover:text-purple-500 hover:bg-purple-50 transition-colors flex-shrink-0"
+          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-gray-400 dark:text-white/40 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-400/10 transition-colors flex-shrink-0"
           title="Stage history"
         >
           <History size={10} />
@@ -574,7 +591,7 @@ function PlanCard({
         <button
           onClick={e => { e.stopPropagation(); onMove() }}
           onDragStart={e => e.stopPropagation()}
-          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-gray-400 hover:text-clinic-blue hover:bg-blue-50 transition-colors flex-shrink-0"
+          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-gray-400 dark:text-white/40 hover:text-clinic-blue hover:bg-blue-50 dark:hover:bg-blue-400/10 transition-colors flex-shrink-0"
           title="Move to another status"
         >
           <ArrowLeftRight size={10} />
@@ -584,18 +601,18 @@ function PlanCard({
 
       {/* Stage history timeline */}
       {showHistory && (
-        <div className="mt-2 pt-2 border-t border-gray-100 pl-5 space-y-1">
+        <div className="mt-2 pt-2 border-t border-gray-100 dark:border-white/10 pl-5 space-y-1">
           <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
-            <span className="text-[10px] text-gray-400">Entered pipeline: <span className="font-semibold text-gray-600">{fmt(plan.createdAt)}</span></span>
+            <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-white/20 flex-shrink-0" />
+            <span className="text-[10px] text-gray-400 dark:text-white/40">Entered pipeline: <span className="font-semibold text-gray-600 dark:text-white/70">{fmt(plan.createdAt)}</span></span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 flex-shrink-0" />
-            <span className="text-[10px] text-gray-400">Last updated: <span className="font-semibold text-gray-600">{fmt(plan.updatedAt)}</span></span>
+            <span className="text-[10px] text-gray-400 dark:text-white/40">Last updated: <span className="font-semibold text-gray-600 dark:text-white/70">{fmt(plan.updatedAt)}</span></span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-            <span className="text-[10px] text-gray-400">Current status: <span className="font-semibold text-blue-600">{plan.status}</span></span>
+            <span className="text-[10px] text-gray-400 dark:text-white/40">Current status: <span className="font-semibold text-blue-600 dark:text-cyan-400">{plan.status}</span></span>
           </div>
         </div>
       )}
@@ -607,10 +624,12 @@ function PlanCard({
 
 function MoveModal({
   plan,
+  dark,
   onMove,
   onClose,
 }: {
   plan:    Plan
+  dark:    boolean
   onMove:  (planId: string, status: string) => void
   onClose: () => void
 }) {
@@ -620,20 +639,20 @@ function MoveModal({
       onClick={onClose}
     >
       <div
-        className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
+        className="bg-white dark:bg-[#152040] w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between px-4 pt-4 pb-3 border-b border-gray-100">
+        <div className="flex items-start justify-between px-4 pt-4 pb-3 border-b border-gray-100 dark:border-white/10">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-gray-900">Move to status</p>
-            <p className="text-xs text-gray-500 truncate mt-0.5">
+            <p className="text-sm font-bold text-gray-900 dark:text-white">Move to status</p>
+            <p className="text-xs text-gray-500 dark:text-white/50 truncate mt-0.5">
               {plan.patient.firstName} {plan.patient.lastName} · {plan.treatmentName}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="ml-3 w-7 h-7 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 transition-colors flex-shrink-0"
+            className="ml-3 w-7 h-7 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors flex-shrink-0"
           >
             <X size={14} />
           </button>
@@ -645,13 +664,13 @@ function MoveModal({
             <button
               key={status.id}
               onClick={() => onMove(plan.id, status.id)}
-              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 active:bg-gray-100 dark:active:bg-white/10 transition-colors text-left"
             >
               <span
                 className="w-3 h-3 rounded-full flex-shrink-0"
                 style={{ background: status.headerColor }}
               />
-              <span className="text-sm font-medium text-gray-700">{status.label}</span>
+              <span className="text-sm font-medium text-gray-700 dark:text-white/80">{status.label}</span>
             </button>
           ))}
         </div>
@@ -678,23 +697,23 @@ function NeedsReviewSection({
     d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'
 
   const ReviewRow = ({ plan, type }: { plan: ReviewPlan; type: string }) => (
-    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-amber-100/60 last:border-0 hover:bg-amber-50/30 transition-colors">
+    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-amber-100/60 dark:border-amber-400/10 last:border-0 hover:bg-amber-50/30 dark:hover:bg-amber-400/5 transition-colors">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-bold text-gray-800 truncate">{plan.patientName}</span>
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">{plan.stage}</span>
+          <span className="text-sm font-bold text-gray-800 dark:text-white truncate">{plan.patientName}</span>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300">{plan.stage}</span>
           <span className="text-[10px] font-semibold text-red-500">{plan.daysSince}d</span>
         </div>
-        <div className="text-[11px] text-gray-500 mt-0.5">
+        <div className="text-[11px] text-gray-500 dark:text-white/50 mt-0.5">
           {plan.treatmentName} · {fmtUGX(plan.value)}
-          {plan.lastApptDate && <span className="ml-2 text-gray-400">Last visit: {fmt(plan.lastApptDate)}</span>}
+          {plan.lastApptDate && <span className="ml-2 text-gray-400 dark:text-white/30">Last visit: {fmt(plan.lastApptDate)}</span>}
         </div>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
         {type === 'stuck' && (
           <button
             onClick={() => onAction(plan.id, 'complete')}
-            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
+            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors"
             title="Mark Completed"
           >
             <CheckCircle2 size={11} className="inline mr-0.5" />Done
@@ -702,21 +721,21 @@ function NeedsReviewSection({
         )}
         <button
           onClick={() => onAction(plan.id, 'decline')}
-          className="text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+          className="text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/15 transition-colors"
           title="Mark Declined"
         >
           Decline
         </button>
         <button
           onClick={() => onNavigate(plan.patientId)}
-          className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+          className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-400/15 dark:text-blue-300 dark:hover:bg-blue-400/25 transition-colors"
           title="Book Follow-up"
         >
           <CalendarPlus size={11} className="inline mr-0.5" />Book
         </button>
         <button
           onClick={() => onAction(plan.id, 'remove')}
-          className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+          className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-white/30 dark:hover:bg-red-400/10 transition-colors"
           title="Remove from pipeline"
         >
           <Trash2 size={12} />
@@ -748,19 +767,19 @@ function NeedsReviewSection({
       </button>
 
       {open && (
-        <div className="bg-white border-t border-amber-200">
+        <div className="bg-white dark:bg-[#0e1f4d] border-t border-amber-200 dark:border-amber-400/20">
           {data.consultOnly.length > 0 && (
             <>
-              <div className="px-4 py-1.5 bg-gray-50 border-b border-gray-100">
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Consulted — no follow-up ({data.consultOnly.length})</p>
+              <div className="px-4 py-1.5 bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/10">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Consulted — no follow-up ({data.consultOnly.length})</p>
               </div>
               {data.consultOnly.map(p => <ReviewRow key={p.id} plan={p} type="consult" />)}
             </>
           )}
           {data.stuckPlans.length > 0 && (
             <>
-              <div className="px-4 py-1.5 bg-gray-50 border-b border-gray-100">
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Stuck / Accepted — not progressing ({data.stuckPlans.length})</p>
+              <div className="px-4 py-1.5 bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/10">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Stuck / Accepted — not progressing ({data.stuckPlans.length})</p>
               </div>
               {data.stuckPlans.map(p => <ReviewRow key={p.id} plan={p} type="stuck" />)}
             </>
@@ -774,7 +793,7 @@ function NeedsReviewSection({
 // ── Metric card ───────────────────────────────────────────────────────────────
 
 function MetricCard({
-  label, value, sub, icon, color, loading, highlight,
+  label, value, sub, icon, color, loading, highlight, dark,
 }: {
   label:      string
   value:      string
@@ -783,25 +802,26 @@ function MetricCard({
   color:      string
   loading:    boolean
   highlight?: boolean
+  dark:       boolean
 }) {
   return (
     <div
-      className="bg-white rounded-2xl p-4 border transition-all duration-150"
+      className="bg-white dark:bg-white/5 rounded-2xl p-4 border transition-all duration-150"
       style={{
-        borderColor: highlight ? '#FCA5A5' : '#F3F4F6',
-        boxShadow:   highlight ? '0 0 0 2px #FCA5A5' : '0 1px 3px rgba(0,0,0,0.05)',
+        borderColor: highlight ? '#FCA5A5' : dark ? 'rgba(255,255,255,0.1)' : '#F3F4F6',
+        boxShadow:   highlight ? '0 0 0 2px #FCA5A5' : dark ? 'none' : '0 1px 3px rgba(0,0,0,0.05)',
       }}
     >
       <div className="flex items-start justify-between mb-2">
-        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">{label}</p>
-        <span style={{ color }}>{icon}</span>
+        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 dark:text-white/40">{label}</p>
+        <span style={{ color: dark ? '#fff' : color }}>{icon}</span>
       </div>
       {loading ? (
-        <div className="h-7 w-24 bg-gray-100 rounded-lg animate-pulse" />
+        <div className="h-7 w-24 bg-gray-100 dark:bg-white/10 rounded-lg animate-pulse" />
       ) : (
         <p className="text-xl font-black" style={{ color }}>{value}</p>
       )}
-      <p className="text-[11px] text-gray-400 mt-1">{sub}</p>
+      <p className="text-[11px] text-gray-400 dark:text-white/40 mt-1">{sub}</p>
     </div>
   )
 }
