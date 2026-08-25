@@ -106,15 +106,18 @@ function ChipLegend({ items, loading }: { items: { label: string; count: number;
 // Large semicircular satisfaction gauge — full size in both the real and
 // pending states (per design rule: never collapse to a tiny placeholder).
 // Gradient (red→orange→yellow→green) only paints when a real pct is given;
-// the pending state shows the same size track, unfilled.
-function SatisfactionGauge({ pct }: { pct: number | null }) {
-  const r = 92, cx = 102, cy = 100, sw = 24
+// the pending state shows the same size track, unfilled. The rating is
+// drawn as real SVG <text>, not an HTML overlay with negative-margin
+// guesswork — that was clipping the thick stroke's round end-caps against
+// the viewBox edge, which is what read as "cropped".
+function SatisfactionGauge({ pct, ratingLabel }: { pct: number | null; ratingLabel: string }) {
+  const r = 86, cx = 110, cy = 100, sw = 22
   const circumference = Math.PI * r
   const clamped = pct === null ? 0 : Math.max(0, Math.min(100, pct))
   const offset = circumference * (1 - clamped / 100)
   const arc = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`
   return (
-    <svg viewBox="0 0 204 112" className="mx-auto w-full max-w-none">
+    <svg viewBox="0 0 220 156" className="mx-auto block w-full max-w-none overflow-visible">
       <defs>
         <linearGradient id="satisfactionGradient" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="#EF4444" />
@@ -128,6 +131,10 @@ function SatisfactionGauge({ pct }: { pct: number | null }) {
         <path d={arc} fill="none" stroke="url(#satisfactionGradient)" strokeWidth={sw} strokeLinecap="round"
           strokeDasharray={circumference} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
       )}
+      <text x={cx} y={cy + 42} textAnchor="middle" fill="currentColor" className={pct === null ? 'text-gray-300 dark:text-white/25' : 'text-clinic-navy dark:text-white'}>
+        <tspan fontSize="32" fontWeight="800">{ratingLabel}</tspan>
+        <tspan fontSize="15" fontWeight="600" dx="3">/5</tspan>
+      </text>
     </svg>
   )
 }
@@ -141,7 +148,6 @@ function UtilRing({ icon, value, label, color, size = 82, previewNote }: { icon:
   const r = (size - 10) / 2
   return (
     <div className="flex flex-col items-center gap-1.5" title={!has ? previewNote : undefined}>
-      <span className="grid h-7 w-7 place-items-center rounded-full" style={{ background: has ? `${color}1A` : 'rgba(148,163,184,0.12)', color: has ? color : '#9CA3AF' }}>{icon}</span>
       <div className="relative grid place-items-center" style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="absolute inset-0">
           <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-gray-100 dark:text-white/10" />
@@ -155,6 +161,10 @@ function UtilRing({ icon, value, label, color, size = 82, previewNote }: { icon:
           )}
         </svg>
         <span className={cn('text-base font-extrabold leading-none', has ? 'text-clinic-navy dark:text-white' : 'text-gray-300 dark:text-white/25')}>{has ? value : '—'}</span>
+        {/* Icon badge overlaps the ring's top-left corner (matching the
+            reference), with a border matching the card surface so it reads
+            as a distinct badge rather than clipping into the ring. */}
+        <span className="absolute -left-1 -top-1 grid h-6 w-6 place-items-center rounded-full border-2 border-white text-white shadow-sm dark:border-[#0f1b3d]" style={{ background: has ? color : '#9CA3AF' }}>{icon}</span>
       </div>
       <p className="text-[10px] font-semibold text-gray-600 dark:text-slate-300">{label}</p>
     </div>
@@ -424,13 +434,8 @@ export default function DashboardPage() {
             <span>No reviews yet</span>
             <span>&nbsp;</span>
           </div>
-          <div className="relative -mt-1">
-            <SatisfactionGauge pct={null} />
-            <div className="absolute inset-x-0 bottom-1 text-center">
-              <p className="text-3xl font-extrabold leading-none text-gray-300 dark:text-white/25">—<span className="text-base font-semibold text-gray-300 dark:text-white/25">/5</span></p>
-            </div>
-          </div>
-          <div className="-mt-1 text-center">
+          <SatisfactionGauge pct={null} ratingLabel="—" />
+          <div className="-mt-2 text-center">
             <p className="mx-auto max-w-[190px] text-[10px] font-semibold leading-snug text-gray-500 dark:text-slate-400">Google Reviews pending API approval</p>
             <p className="mt-2 text-[10px] font-bold text-gray-300 dark:text-white/25">View all reviews</p>
           </div>
@@ -682,9 +687,9 @@ export default function DashboardPage() {
             manufactured percentage. */}
         <CompactCard title="Today's AI Utilization">
           <div className="grid grid-cols-3 gap-2">
-            <UtilRing icon={<Bot size={15} />} value={null} label="AI Bookings" color="#1A237E" previewNote="Preview — scoping this to today needs a backend addition, not implemented yet" />
-            <UtilRing icon={<Repeat size={15} />} value={followupsToday} label="Follow-ups" color="#10B981" />
-            <UtilRing icon={<Bell size={15} />} value={null} label="Reminders" color="#D1D5DB" previewNote="Preview — no backend source for reminders exists yet" />
+            <UtilRing icon={<Bot size={12} />} value={null} label="AI Bookings" color="#1A237E" previewNote="Preview — scoping this to today needs a backend addition, not implemented yet" />
+            <UtilRing icon={<Repeat size={12} />} value={followupsToday} label="Follow-ups" color="#10B981" />
+            <UtilRing icon={<Bell size={12} />} value={null} label="Reminders" color="#D1D5DB" previewNote="Preview — no backend source for reminders exists yet" />
           </div>
           <p className="mt-3 text-center text-[9px] leading-relaxed text-gray-400 dark:text-white/25">AI Bookings needs a backend change to scope to today · Reminders has no backend source yet</p>
         </CompactCard>
