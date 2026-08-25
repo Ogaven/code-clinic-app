@@ -286,7 +286,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 const mimeType = (media.mimeType || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
 
                 const visionRes = await anthropic.messages.create({
-                  model:      'claude-sonnet-4-6',
+                  model:      'claude-sonnet-5',
                   max_tokens: 300,
                   system:     'You are Sarah, a dental clinic assistant at Code Clinic in Kampala Uganda. A patient sent you an image. Look at it carefully. If it shows a dental concern (tooth pain, swelling, broken tooth, cavity, gum issue, etc), acknowledge what you see, show empathy, and suggest they book an appointment. If it is not dental related, respond warmly and ask how you can help. Keep response under 150 words, plain text, no markdown, no asterisks.',
                   messages: [{
@@ -338,7 +338,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
                 if (extractedText) {
                   const docRes = await anthropic.messages.create({
-                    model:      'claude-sonnet-4-6',
+                    model:      'claude-sonnet-5',
                     max_tokens: 200,
                     messages: [{
                       role:    'user',

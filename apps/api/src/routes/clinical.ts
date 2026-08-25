@@ -83,7 +83,7 @@ router.post('/patients/:id/dental-chart/ai-summary', requireAuth, doctorOrAdmin,
       : 'You are a dental assistant. Analyze the following dental chart data (in JSON format, using FDI notation) and provide a concise, professional summary for a patient file. Focus on active issues (caries, planned treatments), significant restorations (crowns, implants, root canals), and missing teeth. Be specific about tooth numbers.'
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 1024,
       system: systemPrompt,
       messages: [{ role: 'user', content: JSON.stringify(chartData) }],
@@ -111,7 +111,7 @@ router.post('/dental-chart/smart-entry', requireAuth, doctorOrAdmin, async (req,
     const { command } = req.body
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 512,
       system: `You are a dental charting assistant. Parse natural language into JSON commands. Use FDI notation. Return ONLY valid JSON with no markdown.
 Format: { "commands": [{ "toothNumber": "string", "type": "surface"|"condition", "surface"?: "occlusal"|"buccal"|"lingual"|"mesial"|"distal", "status"?: "Healthy"|"Caries"|"Planned Treatment"|"Amalgam"|"Composite"|"Gold"|"Sealant", "condition"?: "Missing"|"Implant"|"Root Canal"|"Crown"|"Fracture"|"To be Extracted"|"Impacted"|"Mobile"|"Supraerupted"|"Bridge Abutment"|"Pontic"|"Denture" }]}

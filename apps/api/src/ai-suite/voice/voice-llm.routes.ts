@@ -116,7 +116,7 @@ function openAiResponse(content: string, id: string) {
     id:      `chatcmpl-${id}`,
     object:  'chat.completion',
     created: Math.floor(Date.now() / 1000),
-    model:   'claude-sonnet-4-6',
+    model:   'claude-sonnet-5',
     choices: [{
       index:         0,
       message:       { role: 'assistant', content },

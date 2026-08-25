@@ -95,7 +95,7 @@ export async function runAgent(params: AgentRunParams): Promise<AgentRunResult> 
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 1024,
       system: systemPrompt,
       tools: AGENT_TOOLS,
@@ -145,7 +145,7 @@ export async function runAgent(params: AgentRunParams): Promise<AgentRunResult> 
     // If last round and still tool_use, force a final answer
     if (round === MAX_ROUNDS - 1) {
       const finalResponse = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         max_tokens: 512,
         system: systemPrompt + '\n\nIMPORTANT: You have reached the tool call limit. Give your final response to the patient now.',
         tools: AGENT_TOOLS,

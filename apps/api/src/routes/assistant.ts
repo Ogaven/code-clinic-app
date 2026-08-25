@@ -248,7 +248,7 @@ When using open_page or highlight_element tools, explain what you're doing in na
 
     // First API call
     const firstResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 1024,
       system: systemPrompt,
       tools: TOOLS,
@@ -276,7 +276,7 @@ When using open_page or highlight_element tools, explain what you're doing in na
 
       // Second call with tool results
       const finalResponse = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         max_tokens: 1024,
         system: systemPrompt,
         tools: TOOLS,

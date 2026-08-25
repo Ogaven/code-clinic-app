@@ -163,7 +163,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
           const mimeType = ct.startsWith('image/') ? ct.split(';')[0].trim() : 'image/jpeg'
 
           const visionRes = await anthropic.messages.create({
-            model:      'claude-sonnet-4-6',
+            model:      'claude-sonnet-5',
             max_tokens: 200,
             system:     'Describe what you see in this image in one or two plain sentences, focusing on any visible medical or dental concerns.',
             messages: [{

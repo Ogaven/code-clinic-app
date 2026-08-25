@@ -676,7 +676,7 @@ async function respondToTangentThenRedirect(
   try {
     const client = new Anthropic({ apiKey })
     const response = await client.messages.create({
-      model:      'claude-sonnet-4-6',
+      model:      'claude-sonnet-5',
       max_tokens: 80,
       system:     `You are Sarah, a warm dental assistant at Code Clinic. Give a brief (1-2 sentence), friendly, informative answer using general dental knowledge. Do NOT state clinic-specific prices, doctor names, or availability unless certain. No em dashes. No markdown.`,
       messages:   [{ role: 'user', content: `The patient asked: "${message}". Answer briefly and warmly.` }],
@@ -695,7 +695,7 @@ async function respondToClinicalFollowUp(message: string): Promise<string> {
   try {
     const client = new Anthropic({ apiKey })
     const response = await client.messages.create({
-      model:      'claude-sonnet-4-6',
+      model:      'claude-sonnet-5',
       max_tokens: 120,
       system:     `You are Sarah, a warm dental assistant at Code Clinic. The patient previously reported a clinical concern and our team has already been notified. Answer their follow-up question with 1-2 friendly sentences using general dental knowledge. If it fits naturally at the end, add: "Our team's on it and will be in touch soon 🙏" - only if it flows well. Do NOT say you've alerted the team again. No em dashes. No markdown.`,
       messages:   [{ role: 'user', content: message }],
@@ -1711,7 +1711,7 @@ export async function getAgentReply(
     ].join('\n')
 
     const response = await client.messages.create({
-      model:      'claude-sonnet-4-6',
+      model:      'claude-sonnet-5',
       max_tokens: 200,
       system: [
         { type: 'text', text: staticSystem },
@@ -2674,7 +2674,7 @@ export async function getAgentReplyV2(
     for (let iter = 0; iter < 8; iter++) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response: any = await client.messages.create({
-        model:      'claude-sonnet-4-6',
+        model:      'claude-sonnet-5',
         max_tokens: 1024,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         system: [
