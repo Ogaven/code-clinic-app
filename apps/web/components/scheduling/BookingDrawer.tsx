@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { X, Search, Loader2, Plus, User, Phone } from 'lucide-react'
 import { cn, formatPhone } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
+import PatientFormFields, { EMPTY_PATIENT_FORM, buildPatientRequestBody, type PatientFormValues } from '@/components/patients/PatientFormFields'
 
 interface Service  { id: string; name: string; durationMins: number; priceUGX: number; colour: string; category?: string; isActive?: boolean }
 interface Doctor   { id: string; firstName: string; lastName: string; colour: string; specialisation?: string }
@@ -43,14 +44,10 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
   const [svcSearch,   setSvcSearch]   = useState('')
   const [notifyPatient, setNotifyPatient] = useState(true)
 
-  // New patient form
-  const [newFirst,    setNewFirst]    = useState('')
-  const [newLast,     setNewLast]     = useState('')
-  const [newPhone,    setNewPhone]    = useState('')
-  const [newEmail,    setNewEmail]    = useState('')
-  const [newGender,   setNewGender]   = useState('MALE')
-  const [newDob,      setNewDob]      = useState('')
-  const [newDistrict, setNewDistrict] = useState('')
+  // New patient form — same shared field set/component as the full Add
+  // Patient workflow (apps/web/app/(admin)/patients/page.tsx), via
+  // PatientFormFields, so the two entry points can't drift apart again.
+  const [newPatientForm, setNewPatientForm] = useState<PatientFormValues>(EMPTY_PATIENT_FORM)
   const [creatingPt, setCreatingPt] = useState(false)
 
   // On open — load services & doctors
@@ -104,19 +101,21 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
   }, [patientQ])
 
   async function createPatient() {
-    if (!newFirst || !newLast || !newPhone) { setError('Name and phone are required'); return }
+    if (!newPatientForm.firstName || !newPatientForm.lastName || !newPatientForm.phone) {
+      setError('Name and phone are required'); return
+    }
     setCreatingPt(true)
     try {
       const res  = await fetch(`${API}/patients`, {
         method: 'POST', headers,
-        body: JSON.stringify({ firstName: newFirst, lastName: newLast, phone: newPhone, email: newEmail || undefined, gender: newGender, dob: newDob || undefined, district: newDistrict || undefined }),
+        body: JSON.stringify(buildPatientRequestBody(newPatientForm)),
       })
       const data = await res.json()
       if (res.ok) {
         setSelPatient(data)
         setPatientQ(`${data.firstName} ${data.lastName}`)
         setShowNewPt(false)
-        setNewFirst(''); setNewLast(''); setNewPhone(''); setNewEmail(''); setNewDob(''); setNewDistrict('')
+        setNewPatientForm(EMPTY_PATIENT_FORM)
         setError(null)
       } else { setError(data.error || 'Failed to create patient') }
     } catch { setError('Network error') } finally { setCreatingPt(false) }
@@ -150,7 +149,7 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
       setSelPatient(null); setSelService(null); setSelDoctor(null)
       setPatientQ(''); setPatients([]); setNotes(''); setError(null)
       setShowNewPt(false)
-      setNewFirst(''); setNewLast(''); setNewPhone(''); setNewEmail(''); setNewDob(''); setNewDistrict('')
+      setNewPatientForm(EMPTY_PATIENT_FORM)
       setNotifyPatient(true)
     }, 300)
   }
@@ -195,38 +194,23 @@ export default function BookingDrawer({ open, onClose, prefillDoctorId, prefillS
               </button>
             </div>
 
-            {/* New patient mini form — shown when toggled or when search returns 0 results */}
+            {/* New patient form — full parity with the main Add Patient
+                workflow via the shared PatientFormFields component. Shown
+                inline (not collapsed) when toggled or when search returns
+                0 results; the drawer body itself scrolls so every field
+                stays reachable without leaving this panel. */}
             {(showNewPt || (patientQ.length >= 2 && !searching && patients.length === 0 && !selPatient)) && (
-              <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-2">
-                <p className="text-xs font-semibold text-clinic-navy">
+              <div className="mb-3 p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/40 rounded-xl">
+                <p className="text-xs font-semibold text-clinic-navy dark:text-blue-300 mb-3">
                   {patientQ.length >= 2 && !showNewPt && patients.length === 0
                     ? `No patient found for "${patientQ}" — create new?`
-                    : 'Quick Add Patient'}
+                    : 'New Patient'}
                 </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <input value={newFirst} onChange={(e) => setNewFirst(e.target.value)}
-                    placeholder="First name *" className={cn(inputCls, 'text-xs py-2')} />
-                  <input value={newLast} onChange={(e) => setNewLast(e.target.value)}
-                    placeholder="Last name *" className={cn(inputCls, 'text-xs py-2')} />
-                </div>
-                <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)}
-                  placeholder="+256... (required)" className={cn(inputCls, 'text-xs py-2')} />
-                <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="Email (optional)" className={cn(inputCls, 'text-xs py-2')} />
-                <div className="grid grid-cols-2 gap-2">
-                  <input value={newDob} onChange={(e) => setNewDob(e.target.value)}
-                    type="date" placeholder="Date of birth" className={cn(inputCls, 'text-xs py-2')} />
-                  <input value={newDistrict} onChange={(e) => setNewDistrict(e.target.value)}
-                    placeholder="District (optional)" className={cn(inputCls, 'text-xs py-2')} />
-                </div>
-                <select value={newGender} onChange={(e) => setNewGender(e.target.value)}
-                  className={cn(inputCls, 'text-xs py-2')}>
-                  <option value="MALE">Male</option>
-                  <option value="FEMALE">Female</option>
-                  <option value="OTHER">Other</option>
-                </select>
+
+                <PatientFormFields form={newPatientForm} setForm={setNewPatientForm} />
+
                 <button onClick={createPatient} disabled={creatingPt}
-                  className="w-full py-2 bg-clinic-blue text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-1">
+                  className="w-full mt-4 py-2.5 bg-clinic-blue text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-1">
                   {creatingPt ? <Loader2 size={12} className="animate-spin" /> : <User size={12} />}
                   Create & Select
                 </button>

@@ -7,6 +7,7 @@ import {
   Calendar, ChevronLeft, ChevronRight, Users, UserCheck, UserPlus,
   RotateCcw, Clock, XCircle, PhoneOff, CalendarX, FileText, Repeat2,
 } from 'lucide-react'
+import StatusDrilldownModal from '@/components/reports/StatusDrilldownModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,7 @@ export default function ClinicalReportPage() {
   const [data, setData]           = useState<ClinicalReport | null>(null)
   const [loading, setLoading]     = useState(true)
   const [contacted, setContacted] = useState<Record<string, string>>({})
+  const [drilldown, setDrilldown] = useState<{ label: string; status: string; color: string } | null>(null)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
@@ -286,17 +288,23 @@ export default function ClinicalReportPage() {
   }
 
   const m = data?.metrics
-  const STATS = !m ? [] : [
+  // `status` is only set for cards that map to exactly one real
+  // AppointmentStatus enum value (packages/database/prisma/schema.prisma) —
+  // those become click-to-drill-down. The others (Total Scheduled, Patients
+  // Seen, New/Returning, Reviews, Cancelled & Not Rescheduled) are computed
+  // aggregates across multiple statuses, not a single filterable value, so
+  // they stay display-only rather than drilling into a misleading subset.
+  const STATS: { label: string; value: number; color: string; Icon: any; status?: string }[] = !m ? [] : [
     { label: 'Total Scheduled',             value: m.totalScheduled,          color: '#29ABE2', Icon: Calendar      },
     { label: 'Patients Seen',               value: m.totalSeen,               color: '#10B981', Icon: UserCheck     },
     { label: 'New Patients',                value: m.newPatients,             color: '#8B5CF6', Icon: UserPlus      },
     { label: 'Returning',                   value: m.returningPatients,       color: '#3B82F6', Icon: Users         },
     { label: 'Reviews / Recalls',           value: m.reviews,                 color: '#F59E0B', Icon: RotateCcw     },
-    { label: 'Confirmed',                   value: m.confirmed,               color: '#14B8A6', Icon: CheckCircle2  },
-    { label: 'Pending',                     value: m.pending,                 color: '#94A3B8', Icon: Clock         },
-    { label: 'Cancelled',                   value: m.cancelled,               color: '#EF4444', Icon: XCircle       },
-    { label: 'Rescheduled',                 value: m.rescheduled,             color: '#A855F7', Icon: Repeat2       },
-    { label: 'No-Shows',                    value: m.noShows,                 color: '#F97316', Icon: PhoneOff      },
+    { label: 'Confirmed',                   value: m.confirmed,               color: '#14B8A6', Icon: CheckCircle2, status: 'CONFIRMED' },
+    { label: 'Pending',                     value: m.pending,                 color: '#94A3B8', Icon: Clock,        status: 'PENDING'   },
+    { label: 'Cancelled',                   value: m.cancelled,               color: '#EF4444', Icon: XCircle,      status: 'CANCELLED' },
+    { label: 'Rescheduled',                 value: m.rescheduled,             color: '#A855F7', Icon: Repeat2,      status: 'RESCHEDULED' },
+    { label: 'No-Shows',                    value: m.noShows,                 color: '#F97316', Icon: PhoneOff,     status: 'NO_SHOW'   },
     { label: 'Cancelled & Not Rescheduled', value: m.cancelledNotRescheduled, color: '#DC2626', Icon: CalendarX     },
   ]
 
@@ -445,8 +453,11 @@ export default function ClinicalReportPage() {
                   <div className="h-7 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-10" />
                 </div>
               ))
-            : STATS.map(({ label, value, color, Icon }, i) => (
-                <div key={i} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm hover:shadow-md transition-shadow">
+            : STATS.map(({ label, value, color, Icon, status }, i) => (
+                <div key={i}
+                  onClick={status ? () => setDrilldown({ label, status, color }) : undefined}
+                  title={status ? `View the ${value} appointment${value !== 1 ? 's' : ''} behind this number` : undefined}
+                  className={`bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm hover:shadow-md transition-shadow ${status ? 'cursor-pointer hover:-translate-y-0.5 hover:border-gray-200 dark:hover:border-white/20' : ''}`}>
                   <div className="flex items-start justify-between mb-2 gap-1">
                     <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 leading-tight">{label}</p>
                     <Icon size={13} style={{ color }} className="opacity-50 flex-shrink-0 mt-0.5" />
@@ -456,6 +467,21 @@ export default function ClinicalReportPage() {
               ))
           }
         </div>
+
+        {/* Read-only drill-down — reuses the real appointment records already
+            behind this count for the exact period currently selected, via
+            the existing GET /scheduling/appointments endpoint. No messages
+            sent from here; view/identify only. */}
+        {drilldown && data && (
+          <StatusDrilldownModal
+            label={drilldown.label}
+            status={drilldown.status}
+            color={drilldown.color}
+            startDate={data.period.start.slice(0, 10)}
+            endDate={data.period.end.slice(0, 10)}
+            onClose={() => setDrilldown(null)}
+          />
+        )}
 
         {/* ── Follow-up list ─────────────────────────────────────────────────── */}
         <div>

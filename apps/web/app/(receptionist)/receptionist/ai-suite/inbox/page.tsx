@@ -114,11 +114,20 @@ function msgTimestamp(iso: string): string {
 // through backend normalization (e.g. local "0712..." format). Naive "+"
 // prefixing upstream turns the latter into malformed "+0712...". Never
 // display that — always resolve to a clean +256... (or +<digits>) format.
+// Digits-only normalization shared by display formatting AND lead↔conversation
+// phone matching below — one place that decides "0712..." (local) and
+// "256712..."/"+256712..." (international) are the same number, so matching
+// logic never has to reimplement it separately.
+function normalizePhoneDigits(raw: string): string {
+  let digits = raw.replace(/\D/g, '')
+  if (digits.startsWith('0') && digits.length >= 9) digits = '256' + digits.slice(1)
+  return digits
+}
+
 function formatPhoneDisplay(raw: string): string {
   if (!raw) return 'Unknown'
-  let digits = raw.replace(/\D/g, '')
+  const digits = normalizePhoneDigits(raw)
   if (!digits) return raw
-  if (digits.startsWith('0') && digits.length >= 9) digits = '256' + digits.slice(1)
   return `+${digits}`
 }
 
@@ -133,6 +142,68 @@ function convLabel(conv: Conversation, channel: ChannelKey): string {
   if (channel === 'FACEBOOK')  return `FB User ${id.slice(0, 8)}`
   if (channel === 'WEBSITE')   return `Visitor ${id.slice(0, 8)}`
   return id || 'Unknown'
+}
+
+// ── Work-state derivation ────────────────────────────────────────────────────
+// Purely computed from fields that already exist on Conversation — no new
+// schema, no new endpoint, no new backend logic. Deliberately describes only
+// what the data actually shows (message direction + archivedAt), not an
+// inferred workflow/ownership judgement:
+//
+//   - archivedAt set        → "Resolved" — an explicit staff action, not inferred.
+//   - no lastMessage at all → "No activity" — nothing has been said yet
+//     (e.g. a conversation staff just started via "Start a new chat" before
+//     either side has sent anything), so it is neither awaiting a reply nor
+//     already replied to.
+//   - lastMessage.role === 'USER'  → "Awaiting reply" — the customer's message
+//     is currently last in the thread. This does NOT claim any particular
+//     staff member must respond, only that the thread currently ends on a
+//     customer message.
+//   - lastMessage.role === 'AGENT' (or anything else) → "Clinic replied" —
+//     either Sarah or a human staff member sent the latest message
+//     (takeover.routes.ts:369 confirms staff replies via the takeover flow
+//     use the same AGENT role as bot replies — AiMessage.role never
+//     distinguishes them). This is NOT labelled Resolved/Handled: Sarah's
+//     staff-escalation tool (alertStaffOfConcern in agent.service.ts) can
+//     leave an unresolved escalation open while still replying to the
+//     patient in parallel, and nothing in the data returned by
+//     GET /ai-suite/conversations lets the frontend tell that apart from an
+//     ordinary reply — so this state only reports message direction, never a
+//     resolution/ownership claim.
+//
+// Human-vs-AI ownership (agentEnabled / status === 'HUMAN_TAKEOVER') is a
+// separate, already-authoritative signal and stays separate — shown as its
+// own "🤖 AI handling" / "👤 Human handling" pill in the chat header, not
+// merged into this dot/label.
+type WorkState = 'resolved' | 'no_activity' | 'awaiting_reply' | 'clinic_replied'
+const WORK_STATE_META: Record<WorkState, { label: string; dot: string; badgeClass: string }> = {
+  resolved:       { label: 'Resolved',       dot: '#10B981', badgeClass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' },
+  no_activity:    { label: 'No activity',    dot: '#94A3B8', badgeClass: 'bg-gray-50 text-gray-500 dark:bg-white/5 dark:text-slate-400' },
+  awaiting_reply: { label: 'Awaiting reply', dot: '#EF4444', badgeClass: 'bg-red-50 text-red-600 dark:bg-red-400/10 dark:text-red-400' },
+  clinic_replied: { label: 'Clinic replied', dot: '#3B82F6', badgeClass: 'bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400' },
+}
+
+function getWorkState(conv: Conversation): WorkState {
+  if (conv.archivedAt) return 'resolved'
+  const last = conv.lastMessage
+  if (!last) return 'no_activity'
+  if (last.role === 'USER') return 'awaiting_reply'
+  return 'clinic_replied'
+}
+
+// Neutral, non-authoritative "time since last activity" — informational only,
+// never used to classify or badge a conversation's work state.
+function lastActivityLabel(iso?: string): string | null {
+  if (!iso) return null
+  const ms = Date.now() - new Date(iso).getTime()
+  if (ms < 0) return null
+  const mins = Math.floor(ms / 60000)
+  if (mins < 1)  return 'Last activity just now'
+  if (mins < 60) return `Last activity ${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `Last activity ${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `Last activity ${days}d ago`
 }
 
 // ── Media bubble ───────────────────────────────────────────────────────────────
@@ -782,6 +853,27 @@ function InboxPage() {
   const pendingSelectId = useRef<string | null>(null)
   const listPanelRef    = useRef<HTMLDivElement>(null)
 
+  // Lead badge — matches conversations to CRM leads by phone number (the
+  // only relation available; Lead and AiConversation have no foreign key
+  // between them). Real GET /leads data, client-side join only. Only
+  // meaningful on WHATSAPP, where phoneNumber is an actual phone number
+  // (other channels store a Meta PSID or session UUID there instead).
+  const [leadPhones, setLeadPhones] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (channel !== 'WHATSAPP') { setLeadPhones(new Set()); return }
+    fetch(`${API}/crm/leads`, { headers: authH() })
+      .then(r => r.ok ? r.json() : [])
+      .then((leads: { phone?: string; status?: string }[]) => {
+        if (!Array.isArray(leads)) return
+        const active = leads.filter(l => l.phone && l.status !== 'CONVERTED' && l.status !== 'LOST')
+        setLeadPhones(new Set(active.map(l => normalizePhoneDigits(l.phone as string))))
+      }).catch(() => {})
+  }, [channel])
+  function isLeadConversation(conv: Conversation): boolean {
+    if (channel !== 'WHATSAPP' || !conv.phoneNumber) return false
+    return leadPhones.has(normalizePhoneDigits(conv.phoneNumber))
+  }
+
   function onDividerMouseDown(e: React.MouseEvent) {
     e.preventDefault()
     const startX = e.clientX
@@ -989,6 +1081,9 @@ function InboxPage() {
           const time    = fmtTime(last?.createdAt ?? conv.updatedAt)
           const active  = sel?.id === conv.id
           const preview = last ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No messages'
+          const ws     = getWorkState(conv)
+          const wsMeta = WORK_STATE_META[ws]
+          const isLead = isLeadConversation(conv)
           return (
             <div key={conv.id}
               className={cn('flex items-center gap-3 border-b border-l-[3px] border-b-gray-50 px-3.5 py-3 cursor-pointer transition-colors select-none dark:border-b-white/[0.04]',
@@ -1003,15 +1098,16 @@ function InboxPage() {
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-sm font-semibold text-gray-800 truncate">{name}</span>
+                <div className="flex items-center justify-between mb-0.5 gap-1">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="text-sm font-semibold text-gray-800 dark:text-white truncate">{name}</span>
+                    {isLead && <span className="flex-shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-600 dark:bg-violet-400/10 dark:text-violet-400">Lead</span>}
+                  </span>
                   <span className="text-[11px] flex-shrink-0 ml-1 text-gray-400">{time}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-gray-400 truncate flex-1">{preview}</p>
-                  {!conv.agentEnabled && (
-                    <span className="flex-shrink-0 h-2 w-2 rounded-full bg-amber-400" title="Needs a human reply" />
-                  )}
+                  <span className="flex-shrink-0 h-2 w-2 rounded-full" style={{ background: wsMeta.dot }} title={wsMeta.label} />
                 </div>
               </div>
               <div onClick={e => e.stopPropagation()} className="flex-shrink-0 ml-1">
@@ -1041,6 +1137,9 @@ function InboxPage() {
               {sel.agentEnabled ? '🤖 AI handling' : '👤 Human handling'}
             </span>
             <span className="truncate">{formatPhoneDisplay(sel.phoneNumber)}</span>
+            {lastActivityLabel(sel.lastMessage?.createdAt) && (
+              <span className="truncate opacity-75">· {lastActivityLabel(sel.lastMessage?.createdAt)}</span>
+            )}
           </div>
         </div>
         <ChatMenu sel={sel} onChanged={handleConvChanged} />
@@ -1149,6 +1248,8 @@ function InboxPage() {
           const active  = sel?.id === conv.id
           const preview = last ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No messages'
           const isCommentCh = channel === 'FB_COMMENTS' || channel === 'IG_COMMENTS'
+          const ws     = getWorkState(conv)
+          const wsMeta = WORK_STATE_META[ws]
           return (
             <div key={conv.id}
               className={cn('flex items-center gap-3 border-b border-l-[3px] border-b-gray-50 px-3.5 py-3 cursor-pointer transition-colors select-none dark:border-b-white/[0.04]',
@@ -1166,14 +1267,12 @@ function InboxPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-sm font-semibold text-gray-800 truncate">{name}</span>
+                  <span className="text-sm font-semibold text-gray-800 dark:text-white truncate">{name}</span>
                   <span className="text-[11px] flex-shrink-0 ml-1 text-gray-400">{time}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-gray-400 truncate flex-1">{preview}</p>
-                  {!conv.agentEnabled && (
-                    <span className="flex-shrink-0 h-2 w-2 rounded-full bg-amber-400" title="Needs a human reply" />
-                  )}
+                  <span className="flex-shrink-0 h-2 w-2 rounded-full" style={{ background: wsMeta.dot }} title={wsMeta.label} />
                 </div>
                 {isCommentCh && conv.postCaption && (
                   <p className="text-[10px] text-gray-300 truncate mt-0.5">📄 {conv.postCaption.slice(0, 55)}</p>
@@ -1203,6 +1302,9 @@ function InboxPage() {
               {sel.agentEnabled ? '🤖 AI handling' : '👤 Human handling'}
             </span>
             {channel === 'WHATSAPP' && <span className="truncate">{formatPhoneDisplay(sel.phoneNumber)}</span>}
+            {lastActivityLabel(sel.lastMessage?.createdAt) && (
+              <span className="truncate opacity-75">· {lastActivityLabel(sel.lastMessage?.createdAt)}</span>
+            )}
           </div>
         </div>
         <ChatMenu sel={sel} onChanged={handleConvChanged} dark={dark} />

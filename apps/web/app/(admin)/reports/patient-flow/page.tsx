@@ -65,16 +65,48 @@ interface PatientRow {
   totalMins: number | null
 }
 
+type Period = 'today' | 'week' | 'month'
+
+// Same Monday–Sunday current-week convention already used on the dashboard
+// (apps/web/app/(admin)/dashboard/page.tsx) — not re-derived differently here.
+function weekRange(): { start: string; end: string } {
+  const now = new Date()
+  const dow = now.getDay()
+  const monday = new Date(now); monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1))
+  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  return { start: iso(monday), end: iso(sunday) }
+}
+function monthRange(): { start: string; end: string } {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  return { start: iso(start), end: iso(end) }
+}
+
 export default function PatientFlowReportPage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [period, setPeriod] = useState<Period>('today')
   const [rows, setRows] = useState<PatientRow[]>([])
   const [loading, setLoading] = useState(true)
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
+  // "week"/"month" always mean the CURRENT week/month (matching the dashboard
+  // and clinical-report conventions), not the date picker's value — the date
+  // picker only applies in "today" mode. Note: this page fetches each
+  // appointment's activity log individually (see below) to compute wait/stage
+  // timing — real and period-correct, but that means "month" can mean many
+  // parallel requests on a busy clinic; flagged here rather than silently
+  // shipped as if it scales the same as "today".
+  const { startDate, endDate } = period === 'today' ? { startDate: date, endDate: date }
+    : period === 'week' ? (() => { const r = weekRange(); return { startDate: r.start, endDate: r.end } })()
+    : (() => { const r = monthRange(); return { startDate: r.start, endDate: r.end } })()
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ startDate: date, endDate: date })
+      const params = new URLSearchParams({ startDate, endDate })
       const res = await fetch(`/api-proxy/scheduling/appointments?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -127,7 +159,7 @@ export default function PatientFlowReportPage() {
 
       setRows(processedRows)
     } catch { } finally { setLoading(false) }
-  }, [date, token])
+  }, [startDate, endDate, token])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -142,7 +174,7 @@ export default function PatientFlowReportPage() {
     const blob = new Blob([csv], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a'); a.href = url
-    a.download = `patient-flow-${date}.csv`; a.click()
+    a.download = `patient-flow-${startDate}${endDate !== startDate ? `_to_${endDate}` : ''}.csv`; a.click()
     URL.revokeObjectURL(url)
   }
 
@@ -155,15 +187,27 @@ export default function PatientFlowReportPage() {
         </Link>
         <div className="flex-1">
           <h1 className="text-xl font-bold text-clinic-navy dark:text-white">Patient Flow Report</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Today&apos;s patient journey through all clinical stages</p>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {period === 'today' ? "Today's" : period === 'week' ? "This week's" : "This month's"} patient journey through all clinical stages
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2">
+          <div className="flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-white/5">
+            {(['today', 'week', 'month'] as Period[]).map(p => (
+              <button key={p} onClick={() => setPeriod(p)}
+                className={cn('rounded-lg px-3 py-1.5 text-xs font-bold capitalize transition-colors',
+                  period === p ? 'bg-clinic-navy text-white dark:bg-clinic-blue' : 'text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/10')}>
+                {p}
+              </button>
+            ))}
+          </div>
+          <div className={cn('flex items-center gap-2 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2', period !== 'today' && 'opacity-40 pointer-events-none')}>
             <Calendar size={14} className="text-gray-400" />
             <input
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
+              disabled={period !== 'today'}
               className="text-sm bg-transparent text-gray-700 dark:text-gray-200 focus:outline-none"
             />
           </div>
@@ -184,7 +228,7 @@ export default function PatientFlowReportPage() {
         {[
           { label: 'Total Patients', value: rows.length, color: '#29ABE2' },
           { label: 'Currently Active', value: rows.filter(r => !['DEPARTED','COMPLETED','CANCELLED','NO_SHOW'].includes(r.status)).length, color: '#F59E0B' },
-          { label: 'Departed Today', value: rows.filter(r => ['DEPARTED','COMPLETED'].includes(r.status)).length, color: '#10B981' },
+          { label: period === 'today' ? 'Departed Today' : 'Departed', value: rows.filter(r => ['DEPARTED','COMPLETED'].includes(r.status)).length, color: '#10B981' },
           { label: 'Avg Visit Time', value: (() => {
             const timed = rows.filter(r => r.totalMins !== null)
             if (!timed.length) return '—'
