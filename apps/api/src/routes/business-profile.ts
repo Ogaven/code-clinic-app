@@ -324,7 +324,9 @@ router.get('/auth-url', requireAuth, adminOnly, async (req, res) => {
 // so it can never be replayed.
 router.get('/google/callback', async (req, res) => {
   const { code, error, state } = req.query as Record<string, string>
-  const front = process.env.APP_URL || 'http://localhost:3000'
+  // APP_URL is a comma-separated CORS allow-list (see main.ts), not a single
+  // URL — take only the first entry as the frontend origin to redirect to.
+  const front = process.env.APP_URL?.split(',')[0]?.trim() || 'http://localhost:3000'
 
   if (!state) {
     console.error('[GBP] Callback rejected — missing state')
