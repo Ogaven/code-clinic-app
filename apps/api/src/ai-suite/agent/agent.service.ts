@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import {
   getAvailableSlots,
   getServices,
@@ -2885,6 +2886,7 @@ RULES (mandatory):
         tools:      COMMENT_TOOLS,
         messages,
       })
+      console.log(`[${channel}] Claude usage: in=${response.usage?.input_tokens ?? '?'} (cache_read=${response.usage?.cache_read_input_tokens ?? 0}, cache_write=${response.usage?.cache_creation_input_tokens ?? 0}) out=${response.usage?.output_tokens ?? '?'}`)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolBlocks: any[] = (response.content ?? []).filter((b: any) => b.type === 'tool_use')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2913,6 +2915,153 @@ RULES (mandatory):
     }
   } catch (err: any) {
     console.error(`[${channel}] getCommentReply error:`, err?.message)
+  }
+  return FALLBACK
+}
+
+// ── Dedicated public comment reply — OpenAI pilot (Phase 1, flagged) ─────────
+// Parallel implementation of getCommentReply on OpenAI's Responses API, gated
+// behind COMMENT_REPLY_PROVIDER=openai (see facebook.routes.ts). Same system
+// prompt content and same two tools (search_services, flag_clinical_concern)
+// as the Claude path, translated into OpenAI's function-calling shape — this
+// is a side-by-side pilot, not a replacement. Reuses executeV2Tool for actual
+// tool execution so business logic isn't duplicated across providers.
+//
+// Model: gpt-5.6-luna — OpenAI's current cost-optimized tier (verified against
+// developers.openai.com/api/docs/pricing), chosen because this channel already
+// runs on Haiku (the cheap tier) on the Claude side, and luna undercuts even
+// Haiku 4.5 on a per-token basis. gpt-5.6-sol (flagship) is the fallback if
+// luna's reply quality doesn't hold up in review.
+const OPENAI_COMMENT_MODEL = 'gpt-5.6-luna'
+
+const OPENAI_COMMENT_TOOLS = [
+  {
+    type: 'function' as const,
+    name: 'search_services',
+    description: 'Find a dental service matching what the patient described. Returns serviceId needed for check_availability.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string' as const, description: 'What the patient wants, e.g. "cleaning", "filling", "toothache help", "whitening"' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    type: 'function' as const,
+    name: 'flag_clinical_concern',
+    description: "Alert clinic staff via WhatsApp. Use for: (1) genuine clinical emergencies — heavy bleeding, spreading swelling, severe pain; (2) ANY time you are about to promise a patient that someone will follow up, call back, or confirm something — you MUST call this tool before making that promise so the front desk is actually notified.",
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        summary:     { type: 'string' as const, description: 'Brief summary of the clinical concern, 1-2 sentences' },
+        sarahAdvice: { type: 'string' as const, description: 'One sentence summarising what you are telling the patient right now — so Julian knows what advice has already been given' },
+      },
+      required: ['summary', 'sarahAdvice'],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+]
+
+export async function getCommentReplyOpenAI(
+  conversationId: string,
+  text:           string,
+  channel:        'FACEBOOK_COMMENT' | 'INSTAGRAM_COMMENT',
+  fromId:         string,
+  postCaption?:   string,
+): Promise<string> {
+  const FALLBACK = "Hi! 😊 Send us a DM and we'll help you out!"
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return FALLBACK
+
+  // ── EAT date context (UTC+3) — identical to the Claude path ───────────────
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  const nowEAT      = new Date(Date.now() + 3 * 60 * 60 * 1000)
+  const todayIdx    = nowEAT.getUTCDay()
+  const tomorrowIdx = (todayIdx + 1) % 7
+  const todayName   = DAYS[todayIdx]
+  const tomorrowName = DAYS[tomorrowIdx]
+  const hour        = nowEAT.getUTCHours()
+  const isOpenNow   = (todayIdx >= 1 && todayIdx <= 5 && hour >= 8 && hour < 18) ||
+                      (todayIdx === 6 && hour >= 8 && hour < 14)
+  const openStatus  = isOpenNow ? 'currently OPEN' : 'currently CLOSED'
+
+  // ── Conversation history (last 6 messages, skip the one just saved) ───────
+  const recentMsgs = await prisma.aiMessage.findMany({
+    where:   { conversationId },
+    orderBy: { createdAt: 'desc' },
+    take:    7,
+  })
+  const historyMsgs = recentMsgs.slice(1).reverse()
+
+  const platform    = channel === 'FACEBOOK_COMMENT' ? 'Facebook' : 'Instagram'
+  const postContext = postCaption
+    ? `\nThis comment is on a post about: "${postCaption.slice(0, 200)}"\nYou may reference the post topic briefly if it's relevant and helpful.`
+    : ''
+  // Identical wording to the Claude system prompt — this is a fair side-by-side
+  // pilot of the model/provider, not a rewrite of Sarah's public-comment voice.
+  const system = `You are the Code Clinic social media account writing a reply to a public ${platform} comment.
+This reply will be PUBLICLY VISIBLE to all followers. Keep it short, warm, and professional.
+
+Current date/time: ${todayName}, ${nowEAT.toISOString().slice(0, 10)}, ${String(hour).padStart(2, '0')}:${String(nowEAT.getUTCMinutes()).padStart(2, '0')} EAT. We are ${openStatus}.
+Tomorrow is ${tomorrowName}.
+Opening hours: Mon–Fri 8am–6pm, Sat 8am–2pm, closed Sunday.
+Location: Kiira Road, Kamwokya, Kampala.${postContext}
+
+RULES (mandatory):
+1. Maximum 2 short sentences. No bullet points, no lists, no paragraphs.
+2. Answer simple, safe public questions directly and honestly — pricing for a specific service (e.g. "How much for a cleaning?" / "How much are braces?"), hours, location, or whether a service exists. Always call search_services to get the real price before quoting one — never invent a number, and never quote a stale or remembered figure.
+3. Never dump the full price list — if asked broadly what services are offered, name one or two examples (using search_services) and invite a DM for the rest.
+4. Reserve the DM deflection ONLY for things that genuinely need privacy: a specific patient's medical symptoms/concerns, personal contact or scheduling details, complaints, or anything requiring back-and-forth. For those only, reply with: "Hi! 😊 Send us a DM and we'll help you out!"
+5. If this comment describes a genuine clinical/medical concern (pain, swelling, bleeding, medication issue, dental emergency), call flag_clinical_concern with a brief summary so staff are alerted internally — then still give the DM deflection reply publicly. Do NOT call flag_clinical_concern for administrative questions like pricing, hours, or general info.
+6. For hours/location/day questions: use the real date context above to answer specifically (e.g. "Yes, we're open on ${tomorrowName}!").
+7. NEVER mention staff names, say "I've noted", "flagged", "the team will follow up", or describe any internal process.
+8. Use friendly language and one emoji where natural.`
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let input: any[] = [{ role: 'system', content: system }]
+  for (const msg of historyMsgs) {
+    input.push({ role: msg.role === 'USER' ? 'user' : 'assistant', content: msg.content })
+  }
+  input.push({ role: 'user', content: text })
+
+  try {
+    const client = new OpenAI({ apiKey })
+    for (let iter = 0; iter < 3; iter++) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response: any = await client.responses.create({
+        model:             OPENAI_COMMENT_MODEL,
+        input,
+        tools:             OPENAI_COMMENT_TOOLS,
+        max_output_tokens: 300,
+      })
+
+      const usage = response.usage
+      console.log(`[${channel}] OpenAI usage: in=${usage?.input_tokens ?? '?'} (cached=${usage?.input_tokens_details?.cached_tokens ?? 0}) out=${usage?.output_tokens ?? '?'}`)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolCalls: any[] = (response.output ?? []).filter((o: any) => o.type === 'function_call')
+
+      if (toolCalls.length === 0) {
+        const finalText = (response.output_text ?? '').trim()
+        if (finalText) return finalText
+        break
+      }
+
+      input = [...input, ...response.output]
+      for (const call of toolCalls) {
+        console.log(`[${channel}] Comment tool (OpenAI): ${call.name}(${(call.arguments ?? '').slice(0, 100)})`)
+        let args: Record<string, unknown> = {}
+        try { args = JSON.parse(call.arguments || '{}') } catch { /* leave empty on parse failure */ }
+        const result = await executeV2Tool(call.name, args, fromId, conversationId, [], channel)
+        input.push({ type: 'function_call_output', call_id: call.call_id, output: result })
+      }
+    }
+  } catch (err: any) {
+    console.error(`[${channel}] getCommentReplyOpenAI error:`, err?.message)
   }
   return FALLBACK
 }

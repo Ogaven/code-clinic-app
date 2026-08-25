@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { getAgentReplyV2, getCommentReply } from '../agent/agent.service'
+import { getAgentReplyV2, getCommentReply, getCommentReplyOpenAI } from '../agent/agent.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 import { maybeNotifyStaff } from '../whatsapp/whatsapp.service'
@@ -300,7 +300,11 @@ export async function processComment(
       return
     }
 
-    const reply = await getCommentReply(conversation.id, text, channel, fromId, postCaption ?? undefined)
+    // Phase 1 OpenAI pilot — gated, defaults to the existing Claude path when unset.
+    // Do NOT flip this in production until the side-by-side review is signed off.
+    const reply = process.env.COMMENT_REPLY_PROVIDER === 'openai'
+      ? await getCommentReplyOpenAI(conversation.id, text, channel, fromId, postCaption ?? undefined)
+      : await getCommentReply(conversation.id, text, channel, fromId, postCaption ?? undefined)
 
     await prisma.aiMessage.create({
       data: {
