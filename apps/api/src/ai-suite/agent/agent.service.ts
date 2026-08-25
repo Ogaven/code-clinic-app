@@ -2804,11 +2804,31 @@ export async function getAgentReplyV2(
 }
 
 // ── Defense-in-depth: catch a reply that leaked internal reasoning instead of
-// producing clean public-facing text (observed on both providers under certain
-// ambiguous/judgment-call inputs — e.g. ending a reply with "What would be the
-// most helpful response here?" instead of just answering). The prompt now
-// explicitly forbids this (see OUTPUT FORMAT rule below), but a model can still
-// slip — this is a structural backstop, not a substitute for the prompt fix.
+// producing clean public-facing text. A plain "only output the final text"
+// instruction was not reliable — Haiku in particular kept narrating its own
+// rule-application ("I can answer that for the public Facebook reply", "The
+// appropriate response is...") in front of or instead of a clean answer,
+// especially on inputs that require applying a judgment-call rule (in-scope
+// vs off-topic, educational vs personal symptom). Instructions alone don't
+// reliably suppress this, so the prompt now requires the model to wrap ONLY
+// the customer-facing text in <reply></reply> tags — anything outside the
+// tags is where it's allowed to reason, and is discarded, never posted.
+function extractReplyTag(text: string): string | null {
+  const m = text.match(/<reply>([\s\S]*?)<\/reply>/i)
+  return m ? m[1].trim() : null
+}
+
+// Structural check for bullet-list formatting — a public comment reply must
+// be plain prose. sanitizeForWhatsApp() only normalizes the bullet character
+// (dash/asterisk → •), it does not remove list structure, so a reply can
+// still violate the "no bullet points" rule after sanitization. Reject
+// outright rather than post a formatted list.
+function hasBulletFormatting(text: string): boolean {
+  return /^[ \t]*[-•*]\s/m.test(text)
+}
+
+// Secondary heuristic for the (rarer) case where the model ignores the
+// <reply> tag instruction entirely and narrates in plain untagged text.
 function looksLikeLeakedReasoning(text: string): boolean {
   const patterns = [
     /what would be the most helpful/i,
@@ -2817,9 +2837,25 @@ function looksLikeLeakedReasoning(text: string): boolean {
     /i should (give|keep|reply|respond)/i,
     /since this is being asked as a public/i,
     /i can see this is a (public )?facebook comment/i,
+    /i can answer that (for|here)/i,
+    /the appropriate response is/i,
     /^-{3,}$/m,
   ]
   return patterns.some(p => p.test(text))
+}
+
+// Applies the full validation pipeline to a raw model reply: extract the
+// <reply> tag if present (falling back to the raw text if the model didn't
+// use one), reject anything that still looks like leaked reasoning or still
+// contains bullet formatting, then sanitize markdown symbols. Returns null
+// if the reply should be discarded (caller falls through to FALLBACK).
+function validateCommentReply(rawText: string): string | null {
+  const tagged = extractReplyTag(rawText)
+  const candidate = (tagged ?? rawText).trim()
+  if (!candidate) return null
+  if (looksLikeLeakedReasoning(candidate)) return null
+  if (hasBulletFormatting(candidate)) return null
+  return sanitizeForWhatsApp(candidate)
 }
 
 // ── Dedicated public comment reply ────────────────────────────────────────────
@@ -2881,7 +2917,7 @@ RULES (mandatory):
 7. NEVER mention staff names, say "I've noted", "flagged", "the team will follow up", or describe any internal process.
 8. Use friendly language and one emoji where natural.
 9. SCOPE — this account only ever discusses dentistry, Code Clinic's services, or this clinic. If a comment is off-topic, nonsensical, spam, or about anything unrelated to dental care — even something harmless-sounding like relationship advice, a random compliment about something unrelated, or another business — do NOT answer the substance of it. Give a brief, friendly redirect back to dental topics instead, e.g. "Haha, this is Code Clinic's dental page 😊 Any dental questions I can help with?" Never give advice, information, or opinions on non-dental topics, however innocuous it seems.
-10. OUTPUT FORMAT — CRITICAL: your entire response must be ONLY the exact text to post publicly. Never include your own reasoning, uncertainty, notes to whoever is running you, or meta-questions like "what would be the most helpful response here?" If you are unsure what to say, just give your best short, safe reply directly — never think out loud in the output.`
+10. OUTPUT FORMAT — CRITICAL: wrap ONLY the exact customer-facing text in <reply></reply> tags, e.g. <reply>Yes, we're open Saturdays 8am-2pm! 😊</reply>. Everything inside the tags is posted publicly exactly as written, with no further editing — so it must be pure final prose: no bullet points, no bold, no meta-commentary, no reasoning about which rule applies. If you need to think through the decision (is this in scope? is this educational or personal?), do that OUTSIDE the tags — anything outside <reply></reply> is never posted and is only for your own reasoning.`
 
   // Build messages array with history for multi-turn context
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2914,9 +2950,9 @@ RULES (mandatory):
       const textBlock: any    = (response.content ?? []).find((b: any) => b.type === 'text')
 
       if (toolBlocks.length === 0) {
-        const candidate = textBlock ? sanitizeForWhatsApp(textBlock.text.trim()) : ''
-        if (candidate && !looksLikeLeakedReasoning(candidate)) return candidate
-        if (candidate) console.warn(`[${channel}] getCommentReply: discarded a reply that looked like leaked internal reasoning: "${candidate.slice(0, 100)}"`)
+        const validated = textBlock ? validateCommentReply(textBlock.text) : null
+        if (validated) return validated
+        if (textBlock?.text?.trim()) console.warn(`[${channel}] getCommentReply: discarded an invalid reply: "${textBlock.text.trim().slice(0, 100)}"`)
         break
       }
 
@@ -3044,7 +3080,7 @@ RULES (mandatory):
 7. NEVER mention staff names, say "I've noted", "flagged", "the team will follow up", or describe any internal process.
 8. Use friendly language and one emoji where natural.
 9. SCOPE — this account only ever discusses dentistry, Code Clinic's services, or this clinic. If a comment is off-topic, nonsensical, spam, or about anything unrelated to dental care — even something harmless-sounding like relationship advice, a random compliment about something unrelated, or another business — do NOT answer the substance of it. Give a brief, friendly redirect back to dental topics instead, e.g. "Haha, this is Code Clinic's dental page 😊 Any dental questions I can help with?" Never give advice, information, or opinions on non-dental topics, however innocuous it seems.
-10. OUTPUT FORMAT — CRITICAL: your entire response must be ONLY the exact text to post publicly. Never include your own reasoning, uncertainty, notes to whoever is running you, or meta-questions like "what would be the most helpful response here?" If you are unsure what to say, just give your best short, safe reply directly — never think out loud in the output.`
+10. OUTPUT FORMAT — CRITICAL: wrap ONLY the exact customer-facing text in <reply></reply> tags, e.g. <reply>Yes, we're open Saturdays 8am-2pm! 😊</reply>. Everything inside the tags is posted publicly exactly as written, with no further editing — so it must be pure final prose: no bullet points, no bold, no meta-commentary, no reasoning about which rule applies. If you need to think through the decision (is this in scope? is this educational or personal?), do that OUTSIDE the tags — anything outside <reply></reply> is never posted and is only for your own reasoning.`
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let input: any[] = [{ role: 'system', content: system }]
@@ -3071,9 +3107,10 @@ RULES (mandatory):
       const toolCalls: any[] = (response.output ?? []).filter((o: any) => o.type === 'function_call')
 
       if (toolCalls.length === 0) {
-        const candidate = sanitizeForWhatsApp((response.output_text ?? '').trim())
-        if (candidate && !looksLikeLeakedReasoning(candidate)) return candidate
-        if (candidate) console.warn(`[${channel}] getCommentReplyOpenAI: discarded a reply that looked like leaked internal reasoning: "${candidate.slice(0, 100)}"`)
+        const raw = response.output_text ?? ''
+        const validated = validateCommentReply(raw)
+        if (validated) return validated
+        if (raw.trim()) console.warn(`[${channel}] getCommentReplyOpenAI: discarded an invalid reply: "${raw.trim().slice(0, 100)}"`)
         break
       }
 
