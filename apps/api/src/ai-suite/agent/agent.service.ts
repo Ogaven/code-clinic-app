@@ -3040,7 +3040,7 @@ RULES (mandatory):
       })
 
       const usage = response.usage
-      console.log(`[${channel}] OpenAI usage: in=${usage?.input_tokens ?? '?'} (cached=${usage?.input_tokens_details?.cached_tokens ?? 0}) out=${usage?.output_tokens ?? '?'}`)
+      console.log(`[${channel}] OpenAI usage: in=${usage?.input_tokens ?? '?'} (cached=${usage?.input_tokens_details?.cached_tokens ?? 0}) out=${usage?.output_tokens ?? '?'} (reasoning=${usage?.output_tokens_details?.reasoning_tokens ?? 0}) total=${usage?.total_tokens ?? '?'}`)
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolCalls: any[] = (response.output ?? []).filter((o: any) => o.type === 'function_call')
