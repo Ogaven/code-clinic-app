@@ -136,7 +136,7 @@ function SatisfactionGauge({ pct }: { pct: number | null }) {
 // ring (none of AI Bookings/Follow-ups/Reminders has a real denominator).
 // A full-strength ring is just a themed circular frame around the real
 // count; a muted grey ring + "—" is the honest unavailable state.
-function UtilRing({ icon, value, label, color, size = 72 }: { icon: React.ReactNode; value: number | string | null; label: string; color: string; size?: number }) {
+function UtilRing({ icon, value, label, color, size = 82 }: { icon: React.ReactNode; value: number | string | null; label: string; color: string; size?: number }) {
   const has = value !== null
   const r = (size - 10) / 2
   return (
@@ -515,7 +515,7 @@ export default function DashboardPage() {
                 marked rather than presented as a guaranteed-complete total. */}
             <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
               <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Megaphone size={12} /> Active Campaigns</span>
-              <span className="text-sm font-bold text-white" title="Based on the 100 most recently created campaigns — may undercount if older campaigns are still active">{activeCampaigns ?? '—'}{activeCampaigns !== null && <sup className="ml-0.5 text-[8px] font-bold text-blue-200">*</sup>}</span>
+              <span className="text-sm font-bold text-white" title="Based on the 100 most recently created campaigns — may undercount if older campaigns are still active">{activeCampaigns ?? '—'}{activeCampaigns !== null && <span className="ml-0.5 align-top text-[9px] font-bold text-blue-200">*</span>}</span>
             </div>
           </div>
           <div className="flex items-center justify-between border-t border-white/15 pt-2">
@@ -550,11 +550,22 @@ export default function DashboardPage() {
               { key: 'returning', label: 'Returning', value: m.returningPatientsThisMonth, color: '#10B981', delta: null as number | null },
               { key: 'fresh', label: 'New Patients', value: m.newPatientsThisMonth, color: '#F59E0B', delta: null as number | null },
             ]
-            const barTotal = Math.max(m.activeThisMonth + m.returningPatientsThisMonth + m.newPatientsThisMonth, 1)
+            // Seen = Returning + New exactly (the backend computes them as an
+            // exhaustive split of the same completed-this-month set — see
+            // clinical.ts), so a 3-way stacked bar of Seen+Returning+New
+            // would double-count: Returning and New already sum to Seen.
+            // The honest 2-segment version below shows Returning + New as
+            // real, non-overlapping portions of the total patient base — the
+            // remaining grey is patients not seen this month.
+            const seenCount = m.newPatientsThisMonth + m.returningPatientsThisMonth
+            const barTotal = Math.max(totalPatients ?? seenCount, 1)
             return (
               <>
-                <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
-                  <div style={{ width: `${(m.activeThisMonth / barTotal) * 100}%`, background: '#29ABE2' }} />
+                <div className="flex items-center justify-between px-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-400 dark:text-white/30">
+                  <span>Returning</span>
+                  <span>New</span>
+                </div>
+                <div className="mt-1 flex h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
                   <div style={{ width: `${(m.returningPatientsThisMonth / barTotal) * 100}%`, background: '#10B981' }} />
                   <div style={{ width: `${(m.newPatientsThisMonth / barTotal) * 100}%`, background: '#F59E0B' }} />
                 </div>
@@ -571,7 +582,7 @@ export default function DashboardPage() {
                           </div>
                           <span className="ml-auto grid h-5 w-5 flex-shrink-0 place-items-center rounded-full bg-gray-50 text-gray-400 dark:bg-white/5 dark:text-white/30"><ArrowUpRight size={10} /></span>
                         </div>
-                        <p className="text-xl font-extrabold leading-tight text-clinic-navy dark:text-white">{s.value ?? '—'}</p>
+                        <p className="text-xl font-extrabold leading-tight text-clinic-navy dark:text-white">{s.value !== null ? s.value.toLocaleString() : '—'}</p>
                         <p className="text-[9px] font-medium leading-tight text-gray-500 dark:text-slate-400">{s.label}</p>
                         {s.delta !== null && (
                           <span className={cn('mt-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold', s.delta >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' : 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400')}>
