@@ -2803,6 +2803,25 @@ export async function getAgentReplyV2(
   }
 }
 
+// ── Defense-in-depth: catch a reply that leaked internal reasoning instead of
+// producing clean public-facing text (observed on both providers under certain
+// ambiguous/judgment-call inputs — e.g. ending a reply with "What would be the
+// most helpful response here?" instead of just answering). The prompt now
+// explicitly forbids this (see OUTPUT FORMAT rule below), but a model can still
+// slip — this is a structural backstop, not a substitute for the prompt fix.
+function looksLikeLeakedReasoning(text: string): boolean {
+  const patterns = [
+    /what would be the most helpful/i,
+    /here'?s my reply\s*:/i,
+    /this keeps it (informative|warm|professional|brief)/i,
+    /i should (give|keep|reply|respond)/i,
+    /since this is being asked as a public/i,
+    /i can see this is a (public )?facebook comment/i,
+    /^-{3,}$/m,
+  ]
+  return patterns.some(p => p.test(text))
+}
+
 // ── Dedicated public comment reply ────────────────────────────────────────────
 // Uses a minimal prompt with NO Sarah base — prevents service-listing and
 // internal-process language from leaking into publicly-visible comment replies.
@@ -2853,14 +2872,16 @@ Opening hours: Mon–Fri 8am–6pm, Sat 8am–2pm, closed Sunday.
 Location: Kiira Road, Kamwokya, Kampala.${postContext}
 
 RULES (mandatory):
-1. Maximum 2 short sentences. No bullet points, no lists, no paragraphs.
+1. Maximum 2 short sentences. No bullet points, no lists, no paragraphs, no bold or asterisks — plain text only.
 2. Answer simple, safe public questions directly and honestly — pricing for a specific service (e.g. "How much for a cleaning?" / "How much are braces?"), hours, location, or whether a service exists. Always call search_services to get the real price before quoting one — never invent a number, and never quote a stale or remembered figure.
 3. Never dump the full price list — if asked broadly what services are offered, name one or two examples (using search_services) and invite a DM for the rest.
 4. Reserve the DM deflection ONLY for things that genuinely need privacy: a specific patient's medical symptoms/concerns, personal contact or scheduling details, complaints, or anything requiring back-and-forth. For those only, reply with: "Hi! 😊 Send us a DM and we'll help you out!"
-5. If this comment describes a genuine clinical/medical concern (pain, swelling, bleeding, medication issue, dental emergency), call flag_clinical_concern with a brief summary so staff are alerted internally — then still give the DM deflection reply publicly. Do NOT call flag_clinical_concern for administrative questions like pricing, hours, or general info.
+5. EDUCATIONAL vs PERSONAL SYMPTOM — only call flag_clinical_concern when the commenter describes THEIR OWN active symptom, pain, or something requiring a real follow-up promise. General "what causes X", "why does Y happen", "how does Z work" questions are dental EDUCATION — answer them warmly in 1-2 sentences using general dental knowledge and do NOT call flag_clinical_concern for them. Also do NOT call flag_clinical_concern for administrative questions like pricing, hours, or general info.
 6. For hours/location/day questions: use the real date context above to answer specifically (e.g. "Yes, we're open on ${tomorrowName}!").
 7. NEVER mention staff names, say "I've noted", "flagged", "the team will follow up", or describe any internal process.
-8. Use friendly language and one emoji where natural.`
+8. Use friendly language and one emoji where natural.
+9. SCOPE — this account only ever discusses dentistry, Code Clinic's services, or this clinic. If a comment is off-topic, nonsensical, spam, or about anything unrelated to dental care — even something harmless-sounding like relationship advice, a random compliment about something unrelated, or another business — do NOT answer the substance of it. Give a brief, friendly redirect back to dental topics instead, e.g. "Haha, this is Code Clinic's dental page 😊 Any dental questions I can help with?" Never give advice, information, or opinions on non-dental topics, however innocuous it seems.
+10. OUTPUT FORMAT — CRITICAL: your entire response must be ONLY the exact text to post publicly. Never include your own reasoning, uncertainty, notes to whoever is running you, or meta-questions like "what would be the most helpful response here?" If you are unsure what to say, just give your best short, safe reply directly — never think out loud in the output.`
 
   // Build messages array with history for multi-turn context
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2893,7 +2914,9 @@ RULES (mandatory):
       const textBlock: any    = (response.content ?? []).find((b: any) => b.type === 'text')
 
       if (toolBlocks.length === 0) {
-        if (textBlock && textBlock.text.trim()) return textBlock.text.trim()
+        const candidate = textBlock ? sanitizeForWhatsApp(textBlock.text.trim()) : ''
+        if (candidate && !looksLikeLeakedReasoning(candidate)) return candidate
+        if (candidate) console.warn(`[${channel}] getCommentReply: discarded a reply that looked like leaked internal reasoning: "${candidate.slice(0, 100)}"`)
         break
       }
 
@@ -3012,14 +3035,16 @@ Opening hours: Mon–Fri 8am–6pm, Sat 8am–2pm, closed Sunday.
 Location: Kiira Road, Kamwokya, Kampala.${postContext}
 
 RULES (mandatory):
-1. Maximum 2 short sentences. No bullet points, no lists, no paragraphs.
+1. Maximum 2 short sentences. No bullet points, no lists, no paragraphs, no bold or asterisks — plain text only.
 2. Answer simple, safe public questions directly and honestly — pricing for a specific service (e.g. "How much for a cleaning?" / "How much are braces?"), hours, location, or whether a service exists. Always call search_services to get the real price before quoting one — never invent a number, and never quote a stale or remembered figure.
 3. Never dump the full price list — if asked broadly what services are offered, name one or two examples (using search_services) and invite a DM for the rest.
 4. Reserve the DM deflection ONLY for things that genuinely need privacy: a specific patient's medical symptoms/concerns, personal contact or scheduling details, complaints, or anything requiring back-and-forth. For those only, reply with: "Hi! 😊 Send us a DM and we'll help you out!"
-5. If this comment describes a genuine clinical/medical concern (pain, swelling, bleeding, medication issue, dental emergency), call flag_clinical_concern with a brief summary so staff are alerted internally — then still give the DM deflection reply publicly. Do NOT call flag_clinical_concern for administrative questions like pricing, hours, or general info.
+5. EDUCATIONAL vs PERSONAL SYMPTOM — only call flag_clinical_concern when the commenter describes THEIR OWN active symptom, pain, or something requiring a real follow-up promise. General "what causes X", "why does Y happen", "how does Z work" questions are dental EDUCATION — answer them warmly in 1-2 sentences using general dental knowledge and do NOT call flag_clinical_concern for them. Also do NOT call flag_clinical_concern for administrative questions like pricing, hours, or general info.
 6. For hours/location/day questions: use the real date context above to answer specifically (e.g. "Yes, we're open on ${tomorrowName}!").
 7. NEVER mention staff names, say "I've noted", "flagged", "the team will follow up", or describe any internal process.
-8. Use friendly language and one emoji where natural.`
+8. Use friendly language and one emoji where natural.
+9. SCOPE — this account only ever discusses dentistry, Code Clinic's services, or this clinic. If a comment is off-topic, nonsensical, spam, or about anything unrelated to dental care — even something harmless-sounding like relationship advice, a random compliment about something unrelated, or another business — do NOT answer the substance of it. Give a brief, friendly redirect back to dental topics instead, e.g. "Haha, this is Code Clinic's dental page 😊 Any dental questions I can help with?" Never give advice, information, or opinions on non-dental topics, however innocuous it seems.
+10. OUTPUT FORMAT — CRITICAL: your entire response must be ONLY the exact text to post publicly. Never include your own reasoning, uncertainty, notes to whoever is running you, or meta-questions like "what would be the most helpful response here?" If you are unsure what to say, just give your best short, safe reply directly — never think out loud in the output.`
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let input: any[] = [{ role: 'system', content: system }]
@@ -3046,8 +3071,9 @@ RULES (mandatory):
       const toolCalls: any[] = (response.output ?? []).filter((o: any) => o.type === 'function_call')
 
       if (toolCalls.length === 0) {
-        const finalText = (response.output_text ?? '').trim()
-        if (finalText) return finalText
+        const candidate = sanitizeForWhatsApp((response.output_text ?? '').trim())
+        if (candidate && !looksLikeLeakedReasoning(candidate)) return candidate
+        if (candidate) console.warn(`[${channel}] getCommentReplyOpenAI: discarded a reply that looked like leaked internal reasoning: "${candidate.slice(0, 100)}"`)
         break
       }
 
