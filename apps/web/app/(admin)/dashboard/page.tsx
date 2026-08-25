@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   Plus, Calendar, Download, Users, TrendingUp, TrendingDown, ArrowUpRight,
-  UserCheck, Megaphone, Share2,
+  UserCheck, Megaphone, Share2, Bot, Bell, Repeat,
 } from 'lucide-react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList,
 } from 'recharts'
 import { cn, formatUGX, getGreeting } from '@/lib/utils'
+import { readTheme, applyTheme } from '@/lib/theme'
 import Avatar from '@/components/ui/Avatar'
 
 // ── Everything below is real, live Code Clinic data reused from existing
@@ -28,7 +29,7 @@ interface DashData { metrics: DashMetrics; charts: DashCharts }
 interface PipelineEntry { count: number; totalUGX: number }
 interface DentalData { pipeline: Record<string, PipelineEntry> }
 interface Appt {
-  id: string; startAt: string; status: string
+  id: string; startAt: string; endAt?: string; status: string
   patient: { firstName: string; lastName: string }
   doctor: { user: { firstName: string; lastName: string } }
   service: { name: string; colour: string }
@@ -41,11 +42,11 @@ interface ReferralStats { stats: { source: string; count: number; thisMonth: num
 
 const PIPELINE_STATUSES = [
   { key: 'Planned', label: 'Planned', color: '#1D4ED8' },
-  { key: 'In Progress', label: 'In Progress', color: '#92400E' },
-  { key: 'Completed', label: 'Completed', color: '#065F46' },
-  { key: 'On Hold', label: 'On Hold', color: '#854D0E' },
-  { key: 'Declined', label: 'Declined', color: '#9F1239' },
-  { key: 'Cancelled', label: 'Cancelled', color: '#991B1B' },
+  { key: 'In Progress', label: 'In Progress', color: '#D97706' },
+  { key: 'Completed', label: 'Completed', color: '#059669' },
+  { key: 'On Hold', label: 'On Hold', color: '#CA8A04' },
+  { key: 'Declined', label: 'Declined', color: '#E11D48' },
+  { key: 'Cancelled', label: 'Cancelled', color: '#9CA3AF' },
 ]
 
 // Same live-flow grouping the real <LivePatientFlow /> component uses
@@ -62,46 +63,116 @@ const WEEK_STATUSES = [
   { key: 'PENDING', label: 'Pending', color: '#D97706' },
   { key: 'NO_SHOW', label: 'No-show', color: '#DC2626' },
   { key: 'RESCHEDULED', label: 'Rescheduled', color: '#7C3AED' },
-  { key: 'CANCELLED', label: 'Cancelled', color: '#6B7280' },
+  { key: 'CANCELLED', label: 'Cancelled', color: '#9CA3AF' },
 ]
 
-const CATEGORY_FILTERS = { total: '', seen: 'ACTIVE', returning: 'returning', fresh: 'new_patient' } as const
+// Deliberately no 'seen' entry: there is no /patients filter matching "distinct
+// patients with a COMPLETED appointment this month" (ACTIVE means the patient
+// record's stored status, a different concept) — see Patients Overview below,
+// which omits the avatar stack for that metric rather than show mismatched people.
+const CATEGORY_FILTERS = { total: '', returning: 'returning', fresh: 'new_patient' } as const
 
-function Gauge({ pct, color }: { pct: number | null; color: string }) {
-  const clamped = pct === null ? 0 : Math.max(0, Math.min(100, pct))
-  const r = 52, cx = 62, cy = 60
+// ── Shared visual primitives ────────────────────────────────────────────
+
+// Compact stacked distribution bar — used by the three top KPI cards instead
+// of a tall list of rows, per the "reduce height, use width" design rule.
+function DistributionBar({ segments, total }: { segments: { color: string; count: number }[]; total: number }) {
+  const denom = Math.max(total, 1)
+  return (
+    <div className="flex h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+      {segments.filter(s => s.count > 0).map((s, i) => (
+        <div key={i} style={{ width: `${(s.count / denom) * 100}%`, background: s.color }} />
+      ))}
+    </div>
+  )
+}
+
+// Compact 2/3-column legend grid — replaces a tall list of full-width rows.
+function LegendGrid({ items, cols = 2, loading }: { items: { label: string; count: number; color: string }[]; cols?: number; loading: boolean }) {
+  return (
+    <div className={cn('mt-2.5 grid gap-x-2 gap-y-1.5', cols === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
+      {items.map(it => (
+        <div key={it.label} className="flex items-center gap-1 text-[10px]">
+          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: it.color }} />
+          <span className="truncate text-gray-500 dark:text-slate-400">{it.label}</span>
+          <span className="ml-auto font-bold text-gray-700 dark:text-slate-200">{loading ? '—' : it.count}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Large semicircular satisfaction gauge — full size in both the real and
+// pending states (per design rule: never collapse to a tiny placeholder).
+// Gradient (red→orange→yellow→green) only paints when a real pct is given;
+// the pending state shows the same size track, unfilled.
+function SatisfactionGauge({ pct }: { pct: number | null }) {
+  const r = 84, cx = 100, cy = 92, sw = 20
   const circumference = Math.PI * r
+  const clamped = pct === null ? 0 : Math.max(0, Math.min(100, pct))
   const offset = circumference * (1 - clamped / 100)
   const arc = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`
   return (
-    <svg width="124" height="68" viewBox="0 0 124 68" className="mx-auto">
-      <path d={arc} fill="none" stroke="currentColor" strokeWidth="12" strokeLinecap="round" className="text-gray-100 dark:text-white/10" />
+    <svg viewBox="0 0 200 100" className="mx-auto w-full max-w-[220px]">
+      <defs>
+        <linearGradient id="satisfactionGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#EF4444" />
+          <stop offset="38%" stopColor="#F59E0B" />
+          <stop offset="66%" stopColor="#EAB308" />
+          <stop offset="100%" stopColor="#22C55E" />
+        </linearGradient>
+      </defs>
+      <path d={arc} fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" className="text-gray-100 dark:text-white/10" />
       {pct !== null && (
-        <path d={arc} fill="none" stroke={color} strokeWidth="12" strokeLinecap="round"
+        <path d={arc} fill="none" stroke="url(#satisfactionGradient)" strokeWidth={sw} strokeLinecap="round"
           strokeDasharray={circumference} strokeDashoffset={offset} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
       )}
     </svg>
   )
 }
 
-function Ring({ pct, color, size = 52 }: { pct: number | null; color: string; size?: number }) {
-  const r = (size - 8) / 2, cx = size / 2, cy = size / 2
-  const c = 2 * Math.PI * r
-  const offset = pct === null ? c : c * (1 - Math.max(0, Math.min(100, pct)) / 100)
+// Utilization indicator — deliberately NOT a percentage-of-unknown-target
+// ring (none of AI Bookings/Follow-ups/Reminders has a real denominator).
+// A full-strength ring is just a themed circular frame around the real
+// count; a muted grey ring + "—" is the honest unavailable state.
+function UtilRing({ icon, value, label, color, size = 76 }: { icon: React.ReactNode; value: number | string | null; label: string; color: string; size?: number }) {
+  const has = value !== null
+  const r = (size - 10) / 2
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-gray-100 dark:text-white/10" />
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
-        strokeDasharray={c} strokeDashoffset={offset} transform={`rotate(-90 ${cx} ${cy})`} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
-    </svg>
+    <div className="flex flex-col items-center gap-1.5">
+      <div className="relative grid place-items-center" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="absolute inset-0">
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-gray-100 dark:text-white/10" />
+          {has && <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" />}
+        </svg>
+        <div className="flex flex-col items-center gap-0.5">
+          <span style={{ color: has ? color : '#D1D5DB' }}>{icon}</span>
+          <span className={cn('text-sm font-bold leading-none', has ? 'text-clinic-navy dark:text-white' : 'text-gray-300 dark:text-white/25')}>{has ? value : '—'}</span>
+        </div>
+      </div>
+      <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">{label}</p>
+    </div>
   )
 }
 
-function CompactCard({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+// Themed Recharts tooltip content — rendered as real DOM (not inline SVG
+// paint), so it can use the app's existing .dark ancestor-class mechanism
+// via Tailwind dark: classes instead of a second theme system.
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{title}</p>
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-white/10 dark:bg-slate-800">
+      <p className="font-bold text-gray-700 dark:text-slate-200">{label}</p>
+      <p className="mt-0.5 font-medium text-gray-500 dark:text-slate-400">{formatUGX(payload[0].value)}</p>
+    </div>
+  )
+}
+
+function CompactCard({ title, action, children, className }: { title: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn('rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5', className)}>
+      <div className="mb-2.5 flex items-center justify-between">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-slate-300">{title}</p>
         {action}
       </div>
       {children}
@@ -111,6 +182,10 @@ function CompactCard({ title, action, children }: { title: string; action?: Reac
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
+  // Recharts SVG paint props (stroke/fill) can't respond to CSS .dark
+  // ancestor classes — only the handful of chart colors below need this;
+  // everything else on the page uses Tailwind dark: classes as usual.
+  const [dark, setDark] = useState(false)
   const [dashData, setDashData] = useState<DashData | null>(null)
   const [dentalData, setDentalData] = useState<DentalData | null>(null)
   const [weekAppts, setWeekAppts] = useState<Appt[] | null>(null)
@@ -122,6 +197,16 @@ export default function DashboardPage() {
   const [leads, setLeads] = useState<Lead[] | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null)
   const [referrals, setReferrals] = useState<ReferralStats | null>(null)
+
+  useEffect(() => {
+    setDark(applyTheme(readTheme()))
+    const onTheme = (e: Event) => setDark(applyTheme((e as CustomEvent).detail))
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const onSystem = () => { if (readTheme() === 'system') setDark(applyTheme('system')) }
+    window.addEventListener('cc-theme', onTheme)
+    media.addEventListener('change', onSystem)
+    return () => { window.removeEventListener('cc-theme', onTheme); media.removeEventListener('change', onSystem) }
+  }, [])
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
@@ -185,21 +270,43 @@ export default function DashboardPage() {
   // Revenue/Expenses/Net Income source yet. NOT written to the database,
   // NOT read from any Accounts API. Replace with real Accounts data once
   // that module is ready. ─────────────────────────────────────────────────
+  // Jun deliberately equals the headline Revenue figure (58,320,000) — the
+  // chart is a Revenue trend, so its most recent point must match the
+  // Revenue figure shown beside it. Jan–May are a sensible demo progression
+  // toward that same number (previously Jun accidentally reused the
+  // Net Income value instead).
   const DEMO_FINANCE = {
     revenue: 58_320_000, expenses: 24_000_000, netIncome: 34_320_000,
     trend: [
-      { month: 'Jan', revenue: 21_000_000 }, { month: 'Feb', revenue: 24_500_000 },
-      { month: 'Mar', revenue: 27_800_000 }, { month: 'Apr', revenue: 29_100_000 },
-      { month: 'May', revenue: 26_400_000 }, { month: 'Jun', revenue: 34_320_000 },
+      { month: 'Jan', revenue: 38_000_000 }, { month: 'Feb', revenue: 41_200_000 },
+      { month: 'Mar', revenue: 44_600_000 }, { month: 'Apr', revenue: 48_900_000 },
+      { month: 'May', revenue: 52_300_000 }, { month: 'Jun', revenue: 58_320_000 },
     ],
   }
+  // Demo-only growth badge — derived purely from the demo trend above, not real data.
+  const demoGrowthPct = Math.round(((DEMO_FINANCE.trend[5].revenue - DEMO_FINANCE.trend[0].revenue) / DEMO_FINANCE.trend[0].revenue) * 100)
 
   const weekCounts = WEEK_STATUSES.map(s => ({ ...s, count: (weekAppts ?? []).filter(a => a.status === s.key).length }))
+  const weekTotal = weekAppts ? weekAppts.length : 0
+  const pipelineCounts = PIPELINE_STATUSES.map(s => ({ ...s, count: dentalData ? (dentalData.pipeline[s.key]?.count ?? 0) : 0 }))
+  const pipelineTotal = dentalData ? Object.values(dentalData.pipeline).reduce((s, p) => s + p.count, 0) : 0
   const flowCounts = FLOW_STAGES.map(s => ({ ...s, count: (todayAppts ?? []).filter(a => s.statuses.includes(a.status)).length }))
+  const flowTotal = flowCounts.reduce((s, f) => s + f.count, 0)
   const futureAppts = (upcoming ?? [])
     .filter(a => new Date(a.startAt).getTime() >= Date.now() && a.status !== 'CANCELLED')
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
-    .slice(0, 6)
+    .slice(0, 8)
+
+  // Today-scoped follow-ups, derived client-side from the existing 30-day/
+  // 200-row /ai-suite/followup-report response (ordered most-recent-first,
+  // so today's messages — always far fewer than 200 for one clinic — are
+  // never at risk of being cut off by that cap). scheduledFor reflects when
+  // a `sent: true` message was scheduled to go out, the closest real signal
+  // to "sent today" available without a backend change.
+  const todayKey = new Date().toDateString()
+  const followupsToday = followups
+    ? followups.messages.filter((msg: any) => msg.scheduledFor && new Date(msg.scheduledFor).toDateString() === todayKey).length
+    : null
 
   const newLeads = leads ? leads.filter(l => Date.now() - new Date(l.createdAt).getTime() < 7 * 86400000).length : null
   const convertedLeads = leads ? leads.filter(l => l.status === 'CONVERTED').length : null
@@ -207,13 +314,25 @@ export default function DashboardPage() {
   const referralPatients = referrals ? referrals.stats.filter(s => s.source !== 'Not Recorded').reduce((sum, s) => sum + s.count, 0) : null
   const conversionRate = leads && leads.length > 0 && convertedLeads !== null ? Math.round((convertedLeads / leads.length) * 100) : null
 
+  // Upcoming Appointments timeline geometry — pixel-based (not %) so the
+  // hour labels and blocks scroll together inside the horizontal scroller.
+  const DAY_START_HOUR = 8, DAY_END_HOUR = 18, HOUR_PX = 84
+  const timelineWidth = (DAY_END_HOUR - DAY_START_HOUR) * HOUR_PX
+  const hourMarks = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+  const pxOf = (t: number) => {
+    const d = new Date(t)
+    const hourFloat = d.getHours() + d.getMinutes() / 60
+    return Math.max(0, Math.min(timelineWidth, (hourFloat - DAY_START_HOUR) * HOUR_PX))
+  }
+  const nowPx = pxOf(Date.now())
+
   return (
     <div className="animate-fade-in space-y-3">
 
       {/* ═══ ROW 1 — Welcome + actions | KPI | KPI | KPI ═══ */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_1fr_1fr_1fr]">
         <div className="flex flex-col justify-center">
-          <h2 className="text-xl font-semibold leading-tight text-clinic-navy dark:text-white">{greeting}, {displayName}! 👋</h2>
+          <h2 className="text-2xl font-bold leading-tight text-clinic-navy dark:text-white">{greeting}, {displayName}! 👋</h2>
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
             <Link href="/patients" className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
               <Plus size={12} /> New Patient
@@ -227,56 +346,50 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Card 1 — Appointments This Week + real status breakdown */}
+        {/* Card 1 — Appointments This Week: total + distribution bar + compact legend */}
         <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
           <div className="flex items-start justify-between">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Appointments This Week</p>
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-300"><Calendar size={13} /></span>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-slate-300">Appointments This Week</p>
+            <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-300"><Calendar size={13} /></span>
           </div>
-          <p className="mt-1 text-2xl font-semibold leading-none text-clinic-navy dark:text-white">{weekAppts ? weekAppts.length : '—'}</p>
-          <div className="mt-2 space-y-1">
-            {weekCounts.map(s => (
-              <div key={s.key} className="flex items-center justify-between text-[10px]">
-                <span className="flex items-center gap-1 text-gray-400"><span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />{s.label}</span>
-                <span className="font-semibold text-gray-600 dark:text-slate-300">{weekAppts ? s.count : '—'}</span>
-              </div>
-            ))}
+          <p className="mt-1 text-3xl font-bold leading-none text-clinic-navy dark:text-white">{weekAppts ? weekTotal : '—'}</p>
+          <div className="mt-2.5">
+            <DistributionBar segments={weekCounts} total={weekTotal} />
           </div>
+          <LegendGrid items={weekCounts} loading={!weekAppts} />
         </div>
 
-        {/* Card 2 — Treatment Pipeline summary (reused pipeline data, logic untouched) */}
+        {/* Card 2 — Treatment Pipeline: total + segmented distribution bar + compact legend */}
         <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
           <div className="flex items-start justify-between">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Treatment Pipeline</p>
-            <Link href="/treatment-pipeline" className="grid h-7 w-7 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-300"><ArrowUpRight size={13} /></Link>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-slate-300">Treatment Pipeline</p>
+            <Link href="/treatment-pipeline" className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-300"><ArrowUpRight size={13} /></Link>
           </div>
-          <p className="mt-1 text-2xl font-semibold leading-none text-clinic-navy dark:text-white">
-            {dentalData ? Object.values(dentalData.pipeline).reduce((s, p) => s + p.count, 0) : '—'}
-          </p>
-          <div className="mt-2 space-y-1">
-            {PIPELINE_STATUSES.map(s => (
-              <div key={s.key} className="flex items-center justify-between text-[10px]">
-                <span className="flex items-center gap-1 text-gray-400"><span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />{s.label}</span>
-                <span className="font-semibold text-gray-600 dark:text-slate-300">{dentalData ? (dentalData.pipeline[s.key]?.count ?? 0) : '—'}</span>
-              </div>
-            ))}
+          <p className="mt-1 text-3xl font-bold leading-none text-clinic-navy dark:text-white">{dentalData ? pipelineTotal : '—'}</p>
+          <div className="mt-2.5">
+            <DistributionBar segments={pipelineCounts} total={pipelineTotal} />
           </div>
+          <LegendGrid items={pipelineCounts} cols={3} loading={!dentalData} />
         </div>
 
-        {/* Card 3 — Patient Live Flow (same grouping as the real <LivePatientFlow/>) */}
+        {/* Card 3 — Patient Live Flow: real patient journey stepper */}
         <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
           <div className="flex items-start justify-between">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Patient Live Flow</p>
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300"><UserCheck size={13} /></span>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-slate-300">Patient Live Flow</p>
+            <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300"><UserCheck size={13} /></span>
           </div>
-          <p className="mt-1 text-2xl font-semibold leading-none text-clinic-navy dark:text-white">
-            {todayAppts ? flowCounts.reduce((s, f) => s + f.count, 0) : '—'}
-          </p>
-          <div className="mt-2 space-y-1">
-            {flowCounts.map(s => (
-              <div key={s.key} className="flex items-center justify-between text-[10px]">
-                <span className="flex items-center gap-1 text-gray-400"><span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />{s.label}</span>
-                <span className="font-semibold text-gray-600 dark:text-slate-300">{todayAppts ? s.count : '—'}</span>
+          <p className="mt-1 text-3xl font-bold leading-none text-clinic-navy dark:text-white">{todayAppts ? flowTotal : '—'}</p>
+          <p className="text-[10px] text-gray-400 dark:text-white/30">active in clinic now</p>
+          <div className="mt-3 flex items-center">
+            {flowCounts.map((s, i) => (
+              <div key={s.key} className="flex flex-1 items-center last:flex-none">
+                <div className="flex flex-col items-center gap-1">
+                  <div className="grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold text-white" style={{ background: todayAppts && s.count > 0 ? s.color : '#D1D5DB' }}>
+                    {todayAppts ? s.count : '—'}
+                  </div>
+                  <span className="whitespace-nowrap text-[9px] font-medium text-gray-500 dark:text-slate-400">{s.label}</span>
+                </div>
+                {i < flowCounts.length - 1 && <div className="mx-1 mb-4 h-0.5 flex-1 rounded-full" style={{ background: s.color, opacity: 0.25 }} />}
               </div>
             ))}
           </div>
@@ -292,79 +405,104 @@ export default function DashboardPage() {
             /business-profile/reviews/summary?accountId=&locationId=), but
             Google's Basic API Access approval is still pending, so no live
             rating can be shown honestly yet. Layout below is the FINAL
-            shape — swapping the `pending` block for real
-            averageRating/totalReviewCount/recentReviewCount from that
-            endpoint (once an accountId/locationId are known — see
-            GET /business-profile/verify) requires no redesign, only
-            replacing this one branch. */}
-        <CompactCard title="Patient Satisfaction" action={<span className="rounded-full bg-gray-50 px-2 py-0.5 text-[9px] font-semibold text-gray-400 dark:bg-white/5 dark:text-white/30">Google Reviews</span>}>
-          <Gauge pct={null} color="#D1D5DB" />
-          <p className="-mt-1 text-center text-xl font-semibold text-gray-300 dark:text-white/20">—<span className="text-xs font-normal text-gray-300 dark:text-white/20">/5</span></p>
-          <p className="text-center text-[10px] text-gray-400">Google Reviews pending API approval</p>
-          <p className="mt-2 text-center text-[10px] font-semibold text-gray-300 dark:text-white/20">View all reviews</p>
+            shape — the gauge is full-size in both states; swapping the
+            `pending` text block for real averageRating/totalReviewCount/
+            recentReviewCount from that endpoint requires no redesign. */}
+        <CompactCard title="Patient Satisfaction" action={<span className="rounded-full bg-gray-50 px-2 py-0.5 text-[9px] font-bold text-gray-500 dark:bg-white/5 dark:text-white/40">Google Reviews</span>}>
+          <SatisfactionGauge pct={null} />
+          <div className="-mt-4 text-center">
+            <p className="text-2xl font-bold text-gray-300 dark:text-white/25">—<span className="text-sm font-medium text-gray-300 dark:text-white/25">/5</span></p>
+            <p className="mx-auto mt-1 max-w-[180px] text-[10px] font-medium leading-snug text-gray-500 dark:text-slate-400">Google Reviews pending API approval</p>
+            <p className="mt-2 text-[10px] font-bold text-gray-300 dark:text-white/25">View all reviews</p>
+          </div>
         </CompactCard>
 
         {/* Financial Snapshot — DEMO DATA, see comment above */}
-        <CompactCard title="Financial Snapshot" action={<span className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-semibold text-gray-500 dark:border-white/10 dark:text-slate-400">Jan – Jun</span>}>
+        <CompactCard title="Financial Snapshot" action={<span className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 dark:border-white/10 dark:text-slate-300">Jan – Jun</span>}>
           <div className="flex gap-4">
-            <div className="flex-shrink-0 space-y-2">
+            <div className="w-[30%] flex-shrink-0 space-y-3">
               <div>
-                <p className="text-lg font-semibold text-clinic-navy dark:text-white">{formatUGX(DEMO_FINANCE.revenue)}</p>
-                <p className="text-[10px] text-gray-400">Revenue</p>
+                <p className="text-xl font-bold text-clinic-navy dark:text-white">{formatUGX(DEMO_FINANCE.revenue)}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Revenue</p>
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400"><TrendingUp size={9} />{demoGrowthPct}%</span>
+                </div>
               </div>
               <div>
-                <p className="text-base font-semibold text-gray-500 dark:text-slate-300">{formatUGX(DEMO_FINANCE.expenses)}</p>
-                <p className="text-[10px] text-gray-400">Expenses</p>
+                <p className="text-base font-bold text-gray-700 dark:text-slate-200">{formatUGX(DEMO_FINANCE.expenses)}</p>
+                <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Expenses</p>
               </div>
               <div>
-                <p className="text-base font-semibold text-emerald-600 dark:text-emerald-400">{formatUGX(DEMO_FINANCE.netIncome)}</p>
-                <p className="text-[10px] text-gray-400">Net Income</p>
+                <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">{formatUGX(DEMO_FINANCE.netIncome)}</p>
+                <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Net Income</p>
               </div>
+              <p className="text-[9px] text-gray-300 dark:text-white/20">Demo financial data</p>
             </div>
             <div className="min-w-0 flex-1">
-              <ResponsiveContainer width="100%" height={128}>
-                <BarChart data={DEMO_FINANCE.trend} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-                  <YAxis hide />
-                  <Tooltip formatter={(v: number) => [formatUGX(v), 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 11 }} />
-                  <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
-                    {DEMO_FINANCE.trend.map((_, i, arr) => <Cell key={i} fill={i === arr.length - 1 ? '#1A237E' : '#93C5FD'} />)}
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={DEMO_FINANCE.trend} margin={{ top: 20, right: 4, left: -18, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke={dark ? '#64748B' : '#94A3B8'} strokeOpacity={dark ? 0.25 : 0.15} />
+                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: dark ? '#CBD5E1' : '#6B7280', fontWeight: 600 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 9, fill: dark ? '#94A3B8' : '#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${Math.round(v / 1_000_000)}M`} width={34} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: dark ? 'rgba(255,255,255,0.06)' : 'rgba(148,163,184,0.08)' }} />
+                  {/* Current month uses the Code Clinic brand cyan — bright
+                      enough to stay visible on both a white and a near-black
+                      card surface, unlike the previous fixed navy which
+                      nearly disappeared against the dark card background. */}
+                  <Bar dataKey="revenue" radius={[6, 6, 0, 0]} maxBarSize={34}>
+                    {DEMO_FINANCE.trend.map((_, i, arr) => <Cell key={i} fill={i === arr.length - 1 ? '#29ABE2' : (dark ? '#60A5FA' : '#93C5FD')} />)}
+                    <LabelList dataKey="revenue" content={(props: any) => {
+                      const { x, y, width, index, value } = props
+                      if (index !== DEMO_FINANCE.trend.length - 1) return null
+                      const cx = x + width / 2
+                      return (
+                        <g>
+                          <rect x={cx - 23} y={y - 22} width={46} height={18} rx={9} fill="#1A237E" />
+                          <text x={cx} y={y - 9} textAnchor="middle" fontSize={9} fontWeight={700} fill="#fff">{`${Math.round(value / 1_000_000)}M`}</text>
+                        </g>
+                      )
+                    }} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-              <p className="mt-1 text-center text-[9px] text-gray-300 dark:text-white/20">Demo financial data — Accounts module not yet finished</p>
             </div>
           </div>
         </CompactCard>
 
-        {/* CRM / Growth summary — real Leads/Referrals/Campaigns, replaces the old Sarah card */}
+        {/* CRM / Growth summary — real Leads/Referrals/Campaigns */}
         <Link href="/leads" className="flex flex-col justify-between rounded-2xl p-4 text-white shadow-sm transition hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg,#0c1e50,#1A237E 45%,#29ABE2)' }}>
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-100">Growth &amp; CRM</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-100">Growth &amp; CRM</p>
             <span className="grid h-7 w-7 place-items-center rounded-full bg-white/15"><Share2 size={13} /></span>
           </div>
-          <div className="my-2 space-y-2">
+          <div className="my-2.5 space-y-1.5">
             <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] text-blue-100"><Users size={12} /> New Leads (7d)</span>
-              <span className="text-sm font-semibold text-white">{newLeads ?? '—'}</span>
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Users size={12} /> New Leads (7d)</span>
+              <span className="text-sm font-bold text-white">{newLeads ?? '—'}</span>
             </div>
             <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] text-blue-100"><UserCheck size={12} /> Converted</span>
-              <span className="text-sm font-semibold text-white">{convertedLeads ?? '—'}</span>
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><UserCheck size={12} /> Converted</span>
+              <span className="text-sm font-bold text-white">{convertedLeads ?? '—'}</span>
             </div>
             <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] text-blue-100"><Share2 size={12} /> Referral Patients</span>
-              <span className="text-sm font-semibold text-white">{referralPatients ?? '—'}</span>
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Share2 size={12} /> Referral Patients</span>
+              <span className="text-sm font-bold text-white">{referralPatients ?? '—'}</span>
             </div>
+            {/* GET /campaigns has no complete/aggregate source (confirmed: no
+                count() endpoint exists) and is hard-capped at the 100 most
+                recent WhatsApp broadcast campaigns — this count can silently
+                undercount if the clinic ever has more than 100 total, so it's
+                marked rather than presented as a guaranteed-complete total. */}
             <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] text-blue-100"><Megaphone size={12} /> Active Campaigns</span>
-              <span className="text-sm font-semibold text-white">{activeCampaigns ?? '—'}</span>
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Megaphone size={12} /> Active Campaigns</span>
+              <span className="text-sm font-bold text-white" title="Based on the 100 most recently created campaigns — may undercount if older campaigns are still active">{activeCampaigns ?? '—'}{activeCampaigns !== null && <sup className="ml-0.5 text-[8px] font-bold text-blue-200">*</sup>}</span>
             </div>
           </div>
           <div className="flex items-center justify-between border-t border-white/15 pt-2">
-            <span className="text-[10px] text-blue-100">{conversionRate !== null ? `${conversionRate}% lead conversion` : 'Conversion — unavailable'}</span>
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-white/80">Open CRM <ArrowUpRight size={12} /></span>
+            <span className="text-[10px] font-medium text-blue-100">{conversionRate !== null ? `${conversionRate}% lead conversion` : 'Conversion — unavailable'}</span>
+            <span className="flex items-center gap-1 text-[11px] font-bold text-white/90">Open CRM <ArrowUpRight size={12} /></span>
           </div>
+          {activeCampaigns !== null && <p className="mt-1 text-center text-[8px] text-blue-200/60">*last 100 campaigns</p>}
         </Link>
       </div>
 
@@ -372,15 +510,25 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.05fr_1.3fr_0.85fr]">
 
         {/* Patients Overview — real Total/Seen/Returning/New + real avatars */}
-        <CompactCard title="Patients Overview" action={<Link href="/patients" className="text-[11px] font-semibold text-clinic-blue hover:underline dark:text-cyan-400">View all patients</Link>}>
+        <CompactCard title="Patients Overview" action={<Link href="/patients" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all patients</Link>}>
           {!m ? (
             <div className="h-32 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
           ) : (() => {
+            // "Seen" = distinct patients with a COMPLETED appointment this
+            // month — exactly newPatientsThisMonth + returningPatientsThisMonth,
+            // since the backend computes those two as an exhaustive split of
+            // that same completed-this-month set (see clinical.ts). This
+            // replaces the old activeThisMonth binding, which counted ANY
+            // non-cancelled appointment (booked/no-show included, not just
+            // attended) and was mislabeled "Seen" as a result. No matching
+            // last-month COMPLETED figure is returned by the API, so no
+            // delta is shown here rather than compare against the old
+            // (differently-defined) activeLastMonth.
             const segs = [
-              { key: 'total', label: 'Total', value: totalPatients, color: '#1A237E', delta: null as number | null },
-              { key: 'seen', label: 'Seen', value: m.activeThisMonth, color: '#29ABE2', delta: m.activeThisMonth - m.activeLastMonth },
+              { key: 'total', label: 'Total Patients', value: totalPatients, color: '#1A237E', delta: null as number | null },
+              { key: 'seen', label: 'Patients Seen', value: m.newPatientsThisMonth + m.returningPatientsThisMonth, color: '#29ABE2', delta: null as number | null },
               { key: 'returning', label: 'Returning', value: m.returningPatientsThisMonth, color: '#10B981', delta: null as number | null },
-              { key: 'fresh', label: 'New', value: m.newPatientsThisMonth, color: '#F59E0B', delta: null as number | null },
+              { key: 'fresh', label: 'New Patients', value: m.newPatientsThisMonth, color: '#F59E0B', delta: null as number | null },
             ]
             const barTotal = Math.max(m.activeThisMonth + m.returningPatientsThisMonth + m.newPatientsThisMonth, 1)
             return (
@@ -390,21 +538,21 @@ export default function DashboardPage() {
                   <div style={{ width: `${(m.returningPatientsThisMonth / barTotal) * 100}%`, background: '#10B981' }} />
                   <div style={{ width: `${(m.newPatientsThisMonth / barTotal) * 100}%`, background: '#F59E0B' }} />
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="mt-3.5 grid grid-cols-4 gap-2">
                   {segs.map(s => {
                     const people = avatars[s.key] ?? []
                     return (
                       <div key={s.key}>
                         <div className="mb-1 flex -space-x-1.5">
-                          {people.length > 0 ? people.map(p => (
+                          {people.length > 0 ? people.slice(0, 3).map(p => (
                             <Avatar key={p.id} firstName={p.firstName} lastName={p.lastName} avatarUrl={p.avatarUrl} size="xs" />
                           )) : <span className="grid h-6 w-6 place-items-center rounded-full bg-gray-100 text-gray-300 dark:bg-white/5"><Users size={11} /></span>}
                         </div>
-                        <p className="text-lg font-semibold leading-tight text-clinic-navy dark:text-white">{s.value ?? '—'}</p>
-                        <p className="text-[10px] text-gray-400">{s.label} Patients</p>
+                        <p className="text-lg font-bold leading-tight text-clinic-navy dark:text-white">{s.value ?? '—'}</p>
+                        <p className="text-[9px] font-medium leading-tight text-gray-500 dark:text-slate-400">{s.label}</p>
                         {s.delta !== null && (
-                          <span className={cn('mt-0.5 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold', s.delta >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' : 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400')}>
-                            {s.delta >= 0 ? <TrendingUp size={9} /> : <TrendingDown size={9} />}{s.delta >= 0 ? '+' : ''}{s.delta} vs last month
+                          <span className={cn('mt-0.5 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold', s.delta >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' : 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400')}>
+                            {s.delta >= 0 ? <TrendingUp size={9} /> : <TrendingDown size={9} />}{s.delta >= 0 ? '+' : ''}{s.delta}
                           </span>
                         )}
                       </div>
@@ -416,85 +564,78 @@ export default function DashboardPage() {
           })()}
         </CompactCard>
 
-        {/* Upcoming Appointments — real scheduling data, compact timeline */}
-        <CompactCard title="Upcoming Appointments" action={<Link href="/scheduling" className="text-[11px] font-semibold text-clinic-blue hover:underline dark:text-cyan-400">View all</Link>}>
+        {/* Upcoming Appointments — real scheduling data, horizontally-scrollable timeline */}
+        <CompactCard title="Upcoming Appointments" action={<Link href="/scheduling" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all</Link>}>
           {upcoming === null ? (
             <div className="h-36 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
           ) : futureAppts.length === 0 ? (
             <div className="flex h-36 flex-col items-center justify-center gap-1 text-center">
               <Calendar size={20} className="text-gray-200 dark:text-white/15" />
-              <p className="text-xs text-gray-400">No more appointments today</p>
+              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No more appointments today</p>
             </div>
-          ) : (() => {
-            const dayStart = new Date(); dayStart.setHours(8, 0, 0, 0)
-            const dayEnd = new Date(); dayEnd.setHours(18, 0, 0, 0)
-            const span = dayEnd.getTime() - dayStart.getTime()
-            const pctOf = (t: number) => Math.min(97, Math.max(0, ((t - dayStart.getTime()) / span) * 100))
-            const nowPct = pctOf(Date.now())
-            const hourMarks = [8, 10, 12, 14, 16, 18]
-            return (
-              <div>
-                <div className="mb-1 flex justify-between px-1 text-[9px] text-gray-400">
-                  {hourMarks.map(h => <span key={h}>{h > 12 ? h - 12 : h}{h >= 12 ? 'PM' : 'AM'}</span>)}
+          ) : (
+            <div className="no-scrollbar overflow-x-auto">
+              <div style={{ width: timelineWidth, minWidth: '100%' }} className="relative">
+                <div className="relative h-4">
+                  {hourMarks.map(h => (
+                    <span key={h} className="absolute -translate-x-1/2 whitespace-nowrap text-[9px] font-medium text-gray-500 dark:text-slate-400" style={{ left: (h - DAY_START_HOUR) * HOUR_PX }}>
+                      {h > 12 ? h - 12 : h}{h >= 12 ? 'PM' : 'AM'}
+                    </span>
+                  ))}
                 </div>
-                <div className="relative h-[104px] rounded-xl bg-gray-50 dark:bg-white/5">
-                  {hourMarks.map(h => <div key={h} className="absolute top-0 bottom-0 border-l border-gray-200/70 dark:border-white/5" style={{ left: `${pctOf(new Date(new Date().setHours(h, 0, 0, 0)).getTime())}%` }} />)}
-                  {nowPct >= 0 && nowPct <= 100 && (
-                    <div className="absolute top-0 bottom-0 w-px bg-clinic-blue dark:bg-cyan-400" style={{ left: `${nowPct}%` }}>
-                      <span className="absolute -top-2 left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-clinic-blue dark:bg-cyan-400" />
+                <div className="relative mt-1 rounded-xl bg-gray-50 dark:bg-white/5" style={{ height: 112 }}>
+                  {hourMarks.map(h => (
+                    <div key={h} className="absolute top-0 bottom-0 border-l border-gray-200/70 dark:border-white/5" style={{ left: (h - DAY_START_HOUR) * HOUR_PX }} />
+                  ))}
+                  {nowPx >= 0 && nowPx <= timelineWidth && (
+                    <div className="absolute top-0 bottom-0 z-10 w-px bg-clinic-blue dark:bg-cyan-400" style={{ left: nowPx }}>
+                      <span className="absolute -top-1.5 left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-clinic-blue dark:bg-cyan-400" />
                     </div>
                   )}
                   {futureAppts.map((a, i) => {
-                    const left = pctOf(new Date(a.startAt).getTime())
-                    const top = 10 + (i % 3) * 30
+                    const left = pxOf(new Date(a.startAt).getTime())
+                    const right = a.endAt ? pxOf(new Date(a.endAt).getTime()) : left + 84
+                    const width = Math.max(right - left, 76)
+                    const top = 8 + (i % 3) * 33
                     const time = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true })
                     const isNearest = i === 0
                     return (
-                      <div key={a.id} className={cn('absolute flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-white shadow-sm', isNearest && 'ring-2 ring-clinic-blue ring-offset-1 dark:ring-cyan-400 dark:ring-offset-slate-900')} style={{ left: `${left}%`, top, background: a.service.colour || '#29ABE2' }} title={`${time} · ${a.patient.firstName} ${a.patient.lastName} · ${a.service.name}`}>
+                      <div key={a.id} className={cn('absolute flex items-center gap-1.5 overflow-hidden rounded-full py-1 pl-1 pr-2.5 text-white shadow-sm', isNearest && 'ring-2 ring-clinic-blue ring-offset-1 dark:ring-cyan-400 dark:ring-offset-slate-900')} style={{ left, top, width, background: a.service.colour || '#29ABE2' }} title={`${time} · ${a.patient.firstName} ${a.patient.lastName} · ${a.service.name}`}>
                         <Avatar firstName={a.patient.firstName} lastName={a.patient.lastName} size="xs" colour="rgba(255,255,255,0.3)" />
-                        <span className="whitespace-nowrap text-[10px] font-semibold">{a.patient.firstName}</span>
+                        <span className="truncate text-[10px] font-bold">{a.patient.firstName}</span>
                       </div>
                     )
                   })}
                 </div>
-                <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
-                  <div className="h-1 rounded-full bg-clinic-blue dark:bg-cyan-400" style={{ width: `${nowPct}%` }} />
-                </div>
               </div>
-            )
-          })()}
+            </div>
+          )}
         </CompactCard>
 
-        {/* Today's Utilization AI Summary — real AI Bookings/Follow-ups counts;
-            Reminders has no read endpoint anywhere in this codebase (confirmed),
-            so it shows a truthful unavailable state rather than a fake number.
+        {/* Today's AI Utilization.
+            AI Bookings: the only existing source (GET /clinical/analytics/dashboard,
+            charts.aiPerformance.appointmentsBooked) is scoped to the current
+            calendar month (agentLog.count with createdAt >= startOfMonth) and
+            takes no date query params — it cannot honestly represent "today"
+            without a backend change, so it shows the unavailable state rather
+            than a mislabeled monthly figure. Required backend change (not
+            made here): let GET /clinical/analytics/dashboard accept a date
+            range (or add a lightweight `GET /clinical/analytics/ai-today`)
+            and scope the agentLog.count query to that range instead of
+            startOfMonth.
+            Follow-ups: genuinely today, computed client-side above from the
+            existing followup-report response.
+            Reminders: no read endpoint exists anywhere in this codebase.
             None of the three have a real capacity/target denominator, so the
-            rings are plain activity indicators, not percentages-of-something. */}
-        <CompactCard title="Today's Utilization AI Summary">
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div>
-              <div className="relative mx-auto h-[52px] w-[52px]">
-                <Ring pct={dashData ? 100 : null} color="#1A237E" />
-                <span className="absolute inset-0 grid place-items-center text-xs font-semibold text-clinic-navy dark:text-white">{dashData ? dashData.charts.aiPerformance.appointmentsBooked : '—'}</span>
-              </div>
-              <p className="mt-1.5 text-[10px] text-gray-400">AI Bookings</p>
-            </div>
-            <div>
-              <div className="relative mx-auto h-[52px] w-[52px]">
-                <Ring pct={followups ? 100 : null} color="#10B981" />
-                <span className="absolute inset-0 grid place-items-center text-xs font-semibold text-clinic-navy dark:text-white">{followups ? followups.messages.length : '—'}</span>
-              </div>
-              <p className="mt-1.5 text-[10px] text-gray-400">Follow-ups</p>
-            </div>
-            <div>
-              <div className="relative mx-auto h-[52px] w-[52px]">
-                <Ring pct={null} color="#D1D5DB" />
-                <span className="absolute inset-0 grid place-items-center text-xs font-semibold text-gray-300 dark:text-white/20">—</span>
-              </div>
-              <p className="mt-1.5 text-[10px] text-gray-400">Reminders</p>
-            </div>
+            rings are themed circular frames around the real count, never a
+            manufactured percentage. */}
+        <CompactCard title="Today's AI Utilization">
+          <div className="grid grid-cols-3 gap-2">
+            <UtilRing icon={<Bot size={15} />} value={null} label="AI Bookings" color="#1A237E" />
+            <UtilRing icon={<Repeat size={15} />} value={followupsToday} label="Follow-ups" color="#10B981" />
+            <UtilRing icon={<Bell size={15} />} value={null} label="Reminders" color="#D1D5DB" />
           </div>
-          <p className="mt-3 text-center text-[10px] text-gray-400">Reminders has no readable backend endpoint yet</p>
+          <p className="mt-3 text-center text-[9px] leading-relaxed text-gray-400 dark:text-white/25">AI Bookings needs a backend change to scope to today · Reminders has no backend source yet</p>
         </CompactCard>
       </div>
     </div>

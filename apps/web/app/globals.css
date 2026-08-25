@@ -436,14 +436,16 @@
    variable, so this block never reaches them. Falls back to Inter (already
    loaded for the rest of the app) if the variable isn't present.
 
-   Questrial ships ONE real weight (400/Regular) — no bold face exists.
-   Rather than let the browser synthesize a fake bold (which looks blurry
-   on a geometric sans like this), every weight utility in this scope is
-   flattened to 400 and font-synthesis is disabled outright. Hierarchy is
-   carried by size, colour and spacing instead — see individual components. */
+   Questrial ships ONE real weight (400/Regular) — no bold face exists, so
+   any heavier weight the browser renders is synthesized (algorithmically
+   emboldened). An earlier pass disabled that synthesis and flattened every
+   weight utility to 400, which read as too faint/flat in practice — at
+   normal UI text sizes synthetic bold on a geometric sans like this reads
+   fine, so synthesis is left on and Tailwind's weight scale (font-medium/
+   semibold/bold/black) works normally again. Hierarchy is still reinforced
+   with colour/size, not weight alone. */
 .cc-admin-shell {
   font-family: var(--font-questrial), 'Inter', system-ui, sans-serif;
-  font-synthesis: none;
   letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -451,10 +453,11 @@
 }
 .cc-admin-shell h1, .cc-admin-shell h2, .cc-admin-shell h3, .cc-admin-shell h4 {
   font-family: var(--font-questrial), 'Inter', system-ui, sans-serif;
-  font-weight: 400;
   letter-spacing: -0.008em;
 }
-.cc-admin-shell .font-bold,
-.cc-admin-shell .font-semibold,
-.cc-admin-shell .font-black,
-.cc-admin-shell .font-medium { font-weight: 400; }
+
+/* Hides the native scrollbar on an horizontally-scrollable element while
+   keeping wheel/trackpad/touch scrolling fully functional — used by the
+   dashboard's Upcoming Appointments timeline. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
