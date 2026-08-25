@@ -136,16 +136,23 @@ function SatisfactionGauge({ pct }: { pct: number | null }) {
 // ring (none of AI Bookings/Follow-ups/Reminders has a real denominator).
 // A full-strength ring is just a themed circular frame around the real
 // count; a muted grey ring + "—" is the honest unavailable state.
-function UtilRing({ icon, value, label, color, size = 82 }: { icon: React.ReactNode; value: number | string | null; label: string; color: string; size?: number }) {
+function UtilRing({ icon, value, label, color, size = 82, previewNote }: { icon: React.ReactNode; value: number | string | null; label: string; color: string; size?: number; previewNote?: string }) {
   const has = value !== null
   const r = (size - 10) / 2
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <div className="flex flex-col items-center gap-1.5" title={!has ? previewNote : undefined}>
       <span className="grid h-7 w-7 place-items-center rounded-full" style={{ background: has ? `${color}1A` : 'rgba(148,163,184,0.12)', color: has ? color : '#9CA3AF' }}>{icon}</span>
       <div className="relative grid place-items-center" style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="absolute inset-0">
           <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-gray-100 dark:text-white/10" />
-          {has && <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" />}
+          {has ? (
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" />
+          ) : (
+            // Dashed, muted ring = "preview" texture — deliberately distinct
+            // from the solid ring above so it can never be mistaken for a
+            // real value. No percentage/count is implied by its length.
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#CBD5E1" strokeWidth="6" strokeLinecap="round" strokeDasharray="5 5" opacity={0.6} />
+          )}
         </svg>
         <span className={cn('text-base font-extrabold leading-none', has ? 'text-clinic-navy dark:text-white' : 'text-gray-300 dark:text-white/25')}>{has ? value : '—'}</span>
       </div>
@@ -584,9 +591,19 @@ export default function DashboardPage() {
                         </div>
                         <p className="text-xl font-extrabold leading-tight text-clinic-navy dark:text-white">{s.value !== null ? s.value.toLocaleString() : '—'}</p>
                         <p className="text-[9px] font-medium leading-tight text-gray-500 dark:text-slate-400">{s.label}</p>
-                        {s.delta !== null && (
+                        {s.delta !== null ? (
                           <span className={cn('mt-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold', s.delta >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' : 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400')}>
                             {s.delta >= 0 ? <TrendingUp size={9} /> : <TrendingDown size={9} />}{s.delta >= 0 ? '+' : ''}{s.delta}
+                          </span>
+                        ) : (
+                          // Dashed border deliberately distinguishes this from
+                          // the solid-fill badge above — visually "preview",
+                          // not a real figure. No number is shown/implied
+                          // because there's no real week-over-week comparison
+                          // source for this metric yet (would need a backend
+                          // addition — see /clinical/analytics/dashboard).
+                          <span title="Trend preview — real week-over-week comparison needs a backend addition, not implemented yet" className="mt-1 inline-flex items-center gap-0.5 rounded-full border border-dashed border-gray-300 px-1.5 py-0.5 text-[9px] font-bold text-gray-400 dark:border-white/15 dark:text-white/30">
+                            <TrendingUp size={9} />—
                           </span>
                         )}
                       </div>
@@ -665,9 +682,9 @@ export default function DashboardPage() {
             manufactured percentage. */}
         <CompactCard title="Today's AI Utilization">
           <div className="grid grid-cols-3 gap-2">
-            <UtilRing icon={<Bot size={15} />} value={null} label="AI Bookings" color="#1A237E" />
+            <UtilRing icon={<Bot size={15} />} value={null} label="AI Bookings" color="#1A237E" previewNote="Preview — scoping this to today needs a backend addition, not implemented yet" />
             <UtilRing icon={<Repeat size={15} />} value={followupsToday} label="Follow-ups" color="#10B981" />
-            <UtilRing icon={<Bell size={15} />} value={null} label="Reminders" color="#D1D5DB" />
+            <UtilRing icon={<Bell size={15} />} value={null} label="Reminders" color="#D1D5DB" previewNote="Preview — no backend source for reminders exists yet" />
           </div>
           <p className="mt-3 text-center text-[9px] leading-relaxed text-gray-400 dark:text-white/25">AI Bookings needs a backend change to scope to today · Reminders has no backend source yet</p>
         </CompactCard>
