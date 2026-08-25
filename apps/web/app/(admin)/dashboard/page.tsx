@@ -79,7 +79,7 @@ const CATEGORY_FILTERS = { total: '', returning: 'returning', fresh: 'new_patien
 function DistributionBar({ segments, total }: { segments: { color: string; count: number }[]; total: number }) {
   const denom = Math.max(total, 1)
   return (
-    <div className="flex h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+    <div className="flex h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
       {segments.filter(s => s.count > 0).map((s, i) => (
         <div key={i} style={{ width: `${(s.count / denom) * 100}%`, background: s.color }} />
       ))}
@@ -87,16 +87,17 @@ function DistributionBar({ segments, total }: { segments: { color: string; count
   )
 }
 
-// Compact 2/3-column legend grid — replaces a tall list of full-width rows.
-function LegendGrid({ items, cols = 2, loading }: { items: { label: string; count: number; color: string }[]; cols?: number; loading: boolean }) {
+// Wrapping chip legend — denser than a fixed grid, so the card only takes
+// the height its actual content needs rather than reserving full grid rows.
+function ChipLegend({ items, loading }: { items: { label: string; count: number; color: string }[]; loading: boolean }) {
   return (
-    <div className={cn('mt-2.5 grid gap-x-2 gap-y-1.5', cols === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
+    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
       {items.map(it => (
-        <div key={it.label} className="flex items-center gap-1 text-[10px]">
+        <span key={it.label} className="inline-flex items-center gap-1 text-[10px]">
           <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: it.color }} />
-          <span className="truncate text-gray-500 dark:text-slate-400">{it.label}</span>
-          <span className="ml-auto font-bold text-gray-700 dark:text-slate-200">{loading ? '—' : it.count}</span>
-        </div>
+          <span className="text-gray-500 dark:text-slate-400">{it.label}</span>
+          <span className="font-bold text-gray-700 dark:text-slate-200">{loading ? '—' : it.count}</span>
+        </span>
       ))}
     </div>
   )
@@ -107,13 +108,13 @@ function LegendGrid({ items, cols = 2, loading }: { items: { label: string; coun
 // Gradient (red→orange→yellow→green) only paints when a real pct is given;
 // the pending state shows the same size track, unfilled.
 function SatisfactionGauge({ pct }: { pct: number | null }) {
-  const r = 84, cx = 100, cy = 92, sw = 20
+  const r = 92, cx = 102, cy = 100, sw = 24
   const circumference = Math.PI * r
   const clamped = pct === null ? 0 : Math.max(0, Math.min(100, pct))
   const offset = circumference * (1 - clamped / 100)
   const arc = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`
   return (
-    <svg viewBox="0 0 200 100" className="mx-auto w-full max-w-[220px]">
+    <svg viewBox="0 0 204 112" className="mx-auto w-full max-w-none">
       <defs>
         <linearGradient id="satisfactionGradient" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="#EF4444" />
@@ -135,22 +136,20 @@ function SatisfactionGauge({ pct }: { pct: number | null }) {
 // ring (none of AI Bookings/Follow-ups/Reminders has a real denominator).
 // A full-strength ring is just a themed circular frame around the real
 // count; a muted grey ring + "—" is the honest unavailable state.
-function UtilRing({ icon, value, label, color, size = 76 }: { icon: React.ReactNode; value: number | string | null; label: string; color: string; size?: number }) {
+function UtilRing({ icon, value, label, color, size = 72 }: { icon: React.ReactNode; value: number | string | null; label: string; color: string; size?: number }) {
   const has = value !== null
   const r = (size - 10) / 2
   return (
     <div className="flex flex-col items-center gap-1.5">
+      <span className="grid h-7 w-7 place-items-center rounded-full" style={{ background: has ? `${color}1A` : 'rgba(148,163,184,0.12)', color: has ? color : '#9CA3AF' }}>{icon}</span>
       <div className="relative grid place-items-center" style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="absolute inset-0">
           <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-gray-100 dark:text-white/10" />
           {has && <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" />}
         </svg>
-        <div className="flex flex-col items-center gap-0.5">
-          <span style={{ color: has ? color : '#D1D5DB' }}>{icon}</span>
-          <span className={cn('text-sm font-bold leading-none', has ? 'text-clinic-navy dark:text-white' : 'text-gray-300 dark:text-white/25')}>{has ? value : '—'}</span>
-        </div>
+        <span className={cn('text-base font-extrabold leading-none', has ? 'text-clinic-navy dark:text-white' : 'text-gray-300 dark:text-white/25')}>{has ? value : '—'}</span>
       </div>
-      <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">{label}</p>
+      <p className="text-[10px] font-semibold text-gray-600 dark:text-slate-300">{label}</p>
     </div>
   )
 }
@@ -170,9 +169,9 @@ function ChartTooltip({ active, payload, label }: any) {
 
 function CompactCard({ title, action, children, className }: { title: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn('rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5', className)}>
+    <div className={cn('min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5', className)}>
       <div className="mb-2.5 flex items-center justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-slate-300">{title}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">{title}</p>
         {action}
       </div>
       {children}
@@ -346,41 +345,46 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Card 1 — Appointments This Week: total + distribution bar + compact legend */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <div className="flex items-start justify-between">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-slate-300">Appointments This Week</p>
+        {/* Card 1 — Appointments This Week: number+sparkline-bar side by side, chip legend below */}
+        <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Appointments This Week</p>
             <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-300"><Calendar size={13} /></span>
           </div>
-          <p className="mt-1 text-3xl font-bold leading-none text-clinic-navy dark:text-white">{weekAppts ? weekTotal : '—'}</p>
-          <div className="mt-2.5">
+          <div className="mt-2 flex items-center gap-3">
+            <p className="text-3xl font-extrabold leading-none text-clinic-navy dark:text-white">{weekAppts ? weekTotal : '—'}</p>
+            <div className="h-8 w-px flex-shrink-0 bg-gray-100 dark:bg-white/10" />
             <DistributionBar segments={weekCounts} total={weekTotal} />
           </div>
-          <LegendGrid items={weekCounts} loading={!weekAppts} />
+          <ChipLegend items={weekCounts} loading={!weekAppts} />
         </div>
 
-        {/* Card 2 — Treatment Pipeline: total + segmented distribution bar + compact legend */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <div className="flex items-start justify-between">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-slate-300">Treatment Pipeline</p>
+        {/* Card 2 — Treatment Pipeline: same number+bar language, chip legend below */}
+        <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Treatment Pipeline</p>
             <Link href="/treatment-pipeline" className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-300"><ArrowUpRight size={13} /></Link>
           </div>
-          <p className="mt-1 text-3xl font-bold leading-none text-clinic-navy dark:text-white">{dentalData ? pipelineTotal : '—'}</p>
-          <div className="mt-2.5">
+          <div className="mt-2 flex items-center gap-3">
+            <p className="text-3xl font-extrabold leading-none text-clinic-navy dark:text-white">{dentalData ? pipelineTotal : '—'}</p>
+            <div className="h-8 w-px flex-shrink-0 bg-gray-100 dark:bg-white/10" />
             <DistributionBar segments={pipelineCounts} total={pipelineTotal} />
           </div>
-          <LegendGrid items={pipelineCounts} cols={3} loading={!dentalData} />
+          <ChipLegend items={pipelineCounts} loading={!dentalData} />
         </div>
 
-        {/* Card 3 — Patient Live Flow: real patient journey stepper */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <div className="flex items-start justify-between">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-slate-300">Patient Live Flow</p>
+        {/* Card 3 — Patient Live Flow: same header language, real patient journey stepper below */}
+        <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Patient Live Flow</p>
             <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300"><UserCheck size={13} /></span>
           </div>
-          <p className="mt-1 text-3xl font-bold leading-none text-clinic-navy dark:text-white">{todayAppts ? flowTotal : '—'}</p>
-          <p className="text-[10px] text-gray-400 dark:text-white/30">active in clinic now</p>
-          <div className="mt-3 flex items-center">
+          <div className="mt-2 flex items-center gap-3">
+            <p className="text-3xl font-extrabold leading-none text-clinic-navy dark:text-white">{todayAppts ? flowTotal : '—'}</p>
+            <div className="h-8 w-px flex-shrink-0 bg-gray-100 dark:bg-white/10" />
+            <p className="text-[10px] font-medium leading-tight text-gray-500 dark:text-slate-400">active in<br />clinic now</p>
+          </div>
+          <div className="mt-3.5 flex items-center">
             {flowCounts.map((s, i) => (
               <div key={s.key} className="flex flex-1 items-center last:flex-none">
                 <div className="flex flex-col items-center gap-1">
@@ -409,47 +413,63 @@ export default function DashboardPage() {
             `pending` text block for real averageRating/totalReviewCount/
             recentReviewCount from that endpoint requires no redesign. */}
         <CompactCard title="Patient Satisfaction" action={<span className="rounded-full bg-gray-50 px-2 py-0.5 text-[9px] font-bold text-gray-500 dark:bg-white/5 dark:text-white/40">Google Reviews</span>}>
-          <SatisfactionGauge pct={null} />
-          <div className="-mt-4 text-center">
-            <p className="text-2xl font-bold text-gray-300 dark:text-white/25">—<span className="text-sm font-medium text-gray-300 dark:text-white/25">/5</span></p>
-            <p className="mx-auto mt-1 max-w-[180px] text-[10px] font-medium leading-snug text-gray-500 dark:text-slate-400">Google Reviews pending API approval</p>
+          <div className="flex items-center justify-between px-1 text-[10px] font-semibold text-gray-400 dark:text-white/25">
+            <span>No reviews yet</span>
+            <span>&nbsp;</span>
+          </div>
+          <div className="relative -mt-1">
+            <SatisfactionGauge pct={null} />
+            <div className="absolute inset-x-0 bottom-1 text-center">
+              <p className="text-3xl font-extrabold leading-none text-gray-300 dark:text-white/25">—<span className="text-base font-semibold text-gray-300 dark:text-white/25">/5</span></p>
+            </div>
+          </div>
+          <div className="-mt-1 text-center">
+            <p className="mx-auto max-w-[190px] text-[10px] font-semibold leading-snug text-gray-500 dark:text-slate-400">Google Reviews pending API approval</p>
             <p className="mt-2 text-[10px] font-bold text-gray-300 dark:text-white/25">View all reviews</p>
           </div>
         </CompactCard>
 
-        {/* Financial Snapshot — DEMO DATA, see comment above */}
-        <CompactCard title="Financial Snapshot" action={<span className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 dark:border-white/10 dark:text-slate-300">Jan – Jun</span>}>
+        {/* Financial Snapshot — DEMO DATA, see comment above. Custom header
+            (not CompactCard's) because the growth badge sits beside the
+            title, not as a lone top-right action like other cards. */}
+        <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <div className="mb-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Financial Snapshot</p>
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400"><TrendingUp size={9} />{demoGrowthPct}% this period</span>
+            </div>
+            <span className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 dark:border-white/10 dark:text-slate-300">Jan – Jun</span>
+          </div>
           <div className="flex gap-4">
-            <div className="w-[30%] flex-shrink-0 space-y-3">
-              <div>
-                <p className="text-xl font-bold text-clinic-navy dark:text-white">{formatUGX(DEMO_FINANCE.revenue)}</p>
-                <div className="flex items-center gap-1.5">
+            <div className="flex w-[28%] flex-shrink-0 flex-col justify-between">
+              <div className="space-y-2.5">
+                <div>
+                  <p className="text-xl font-extrabold leading-tight text-clinic-navy dark:text-white">{formatUGX(DEMO_FINANCE.revenue)}</p>
                   <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Revenue</p>
-                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400"><TrendingUp size={9} />{demoGrowthPct}%</span>
                 </div>
-              </div>
-              <div>
-                <p className="text-base font-bold text-gray-700 dark:text-slate-200">{formatUGX(DEMO_FINANCE.expenses)}</p>
-                <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Expenses</p>
-              </div>
-              <div>
-                <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">{formatUGX(DEMO_FINANCE.netIncome)}</p>
-                <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Net Income</p>
+                <div>
+                  <p className="text-base font-bold leading-tight text-gray-700 dark:text-slate-200">{formatUGX(DEMO_FINANCE.expenses)}</p>
+                  <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Expenses</p>
+                </div>
+                <div>
+                  <p className="text-base font-bold leading-tight text-emerald-600 dark:text-emerald-400">{formatUGX(DEMO_FINANCE.netIncome)}</p>
+                  <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Net Income</p>
+                </div>
               </div>
               <p className="text-[9px] text-gray-300 dark:text-white/20">Demo financial data</p>
             </div>
             <div className="min-w-0 flex-1">
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={DEMO_FINANCE.trend} margin={{ top: 20, right: 4, left: -18, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke={dark ? '#64748B' : '#94A3B8'} strokeOpacity={dark ? 0.25 : 0.15} />
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={DEMO_FINANCE.trend} margin={{ top: 32, right: 4, left: 0, bottom: 0 }}>
+                  <CartesianGrid vertical={false} strokeDasharray="4 4" stroke={dark ? '#64748B' : '#94A3B8'} strokeOpacity={dark ? 0.3 : 0.25} />
                   <XAxis dataKey="month" tick={{ fontSize: 10, fill: dark ? '#CBD5E1' : '#6B7280', fontWeight: 600 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 9, fill: dark ? '#94A3B8' : '#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${Math.round(v / 1_000_000)}M`} width={34} />
+                  <YAxis tick={{ fontSize: 9, fill: dark ? '#94A3B8' : '#9CA3AF', fontWeight: 600 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${Math.round(v / 1_000_000)}M`} width={30} />
                   <Tooltip content={<ChartTooltip />} cursor={{ fill: dark ? 'rgba(255,255,255,0.06)' : 'rgba(148,163,184,0.08)' }} />
                   {/* Current month uses the Code Clinic brand cyan — bright
                       enough to stay visible on both a white and a near-black
                       card surface, unlike the previous fixed navy which
                       nearly disappeared against the dark card background. */}
-                  <Bar dataKey="revenue" radius={[6, 6, 0, 0]} maxBarSize={34}>
+                  <Bar dataKey="revenue" radius={[6, 6, 0, 0]} maxBarSize={36}>
                     {DEMO_FINANCE.trend.map((_, i, arr) => <Cell key={i} fill={i === arr.length - 1 ? '#29ABE2' : (dark ? '#60A5FA' : '#93C5FD')} />)}
                     <LabelList dataKey="revenue" content={(props: any) => {
                       const { x, y, width, index, value } = props
@@ -457,8 +477,8 @@ export default function DashboardPage() {
                       const cx = x + width / 2
                       return (
                         <g>
-                          <rect x={cx - 23} y={y - 22} width={46} height={18} rx={9} fill="#1A237E" />
-                          <text x={cx} y={y - 9} textAnchor="middle" fontSize={9} fontWeight={700} fill="#fff">{`${Math.round(value / 1_000_000)}M`}</text>
+                          <rect x={cx - 24} y={y - 24} width={48} height={19} rx={9.5} fill="#1A237E" />
+                          <text x={cx} y={y - 10.5} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#fff">{`${Math.round(value / 1_000_000)}M`}</text>
                         </g>
                       )
                     }} />
@@ -467,7 +487,7 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             </div>
           </div>
-        </CompactCard>
+        </div>
 
         {/* CRM / Growth summary — real Leads/Referrals/Campaigns */}
         <Link href="/leads" className="flex flex-col justify-between rounded-2xl p-4 text-white shadow-sm transition hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg,#0c1e50,#1A237E 45%,#29ABE2)' }}>
@@ -538,20 +558,23 @@ export default function DashboardPage() {
                   <div style={{ width: `${(m.returningPatientsThisMonth / barTotal) * 100}%`, background: '#10B981' }} />
                   <div style={{ width: `${(m.newPatientsThisMonth / barTotal) * 100}%`, background: '#F59E0B' }} />
                 </div>
-                <div className="mt-3.5 grid grid-cols-4 gap-2">
+                <div className="mt-4 grid grid-cols-4 gap-2">
                   {segs.map(s => {
                     const people = avatars[s.key] ?? []
                     return (
                       <div key={s.key}>
-                        <div className="mb-1 flex -space-x-1.5">
-                          {people.length > 0 ? people.slice(0, 3).map(p => (
-                            <Avatar key={p.id} firstName={p.firstName} lastName={p.lastName} avatarUrl={p.avatarUrl} size="xs" />
-                          )) : <span className="grid h-6 w-6 place-items-center rounded-full bg-gray-100 text-gray-300 dark:bg-white/5"><Users size={11} /></span>}
+                        <div className="mb-1.5 flex items-center">
+                          <div className="flex -space-x-1.5">
+                            {people.length > 0 ? people.slice(0, 3).map(p => (
+                              <Avatar key={p.id} firstName={p.firstName} lastName={p.lastName} avatarUrl={p.avatarUrl} size="xs" />
+                            )) : <span className="grid h-6 w-6 place-items-center rounded-full bg-gray-100 text-gray-300 dark:bg-white/5"><Users size={11} /></span>}
+                          </div>
+                          <span className="ml-auto grid h-5 w-5 flex-shrink-0 place-items-center rounded-full bg-gray-50 text-gray-400 dark:bg-white/5 dark:text-white/30"><ArrowUpRight size={10} /></span>
                         </div>
-                        <p className="text-lg font-bold leading-tight text-clinic-navy dark:text-white">{s.value ?? '—'}</p>
+                        <p className="text-xl font-extrabold leading-tight text-clinic-navy dark:text-white">{s.value ?? '—'}</p>
                         <p className="text-[9px] font-medium leading-tight text-gray-500 dark:text-slate-400">{s.label}</p>
                         {s.delta !== null && (
-                          <span className={cn('mt-0.5 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold', s.delta >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' : 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400')}>
+                          <span className={cn('mt-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold', s.delta >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' : 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400')}>
                             {s.delta >= 0 ? <TrendingUp size={9} /> : <TrendingDown size={9} />}{s.delta >= 0 ? '+' : ''}{s.delta}
                           </span>
                         )}
@@ -574,7 +597,7 @@ export default function DashboardPage() {
               <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No more appointments today</p>
             </div>
           ) : (
-            <div className="no-scrollbar overflow-x-auto">
+            <div className="no-scrollbar w-full overflow-x-auto">
               <div style={{ width: timelineWidth, minWidth: '100%' }} className="relative">
                 <div className="relative h-4">
                   {hourMarks.map(h => (
