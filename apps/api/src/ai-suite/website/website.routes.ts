@@ -2,7 +2,7 @@ import { Router }   from 'express'
 import multer        from 'multer'
 import path          from 'path'
 import fs            from 'fs'
-import { getAgentReplyV2 } from '../agent/agent.service'
+import { getAgentReplyV2, getAgentReplyV2OpenAI } from '../agent/agent.service'
 import { isAgentEnabled }       from '../takeover/takeover.service'
 import { prisma }               from '../../lib/prisma'
 import { sendWhatsAppMessage }  from '../whatsapp/whatsapp.service'
@@ -63,7 +63,13 @@ router.post('/message', async (req, res) => {
     if (!agentOn) {
       reply = 'Our team has taken over this conversation. A staff member will respond shortly.'
     } else {
-      reply = await getAgentReplyV2(conversation.id, sessionId, message, 'WEBSITE')
+      // Verification-only pilot — OFF/Claude by default. Do NOT flip in
+      // production until a real booking-flow + guard-stress side-by-side
+      // has been reviewed (this channel shares the full booking tool set
+      // and anti-hallucination guard with WhatsApp).
+      reply = process.env.WEBSITE_CHAT_PROVIDER === 'openai'
+        ? await getAgentReplyV2OpenAI(conversation.id, sessionId, message, 'WEBSITE')
+        : await getAgentReplyV2(conversation.id, sessionId, message, 'WEBSITE')
       await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: reply },
       })

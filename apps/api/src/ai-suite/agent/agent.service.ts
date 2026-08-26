@@ -2123,6 +2123,143 @@ const V2_TOOLS_CACHED: Anthropic.Tool[] = V2_TOOLS.map((tool, i) =>
     : tool
 )
 
+// Same 10 tools as V2_TOOLS, translated into OpenAI's function-calling shape
+// for the website-widget pilot. Genuinely translated, not find-replaced:
+// Claude's input_schema/required maps to OpenAI's parameters/required, and
+// tools with truly optional fields (check_availability, book_appointment)
+// are left non-strict rather than forced into strict mode's nullable-field
+// workaround — matching Claude's own semantics exactly rather than adding
+// stricter constraints Claude doesn't have.
+const OPENAI_V2_TOOLS = [
+  {
+    type: 'function' as const,
+    name: 'search_services',
+    description: 'Find a dental service matching what the patient described. Returns serviceId needed for check_availability.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string' as const, description: 'What the patient wants, e.g. "cleaning", "filling", "toothache help", "whitening"' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    type: 'function' as const,
+    name: 'search_doctors',
+    description: 'Find a doctor by name. Handles nicknames ("Steve" finds "Steven"). Returns doctorId and booking mode.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string' as const, description: 'Doctor name, partial name, or nickname — no Dr prefix needed' },
+      },
+      required: ['name'],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    type: 'function' as const,
+    name: 'check_availability',
+    description: 'Get real available appointment slots for booking. Pass date to target a specific day (e.g. tomorrow). Returns up to 5 slots with display text and ISO datetimes.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        serviceId: { type: 'string' as const, description: 'Service ID from search_services' },
+        doctorId:  { type: 'string' as const, description: 'Doctor ID from search_doctors — omit for any available doctor' },
+        date:      { type: 'string' as const, description: 'ISO date YYYY-MM-DD for the specific day to search. Omit to search from today.' },
+        daysAhead: { type: 'number' as const, description: 'Days to search from date (default 1 when date given, 7 when omitted)' },
+      },
+      required: ['serviceId'],
+      additionalProperties: false,
+    },
+    strict: false,
+  },
+  {
+    type: 'function' as const,
+    name: 'book_appointment',
+    description: 'Create a real appointment. ONLY call after patient confirmed a slot by replying with a number from your list. Use the exact startAt ISO string from check_availability.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        doctorId:         { type: 'string' as const, description: 'Doctor ID (from check_availability slot result)' },
+        serviceId:        { type: 'string' as const, description: 'Service ID (from check_availability slot result)' },
+        slotStartAt:      { type: 'string' as const, description: 'Exact ISO 8601 datetime from check_availability — must match exactly' },
+        patientFirstName: { type: 'string' as const, description: "Patient's first name — provide if you know it and no patient record exists yet. Omit for known patients." },
+      },
+      required: ['doctorId', 'serviceId', 'slotStartAt'],
+      additionalProperties: false,
+    },
+    strict: false,
+  },
+  {
+    type: 'function' as const,
+    name: 'cancel_appointment',
+    description: "Cancel a patient's appointment. Get appointmentId from get_patient_appointments. Only cancel after patient confirms.",
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        appointmentId: { type: 'string' as const, description: 'Appointment ID to cancel' },
+      },
+      required: ['appointmentId'],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    type: 'function' as const,
+    name: 'reschedule_appointment',
+    description: 'Reschedule an appointment to a new slot. Call check_availability first for the new slot, then call this with the exact new startAt.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        appointmentId:  { type: 'string' as const, description: 'Appointment ID to reschedule' },
+        newSlotStartAt: { type: 'string' as const, description: 'Exact ISO 8601 datetime from check_availability for the new slot' },
+      },
+      required: ['appointmentId', 'newSlotStartAt'],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    type: 'function' as const,
+    name: 'get_patient_appointments',
+    description: "Get this patient's upcoming appointments. Use when they ask about their appointment or want to cancel/reschedule.",
+    parameters: { type: 'object' as const, properties: {}, required: [], additionalProperties: false },
+    strict: true,
+  },
+  {
+    type: 'function' as const,
+    name: 'flag_clinical_concern',
+    description: "Alert clinic staff via WhatsApp. Use for: (1) genuine clinical emergencies — heavy bleeding, spreading swelling, severe pain; (2) ANY time you are about to promise a patient that someone will follow up, call back, or confirm something — you MUST call this tool before making that promise so the front desk is actually notified.",
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        summary:     { type: 'string' as const, description: 'Brief summary of the clinical concern, 1-2 sentences' },
+        sarahAdvice: { type: 'string' as const, description: 'One sentence summarising what you are telling the patient right now — so Julian knows what advice has already been given' },
+      },
+      required: ['summary', 'sarahAdvice'],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    type: 'function' as const,
+    name: 'get_doctors_available_today',
+    description: 'Returns which doctors are scheduled to work today and which are not, based on their working days. Use when the patient asks who is available today or whether a specific doctor comes in on a given day.',
+    parameters: { type: 'object' as const, properties: {}, required: [], additionalProperties: false },
+    strict: true,
+  },
+  {
+    type: 'function' as const,
+    name: 'get_patient_info',
+    description: 'Returns name and date-of-birth for all patients linked to this phone number, including whether today is their birthday. Call once per conversation to check for birthday greetings.',
+    parameters: { type: 'object' as const, properties: {}, required: [], additionalProperties: false },
+    strict: true,
+  },
+]
+
 async function executeV2Tool(
   toolName:       string,
   toolInput:      Record<string, unknown>,
@@ -2799,6 +2936,370 @@ export async function getAgentReplyV2(
     return `I ran into a small issue — please try again in a moment and I'll get that sorted for you 😊`
   } catch (err: any) {
     console.error('[AgentV2] Error:', err?.message)
+    return `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
+  }
+}
+
+// Model: gpt-5.6-sol, OpenAI's current flagship — deliberately NOT the
+// cost-optimized luna tier used for comment replies. This channel shares the
+// full booking tool set and the anti-hallucination guard with WhatsApp, so
+// correctness matters far more than shaving cost on an unproven path; luna
+// is a lever to revisit only after flagship-level correctness is proven.
+const OPENAI_WEBSITE_MODEL = 'gpt-5.6-sol'
+
+const OPENAI_REPLY_TAG_INSTRUCTION = `OUTPUT FORMAT — CRITICAL: wrap ONLY the exact message you want to send the patient in <reply></reply> tags, e.g. <reply>Sure! Here are the available times...</reply>. Everything inside the tags is sent to the patient verbatim — so it must be pure conversational text, never your own reasoning about which rule applies or what to say next. If you need to think through a decision, do that OUTSIDE the tags; it is never seen by the patient.`
+
+// ── Website widget — OpenAI pilot (flagged, verification only) ───────────────
+// Parallel implementation of getAgentReplyV2 on OpenAI's Responses API, gated
+// behind WEBSITE_CHAT_PROVIDER=openai (see website.routes.ts). Mirrors every
+// piece of getAgentReplyV2's surrounding logic verbatim (rate limit, post-
+// booking short-circuit, context building, human-escalation pre-check,
+// executeV2Tool, the anti-hallucination guard, the NEAR_TERM_DUPLICATE
+// structural backstop) — the only things that actually differ are the API
+// call shape and how a tool call / final answer is parsed out of it.
+export async function getAgentReplyV2OpenAI(
+  conversationId: string,
+  from:           string,
+  latestMessage:  string,
+  channel?:       string
+): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return `Hi! I've received your message and a team member will be with you shortly.`
+
+  const todayKey  = `ratelimit:${from}:${new Date().toISOString().slice(0, 10)}`
+  const current   = await redis.get(todayKey)
+  const callCount = current ? parseInt(current, 10) + 1 : 1
+  await redis.setex(todayKey, 86400, String(callCount))
+  if (callCount > 25) {
+    const eatNow    = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
+    const eatHour   = eatNow.getHours()
+    const eatDow    = eatNow.getDay()
+    const isSat     = eatDow === 6
+    const isWeekday = eatDow >= 1 && eatDow <= 5
+    const isOpen    = (isWeekday && eatHour >= 8 && eatHour < 18) || (isSat && eatHour >= 8 && eatHour < 14)
+    return isOpen
+      ? `Hi! I've noted everything from our conversation 😊 My colleague Julian will follow up with you shortly.`
+      : `Hi! I've noted everything and will make sure the team picks this up first thing when we open 😊 Feel free to call us on +256 394 836 298 if it's urgent.`
+  }
+
+  try {
+    const lastAgentMsg = await prisma.aiMessage.findFirst({
+      where:   { conversationId, role: 'AGENT' },
+      orderBy: { createdAt: 'desc' },
+      select:  { content: true },
+    })
+    if (
+      lastAgentMsg?.content.includes("You're booked ✅") ||
+      lastAgentMsg?.content.includes("I've got that noted for")
+    ) {
+      const msg = latestMessage.trim()
+      const hasNewRequest =
+        msg.length > 60 ||
+        /[?]/.test(msg) ||
+        /\b(change|reschedule|actually|instead|cancel|wait|also|another|different|wrong|mistake|move)\b/i.test(msg) ||
+        /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|morning|afternoon|evening)\b/i.test(msg) ||
+        /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(msg)
+      if (!hasNewRequest) {
+        const closes = [
+          `You're welcome! See you then 😊`,
+          `See you then! 😊`,
+          `My pleasure! See you soon 😊`,
+        ]
+        const reply = closes[Math.floor(Math.random() * closes.length)]
+        console.log(`[AgentV2-OpenAI] Post-booking close from ${from}: "${msg.slice(0, 50)}" → short-circuit`)
+        return reply
+      }
+    }
+
+    const kbKeywords = latestMessage.split(/\s+/).filter(w => w.length >= 4).slice(0, 5)
+
+    const [patient, dbMessages, menu, allHours, kbEntries] = await Promise.all([
+      prisma.patient.findFirst({ where: { phone: from }, select: { id: true, firstName: true, lastName: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } }),
+      prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 10 })
+        .then(msgs => msgs.reverse()),
+      getCachedMenu(),
+      prisma.workingHours.findMany({ orderBy: { dayOfWeek: 'asc' } }).catch(
+        () => [] as Array<{ dayOfWeek: number; isOpen: boolean; openTime: string; closeTime: string }>
+      ),
+      kbKeywords.length > 0
+        ? prisma.aiKnowledgeBase.findMany({
+            where: {
+              OR: kbKeywords.flatMap(kw => [
+                { title: { contains: kw, mode: 'insensitive' } },
+                { content: { contains: kw, mode: 'insensitive' } },
+              ]),
+            },
+            take: 5,
+            select: { title: true, content: true },
+          }).catch(() => [] as Array<{ title: string; content: string }>)
+        : Promise.resolve([] as Array<{ title: string; content: string }>),
+    ])
+
+    const isPlaceholderName = patient?.firstName?.toLowerCase() === 'whatsapp' || patient?.lastName?.toLowerCase() === 'patient'
+    const patientName = isPlaceholderName ? 'there' : getGreetingName(patient)
+    const guardianContext = patient ? await getGuardianDependentsContext(patient.id) : ''
+
+    const patientIsMinor = !isPlaceholderName && patient?.dob ? isMinor(patient.dob) : false
+    let minorPatientContext = ''
+    if (patient && patientIsMinor) {
+      const nokName   = patient.nextOfKinName
+        ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
+        : null
+      const title     = guardianTitle(patient.nextOfKinRelation, nokName)
+      const relation  = normalizeRelation(patient.nextOfKinRelation)
+      const ageYears  = Math.floor(
+        (Date.now() - new Date(patient.dob!).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+      )
+      minorPatientContext =
+        `MINOR PATIENT — ADDRESS GUARDIAN, NOT CHILD:\n` +
+        `The patient on record is ${patientName} (${ageYears} years old), a minor.\n` +
+        `The person texting is their ${relation}${patient.nextOfKinName ? ` (${patient.nextOfKinName})` : ''}.\n` +
+        `CRITICAL: Address this person as "${title}" — NEVER use "${patientName}" as a greeting (that is the child's name).\n` +
+        `When discussing appointments, say "${patientName}'s appointment" not "your appointment".\n` +
+        `When asking about wellbeing, ask how ${patientName} is doing, not how "you" are doing.`
+    }
+
+    const DAY_NAMES   = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const now         = new Date()
+    const eatDate     = new Date(now.getTime() + 3 * 60 * 60 * 1000)
+    const eatDow      = eatDate.getUTCDay()
+    const eatHour     = eatDate.getUTCHours()
+    const eatMinute   = eatDate.getUTCMinutes()
+    const todayHours  = allHours.find(h => h.dayOfWeek === eatDow)
+    const eatTotal    = eatHour * 60 + eatMinute
+    const openTotal   = todayHours ? parseInt(todayHours.openTime.split(':')[0]) * 60 + parseInt(todayHours.openTime.split(':')[1] || '0') : 0
+    const closeTotal  = todayHours ? parseInt(todayHours.closeTime.split(':')[0]) * 60 + parseInt(todayHours.closeTime.split(':')[1] || '0') : 0
+    const isOpen      = !!(todayHours?.isOpen && eatTotal >= openTotal && eatTotal < closeTotal)
+    const eatDateTime = now.toLocaleString('en-GB', {
+      timeZone: 'Africa/Nairobi', weekday: 'long', year: 'numeric',
+      month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+    })
+    const hoursTable = allHours.length > 0
+      ? allHours.map(h => `${DAY_NAMES[h.dayOfWeek]}: ${h.isOpen ? `${h.openTime} – ${h.closeTime}` : 'Closed'}`).join('\n')
+      : '(clinic hours not configured)'
+
+    const dynamicSystemPrompt = [
+      ...(channel === 'FACEBOOK_COMMENT' || channel === 'INSTAGRAM_COMMENT' ? [
+        'CRITICAL INSTRUCTION — PUBLIC COMMENT MODE:',
+        `This response will be posted as a PUBLIC comment on a ${channel === 'FACEBOOK_COMMENT' ? 'Facebook Page post' : 'Instagram post'}, visible to all followers. ALL standard response rules are suspended. Only these rules apply:`,
+        '• Write EXACTLY 1-2 SHORT sentences. No lists. No bullet points. No paragraphs.',
+        '• For ANY question about services, prices, appointments, or personal matters: reply only with "Hi! 😊 Send us a DM and we\'ll help you out!"',
+        '• For simple questions about hours or location: answer in one brief sentence only.',
+        '• NEVER list multiple services. NEVER give detailed information publicly.',
+        '• NEVER say "I have noted", "flagged", "Julian will follow up", "the team will", or anything about internal process.',
+        '• Do NOT use tools. Do NOT look up patient records.',
+        '',
+      ] : []),
+      '',
+      `CURRENT DATE/TIME IN KAMPALA: ${eatDateTime}`,
+      `CLINIC STATUS RIGHT NOW: ${isOpen ? 'OPEN' : 'CLOSED'}`,
+      `CLINIC HOURS:\n${hoursTable}`,
+      '',
+      isPlaceholderName
+        ? `PATIENT NAME: unknown — their real name is not on file. If you need to address them or add their name to a booking, ask naturally once: "What's your name? 😊" — NEVER say "your name is showing as...", "on our system...", "in our records...", or quote any internal value. Just ask warmly.`
+        : patientIsMinor && minorPatientContext
+          ? `PATIENT NAME: (minor — see MINOR PATIENT context below — do NOT greet them as "${patientName}", that is the child's name)`
+          : `PATIENT NAME: ${patientName} — address them by this name`,
+      '',
+      ...(minorPatientContext ? [minorPatientContext, ''] : []),
+      ...(guardianContext ? ['GUARDIAN CONTEXT:', guardianContext, ''] : []),
+      ...(channel === 'FACEBOOK' || channel === 'INSTAGRAM' ? [
+        `SOCIAL MEDIA CONTEXT: This person is messaging via ${channel === 'FACEBOOK' ? 'Facebook Messenger' : 'Instagram DM'} — NOT WhatsApp. Never suggest they "WhatsApp us" or call our WhatsApp number to message you. If they need human support, say "drop us a message here and one of our team will reply shortly 😊". If their name is unknown, ask naturally once during the conversation.`,
+        '',
+      ] : []),
+      ...(channel === 'WEBSITE' ? [
+        'WEBSITE VISITOR CONTEXT: This person is chatting via the clinic website widget — not WhatsApp. If their name is unknown (PATIENT NAME shows "there"), and at least one exchange has already happened, naturally ask for their name once: "By the way, what\'s your name? 😊" — do this only once, never repeat it.',
+        '',
+        'CRITICAL RULE — NEVER INVENT INFORMATION:',
+        'Never mention a phone number unless it comes directly from your tools or knowledge base. The ONLY phone number you are allowed to give is the clinic WhatsApp: +256741087667. Never say any other number under any circumstances.',
+        'Never mention a service or price that was not returned by search_services. If search_services did not return a specific service and price, you cannot say it exists.',
+        '',
+        'INSURANCE RULE:',
+        'When asked about insurance, say: "I\'m not sure about our current insurance partnerships — please WhatsApp us on +256741087667 and our team will confirm whether we work with your provider 😊". Never guess or mention specific insurance companies as confirmed partners.',
+        '',
+        'BREVITY RULE FOR WEBSITE:',
+        'Keep responses short — maximum 3 sentences. Do not list multiple services unless specifically asked. Do not mention doctor names unless asked. Do not push to book in every message. Answer the question asked, then stop.',
+        '',
+      ] : []),
+      ...((() => {
+        const DEFAULT_KB = 'Clinic Contact & Hours: Code Clinic is located on Kiira Road, opposite Police Playground, Kamwokya, Kampala. WhatsApp: +256741087667. Phone: +256 394 836 298. Email: dentist@codeclinic.ug. Open Monday to Friday 8am–6pm, Saturday 8am–2pm, closed Sunday.'
+        let entries: string
+        if (kbEntries.length === 0) {
+          entries = DEFAULT_KB
+        } else {
+          const words = latestMessage.toLowerCase().split(/\W+/).filter(w => w.length > 3)
+          const scored = kbEntries
+            .map(e => {
+              const text = `${e.title} ${e.content}`.toLowerCase()
+              const score = words.filter(w => text.includes(w)).length
+              return { e, score }
+            })
+            .sort((a, b) => b.score - a.score)
+          const top = scored.slice(0, 5).map(s => s.e)
+          entries = top.map(e => `${e.title}: ${e.content}`).join('\n\n')
+        }
+        return ['CLINIC KNOWLEDGE BASE (use this for questions about the clinic, services, procedures, policies):', entries, '']
+      })()),
+      'AVAILABLE SERVICES (use search_services to get IDs for check_availability):',
+      menu.services,
+      '',
+      'AVAILABLE DOCTORS (use search_doctors to get IDs for check_availability):',
+      menu.doctors,
+    ].join('\n')
+
+    const history = dbMessages.filter(m => m.role !== 'SYSTEM')
+    const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    for (const m of history) {
+      const role    = m.role === 'USER' ? 'user' : 'assistant'
+      const content = sanitizeForClaude(m.content)
+      const last    = apiMessages[apiMessages.length - 1]
+      if (last && last.role === role) {
+        last.content += '\n' + content
+      } else {
+        apiMessages.push({ role, content })
+      }
+    }
+    while (apiMessages.length > 0 && apiMessages[0].role !== 'user') apiMessages.shift()
+    if (apiMessages.length === 0 || apiMessages[apiMessages.length - 1].role !== 'user') {
+      apiMessages.push({ role: 'user', content: latestMessage })
+    }
+
+    if (/talk to|speak to|speak with|talk with|call me|ring me|real person|human|julian|receptionist/i.test(latestMessage)) {
+      const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+      sendWhatsAppMessage(
+        staffNumber,
+        `👤 Patient requesting human\nPhone: ${from}\nMessage: "${latestMessage.slice(0, 200)}"\n\nPlease follow up via the AI Suite inbox.`
+      ).catch((e: any) => console.error('[V2-OpenAI] Human escalation alert failed:', e?.message))
+    }
+
+    const client = new OpenAI({ apiKey })
+    const shownSlots: AvailableSlot[] = []
+    const allToolRecords: ToolRecord[] = []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let input: any[] = [
+      { role: 'system', content: SARAH_V2_SYSTEM_BASE },
+      { role: 'system', content: dynamicSystemPrompt },
+      { role: 'system', content: OPENAI_REPLY_TAG_INSTRUCTION },
+      ...apiMessages,
+    ]
+
+    for (let iter = 0; iter < 8; iter++) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response: any = await client.responses.create({
+        model:             OPENAI_WEBSITE_MODEL,
+        input,
+        tools:             OPENAI_V2_TOOLS,
+        max_output_tokens: 1024,
+      })
+
+      const usage = response.usage
+      console.log(`[AgentV2-OpenAI] usage: in=${usage?.input_tokens ?? '?'} (cached=${usage?.input_tokens_details?.cached_tokens ?? 0}) out=${usage?.output_tokens ?? '?'} (reasoning=${usage?.output_tokens_details?.reasoning_tokens ?? 0}) total=${usage?.total_tokens ?? '?'}`)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolCalls: any[] = (response.output ?? []).filter((o: any) => o.type === 'function_call')
+
+      if (toolCalls.length === 0) {
+        const rawText  = response.output_text ?? ''
+        const tagged   = extractReplyTag(rawText)
+        const candidate = (tagged ?? rawText).trim()
+        const rawReply = candidate && !looksLikeLeakedReasoning(candidate)
+          ? sanitizeForWhatsApp(candidate)
+          : `I'm here to help! Could you rephrase that for me? 😊`
+        if (candidate && looksLikeLeakedReasoning(candidate)) {
+          console.warn(`[AgentV2-OpenAI] Discarded a reply that looked like leaked internal reasoning: "${candidate.slice(0, 100)}"`)
+        }
+
+        // Anti-hallucination guard — identical to the Claude path, unmodified.
+        if (allToolRecords.length > 0) {
+          const guard = await antiHallucinationGuard(rawReply, allToolRecords)
+          if (!guard.safe) {
+            console.warn(`[GUARD-FIRED-OPENAI] conv=${conversationId} phone=${from} reason="${guard.reason}"`)
+            console.warn(`[GUARD-FIRED-OPENAI] Blocked reply: "${rawReply.slice(0, 120)}"`)
+
+            if (shownSlots.length === 0) {
+              const cachedForRetry = await redis.get(`v2:slots:${conversationId}`).catch(() => null)
+              if (cachedForRetry) {
+                try {
+                  const parsedForRetry = JSON.parse(cachedForRetry) as Array<{
+                    doctorId: string; doctorName: string; serviceId: string
+                    serviceName: string; startAt: string; endAt: string
+                  }>
+                  shownSlots.splice(0, shownSlots.length, ...parsedForRetry.map(s => ({
+                    ...s, startAt: new Date(s.startAt), endAt: new Date(s.endAt),
+                  })))
+                } catch {}
+              }
+            }
+
+            if (shownSlots.length > 0) {
+              const topSlot = shownSlots[0]
+              console.warn(`[GUARD-FIRED-OPENAI] Auto-retry slotStartAt=${topSlot.startAt.toISOString()} service=${topSlot.serviceName}`)
+              try {
+                const retryResult = await executeV2Tool(
+                  'book_appointment',
+                  { slotStartAt: topSlot.startAt.toISOString() },
+                  from,
+                  conversationId,
+                  shownSlots,
+                )
+                const retryParsed = JSON.parse(retryResult)
+                if (retryParsed.success === true) {
+                  console.warn(`[GUARD-FIRED-OPENAI] Auto-retry SUCCEEDED apptId=${retryParsed.appointmentId}`)
+                  return sanitizeForWhatsApp(retryParsed.confirmation as string)
+                }
+                if (retryParsed.error === 'NEAR_TERM_DUPLICATE' && retryParsed.sarah_message) {
+                  console.warn(`[GUARD-FIRED-OPENAI] Auto-retry NTD — returning sarah_message verbatim for ${from}`)
+                  return sanitizeForWhatsApp(retryParsed.sarah_message as string)
+                }
+                console.warn(`[GUARD-FIRED-OPENAI] Auto-retry non-success: ${retryResult.slice(0, 150)}`)
+              } catch (retryErr: any) {
+                console.warn(`[GUARD-FIRED-OPENAI] Auto-retry threw: ${retryErr?.message}`)
+              }
+            } else {
+              console.warn(`[GUARD-FIRED-OPENAI] No slots available for auto-retry conv=${conversationId}`)
+            }
+
+            console.warn(`[GUARD-FIRED-OPENAI] Escalating to human conv=${conversationId}`)
+            alertStaffOfConcern({
+              conversationId,
+              patientPhone: from,
+              message: `Booking hand-off: Sarah (OpenAI pilot) tried to confirm a booking but could not complete it automatically. Patient was shown available slots and likely expects a confirmation. Please follow up to book them in.`,
+              channel,
+            }).catch((e: any) => console.error('[GUARD-FIRED-OPENAI] alertStaffOfConcern failed:', e?.message))
+            return `I want to make sure this is booked correctly for you — let me get one of our team to confirm this with you directly, they'll be in touch shortly 😊`
+          }
+        }
+
+        console.log(`[AgentV2-OpenAI] Reply after ${iter} tool round(s) for ${from}: "${rawReply.slice(0, 80)}"`)
+        return rawReply
+      }
+
+      input = [...input, ...response.output]
+
+      for (const call of toolCalls) {
+        console.log(`[AgentV2-OpenAI] Tool: ${call.name}(${(call.arguments ?? '').slice(0, 100)})`)
+        let args: Record<string, unknown> = {}
+        try { args = JSON.parse(call.arguments || '{}') } catch { /* leave empty on parse failure */ }
+        const result = await executeV2Tool(call.name, args, from, conversationId, shownSlots, channel)
+        console.log(`[AgentV2-OpenAI] Result: ${result.slice(0, 150)}`)
+
+        if (call.name === 'book_appointment') {
+          try {
+            const parsed = JSON.parse(result)
+            if (!parsed.success && parsed.sarah_message) {
+              console.log(`[AgentV2-OpenAI] book_appointment failed (${parsed.error ?? 'unknown'}) — returning sarah_message verbatim for ${from}`)
+              return sanitizeForWhatsApp(parsed.sarah_message as string)
+            }
+          } catch {}
+        }
+        try { allToolRecords.push({ tool: call.name as string, result: JSON.parse(result) }) } catch {}
+        input.push({ type: 'function_call_output', call_id: call.call_id, output: result })
+      }
+    }
+
+    return `I ran into a small issue — please try again in a moment and I'll get that sorted for you 😊`
+  } catch (err: any) {
+    console.error('[AgentV2-OpenAI] Error:', err?.message)
     return `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
   }
 }
