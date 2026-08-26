@@ -1,10 +1,26 @@
 import { Router } from 'express'
+import * as fs from 'fs'
 import { getAgentReplyV2, getCommentReply, getCommentReplyOpenAI } from '../agent/agent.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 import { maybeNotifyStaff } from '../whatsapp/whatsapp.service'
 
 const router = Router()
+
+// ── OpenAI comment-reply pilot — 48h live monitoring log ─────────────────────
+// Flat-file, append-only, readable with `tail -f` without needing DB access.
+// The rollback instructions live in the file itself (seeded once at go-live),
+// not just in code, per the go-live plan.
+const OPENAI_COMMENT_LOG_PATH = process.env.OPENAI_COMMENT_LOG_PATH || '/var/log/openai-comment-pilot.log'
+
+function logOpenAICommentReply(channel: string, fromId: string, text: string, reply: string) {
+  try {
+    const line = `[${new Date().toISOString()}] [${channel}] from=${fromId} IN: ${JSON.stringify(text)} OUT: ${JSON.stringify(reply)}\n`
+    fs.appendFileSync(OPENAI_COMMENT_LOG_PATH, line)
+  } catch (err: any) {
+    console.error('[OpenAI Comment Pilot] Failed to write monitoring log:', err?.message)
+  }
+}
 
 const GRAPH_VERSION = 'v24.0'
 
@@ -300,11 +316,15 @@ export async function processComment(
       return
     }
 
-    // Phase 1 OpenAI pilot — gated, defaults to the existing Claude path when unset.
-    // Do NOT flip this in production until the side-by-side review is signed off.
-    const reply = process.env.COMMENT_REPLY_PROVIDER === 'openai'
+    // Live go-live (2026-08-26): COMMENT_REPLY_PROVIDER=openai on production.
+    // Scoped to this file only — WhatsApp, website widget, and every other
+    // channel are untouched and remain on Claude regardless of this flag.
+    const usingOpenAI = process.env.COMMENT_REPLY_PROVIDER === 'openai'
+    const reply = usingOpenAI
       ? await getCommentReplyOpenAI(conversation.id, text, channel, fromId, postCaption ?? undefined)
       : await getCommentReply(conversation.id, text, channel, fromId, postCaption ?? undefined)
+
+    if (usingOpenAI) logOpenAICommentReply(channel, fromId, text, reply)
 
     await prisma.aiMessage.create({
       data: {
