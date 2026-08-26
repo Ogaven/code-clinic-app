@@ -411,12 +411,14 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
   // ─── Status transition side-effects ───────────────────────────────────────
   const notify = req.body.notify !== false // staff toggle — defaults to true (send) when omitted
   try {
-    // Confirm to patient via WhatsApp when staff mark appointment CONFIRMED
-    if (status === 'CONFIRMED') {
-      sendAppointmentNotification(appointment.id, 'booked', notify).catch((e: any) =>
-        console.error('[CONFIRMED] Patient WhatsApp notification failed:', e?.message)
-      )
-    }
+    // Marking an appointment CONFIRMED here is an internal status change, not
+    // a new booking — it must NOT resend the original booking-confirmation
+    // message to the patient (Phase 2: this was causing a duplicate "your
+    // appointment has been confirmed... reply YES" message any time staff
+    // confirmed more than a few minutes after the original booking, since the
+    // notification service's own dedup only covers a 5-minute window). Sarah's
+    // WhatsApp/Voice confirm handlers already don't do this either — the
+    // patient's own reply already tells them nothing else is needed.
 
     // Notify patient when staff mark appointment CANCELLED — this is the route the
     // primary UI's Cancel button actually hits; previously sent nothing at all.

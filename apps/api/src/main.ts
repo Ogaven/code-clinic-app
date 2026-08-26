@@ -66,7 +66,14 @@ import channelAnalyticsRouter   from './ai-suite/meta/channel-analytics.routes'
 
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
-import { checkAndSendReminders, checkAndAlertNoResponders } from './ai-suite/scheduler/reminder.service'
+// DISABLED 2026-08-25 — Phase 2 appointment-communication redesign: staff now handle
+// Mon-Sat appointment reminders themselves; Sarah's 24h + 1h automated reminders were
+// retired to stop double-messaging patients alongside staff. checkAndAlertNoResponders
+// depended on the 24h REMINDER record this retires, so it is retired alongside it (not
+// redesigned this phase). Historical code left intact in reminder.service.ts — only the
+// scheduler registration below was removed. Replaced by checkAndSendSameDayReminders.
+// import { checkAndSendReminders, checkAndAlertNoResponders } from './ai-suite/scheduler/reminder.service'
+import { checkAndSendSameDayReminders } from './ai-suite/scheduler/reminder.service'
 import { checkAndSendFollowups, processAfterHoursQueue, checkAndSendPostAppointmentFollowups, checkAndSendMissedCallFollowups, checkAndSendReactivationMessages, checkAndSendAppointmentConfirmations, checkAndSendWeekendReport } from './ai-suite/scheduler/followup.service'
 import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurture-scheduler.service'
 // DISABLED by Vine 2026-07-11 — sent unwanted messages; do not re-enable without explicit approval
@@ -321,12 +328,14 @@ runStartup().then(() => {
 
   // AI Suite schedulers — run every hour
   const ONE_HOUR = 60 * 60 * 1000
-  setInterval(() => {
-    checkAndSendReminders().catch(err => console.error('[Reminder] Scheduler error:', err))
-  }, ONE_HOUR)
-  setInterval(() => {
-    checkAndAlertNoResponders().catch(err => console.error('[NoShowAlert] Scheduler error:', err))
-  }, ONE_HOUR)
+  // DISABLED 2026-08-25 — see import comment above. Historical code intact in
+  // reminder.service.ts, just no longer registered.
+  // setInterval(() => {
+  //   checkAndSendReminders().catch(err => console.error('[Reminder] Scheduler error:', err))
+  // }, ONE_HOUR)
+  // setInterval(() => {
+  //   checkAndAlertNoResponders().catch(err => console.error('[NoShowAlert] Scheduler error:', err))
+  // }, ONE_HOUR)
   setInterval(() => {
     checkAndSendFollowups().catch(err => console.error('[Followup] Scheduler error:', err))
   }, ONE_HOUR)
@@ -343,6 +352,13 @@ runStartup().then(() => {
   const THIRTY_MINUTES = 30 * 60 * 1000
   setInterval(() => {
     checkAndSendMissedCallFollowups().catch(err => console.error('[MissedCallFollowup] Scheduler error:', err))
+  }, THIRTY_MINUTES)
+  // Same-day reminder — ticks every 30 min so a restart near 7 AM still catches
+  // the window reliably; actual send is gated inside the function to the 7 AM
+  // Africa/Kampala hour, Monday-Saturday only. Persisted dedup (AiScheduledMessage)
+  // means extra ticks within the window are safe no-ops, not extra sends.
+  setInterval(() => {
+    checkAndSendSameDayReminders().catch(err => console.error('[SameDayReminder] Scheduler error:', err))
   }, THIRTY_MINUTES)
 
   const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000
@@ -377,8 +393,7 @@ runStartup().then(() => {
 
   // Run once 2 minutes after startup (gives DB time to settle after migrations)
   setTimeout(() => {
-    checkAndSendReminders().catch(err => console.error('[Reminder] Initial run error:', err))
-    checkAndAlertNoResponders().catch(err => console.error('[NoShowAlert] Initial run error:', err))
+    checkAndSendSameDayReminders().catch(err => console.error('[SameDayReminder] Initial run error:', err))
     checkAndSendFollowups().catch(err => console.error('[Followup] Initial run error:', err))
     checkAndSendLeadNurtureMessages().catch(err => console.error('[LeadNurture] Initial run error:', err))
     updatePatientStatuses().catch(err => console.error('[PatientStatus] Initial run error:', err))
