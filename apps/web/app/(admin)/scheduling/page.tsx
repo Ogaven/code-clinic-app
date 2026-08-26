@@ -13,7 +13,7 @@ import ProvidersScheduleTab from '@/components/scheduling/ProvidersScheduleTab'
 import SpecialDaysTab       from '@/components/scheduling/SpecialDaysTab'
 import ImportTab            from '@/components/scheduling/ImportTab'
 import ConnectionsTab       from '@/components/scheduling/ConnectionsTab'
-import AppointmentsPage     from '@/app/(receptionist)/receptionist/appointments/page'
+import AdminAppointmentsList from '@/components/scheduling/AdminAppointmentsList'
 
 type Tab = 'calendar' | 'appointments' | 'doctors' | 'services' | 'settings'
 type SettingsSub = 'working-hours' | 'doctors-schedule' | 'special-days' | 'connections'
@@ -92,7 +92,7 @@ export default function SchedulingPage() {
             onClickAppointment={setSelectedAppt}
           />
         )}
-        {tab === 'appointments' && <div className="flex-1 overflow-y-auto p-3"><AppointmentsPage /></div>}
+        {tab === 'appointments' && <AdminAppointmentsList />}
         {tab === 'doctors'     && <DoctorsTab />}
         {tab === 'services'    && <ServicesTab />}
         {tab === 'settings' && (

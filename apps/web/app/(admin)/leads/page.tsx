@@ -1,7 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { Plus, Search, RefreshCw, UserCheck, Trash2, X, CheckCircle2, AlertCircle, Eye, Phone, Mail, MessageSquare } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Plus, Search, RefreshCw, UserCheck, Trash2, X, CheckCircle2, AlertCircle,
+  Phone, Mail, MessageSquare, ExternalLink, Clock, Tag,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -19,6 +22,14 @@ interface Lead {
   updatedAt:   string
 }
 
+interface ConversationSummary {
+  id: string
+  channel: string
+  phoneNumber: string
+  lastMessage: { id: string; role: string; content: string; createdAt: string } | null
+  updatedAt: string
+}
+
 // ── Constants ────────────────────────────────────────────────────
 const SOURCES = ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'WEBSITE', 'QUIZ', 'WALKIN', 'OTHER'] as const
 const STATUSES = ['NEW', 'CONTACTED', 'QUALIFIED', 'CONVERTED', 'LOST'] as const
@@ -32,17 +43,10 @@ const SOURCE_STYLE: Record<string, string> = {
   WALKIN:    'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300',
   OTHER:     'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60',
 }
-
 const SOURCE_LABEL: Record<string, string> = {
-  WHATSAPP:  'WhatsApp',
-  FACEBOOK:  'Facebook',
-  INSTAGRAM: 'Instagram',
-  WEBSITE:   'Website',
-  QUIZ:      'Quiz',
-  WALKIN:    'Walk-in',
-  OTHER:     'Other',
+  WHATSAPP: 'WhatsApp', FACEBOOK: 'Facebook', INSTAGRAM: 'Instagram', WEBSITE: 'Website',
+  QUIZ: 'Quiz', WALKIN: 'Walk-in', OTHER: 'Other',
 }
-
 const STATUS_STYLE: Record<string, string> = {
   NEW:       'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/60',
   CONTACTED: 'bg-blue-100 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300',
@@ -50,24 +54,80 @@ const STATUS_STYLE: Record<string, string> = {
   CONVERTED: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300',
   LOST:      'bg-red-100 text-red-500 dark:bg-red-400/15 dark:text-red-300',
 }
-
-function fmtDate(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+const STATUS_DOT: Record<string, string> = {
+  NEW: '#94A3B8', CONTACTED: '#3B82F6', QUALIFIED: '#06B6D4', CONVERTED: '#10B981', LOST: '#EF4444',
+}
+const STAGE_LABEL: Record<string, string> = {
+  NEW: 'New', CONTACTED: 'Contacted', QUALIFIED: 'Qualified', CONVERTED: 'Converted', LOST: 'Lost',
 }
 
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' })
+}
+function fmtDateTime(iso: string) {
+  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Kampala' })
+}
 function waLink(phone: string): string {
   const digits = phone.replace(/\D/g, '')
   const normalized = digits.startsWith('0') && digits.length === 10 ? '256' + digits.slice(1) : digits
   return `https://wa.me/${normalized}`
 }
-
 function WhatsAppIcon({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
     </svg>
   )
+}
+
+// ── Lead ↔ Conversation matching ──────────────────────────────────
+// There is no foreign key between Lead and AiConversation (reverified this
+// phase) — every match below is a runtime join against genuinely persisted
+// identifiers, never a guess. Rules differ by source because each channel's
+// lead-creation code (apps/api/src/ai-suite/{whatsapp,facebook,website}/...,
+// routes/quiz-funnels.ts) stores a different kind of identifier in `phone`:
+//
+//   WHATSAPP / QUIZ — `phone` is a real phone number (quiz leads pass
+//     through normalizePhone() before storage). Matched against WHATSAPP-
+//     channel conversations by normalized digits (0-prefix -> 256-prefix),
+//     same convention already used for the inbox's Lead badge.
+//   FACEBOOK / INSTAGRAM — `phone` is actually the Meta PSID (both the DM
+//     path in facebook.routes.ts and the comment path store `senderId`/
+//     `fromId` into the `phone` column). Matched by EXACT string equality
+//     against FACEBOOK/INSTAGRAM/FACEBOOK_COMMENT/INSTAGRAM_COMMENT-channel
+//     conversations — no phone-style normalization applies to a PSID.
+//   WEBSITE — genuinely ambiguous at the data level: website.routes.ts's
+//     message handler stores the chat session UUID in `phone` (matchable),
+//     but website.agent.ts's save_booking_request/escalate_to_human tools
+//     instead store a human-typed callback phone number in the SAME column
+//     (not matchable — there is no session id captured on those leads at
+//     all). Both look like arbitrary strings in the Lead record, so this
+//     only attempts a match when the value matches UUID format — the one
+//     case where it is guaranteed to be the session id, not a phone number.
+//   WALKIN / OTHER — no messaging channel exists for these; never attempted.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function normalizePhoneDigits(raw: string): string {
+  let digits = raw.replace(/\D/g, '')
+  if (digits.startsWith('0') && digits.length >= 9) digits = '256' + digits.slice(1)
+  return digits
+}
+
+function findMatchedConversation(lead: Lead, conversations: ConversationSummary[]): ConversationSummary | null {
+  if (!lead.phone) return null
+  if (lead.source === 'WHATSAPP' || lead.source === 'QUIZ') {
+    const target = normalizePhoneDigits(lead.phone)
+    if (!target) return null
+    return conversations.find(c => c.channel === 'WHATSAPP' && normalizePhoneDigits(c.phoneNumber) === target) ?? null
+  }
+  if (lead.source === 'FACEBOOK' || lead.source === 'INSTAGRAM') {
+    const channels = lead.source === 'FACEBOOK' ? ['FACEBOOK', 'FACEBOOK_COMMENT'] : ['INSTAGRAM', 'INSTAGRAM_COMMENT']
+    return conversations.find(c => channels.includes(c.channel) && c.phoneNumber === lead.phone) ?? null
+  }
+  if (lead.source === 'WEBSITE' && UUID_RE.test(lead.phone)) {
+    return conversations.find(c => c.channel === 'WEBSITE' && c.phoneNumber === lead.phone) ?? null
+  }
+  return null
 }
 
 // ── Page ─────────────────────────────────────────────────────────
@@ -80,8 +140,8 @@ export default function LeadsPage() {
   const [loading,    setLoading]    = useState(true)
   const [search,     setSearch]     = useState('')
   const [srcFilter,  setSrcFilter]  = useState('all')
-  const [stFilter,   setStFilter]   = useState('all')
   const [toast,      setToast]      = useState<{ msg: string; ok: boolean } | null>(null)
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
 
   // Modals
   const [showAdd,    setShowAdd]    = useState(false)
@@ -98,16 +158,26 @@ export default function LeadsPage() {
     try {
       const params = new URLSearchParams()
       if (srcFilter !== 'all') params.set('source', srcFilter)
-      if (stFilter  !== 'all') params.set('status', stFilter)
       if (search.trim())       params.set('q', search.trim())
       const r = await fetch(`${API}/crm/leads?${params}`, { headers: authH as any })
       const d = await r.json()
       setLeads(Array.isArray(d) ? d : [])
     } catch { setLeads([]) }
     setLoading(false)
-  }, [srcFilter, stFilter, search, token]) // eslint-disable-line
+  }, [srcFilter, search, token]) // eslint-disable-line
 
   useEffect(() => { load() }, [load])
+
+  // Real conversations, for the deterministic Lead -> Conversation matching
+  // above. Same endpoint already used by the AI Suite inbox — no new backend
+  // route, read-only, no messages sent.
+  useEffect(() => {
+    fetch(`${API}/ai-suite/conversations`, { headers: authH as any })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setConversations(Array.isArray(d) ? d : []))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok })
@@ -168,10 +238,23 @@ export default function LeadsPage() {
 
   const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
 
+  // Real, client-computed counts from the already-fully-fetched (unpaginated)
+  // leads list for the current source/search filter — never fabricated.
+  const stageCounts = useMemo(() => {
+    const counts: Record<string, number> = { NEW: 0, CONTACTED: 0, QUALIFIED: 0, CONVERTED: 0, LOST: 0 }
+    for (const l of leads) counts[l.status] = (counts[l.status] ?? 0) + 1
+    return counts
+  }, [leads])
+
+  const byStage = useMemo(() => {
+    const map: Record<string, Lead[]> = { NEW: [], CONTACTED: [], QUALIFIED: [], CONVERTED: [], LOST: [] }
+    for (const l of leads) (map[l.status] ?? (map[l.status] = [])).push(l)
+    return map
+  }, [leads])
+
   return (
     <div className="p-4 sm:p-6 space-y-5">
 
-      {/* Toast */}
       {toast && (
         <div className={cn(
           'fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-xl text-sm font-bold',
@@ -185,8 +268,8 @@ export default function LeadsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white">Leads</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Enquiries that haven't booked yet — manage and convert to patients</p>
+          <h1 className="text-xl font-semibold text-gray-800 dark:text-white">Leads Pipeline</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Track enquiries from first contact through conversion</p>
         </div>
         <button
           onClick={() => setShowAdd(true)}
@@ -196,9 +279,25 @@ export default function LeadsPage() {
         </button>
       </div>
 
+      {/* Pipeline summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-3.5">
+          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">All</p>
+          <p className="text-xl font-black text-gray-800 dark:text-white mt-0.5">{loading ? '…' : leads.length}</p>
+        </div>
+        {STATUSES.map(s => (
+          <div key={s} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-3.5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: STATUS_DOT[s] }} />
+              {STAGE_LABEL[s]}
+            </p>
+            <p className="text-xl font-black text-gray-800 dark:text-white mt-0.5">{loading ? '…' : stageCounts[s]}</p>
+          </div>
+        ))}
+      </div>
+
       {/* Filters */}
       <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 space-y-3">
-        {/* Search */}
         <div className="relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
@@ -207,141 +306,80 @@ export default function LeadsPage() {
             className="w-full pl-8 pr-4 py-2 text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 dark:text-white dark:placeholder-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
           />
         </div>
-
-        <div className="flex flex-wrap gap-3">
-          {/* Source filter */}
-          <div className="flex flex-wrap gap-1.5">
-            <span className="text-[10px] font-black uppercase text-gray-400 self-center mr-1">Source</span>
-            {(['all', ...SOURCES] as string[]).map(s => (
-              <button key={s} onClick={() => setSrcFilter(s)}
-                className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all',
-                  srcFilter === s ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/12')}>
-                {s === 'all' ? 'All' : SOURCE_LABEL[s] ?? s}
-              </button>
-            ))}
-          </div>
-
-          {/* Status filter */}
-          <div className="flex flex-wrap gap-1.5">
-            <span className="text-[10px] font-black uppercase text-gray-400 self-center mr-1">Status</span>
-            {(['all', ...STATUSES] as string[]).map(s => (
-              <button key={s} onClick={() => setStFilter(s)}
-                className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all',
-                  stFilter === s ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/12')}>
-                {s === 'all' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="text-[10px] font-black uppercase text-gray-400 self-center mr-1">Source</span>
+          {(['all', ...SOURCES] as string[]).map(s => (
+            <button key={s} onClick={() => setSrcFilter(s)}
+              className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all',
+                srcFilter === s ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/12')}>
+              {s === 'all' ? 'All' : SOURCE_LABEL[s] ?? s}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 p-12 text-gray-300 dark:text-white/20">
-            <RefreshCw size={18} className="animate-spin" /> Loading…
-          </div>
-        ) : leads.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-gray-300 dark:text-white/20">
-            <UserCheck size={36} className="mb-3 opacity-30" />
-            <p className="text-sm font-medium">No leads found</p>
-            <p className="text-xs mt-1">New enquiries via WhatsApp, Facebook, or Instagram appear here automatically</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/10">
-                  <th className="px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Name / Phone</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Source</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Status</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 hidden md:table-cell">Last Message</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 hidden sm:table-cell">Date</th>
-                  <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-                {leads.map(lead => (
-                  <tr
-                    key={lead.id}
-                    onClick={() => setViewLead(lead)}
-                    className="hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors cursor-pointer"
-                  >
-                    <td className="px-5 py-3.5">
-                      <p className="font-semibold text-gray-800 dark:text-white">{lead.name || <span className="italic text-gray-400 dark:text-white/30">Unknown</span>}</p>
-                      {lead.phone && <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">{lead.phone}</p>}
-                      {lead.email && <p className="text-xs text-gray-400 dark:text-white/40">{lead.email}</p>}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', SOURCE_STYLE[lead.source] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60')}>
-                        {SOURCE_LABEL[lead.source] ?? lead.source}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <select
-                        value={lead.status}
-                        onClick={e => e.stopPropagation()}
-                        onChange={e => { e.stopPropagation(); updateStatus(lead, e.target.value) }}
-                        disabled={lead.status === 'CONVERTED'}
-                        className={cn(
-                          'text-[11px] font-bold px-2.5 py-1 rounded-full border-0 cursor-pointer outline-none',
-                          STATUS_STYLE[lead.status] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60',
-                          lead.status === 'CONVERTED' && 'cursor-not-allowed opacity-80',
-                        )}
-                      >
-                        {STATUSES.map(s => <option key={s} value={s} className="dark:bg-[#152040]">{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3.5 hidden md:table-cell max-w-[220px]">
-                      {lead.lastMessage ? (
-                        <p className="text-xs text-gray-500 dark:text-white/50 line-clamp-2">{lead.lastMessage}</p>
-                      ) : (
-                        <span className="text-xs text-gray-300 dark:text-white/20">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5 hidden sm:table-cell text-xs text-gray-400 dark:text-white/40 whitespace-nowrap">
-                      {fmtDate(lead.updatedAt)}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={() => setViewLead(lead)}
-                          className="p-1.5 rounded-lg text-gray-300 dark:text-white/30 hover:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-400/10 transition-colors">
-                          <Eye size={13} />
-                        </button>
-                        {lead.phone && !lead.phone.startsWith('ws_') && (
-                          <a
-                            href={waLink(lead.phone)}
-                            target="_blank" rel="noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="p-1.5 rounded-lg text-gray-300 dark:text-white/30 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-400/10 transition-colors">
-                            <WhatsAppIcon size={13} />
-                          </a>
-                        )}
-                        {lead.status !== 'CONVERTED' && lead.status !== 'LOST' && (
-                          <button
-                            onClick={() => setConverting(lead)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors whitespace-nowrap">
-                            <UserCheck size={12} /> Convert
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setDeleting(lead)}
-                          className="p-1.5 rounded-lg text-gray-300 dark:text-white/30 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-400/10 transition-colors">
-                          <Trash2 size={13} />
-                        </button>
+      {/* Pipeline columns */}
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 p-16 text-gray-300 dark:text-white/20">
+          <RefreshCw size={18} className="animate-spin" /> Loading…
+        </div>
+      ) : leads.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-16 text-gray-300 dark:text-white/20 bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10">
+          <UserCheck size={36} className="mb-3 opacity-30" />
+          <p className="text-sm font-medium">No leads found</p>
+          <p className="text-xs mt-1">New enquiries via WhatsApp, Facebook, or Instagram appear here automatically</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-start">
+          {STATUSES.map(stage => (
+            <div key={stage} className="bg-gray-50 dark:bg-white/[0.03] rounded-2xl border border-gray-100 dark:border-white/10 flex flex-col min-h-[120px]">
+              <div className="px-3.5 py-3 border-b border-gray-100 dark:border-white/10 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-black text-gray-600 dark:text-white/70">
+                  <span className="w-2 h-2 rounded-full" style={{ background: STATUS_DOT[stage] }} />
+                  {STAGE_LABEL[stage]}
+                </span>
+                <span className="text-[10px] font-bold text-gray-400 dark:text-white/40 bg-white dark:bg-white/10 px-1.5 py-0.5 rounded-full">
+                  {byStage[stage].length}
+                </span>
+              </div>
+              <div className="p-2 space-y-2 flex-1">
+                {byStage[stage].length === 0 ? (
+                  <p className="text-[11px] text-gray-300 dark:text-white/20 text-center py-6">No leads</p>
+                ) : byStage[stage].map(lead => {
+                  const matched = findMatchedConversation(lead, conversations)
+                  return (
+                    <button
+                      key={lead.id}
+                      onClick={() => setViewLead(lead)}
+                      className="w-full text-left bg-white dark:bg-[#111a35] rounded-xl border border-gray-100 dark:border-white/10 p-3 hover:shadow-md hover:-translate-y-0.5 transition-all">
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <p className="text-sm font-bold text-gray-800 dark:text-white truncate">
+                          {lead.name || <span className="italic text-gray-400 dark:text-white/30 font-normal">Unknown</span>}
+                        </p>
+                        <span className={cn('flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold', SOURCE_STYLE[lead.source] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60')}>
+                          {SOURCE_LABEL[lead.source] ?? lead.source}
+                        </span>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="px-5 py-2.5 border-t border-gray-50 dark:border-white/5 text-xs text-gray-400 dark:text-white/40">
-              {leads.length} lead{leads.length !== 1 ? 's' : ''}
+                      {lead.phone && <p className="text-[11px] text-gray-400 dark:text-white/40 mb-1">{lead.phone}</p>}
+                      {lead.lastMessage && (
+                        <p className="text-[11px] text-gray-500 dark:text-white/50 line-clamp-2 leading-relaxed">{lead.lastMessage}</p>
+                      )}
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-[10px] text-gray-300 dark:text-white/25">{fmtDate(lead.updatedAt)}</span>
+                        {matched && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-cyan-600 dark:text-cyan-400">
+                            <MessageSquare size={9} /> Linked
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Add Lead modal ────────────────────────────────────── */}
       {showAdd && (
@@ -422,81 +460,154 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* ── Lead detail modal ────────────────────────────────── */}
-      {viewLead && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setViewLead(null)}>
-          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-gray-800 dark:text-white">Lead Details</h2>
-              <button onClick={() => setViewLead(null)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
-                <X size={16} className="text-gray-400" />
-              </button>
-            </div>
-
-            {/* Identity */}
-            <div className="space-y-2">
-              <p className="text-lg font-bold text-gray-800 dark:text-white">{viewLead.name || <span className="italic text-gray-400 dark:text-white/30">Unknown name</span>}</p>
-              {viewLead.phone && !viewLead.phone.startsWith('ws_') && (
-                <a href={waLink(viewLead.phone)} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 font-semibold hover:underline">
-                  <Phone size={13} /> {viewLead.phone}
-                </a>
-              )}
-              {viewLead.email && (
-                <a href={`mailto:${viewLead.email}`} className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-semibold hover:underline">
-                  <Mail size={13} /> {viewLead.email}
-                </a>
-              )}
-            </div>
-
-            {/* Badges */}
-            <div className="flex items-center gap-2">
-              <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', SOURCE_STYLE[viewLead.source] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60')}>
-                {SOURCE_LABEL[viewLead.source] ?? viewLead.source}
-              </span>
-              <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', STATUS_STYLE[viewLead.status] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60')}>
-                {viewLead.status.charAt(0) + viewLead.status.slice(1).toLowerCase()}
-              </span>
-              <span className="text-[10px] text-gray-400 dark:text-white/30 ml-auto">{fmtDate(viewLead.createdAt)}</span>
-            </div>
-
-            {/* Full message */}
-            {viewLead.lastMessage && (
-              <div className="bg-gray-50 dark:bg-white/5 rounded-2xl p-4">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <MessageSquare size={12} className="text-gray-400" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Message</span>
-                </div>
-                <p className="text-sm text-gray-700 dark:text-white/70 whitespace-pre-wrap leading-relaxed">{viewLead.lastMessage}</p>
-              </div>
-            )}
-
-            {/* Notes */}
-            {viewLead.notes && (
-              <div className="bg-amber-50 dark:bg-amber-400/10 rounded-2xl p-4">
-                <span className="text-[10px] font-black uppercase tracking-widest text-amber-500 dark:text-amber-300 block mb-2">Notes</span>
-                <p className="text-sm text-gray-700 dark:text-white/70 whitespace-pre-wrap leading-relaxed">{viewLead.notes}</p>
-              </div>
-            )}
-
-            {/* Quick actions */}
-            <div className="flex gap-2 pt-1">
-              {viewLead.status !== 'CONVERTED' && viewLead.status !== 'LOST' && (
-                <button
-                  onClick={() => { setViewLead(null); setConverting(viewLead) }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors">
-                  <UserCheck size={14} /> Convert to Patient
+      {/* ── Lead detail drawer ────────────────────────────────── */}
+      {viewLead && (() => {
+        const matched = findMatchedConversation(viewLead, conversations)
+        return (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-end z-50" onClick={() => setViewLead(null)}>
+            <div className="bg-white dark:bg-[#0e1730] h-full w-full max-w-md shadow-2xl overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white dark:bg-[#0e1730] border-b border-gray-100 dark:border-white/10 px-5 py-4 flex items-center justify-between z-10">
+                <h2 className="text-base font-bold text-gray-800 dark:text-white">Lead Details</h2>
+                <button onClick={() => setViewLead(null)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+                  <X size={16} className="text-gray-400" />
                 </button>
-              )}
-              <button
-                onClick={() => setViewLead(null)}
-                className="px-4 py-2.5 rounded-xl text-sm font-bold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                Close
-              </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* Identity */}
+                <div className="space-y-2">
+                  <p className="text-lg font-bold text-gray-800 dark:text-white">{viewLead.name || <span className="italic text-gray-400 dark:text-white/30">Unknown name</span>}</p>
+                  {viewLead.phone && !viewLead.phone.startsWith('ws_') && (
+                    <a href={waLink(viewLead.phone)} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 font-semibold hover:underline w-fit">
+                      <Phone size={13} /> {viewLead.phone}
+                    </a>
+                  )}
+                  {viewLead.email && (
+                    <a href={`mailto:${viewLead.email}`} className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-semibold hover:underline w-fit">
+                      <Mail size={13} /> {viewLead.email}
+                    </a>
+                  )}
+                </div>
+
+                {/* Badges */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', SOURCE_STYLE[viewLead.source] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60')}>
+                    {SOURCE_LABEL[viewLead.source] ?? viewLead.source}
+                  </span>
+                  <select
+                    value={viewLead.status}
+                    onChange={e => { updateStatus(viewLead, e.target.value); setViewLead({ ...viewLead, status: e.target.value }) }}
+                    disabled={viewLead.status === 'CONVERTED'}
+                    className={cn('text-[11px] font-bold px-2.5 py-1 rounded-full border-0 cursor-pointer outline-none',
+                      STATUS_STYLE[viewLead.status] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60',
+                      viewLead.status === 'CONVERTED' && 'cursor-not-allowed opacity-80')}>
+                    {STATUSES.map(s => <option key={s} value={s} className="dark:bg-[#152040]">{STAGE_LABEL[s]}</option>)}
+                  </select>
+                </div>
+
+                {/* Timeline — updatedAt is deliberately NOT called "last activity":
+                    it changes on status/notes/contact edits too, not just a real
+                    customer interaction, so labelling it that way would overstate
+                    what's actually known. Genuine conversation activity (when a
+                    deterministic match exists) is shown separately below. */}
+                <div className="flex items-center gap-4 text-xs text-gray-400 dark:text-white/40">
+                  <span className="flex items-center gap-1"><Tag size={11} /> Created {fmtDate(viewLead.createdAt)}</span>
+                  <span className="flex items-center gap-1"><Clock size={11} /> Updated {fmtDate(viewLead.updatedAt)}</span>
+                </div>
+
+                {/* Original enquiry / last message from the Lead record itself */}
+                {viewLead.lastMessage && (
+                  <div className="bg-gray-50 dark:bg-white/5 rounded-2xl p-4">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <MessageSquare size={12} className="text-gray-400" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">What they asked</span>
+                    </div>
+                    <p className="text-sm text-gray-700 dark:text-white/70 whitespace-pre-wrap leading-relaxed">{viewLead.lastMessage}</p>
+                  </div>
+                )}
+
+                {viewLead.notes && (
+                  <div className="bg-amber-50 dark:bg-amber-400/10 rounded-2xl p-4">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-500 dark:text-amber-300 block mb-2">Notes</span>
+                    <p className="text-sm text-gray-700 dark:text-white/70 whitespace-pre-wrap leading-relaxed">{viewLead.notes}</p>
+                  </div>
+                )}
+
+                {/* Matched conversation — only shown when a real, deterministic
+                    match was found (see findMatchedConversation above). No
+                    fabricated relationship is ever displayed.
+                    DEEP-LINK LIMITATION: /ai-suite/inbox?phone= only reliably
+                    opens the right conversation for WhatsApp. The admin inbox
+                    is a re-export of the Receptionist inbox page (out of
+                    scope to modify this phase); that page's auto-select effect
+                    only searches the conversation list of whichever channel
+                    tab is active, and the tab always starts on WhatsApp with
+                    no channel URL param to redirect it — so a Facebook/
+                    Instagram/Website match would land on the inbox but never
+                    auto-select, silently doing nothing. The button is
+                    therefore only offered for WhatsApp; other channels show
+                    the matched context with no (misleading) link. */}
+                <div className="bg-cyan-50 dark:bg-cyan-400/10 rounded-2xl p-4">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-cyan-600 dark:text-cyan-300 block mb-2">Conversation</span>
+                  {matched ? (
+                    <>
+                      {matched.lastMessage && (
+                        <p className="text-sm text-gray-700 dark:text-white/70 line-clamp-3 leading-relaxed mb-2">
+                          {matched.lastMessage.role === 'AGENT' ? '🤖 ' : ''}{matched.lastMessage.content}
+                        </p>
+                      )}
+                      {matched.lastMessage && (
+                        <p className="text-[11px] text-gray-400 dark:text-white/40 mb-2">Last conversation activity {fmtDateTime(matched.lastMessage.createdAt)}</p>
+                      )}
+                      {matched.channel === 'WHATSAPP' ? (
+                        <a href={`/ai-suite/inbox?phone=${encodeURIComponent(matched.phoneNumber)}`}
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-700 dark:text-cyan-300 hover:underline">
+                          <ExternalLink size={12} /> View conversation
+                        </a>
+                      ) : (
+                        <p className="text-[11px] text-gray-500 dark:text-white/40 leading-relaxed">
+                          Matched on {SOURCE_LABEL[viewLead.source] ?? viewLead.source}, but the inbox can't be deep-linked to this exact conversation yet — open the {SOURCE_LABEL[viewLead.source] ?? viewLead.source} tab in AI Suite Inbox manually to find it.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-white/40 leading-relaxed">
+                      No conversation could be reliably matched to this lead.
+                      {viewLead.source === 'WEBSITE' && ' Website booking-request/escalation leads only capture a callback phone number, not the chat session — matching would need that session id to be persisted on the lead.'}
+                      {(viewLead.source === 'WALKIN' || viewLead.source === 'OTHER') && ' This source has no associated messaging channel.'}
+                    </p>
+                  )}
+                </div>
+
+                {/* Conversion state */}
+                {viewLead.convertedToPatientId && (
+                  <div className="bg-emerald-50 dark:bg-emerald-400/10 rounded-2xl p-4 flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-300 flex-shrink-0" />
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold">Converted to a patient record</p>
+                  </div>
+                )}
+
+                {/* Quick actions */}
+                <div className="flex gap-2 pt-1">
+                  {viewLead.status !== 'CONVERTED' && viewLead.status !== 'LOST' && (
+                    <button
+                      onClick={() => { setViewLead(null); setConverting(viewLead) }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors">
+                      <UserCheck size={14} /> Convert to Patient
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setViewLead(null); setDeleting(viewLead) }}
+                    className="p-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-red-500 hover:bg-red-50 dark:hover:bg-red-400/10 transition-colors">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── Delete confirmation ───────────────────────────────── */}
       {deleting && (
@@ -509,7 +620,7 @@ export default function LeadsPage() {
               <h2 className="text-base font-bold text-gray-800 dark:text-white">Delete Lead</h2>
             </div>
             <p className="text-sm text-gray-600 dark:text-white/60 mb-6 leading-relaxed">
-              Permanently delete lead <strong>{deleting.name || deleting.phone || 'Unknown'}</strong>? This cannot be undone.
+              Delete <strong>{deleting.name || deleting.phone || 'this lead'}</strong>? This cannot be undone.
             </p>
             <div className="flex gap-3">
               <button onClick={() => setDeleting(null)} disabled={busy}

@@ -534,7 +534,11 @@ export default function CampaignsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {bdPatients.map((p: any) => {
-                const age      = p.dob ? new Date().getFullYear() - new Date(p.dob).getFullYear() : null
+                // Kampala year for "now", UTC year for dob — see patients/page.tsx's
+                // ageFromDob() note: dob is stored as UTC-midnight for its calendar
+                // date, so local/browser-ambient accessors here previously risked a
+                // day/year-boundary mismatch depending on the browser's timezone.
+                const age      = p.dob ? parseInt(new Date().toLocaleDateString('en-US', { year: 'numeric', timeZone: 'Africa/Kampala' })) - new Date(p.dob).getUTCFullYear() : null
                 const isSent   = bdSent.has(p.id)
                 const msg      = bdMessages[p.id] ?? ''
                 const genBusy  = bdGenerating[p.id] ?? false

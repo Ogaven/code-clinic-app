@@ -47,6 +47,19 @@ const STATUS_BADGES: Record<string, { label: string; pill: string }> = {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
+// TIMEZONE: dob is stored as UTC-midnight for its calendar date, so
+// formatDob()/ageFromDob() read it via UTC accessors (recovers the exact
+// digits staff entered) and read "now" via explicit Africa/Kampala — never
+// local/browser-ambient accessors, which previously caused DOB/age to
+// display a calendar day early on machines set to a timezone west of UTC.
+function formatDob(dob: string) {
+  return new Date(dob).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })
+}
+function ageFromDob(dob: string) {
+  const kampalaYear = parseInt(new Date().toLocaleDateString('en-US', { year: 'numeric', timeZone: 'Africa/Kampala' }))
+  return kampalaYear - new Date(dob).getUTCFullYear()
+}
+
 function patientCode(id: string) {
   let h = 0
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0
@@ -241,7 +254,7 @@ export default function PatientsPage() {
     const headers = ['ID', 'First Name', 'Last Name', 'Phone', 'Email', 'Gender', 'Date of Birth', 'Appointments', 'Balance', 'Registered']
     const rows = patients.map(p => [
       (p.patientId ?? patientCode(p.id)), p.firstName, p.lastName, p.phone, p.email || '', p.gender || '',
-      p.dob ? new Date(p.dob).toLocaleDateString('en-GB') : '',
+      p.dob ? formatDob(p.dob) : '',
       p._count?.appointments || 0, p.accountBalance || 0,
       new Date(p.createdAt).toLocaleDateString('en-GB'),
     ])
@@ -684,7 +697,7 @@ export default function PatientsPage() {
                       return <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 mt-0.5">Returning</span>
                     })()}
                     <p className="text-sm text-gray-400 dark:text-white/40 mt-0.5">
-                      {GENDER_LABELS[selected.gender || ''] || 'N/A'} · {selected.dob ? new Date().getFullYear() - new Date(selected.dob).getFullYear() + ' yrs' : 'Age N/A'}
+                      {GENDER_LABELS[selected.gender || ''] || 'N/A'} · {selected.dob ? ageFromDob(selected.dob) + ' yrs' : 'Age N/A'}
                     </p>
                   </div>
                 </div>

@@ -1652,14 +1652,26 @@ function AuditTrailTab({ patientId, token }: { patientId: string; token: string 
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────
 
+// TIMEZONE: dob is stored as UTC-midnight for its calendar date (see
+// patients.ts's `new Date(dobString)` write path from a plain "YYYY-MM-DD"
+// input), so reading it back via getUTC*() recovers the exact digits staff
+// originally entered — using local accessors here (as this used to) instead
+// reads the value through the BROWSER's ambient timezone, which is what
+// caused DOB/age to display a day early on machines set to a timezone west
+// of UTC. "Now" is read explicitly in Africa/Kampala (Uganda's business
+// timezone), never the browser's.
 function formatDobAge(dob: string) {
   const birth = new Date(dob)
   const now   = new Date()
-  const totalMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth()) - (now.getDate() < birth.getDate() ? 1 : 0)
+  const nowY = parseInt(now.toLocaleDateString('en-US', { year: 'numeric', timeZone: 'Africa/Kampala' }))
+  const nowM = parseInt(now.toLocaleDateString('en-US', { month: 'numeric', timeZone: 'Africa/Kampala' })) - 1
+  const nowD = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: 'Africa/Kampala' }))
+  const bY = birth.getUTCFullYear(), bM = birth.getUTCMonth(), bD = birth.getUTCDate()
+  const totalMonths = (nowY - bY) * 12 + (nowM - bM) - (nowD < bD ? 1 : 0)
   const years  = Math.floor(totalMonths / 12)
   const months = totalMonths % 12
   const agePart = totalMonths < 12 ? `${totalMonths} mo` : (years < 3 && months > 0 ? `${years} yr ${months} mo` : `${years} yrs`)
-  return `${birth.toLocaleDateString('en-GB')} (${agePart})`
+  return `${birth.toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })} (${agePart})`
 }
 
 function OverviewTab({ patient, onSwitchTab, token, onUpdate }: { patient: any; onSwitchTab: (tab: ActiveTab) => void; token: string | null; onUpdate: () => void }) {

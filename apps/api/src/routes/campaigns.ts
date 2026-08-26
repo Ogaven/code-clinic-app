@@ -149,14 +149,17 @@ router.post('/whatsapp/broadcast', requireAuth, async (req, res) => {
 // ── Birthday endpoints ───────────────────────────────────────────────────────
 
 // GET /campaigns/birthdays/today — patients whose birthday is today + sent status
+//
+// TIMEZONE: today's month/day must be read via explicit Africa/Kampala, not
+// server-local Date accessors — see birthday.service.ts for the full
+// explanation of why this was previously showing birthdays a day early.
 router.get('/birthdays/today', requireAuth, async (_req, res) => {
   try {
     const now        = new Date()
-    const todayMonth = now.getMonth() + 1
-    const todayDay   = now.getDate()
+    const todayMonth = parseInt(now.toLocaleDateString('en-US', { month: 'numeric', timeZone: 'Africa/Kampala' }))
+    const todayDay   = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: 'Africa/Kampala' }))
 
-    const todayStart = new Date(now)
-    todayStart.setHours(0, 0, 0, 0)
+    const todayStart = new Date(`${now.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })}T00:00:00+03:00`)
 
     const patients = await prisma.$queryRaw<Array<{
       id:        string
@@ -208,7 +211,11 @@ router.post('/birthdays/:patientId/generate', requireAuth, async (req, res) => {
     })
     if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
 
-    const age    = patient.dob ? new Date().getFullYear() - new Date(patient.dob).getFullYear() : null
+    // Kampala year for "now", UTC year for dob (dob is stored as UTC-midnight
+    // for its calendar date, so .getUTCFullYear() recovers the exact year
+    // originally entered, immune to server/browser ambient timezone).
+    const kampalaYear = parseInt(new Date().toLocaleDateString('en-US', { year: 'numeric', timeZone: 'Africa/Kampala' }))
+    const age    = patient.dob ? kampalaYear - new Date(patient.dob).getUTCFullYear() : null
     const ageStr = age ? ` who is turning ${age} today` : ''
     const styleLine = styleHint?.trim()
       ? `\nStyle/tone guidance from staff: "${styleHint.trim()}"`

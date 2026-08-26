@@ -119,15 +119,15 @@ router.get('/calendar', requireAuth, async (req, res) => {
 
 // ─── Appointments list (range) ────────────────────────────────────────────────
 // GET /scheduling/appointments?startDate=&endDate=&doctorId=&status=&patientId=&search=&page=&limit=
-router.get('/appointments', requireAuth, async (req, res) => {
+// Shared where-clause builder — reused by the list, status-counts, and export
+// paths so filters can never silently drift apart between them.
+function buildAppointmentWhere(req: any): any {
   const startDate = (req.query.startDate as string) || new Date().toISOString().slice(0, 10)
   const endDate   = (req.query.endDate as string)   || startDate
   const doctorId  = req.query.doctorId  as string | undefined
   const status    = req.query.status    as string | undefined
   const patientId = req.query.patientId as string | undefined
   const search    = (req.query.search   as string)?.trim() || undefined
-  const page      = Math.max(1, parseInt((req.query.page  as string) || '1'))
-  const limit     = Math.max(0, parseInt((req.query.limit as string) || '0'))
 
   const start = startDate.includes('T') ? new Date(startDate) : new Date(startDate + 'T00:00:00+03:00')
   const end   = endDate.includes('T')   ? new Date(endDate)   : new Date(endDate   + 'T23:59:59+03:00')
@@ -139,7 +139,12 @@ router.get('/appointments', requireAuth, async (req, res) => {
   } else if (doctorId) {
     where.doctorId = doctorId
   }
-  if (status)    where.status    = status
+  // Comma-separated status list (e.g. "CANCELLED,CANCELLED_RESCHEDULED") is
+  // additive — a single value behaves exactly as before.
+  if (status) {
+    const statuses = status.split(',').map(s => s.trim()).filter(Boolean)
+    where.status = statuses.length > 1 ? { in: statuses } : statuses[0]
+  }
   if (patientId) where.patientId = patientId
   if (search) {
     where.patient = {
@@ -150,6 +155,17 @@ router.get('/appointments', requireAuth, async (req, res) => {
       ],
     }
   }
+  return where
+}
+
+router.get('/appointments', requireAuth, async (req, res) => {
+  const where = buildAppointmentWhere(req)
+  const page  = Math.max(1, parseInt((req.query.page  as string) || '1'))
+  const limit = Math.max(0, parseInt((req.query.limit as string) || '0'))
+  // Optional, additive — existing callers that never pass `sort` keep the
+  // exact previous behaviour (desc when paginated, asc when not).
+  const sortParam = (req.query.sort as string)?.toLowerCase()
+  const sort: 'asc' | 'desc' = sortParam === 'asc' ? 'asc' : sortParam === 'desc' ? 'desc' : (limit > 0 ? 'desc' : 'asc')
 
   const includeSpec = {
     patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
@@ -163,7 +179,7 @@ router.get('/appointments', requireAuth, async (req, res) => {
       prisma.appointment.findMany({
         where,
         include: includeSpec,
-        orderBy: { startAt: 'desc' },
+        orderBy: { startAt: sort },
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -171,9 +187,38 @@ router.get('/appointments', requireAuth, async (req, res) => {
     ])
     res.json({ appointments: rows.map(mapPrice), total, page, limit })
   } else {
-    const appointments = await prisma.appointment.findMany({ where, include: includeSpec, orderBy: { startAt: 'asc' } })
+    const appointments = await prisma.appointment.findMany({ where, include: includeSpec, orderBy: { startAt: sort } })
     res.json(appointments.map(mapPrice))
   }
+})
+
+// GET /scheduling/appointments/status-counts — real counts per operational
+// status bucket for the current filter set (date range/doctor/search), so
+// the Admin Appointments status navigation never shows fabricated numbers.
+// Additive endpoint — does not affect any existing caller.
+router.get('/appointments/status-counts', requireAuth, async (req, res) => {
+  // Re-read filters WITHOUT the status param itself — status-counts always
+  // reports counts across all statuses for the other active filters.
+  const reqNoStatus = { ...req, query: { ...req.query, status: undefined } }
+  const where = buildAppointmentWhere(reqNoStatus)
+
+  const BUCKETS: Record<string, string[]> = {
+    CONFIRMED:   ['CONFIRMED'],
+    PENDING:     ['PENDING'],
+    NO_SHOW:     ['NO_SHOW'],
+    CANCELLED:   ['CANCELLED', 'CANCELLED_RESCHEDULED'],
+    RESCHEDULED: ['RESCHEDULED'],
+    COMPLETED:   ['COMPLETED'],
+  }
+
+  const [all, ...bucketCounts] = await Promise.all([
+    prisma.appointment.count({ where }),
+    ...Object.values(BUCKETS).map(statuses => prisma.appointment.count({ where: { ...where, status: { in: statuses } } })),
+  ])
+
+  const counts: Record<string, number> = { ALL: all }
+  Object.keys(BUCKETS).forEach((key, i) => { counts[key] = bucketCounts[i] })
+  res.json(counts)
 })
 
 // ─── Single appointment ───────────────────────────────────────────────────────
