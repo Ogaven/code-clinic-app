@@ -2822,6 +2822,7 @@ export async function getAgentReplyV2(
         tools:      V2_TOOLS_CACHED,
         messages,
       })
+      console.log(`[AgentV2] usage: in=${response.usage?.input_tokens ?? '?'} (cache_read=${response.usage?.cache_read_input_tokens ?? 0}, cache_write=${response.usage?.cache_creation_input_tokens ?? 0}) out=${response.usage?.output_tokens ?? '?'}`)
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolBlocks: any[] = (response.content ?? []).filter((b: any) => b.type === 'tool_use')
