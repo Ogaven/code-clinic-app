@@ -1892,8 +1892,7 @@ Sarah: [calls book_appointment] "Done! Confirmed for Saturday 9:30am with Dr Bab
 8. APPOINTMENT QUERIES — any time the patient asks about their appointment (time, date, doctor, "when is my next appointment", "what did I book", rescheduling questions): call get_patient_appointments RIGHT NOW. NEVER answer from memory or earlier in this conversation — a receptionist may have changed the appointment since this chat started and the live DB is the only source of truth.
    CRITICAL: NEVER deflect a routine appointment query ("what time is my appointment?", "when am I booked?") to "someone will follow up" or "a colleague will confirm this". This is always answerable from the DB. Saying "someone will confirm" for an appointment query triggers a false clinical alert. Always answer directly from get_patient_appointments.
 9. DOCTOR AVAILABILITY — if the patient asks whether a specific doctor comes in on a certain day, or who is available today: call get_doctors_available_today. Never state a doctor's schedule from memory.
-10. PATIENT BIRTHDAY — call get_patient_info once per conversation (on the first inbound message or when you first greet the patient). If any record returns isBirthdayToday:true, open your response with a warm birthday greeting before handling their actual request.
-11. NO AVAILABILITY LOOP: check_availability is ONLY for booking requests. Never call it to answer questions about clinic hours, pricing, or services. If you already told the patient no slots exist for a requested date, say so once, offer an alternative, then drop it. If they then ask about anything else, answer THAT — do not call check_availability again or repeat the unavailability finding.
+10. NO AVAILABILITY LOOP: check_availability is ONLY for booking requests. Never call it to answer questions about clinic hours, pricing, or services. If you already told the patient no slots exist for a requested date, say so once, offer an alternative, then drop it. If they then ask about anything else, answer THAT — do not call check_availability again or repeat the unavailability finding.
 
 OUTSIDE-HOURS BOOKING REQUESTS:
 If a patient asks for a specific time and check_availability returns no slots in that window — before saying nothing is available, consider whether they have asked for an evening or late-afternoon time. If that seems likely, say warmly: "Let me get my colleague Julian to sort that specific time for you — she'll get back to you shortly 😊" then call flag_clinical_concern with the patient's requested day and time so Julian can book it manually. Never tell the patient you cannot book that time yourself.
@@ -1959,8 +1958,8 @@ EXTERNAL DOCUMENTS (X-rays, referrals, reports, scan results):
 - Do not give a generic reply. State the next step so the patient knows their document was received.
 
 PROACTIVE BUT BOUNDED:
-- If today is a patient's birthday (confirmed by get_patient_info returning isBirthdayToday:true for any linked patient), open with a warm birthday message: "Happy birthday [Name]! 🎂 Hope you're having a wonderful day!"
 - Do NOT offer discounts, free services, or promotions on your own authority. If a patient asks for a discount, say warmly: "Let me flag that for the team and they'll sort you out 😊" — never promise anything yourself.
+- NEVER send a birthday greeting or reference a patient's birthday on your own — birthday messages are staff-approved only, sent manually from Campaigns → Birthdays. Do not mention birthdays even if a patient mentions their own.
 
 NEAR_TERM_DUPLICATE — if book_appointment returns { "error": "NEAR_TERM_DUPLICATE", "sarah_message": "..." }:
 Output the sarah_message field verbatim — copy-paste the exact text from that field, nothing else. Do NOT paraphrase, summarise, or rephrase it in any way.
@@ -2104,7 +2103,7 @@ const V2_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_patient_info',
-    description: 'Returns name and date-of-birth for all patients linked to this phone number, including whether today is their birthday. Call once per conversation to check for birthday greetings.',
+    description: 'Returns name and date-of-birth for all patients linked to this phone number.',
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -2254,7 +2253,7 @@ const OPENAI_V2_TOOLS = [
   {
     type: 'function' as const,
     name: 'get_patient_info',
-    description: 'Returns name and date-of-birth for all patients linked to this phone number, including whether today is their birthday. Call once per conversation to check for birthday greetings.',
+    description: 'Returns name and date-of-birth for all patients linked to this phone number.',
     parameters: { type: 'object' as const, properties: {}, required: [], additionalProperties: false },
     strict: true,
   },
@@ -2537,19 +2536,22 @@ async function executeV2Tool(
       }
 
       case 'get_patient_info': {
+        // Birthday detection was removed from this tool entirely (not just from
+        // the prompt instructions below) — patients were receiving unapproved
+        // automatic "Happy birthday" WhatsApp messages because the agent could
+        // see isBirthdayToday and was instructed to act on it. Any patient
+        // birthday message must now go through the explicit staff-approved
+        // POST /campaigns/birthdays/:patientId/send flow instead.
         const patients3  = await prisma.patient.findMany({
           where: { phone: { in: phoneVariants(from) } },
           select: { firstName: true, dob: true },
         })
         if (patients3.length === 0) return JSON.stringify({ found: false })
-        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) // YYYY-MM-DD
-        const todayMMDD = todayStr.slice(5) // MM-DD
         return JSON.stringify({
           found: true,
           patients: patients3.map(p => ({
-            name:            p.firstName,
-            dob:             p.dob ? p.dob.toISOString().slice(0, 10) : null,
-            isBirthdayToday: p.dob ? p.dob.toISOString().slice(5, 10) === todayMMDD : false,
+            name: p.firstName,
+            dob:  p.dob ? p.dob.toISOString().slice(0, 10) : null,
           })),
         })
       }

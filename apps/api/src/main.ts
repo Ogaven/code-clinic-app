@@ -83,7 +83,9 @@ import { checkAndSendBirthdayAlerts }     from './ai-suite/scheduler/birthday.se
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
 
 // Lock process timezone to EAT (UTC+3) — must be set before any Date operations.
-process.env.TZ = 'Africa/Nairobi'
+// Africa/Kampala and Africa/Nairobi are both fixed UTC+3 with no DST, so this
+// is not a functional change — just matching the zone Code Clinic is actually in.
+process.env.TZ = 'Africa/Kampala'
 
 const app  = express()
 const PORT = process.env.PORT || 4000
