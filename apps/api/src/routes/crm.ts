@@ -78,7 +78,7 @@ router.get('/leads/:id', requireAuth, async (req: Request, res: Response) => {
 })
 
 router.patch('/leads/:id', requireAuth, async (req: Request, res: Response) => {
-  const { status, stage, score, notes, name, phone, email, lastMessage, convertedToPatientId } = req.body
+  const { status, stage, score, notes, name, phone, email, lastMessage, convertedToPatientId, assignedTo } = req.body
   try {
     const data: any = {}
     if (status              !== undefined) { data.status = status; data.stage = status }
@@ -90,6 +90,18 @@ router.patch('/leads/:id', requireAuth, async (req: Request, res: Response) => {
     if (email               !== undefined) data.email = email
     if (lastMessage         !== undefined) data.lastMessage = lastMessage
     if (convertedToPatientId !== undefined) data.convertedToPatientId = convertedToPatientId
+    // assignedTo stores a User.id (the same id space the frontend already
+    // reads from GET /employees and from the logged-in user's own record) —
+    // validated here since Lead.assignedTo carries no Prisma foreign key.
+    if (assignedTo          !== undefined) {
+      if (assignedTo === null) {
+        data.assignedTo = null
+      } else {
+        const owner = await prisma.user.findUnique({ where: { id: String(assignedTo) }, select: { id: true } })
+        if (!owner) return res.status(400).json({ error: 'assignedTo must be a valid user id' })
+        data.assignedTo = owner.id
+      }
+    }
     const lead = await prisma.lead.update({ where: { id: req.params.id }, data })
     res.json(lead)
   } catch (e) {

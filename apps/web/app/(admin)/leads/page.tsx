@@ -17,6 +17,7 @@ interface Lead {
   status:      string
   notes:       string | null
   lastMessage: string | null
+  assignedTo:  string | null
   convertedToPatientId: string | null
   createdAt:   string
   updatedAt:   string
@@ -28,6 +29,14 @@ interface ConversationSummary {
   phoneNumber: string
   lastMessage: { id: string; role: string; content: string; createdAt: string } | null
   updatedAt: string
+}
+
+interface StaffMember {
+  id: string
+  firstName: string
+  lastName: string
+  role: string
+  isActive: boolean
 }
 
 // ── Constants ────────────────────────────────────────────────────
@@ -140,8 +149,16 @@ export default function LeadsPage() {
   const [loading,    setLoading]    = useState(true)
   const [search,     setSearch]     = useState('')
   const [srcFilter,  setSrcFilter]  = useState('all')
+  const [ownerFilter, setOwnerFilter] = useState('all') // all | unassigned | mine | <userId>
+  const [sortBy,     setSortBy]     = useState<'updated' | 'oldest' | 'created'>('updated')
   const [toast,      setToast]      = useState<{ msg: string; ok: boolean } | null>(null)
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [staff,      setStaff]      = useState<StaffMember[]>([])
+
+  const currentUserId = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    try { return JSON.parse(localStorage.getItem('cc_user') || '{}').id ?? null } catch { return null }
+  }, [])
 
   // Modals
   const [showAdd,    setShowAdd]    = useState(false)
@@ -179,6 +196,16 @@ export default function LeadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Real staff for lead assignment — same endpoint the Employees admin page
+  // uses, never hard-coded.
+  useEffect(() => {
+    fetch(`${API}/employees`, { headers: authH as any })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setStaff(Array.isArray(d) ? d.filter((s: StaffMember) => s.isActive) : []))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok })
     setTimeout(() => setToast(null), 3500)
@@ -206,6 +233,18 @@ export default function LeadsPage() {
       })
       setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, status } : l))
     } catch { showToast('Update failed', false) }
+  }
+
+  async function assignLead(lead: Lead, assignedTo: string | null) {
+    try {
+      const r = await fetch(`${API}/crm/leads/${lead.id}`, {
+        method: 'PATCH', headers: authH as any,
+        body: JSON.stringify({ assignedTo }),
+      })
+      if (!r.ok) { showToast('Assignment failed', false); return }
+      setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, assignedTo } : l))
+      if (viewLead?.id === lead.id) setViewLead(v => v ? { ...v, assignedTo } : v)
+    } catch { showToast('Network error', false) }
   }
 
   async function convertLead() {
@@ -238,19 +277,39 @@ export default function LeadsPage() {
 
   const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
 
-  // Real, client-computed counts from the already-fully-fetched (unpaginated)
-  // leads list for the current source/search filter — never fabricated.
+  // Owner filter + sort applied client-side on top of the server-filtered
+  // (source/search) list — all real fields, no fabricated state.
+  const filteredLeads = useMemo(() => {
+    let out = leads
+    if (ownerFilter === 'unassigned') out = out.filter(l => !l.assignedTo)
+    else if (ownerFilter === 'mine' && currentUserId) out = out.filter(l => l.assignedTo === currentUserId)
+    else if (ownerFilter !== 'all') out = out.filter(l => l.assignedTo === ownerFilter)
+
+    out = [...out]
+    if (sortBy === 'oldest') out.sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
+    else if (sortBy === 'created') out.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    else out.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    return out
+  }, [leads, ownerFilter, sortBy, currentUserId])
+
+  // Real, client-computed counts from the filtered leads list — never fabricated.
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = { NEW: 0, CONTACTED: 0, QUALIFIED: 0, CONVERTED: 0, LOST: 0 }
-    for (const l of leads) counts[l.status] = (counts[l.status] ?? 0) + 1
+    for (const l of filteredLeads) counts[l.status] = (counts[l.status] ?? 0) + 1
     return counts
-  }, [leads])
+  }, [filteredLeads])
 
   const byStage = useMemo(() => {
     const map: Record<string, Lead[]> = { NEW: [], CONTACTED: [], QUALIFIED: [], CONVERTED: [], LOST: [] }
-    for (const l of leads) (map[l.status] ?? (map[l.status] = [])).push(l)
+    for (const l of filteredLeads) (map[l.status] ?? (map[l.status] = [])).push(l)
     return map
-  }, [leads])
+  }, [filteredLeads])
+
+  function staffName(id: string | null): string {
+    if (!id) return 'Unassigned'
+    const s = staff.find(s => s.id === id)
+    return s ? `${s.firstName} ${s.lastName}` : 'Unassigned'
+  }
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -283,7 +342,7 @@ export default function LeadsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-3.5">
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">All</p>
-          <p className="text-xl font-black text-gray-800 dark:text-white mt-0.5">{loading ? '…' : leads.length}</p>
+          <p className="text-xl font-black text-gray-800 dark:text-white mt-0.5">{loading ? '…' : filteredLeads.length}</p>
         </div>
         {STATUSES.map(s => (
           <div key={s} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-3.5">
@@ -316,6 +375,29 @@ export default function LeadsPage() {
             </button>
           ))}
         </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-black uppercase text-gray-400 self-center mr-1">Owner</span>
+          {[
+            { id: 'all', label: 'All owners' },
+            { id: 'unassigned', label: 'Unassigned' },
+            ...(currentUserId ? [{ id: 'mine', label: 'My leads' }] : []),
+            ...staff.map(s => ({ id: s.id, label: `${s.firstName} ${s.lastName}` })),
+          ].map(o => (
+            <button key={o.id} onClick={() => setOwnerFilter(o.id)}
+              className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all',
+                ownerFilter === o.id ? 'bg-cyan-500 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/12')}>
+              {o.label}
+            </button>
+          ))}
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value as typeof sortBy)}
+            className="ml-auto text-[11px] font-bold px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/8 text-gray-500 dark:text-white/50 border-0 outline-none cursor-pointer">
+            <option value="updated" className="dark:bg-[#152040]">Recently updated</option>
+            <option value="oldest" className="dark:bg-[#152040]">Oldest untouched</option>
+            <option value="created" className="dark:bg-[#152040]">Latest enquiry</option>
+          </select>
+        </div>
       </div>
 
       {/* Pipeline columns */}
@@ -323,11 +405,13 @@ export default function LeadsPage() {
         <div className="flex items-center justify-center gap-2 p-16 text-gray-300 dark:text-white/20">
           <RefreshCw size={18} className="animate-spin" /> Loading…
         </div>
-      ) : leads.length === 0 ? (
+      ) : filteredLeads.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-16 text-gray-300 dark:text-white/20 bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10">
           <UserCheck size={36} className="mb-3 opacity-30" />
           <p className="text-sm font-medium">No leads found</p>
-          <p className="text-xs mt-1">New enquiries via WhatsApp, Facebook, or Instagram appear here automatically</p>
+          <p className="text-xs mt-1">
+            {leads.length > 0 ? 'No leads match the current owner filter' : 'New enquiries via WhatsApp, Facebook, or Instagram appear here automatically'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-start">
@@ -364,13 +448,22 @@ export default function LeadsPage() {
                       {lead.lastMessage && (
                         <p className="text-[11px] text-gray-500 dark:text-white/50 line-clamp-2 leading-relaxed">{lead.lastMessage}</p>
                       )}
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-[10px] text-gray-300 dark:text-white/25">{fmtDate(lead.updatedAt)}</span>
-                        {matched && (
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-cyan-600 dark:text-cyan-400">
-                            <MessageSquare size={9} /> Linked
-                          </span>
-                        )}
+                      <div className="flex items-center justify-between mt-2 gap-1.5">
+                        <span className="text-[10px] text-gray-300 dark:text-white/25 flex-shrink-0">{fmtDate(lead.updatedAt)}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          {lead.assignedTo && (
+                            <span className="flex items-center gap-1 text-[10px] font-semibold text-gray-400 dark:text-white/40 truncate">
+                              <UserCheck size={9} className="flex-shrink-0" /> {staffName(lead.assignedTo)}
+                            </span>
+                          )}
+                          {matched && (
+                            <span className={cn('flex items-center gap-1 text-[10px] font-bold flex-shrink-0',
+                              matched.lastMessage?.role === 'USER' ? 'text-amber-600 dark:text-amber-400' : 'text-cyan-600 dark:text-cyan-400')}>
+                              <MessageSquare size={9} />
+                              {matched.lastMessage ? (matched.lastMessage.role === 'USER' ? 'Customer replied' : 'Clinic replied') : 'Linked'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </button>
                   )
@@ -506,6 +599,20 @@ export default function LeadsPage() {
                   </select>
                 </div>
 
+                {/* Assignment */}
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-1">Assigned to</label>
+                  <select
+                    value={viewLead.assignedTo ?? ''}
+                    onChange={e => assignLead(viewLead, e.target.value || null)}
+                    className="w-full text-sm font-semibold px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 dark:text-white cursor-pointer outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
+                    <option value="" className="dark:bg-[#152040]">Unassigned</option>
+                    {staff.map(s => (
+                      <option key={s.id} value={s.id} className="dark:bg-[#152040]">{s.firstName} {s.lastName}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Timeline — updatedAt is deliberately NOT called "last activity":
                     it changes on status/notes/contact edits too, not just a real
                     customer interaction, so labelling it that way would overstate
@@ -521,7 +628,7 @@ export default function LeadsPage() {
                   <div className="bg-gray-50 dark:bg-white/5 rounded-2xl p-4">
                     <div className="flex items-center gap-1.5 mb-2">
                       <MessageSquare size={12} className="text-gray-400" />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">What they asked</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Last recorded lead message</span>
                     </div>
                     <p className="text-sm text-gray-700 dark:text-white/70 whitespace-pre-wrap leading-relaxed">{viewLead.lastMessage}</p>
                   </div>

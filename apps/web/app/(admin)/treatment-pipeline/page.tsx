@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -116,6 +116,9 @@ export default function TreatmentPipelinePage() {
   const [bulkStatus,     setBulkStatus]     = useState('')
   const [bulkLoading,    setBulkLoading]    = useState(false)
   const [dark,           setDark]           = useState(false)
+  const [search,         setSearch]         = useState('')
+  const [doctorFilter,   setDoctorFilter]   = useState('all')
+  const [stageFilter,    setStageFilter]    = useState('all')
 
   useEffect(() => {
     const sync = () => setDark(document.documentElement.classList.contains('dark'))
@@ -277,7 +280,27 @@ export default function TreatmentPipelinePage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const plansByStatus = (statusId: string) => plans.filter(p => p.status === statusId)
+  // Real doctor names already present on the fetched plans — never a
+  // separate hard-coded list.
+  const doctorNames = useMemo(
+    () => [...new Set(plans.map(p => p.doctorName).filter(n => n && n !== '—'))].sort(),
+    [plans],
+  )
+
+  const filteredPlans = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return plans.filter(p => {
+      if (doctorFilter !== 'all' && p.doctorName !== doctorFilter) return false
+      if (stageFilter !== 'all' && p.stage !== stageFilter) return false
+      if (q) {
+        const hay = `${p.patient.firstName} ${p.patient.lastName} ${p.treatmentName}`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      return true
+    })
+  }, [plans, search, doctorFilter, stageFilter])
+
+  const plansByStatus = (statusId: string) => filteredPlans.filter(p => p.status === statusId)
   const statusTotal   = (statusId: string) => plansByStatus(statusId).reduce((s, p) => s + p.value, 0)
 
   return (
@@ -322,6 +345,32 @@ export default function TreatmentPipelinePage() {
           loading={loading}
           dark={dark}
         />
+      </div>
+
+      {/* ── Filters ────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row gap-2.5 flex-shrink-0">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search patient or treatment..."
+            className="w-full pl-8 pr-4 py-2 text-sm bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 dark:text-white dark:placeholder-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+          />
+        </div>
+        <select
+          value={doctorFilter}
+          onChange={e => setDoctorFilter(e.target.value)}
+          className="text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20">
+          <option value="all">All doctors</option>
+          {doctorNames.map(n => <option key={n} value={n} className="dark:bg-[#152040]">{n}</option>)}
+        </select>
+        <select
+          value={stageFilter}
+          onChange={e => setStageFilter(e.target.value)}
+          className="text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20">
+          <option value="all">All stages</option>
+          {STAGES.map(s => <option key={s.id} value={s.id} className="dark:bg-[#152040]">{s.label}</option>)}
+        </select>
       </div>
 
       {/* ── Needs Review section ──────────────────────────────────────── */}
@@ -383,11 +432,13 @@ export default function TreatmentPipelinePage() {
           <RefreshCw size={18} className="animate-spin" />
           <span className="text-sm">Loading pipeline...</span>
         </div>
-      ) : plans.length === 0 ? (
+      ) : filteredPlans.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-white/40">
           <Kanban size={40} className="mb-3 opacity-25" />
-          <p className="text-sm font-semibold">No treatment plans yet</p>
-          <p className="text-xs mt-1 text-gray-300 dark:text-white/20">Plans appear here once added from a patient's clinical tab</p>
+          <p className="text-sm font-semibold">{plans.length === 0 ? 'No treatment plans yet' : 'No plans match the current filters'}</p>
+          <p className="text-xs mt-1 text-gray-300 dark:text-white/20">
+            {plans.length === 0 ? "Plans appear here once added from a patient's clinical tab" : 'Try clearing the search, doctor, or stage filter'}
+          </p>
         </div>
       ) : (
         <div
@@ -469,6 +520,7 @@ export default function TreatmentPipelinePage() {
                         onDragEnd={handleDragEnd}
                         onMove={() => setMovePlan(plan)}
                         onToggleSelect={() => toggleSelect(plan.id)}
+                        onOpenPatient={() => router.push(`/patients/${plan.patientId}`)}
                       />
                     ))}
                   </div>
@@ -503,6 +555,7 @@ function PlanCard({
   onDragEnd,
   onMove,
   onToggleSelect,
+  onOpenPatient,
 }: {
   plan:           Plan
   dark:           boolean
@@ -512,6 +565,7 @@ function PlanCard({
   onDragEnd:      () => void
   onMove:         () => void
   onToggleSelect: () => void
+  onOpenPatient:  () => void
 }) {
   const [showHistory, setShowHistory] = useState(false)
   const borderColor = urgencyBorderColor(plan.daysSince)
@@ -552,9 +606,14 @@ function PlanCard({
           className="mt-0.5 w-3.5 h-3.5 rounded accent-cyan-500 cursor-pointer flex-shrink-0"
         />
         <div className="flex items-start justify-between gap-1 flex-1 min-w-0">
-          <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight truncate">
+          <button
+            onClick={e => { e.stopPropagation(); onOpenPatient() }}
+            onDragStart={e => e.stopPropagation()}
+            className="text-sm font-bold text-gray-900 dark:text-white leading-tight truncate hover:underline text-left"
+            title="Open patient record"
+          >
             {plan.patient.firstName} {plan.patient.lastName}
-          </p>
+          </button>
           <span className="text-[10px] font-mono text-gray-400 dark:text-white/40 flex-shrink-0 mt-0.5">
             {fmtCC(plan.patient.patientNumber)}
           </span>
@@ -745,25 +804,24 @@ function NeedsReviewSection({
   )
 
   return (
-    <div className="rounded-2xl border border-amber-200 overflow-hidden flex-shrink-0"
-      style={{ background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)' }}>
+    <div className="rounded-2xl border border-amber-200 dark:border-amber-400/20 overflow-hidden flex-shrink-0 bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-400/10 dark:to-amber-400/5">
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-50/50 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-50/50 dark:hover:bg-amber-400/10 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <AlertTriangle size={15} className="text-amber-600" />
-          <span className="text-sm font-bold text-amber-800">Needs Review</span>
+          <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400" />
+          <span className="text-sm font-bold text-amber-800 dark:text-amber-300">Needs Review</span>
           <span className="text-xs font-black px-2 py-0.5 rounded-full bg-amber-500 text-white">
             {data.total}
           </span>
-          <span className="text-xs text-amber-600">
+          <span className="text-xs text-amber-600 dark:text-amber-400">
             {data.consultOnly.length > 0 && `${data.consultOnly.length} consulted >60d`}
             {data.consultOnly.length > 0 && data.stuckPlans.length > 0 && ' · '}
             {data.stuckPlans.length > 0 && `${data.stuckPlans.length} stuck >90d`}
           </span>
         </div>
-        {open ? <ChevronUp size={15} className="text-amber-600" /> : <ChevronDown size={15} className="text-amber-600" />}
+        {open ? <ChevronUp size={15} className="text-amber-600 dark:text-amber-400" /> : <ChevronDown size={15} className="text-amber-600 dark:text-amber-400" />}
       </button>
 
       {open && (
