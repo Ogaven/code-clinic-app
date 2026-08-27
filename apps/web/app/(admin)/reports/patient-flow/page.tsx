@@ -94,11 +94,7 @@ export default function PatientFlowReportPage() {
 
   // "week"/"month" always mean the CURRENT week/month (matching the dashboard
   // and clinical-report conventions), not the date picker's value — the date
-  // picker only applies in "today" mode. Note: this page fetches each
-  // appointment's activity log individually (see below) to compute wait/stage
-  // timing — real and period-correct, but that means "month" can mean many
-  // parallel requests on a busy clinic; flagged here rather than silently
-  // shipped as if it scales the same as "today".
+  // picker only applies in "today" mode.
   const { startDate, endDate } = period === 'today' ? { startDate: date, endDate: date }
     : period === 'week' ? (() => { const r = weekRange(); return { startDate: r.start, endDate: r.end } })()
     : (() => { const r = monthRange(); return { startDate: r.start, endDate: r.end } })()
@@ -112,50 +108,59 @@ export default function PatientFlowReportPage() {
       })
       if (!res.ok) return
       const appts: any[] = await res.json()
+      const inScope = appts.filter(a => !['PENDING', 'CONFIRMED'].includes(a.status))
 
-      // Fetch activity logs for each appointment's patient
-      const processedRows: PatientRow[] = await Promise.all(
-        appts
-          .filter(a => !['PENDING', 'CONFIRMED'].includes(a.status))
-          .map(async (a) => {
-            let stageLog: any[] = []
-            try {
-              const actRes = await fetch(`/api-proxy/patients/${a.patient?.id}/activity`, {
-                headers: { Authorization: `Bearer ${token}` },
-              })
-              if (actRes.ok) {
-                const acts: any[] = await actRes.json()
-                stageLog = acts
-                  .filter(act => act.metadata && JSON.parse(act.metadata || '{}').appointmentId === a.id)
-                  .sort((x, y) => new Date(x.createdAt).getTime() - new Date(y.createdAt).getTime())
-              }
-            } catch { }
-
-            const arrivedAt = stageLog.find(s =>
-              ['Patient Arrived', 'Checked In'].includes(s.action)
-            )?.createdAt
-
-            const departedAt = stageLog.find(s =>
-              ['Patient Departed', 'Completed'].includes(s.action)
-            )?.createdAt
-
-            const totalMins = arrivedAt && departedAt ? minsAgo(arrivedAt, departedAt) : null
-
-            return {
-              patientId: a.patient?.id,
-              patientName: `${a.patient?.firstName} ${a.patient?.lastName}`,
-              doctorName: `Dr. ${a.doctor?.user?.firstName} ${a.doctor?.user?.lastName}`,
-              serviceName: a.service?.name,
-              status: a.status,
-              startAt: a.startAt,
-              updatedAt: a.updatedAt,
-              stageLog,
-              arrivedAt,
-              departedAt,
-              totalMins,
-            }
+      // One batched activity fetch for every patient in this period, instead
+      // of one request per appointment — a "month" view can otherwise mean
+      // hundreds of parallel requests. See GET /patients/activity/batch.
+      const patientIds = [...new Set(inScope.map(a => a.patient?.id).filter(Boolean))]
+      let activitiesByPatient = new Map<string, any[]>()
+      if (patientIds.length > 0) {
+        try {
+          const actParams = new URLSearchParams({ patientIds: patientIds.join(','), startDate, endDate })
+          const actRes = await fetch(`/api-proxy/patients/activity/batch?${actParams}`, {
+            headers: { Authorization: `Bearer ${token}` },
           })
-      )
+          if (actRes.ok) {
+            const acts: any[] = await actRes.json()
+            for (const act of acts) {
+              const arr = activitiesByPatient.get(act.patientId) ?? []
+              arr.push(act)
+              activitiesByPatient.set(act.patientId, arr)
+            }
+          }
+        } catch { }
+      }
+
+      const processedRows: PatientRow[] = inScope.map((a) => {
+        const stageLog = (activitiesByPatient.get(a.patient?.id) ?? [])
+          .filter(act => act.metadata && JSON.parse(act.metadata || '{}').appointmentId === a.id)
+          .sort((x, y) => new Date(x.createdAt).getTime() - new Date(y.createdAt).getTime())
+
+        const arrivedAt = stageLog.find(s =>
+          ['Patient Arrived', 'Checked In'].includes(s.action)
+        )?.createdAt
+
+        const departedAt = stageLog.find(s =>
+          ['Patient Departed', 'Completed'].includes(s.action)
+        )?.createdAt
+
+        const totalMins = arrivedAt && departedAt ? minsAgo(arrivedAt, departedAt) : null
+
+        return {
+          patientId: a.patient?.id,
+          patientName: `${a.patient?.firstName} ${a.patient?.lastName}`,
+          doctorName: `Dr. ${a.doctor?.user?.firstName} ${a.doctor?.user?.lastName}`,
+          serviceName: a.service?.name,
+          status: a.status,
+          startAt: a.startAt,
+          updatedAt: a.updatedAt,
+          stageLog,
+          arrivedAt,
+          departedAt,
+          totalMins,
+        }
+      })
 
       setRows(processedRows)
     } catch { } finally { setLoading(false) }
@@ -227,7 +232,18 @@ export default function PatientFlowReportPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Total Patients', value: rows.length, color: '#29ABE2' },
-          { label: 'Currently Active', value: rows.filter(r => !['DEPARTED','COMPLETED','CANCELLED','NO_SHOW'].includes(r.status)).length, color: '#F59E0B' },
+          {
+            // "Currently Active" (in the building right now) is only a
+            // meaningful concept for "today" — for week/month it would count
+            // appointments from earlier days whose status was simply never
+            // closed out, which reads as people still in the clinic when
+            // they aren't. Relabelled for those views to describe what the
+            // number actually is: visits in the period that never reached a
+            // terminal status.
+            label: period === 'today' ? 'Currently Active' : 'Not Closed Out',
+            value: rows.filter(r => !['DEPARTED','COMPLETED','CANCELLED','NO_SHOW'].includes(r.status)).length,
+            color: '#F59E0B',
+          },
           { label: period === 'today' ? 'Departed Today' : 'Departed', value: rows.filter(r => ['DEPARTED','COMPLETED'].includes(r.status)).length, color: '#10B981' },
           { label: 'Avg Visit Time', value: (() => {
             const timed = rows.filter(r => r.totalMins !== null)
@@ -271,7 +287,7 @@ export default function PatientFlowReportPage() {
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-gray-400 text-sm">
                     <Clock size={32} className="mx-auto mb-2 opacity-30" />
-                    No active patients for {date}
+                    No active patients for {period === 'today' ? date : period === 'week' ? 'this week' : 'this month'}
                   </td>
                 </tr>
               ) : rows.map((r, i) => (

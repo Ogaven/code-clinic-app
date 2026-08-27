@@ -446,9 +446,14 @@ export default function DashboardPage() {
             title, not as a lone top-right action like other cards. */}
         <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
           <div className="mb-2.5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Financial Snapshot</p>
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400"><TrendingUp size={9} />{demoGrowthPct}% this period</span>
+              {/* Loud, unmissable — unlike the small caption alone, this
+                  can't be scrolled past or missed at a glance. See DEMO_FINANCE
+                  comment above: Accounts isn't live yet, so nothing here may
+                  read as a real clinic balance. */}
+              <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700 dark:bg-amber-400/15 dark:text-amber-400">Demo Data</span>
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400"><TrendingUp size={9} />{demoGrowthPct}% (demo)</span>
             </div>
             <span className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 dark:border-white/10 dark:text-slate-300">Jan – Jun</span>
           </div>

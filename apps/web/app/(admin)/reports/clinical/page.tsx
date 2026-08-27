@@ -303,7 +303,11 @@ export default function ClinicalReportPage() {
     { label: 'Confirmed',                   value: m.confirmed,               color: '#14B8A6', Icon: CheckCircle2, status: 'CONFIRMED' },
     { label: 'Pending',                     value: m.pending,                 color: '#94A3B8', Icon: Clock,        status: 'PENDING'   },
     { label: 'Cancelled',                   value: m.cancelled,               color: '#EF4444', Icon: XCircle,      status: 'CANCELLED' },
-    { label: 'Rescheduled',                 value: m.rescheduled,             color: '#A855F7', Icon: Repeat2,      status: 'RESCHEDULED' },
+    // m.rescheduled counts both RESCHEDULED and CANCELLED_RESCHEDULED (see
+    // reports.ts) — the drilldown status must match exactly, or "Rescheduled
+    // = 4" could open a modal showing fewer than 4 rows. buildAppointmentWhere
+    // in scheduling.ts already supports a comma-separated status list.
+    { label: 'Rescheduled',                 value: m.rescheduled,             color: '#A855F7', Icon: Repeat2,      status: 'RESCHEDULED,CANCELLED_RESCHEDULED' },
     { label: 'No-Shows',                    value: m.noShows,                 color: '#F97316', Icon: PhoneOff,     status: 'NO_SHOW'   },
     { label: 'Cancelled & Not Rescheduled', value: m.cancelledNotRescheduled, color: '#DC2626', Icon: CalendarX     },
   ]
@@ -332,7 +336,7 @@ export default function ClinicalReportPage() {
             <ArrowLeft size={16} />
           </Link>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-clinic-navy dark:text-white">Daily / Weekly Clinical Report</h1>
+            <h1 className="text-xl font-bold text-clinic-navy dark:text-white">Daily / Weekly / Monthly Clinical Report</h1>
             <p className="text-sm text-gray-400 mt-0.5">
               {loading ? 'Loading…' : data?.period.label}
             </p>

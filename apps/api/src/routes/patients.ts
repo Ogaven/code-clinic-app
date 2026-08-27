@@ -721,6 +721,36 @@ router.get('/:id/activity', requireAuth, async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to fetch activities' }) }
 })
 
+// GET /patients/activity/batch?patientIds=a,b,c&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+// One-query alternative to calling GET /patients/:id/activity per patient —
+// used by the Patient Flow report, which otherwise fires one request per
+// appointment (real risk on a "month" view with many appointments). Scoped
+// to a date range (same Africa/Nairobi convention as scheduling.ts) since
+// every caller of this route already knows the appointment period and stage
+// activity always lands within it, so it also bounds the row count instead
+// of relying on a per-patient take() that a batch query can't express.
+router.get('/activity/batch', requireAuth, async (req, res) => {
+  try {
+    const patientIds = ((req.query.patientIds as string) || '').split(',').map(s => s.trim()).filter(Boolean)
+    if (patientIds.length === 0) { res.json([]); return }
+
+    const startDate = req.query.startDate as string | undefined
+    const endDate   = req.query.endDate   as string | undefined
+    const where: any = { patientId: { in: patientIds } }
+    if (startDate || endDate) {
+      where.createdAt = {}
+      if (startDate) where.createdAt.gte = new Date(startDate + 'T00:00:00+03:00')
+      if (endDate)   where.createdAt.lte = new Date(endDate   + 'T23:59:59+03:00')
+    }
+
+    const activities = await prisma.patientActivity.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    })
+    res.json(activities)
+  } catch { res.status(500).json({ error: 'Failed to fetch activities' }) }
+})
+
 // PATCH /patients/:id — clinical staff only
 router.patch('/:id', requireAuth, clinicalStaff, validate(updatePatientSchema), auditLog('patients'), async (req, res) => {
   try {

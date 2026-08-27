@@ -10,7 +10,7 @@ const CLINICAL_REPORTS = [
     iconBg:      'bg-emerald-100 dark:bg-emerald-900/30',
     iconColor:   'text-emerald-600 dark:text-emerald-400',
     accentColor: '#059669',
-    title:       'Daily / Weekly Clinical Report',
+    title:       'Daily / Weekly / Monthly Clinical Report',
     description: 'Patients seen, new vs. returning, cancellations, no-shows, and a follow-up list with WhatsApp shortcuts.',
     cta:         'View report',
   },
@@ -21,7 +21,7 @@ const CLINICAL_REPORTS = [
     iconColor:   'text-cyan-600 dark:text-cyan-400',
     accentColor: '#0891b2',
     title:       'Case Acceptance Rate',
-    description: 'Treatment plans presented vs. accepted by month, with per-doctor breakdown and follow-up tracking.',
+    description: 'Treatment plans presented vs. accepted for this month, last month, or a custom range, with per-doctor breakdown and follow-up tracking.',
     cta:         'View report',
   },
   {
@@ -31,7 +31,7 @@ const CLINICAL_REPORTS = [
     iconColor:   'text-blue-600 dark:text-blue-400',
     accentColor: '#2563eb',
     title:       'Patient Flow',
-    description: "Today's patient journey through all clinical stages — arrivals, wait times, chair time, and departures.",
+    description: 'Patient journey through all clinical stages — arrivals, wait times, chair time, and departures — for today, this week, or this month.',
     cta:         'View report',
   },
 ]
