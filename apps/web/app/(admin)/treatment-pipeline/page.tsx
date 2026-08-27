@@ -361,14 +361,14 @@ export default function TreatmentPipelinePage() {
           value={doctorFilter}
           onChange={e => setDoctorFilter(e.target.value)}
           className="text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20">
-          <option value="all">All doctors</option>
+          <option value="all" className="dark:bg-[#152040]">All doctors</option>
           {doctorNames.map(n => <option key={n} value={n} className="dark:bg-[#152040]">{n}</option>)}
         </select>
         <select
           value={stageFilter}
           onChange={e => setStageFilter(e.target.value)}
           className="text-sm px-3 py-2 border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20">
-          <option value="all">All stages</option>
+          <option value="all" className="dark:bg-[#152040]">All stages</option>
           {STAGES.map(s => <option key={s.id} value={s.id} className="dark:bg-[#152040]">{s.label}</option>)}
         </select>
       </div>
@@ -394,8 +394,8 @@ export default function TreatmentPipelinePage() {
               onChange={e => setBulkStatus(e.target.value)}
               className="text-xs px-2.5 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-clinic-blue/20"
             >
-              <option value="">Move to status…</option>
-              {STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+              <option value="" className="dark:bg-[#152040]">Move to status…</option>
+              {STATUSES.map(s => <option key={s.id} value={s.id} className="dark:bg-[#152040]">{s.label}</option>)}
             </select>
             <button
               disabled={!bulkStatus || bulkLoading}
