@@ -427,14 +427,16 @@
 .dark .conversations-ui input,
 .dark .conversations-ui textarea { color: #e8f0fa; }
 
-/* ── Admin/Accounts shell typography ───────────────────────────────────────
+/* ── Admin/Accounts/Receptionist shell typography ──────────────────────────
    Standardised on Questrial (self-hosted via next/font/local, see
-   app/fonts/questrial.ts — no npm font package added), scoped to the
-   redesigned Admin/Accounts shell only via the --font-questrial variable
-   applied on that shell's wrapper div. Doctor and Receptionist keep their
-   existing Plus Jakarta Sans look untouched — they don't carry the
-   variable, so this block never reaches them. Falls back to Inter (already
-   loaded for the rest of the app) if the variable isn't present.
+   app/fonts/questrial.ts — no npm font package added), scoped to shells that
+   opt in via the --font-questrial variable applied on that shell's wrapper
+   div. Doctor keeps its existing Plus Jakarta Sans look untouched — it
+   doesn't carry the variable, so this block never reaches it. Receptionist
+   was brought onto the same Questrial system as Admin during the Phase 1
+   navigation/dashboard redesign (see (receptionist)/layout.tsx). Falls back
+   to Inter (already loaded for the rest of the app) if the variable isn't
+   present.
 
    Questrial ships ONE real weight (400/Regular) — no bold face exists, so
    any heavier weight the browser renders is synthesized (algorithmically
@@ -444,14 +446,15 @@
    fine, so synthesis is left on and Tailwind's weight scale (font-medium/
    semibold/bold/black) works normally again. Hierarchy is still reinforced
    with colour/size, not weight alone. */
-.cc-admin-shell {
+.cc-admin-shell, .cc-receptionist-shell {
   font-family: var(--font-questrial), 'Inter', system-ui, sans-serif;
   letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
-.cc-admin-shell h1, .cc-admin-shell h2, .cc-admin-shell h3, .cc-admin-shell h4 {
+.cc-admin-shell h1, .cc-admin-shell h2, .cc-admin-shell h3, .cc-admin-shell h4,
+.cc-receptionist-shell h1, .cc-receptionist-shell h2, .cc-receptionist-shell h3, .cc-receptionist-shell h4 {
   font-family: var(--font-questrial), 'Inter', system-ui, sans-serif;
   letter-spacing: -0.008em;
 }

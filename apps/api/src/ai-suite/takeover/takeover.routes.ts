@@ -52,6 +52,12 @@ router.get('/conversations', async (req, res) => {
           select: { firstName: true, lastName: true },
         },
         messages: {
+          // USER/AGENT only: SYSTEM rows (takeover/handback notes) are never
+          // shown to the customer and are not a reply from anyone, so they
+          // must never surface as lastMessage / drive "who replied last"
+          // classification on the frontend — same rule already applied in
+          // GET /ai-suite/snapshot below.
+          where: { role: { in: ['USER', 'AGENT'] } },
           orderBy: { createdAt: 'desc' },
           take: 2,
         },

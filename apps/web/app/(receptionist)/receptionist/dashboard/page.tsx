@@ -1,164 +1,22 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  Calendar, Users, UserCheck, Bot, TrendingUp, TrendingDown,
-  ChevronRight, Clock, AlertTriangle, CheckCircle2,
+  Calendar, ChevronRight, Clock, AlertTriangle, CheckCircle2, Zap,
   Plus, X, Send, Mic, MicOff,
   Minimize2, Maximize2, LogIn, LogOut, Search, UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fetchWithAuth } from '@/lib/api'
-import LivePatientFlow from '@/components/scheduling/LivePatientFlow'
+import ReceptionistLiveFlow from '@/components/scheduling/ReceptionistLiveFlow'
 import BookingDrawer from '@/components/scheduling/BookingDrawer'
-
-// ── Analog Clock ──────────────────────────────────────────────
-function AnalogClock() {
-  const [time, setTime] = useState(() =>
-    new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
-  )
-  useEffect(() => {
-    const t = setInterval(() => {
-      setTime(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })))
-    }, 1000)
-    return () => clearInterval(t)
-  }, [])
-
-  const s = time.getSeconds()
-  const m = time.getMinutes()
-  const h = time.getHours() % 12
-  const secDeg = s * 6
-  const minDeg = m * 6 + s * 0.1
-  const hrDeg  = h * 30 + m * 0.5
-
-  function hand(deg: number, len: number, width: number, color: string) {
-    const rad = (deg - 90) * (Math.PI / 180)
-    return (
-      <line
-        x1="50" y1="50"
-        x2={50 + len * Math.cos(rad)}
-        y2={50 + len * Math.sin(rad)}
-        stroke={color} strokeWidth={width} strokeLinecap="round"
-      />
-    )
-  }
-
-  const ticks = Array.from({ length: 60 }, (_, i) => {
-    const rad = (i * 6 - 90) * Math.PI / 180
-    const isHour = i % 5 === 0
-    const r1 = isHour ? 37 : 41
-    return (
-      <line key={i}
-        x1={50 + r1 * Math.cos(rad)}     y1={50 + r1 * Math.sin(rad)}
-        x2={50 + 44.5 * Math.cos(rad)}   y2={50 + 44.5 * Math.sin(rad)}
-        stroke={isHour ? '#29ABE2' : '#CBD5E1'}
-        strokeWidth={isHour ? 2.2 : 0.8} strokeLinecap="round"
-      />
-    )
-  })
-
-  const label = time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
-
-  return (
-    <div className="flex flex-col items-center gap-1 select-none">
-      <svg width="110" height="110" viewBox="0 0 100 100"
-        style={{ filter: 'drop-shadow(0 6px 20px rgba(41,171,226,0.35))' }}>
-        {/* Face */}
-        <circle cx="50" cy="50" r="48" className="clock-face" />
-        {/* Subtle inner ring */}
-        <circle cx="50" cy="50" r="43" fill="none" stroke="rgba(41,171,226,0.12)" strokeWidth="1" />
-        {/* Tick marks */}
-        {ticks}
-        {/* Hour numbers */}
-        {[12,1,2,3,4,5,6,7,8,9,10,11].map((n, i) => {
-          const rad = (i * 30 - 90) * Math.PI / 180
-          return (
-            <text key={n}
-              x={50 + 32 * Math.cos(rad)} y={50 + 32 * Math.sin(rad)}
-              textAnchor="middle" dominantBaseline="central"
-              fontSize="7" fontWeight="700" fill="#64748B"
-              style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
-              {n}
-            </text>
-          )
-        })}
-        {/* Hands */}
-        {hand(hrDeg, 24, 3.5, '#1A237E')}
-        {hand(minDeg, 33, 2.5, '#29ABE2')}
-        {hand(secDeg, 39, 1.2, '#ef4444')}
-        {/* Center cap */}
-        <circle cx="50" cy="50" r="3" fill="#29ABE2" />
-        <circle cx="50" cy="50" r="1.5" fill="white" />
-      </svg>
-      <span className="text-[10px] font-bold tracking-wide text-gray-400 dark:text-white/40">{label}</span>
-      <span className="text-[9px] text-gray-300 dark:text-white/20 font-medium">Kampala · EAT</span>
-    </div>
-  )
-}
-
-// ── Mini Calendar ─────────────────────────────────────────────
-function MiniCalendar({ onDateSelect, selectedDate }: { onDateSelect: (d: Date) => void; selectedDate: Date }) {
-  const [view, setView] = useState(new Date())
-  const [dates, setDates] = useState<Record<string, number>>({})
-  const API = '/api-proxy'
-
-  useEffect(() => {
-    const token = localStorage.getItem('cc_token')
-    fetch(`${API}/receptionist/calendar-dates?year=${view.getFullYear()}&month=${view.getMonth()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(r => r.json()).then(setDates).catch(() => {})
-  }, [view])
-
-  const year = view.getFullYear(), month = view.getMonth()
-  const firstDay = new Date(year, month, 1).getDay()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const monthName = view.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
-
-  const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-bold text-gray-800 dark:text-white">{monthName}</span>
-        <div className="flex gap-1">
-          <button onClick={() => setView(new Date(year, month - 1, 1))}
-            className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 text-xs font-bold">‹</button>
-          <button onClick={() => setView(new Date(year, month + 1, 1))}
-            className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 text-xs font-bold">›</button>
-        </div>
-      </div>
-      <div className="grid grid-cols-7 gap-0.5">
-        {['S','M','T','W','T','F','S'].map((d, i) => (
-          <div key={i} className="text-center text-[9px] font-black text-gray-400 uppercase py-1">{d}</div>
-        ))}
-        {cells.map((day, i) => {
-          if (!day) return <div key={i} />
-          const key = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-          const count = dates[key] || 0
-          const isSel = selectedDate.getDate() === day && selectedDate.getMonth() === month && selectedDate.getFullYear() === year
-          const isToday = new Date().getDate() === day && new Date().getMonth() === month && new Date().getFullYear() === year
-          return (
-            <button key={i} onClick={() => onDateSelect(new Date(year, month, day))}
-              className={cn(
-                'relative aspect-square flex items-center justify-center text-xs rounded-lg transition-all',
-                isSel ? 'bg-cyan-500 text-white font-bold' :
-                isToday ? 'bg-blue-50 dark:bg-cyan-900/20 text-blue-700 dark:text-cyan-400 font-bold' :
-                'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10',
-              )}>
-              {day}
-              {count > 0 && !isSel && (
-                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-cyan-500" />
-              )}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+import PatientsOverviewCard from '@/components/receptionist/PatientsOverviewCard'
+import PatientSatisfactionCard from '@/components/receptionist/PatientSatisfactionCard'
+import GrowthCrmCard from '@/components/receptionist/GrowthCrmCard'
+import AiSuiteSnapshotCard from '@/components/receptionist/AiSuiteSnapshotCard'
 
 // ── Status config ─────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
@@ -184,6 +42,16 @@ const STATUS_NEXT: Record<string, { status: string; label: string }> = {
   IN_CHAIR:       { status: 'WITH_PROVIDER',  label: 'To Provider' },
   WITH_PROVIDER:  { status: 'READY_CHECKOUT', label: 'Ready ✓' },
   READY_CHECKOUT: { status: 'COMPLETED',      label: 'Checkout' },
+}
+
+// Same stage grouping as ReceptionistLiveFlow's STAGES, kept in sync
+// deliberately so the "Live now" summary card above never disagrees with
+// the actual board rendered lower on this page.
+const LIVE_STAGE_STATUSES = {
+  arrived:  ['ARRIVED', 'CHECKED_IN'],
+  waiting:  ['WAITING'],
+  session:  ['IN_OPERATORY', 'IN_CHAIR', 'WITH_PROVIDER'],
+  checkout: ['READY_CHECKOUT'],
 }
 
 // ── Patient row ───────────────────────────────────────────────
@@ -241,79 +109,41 @@ function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
   )
 }
 
-// ── Patient Flow Panel ─────────────────────────────────────────
-function PatientFlowPanel({ appointments, onRefresh }: { appointments: any[]; onRefresh: () => void }) {
-  const groups: Record<string, { label: string; color: string; statuses: string[] }> = {
-    waiting:  { label: 'In Waiting Room', color: '#3B82F6', statuses: ['CONFIRMED', 'CHECKED_IN'] },
-    active:   { label: 'In Session with Doctor', color: '#14B8A6', statuses: ['IN_CHAIR', 'WITH_PROVIDER'] },
-    checkout: { label: 'Checkout & Billing', color: '#8B5CF6', statuses: ['READY_CHECKOUT'] },
-  }
-
-  async function advanceStatus(apptId: string, status: string) {
-    const token = localStorage.getItem('cc_token')
-    await fetch(`/api-proxy/scheduling/appointments/${apptId}/status`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
-    onRefresh()
-  }
-
-  const hasAny = Object.values(groups).some(g =>
-    appointments.some(a => g.statuses.includes(a.status))
-  )
-
+// ── Compact stat tile (Appointments Today / Live now) ──────────
+function OperationalCard({ icon, iconBg, title, badge, breakdown, loading }: {
+  icon: React.ReactNode; iconBg: string; title: string; badge?: string
+  breakdown: { label: string; value: number; color: string }[]
+  loading: boolean
+}) {
+  const total = breakdown.reduce((s, b) => s + b.value, 0)
   return (
-    <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-50 dark:border-white/5">
-        <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-        <h3 className="text-sm font-bold text-gray-800 dark:text-white">Patient Flow</h3>
-        <span className="ml-auto text-xs text-gray-400">{appointments.filter(a => !['COMPLETED','CANCELLED','NO_SHOW'].includes(a.status)).length} active</span>
+    <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4">
+      <div className="flex items-start justify-between mb-3">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: iconBg }}>
+          {icon}
+        </div>
+        {badge && !loading && (
+          <span className="text-xs font-bold bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 px-2 py-0.5 rounded-full">{badge}</span>
+        )}
+        {loading && <div className="h-5 w-12 bg-gray-100 dark:bg-white/10 rounded-full animate-pulse" />}
       </div>
-      {!hasAny ? (
-        <div className="px-4 py-6 text-center">
-          <p className="text-xs text-gray-400">No patients in clinic right now</p>
+      {loading ? (
+        <div className="space-y-2">
+          <div className="h-8 w-14 bg-gray-200 dark:bg-white/10 rounded-lg animate-pulse" />
+          <div className="h-4 w-32 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
         </div>
       ) : (
-        <div className="divide-y divide-gray-50 dark:divide-white/5">
-          {Object.entries(groups).map(([key, g]) => {
-            const patients = appointments.filter(a => g.statuses.includes(a.status))
-            if (patients.length === 0) return null
-            return (
-              <div key={key}>
-                <div className="flex items-center gap-2 px-4 py-1.5" style={{ background: g.color + '10' }}>
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: g.color }} />
-                  <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: g.color }}>{g.label}</span>
-                  <span className="text-[10px] font-bold text-gray-400 ml-auto">{patients.length}</span>
-                </div>
-                {patients.map(appt => {
-                  const next = STATUS_NEXT[appt.status]
-                  return (
-                    <div key={appt.id} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-                        style={{ background: appt.service?.colour || g.color }}>
-                        {appt.patient?.firstName?.[0]}{appt.patient?.lastName?.[0]}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
-                          {appt.patient?.firstName} {appt.patient?.lastName}
-                        </p>
-                        <p className="text-[10px] text-gray-400 truncate">{appt.service?.name}</p>
-                      </div>
-                      {next && (
-                        <button onClick={() => advanceStatus(appt.id, next.status)}
-                          className="text-[10px] font-bold px-2 py-1 rounded-lg text-white transition-colors hover:opacity-90"
-                          style={{ background: g.color }}>
-                          {next.label}
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
+        <>
+          <p className="text-sm font-bold text-gray-800 dark:text-white mb-2">{title}</p>
+          <p className="text-3xl font-black text-gray-800 dark:text-white leading-none mb-2">{total}</p>
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {breakdown.map(b => (
+              <span key={b.label} className="text-[11px] font-semibold" style={{ color: b.color }}>
+                {b.value} {b.label}
+              </span>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
@@ -329,7 +159,6 @@ export default function ReceptionistDashboard() {
   const [upcoming, setUpcoming]     = useState<any[]>([])
   const [active, setActive]         = useState<any>(null)
   const [escalations, setEscalations] = useState<any[]>([])
-  const [agentActive, setAgentActive] = useState(true)
   const [loading, setLoading]       = useState(true)
   const lastFetch = useRef(0)
   const [showCheckin, setShowCheckin]   = useState(false)
@@ -421,7 +250,6 @@ export default function ReceptionistDashboard() {
       setStats(s); setAppts(Array.isArray(a) ? a : [])
       setUpcoming(Array.isArray(u) ? u : [])
       setActive(ac); setEscalations(Array.isArray(e) ? e : [])
-      setAgentActive(s?.aiAgents?.active ?? true)
     } catch {} finally { setLoading(false) }
   }
 
@@ -527,6 +355,24 @@ export default function ReceptionistDashboard() {
   ]
 
   const sk = stats === null
+
+  // Appointments Today breakdown — computed from the same today-appointments
+  // list the detail views below use, so the number here can never disagree
+  // with what a receptionist sees when they scroll down.
+  const apptBreakdown = [
+    { label: 'confirmed',  value: appointments.filter(a => a.status === 'CONFIRMED').length,  color: '#2563EB' },
+    { label: 'pending',    value: appointments.filter(a => a.status === 'PENDING').length,     color: '#D97706' },
+    { label: 'no-show',    value: appointments.filter(a => a.status === 'NO_SHOW').length,     color: '#6B7280' },
+    { label: 'cancelled',  value: appointments.filter(a => a.status === 'CANCELLED').length,   color: '#DC2626' },
+    { label: 'completed',  value: appointments.filter(a => a.status === 'COMPLETED').length,   color: '#059669' },
+  ].filter(b => b.value > 0)
+
+  const liveBreakdown = [
+    { label: 'arrived',  value: appointments.filter(a => LIVE_STAGE_STATUSES.arrived.includes(a.status)).length,  color: '#3B82F6' },
+    { label: 'waiting',  value: appointments.filter(a => LIVE_STAGE_STATUSES.waiting.includes(a.status)).length,  color: '#D97706' },
+    { label: 'in session', value: appointments.filter(a => LIVE_STAGE_STATUSES.session.includes(a.status)).length, color: '#0D9488' },
+    { label: 'checkout', value: appointments.filter(a => LIVE_STAGE_STATUSES.checkout.includes(a.status)).length, color: '#7C3AED' },
+  ]
 
   return (
     <div className="p-5 space-y-5 max-w-[1600px] mx-auto overflow-x-hidden">
@@ -676,10 +522,9 @@ export default function ReceptionistDashboard() {
           </p>
         </div>
 
-        {/* Clock + dental image */}
-        <div className="hidden lg:flex items-center gap-6 flex-shrink-0">
-          <AnalogClock />
-          <Image src="/dental30.png" alt="" width={160} height={120}
+        {/* Dental illustration — kept, but compact per redesign spec */}
+        <div className="hidden sm:block flex-shrink-0">
+          <Image src="/dental30.png" alt="" width={96} height={72}
             style={{ objectFit:'contain', filter:'drop-shadow(0 8px 28px rgba(41,171,226,0.4))' }}/>
         </div>
       </div>
@@ -688,160 +533,98 @@ export default function ReceptionistDashboard() {
       <div className="flex flex-wrap gap-3">
         <button
           onClick={() => { setCheckinMode('in'); setShowCheckin(true) }}
-          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black text-white hover:-translate-y-0.5 transition-all shadow-lg"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-black text-white hover:-translate-y-0.5 transition-all shadow-lg"
           style={{ background: 'linear-gradient(135deg,#0891b2,#06b6d4)', boxShadow: '0 4px 20px rgba(6,182,212,0.4)' }}>
           <LogIn size={16} /> Check In Patient
         </button>
         <button
           onClick={() => { setCheckinMode('out'); setShowCheckin(true) }}
-          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black text-white hover:-translate-y-0.5 transition-all shadow-lg"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-black text-white hover:-translate-y-0.5 transition-all shadow-lg"
           style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: '0 4px 20px rgba(16,185,129,0.4)' }}>
           <LogOut size={16} /> Check Out Patient
         </button>
         <button
           onClick={() => setShowBooking(true)}
-          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
+          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
           <Plus size={16} className="text-cyan-500" /> Book Appointment
         </button>
         <button
           onClick={() => { setNewPatient({ firstName: '', lastName: '', phone: '', email: '', gender: 'UNKNOWN' }); setAddPatientError(''); setShowAddPatient(true) }}
-          className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
+          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
           <UserPlus size={16} className="text-purple-500" /> Add Patient
         </button>
       </div>
 
-      {/* ── Stats Row ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Today's Appointments */}
-        <div className="dark-pop stat-card-cyan bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #0891b2, #06b6d4)' }}>
-              <Calendar size={18} className="text-white" />
-            </div>
-            {sk ? <div className="h-5 w-12 bg-gray-100 dark:bg-white/10 rounded-full animate-pulse" />
-              : <span className="text-xs font-bold bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 px-2 py-0.5 rounded-full">Today</span>}
-          </div>
-          {sk ? (
-            <div className="space-y-2">
-              <div className="h-8 w-16 bg-gray-200 dark:bg-white/10 rounded-lg animate-pulse" />
-              <div className="h-4 w-28 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
-            </div>
-          ) : (
-            <>
-              <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.appointments?.total || 0}</p>
-              <p className="text-xs text-gray-500 dark:text-white/40 mt-1">
-                <span className="text-blue-500 font-bold">{stats?.appointments?.confirmed || 0} confirmed</span>
-                {' · '}
-                <span className="text-amber-500 font-bold">{stats?.appointments?.pending || 0} pending</span>
-              </p>
-            </>
-          )}
-        </div>
+      {/* ── Top operational row: Appointments Today / Live now / Upcoming ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <OperationalCard
+          icon={<Calendar size={18} className="text-white" />}
+          iconBg="linear-gradient(135deg, #0891b2, #06b6d4)"
+          title="Appointments Today"
+          badge="Today"
+          breakdown={apptBreakdown}
+          loading={sk}
+        />
+        <OperationalCard
+          icon={<Zap size={18} className="text-white" />}
+          iconBg="linear-gradient(135deg, #0d9488, #14b8a6)"
+          title="Patient Live Flow"
+          badge="Live now"
+          breakdown={liveBreakdown}
+          loading={sk}
+        />
 
-        {/* New Patients */}
-        <div className="dark-pop stat-card-purple bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)' }}>
-              <Users size={18} className="text-white" />
-            </div>
-            {sk ? <div className="h-5 w-10 bg-gray-100 dark:bg-white/10 rounded-full animate-pulse" />
-              : (stats?.newPatients?.pctChange ?? 0) >= 0 ? (
-                <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                  <TrendingUp size={10} /> {stats?.newPatients?.pctChange || 0}%
-                </span>
-              ) : (
-                <span className="text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                  <TrendingDown size={10} /> {Math.abs(stats?.newPatients?.pctChange || 0)}%
-                </span>
-              )}
+        {/* Upcoming Appointments */}
+        <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
+            <h3 className="text-sm font-bold text-gray-800 dark:text-white">Upcoming Appointments</h3>
+            <Link href="/receptionist/appointments" className="text-xs text-cyan-600 dark:text-cyan-400 font-semibold hover:underline">All</Link>
           </div>
-          {sk ? (
-            <div className="space-y-2">
-              <div className="h-8 w-10 bg-gray-200 dark:bg-white/10 rounded-lg animate-pulse" />
-              <div className="h-4 w-24 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
-            </div>
-          ) : (
-            <>
-              <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.newPatients?.count || 0}</p>
-              <p className="text-xs text-gray-400 dark:text-white/40 mt-1">New patients today</p>
-            </>
-          )}
-        </div>
-
-        {/* Returning Patients */}
-        <div className="dark-pop stat-card-green bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md">
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}>
-              <UserCheck size={18} className="text-white" />
-            </div>
-            {sk ? <div className="h-5 w-10 bg-gray-100 dark:bg-white/10 rounded-full animate-pulse" />
-              : (stats?.returningPatients?.pctChange ?? 0) >= 0 ? (
-                <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                  <TrendingUp size={10} /> {stats?.returningPatients?.pctChange || 0}%
-                </span>
-              ) : (
-                <span className="text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                  <TrendingDown size={10} /> {Math.abs(stats?.returningPatients?.pctChange || 0)}%
-                </span>
-              )}
-          </div>
-          {sk ? (
-            <div className="space-y-2">
-              <div className="h-8 w-10 bg-gray-200 dark:bg-white/10 rounded-lg animate-pulse" />
-              <div className="h-4 w-28 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
-            </div>
-          ) : (
-            <>
-              <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.returningPatients?.count || 0}</p>
-              <p className="text-xs text-gray-400 dark:text-white/40 mt-1">Returning patients today</p>
-            </>
-          )}
-        </div>
-
-        {/* AI Agent Status */}
-        <div className={cn(
-          'dark-pop stat-card-orange rounded-2xl p-4 border shadow-sm hover:shadow-md',
-          sk ? 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/8'
-            : agentActive ? 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/8' : 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-500/20',
-        )}>
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: sk ? 'linear-gradient(135deg,#9CA3AF,#D1D5DB)' : agentActive ? 'linear-gradient(135deg, #059669, #10b981)' : 'linear-gradient(135deg, #dc2626, #ef4444)' }}>
-              <Bot size={18} className="text-white" />
-            </div>
-            {sk ? <div className="h-5 w-14 bg-gray-100 dark:bg-white/10 rounded-full animate-pulse" />
-              : (
-                <div className="flex items-center gap-1">
-                  <span className={cn('w-2 h-2 rounded-full animate-pulse', agentActive ? 'bg-emerald-500' : 'bg-red-500')} />
-                  <span className={cn('text-xs font-bold', agentActive ? 'text-emerald-500' : 'text-red-500')}>
-                    {agentActive ? 'Active' : 'Paused'}
-                  </span>
+          <div className="divide-y divide-gray-50 dark:divide-white/5 max-h-[220px] overflow-y-auto">
+            {upcoming.length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <p className="text-xs text-gray-400">No upcoming appointments</p>
+              </div>
+            ) : upcoming.slice(0, 6).map(a => {
+              const t = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+              const date = new Date(a.startAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+              return (
+                <div key={a.id} className="px-4 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.service?.colour || '#29ABE2' }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{a.patient?.firstName} {a.patient?.lastName}</p>
+                      <p className="text-[10px] text-gray-400 truncate">Dr. {a.doctor?.user?.firstName} · {a.service?.name}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400">{t}</p>
+                      <p className="text-[9px] text-gray-400">{date}</p>
+                    </div>
+                  </div>
                 </div>
-              )}
+              )
+            })}
           </div>
-          {sk ? (
-            <div className="space-y-2">
-              <div className="h-8 w-10 bg-gray-200 dark:bg-white/10 rounded-lg animate-pulse" />
-              <div className="h-4 w-24 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
-            </div>
-          ) : (
-            <>
-              <p className="text-3xl font-black text-gray-800 dark:text-white">{stats?.aiAgents?.count || 0}</p>
-              <p className="text-xs text-gray-400 dark:text-white/40 mt-1">
-                {stats?.aiAgents?.escalationsToday || 0} escalations today
-              </p>
-            </>
-          )}
         </div>
       </div>
 
-      {/* ── AI Suite Quick Links ──────────────────────────────── */}
+      {/* ── Patients Overview / Patient Satisfaction / Growth & CRM ──── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <PatientsOverviewCard newToday={stats?.newPatients?.count ?? 0} returningToday={stats?.returningPatients?.count ?? 0} loading={sk} />
+        <PatientSatisfactionCard />
+        <GrowthCrmCard />
+      </div>
+
+      {/* ── AI Suite Activity ──────────────────────────────────── */}
+      <AiSuiteSnapshotCard />
+
+      {/* ── Live Patient Flow — full width board ───────────────── */}
+      <ReceptionistLiveFlow />
+
+      {/* ── AI Suite Quick Links: Follow-up / Confirmation ─────── */}
       <div className="grid grid-cols-2 gap-4">
         <Link href="/receptionist/ai-suite/followup-dashboard"
-          className="dark-pop bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all group">
+          className="dark-pop bg-white dark:bg-white/[0.04] rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all group">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
@@ -853,7 +636,7 @@ export default function ReceptionistDashboard() {
           <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">AI follow-up activity</p>
         </Link>
         <Link href="/receptionist/ai-suite/confirmation-dashboard"
-          className="dark-pop bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all group">
+          className="dark-pop bg-white dark:bg-white/[0.04] rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all group">
           <div className="flex items-start justify-between mb-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}>
@@ -866,17 +649,14 @@ export default function ReceptionistDashboard() {
         </Link>
       </div>
 
-      {/* ── Live Patient Flow — full width, right after stats ─── */}
-      <LivePatientFlow />
-
-      {/* ── Main 2-column grid ─────────────────────────────────── */}
+      {/* ── Supporting detail: Today's Patients / Active Consultation / Escalations ── */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 min-w-0">
 
         {/* ── LEFT COLUMN ─────────────────────────────────────── */}
         <div className="space-y-4 min-w-0">
 
           {/* Today's Patient List */}
-          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/8">
               <div>
                 <h3 className="text-sm font-bold text-gray-800 dark:text-white">Today's Patients</h3>
@@ -912,9 +692,9 @@ export default function ReceptionistDashboard() {
             </div>
 
             {appointments.length > 6 && (
-              <div className="px-4 py-2 border-t border-gray-50">
+              <div className="px-4 py-2 border-t border-gray-50 dark:border-white/8">
                 <Link href="/receptionist/appointments"
-                  className="text-xs font-semibold text-cyan-600 hover:text-cyan-700 flex items-center gap-1">
+                  className="text-xs font-semibold text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 flex items-center gap-1">
                   View all {appointments.length} appointments <ChevronRight size={12} />
                 </Link>
               </div>
@@ -923,22 +703,22 @@ export default function ReceptionistDashboard() {
 
           {/* Escalation Alerts */}
           {escalations.length > 0 && (
-            <div className="bg-white rounded-2xl border-2 border-red-200 shadow-sm overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border-b border-red-100">
+            <div className="bg-white dark:bg-white/[0.04] rounded-2xl border-2 border-red-200 dark:border-red-500/30 shadow-sm overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-500/20">
                 <AlertTriangle size={15} className="text-red-500 animate-pulse" />
-                <h3 className="text-sm font-bold text-red-700">AI Escalation — Action Required</h3>
+                <h3 className="text-sm font-bold text-red-700 dark:text-red-400">AI Escalation — Action Required</h3>
                 <span className="ml-auto text-xs font-black bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
                   {escalations.length}
                 </span>
               </div>
               {escalations.map((e: any) => (
-                <div key={e.id} className="flex items-start gap-3 px-4 py-3 border-b border-red-50 last:border-0">
-                  <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-xs font-bold flex-shrink-0">
+                <div key={e.id} className="flex items-start gap-3 px-4 py-3 border-b border-red-50 dark:border-red-500/10 last:border-0">
+                  <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400 text-xs font-bold flex-shrink-0">
                     {e.patient?.firstName?.[0]}{e.patient?.lastName?.[0]}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-800">{e.patient?.firstName} {e.patient?.lastName}</p>
-                    <p className="text-xs text-gray-400 truncate">{e.type} · {e.channel}</p>
+                    <p className="text-sm font-semibold text-gray-800 dark:text-white">{e.patient?.firstName} {e.patient?.lastName}</p>
+                    <p className="text-xs text-gray-400 dark:text-white/40 truncate">{e.type} · {e.channel}</p>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
                     <Link href="/receptionist/communications"
@@ -953,7 +733,7 @@ export default function ReceptionistDashboard() {
                         })
                         fetchAll()
                       }}
-                      className="text-xs font-bold bg-gray-100 text-gray-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-200 transition-colors">
+                      className="text-xs font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/60 px-2.5 py-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-white/20 transition-colors">
                       Dismiss
                     </button>
                   </div>
@@ -963,11 +743,9 @@ export default function ReceptionistDashboard() {
           )}
         </div>
 
-        {/* ── MIDDLE COLUMN ───────────────────────────────────── */}
+        {/* ── RIGHT COLUMN: Active Consultation ────────────────── */}
         <div className="space-y-4 min-w-0">
-
-          {/* Active Consultation */}
-          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
               <div className="flex items-center gap-2">
                 <span className={cn('w-2 h-2 rounded-full', active ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300')} />
@@ -985,7 +763,7 @@ export default function ReceptionistDashboard() {
                   <div>
                     <p className="font-bold text-gray-800 dark:text-white">{active.patient?.firstName} {active.patient?.lastName}</p>
                     <p className="text-xs text-gray-400">{active.patient?.gender} · {active.patient?.dob ? new Date().getFullYear() - new Date(active.patient.dob).getFullYear() + ' yrs' : ''}</p>
-                    <p className="text-xs text-cyan-600 font-semibold">{active.service?.name}</p>
+                    <p className="text-xs text-cyan-600 dark:text-cyan-400 font-semibold">{active.service?.name}</p>
                   </div>
                 </div>
                 <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-3">
@@ -1014,7 +792,7 @@ export default function ReceptionistDashboard() {
                       })
                       fetchAll()
                     }}
-                    className="flex-1 text-xs font-bold bg-gray-100 text-gray-600 py-2 rounded-xl hover:bg-gray-200 transition-colors">
+                    className="flex-1 text-xs font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/60 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-white/20 transition-colors">
                     No Show
                   </button>
                 </div>
@@ -1025,44 +803,6 @@ export default function ReceptionistDashboard() {
                 <p className="text-sm text-gray-400">No active consultation</p>
               </div>
             )}
-          </div>
-
-        </div>
-
-        {/* ── RIGHT COLUMN ────────────────────────────────────── */}
-        <div className="space-y-4 min-w-0">
-
-          {/* Upcoming Appointments */}
-          <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
-              <h3 className="text-sm font-bold text-gray-800 dark:text-white">Upcoming</h3>
-              <Link href="/receptionist/appointments" className="text-xs text-cyan-600 font-semibold hover:underline">All</Link>
-            </div>
-            <div className="divide-y divide-gray-50 dark:divide-white/5">
-              {upcoming.length === 0 ? (
-                <div className="px-4 py-4 text-center">
-                  <p className="text-xs text-gray-400">No upcoming appointments</p>
-                </div>
-              ) : upcoming.slice(0, 6).map(a => {
-                const t = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
-                const date = new Date(a.startAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
-                return (
-                  <div key={a.id} className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.service?.colour || '#29ABE2' }} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{a.patient?.firstName} {a.patient?.lastName}</p>
-                        <p className="text-[10px] text-gray-400 truncate">Dr. {a.doctor?.user?.firstName} · {a.service?.name}</p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-[10px] font-bold text-cyan-600">{t}</p>
-                        <p className="text-[9px] text-gray-400">{date}</p>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
           </div>
         </div>
       </div>

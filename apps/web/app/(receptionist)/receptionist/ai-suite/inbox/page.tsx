@@ -331,33 +331,21 @@ interface ComposerProps {
 
 function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
   const [reply,      setReply]      = useState('')
-  const [attachment, setAttachment] = useState<File | null>(null)
   const [showEmoji,  setShowEmoji]  = useState(false)
   const [sending,    setSending]    = useState(false)
-  const fileRef  = useRef<HTMLInputElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // Reset composer when switching conversations
-  useEffect(() => { setReply(''); setAttachment(null); setShowEmoji(false) }, [sel.id])
+  useEffect(() => { setReply(''); setShowEmoji(false) }, [sel.id])
 
   async function send() {
-    if ((!reply.trim() && !attachment) || sending) return
+    if (!reply.trim() || sending) return
     setSending(true)
     try {
-      if (attachment) {
-        const form = new FormData()
-        form.append('file', attachment)
-        form.append('conversationId', sel.id)
-        await fetch(`${API}/ai-suite/conversations/${sel.id}/send-media`, {
-          method: 'POST', headers: { Authorization: authH().Authorization }, body: form,
-        })
-        setAttachment(null)
-      } else {
-        await fetch(`${API}/ai-suite/conversations/${sel.id}/send`, {
-          method: 'POST', headers: authH(true), body: JSON.stringify({ text: reply.trim() }),
-        })
-        setReply('')
-      }
+      await fetch(`${API}/ai-suite/conversations/${sel.id}/send`, {
+        method: 'POST', headers: authH(true), body: JSON.stringify({ text: reply.trim() }),
+      })
+      setReply('')
       fetchMsgs(sel.id)
     } catch {} finally {
       setSending(false)
@@ -368,13 +356,6 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
   return (
     <div className={cn('fixed bottom-0 left-0 right-0 z-[60] lg:static lg:flex-shrink-0 px-3 py-2 border-t', dark ? 'border-white/8' : 'border-gray-100')}
       style={{ background: dark ? '#1F2C34' : '#f0f2f5', paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}>
-      {attachment && (
-        <div className={cn('flex items-center gap-2 mb-2 px-3 py-2 rounded-xl', dark ? 'bg-[#2A3942]' : 'bg-white border border-gray-200')}>
-          <Paperclip size={13} className={dark ? 'text-white/60' : 'text-gray-500'} />
-          <span className={cn('text-xs flex-1 truncate', dark ? 'text-white/80' : 'text-gray-700')}>{attachment.name}</span>
-          <button onClick={() => setAttachment(null)}><X size={13} className={dark ? 'text-white/40' : 'text-gray-400'} /></button>
-        </div>
-      )}
       <div className="flex items-center gap-2">
         <div className="relative">
           <button onClick={() => setShowEmoji(s => !s)}
@@ -383,12 +364,13 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
           </button>
           {showEmoji && <EmojiPicker dark={dark} onPick={e => setReply(r => r + e)} onClose={() => setShowEmoji(false)} />}
         </div>
-        <button onClick={() => fileRef.current?.click()}
-          className={cn('p-2 rounded-full transition-colors', dark ? 'text-white/50 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:bg-black/5')}>
+        {/* Attachments: no backend media-send route exists yet (POST
+            .../send-media 404s app-wide, not just here) — disabled rather
+            than left as a dead click, per the redesign review. */}
+        <button disabled title="Attachments aren't available yet"
+          className={cn('p-2 rounded-full cursor-not-allowed opacity-40', dark ? 'text-white/50' : 'text-gray-500')}>
           <Paperclip size={20} />
         </button>
-        <input ref={fileRef} type="file" className="hidden"
-          onChange={e => { if (e.target.files?.[0]) setAttachment(e.target.files[0]); e.target.value = '' }} />
         <textarea
           ref={inputRef}
           value={reply}
@@ -398,8 +380,8 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
           rows={1}
           className="flex-1 px-4 py-2.5 rounded-2xl text-sm outline-none resize-none min-h-[44px] max-h-[120px] bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
         />
-        <button onClick={send} disabled={sending || (!reply.trim() && !attachment)}
-          className={cn('p-2.5 rounded-full flex items-center justify-center transition-all flex-shrink-0', reply.trim() || attachment ? 'hover:-translate-y-0.5 hover:scale-105' : 'opacity-40')}
+        <button onClick={send} disabled={sending || !reply.trim()}
+          className={cn('p-2.5 rounded-full flex items-center justify-center transition-all flex-shrink-0', reply.trim() ? 'hover:-translate-y-0.5 hover:scale-105' : 'opacity-40')}
           style={{ background: channel === 'WHATSAPP' ? '#25D366' : accent }}>
           {sending ? <Loader2 size={18} className="animate-spin text-white" /> : <Send size={18} className="text-white" />}
         </button>
@@ -833,7 +815,14 @@ function InboxPage() {
   const [dark, setDark] = useState(false)
   const searchParams = useSearchParams()
   const phoneParam   = searchParams.get('phone')
-  const [channel,    setChannel]    = useState<ChannelKey>('WHATSAPP')
+  // Optional ?channel=<apiVal> deep link (e.g. from the Receptionist dashboard's
+  // AI Suite Activity tiles) — maps CHANNELS[].apiVal back to its ChannelKey.
+  // Falls back to WHATSAPP, same as before, if absent/unrecognised.
+  const initialChannel = (): ChannelKey => {
+    const param = searchParams.get('channel')?.toLowerCase()
+    return CHANNELS.find(c => c.apiVal === param)?.key || 'WHATSAPP'
+  }
+  const [channel,    setChannel]    = useState<ChannelKey>(initialChannel)
   const [convs,      setConvs]      = useState<Conversation[]>([])
   const [sel,        setSel]        = useState<Conversation | null>(null)
   const [msgs,       setMsgs]       = useState<Message[]>([])

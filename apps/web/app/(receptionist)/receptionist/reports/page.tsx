@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { BarChart2, Download, Bot, Loader2, Star, MessageSquare, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -629,8 +630,18 @@ function CaseAcceptanceTab() {
 
 type ReportsTab = 'flow' | 'feedback' | 'case-acceptance'
 
+const VALID_TABS: ReportsTab[] = ['flow', 'feedback', 'case-acceptance']
+
 export default function ReportsPage() {
-  const [tab, setTab] = useState<ReportsTab>('flow')
+  const searchParams = useSearchParams()
+  // Optional ?tab= deep link (from the Receptionist dashboard's Reports nav
+  // dropdown: Case Acceptance / Patient Live Flow / Daily-Weekly Reports).
+  // Falls back to 'flow', same default as before, if absent/unrecognised.
+  const initialTab = (): ReportsTab => {
+    const param = searchParams.get('tab') as ReportsTab | null
+    return param && VALID_TABS.includes(param) ? param : 'flow'
+  }
+  const [tab, setTab] = useState<ReportsTab>(initialTab)
 
   return (
     <div className="flex flex-col h-full">
