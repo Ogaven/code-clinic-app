@@ -87,7 +87,15 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
 
       const svcName  = plan.serviceId ? (svcMap.get(plan.serviceId) ?? plan.stage) : plan.stage
       const dateStr  = (plan.createdAt as Date).toISOString().slice(0, 10)
-      const value    = Math.round(plan.costPerUnit * plan.quantity * (1 - plan.discount / 100))
+      // discount is a flat UGX amount, not a percentage — confirmed by the
+      // patient-profile Treatment Plan form, which literally labels the field
+      // "Discount (UGX)" and treats it as `costPerUnit * quantity - discount`
+      // everywhere (apps/web/app/(admin)/patients/[id]/page.tsx), same as
+      // pipeline.ts. This previously multiplied by (1 - discount/100), which
+      // is a percentage formula applied to a currency amount — for any plan
+      // with a real UGX discount (e.g. 100,000), that produced wildly wrong
+      // (often deeply negative) values instead of a simple subtraction.
+      const value    = Math.round(plan.costPerUnit * plan.quantity - plan.discount)
       const pName    = patientName(plan.patient)
       const row      = { name: pName, service: svcName, date: dateStr, value }
 
