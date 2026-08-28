@@ -106,6 +106,8 @@ function urgencyBorderColor(daysSince: number) {
   return '#E5E7EB'
 }
 
+const COLUMN_PAGE_SIZE = 40
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function TreatmentPipelinePage() {
@@ -131,6 +133,11 @@ export default function TreatmentPipelinePage() {
   const [search,         setSearch]         = useState('')
   const [doctorFilter,   setDoctorFilter]   = useState('all')
   const [stageFilter,    setStageFilter]    = useState('all')
+  // Columns render only the first COLUMN_PAGE_SIZE cards until expanded — an
+  // "All time" board can hold years of plans, and rendering hundreds of full
+  // drag-and-drop cards at once per column is the kind of DOM cost the page
+  // shouldn't pay just because a column happens to be long.
+  const [expandedColumns, setExpandedColumns] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const sync = () => setDark(document.documentElement.classList.contains('dark'))
@@ -317,14 +324,18 @@ export default function TreatmentPipelinePage() {
   const plansByStatus = (statusId: string) => filteredPlans.filter(p => p.status === statusId)
   const statusTotal   = (statusId: string) => plansByStatus(statusId).reduce((s, p) => s + p.value, 0)
 
+  // "Today" | "This Week" | "This Month" | "All Time" — drives both the KPI
+  // card labels and the board heading, so they can never disagree.
+  const periodSuffix = period?.label ?? 'This Month'
+
   return (
-    <div className="flex flex-col h-full gap-5">
+    <div className="flex flex-col gap-5">
 
       {/* ── Period selector + KPI cards ───────────────────────────────── */}
       <div className="flex flex-col gap-2 flex-shrink-0">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h1 className="text-sm font-bold text-gray-500 dark:text-white/50">
-            Treatment Pipeline <span className="font-normal text-gray-400 dark:text-white/30">· {period?.label ?? 'This Month'}</span>
+            Treatment Pipeline <span className="font-normal text-gray-400 dark:text-white/30">· {periodSuffix}</span>
           </h1>
           <div className="flex items-center gap-1 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 p-1">
             {(['today', 'week', 'month', 'all'] as PeriodKey[]).map(p => (
@@ -339,16 +350,16 @@ export default function TreatmentPipelinePage() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricCard
-            label="Presented"
+            label={`Presented ${periodSuffix}`}
             value={metrics ? fmtUGX(metrics.presentedValue) : '—'}
-            sub={period?.label ?? 'This Month'}
+            sub="treatment value presented"
             icon={<TrendingUp size={14} />}
             color="#1A237E"
             loading={loading}
             dark={dark}
           />
           <MetricCard
-            label="Accepted"
+            label={`Accepted ${periodSuffix}`}
             value={metrics ? fmtUGX(metrics.acceptedValue) : '—'}
             sub={metrics ? `${metrics.conversionRate}% conversion` : '—'}
             icon={<CheckCircle2 size={14} />}
@@ -458,38 +469,49 @@ export default function TreatmentPipelinePage() {
       )}
 
       {/* ── Kanban board ──────────────────────────────────────────────── */}
-      {/* Deliberately NOT period-filtered — an accepted-but-unscheduled plan
-          presented last quarter is still real, active work today, and the
-          period selector above only exists to scope the KPI cards. Labelled
-          so nobody mistakes this for "This Month's plans". */}
+      {/* Board now shares the exact same createdAt cohort as the KPI cards
+          above (see GET /pipeline/treatment) — selecting Today/Week/Month
+          filters both together, so this heading is never contradicted by
+          what's actually rendered below it. */}
       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-white/30 -mb-1">
-        {periodKey === 'all'
-          ? 'Active treatment pipeline · all records'
-          : `Active treatment pipeline · all records, not limited to ${period?.label.toLowerCase() ?? 'the selected period'}`}
+        Active treatment pipeline · {periodSuffix}
       </p>
       {loading ? (
-        <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-white/40 gap-2">
+        <div className="flex items-center justify-center gap-2 py-16 text-gray-400 dark:text-white/40">
           <RefreshCw size={18} className="animate-spin" />
           <span className="text-sm">Loading pipeline...</span>
         </div>
       ) : filteredPlans.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-white/40">
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-white/40">
           <Kanban size={40} className="mb-3 opacity-25" />
-          <p className="text-sm font-semibold">{plans.length === 0 ? 'No treatment plans yet' : 'No plans match the current filters'}</p>
+          <p className="text-sm font-semibold">
+            {plans.length > 0
+              ? 'No plans match the current filters'
+              : periodKey === 'all'
+              ? 'No treatment plans yet'
+              : `No treatments for ${periodSuffix.toLowerCase()}`}
+          </p>
           <p className="text-xs mt-1 text-gray-300 dark:text-white/20">
-            {plans.length === 0 ? "Plans appear here once added from a patient's clinical tab" : 'Try clearing the search, doctor, or stage filter'}
+            {plans.length > 0
+              ? 'Try clearing the search, doctor, or stage filter'
+              : periodKey === 'all'
+              ? "Plans appear here once added from a patient's clinical tab"
+              : 'Try a different period, or switch to All time'}
           </p>
         </div>
       ) : (
         <div
-          className="flex-1 overflow-x-auto pb-4 -mx-1 px-1 scrollbar-hide"
+          className="overflow-x-auto pb-4 -mx-1 px-1 scrollbar-hide"
           style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
         >
-          <div className="flex flex-col sm:flex-row gap-3 sm:h-full">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3">
             {STATUSES.map(status => {
               const statusPlans = plansByStatus(status.id)
               const total       = statusTotal(status.id)
               const isOver      = dropOver === status.id
+              const isExpanded  = expandedColumns.has(status.id)
+              const visiblePlans = isExpanded ? statusPlans : statusPlans.slice(0, COLUMN_PAGE_SIZE)
+              const hiddenCount  = statusPlans.length - visiblePlans.length
 
               return (
                 <div
@@ -539,8 +561,10 @@ export default function TreatmentPipelinePage() {
                     </div>
                   </div>
 
-                  {/* Cards */}
-                  <div className="sm:flex-1 sm:overflow-y-auto p-2 space-y-2">
+                  {/* Cards — page grows naturally with the tallest column
+                      (no internal vertical scrollbar); only the row of
+                      columns scrolls horizontally. */}
+                  <div className="p-2 space-y-2">
                     {statusPlans.length === 0 && (
                       <div
                         className="h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-xs text-gray-300 dark:text-white/15"
@@ -549,7 +573,7 @@ export default function TreatmentPipelinePage() {
                         Drop here
                       </div>
                     )}
-                    {statusPlans.map(plan => (
+                    {visiblePlans.map(plan => (
                       <PlanCard
                         key={plan.id}
                         plan={plan}
@@ -563,6 +587,15 @@ export default function TreatmentPipelinePage() {
                         onOpenPatient={() => router.push(`/patients/${plan.patientId}`)}
                       />
                     ))}
+                    {hiddenCount > 0 && (
+                      <button
+                        onClick={() => setExpandedColumns(prev => new Set(prev).add(status.id))}
+                        className="w-full rounded-xl border border-dashed py-2 text-[11px] font-bold text-gray-500 dark:text-white/50 hover:bg-white dark:hover:bg-white/5 transition-colors"
+                        style={{ borderColor: dark ? 'rgba(255,255,255,0.15)' : '#E5E7EB' }}
+                      >
+                        Show {hiddenCount} more
+                      </button>
+                    )}
                   </div>
                 </div>
               )
@@ -852,6 +885,10 @@ function NeedsReviewSection({
         <div className="flex items-center gap-2">
           <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400" />
           <span className="text-sm font-bold text-amber-800 dark:text-amber-300">Needs Review</span>
+          {/* This is an operational backlog, not a reporting-period cohort —
+              it never shrinks just because the KPI/board period above is set
+              to Today, so it's labelled explicitly to avoid implying it did. */}
+          <span className="text-[9px] font-bold uppercase tracking-wide text-amber-500/80 dark:text-amber-400/60">· All-time backlog</span>
           <span className="text-xs font-black px-2 py-0.5 rounded-full bg-amber-500 text-white">
             {data.total}
           </span>

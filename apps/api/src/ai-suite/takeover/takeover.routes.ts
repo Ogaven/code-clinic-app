@@ -484,12 +484,13 @@ router.get('/snapshot', requireAuth, async (_req, res) => {
       if (c.agentEnabled) aiHandling++
       else humanHandling++
 
-      // Comment-thread channels folded into their parent platform — still
-      // real Facebook/Instagram traffic, just via comments instead of DM.
-      const group = c.channel === 'FACEBOOK_COMMENT' ? 'FACEBOOK'
-                  : c.channel === 'INSTAGRAM_COMMENT' ? 'INSTAGRAM'
-                  : c.channel
-      channels[group] = (channels[group] ?? 0) + 1
+      // Kept distinct, never folded into FACEBOOK/INSTAGRAM — the real
+      // Conversations workspace (apps/web/app/(receptionist)/receptionist/
+      // ai-suite/inbox/page.tsx CHANNELS array) already treats FB/IG comment
+      // threads as their own labelled channels ("FB Comments"/"IG Comments"),
+      // so merging them here would make this card disagree with the very
+      // workspace it's supposed to be a truthful sneak peek of.
+      channels[c.channel] = (channels[c.channel] ?? 0) + 1
     }
 
     res.json({

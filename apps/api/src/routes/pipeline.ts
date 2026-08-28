@@ -62,15 +62,14 @@ function resolvePeriod(key: string, customStart?: string, customEnd?: string): {
 }
 
 // GET /pipeline/treatment?period=today|week|month|all|custom&start=YYYY-MM-DD&end=YYYY-MM-DD
-// Returns all treatment plans enriched with service name, doctor name, computed value,
+// Returns treatment plans enriched with service name, doctor name, computed value,
 // days since creation, plus aggregate metrics for the dashboard strip.
 //
-// `plans` is always the FULL, unfiltered active pipeline regardless of `period`
-// — the board must never hide a real in-flight treatment plan just because it
-// was presented outside the selected reporting window. Only the KPI metrics
-// below are period-scoped, and only where that's a truthful thing to scope:
-// see the comment above `moneyAtRisk` for the two metrics that deliberately
-// stay all-time.
+// `plans` (the board) is scoped to the SAME createdAt cohort as the period-scoped
+// KPI metrics below — selecting Today/Week/Month filters both together, matching
+// the period selector's own promise. `period=all` returns everything, unfiltered.
+// Money at Risk and Avg Days to Schedule remain deliberately all-time regardless
+// of `period` — see the comment above `moneyAtRisk`.
 router.get('/treatment', requireAuth, async (req, res) => {
   try {
     const periodKey = ((req.query.period as string) || 'month') as PeriodKey
@@ -186,7 +185,7 @@ router.get('/treatment', requireAuth, async (req, res) => {
       : 0
 
     res.json({
-      plans:   enriched,
+      plans:   inPeriod,
       metrics: { presentedValue, acceptedValue, conversionRate, moneyAtRisk, avgDaysToSchedule },
       period:  { key: periodKey, start: periodStart?.toISOString() ?? null, end: periodEnd?.toISOString() ?? null, label: periodLabel },
     })

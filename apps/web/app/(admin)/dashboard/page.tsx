@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import NextImage from 'next/image'
 import {
   Plus, Calendar, Download, Users, TrendingUp, TrendingDown, ArrowUpRight,
-  UserCheck, Megaphone, Share2,
+  UserCheck, Megaphone, Share2, MessageSquareText, Phone,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList,
@@ -146,18 +147,36 @@ function SatisfactionGauge({ pct, ratingLabel }: { pct: number | null; ratingLab
   )
 }
 
-// Real channels only — AiConversation.channel values (packages/database/prisma/
-// schema.prisma), comment-thread variants folded into their parent platform
-// server-side (see GET /ai-suite/snapshot). Filtered to whichever actually
-// have activity today, never a fixed list padded with zeros.
-const CHANNEL_ROWS: { key: string; label: string; emoji: string }[] = [
-  { key: 'WHATSAPP',  label: 'WhatsApp',  emoji: '📲' },
-  { key: 'INSTAGRAM', label: 'Instagram', emoji: '📸' },
-  { key: 'FACEBOOK',  label: 'Facebook',  emoji: '📘' },
-  { key: 'WEBSITE',   label: 'Website',   emoji: '🌐' },
-  { key: 'SMS',       label: 'SMS',       emoji: '💬' },
-  { key: 'VOICE',     label: 'Voice',     emoji: '📞' },
+// Real AiConversation.channel values only (packages/database/prisma/schema.prisma
+// + the literal channel strings every ai-suite/* service actually writes) —
+// icons/labels/colors copied verbatim from the real Conversations workspace's
+// own channel list (apps/web/app/(receptionist)/receptionist/ai-suite/inbox/
+// page.tsx CHANNELS array) so this card is a genuine sneak peek of it, not a
+// re-invented one. FB/IG comment threads are kept as their own distinct,
+// truthfully-labelled rows there — never folded into "Facebook"/"Instagram" —
+// so this card does the same. Rendered only for channels that actually have
+// activity (see GET /ai-suite/snapshot), never a fixed list padded with zeros.
+type ChannelIcon = { imgSrc: string } | { Icon: React.ComponentType<{ size?: number | string; className?: string }> }
+const CHANNEL_CONFIG: { key: string; label: string; color: string; icon: ChannelIcon }[] = [
+  { key: 'WHATSAPP',          label: 'WhatsApp',    color: '#25D366', icon: { imgSrc: '/icons/whatsapp.png' } },
+  { key: 'INSTAGRAM',         label: 'Instagram',   color: '#E4405F', icon: { imgSrc: '/icons/instagram.png' } },
+  { key: 'FACEBOOK',          label: 'Facebook',    color: '#1877F2', icon: { imgSrc: '/icons/facebook.png' } },
+  { key: 'WEBSITE',           label: 'Website',     color: '#6366F1', icon: { imgSrc: '/icons/website.png' } },
+  { key: 'FACEBOOK_COMMENT',  label: 'FB Comments', color: '#1877F2', icon: { imgSrc: '/icons/facebook.png' } },
+  { key: 'INSTAGRAM_COMMENT', label: 'IG Comments', color: '#E4405F', icon: { imgSrc: '/icons/instagram.png' } },
+  // No brand asset for these two — they're carrier channels, not platforms —
+  // so a plain recognizable Lucide icon is the honest choice.
+  { key: 'SMS',   label: 'SMS',   color: '#64748B', icon: { Icon: MessageSquareText } },
+  { key: 'VOICE', label: 'Voice', color: '#64748B', icon: { Icon: Phone } },
 ]
+
+function ChannelIconView({ icon, label }: { icon: ChannelIcon; label: string }) {
+  if ('imgSrc' in icon) {
+    return <NextImage src={icon.imgSrc} alt={label} width={14} height={14} className="h-3.5 w-3.5 object-contain" />
+  }
+  const { Icon } = icon
+  return <Icon size={13} className="text-gray-400 dark:text-white/40" />
+}
 
 // Themed Recharts tooltip content — rendered as real DOM (not inline SVG
 // paint), so it can use the app's existing .dark ancestor-class mechanism
@@ -274,18 +293,23 @@ export default function DashboardPage() {
   // Revenue/Expenses/Net Income source yet. NOT written to the database,
   // NOT read from any Accounts API. Replace with real Accounts data once
   // that module is ready. ─────────────────────────────────────────────────
-  // Jun deliberately equals the headline Revenue figure (58,320,000) — the
-  // chart is a Revenue trend, so its most recent point must match the
-  // Revenue figure shown beside it. Jan–May are a sensible demo progression
-  // toward that same number (previously Jun accidentally reused the
-  // Net Income value instead).
+  // The most recent point deliberately equals the headline Revenue figure
+  // (58,320,000) — the chart is a Revenue trend, so its last bar must match
+  // the Revenue figure shown beside it. The other five are a sensible demo
+  // progression toward that same number. Month LABELS are derived from
+  // today's real date (rolling last 6 months, ending at the current month)
+  // so this never goes stale the way a hardcoded "Jan – Jun" did — verified
+  // 0 real Payment/Expense records exist in production (see accounts.ts's
+  // GET /accounts/dashboard, which aggregates those tables and would return
+  // all-zero revenue/expenses today), so there is no reliable real financial
+  // data to switch to yet; only the demo range's staleness is being fixed.
+  const financeNow = new Date()
+  const DEMO_REVENUE_PROGRESSION = [38_000_000, 41_200_000, 44_600_000, 48_900_000, 52_300_000, 58_320_000]
+  const financeMonthLabels = Array.from({ length: 6 }, (_, i) =>
+    new Date(financeNow.getFullYear(), financeNow.getMonth() - (5 - i), 1).toLocaleDateString('en-US', { month: 'short' }))
   const DEMO_FINANCE = {
-    revenue: 58_320_000, expenses: 24_000_000, netIncome: 34_320_000,
-    trend: [
-      { month: 'Jan', revenue: 38_000_000 }, { month: 'Feb', revenue: 41_200_000 },
-      { month: 'Mar', revenue: 44_600_000 }, { month: 'Apr', revenue: 48_900_000 },
-      { month: 'May', revenue: 52_300_000 }, { month: 'Jun', revenue: 58_320_000 },
-    ],
+    revenue: DEMO_REVENUE_PROGRESSION[5], expenses: 24_000_000, netIncome: 34_320_000,
+    trend: financeMonthLabels.map((month, i) => ({ month, revenue: DEMO_REVENUE_PROGRESSION[i] })),
   }
   // Demo-only growth badge — derived purely from the demo trend above, not real data.
   const demoGrowthPct = Math.round(((DEMO_FINANCE.trend[5].revenue - DEMO_FINANCE.trend[0].revenue) / DEMO_FINANCE.trend[0].revenue) * 100)
@@ -353,10 +377,14 @@ export default function DashboardPage() {
           <ChipLegend items={weekCounts} loading={!weekAppts} />
         </div>
 
-        {/* Card 2 — Treatment Pipeline: same number+bar language, chip legend below */}
+        {/* Card 2 — Treatment Pipeline: same number+bar language, chip legend
+            below. /clinical/analytics/dental-dashboard sums EVERY treatment
+            plan ever created (no date filter — see clinical.ts's own comment
+            "All treatment plans for pipeline"), so this is genuinely an
+            all-time snapshot of the current pipeline, not a "today" figure. */}
         <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Treatment Pipeline</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Treatment Pipeline <span className="font-normal normal-case text-gray-400 dark:text-white/30">· All time</span></p>
             <Link href="/treatment-pipeline" className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-300"><ArrowUpRight size={13} /></Link>
           </div>
           <div className="mt-2 flex items-center gap-3">
@@ -367,10 +395,14 @@ export default function DashboardPage() {
           <ChipLegend items={pipelineCounts} loading={!dentalData} />
         </div>
 
-        {/* Card 3 — Patient Live Flow: same header language, real patient journey stepper below */}
+        {/* Card 3 — Patient Live Flow: same header language, real patient journey
+            stepper below. Counts are today's appointments currently sitting in a
+            clinical-flow status (Arrived/Waiting/In Session/Checkout) — current
+            state, not a "today total" that only grows — so labelled "Live now"
+            rather than a period, matching what the numbers actually represent. */}
         <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Patient Live Flow</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Patient Live Flow <span className="font-normal normal-case text-gray-400 dark:text-white/30">· Live now</span></p>
             <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300"><UserCheck size={13} /></span>
           </div>
           <div className="mt-2 flex items-center gap-3">
@@ -432,7 +464,7 @@ export default function DashboardPage() {
               <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700 dark:bg-amber-400/15 dark:text-amber-400">Demo Data</span>
               <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400"><TrendingUp size={9} />{demoGrowthPct}% (demo)</span>
             </div>
-            <span className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 dark:border-white/10 dark:text-slate-300">Jan – Jun</span>
+            <span className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 dark:border-white/10 dark:text-slate-300">{financeMonthLabels[0]} – {financeMonthLabels[5]}</span>
           </div>
           <div className="flex gap-4">
             <div className="flex w-[28%] flex-shrink-0 flex-col justify-between">
@@ -494,12 +526,20 @@ export default function DashboardPage() {
               <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Users size={12} /> New Leads (7d)</span>
               <span className="text-sm font-bold text-white">{newLeads ?? '—'}</span>
             </div>
+            {/* Converted = every lead ever marked CONVERTED (leads.filter,
+                full array) — genuinely all-time, unlike its "New Leads (7d)"
+                sibling above, so labelled separately rather than left to look
+                like it shares that 7-day window. */}
             <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><UserCheck size={12} /> Converted</span>
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><UserCheck size={12} /> Converted <span className="text-blue-200/60">(all time)</span></span>
               <span className="text-sm font-bold text-white">{convertedLeads ?? '—'}</span>
             </div>
+            {/* referral-stats' `.count` (used here) is the all-time patient
+                count per source — the endpoint also returns a `.thisMonth`
+                field that this card deliberately does NOT use, so the label
+                must say which one this is. */}
             <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Share2 size={12} /> Referral Patients</span>
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Share2 size={12} /> Referral Patients <span className="text-blue-200/60">(all time)</span></span>
               <span className="text-sm font-bold text-white">{referralPatients ?? '—'}</span>
             </div>
             {/* GET /campaigns has no complete/aggregate source (confirmed: no
@@ -513,7 +553,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center justify-between border-t border-white/15 pt-2">
-            <span className="text-[10px] font-medium text-blue-100">{conversionRate !== null ? `${conversionRate}% lead conversion` : 'Conversion — unavailable'}</span>
+            <span className="text-[10px] font-medium text-blue-100">{conversionRate !== null ? `${conversionRate}% lead conversion (all time)` : 'Conversion — unavailable'}</span>
             <span className="flex items-center gap-1 text-[11px] font-bold text-white/90">Open CRM <ArrowUpRight size={12} /></span>
           </div>
           {activeCampaigns !== null && <p className="mt-1 text-center text-[8px] text-blue-200/60">*last 100 campaigns</p>}
@@ -667,7 +707,13 @@ export default function DashboardPage() {
             AI-vs-human handling is the separate `agentEnabled` signal the
             inbox's "🤖 AI handling / 👤 Human handling" pill already reads —
             it describes who currently OWNS the conversation, not who sent
-            the last message, so the two are deliberately not conflated. */}
+            the last message, so the two are deliberately not conflated.
+            Channel breakdown uses the same icons/labels/colors as the real
+            Conversations workspace's own channel list (see CHANNEL_CONFIG
+            above), including keeping FB/IG comment threads as their own
+            distinct rows rather than folding them into Facebook/Instagram —
+            this card is meant to genuinely match what /ai-suite shows, not
+            a simplified re-interpretation of it. */}
         <CompactCard title="Today's AI Activity" action={<Link href="/ai-suite" className="flex items-center gap-0.5 text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View AI Suite <ArrowUpRight size={11} /></Link>}>
           {!aiSnapshot ? (
             <div className="h-32 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
@@ -697,11 +743,13 @@ export default function DashboardPage() {
                 <span>🙋 {aiSnapshot.humanHandling} Human handling</span>
               </div>
 
-              {CHANNEL_ROWS.some(c => aiSnapshot.channels[c.key] > 0) && (
+              {CHANNEL_CONFIG.some(c => aiSnapshot.channels[c.key] > 0) && (
                 <div className="mt-2.5 space-y-1 border-t border-gray-100 dark:border-white/10 pt-2">
-                  {CHANNEL_ROWS.filter(c => aiSnapshot.channels[c.key] > 0).map(c => (
+                  {CHANNEL_CONFIG.filter(c => aiSnapshot.channels[c.key] > 0).map(c => (
                     <div key={c.key} className="flex items-center justify-between text-[10px]">
-                      <span className="flex items-center gap-1.5 text-gray-500 dark:text-slate-400">{c.emoji} {c.label}</span>
+                      <span className="flex items-center gap-1.5 text-gray-500 dark:text-slate-400">
+                        <ChannelIconView icon={c.icon} label={c.label} /> {c.label}
+                      </span>
                       <span className="font-bold text-gray-700 dark:text-slate-200">{aiSnapshot.channels[c.key]}</span>
                     </div>
                   ))}
