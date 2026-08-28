@@ -104,6 +104,10 @@ export default function ProfilePage() {
         const updated = { ...user, firstName, lastName, email }
         setUser(updated)
         localStorage.setItem('cc_user', JSON.stringify(updated))
+        // Header lives in the parent (admin) layout, which only reads
+        // localStorage once on mount — this pushes the new name to it
+        // immediately instead of waiting for a full page reload.
+        window.dispatchEvent(new CustomEvent('cc-profile-updated', { detail: { firstName, lastName } }))
         showToast('Profile updated successfully!', 'success')
       } else {
         const d = await res.json()

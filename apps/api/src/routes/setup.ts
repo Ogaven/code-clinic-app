@@ -12,6 +12,24 @@ import { prisma } from '../lib/prisma'
 
 const router = Router()
 
+// Setup routes are destructive/administrative and gated by SEED_SECRET alone
+// (no user auth). There is no safe default — if the env var isn't set, every
+// route below refuses to run rather than falling back to a value that lives
+// in source (and in this file's own comments).
+function checkSeedSecret(req: any, res: any): boolean {
+  const expected = process.env.SEED_SECRET
+  if (!expected) {
+    res.status(503).json({ error: 'Setup routes are disabled' })
+    return false
+  }
+  const provided = req.headers['x-seed-secret'] || req.body?.secret
+  if (provided !== expected) {
+    res.status(403).json({ error: 'Invalid seed secret' })
+    return false
+  }
+  return true
+}
+
 // Resolve monorepo root and schema path
 // __dirname in compiled output: <root>/apps/api/dist/routes
 const ROOT   = path.resolve(__dirname, '..', '..', '..', '..')
@@ -55,11 +73,9 @@ function runPrismaDbPush() {
 }
 
 // POST /setup/reseed-demo — force re-seed all demo data (patients, appts, charts, treatments)
-// Call this any time data disappears: curl -X POST https://api.../setup/reseed-demo -H "x-seed-secret: codeclinic-demo-2026"
+// Requires the SEED_SECRET env var to be set; call with header x-seed-secret: <value>
 router.post('/reseed-demo', async (req, res) => {
-  const secret   = req.headers['x-seed-secret'] || req.body?.secret
-  const expected = process.env.SEED_SECRET || 'codeclinic-demo-2026'
-  if (secret !== expected) return res.status(403).json({ error: 'Invalid seed secret' })
+  if (!checkSeedSecret(req, res)) return
   try {
     const { seedDemoData } = await import('../startup')
     await (seedDemoData as any)()
@@ -77,9 +93,7 @@ router.post('/reseed-demo', async (req, res) => {
 
 // POST /setup/migrate — sync schema without full seed
 router.post('/migrate', async (req, res) => {
-  const secret = req.headers['x-seed-secret'] || req.body?.secret
-  const expected = process.env.SEED_SECRET || 'codeclinic-demo-2026'
-  if (secret !== expected) return res.status(403).json({ error: 'Invalid seed secret' })
+  if (!checkSeedSecret(req, res)) return
   try {
     runPrismaDbPush()
     res.json({ success: true, message: 'Schema pushed to database', root: ROOT, schema: SCHEMA })
@@ -89,12 +103,7 @@ router.post('/migrate', async (req, res) => {
 })
 
 router.post('/seed-production', async (req, res) => {
-  // ── Auth: secret key check ──────────────────────────────────
-  const secret = req.headers['x-seed-secret'] || req.body?.secret
-  const expected = process.env.SEED_SECRET || 'codeclinic-demo-2026'
-  if (secret !== expected) {
-    return res.status(403).json({ error: 'Invalid seed secret' })
-  }
+  if (!checkSeedSecret(req, res)) return
 
   const results: string[] = []
   const log = (msg: string) => { console.log('[SEED]', msg); results.push(msg) }
@@ -112,9 +121,17 @@ router.post('/seed-production', async (req, res) => {
     const staffPw  = await bcrypt.hash('Staff@2024!', 12)
     const doctorPw = await bcrypt.hash('Doctor@2024!', 12)
 
+    // update: {} — an existing user's name/password/profile must never be
+    // overwritten by this route; defaults below apply only to a brand-new row.
+    // Checked *before* the upserts so the response can honestly report
+    // whether each account was actually just created with these defaults.
+    const adminExistedBefore       = !!(await prisma.user.findUnique({ where: { email: 'admin@codeclinic.ug' } }))
+    const receptionExistedBefore   = !!(await prisma.user.findUnique({ where: { email: 'reception@codeclinic.ug' } }))
+    const accountsExistedBefore    = !!(await prisma.user.findUnique({ where: { email: 'accounts@codeclinic.ug' } }))
+
     await prisma.user.upsert({
       where:  { email: 'admin@codeclinic.ug' },
-      update: { passwordHash: adminPw, firstName: 'Code Clinic', lastName: 'Admin' },
+      update: {},
       create: { email: 'admin@codeclinic.ug', passwordHash: adminPw, role: 'ADMIN', firstName: 'Code Clinic', lastName: 'Admin', phone: '+256700000001' },
     })
     await prisma.user.upsert({
@@ -848,14 +865,18 @@ router.post('/seed-production', async (req, res) => {
     }
     log(`${moreNoteCount} additional treatment notes seeded`)
 
+    // No passwords in the response: update: {} above means an existing
+    // account's real password was never touched, so echoing back the
+    // bootstrap defaults would be false whenever the account already
+    // existed. Report identity + whether each was actually just created.
     return res.json({
       success: true,
       message: 'Production database seeded successfully',
       details: results,
-      credentials: {
-        admin:       'admin@codeclinic.ug / CodeClinic2026!',
-        receptionist: 'reception@codeclinic.ug / Staff@2024!',
-        accounts:    'accounts@codeclinic.ug / Staff@2024!',
+      seededAccounts: {
+        admin:       { email: 'admin@codeclinic.ug',       created: !adminExistedBefore },
+        receptionist: { email: 'reception@codeclinic.ug',  created: !receptionExistedBefore },
+        accounts:    { email: 'accounts@codeclinic.ug',    created: !accountsExistedBefore },
       },
     })
   } catch (err: any) {

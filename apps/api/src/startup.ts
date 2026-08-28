@@ -39,13 +39,12 @@ export async function runStartup() {
       console.log(`[startup] Database healthy: ${userCount} users, ${patientCount} patients, ${apptCount} appts.`)
     }
 
-    // Always ensure admin credentials are current
-    const adminPw = await bcrypt.hash('CodeClinic2026!', 12)
-    await prisma.user.updateMany({
-      where: { email: 'admin@codeclinic.ug' },
-      data:  { passwordHash: adminPw, firstName: 'Code Clinic', lastName: 'Admin' },
-    })
-    console.log('[startup] Admin credentials updated.')
+    // NOTE: startup no longer force-resets any field (firstName, lastName,
+    // passwordHash, etc.) on an existing admin@codeclinic.ug row. It used to
+    // reset firstName/lastName to 'Code Clinic'/'Admin' and passwordHash to
+    // the default on every boot, silently undoing anything saved via My
+    // Profile. Default credentials belong only in the CREATE path of seed()
+    // below, for genuine first-install bootstrap.
   } catch (e: any) {
     console.error('[startup] Seed error:', e.message?.split('\n')[0])
   }
@@ -57,7 +56,7 @@ async function seed() {
   const doctorPw = await bcrypt.hash('Doctor@2024!', 12)
 
   // Staff users
-  await prisma.user.upsert({ where: { email: 'admin@codeclinic.ug' },     update: { passwordHash: adminPw, firstName: 'Code Clinic', lastName: 'Admin' }, create: { email: 'admin@codeclinic.ug',     passwordHash: adminPw,  role: 'ADMIN',        firstName: 'Code Clinic', lastName: 'Admin', phone: '+256700000001' } })
+  await prisma.user.upsert({ where: { email: 'admin@codeclinic.ug' },     update: {}, create: { email: 'admin@codeclinic.ug',     passwordHash: adminPw,  role: 'ADMIN',        firstName: 'Code Clinic', lastName: 'Admin', phone: '+256700000001' } })
   await prisma.user.upsert({ where: { email: 'reception@codeclinic.ug' }, update: {}, create: { email: 'reception@codeclinic.ug', passwordHash: staffPw,  role: 'RECEPTIONIST', firstName: 'Reception', lastName: 'Staff', phone: '+256700000002' } })
   await prisma.user.upsert({ where: { email: 'accounts@codeclinic.ug' },  update: {}, create: { email: 'accounts@codeclinic.ug',  passwordHash: staffPw,  role: 'ACCOUNTS',     firstName: 'Accounts',  lastName: 'Staff', phone: '+256700000003' } })
   console.log('[startup] Staff users created.')

@@ -20,6 +20,11 @@ const loginSchema = z.object({
   password: z.string().min(6),
 })
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(6),
+})
+
 const totpSchema = z.object({
   token: z.string().length(6),
 })
@@ -67,20 +72,43 @@ router.get('/needs-setup', async (_req, res) => {
   }
 })
 
-// POST /auth/setup — create admin account (upserts so always works)
-router.post('/setup', async (req, res) => {
+// POST /auth/setup — create the FIRST administrator, once, when the database
+// is genuinely empty. GET /auth/needs-setup is a UI hint only; this route
+// enforces first-install-only behavior itself, server-side, regardless of
+// what the caller believes or supplies (email/role are never trusted for
+// authorization). role is never taken from the request body.
+router.post('/setup', authLimiter, async (req, res) => {
   try {
     const { firstName, lastName, email, password } = req.body
     if (!firstName || !lastName || !email || !password || password.length < 6) {
       res.status(400).json({ error: 'All fields required. Password min 6 characters.' })
       return
     }
+
+    const existingUsers = await prisma.user.count()
+    if (existingUsers > 0) {
+      res.status(409).json({ error: 'Application setup has already been completed' })
+      return
+    }
+
     const hash = await bcrypt.hash(password, 12)
-    const user = await prisma.user.upsert({
-      where: { email },
-      update: { passwordHash: hash, firstName, lastName, role: 'ADMIN' },
-      create: { email, passwordHash: hash, role: 'ADMIN', firstName, lastName, phone: '+256700000000' },
-    })
+    let user
+    try {
+      user = await prisma.user.create({
+        data: { email, passwordHash: hash, role: 'ADMIN', firstName, lastName, phone: '+256700000000' },
+      })
+    } catch (createErr: any) {
+      // Unique-constraint (P2002) here means another request won the same
+      // race — narrow TOCTOU window between the count check above and this
+      // create; there is no serializable transaction/lock around it. Treat
+      // it the same as "setup already completed" rather than 500ing.
+      if (createErr?.code === 'P2002') {
+        res.status(409).json({ error: 'Application setup has already been completed' })
+        return
+      }
+      throw createErr
+    }
+
     const accessToken  = signAccess({ ...user, permissions: user.permissions ?? undefined })
     const refreshToken = signRefresh(user.id)
     setRefreshCookie(res, refreshToken)
@@ -329,6 +357,24 @@ router.patch('/me', requireAuth, async (req, res) => {
     res.json({ ...updated, avatarUrl, avatar: avatarUrl })
   } catch (e: any) {
     res.status(500).json({ error: 'Failed to update profile' })
+  }
+})
+
+// POST /auth/change-password — authenticated user changes their own password only
+router.post('/change-password', requireAuth, authLimiter, validate(changePasswordSchema), async (req, res) => {
+  const { currentPassword, newPassword } = req.body
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } })
+    if (!user || !user.passwordHash) { res.status(404).json({ error: 'User not found' }); return }
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash)
+    if (!valid) { res.status(401).json({ error: 'Current password is incorrect' }); return }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12)
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } })
+    res.json({ message: 'Password changed successfully' })
+  } catch (e: any) {
+    res.status(500).json({ error: 'Failed to change password' })
   }
 })
 

@@ -56,11 +56,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     const onAvatar = (event: Event) => setUser((previous: any) => previous ? { ...previous, avatarUrl: (event as CustomEvent).detail } : previous)
+    // My Profile writes the new name straight to localStorage on save, but this
+    // layout only reads localStorage once on mount — without this listener the
+    // header keeps showing the old name until a full page reload remounts the
+    // layout. Mirrors the existing cc-avatar-updated pattern above.
+    const onProfile = (event: Event) => setUser((previous: any) => previous ? { ...previous, ...(event as CustomEvent).detail } : previous)
     const onTheme = (event: Event) => { const next = (event as CustomEvent).detail as AppTheme; setTheme(next); setDark(applyTheme(next)) }
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     const onSystem = () => { if (readTheme() === 'system') setDark(applyTheme('system')) }
-    window.addEventListener('cc-avatar-updated', onAvatar); window.addEventListener('cc-theme', onTheme); media.addEventListener('change', onSystem)
-    return () => { window.removeEventListener('cc-avatar-updated', onAvatar); window.removeEventListener('cc-theme', onTheme); media.removeEventListener('change', onSystem) }
+    window.addEventListener('cc-avatar-updated', onAvatar); window.addEventListener('cc-profile-updated', onProfile); window.addEventListener('cc-theme', onTheme); media.addEventListener('change', onSystem)
+    return () => { window.removeEventListener('cc-avatar-updated', onAvatar); window.removeEventListener('cc-profile-updated', onProfile); window.removeEventListener('cc-theme', onTheme); media.removeEventListener('change', onSystem) }
   }, [])
 
   const title = pageTitles[pathname] || (pathname.startsWith('/patients/') ? 'Patient Profile' : null)
