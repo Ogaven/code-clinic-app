@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   Plus, Calendar, Download, Users, TrendingUp, TrendingDown, ArrowUpRight,
-  UserCheck, Megaphone, Share2, Bot, Bell, Repeat,
+  UserCheck, Megaphone, Share2,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList,
@@ -34,7 +34,14 @@ interface Appt {
   doctor: { user: { firstName: string; lastName: string } }
   service: { name: string; colour: string }
 }
-interface FollowupReport { messages: any[] }
+interface AiSnapshot {
+  totalConversations: number
+  customerLast:       number
+  clinicLast:         number
+  aiHandling:         number
+  humanHandling:      number
+  channels:           Record<string, number>
+}
 interface MiniPatient { id: string; firstName: string; lastName: string; avatarUrl?: string | null }
 interface Lead { id: string; status: string; createdAt: string }
 interface Campaign { id: string; status: string; sentCount: number }
@@ -139,37 +146,18 @@ function SatisfactionGauge({ pct, ratingLabel }: { pct: number | null; ratingLab
   )
 }
 
-// Utilization indicator — deliberately NOT a percentage-of-unknown-target
-// ring (none of AI Bookings/Follow-ups/Reminders has a real denominator).
-// A full-strength ring is just a themed circular frame around the real
-// count; a muted grey ring + "—" is the honest unavailable state.
-function UtilRing({ icon, value, label, color, size = 82, previewNote }: { icon: React.ReactNode; value: number | string | null; label: string; color: string; size?: number; previewNote?: string }) {
-  const has = value !== null
-  const r = (size - 10) / 2
-  return (
-    <div className="flex flex-col items-center gap-1.5" title={!has ? previewNote : undefined}>
-      <div className="relative grid place-items-center" style={{ width: size, height: size }}>
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="absolute inset-0">
-          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-gray-100 dark:text-white/10" />
-          {has ? (
-            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" />
-          ) : (
-            // Dashed, muted ring = "preview" texture — deliberately distinct
-            // from the solid ring above so it can never be mistaken for a
-            // real value. No percentage/count is implied by its length.
-            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#CBD5E1" strokeWidth="6" strokeLinecap="round" strokeDasharray="5 5" opacity={0.6} />
-          )}
-        </svg>
-        <span className={cn('text-base font-extrabold leading-none', has ? 'text-clinic-navy dark:text-white' : 'text-gray-300 dark:text-white/25')}>{has ? value : '—'}</span>
-        {/* Icon badge overlaps the ring's top-left corner (matching the
-            reference), with a border matching the card surface so it reads
-            as a distinct badge rather than clipping into the ring. */}
-        <span className="absolute -left-1 -top-1 grid h-6 w-6 place-items-center rounded-full border-2 border-white text-white shadow-sm dark:border-[#0f1b3d]" style={{ background: has ? color : '#9CA3AF' }}>{icon}</span>
-      </div>
-      <p className="text-[10px] font-semibold text-gray-600 dark:text-slate-300">{label}</p>
-    </div>
-  )
-}
+// Real channels only — AiConversation.channel values (packages/database/prisma/
+// schema.prisma), comment-thread variants folded into their parent platform
+// server-side (see GET /ai-suite/snapshot). Filtered to whichever actually
+// have activity today, never a fixed list padded with zeros.
+const CHANNEL_ROWS: { key: string; label: string; emoji: string }[] = [
+  { key: 'WHATSAPP',  label: 'WhatsApp',  emoji: '📲' },
+  { key: 'INSTAGRAM', label: 'Instagram', emoji: '📸' },
+  { key: 'FACEBOOK',  label: 'Facebook',  emoji: '📘' },
+  { key: 'WEBSITE',   label: 'Website',   emoji: '🌐' },
+  { key: 'SMS',       label: 'SMS',       emoji: '💬' },
+  { key: 'VOICE',     label: 'Voice',     emoji: '📞' },
+]
 
 // Themed Recharts tooltip content — rendered as real DOM (not inline SVG
 // paint), so it can use the app's existing .dark ancestor-class mechanism
@@ -207,7 +195,7 @@ export default function DashboardPage() {
   const [weekAppts, setWeekAppts] = useState<Appt[] | null>(null)
   const [todayAppts, setTodayAppts] = useState<Appt[] | null>(null)
   const [upcoming, setUpcoming] = useState<Appt[] | null>(null)
-  const [followups, setFollowups] = useState<FollowupReport | null>(null)
+  const [aiSnapshot, setAiSnapshot] = useState<AiSnapshot | null>(null)
   const [totalPatients, setTotalPatients] = useState<number | null>(null)
   const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
   const [leads, setLeads] = useState<Lead[] | null>(null)
@@ -253,8 +241,8 @@ export default function DashboardPage() {
         if (Array.isArray(d)) { setTodayAppts(d); setUpcoming(d) }
       }).catch(() => {})
 
-    fetch('/api-proxy/ai-suite/followup-report', { headers: auth })
-      .then(r => r.ok ? r.json() : null).then(d => { if (d) setFollowups(d) }).catch(() => {})
+    fetch('/api-proxy/ai-suite/snapshot', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d) setAiSnapshot(d) }).catch(() => {})
 
     fetch('/api-proxy/patients?limit=1', { headers: auth })
       .then(r => r.ok ? r.json() : null).then(d => { if (d && typeof d.total === 'number') setTotalPatients(d.total) }).catch(() => {})
@@ -312,17 +300,6 @@ export default function DashboardPage() {
     .filter(a => new Date(a.startAt).getTime() >= Date.now() && a.status !== 'CANCELLED')
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
     .slice(0, 8)
-
-  // Today-scoped follow-ups, derived client-side from the existing 30-day/
-  // 200-row /ai-suite/followup-report response (ordered most-recent-first,
-  // so today's messages — always far fewer than 200 for one clinic — are
-  // never at risk of being cut off by that cap). scheduledFor reflects when
-  // a `sent: true` message was scheduled to go out, the closest real signal
-  // to "sent today" available without a backend change.
-  const todayKey = new Date().toDateString()
-  const followupsToday = followups
-    ? followups.messages.filter((msg: any) => msg.scheduledFor && new Date(msg.scheduledFor).toDateString() === todayKey).length
-    : null
 
   const newLeads = leads ? leads.filter(l => Date.now() - new Date(l.createdAt).getTime() < 7 * 86400000).length : null
   const convertedLeads = leads ? leads.filter(l => l.status === 'CONVERTED').length : null
@@ -673,30 +650,65 @@ export default function DashboardPage() {
           )}
         </CompactCard>
 
-        {/* Today's AI Utilization.
-            AI Bookings: the only existing source (GET /clinical/analytics/dashboard,
-            charts.aiPerformance.appointmentsBooked) is scoped to the current
-            calendar month (agentLog.count with createdAt >= startOfMonth) and
-            takes no date query params — it cannot honestly represent "today"
-            without a backend change, so it shows the unavailable state rather
-            than a mislabeled monthly figure. Required backend change (not
-            made here): let GET /clinical/analytics/dashboard accept a date
-            range (or add a lightweight `GET /clinical/analytics/ai-today`)
-            and scope the agentLog.count query to that range instead of
-            startOfMonth.
-            Follow-ups: genuinely today, computed client-side above from the
-            existing followup-report response.
-            Reminders: no read endpoint exists anywhere in this codebase.
-            None of the three have a real capacity/target denominator, so the
-            rings are themed circular frames around the real count, never a
-            manufactured percentage. */}
-        <CompactCard title="Today's AI Utilization">
-          <div className="grid grid-cols-3 gap-2">
-            <UtilRing icon={<Bot size={12} />} value={null} label="AI Bookings" color="#1A237E" previewNote="Preview — scoping this to today needs a backend addition, not implemented yet" />
-            <UtilRing icon={<Repeat size={12} />} value={followupsToday} label="Follow-ups" color="#10B981" />
-            <UtilRing icon={<Bell size={12} />} value={null} label="Reminders" color="#D1D5DB" previewNote="Preview — no backend source for reminders exists yet" />
-          </div>
-          <p className="mt-3 text-center text-[9px] leading-relaxed text-gray-400 dark:text-white/25">AI Bookings needs a backend change to scope to today · Reminders has no backend source yet</p>
+        {/* Today's AI Activity — replaces the old "Today's AI Utilization"
+            ring card (AI Bookings/Reminders were permanently unavailable —
+            "AI Bookings" had no today-scoped backend source and "Reminders"
+            had no read endpoint at all, so two of three rings were always
+            empty dashes). This reuses GET /ai-suite/snapshot (see
+            takeover.routes.ts), a small read-only aggregate over today's
+            AiConversation/AiMessage activity — real counts only, no invented
+            "AI performance %" and no gauge for gauge's sake.
+            Customer/Clinic-replied-last uses the same message-direction
+            semantics already established in the inbox (lastMessage.role),
+            but only over USER/AGENT messages — SYSTEM audit notices (staff
+            takeover/handback, internal alert flags) are excluded server-side
+            so a conversation is never counted as "clinic replied" just
+            because its latest row wasn't a customer message.
+            AI-vs-human handling is the separate `agentEnabled` signal the
+            inbox's "🤖 AI handling / 👤 Human handling" pill already reads —
+            it describes who currently OWNS the conversation, not who sent
+            the last message, so the two are deliberately not conflated. */}
+        <CompactCard title="Today's AI Activity" action={<Link href="/ai-suite" className="flex items-center gap-0.5 text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View AI Suite <ArrowUpRight size={11} /></Link>}>
+          {!aiSnapshot ? (
+            <div className="h-32 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
+          ) : (
+            <>
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl leading-none">💬</span>
+                <div>
+                  <p className="text-2xl font-extrabold leading-none text-clinic-navy dark:text-white">{aiSnapshot.totalConversations}</p>
+                  <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Conversations Today</p>
+                </div>
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+                <div className="rounded-xl bg-red-50 dark:bg-red-400/10 px-2.5 py-1.5">
+                  <p className="text-base font-extrabold leading-none text-red-600 dark:text-red-400">{aiSnapshot.customerLast}</p>
+                  <p className="mt-1 text-[9px] font-semibold leading-tight text-red-500/80 dark:text-red-300/70">Customer replied last</p>
+                </div>
+                <div className="rounded-xl bg-blue-50 dark:bg-blue-400/10 px-2.5 py-1.5">
+                  <p className="text-base font-extrabold leading-none text-blue-600 dark:text-blue-400">{aiSnapshot.clinicLast}</p>
+                  <p className="mt-1 text-[9px] font-semibold leading-tight text-blue-500/80 dark:text-blue-300/70">Clinic replied last</p>
+                </div>
+              </div>
+
+              <div className="mt-2.5 flex items-center justify-between text-[10px] font-semibold text-gray-500 dark:text-slate-400">
+                <span>🤖 {aiSnapshot.aiHandling} AI handling</span>
+                <span>🙋 {aiSnapshot.humanHandling} Human handling</span>
+              </div>
+
+              {CHANNEL_ROWS.some(c => aiSnapshot.channels[c.key] > 0) && (
+                <div className="mt-2.5 space-y-1 border-t border-gray-100 dark:border-white/10 pt-2">
+                  {CHANNEL_ROWS.filter(c => aiSnapshot.channels[c.key] > 0).map(c => (
+                    <div key={c.key} className="flex items-center justify-between text-[10px]">
+                      <span className="flex items-center gap-1.5 text-gray-500 dark:text-slate-400">{c.emoji} {c.label}</span>
+                      <span className="font-bold text-gray-700 dark:text-slate-200">{aiSnapshot.channels[c.key]}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </CompactCard>
       </div>
     </div>

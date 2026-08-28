@@ -3,6 +3,7 @@ import { takeoverConversation, handbackConversation } from './takeover.service'
 import { prisma } from '../../lib/prisma'
 import { fetchPostThumbnail } from '../facebook/facebook.routes'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
+import { requireAuth } from '../../middleware/auth'
 
 const router = Router()
 
@@ -406,6 +407,100 @@ router.post('/conversations/:conversationId/send', async (req, res) => {
   } catch (err: any) {
     console.error('[Takeover] send error:', err.message)
     res.status(500).json({ error: 'Failed to send message' })
+  }
+})
+
+// GET /ai-suite/snapshot — small, read-only aggregate for the Admin dashboard's
+// "Today's AI Activity" card. Deliberately NOT built on GET /conversations
+// above: that endpoint returns every non-archived conversation ever (plus
+// per-row patient-name enrichment), which is the wrong shape and far too much
+// payload for a dashboard sneak-peek. This scans only today's AiMessage rows
+// to find which conversations were active today, then reads just the fields
+// the card needs for those conversations. Read-only — no writes, no Prisma
+// schema changes, no message sends.
+router.get('/snapshot', requireAuth, async (_req, res) => {
+  try {
+    // Africa/Kampala "today" — fixed UTC+3, no DST, computed explicitly
+    // rather than relying on the API process's TZ env var.
+    const KAMPALA_OFFSET_MS = 3 * 60 * 60 * 1000
+    const shifted = new Date(Date.now() + KAMPALA_OFFSET_MS)
+    const y = shifted.getUTCFullYear(), m = shifted.getUTCMonth(), day = shifted.getUTCDate()
+    const start = new Date(Date.UTC(y, m, day, 0, 0, 0, 0) - KAMPALA_OFFSET_MS)
+    const end   = new Date(Date.UTC(y, m, day + 1, 0, 0, 0, 0) - KAMPALA_OFFSET_MS)
+
+    // Distinct conversations that had at least one message today.
+    const activeToday = await prisma.aiMessage.findMany({
+      where:    { createdAt: { gte: start, lt: end } },
+      select:   { conversationId: true },
+      distinct: ['conversationId'],
+    })
+    const convIds = activeToday.map(a => a.conversationId)
+
+    if (convIds.length === 0) {
+      res.json({
+        period: { key: 'today', start: start.toISOString(), end: end.toISOString() },
+        totalConversations: 0, customerLast: 0, clinicLast: 0, aiHandling: 0, humanHandling: 0, channels: {},
+      })
+      return
+    }
+
+    const conversations = await prisma.aiConversation.findMany({
+      where:  { id: { in: convIds } },
+      select: {
+        channel:      true,
+        agentEnabled: true,
+        // Most recent CONVERSATIONAL message only (USER or AGENT) — SYSTEM
+        // rows (e.g. takeover.service.ts's "Conversation taken over by staff
+        // member…"/"Agent resumed by staff." audit notices, or agent.service.ts's
+        // internal STAFF_ALERTED flags) are never shown to the customer and
+        // are not a reply from anyone, so they must never count as "clinic
+        // replied last" just for not being USER. Filtering role in the nested
+        // relation query itself (not in JS) keeps this a single query, no N+1.
+        messages: { where: { role: { in: ['USER', 'AGENT'] } }, orderBy: { createdAt: 'desc' }, take: 1, select: { role: true } },
+      },
+    })
+
+    let customerLast = 0, clinicLast = 0, aiHandling = 0, humanHandling = 0
+    const channels: Record<string, number> = {}
+    for (const c of conversations) {
+      // Same semantics already established in the inbox (see
+      // apps/web/app/(receptionist)/receptionist/ai-suite/inbox/page.tsx):
+      // USER last = customer is currently last in the thread; AGENT last =
+      // clinic/agent replied last — AGENT covers both Sarah and a human on
+      // takeover, since AiMessage.role never distinguishes them, so this
+      // never claims Sarah specifically replied. A conversation whose only
+      // message(s) today were SYSTEM notices (e.g. a takeover with no new
+      // USER/AGENT message yet) has no real last-reply direction to report,
+      // so it is deliberately left out of both buckets rather than guessed.
+      const lastRole = c.messages[0]?.role
+      if (lastRole === 'USER') customerLast++
+      else if (lastRole === 'AGENT') clinicLast++
+
+      // AI-vs-human handling is a SEPARATE signal from message direction —
+      // agentEnabled describes who currently OWNS the conversation right now,
+      // not who sent the last message or how many messages either side sent.
+      // Same authoritative field the inbox's "🤖 AI handling / 👤 Human
+      // handling" pill already reads.
+      if (c.agentEnabled) aiHandling++
+      else humanHandling++
+
+      // Comment-thread channels folded into their parent platform — still
+      // real Facebook/Instagram traffic, just via comments instead of DM.
+      const group = c.channel === 'FACEBOOK_COMMENT' ? 'FACEBOOK'
+                  : c.channel === 'INSTAGRAM_COMMENT' ? 'INSTAGRAM'
+                  : c.channel
+      channels[group] = (channels[group] ?? 0) + 1
+    }
+
+    res.json({
+      period: { key: 'today', start: start.toISOString(), end: end.toISOString() },
+      totalConversations: conversations.length,
+      customerLast, clinicLast, aiHandling, humanHandling,
+      channels,
+    })
+  } catch (e: any) {
+    console.error('[AI Snapshot] error:', e.message)
+    res.status(500).json({ error: 'Failed to fetch AI snapshot' })
   }
 })
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { cn } from '@/lib/utils'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,12 +28,21 @@ interface Plan {
 }
 
 interface Metrics {
-  totalPresentedMonth: number
-  totalAccepted:       number
-  conversionRate:      number
-  moneyAtRisk:         number
-  avgDaysToSchedule:   number
+  presentedValue:    number
+  acceptedValue:     number
+  conversionRate:    number
+  moneyAtRisk:       number
+  avgDaysToSchedule: number
 }
+
+interface PeriodInfo {
+  key:   string
+  start: string | null
+  end:   string | null
+  label: string
+}
+
+type PeriodKey = 'today' | 'week' | 'month' | 'all'
 
 interface ReviewPlan {
   id:            string
@@ -106,6 +116,8 @@ export default function TreatmentPipelinePage() {
 
   const [plans,          setPlans]          = useState<Plan[]>([])
   const [metrics,        setMetrics]        = useState<Metrics | null>(null)
+  const [period,         setPeriod]         = useState<PeriodInfo | null>(null)
+  const [periodKey,      setPeriodKey]      = useState<PeriodKey>('month')
   const [loading,        setLoading]        = useState(true)
   const [dragId,         setDragId]         = useState<string | null>(null)
   const [dropOver,       setDropOver]       = useState<string | null>(null)
@@ -132,17 +144,19 @@ export default function TreatmentPipelinePage() {
     setLoading(true)
     try {
       const [r, rr] = await Promise.all([
-        fetch(`${API}/pipeline/treatment`,   { headers: authH as any }),
+        fetch(`${API}/pipeline/treatment?period=${periodKey}`, { headers: authH as any }),
         fetch(`${API}/pipeline/needs-review`, { headers: authH as any }),
       ])
       const d  = await r.json()
       const dr = await rr.json()
       setPlans(Array.isArray(d.plans) ? d.plans : [])
       setMetrics(d.metrics ?? null)
+      setPeriod(d.period ?? null)
       if (!dr.error) setNeedsReview(dr)
     } catch { /* silent */ }
     setLoading(false)
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodKey])
 
   useEffect(() => { load() }, [load])
 
@@ -306,45 +320,62 @@ export default function TreatmentPipelinePage() {
   return (
     <div className="flex flex-col h-full gap-5">
 
-      {/* ── Metrics strip ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-shrink-0">
-        <MetricCard
-          label="Presented This Month"
-          value={metrics ? fmtUGX(metrics.totalPresentedMonth) : '—'}
-          sub="Total treatment value presented"
-          icon={<TrendingUp size={18} />}
-          color="#1A237E"
-          loading={loading}
-          dark={dark}
-        />
-        <MetricCard
-          label="Accepted Value"
-          value={metrics ? fmtUGX(metrics.totalAccepted) : '—'}
-          sub={metrics ? `${metrics.conversionRate}% conversion rate` : 'of presented value'}
-          icon={<CheckCircle2 size={18} />}
-          color="#065F46"
-          loading={loading}
-          dark={dark}
-        />
-        <MetricCard
-          label="Money at Risk"
-          value={metrics ? fmtUGX(metrics.moneyAtRisk) : '—'}
-          sub="Accepted but not yet scheduled"
-          icon={<AlertTriangle size={18} />}
-          color="#92400E"
-          loading={loading}
-          highlight={!!metrics && metrics.moneyAtRisk > 0}
-          dark={dark}
-        />
-        <MetricCard
-          label="Avg Days to Schedule"
-          value={metrics ? `${metrics.avgDaysToSchedule}d` : '—'}
-          sub="From presentation to scheduling"
-          icon={<Clock size={18} />}
-          color="#5B21B6"
-          loading={loading}
-          dark={dark}
-        />
+      {/* ── Period selector + KPI cards ───────────────────────────────── */}
+      <div className="flex flex-col gap-2 flex-shrink-0">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h1 className="text-sm font-bold text-gray-500 dark:text-white/50">
+            Treatment Pipeline <span className="font-normal text-gray-400 dark:text-white/30">· {period?.label ?? 'This Month'}</span>
+          </h1>
+          <div className="flex items-center gap-1 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 p-1">
+            {(['today', 'week', 'month', 'all'] as PeriodKey[]).map(p => (
+              <button key={p} onClick={() => setPeriodKey(p)}
+                className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors',
+                  periodKey === p ? 'bg-clinic-navy text-white dark:bg-cyan-600' : 'text-gray-500 dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10')}>
+                {p === 'today' ? 'Today' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'All time'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <MetricCard
+            label="Presented"
+            value={metrics ? fmtUGX(metrics.presentedValue) : '—'}
+            sub={period?.label ?? 'This Month'}
+            icon={<TrendingUp size={14} />}
+            color="#1A237E"
+            loading={loading}
+            dark={dark}
+          />
+          <MetricCard
+            label="Accepted"
+            value={metrics ? fmtUGX(metrics.acceptedValue) : '—'}
+            sub={metrics ? `${metrics.conversionRate}% conversion` : '—'}
+            icon={<CheckCircle2 size={14} />}
+            color="#065F46"
+            loading={loading}
+            dark={dark}
+          />
+          <MetricCard
+            label="Money at Risk"
+            value={metrics ? fmtUGX(metrics.moneyAtRisk) : '—'}
+            sub="All time · unscheduled"
+            icon={<AlertTriangle size={14} />}
+            color="#92400E"
+            loading={loading}
+            highlight={!!metrics && metrics.moneyAtRisk > 0}
+            dark={dark}
+          />
+          <MetricCard
+            label="Avg Days to Schedule"
+            value={metrics ? `${metrics.avgDaysToSchedule}d` : '—'}
+            sub="All time"
+            icon={<Clock size={14} />}
+            color="#5B21B6"
+            loading={loading}
+            dark={dark}
+          />
+        </div>
       </div>
 
       {/* ── Filters ────────────────────────────────────────────────────── */}
@@ -427,6 +458,15 @@ export default function TreatmentPipelinePage() {
       )}
 
       {/* ── Kanban board ──────────────────────────────────────────────── */}
+      {/* Deliberately NOT period-filtered — an accepted-but-unscheduled plan
+          presented last quarter is still real, active work today, and the
+          period selector above only exists to scope the KPI cards. Labelled
+          so nobody mistakes this for "This Month's plans". */}
+      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-white/30 -mb-1">
+        {periodKey === 'all'
+          ? 'Active treatment pipeline · all records'
+          : `Active treatment pipeline · all records, not limited to ${period?.label.toLowerCase() ?? 'the selected period'}`}
+      </p>
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-white/40 gap-2">
           <RefreshCw size={18} className="animate-spin" />
@@ -864,22 +904,22 @@ function MetricCard({
 }) {
   return (
     <div
-      className="bg-white dark:bg-white/5 rounded-2xl p-4 border transition-all duration-150"
+      className="bg-white dark:bg-white/5 rounded-xl p-2.5 border transition-all duration-150 min-w-0"
       style={{
         borderColor: highlight ? '#FCA5A5' : dark ? 'rgba(255,255,255,0.1)' : '#F3F4F6',
         boxShadow:   highlight ? '0 0 0 2px #FCA5A5' : dark ? 'none' : '0 1px 3px rgba(0,0,0,0.05)',
       }}
     >
-      <div className="flex items-start justify-between mb-2">
-        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 dark:text-white/40">{label}</p>
-        <span style={{ color: dark ? '#fff' : color }}>{icon}</span>
+      <div className="flex items-center justify-between gap-1 mb-1">
+        <p className="text-[9px] font-black uppercase tracking-wider text-gray-400 dark:text-white/40 truncate">{label}</p>
+        <span className="flex-shrink-0" style={{ color: dark ? '#fff' : color }}>{icon}</span>
       </div>
       {loading ? (
-        <div className="h-7 w-24 bg-gray-100 dark:bg-white/10 rounded-lg animate-pulse" />
+        <div className="h-5 w-16 bg-gray-100 dark:bg-white/10 rounded-lg animate-pulse" />
       ) : (
-        <p className="text-xl font-black" style={{ color }}>{value}</p>
+        <p className="text-lg font-black leading-none truncate" style={{ color }}>{value}</p>
       )}
-      <p className="text-[11px] text-gray-400 dark:text-white/40 mt-1">{sub}</p>
+      <p className="text-[9px] text-gray-400 dark:text-white/40 mt-0.5 truncate">{sub}</p>
     </div>
   )
 }

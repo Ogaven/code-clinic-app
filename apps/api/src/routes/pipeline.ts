@@ -19,11 +19,63 @@ const VALID_STAGES = [
 // Kept in sync deliberately — this is the shared source of truth all three read.
 const VALID_STATUSES = ['Planned', 'In Progress', 'Completed', 'On Hold', 'Declined', 'Cancelled']
 
-// GET /pipeline/treatment
+// ── Africa/Kampala calendar boundaries ──────────────────────────────────────
+// Kampala is a fixed UTC+3 offset with no DST, so "local midnight" for any
+// Y-M-D is always exactly 3 hours behind that same Y-M-D at UTC midnight.
+// Computed explicitly here rather than relying on the API process's TZ env
+// var (main.ts sets it, but a KPI boundary shouldn't silently depend on that).
+const KAMPALA_OFFSET_MS = 3 * 60 * 60 * 1000
+
+function kampalaYMD(d: Date = new Date()): { y: number; m: number; day: number } {
+  const shifted = new Date(d.getTime() + KAMPALA_OFFSET_MS)
+  return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth(), day: shifted.getUTCDate() }
+}
+function kampalaMidnightUTC(y: number, m: number, day: number): Date {
+  return new Date(Date.UTC(y, m, day, 0, 0, 0, 0) - KAMPALA_OFFSET_MS)
+}
+
+type PeriodKey = 'today' | 'week' | 'month' | 'all' | 'custom'
+
+// Resolves a period key into a half-open [start, end) UTC instant range
+// (end === null means "all time", i.e. no upper or lower bound at all).
+function resolvePeriod(key: string, customStart?: string, customEnd?: string): { start: Date | null; end: Date | null; label: string } {
+  const { y, m, day } = kampalaYMD()
+
+  if (key === 'today') {
+    return { start: kampalaMidnightUTC(y, m, day), end: kampalaMidnightUTC(y, m, day + 1), label: 'Today' }
+  }
+  if (key === 'week') {
+    // Monday-Sunday, same convention as AdminAppointmentsList.tsx / dashboard.
+    const dow = new Date(Date.UTC(y, m, day)).getUTCDay() // 0=Sun..6=Sat
+    const monday = day - (dow === 0 ? 6 : dow - 1)
+    return { start: kampalaMidnightUTC(y, m, monday), end: kampalaMidnightUTC(y, m, monday + 7), label: 'This Week' }
+  }
+  if (key === 'month') {
+    return { start: kampalaMidnightUTC(y, m, 1), end: kampalaMidnightUTC(y, m + 1, 1), label: 'This Month' }
+  }
+  if (key === 'custom' && customStart && customEnd) {
+    const [sy, sm, sd] = customStart.split('-').map(Number)
+    const [ey, em, ed] = customEnd.split('-').map(Number)
+    return { start: kampalaMidnightUTC(sy, sm - 1, sd), end: kampalaMidnightUTC(ey, em - 1, ed + 1), label: `${customStart} to ${customEnd}` }
+  }
+  return { start: null, end: null, label: 'All Time' }
+}
+
+// GET /pipeline/treatment?period=today|week|month|all|custom&start=YYYY-MM-DD&end=YYYY-MM-DD
 // Returns all treatment plans enriched with service name, doctor name, computed value,
 // days since creation, plus aggregate metrics for the dashboard strip.
+//
+// `plans` is always the FULL, unfiltered active pipeline regardless of `period`
+// — the board must never hide a real in-flight treatment plan just because it
+// was presented outside the selected reporting window. Only the KPI metrics
+// below are period-scoped, and only where that's a truthful thing to scope:
+// see the comment above `moneyAtRisk` for the two metrics that deliberately
+// stay all-time.
 router.get('/treatment', requireAuth, async (req, res) => {
   try {
+    const periodKey = ((req.query.period as string) || 'month') as PeriodKey
+    const { start: periodStart, end: periodEnd, label: periodLabel } =
+      resolvePeriod(periodKey, req.query.start as string | undefined, req.query.end as string | undefined)
     const plans = await prisma.treatmentPlan.findMany({
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, patientNumber: true } },
@@ -66,8 +118,7 @@ router.get('/treatment', requireAuth, async (req, res) => {
       })
     }
 
-    const now          = new Date()
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const now = new Date()
 
     const enriched = plans.map(p => {
       const value     = Number(p.costPerUnit) * p.quantity - Number(p.discount)
@@ -87,21 +138,39 @@ router.get('/treatment', requireAuth, async (req, res) => {
     })
 
     // ── Metrics ──────────────────────────────────────────────────────────────
-    const thisMonth      = enriched.filter(p => new Date(p.createdAt) >= startOfMonth)
-    const totalPresentedMonth = thisMonth.reduce((s, p) => s + p.value, 0)
+    // Period-scoped cohort: plans PRESENTED (createdAt) within the selected
+    // window. `periodStart === null` means "all time" — every plan qualifies.
+    const inPeriod = periodStart
+      ? enriched.filter(p => {
+          const t = new Date(p.createdAt).getTime()
+          return t >= periodStart.getTime() && t < periodEnd!.getTime()
+        })
+      : enriched
+
+    const presentedValue = inPeriod.reduce((s, p) => s + p.value, 0)
 
     const acceptedStages = ['Accepted & Scheduled', 'Accepted & Unscheduled', 'Completed']
-    const totalAccepted  = enriched
+    // "Accepted Value" for the period = of the plans PRESENTED in this window,
+    // how much value (by current stage) has been accepted — the same
+    // cohort-by-presentation-date methodology Case Acceptance's report uses,
+    // since TreatmentPlan has no separate "accepted at" timestamp to filter by.
+    const acceptedValue = inPeriod
       .filter(p => acceptedStages.includes(p.stage))
       .reduce((s, p) => s + p.value, 0)
 
-    const totalPresented = enriched
+    const presentedForRate = inPeriod
       .filter(p => p.stage !== 'Declined')
       .reduce((s, p) => s + p.value, 0)
-    const conversionRate = totalPresented > 0
-      ? Math.round((totalAccepted / totalPresented) * 100)
+    const conversionRate = presentedForRate > 0
+      ? Math.round((acceptedValue / presentedForRate) * 100)
       : 0
 
+    // Money at Risk and Avg Days to Schedule are deliberately NOT period-scoped.
+    // Both describe CURRENT operational state — an unscheduled-but-accepted plan
+    // presented three months ago is still real money at risk today, and hiding
+    // it just because it wasn't presented "this week" would be actively
+    // misleading, not just imprecise. Always computed from the full, unfiltered
+    // pipeline regardless of the selected period — labelled "All time" in the UI.
     const moneyAtRisk = enriched
       .filter(p => p.stage === 'Accepted & Unscheduled')
       .reduce((s, p) => s + p.value, 0)
@@ -118,7 +187,8 @@ router.get('/treatment', requireAuth, async (req, res) => {
 
     res.json({
       plans:   enriched,
-      metrics: { totalPresentedMonth, totalAccepted, conversionRate, moneyAtRisk, avgDaysToSchedule },
+      metrics: { presentedValue, acceptedValue, conversionRate, moneyAtRisk, avgDaysToSchedule },
+      period:  { key: periodKey, start: periodStart?.toISOString() ?? null, end: periodEnd?.toISOString() ?? null, label: periodLabel },
     })
   } catch (e) {
     console.error('[Pipeline] fetch error:', e)

@@ -76,6 +76,28 @@ function fmtDate(iso: string) {
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Kampala' })
 }
+// ── Africa/Kampala period boundaries (client-side; leads are fetched in full,
+// unpaginated, so filtering the already-fetched list is accurate — see load()
+// below) — same fixed-UTC+3 math as apps/api/src/routes/pipeline.ts, no
+// shared frontend timezone utility exists yet to import instead. ──────────
+type LeadPeriod = 'today' | 'week' | 'month' | 'all'
+const KAMPALA_OFFSET_MS = 3 * 60 * 60 * 1000
+function kampalaMidnightUTC(y: number, m: number, day: number): Date {
+  return new Date(Date.UTC(y, m, day, 0, 0, 0, 0) - KAMPALA_OFFSET_MS)
+}
+function kampalaPeriodRange(key: LeadPeriod): { start: Date | null; end: Date | null; label: string } {
+  if (key === 'all') return { start: null, end: null, label: 'All time' }
+  const shifted = new Date(Date.now() + KAMPALA_OFFSET_MS)
+  const y = shifted.getUTCFullYear(), m = shifted.getUTCMonth(), day = shifted.getUTCDate()
+  if (key === 'today') return { start: kampalaMidnightUTC(y, m, day), end: kampalaMidnightUTC(y, m, day + 1), label: 'today' }
+  if (key === 'week') {
+    const dow = new Date(Date.UTC(y, m, day)).getUTCDay()
+    const monday = day - (dow === 0 ? 6 : dow - 1)
+    return { start: kampalaMidnightUTC(y, m, monday), end: kampalaMidnightUTC(y, m, monday + 7), label: 'this week' }
+  }
+  return { start: kampalaMidnightUTC(y, m, 1), end: kampalaMidnightUTC(y, m + 1, 1), label: 'this month' }
+}
+
 function waLink(phone: string): string {
   const digits = phone.replace(/\D/g, '')
   const normalized = digits.startsWith('0') && digits.length === 10 ? '256' + digits.slice(1) : digits
@@ -151,6 +173,7 @@ export default function LeadsPage() {
   const [srcFilter,  setSrcFilter]  = useState('all')
   const [ownerFilter, setOwnerFilter] = useState('all') // all | unassigned | mine | <userId>
   const [sortBy,     setSortBy]     = useState<'updated' | 'oldest' | 'created'>('updated')
+  const [periodKey,  setPeriodKey]  = useState<LeadPeriod>('all')
   const [toast,      setToast]      = useState<{ msg: string; ok: boolean } | null>(null)
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [staff,      setStaff]      = useState<StaffMember[]>([])
@@ -277,10 +300,23 @@ export default function LeadsPage() {
 
   const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
 
-  // Owner filter + sort applied client-side on top of the server-filtered
-  // (source/search) list — all real fields, no fabricated state.
+  // Period range recomputed only when periodKey changes (not on every render) —
+  // "now" is fine to freeze for the component's lifetime here.
+  const periodRange = useMemo(() => kampalaPeriodRange(periodKey), [periodKey])
+
+  // Period + owner filter + sort, all applied client-side on top of the
+  // server-filtered (source/search) list — all real fields, no fabricated
+  // state. Filtering client-side is accurate (not a paginated subset) because
+  // load() below always fetches the FULL matching set, unpaginated.
+  // Period is by createdAt (lead ACQUISITION date) — never updatedAt, which
+  // changes on status/notes/assignment edits unrelated to when the lead
+  // actually came in.
   const filteredLeads = useMemo(() => {
     let out = leads
+    if (periodRange.start) {
+      const s = periodRange.start.getTime(), e = periodRange.end!.getTime()
+      out = out.filter(l => { const t = new Date(l.createdAt).getTime(); return t >= s && t < e })
+    }
     if (ownerFilter === 'unassigned') out = out.filter(l => !l.assignedTo)
     else if (ownerFilter === 'mine' && currentUserId) out = out.filter(l => l.assignedTo === currentUserId)
     else if (ownerFilter !== 'all') out = out.filter(l => l.assignedTo === ownerFilter)
@@ -290,7 +326,7 @@ export default function LeadsPage() {
     else if (sortBy === 'created') out.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     else out.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     return out
-  }, [leads, ownerFilter, sortBy, currentUserId])
+  }, [leads, periodRange, ownerFilter, sortBy, currentUserId])
 
   // Real, client-computed counts from the filtered leads list — never fabricated.
   const stageCounts = useMemo(() => {
@@ -324,18 +360,37 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header — subtitle states the reporting window explicitly so the
+          admin never has to guess whether the counts below are today's,
+          this week's, or the full all-time dataset. */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white">Leads Pipeline</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Track enquiries from first contact through conversion</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {loading
+              ? 'Loading…'
+              : periodKey === 'all'
+                ? `${filteredLeads.length} lead${filteredLeads.length !== 1 ? 's' : ''} · All time`
+                : `${filteredLeads.length} lead${filteredLeads.length !== 1 ? 's' : ''} ${periodRange.label}`}
+          </p>
         </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
-          style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-          <Plus size={14} /> Add Lead
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 p-1">
+            {(['today', 'week', 'month', 'all'] as LeadPeriod[]).map(p => (
+              <button key={p} onClick={() => setPeriodKey(p)}
+                className={cn('px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors',
+                  periodKey === p ? 'bg-cyan-500 text-white' : 'text-gray-500 dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10')}>
+                {p === 'today' ? 'Today' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'All time'}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
+            style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+            <Plus size={14} /> Add Lead
+          </button>
+        </div>
       </div>
 
       {/* Pipeline summary */}
