@@ -4,7 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import { Bell, CalendarDays, Check, Download, HelpCircle, LogOut, Menu, Monitor, Moon, Palette, Search, Sun, User, UserRound, X } from 'lucide-react'
+import { Bell, CalendarDays, Check, Download, HelpCircle, LogOut, Menu, Monitor, Moon, Palette, Search, Settings, Sun, User, UserRound, X } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { AppTheme, saveTheme } from '@/lib/theme'
 
@@ -25,8 +25,6 @@ interface ReceptionistTopBarProps {
   onMarkAllRead: () => void
   onOpenNotification: (item: any) => void
   onOpenHelp: () => void
-  installed: boolean
-  onInstallClick: () => void
 }
 
 const roleLabels: Record<string, string> = {
@@ -34,10 +32,14 @@ const roleLabels: Record<string, string> = {
 }
 
 // Every destination the OLD receptionist sidebar exposed is still reachable
-// here — Scheduling and Appointments folded together, Billing/Treatment
-// Pipeline/Referrals/Campaigns shown as disabled (Receptionist genuinely has
-// no page/authorization for them — see report), Communications kept as its
-// own top-level item since it carries the real unread badge.
+// here — Scheduling and Appointments folded together. "Communications" was
+// removed as a standalone top-level item by request; the underlying
+// route/backend (/receptionist/communications) is untouched and still
+// reachable via notifications and the AI Suite escalation flow — messaging
+// access now lives in the chatbot/assistant experience instead. "Billing"
+// stays disabled: real billing is patient-scoped (BillingTab on each
+// patient's detail page), not a standalone workspace — see the Patients
+// dropdown's own comment.
 const NAV: NavLink[] = [
   { label: 'Overview', href: '/receptionist/dashboard' },
   { label: 'Patients', children: [
@@ -69,25 +71,22 @@ const NAV: NavLink[] = [
     { label: 'Treatment Pipeline', href: '/receptionist/treatment-pipeline', permKey: 'treatmentPipeline' },
     { label: 'Leads', href: '/receptionist/leads', permKey: 'leads' },
     { label: 'Referrals', href: '/receptionist/referrals', permKey: 'referrals' },
-    // Campaigns stays disabled deliberately: the Admin page is almost
-    // entirely real send-actions (WhatsApp broadcast, template send,
-    // birthday message send) with no safe read-only subset to carve out —
-    // see the closeout report for the full reasoning. Not a missing
-    // permission check to fix; a scope decision for an explicit follow-up.
-    { label: 'Campaigns', disabled: true },
+    // Backend (campaigns.ts) is requireAuth-only on every route — Receptionist
+    // is already fully authorized for broadcast/template/birthday sends, same
+    // as Admin. Reused as-is rather than inventing a restriction that doesn't
+    // exist server-side.
+    { label: 'Campaigns', href: '/receptionist/campaigns', permKey: 'campaigns' },
   ] },
   { label: 'Reports', children: [
     { label: 'Case Acceptance', href: '/receptionist/reports?tab=case-acceptance', permKey: 'reports' },
     { label: 'Patient Live Flow', href: '/receptionist/reports?tab=flow', permKey: 'reports' },
-    // "Daily / Weekly Reports" was removed: /receptionist/reports has only
-    // three real tabs (Patient Flow / Feedback / Case Acceptance) and no
-    // daily/weekly report exists — the item used to fall through to the
-    // same default tab as "Patient Live Flow" above, i.e. two menu entries
-    // showing identical content. Disabled rather than left misleading; see
-    // redesign review report.
-    { label: 'Daily / Weekly Reports', disabled: true },
+    // Real implementation: the same GET /reports/clinical-backed board Admin
+    // uses at /reports/clinical, embedded here as a fourth Reports tab
+    // (apps/web/components/reports/ClinicalReportBoard.tsx) rather than a
+    // separate standalone route, matching Receptionist's existing
+    // single-page-with-tabs Reports architecture.
+    { label: 'Daily / Weekly Reports', href: '/receptionist/reports?tab=clinical', permKey: 'reports' },
   ] },
-  { label: 'Communications', href: '/receptionist/communications', permKey: 'communications' },
 ]
 
 const TYPE_DOT: Record<string, string> = { APPOINTMENT: '#29ABE2', INVOICE: '#F59E0B', AI: '#10B981', SYSTEM: '#6B7280', PATIENT_FLOW: '#8B5CF6' }
@@ -133,7 +132,7 @@ function visibleNav(nav: NavLink[], perms: Record<string, boolean>): NavLink[] {
 
 export default function ReceptionistTopBar({
   user, perms, theme, onThemeChange, unread, notifications, onNotificationsOpen, onMarkAllRead, onOpenNotification,
-  onOpenHelp, installed, onInstallClick,
+  onOpenHelp,
 }: ReceptionistTopBarProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -270,15 +269,16 @@ export default function ReceptionistTopBar({
         </nav>
 
         <div className="ml-auto flex items-center gap-2 xl:ml-0">
-          {!installed && (
-            <button className={iconButton} onClick={onInstallClick} title="Install App"><Download size={18} /></button>
-          )}
+          {/* Standalone header install icon removed — Download App remains
+              available from the profile menu below (onInstallClick is no
+              longer wired here; PWA install is still reachable via that
+              menu item's browser-native flow triggered on /receptionist/download). */}
           <button className={iconButton} onClick={() => { setSearchOpen(true); setNotifOpen(false); setProfileOpen(false) }} title="Search"><Search size={18} /></button>
           <button className={iconButton} onClick={() => { const next = !notifOpen; setNotifOpen(next); setProfileOpen(false); if (next) onNotificationsOpen() }} title="Notifications">
             <Bell size={18} />{unread > 0 && <span className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}
           </button>
           {user && <button onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false) }} className="hidden items-center gap-2 rounded-full border border-transparent p-1 pr-2 text-left transition hover:border-gray-200 hover:bg-white/70 dark:hover:border-white/10 dark:hover:bg-white/[0.06] sm:flex">
-            {user.avatarUrl ? <img src={user.avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover object-top" /> : <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-clinic-navy to-clinic-blue text-[11px] font-bold text-white">{initials}</span>}
+            {user.avatarUrl ? <img src={user.avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover" /> : <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-clinic-navy to-clinic-blue text-[11px] font-bold text-white">{initials}</span>}
             <span className="hidden min-w-0 lg:block"><span className="block max-w-[110px] truncate text-xs font-semibold text-gray-800 dark:text-white">{user.firstName} {user.lastName}</span><span className="block text-[10px] text-gray-400">{roleLabels[user.role] || user.role}</span></span>
           </button>}
           <button className={cn(iconButton, 'xl:hidden')} onClick={() => setMenuOpen(true)} title="Open navigation"><Menu size={19} /></button>
@@ -369,6 +369,7 @@ function ProfileMenu({ user, theme, onTheme, onNavigate, onHelp, onSignOut }: { 
   return <div className="fixed right-4 top-[70px] z-[101] w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl dark:border-white/10 dark:bg-[#0c1b38]">
     <div className="px-3 py-2"><p className="text-sm font-semibold text-gray-900 dark:text-white">{user.firstName} {user.lastName}</p><p className="text-[11px] text-gray-400">{roleLabels[user.role] || user.role}</p></div>
     <button onClick={() => onNavigate('/receptionist/profile')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><User size={15} /> My Profile</button>
+    <button onClick={() => onNavigate('/receptionist/settings')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><Settings size={15} /> Settings</button>
     <div className="my-1 border-t border-gray-100 pt-2 dark:border-white/10"><p className="flex items-center gap-2 px-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400"><Palette size={13} /> Appearance</p><div className="grid grid-cols-3 gap-1">{([['light', Sun], ['dark', Moon], ['system', Monitor]] as const).map(([value, Icon]) => <button key={value} onClick={() => onTheme(value)} className={cn('flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] capitalize text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/10', theme === value && 'bg-cyan-50 font-semibold text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300')}><span className="relative"><Icon size={15} />{theme === value && <Check size={8} className="absolute -right-2 -top-1" />}</span>{value}</button>)}</div></div>
     <button onClick={() => onNavigate('/receptionist/download')} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><Download size={15} /> Download App</button>
     <button onClick={onHelp} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><HelpCircle size={15} /> Get Help</button>
@@ -400,6 +401,7 @@ function MobileMenu({ pathname, nav, user, theme, onTheme, onNavigate, onHelp, o
       {user && <div className="border-t border-gray-100 p-3 dark:border-white/10">
         <p className="px-2 pb-2 text-xs font-semibold text-gray-800 dark:text-white">{user.firstName} {user.lastName}<span className="ml-2 font-normal text-gray-400">{roleLabels[user.role] || user.role}</span></p>
         <button onClick={() => onNavigate('/receptionist/profile')} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"><User size={15} /> My Profile</button>
+        <button onClick={() => onNavigate('/receptionist/settings')} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"><Settings size={15} /> Settings</button>
         <div className="my-2 grid grid-cols-3 gap-1">{([['light', Sun], ['dark', Moon], ['system', Monitor]] as const).map(([value, Icon]) => <button key={value} onClick={() => onTheme(value)} className={cn('flex items-center justify-center gap-1 rounded-lg py-2 text-[10px] capitalize text-gray-500 dark:text-slate-400', theme === value && 'bg-cyan-50 font-semibold text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300')}><Icon size={13} />{value}</button>)}</div>
         <button onClick={onHelp} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"><HelpCircle size={15} /> Get Help</button>
         <button onClick={onSignOut} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><LogOut size={15} /> Sign Out</button>

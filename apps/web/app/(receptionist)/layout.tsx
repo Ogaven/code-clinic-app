@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { AppTheme, applyTheme, readTheme } from '@/lib/theme'
 import { questrial } from '../fonts/questrial'
 import ReceptionistTopBar from '@/components/layout/ReceptionistTopBar'
+import SarahChatbot from '@/components/receptionist/SarahChatbot'
 
 async function fetchLivePerms(token: string): Promise<Record<string, boolean>> {
   try {
@@ -185,10 +186,6 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const [user, setUser]         = useState<any>(null)
   const [permsMap, setPermsMap] = useState<Record<string, boolean>>({})
   const [unread, setUnread]     = useState(0)
-  const [installPrompt, setInstallPrompt] = useState<any>(null)
-  const [installed, setInstalled] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
-  const [installToast, setInstallToast] = useState('')
   const [theme, setTheme]       = useState<AppTheme>('system')
   const [dark, setDark]         = useState(false)
   const [showHelp, setShowHelp] = useState(false)
@@ -251,52 +248,6 @@ export default function ReceptionistLayout({ children }: { children: React.React
       media.removeEventListener('change', onSystem)
     }
   }, [])
-
-  useEffect(() => {
-    const ua = navigator.userAgent
-    setIsIOS(/iPad|iPhone|iPod/.test(ua))
-    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e) }
-    window.addEventListener('beforeinstallprompt', handler)
-    window.addEventListener('appinstalled', () => {
-      setInstalled(true)
-      localStorage.setItem('app_installed', 'true')
-    })
-    if (window.matchMedia('(display-mode: standalone)').matches) setInstalled(true)
-    if (localStorage.getItem('app_installed') === 'true') setInstalled(true)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
-
-  async function handleInstall() {
-    if (!installPrompt) return
-    installPrompt.prompt()
-    const { outcome } = await installPrompt.userChoice
-    if (outcome === 'accepted') {
-      setInstalled(true)
-      localStorage.setItem('app_installed', 'true')
-    }
-    setInstallPrompt(null)
-  }
-
-  function showInstallToast(msg: string, ms = 5000) {
-    setInstallToast(msg)
-    setTimeout(() => setInstallToast(''), ms)
-  }
-
-  function handlePwaClick() {
-    if (isIOS) {
-      showInstallToast('Tap the Share button (□↑) → then "Add to Home Screen"')
-    } else if (installPrompt) {
-      handleInstall()
-    } else {
-      const isChromium = !!(window as any).chrome &&
-        (navigator.userAgent.includes('Chrome') || navigator.userAgent.includes('Edg'))
-      if (isChromium) {
-        showInstallToast('Click the ⊕ icon in your address bar to install', 5000)
-      } else {
-        showInstallToast('Open this app in Chrome or Edge to install', 4000)
-      }
-    }
-  }
 
   async function fetchUnread() {
     try {
@@ -393,8 +344,6 @@ export default function ReceptionistLayout({ children }: { children: React.React
         onMarkAllRead={markAllRead}
         onOpenNotification={openNotification}
         onOpenHelp={() => setShowHelp(true)}
-        installed={installed}
-        onInstallClick={handlePwaClick}
       />
 
       {/* Notification-permission nudge (only until granted/denied) */}
@@ -428,12 +377,9 @@ export default function ReceptionistLayout({ children }: { children: React.React
         })}
       </nav>
 
-      {/* PWA install toast */}
-      {installToast && (
-        <div className="fixed bottom-24 xl:bottom-6 left-1/2 -translate-x-1/2 z-[99999] bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold max-w-xs text-center pointer-events-none">
-          {installToast}
-        </div>
-      )}
+      {/* Global Sarah chatbot bubble — persists across every Receptionist
+          route now, not just Dashboard (see SarahChatbot.tsx). */}
+      <SarahChatbot />
     </div>
   )
 }

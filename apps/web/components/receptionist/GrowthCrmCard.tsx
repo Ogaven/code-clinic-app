@@ -2,79 +2,69 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { TrendingUp, ChevronRight, UserPlus } from 'lucide-react'
+import { Users, UserCheck, Share2, Megaphone, ArrowUpRight } from 'lucide-react'
 
-interface Lead { id: string; status: string; createdAt: string; updatedAt: string }
+interface Lead { id: string; status: string; createdAt: string }
+interface Campaign { id: string; status: string }
+interface ReferralStats { stats: { source: string; count: number; thisMonth: number }[] }
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
-// All figures come from GET /crm/leads (the same endpoint the Leads page
-// itself uses — requireAuth only, no role restriction, so Receptionist gets
-// the real list). Treatment Pipeline, Referrals and Campaigns are left out
-// here on purpose: Receptionist has no page for any of them (Admin-layout
-// redirects Receptionist away from /treatment-pipeline, /referrals,
-// /campaigns), so a "Growth & CRM" metric for them would have nowhere
-// honest to link to. See the task report for the full permission mapping.
-//
-// "Converted" uses Lead.updatedAt as a proxy for conversion date — there is
-// no dedicated convertedAt field on the Lead model, and status flips to
-// CONVERTED via POST /crm/leads/:id/convert, which touches updatedAt via
-// Prisma's @updatedAt. It's the closest real signal, not a fabricated one.
+// Matches the Admin dashboard's "Growth & CRM" card exactly (see
+// apps/web/app/(admin)/dashboard/page.tsx) — same gradient, same four
+// metrics, same real endpoints (GET /crm/leads, /campaigns,
+// /patients/referral-stats — all requireAuth-only, no role restriction, so
+// Receptionist gets the same real data Admin does). Only the destination
+// link differs (a real Receptionist route instead of an Admin one).
 export default function GrowthCrmCard() {
   const [leads, setLeads] = useState<Lead[] | null>(null)
+  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null)
+  const [referrals, setReferrals] = useState<ReferralStats | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('cc_token')
-    fetch('/api-proxy/crm/leads', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setLeads(Array.isArray(data) ? data : []))
-      .catch(() => setLeads([]))
+    const auth = { Authorization: `Bearer ${token}` }
+    fetch('/api-proxy/crm/leads', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (Array.isArray(d)) setLeads(d) }).catch(() => {})
+    fetch('/api-proxy/campaigns', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (Array.isArray(d)) setCampaigns(d) }).catch(() => {})
+    fetch('/api-proxy/patients/referral-stats', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d?.stats) setReferrals(d) }).catch(() => {})
   }, [])
 
-  const now = Date.now()
-  const newLeads7d    = leads?.filter(l => now - new Date(l.createdAt).getTime() <= 7 * DAY_MS).length ?? null
-  const converted30d  = leads?.filter(l => l.status === 'CONVERTED' && now - new Date(l.updatedAt).getTime() <= 30 * DAY_MS).length ?? null
-  const activeNow     = leads?.filter(l => l.status !== 'CONVERTED' && l.status !== 'LOST').length ?? null
-
-  const loading = leads === null
+  const newLeads = leads ? leads.filter(l => Date.now() - new Date(l.createdAt).getTime() < 7 * 86400000).length : null
+  const convertedLeads = leads ? leads.filter(l => l.status === 'CONVERTED').length : null
+  const activeCampaigns = campaigns ? campaigns.filter(c => c.status !== 'DRAFT').length : null
+  const referralPatients = referrals ? referrals.stats.filter(s => s.source !== 'Not Recorded').reduce((sum, s) => sum + s.count, 0) : null
+  const conversionRate = leads && leads.length > 0 && convertedLeads !== null ? Math.round((convertedLeads / leads.length) * 100) : null
 
   return (
-    <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/8">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg,#7c3aed,#a78bfa)' }}>
-            <TrendingUp size={13} className="text-white" />
-          </div>
-          <h3 className="text-sm font-bold text-gray-800 dark:text-white">Growth &amp; CRM</h3>
-        </div>
-        <Link href="/receptionist/leads" className="text-[11px] font-semibold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-0.5">
-          Leads <ChevronRight size={11} />
-        </Link>
+    <Link href="/receptionist/leads" className="flex flex-col justify-between rounded-2xl p-4 text-white shadow-sm transition hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg,#0c1e50,#1A237E 45%,#29ABE2)' }}>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-blue-100">Growth &amp; CRM</p>
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-white/15"><Share2 size={13} /></span>
       </div>
-      <div className="grid grid-cols-3 divide-x divide-gray-100 dark:divide-white/8">
-        <Stat label="New Leads" sub="7d" value={newLeads7d} loading={loading} />
-        <Stat label="Converted" sub="30d" value={converted30d} loading={loading} />
-        <Stat label="Active" sub="Now" value={activeNow} loading={loading} />
-      </div>
-      {!loading && leads?.length === 0 && (
-        <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-50 dark:border-white/5 text-[11px] text-gray-400 dark:text-white/30">
-          <UserPlus size={12} /> No leads captured yet
+      <div className="my-2.5 space-y-1.5">
+        <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Users size={12} /> New Leads (7d)</span>
+          <span className="text-sm font-bold text-white">{newLeads ?? '—'}</span>
         </div>
-      )}
-    </div>
-  )
-}
-
-function Stat({ label, sub, value, loading }: { label: string; sub: string; value: number | null; loading: boolean }) {
-  return (
-    <div className="px-4 py-3.5 text-center">
-      {loading ? (
-        <div className="h-7 w-10 mx-auto bg-gray-100 dark:bg-white/10 rounded-lg animate-pulse" />
-      ) : (
-        <p className="text-2xl font-black text-gray-800 dark:text-white tabular-nums">{value ?? 0}</p>
-      )}
-      <p className="text-[11px] font-semibold text-gray-500 dark:text-white/40 mt-1">{label}</p>
-      <p className="text-[9px] text-gray-400 dark:text-white/25 uppercase tracking-wide">{sub}</p>
-    </div>
+        <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><UserCheck size={12} /> Converted <span className="text-blue-200/60">(all time)</span></span>
+          <span className="text-sm font-bold text-white">{convertedLeads ?? '—'}</span>
+        </div>
+        <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Share2 size={12} /> Referral Patients <span className="text-blue-200/60">(all time)</span></span>
+          <span className="text-sm font-bold text-white">{referralPatients ?? '—'}</span>
+        </div>
+        <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Megaphone size={12} /> Active Campaigns</span>
+          <span className="text-sm font-bold text-white" title="Based on the 100 most recently created campaigns — may undercount if older campaigns are still active">{activeCampaigns ?? '—'}{activeCampaigns !== null && <span className="ml-0.5 align-top text-[9px] font-bold text-blue-200">*</span>}</span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between border-t border-white/15 pt-2">
+        <span className="text-[10px] font-medium text-blue-100">{conversionRate !== null ? `${conversionRate}% lead conversion (all time)` : 'Conversion — unavailable'}</span>
+        <span className="flex items-center gap-1 text-[11px] font-bold text-white/90">Open CRM <ArrowUpRight size={12} /></span>
+      </div>
+      {activeCampaigns !== null && <p className="mt-1 text-center text-[8px] text-blue-200/60">*last 100 campaigns</p>}
+    </Link>
   )
 }

@@ -3,29 +3,21 @@
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import {
-  Calendar, AlertTriangle, Zap,
-  Plus, X, Send, Mic, MicOff,
-  Minimize2, Maximize2, LogIn, LogOut, Search, UserPlus,
+  Calendar, AlertTriangle, ArrowUpRight, UserCheck,
+  Plus, X, LogIn, LogOut, Search, UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fetchWithAuth } from '@/lib/api'
+import Avatar from '@/components/ui/Avatar'
 import BookingDrawer from '@/components/scheduling/BookingDrawer'
+import ReceptionistLiveFlow from '@/components/scheduling/ReceptionistLiveFlow'
 import PatientsOverviewCard from '@/components/receptionist/PatientsOverviewCard'
 import PatientSatisfactionCard from '@/components/receptionist/PatientSatisfactionCard'
 import GrowthCrmCard from '@/components/receptionist/GrowthCrmCard'
 import AiSuiteSnapshotCard from '@/components/receptionist/AiSuiteSnapshotCard'
-
-// Same stage grouping as ReceptionistLiveFlow's STAGES, kept in sync
-// deliberately so the "Live now" summary card here never disagrees with
-// the actual board at /receptionist/flow.
-const LIVE_STAGE_STATUSES = {
-  arrived:  ['ARRIVED', 'CHECKED_IN'],
-  waiting:  ['WAITING'],
-  session:  ['IN_OPERATORY', 'IN_CHAIR', 'WITH_PROVIDER'],
-  checkout: ['READY_CHECKOUT'],
-}
+import { CompactCard, DistributionBar, ChipLegend } from '@/components/receptionist/DashboardPrimitives'
+import PatientFormFields, { EMPTY_PATIENT_FORM, buildPatientRequestBody, type PatientFormValues } from '@/components/patients/PatientFormFields'
 
 // Same status set + colours as the Admin dashboard's "Appointments This
 // Week" card (apps/web/app/(admin)/dashboard/page.tsx) — kept visually and
@@ -39,74 +31,39 @@ const WEEK_STATUSES = [
   { key: 'CANCELLED', label: 'Cancelled', color: '#9CA3AF' },
 ]
 
-function DistributionBar({ segments, total }: { segments: { color: string; count: number }[]; total: number }) {
-  const denom = Math.max(total, 1)
-  return (
-    <div className="flex h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
-      {segments.filter(s => s.count > 0).map((s, i) => (
-        <div key={i} style={{ width: `${(s.count / denom) * 100}%`, background: s.color }} />
-      ))}
-    </div>
-  )
-}
+// Same pipeline stages + colours as the Admin dashboard's "Treatment
+// Pipeline" card, over the same all-time GET /clinical/analytics/
+// dental-dashboard aggregate (requireAuth only — no role restriction).
+const PIPELINE_STATUSES = [
+  { key: 'Planned', label: 'Planned', color: '#1D4ED8' },
+  { key: 'In Progress', label: 'In Progress', color: '#D97706' },
+  { key: 'Completed', label: 'Completed', color: '#059669' },
+  { key: 'On Hold', label: 'On Hold', color: '#CA8A04' },
+  { key: 'Declined', label: 'Declined', color: '#E11D48' },
+  { key: 'Cancelled', label: 'Cancelled', color: '#9CA3AF' },
+]
 
-function ChipLegend({ items, loading }: { items: { label: string; count: number; color: string }[]; loading: boolean }) {
-  return (
-    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
-      {items.map(it => (
-        <span key={it.label} className="inline-flex items-center gap-1 text-[10px]">
-          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: it.color }} />
-          <span className="text-gray-500 dark:text-slate-400">{it.label}</span>
-          <span className="font-bold text-gray-700 dark:text-slate-200">{loading ? '—' : it.count}</span>
-        </span>
-      ))}
-    </div>
-  )
-}
+// Same live-flow grouping as ReceptionistLiveFlow's STAGES and the Admin
+// dashboard's FLOW_STAGES, kept in sync deliberately so this summary card
+// never disagrees with the detailed board below it or the full board at
+// /receptionist/flow. COMPLETED is deliberately absent — a departed patient
+// isn't "active" any more.
+const FLOW_STAGES = [
+  { key: 'arrived', label: 'Arrived', statuses: ['ARRIVED', 'CHECKED_IN'], color: '#3B82F6' },
+  { key: 'waiting', label: 'Waiting', statuses: ['WAITING'], color: '#EAB308' },
+  { key: 'session', label: 'In Session', statuses: ['IN_OPERATORY', 'IN_CHAIR', 'WITH_PROVIDER'], color: '#F97316' },
+  { key: 'checkout', label: 'Checkout', statuses: ['READY_CHECKOUT'], color: '#A855F7' },
+]
 
-// ── Compact stat tile (Live now) ──────────
-function OperationalCard({ icon, iconBg, title, badge, breakdown, loading }: {
-  icon: React.ReactNode; iconBg: string; title: string; badge?: string
-  breakdown: { label: string; value: number; color: string }[]
-  loading: boolean
-}) {
-  const total = breakdown.reduce((s, b) => s + b.value, 0)
-  return (
-    <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4">
-      <div className="flex items-start justify-between mb-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: iconBg }}>
-          {icon}
-        </div>
-        {badge && !loading && (
-          <span className="text-xs font-bold bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 px-2 py-0.5 rounded-full">{badge}</span>
-        )}
-        {loading && <div className="h-5 w-12 bg-gray-100 dark:bg-white/10 rounded-full animate-pulse" />}
-      </div>
-      {loading ? (
-        <div className="space-y-2">
-          <div className="h-8 w-14 bg-gray-200 dark:bg-white/10 rounded-lg animate-pulse" />
-          <div className="h-4 w-32 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
-        </div>
-      ) : (
-        <>
-          <p className="text-sm font-bold text-gray-800 dark:text-white mb-2">{title}</p>
-          <p className="text-3xl font-black text-gray-800 dark:text-white leading-none mb-2">{total}</p>
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {breakdown.map(b => (
-              <span key={b.label} className="text-[11px] font-semibold" style={{ color: b.color }}>
-                {b.value} {b.label}
-              </span>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
+interface Appt {
+  id: string; startAt: string; endAt?: string; status: string
+  patient: { firstName: string; lastName: string }
+  doctor: { user: { firstName: string; lastName: string } }
+  service: { name: string; colour: string }
 }
 
 // ── Main Page ─────────────────────────────────────────────────
 export default function ReceptionistDashboard() {
-  const router  = useRouter()
   const API     = '/api-proxy'
   const [user, setUser]             = useState<any>(null)
   const [stats, setStats]           = useState<any>(null)
@@ -122,72 +79,23 @@ export default function ReceptionistDashboard() {
   const [checkinMode, setCheckinMode] = useState<'in' | 'out'>('in')
   const [checkinError, setCheckinError] = useState('')
   const [checkinLoading, setCheckinLoading] = useState(false)
+  const [dentalData, setDentalData] = useState<{ pipeline: Record<string, { count: number; totalUGX: number }> } | null>(null)
   const [showBooking, setShowBooking]   = useState(false)
   const [showAddPatient, setShowAddPatient] = useState(false)
-  const [newPatient, setNewPatient]     = useState({ firstName: '', lastName: '', phone: '', email: '', gender: 'UNKNOWN' })
+  const [newPatient, setNewPatient]     = useState<PatientFormValues>(EMPTY_PATIENT_FORM)
   const [addingPatient, setAddingPatient] = useState(false)
   const [addPatientError, setAddPatientError] = useState('')
-
-  // Sarah chatbot state
-  type Msg = { from: 'sarah' | 'user'; text: string; time: string }
-  const [chatOpen, setChatOpen]     = useState(false)
-  const [chatMin, setChatMin]       = useState(false)
-  const [msgs, setMsgs]             = useState<Msg[]>([])
-  const [chatInput, setChatInput]   = useState('')
-  const [typing, setTyping]         = useState(false)
-  const [recording, setRec]         = useState(false)
-  const [dragging, setDrag]         = useState(false)
-  const [chatPos, setChatPos]       = useState({ x: 0, y: 0 })
-  const [hasMoved, setHasMoved]     = useState(false)
-  const [chatMessages, setChatMsgs] = useState<any[]>([])
-  const messagesEnd = useRef<HTMLDivElement>(null)
-  const recRef      = useRef<any>(null)
-  const dragStart   = useRef({ mx: 0, my: 0, bx: 0, by: 0 })
-  const bubbleRef   = useRef<HTMLDivElement>(null)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { Authorization: `Bearer ${token}` }
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
-    if (stored) {
-      const u = JSON.parse(stored)
-      setUser(u)
-      setMsgs([{
-        from: 'sarah',
-        text: `Hello ${u.firstName}! 😊 I'm Sarah, your AI assistant. How can I help you today?`,
-        time: nowTime(),
-      }])
-    }
+    if (stored) setUser(JSON.parse(stored))
     fetchAll(true)
     const t = setInterval(() => fetchAll(), 30000)
     return () => clearInterval(t)
   }, [])
-
-  useEffect(() => {
-    messagesEnd.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [msgs, typing])
-
-  // Drag logic for chat bubble
-  function onBubbleMouseDown(e: React.MouseEvent) {
-    if ((e.target as HTMLElement).closest('button, input, textarea')) return
-    e.preventDefault()
-    setDrag(true)
-    dragStart.current = { mx: e.clientX, my: e.clientY, bx: chatPos.x, by: chatPos.y }
-  }
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!dragging) return
-      const dx = e.clientX - dragStart.current.mx
-      const dy = e.clientY - dragStart.current.my
-      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) setHasMoved(true)
-      setChatPos({ x: dragStart.current.bx + dx, y: dragStart.current.by + dy })
-    }
-    const onUp = () => { if (dragging) { setDrag(false); setTimeout(() => setHasMoved(false), 100) } }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
-  }, [dragging])
 
   async function fetchAll(force = false) {
     const now = Date.now()
@@ -216,55 +124,15 @@ export default function ReceptionistDashboard() {
       .then(r => r.ok ? r.json() : [])
       .then(d => { if (Array.isArray(d)) setWeekAppts(d) })
       .catch(() => {})
+
+    // Treatment Pipeline — same all-time aggregate the Admin dashboard's
+    // equivalent card reads (requireAuth only, no role restriction).
+    fetch(`${API}/clinical/analytics/dental-dashboard`, { headers: authH })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && !d.error) setDentalData(d) })
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  function nowTime() {
-    return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
-  }
-
-  async function sendChat(text?: string) {
-    const msg = text || chatInput.trim()
-    if (!msg) return
-    setChatInput('')
-    const userMsg: Msg = { from: 'user', text: msg, time: nowTime() }
-    setMsgs(m => [...m, userMsg])
-    setTyping(true)
-
-    const newMessages = [...chatMessages, { role: 'user', content: msg }]
-    setChatMsgs(newMessages)
-
-    try {
-      const res = await fetch(`${API}/assistant/chat`, {
-        method: 'POST',
-        headers: { ...authH, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages, context: { page: 'Dashboard' } }),
-      })
-      const data = await res.json()
-      const reply = data.content || data.error || 'Sorry, I had trouble with that.'
-      setChatMsgs(m => [...m, { role: 'assistant', content: reply }])
-      setMsgs(m => [...m, { from: 'sarah', text: reply, time: nowTime() }])
-
-      // Handle client-side actions
-      if (data.clientActions?.length) {
-        for (const action of data.clientActions) {
-          if (action.type === 'open_page') router.push(action.route)
-        }
-      }
-    } catch {
-      setMsgs(m => [...m, { from: 'sarah', text: "Sorry, I couldn't connect right now. Please try again! 🙏", time: nowTime() }])
-    } finally { setTyping(false) }
-  }
-
-  function toggleRecording() {
-    if (recording) { recRef.current?.stop(); setRec(false); return }
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) { sendChat("Voice input isn't supported in this browser."); return }
-    const rec = new SR(); rec.lang = 'en-GB'; rec.interimResults = false
-    rec.onresult = (e: any) => { const t = e.results[0][0].transcript; setChatInput(t); sendChat(t) }
-    rec.onend = () => setRec(false); rec.onerror = () => setRec(false)
-    recRef.current = rec; rec.start(); setRec(true)
-  }
 
   async function handleCheckinSearch(q: string) {
     setCheckinSearch(q)
@@ -316,21 +184,37 @@ export default function ReceptionistDashboard() {
     return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
   }
 
-  const quickChips = [
-    "Today's schedule", 'AI agent status', 'Any escalations?', 'Add patient',
-  ]
-
   const sk = stats === null
 
   const weekCounts = WEEK_STATUSES.map(s => ({ ...s, count: (weekAppts ?? []).filter(a => a.status === s.key).length }))
   const weekTotal  = weekAppts ? weekAppts.length : 0
 
-  const liveBreakdown = [
-    { label: 'arrived',  value: appointments.filter(a => LIVE_STAGE_STATUSES.arrived.includes(a.status)).length,  color: '#3B82F6' },
-    { label: 'waiting',  value: appointments.filter(a => LIVE_STAGE_STATUSES.waiting.includes(a.status)).length,  color: '#D97706' },
-    { label: 'in session', value: appointments.filter(a => LIVE_STAGE_STATUSES.session.includes(a.status)).length, color: '#0D9488' },
-    { label: 'checkout', value: appointments.filter(a => LIVE_STAGE_STATUSES.checkout.includes(a.status)).length, color: '#7C3AED' },
-  ]
+  const pipelineCounts = PIPELINE_STATUSES.map(s => ({ ...s, count: dentalData ? (dentalData.pipeline[s.key]?.count ?? 0) : 0 }))
+  const pipelineTotal  = dentalData ? Object.values(dentalData.pipeline).reduce((s, p) => s + p.count, 0) : 0
+
+  // Live now — same FLOW_STAGES grouping as the detailed board below and the
+  // full board at /receptionist/flow. Read from `appointments` (today's
+  // appointments, already fetched for the Check In/Out modal), so this
+  // summary can never disagree with the detailed board it sits above.
+  const flowCounts = FLOW_STAGES.map(s => ({ ...s, count: appointments.filter((a: Appt) => s.statuses.includes(a.status)).length }))
+  const flowTotal  = flowCounts.reduce((s, f) => s + f.count, 0)
+
+  // Upcoming Appointments timeline geometry — same pixel-based layout as the
+  // Admin dashboard's equivalent card, over the real `upcoming` appointments
+  // already fetched from GET /receptionist/upcoming-appointments.
+  const DAY_START_HOUR = 8, DAY_END_HOUR = 18, HOUR_PX = 84
+  const timelineWidth = (DAY_END_HOUR - DAY_START_HOUR) * HOUR_PX
+  const hourMarks = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+  const pxOf = (t: number) => {
+    const d = new Date(t)
+    const hourFloat = d.getHours() + d.getMinutes() / 60
+    return Math.max(0, Math.min(timelineWidth, (hourFloat - DAY_START_HOUR) * HOUR_PX))
+  }
+  const nowPx = pxOf(Date.now())
+  const futureAppts: Appt[] = (upcoming as Appt[])
+    .filter(a => new Date(a.startAt).getTime() >= Date.now() && a.status !== 'CANCELLED')
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+    .slice(0, 8)
 
   return (
     <div className="p-5 space-y-5 max-w-[1600px] mx-auto overflow-x-hidden">
@@ -466,118 +350,184 @@ export default function ReceptionistDashboard() {
       {/* ── Header: greeting + dental illustration + compact quick actions ── */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-1">
         <div className="flex items-center gap-2.5 min-w-0">
-          <Image src="/dental30.png" alt="" width={34} height={26} className="hidden sm:block flex-shrink-0"
+          <Image src="/dental3d.png" alt="" width={72} height={49} className="hidden sm:block flex-shrink-0"
             style={{ objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(41,171,226,0.35))' }} />
           <h1 className="text-lg sm:text-xl font-black text-gray-800 dark:text-white truncate">
             {greeting()}, <span style={{ color: '#29ABE2' }}>{user?.firstName}</span>! 👋
           </h1>
         </div>
 
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => { setCheckinMode('in'); setShowCheckin(true) }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white hover:-translate-y-0.5 transition-all"
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5"
             style={{ background: 'linear-gradient(135deg,#0891b2,#06b6d4)' }}>
-            <LogIn size={13} /> Check In
+            <LogIn size={12} /> Check In
           </button>
           <button
             onClick={() => { setCheckinMode('out'); setShowCheckin(true) }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white hover:-translate-y-0.5 transition-all"
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5"
             style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <LogOut size={13} /> Check Out
+            <LogOut size={12} /> Check Out
           </button>
           <button
             onClick={() => setShowBooking(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
-            <Plus size={13} className="text-cyan-500" /> Book
+            className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-clinic-navy transition hover:-translate-y-0.5 dark:border-white/10 dark:bg-white/5 dark:text-white">
+            <Plus size={12} className="text-cyan-500" /> Book Appointment
           </button>
           <button
-            onClick={() => { setNewPatient({ firstName: '', lastName: '', phone: '', email: '', gender: 'UNKNOWN' }); setAddPatientError(''); setShowAddPatient(true) }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
-            <UserPlus size={13} className="text-purple-500" /> Add Patient
+            onClick={() => { setNewPatient(EMPTY_PATIENT_FORM); setAddPatientError(''); setShowAddPatient(true) }}
+            className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-clinic-navy transition hover:-translate-y-0.5 dark:border-white/10 dark:bg-white/5 dark:text-white">
+            <UserPlus size={12} className="text-purple-500" /> Add Patient
           </button>
         </div>
       </div>
 
-      {/* ── Row 1: Appointments This Week / Patient Live Flow / Upcoming ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Appointments This Week — same visual language as the Admin
-            dashboard's equivalent card (number + distribution bar + chip
-            legend), reusing the same GET /scheduling/appointments endpoint. */}
-        <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-3.5">
+      {/* ═══ ROW 1 — Appointments This Week | Treatment Pipeline | Patient Live Flow Summary ═══ */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {/* Appointments This Week — identical presentation to the Admin
+            dashboard's equivalent card, same GET /scheduling/appointments endpoint. */}
+        <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Appointments This Week</p>
             <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-300"><Calendar size={13} /></span>
           </div>
           <div className="mt-2 flex items-center gap-3">
-            <p className="text-3xl font-extrabold leading-none text-gray-800 dark:text-white">{weekAppts ? weekTotal : '—'}</p>
+            <p className="text-3xl font-extrabold leading-none text-clinic-navy dark:text-white">{weekAppts ? weekTotal : '—'}</p>
             <div className="h-8 w-px flex-shrink-0 bg-gray-100 dark:bg-white/10" />
             <DistributionBar segments={weekCounts} total={weekTotal} />
           </div>
           <ChipLegend items={weekCounts} loading={!weekAppts} />
         </div>
 
-        <OperationalCard
-          icon={<Zap size={18} className="text-white" />}
-          iconBg="linear-gradient(135deg, #0d9488, #14b8a6)"
-          title="Patient Live Flow"
-          badge="Live now"
-          breakdown={liveBreakdown}
-          loading={sk}
-        />
-
-        {/* Upcoming Appointments */}
-        <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
-            <h3 className="text-sm font-bold text-gray-800 dark:text-white">Upcoming Appointments</h3>
-            <Link href="/receptionist/appointments" className="text-xs text-cyan-600 dark:text-cyan-400 font-semibold hover:underline">View all</Link>
+        {/* Treatment Pipeline · All time — identical presentation to the
+            Admin dashboard's equivalent card, same all-time aggregate. */}
+        <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Treatment Pipeline <span className="font-normal normal-case text-gray-400 dark:text-white/30">· All time</span></p>
+            <Link href="/receptionist/treatment-pipeline" className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-300"><ArrowUpRight size={13} /></Link>
           </div>
-          <div className="divide-y divide-gray-50 dark:divide-white/5 max-h-[220px] overflow-y-auto">
-            {upcoming.length === 0 ? (
-              <div className="px-4 py-6 text-center">
-                <p className="text-xs text-gray-400">No upcoming appointments</p>
-              </div>
-            ) : upcoming.slice(0, 6).map(a => {
-              const t = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
-              const date = new Date(a.startAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
-              return (
-                <div key={a.id} className="px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.service?.colour || '#29ABE2' }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{a.patient?.firstName} {a.patient?.lastName}</p>
-                      <p className="text-[10px] text-gray-400 truncate">Dr. {a.doctor?.user?.firstName} · {a.service?.name}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400">{t}</p>
-                      <p className="text-[9px] text-gray-400">{date}</p>
-                    </div>
+          <div className="mt-2 flex items-center gap-3">
+            <p className="text-3xl font-extrabold leading-none text-clinic-navy dark:text-white">{dentalData ? pipelineTotal : '—'}</p>
+            <div className="h-8 w-px flex-shrink-0 bg-gray-100 dark:bg-white/10" />
+            <DistributionBar segments={pipelineCounts} total={pipelineTotal} />
+          </div>
+          <ChipLegend items={pipelineCounts} loading={!dentalData} />
+        </div>
+
+        {/* Patient Live Flow · Live now — SUMMARY ONLY (circles + connecting
+            lines), identical presentation to the Admin dashboard's
+            equivalent card. The detailed, draggable board lives in Row 2 —
+            these two are intentionally separate and never merged. Excludes
+            COMPLETED patients: they are not "active" any more. */}
+        <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Patient Live Flow <span className="font-normal normal-case text-gray-400 dark:text-white/30">· Live now</span></p>
+            <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300"><UserCheck size={13} /></span>
+          </div>
+          <div className="mt-2 flex items-center gap-3">
+            <p className="text-3xl font-extrabold leading-none text-clinic-navy dark:text-white">{!sk ? flowTotal : '—'}</p>
+            <div className="h-8 w-px flex-shrink-0 bg-gray-100 dark:bg-white/10" />
+            <p className="text-[10px] font-medium leading-tight text-gray-500 dark:text-slate-400">active in<br />clinic now</p>
+          </div>
+          <div className="mt-3.5 flex items-center">
+            {flowCounts.map((s, i) => (
+              <div key={s.key} className="flex flex-1 items-center last:flex-none">
+                <div className="flex flex-col items-center gap-1">
+                  <div className="grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold text-white" style={{ background: !sk && s.count > 0 ? s.color : '#D1D5DB' }}>
+                    {!sk ? s.count : '—'}
                   </div>
+                  <span className="whitespace-nowrap text-[9px] font-medium text-gray-500 dark:text-slate-400">{s.label}</span>
                 </div>
-              )
-            })}
+                {i < flowCounts.length - 1 && <div className="mx-1 mb-4 h-0.5 flex-1 rounded-full" style={{ background: s.color, opacity: 0.25 }} />}
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* ── Row 2: Patients Overview / Patient Satisfaction / Growth & CRM ──── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <PatientsOverviewCard newToday={stats?.newPatients?.count ?? 0} returningToday={stats?.returningPatients?.count ?? 0} loading={sk} />
+      {/* ═══ ROW 2 — Patient Satisfaction | Detailed Live Flow (draggable) | Growth & CRM ═══ */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.85fr_1.6fr_0.85fr]">
         <PatientSatisfactionCard />
+        {/* Detailed, operational Live Flow board — the real Receptionist
+            board (same data/statuses/transitions as /receptionist/flow),
+            embedded compact with drag-and-drop to the next stage. This is
+            intentionally distinct from the Row 1 summary above it. */}
+        <ReceptionistLiveFlow compact refreshInterval={20000} />
         <GrowthCrmCard />
       </div>
 
-      {/* ── Row 3: AI Suite Activity (compact) ─────────────────── */}
-      <AiSuiteSnapshotCard />
+      {/* ═══ ROW 3 — Patients Overview | Upcoming Appointments | Today's AI Activity ═══ */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.05fr_1.3fr_0.85fr]">
+        <PatientsOverviewCard />
+
+        {/* Upcoming Appointments — identical horizontally-scrollable
+            timeline presentation to the Admin dashboard's equivalent card,
+            over the real GET /receptionist/upcoming-appointments data. */}
+        <CompactCard title="Upcoming Appointments" action={<Link href="/receptionist/appointments" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all</Link>}>
+          {upcoming.length === 0 && !loading ? (
+            <div className="flex h-36 flex-col items-center justify-center gap-1 text-center">
+              <Calendar size={20} className="text-gray-200 dark:text-white/15" />
+              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No more appointments today</p>
+            </div>
+          ) : futureAppts.length === 0 ? (
+            <div className="h-36 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
+          ) : (
+            <div className="no-scrollbar w-full overflow-x-auto">
+              <div style={{ width: timelineWidth, minWidth: '100%' }} className="relative">
+                <div className="relative h-4">
+                  {hourMarks.map(h => (
+                    <span key={h} className="absolute -translate-x-1/2 whitespace-nowrap text-[9px] font-medium text-gray-500 dark:text-slate-400" style={{ left: (h - DAY_START_HOUR) * HOUR_PX }}>
+                      {h > 12 ? h - 12 : h}{h >= 12 ? 'PM' : 'AM'}
+                    </span>
+                  ))}
+                </div>
+                <div className="relative mt-1 rounded-xl bg-gray-50 dark:bg-white/5" style={{ height: 112 }}>
+                  {hourMarks.map(h => (
+                    <div key={h} className="absolute top-0 bottom-0 border-l border-gray-200/70 dark:border-white/5" style={{ left: (h - DAY_START_HOUR) * HOUR_PX }} />
+                  ))}
+                  {nowPx >= 0 && nowPx <= timelineWidth && (
+                    <div className="absolute top-0 bottom-0 z-10 w-px bg-clinic-blue dark:bg-cyan-400" style={{ left: nowPx }}>
+                      <span className="absolute -top-1.5 left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-clinic-blue dark:bg-cyan-400" />
+                    </div>
+                  )}
+                  {futureAppts.map((a, i) => {
+                    const left = pxOf(new Date(a.startAt).getTime())
+                    const right = a.endAt ? pxOf(new Date(a.endAt).getTime()) : left + 84
+                    const width = Math.max(right - left, 76)
+                    const top = 8 + (i % 3) * 33
+                    const time = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true })
+                    const isNearest = i === 0
+                    return (
+                      <div key={a.id} className={cn('absolute flex items-center gap-1.5 overflow-hidden rounded-full py-1 pl-1 pr-2.5 text-white shadow-sm', isNearest && 'ring-2 ring-clinic-blue ring-offset-1 dark:ring-cyan-400 dark:ring-offset-slate-900')} style={{ left, top, width, background: a.service?.colour || '#29ABE2' }} title={`${time} · ${a.patient.firstName} ${a.patient.lastName} · ${a.service.name}`}>
+                        <Avatar firstName={a.patient.firstName} lastName={a.patient.lastName} size="xs" colour="rgba(255,255,255,0.3)" />
+                        <span className="truncate text-[10px] font-bold">{a.patient.firstName}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </CompactCard>
+
+        <AiSuiteSnapshotCard />
+      </div>
 
       {/* ── Book Appointment Drawer ──────────────────────────── */}
       <BookingDrawer open={showBooking} onClose={() => setShowBooking(false)} onBooked={() => { setShowBooking(false); fetchAll(true) }} />
 
-      {/* ── Add Patient Modal ────────────────────────────────── */}
+      {/* ── Add Patient Modal — full real patient form, same shared
+          PatientFormFields component and POST /patients contract as the
+          Admin "Add Patient" modal and BookingDrawer's New Patient section
+          (see components/patients/PatientFormFields.tsx), replacing the
+          previous 5-field version that skipped residence, next of kin,
+          allergies, medical history, referral source, patient type and
+          comms consent. ────────────────────────────────────────────── */}
       {showAddPatient && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#0e2045] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-md overflow-hidden">
-            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-white/8">
+          <div className="bg-white dark:bg-[#0e2045] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-white/8 bg-white dark:bg-[#0e2045]">
               <h3 className="text-base font-bold text-gray-800 dark:text-white flex items-center gap-2">
                 <UserPlus size={16} className="text-purple-500" /> Add New Patient
               </h3>
@@ -585,39 +535,11 @@ export default function ReceptionistDashboard() {
                 <X size={16} className="text-gray-400" />
               </button>
             </div>
-            <div className="p-5 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-gray-500 mb-1 block">First Name *</label>
-                  <input value={newPatient.firstName} onChange={e => setNewPatient(p => ({ ...p, firstName: e.target.value }))}
-                    placeholder="e.g. Sarah" className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-500 mb-1 block">Last Name *</label>
-                  <input value={newPatient.lastName} onChange={e => setNewPatient(p => ({ ...p, lastName: e.target.value }))}
-                    placeholder="e.g. Nakato" className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500" />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 mb-1 block">Phone *</label>
-                <input value={newPatient.phone} onChange={e => setNewPatient(p => ({ ...p, phone: e.target.value }))}
-                  placeholder="+256 7xx xxx xxx" className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 mb-1 block">Email</label>
-                <input type="email" value={newPatient.email} onChange={e => setNewPatient(p => ({ ...p, email: e.target.value }))}
-                  placeholder="patient@email.com" className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:border-cyan-500" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 mb-1 block">Gender</label>
-                <select value={newPatient.gender} onChange={e => setNewPatient(p => ({ ...p, gender: e.target.value }))}
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 dark:text-white focus:outline-none focus:border-cyan-500">
-                  <option value="UNKNOWN" className="dark:bg-gray-800">Prefer not to say</option>
-                  <option value="MALE" className="dark:bg-gray-800">Male</option>
-                  <option value="FEMALE" className="dark:bg-gray-800">Female</option>
-                </select>
-              </div>
-              {addPatientError && <p className="text-xs text-red-500 font-semibold">{addPatientError}</p>}
+            <div className="p-5 space-y-4">
+              <PatientFormFields form={newPatient} setForm={setNewPatient} />
+
+              {addPatientError && <p className="text-xs text-red-500 font-medium">{addPatientError}</p>}
+
               <div className="flex gap-2 pt-1">
                 <button onClick={() => setShowAddPatient(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/60">
                   Cancel
@@ -628,9 +550,11 @@ export default function ReceptionistDashboard() {
                     if (!newPatient.firstName || !newPatient.lastName || !newPatient.phone) { setAddPatientError('First name, last name and phone are required'); return }
                     setAddingPatient(true); setAddPatientError('')
                     try {
-                      const res = await fetch(`${API}/patients`, { method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' }, body: JSON.stringify(newPatient) })
+                      const body = buildPatientRequestBody(newPatient)
+                      const res = await fetch(`${API}/patients`, { method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
                       if (!res.ok) { const d = await res.json(); setAddPatientError(d.error || 'Failed to add patient'); return }
                       setShowAddPatient(false)
+                      setNewPatient(EMPTY_PATIENT_FORM)
                       fetchAll(true)
                     } catch { setAddPatientError('Network error. Please try again.') }
                     finally { setAddingPatient(false) }
@@ -645,152 +569,6 @@ export default function ReceptionistDashboard() {
         </div>
       )}
 
-      {/* ── Sarah Chatbot ─────────────────────────────────────── */}
-      <div
-        ref={bubbleRef}
-        style={{
-          position: 'fixed',
-          right: `${-chatPos.x + 24}px`,
-          bottom: `${-chatPos.y + 24}px`,
-          zIndex: 9999,
-          cursor: dragging ? 'grabbing' : 'grab',
-          userSelect: 'none',
-          transition: dragging ? 'none' : 'right 0.2s, bottom 0.2s',
-        }}
-        onMouseDown={onBubbleMouseDown}
-      >
-        {/* Chat panel */}
-        {chatOpen && !chatMin && (
-          <div className="mb-4 rounded-3xl shadow-2xl overflow-hidden animate-slide-right"
-            style={{ width: 360, background: 'linear-gradient(165deg, #0c1e50, #1a3a8f)', border: '1px solid rgba(255,255,255,0.12)', cursor: 'default' }}
-            onMouseDown={e => e.stopPropagation()}>
-
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10"
-              style={{ background: 'rgba(255,255,255,0.07)' }}>
-              <div className="flex items-center gap-3">
-                <div className="relative w-9 h-9 rounded-full overflow-hidden border-2 border-white/30">
-                  <Image src="/sarah.jpg" alt="Sarah" fill style={{ objectFit: 'cover', objectPosition: 'center top' }} />
-                </div>
-                <div>
-                  <p className="text-white text-sm font-bold">Sarah</p>
-                  <div className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot" />
-                    <p className="text-[10px] text-emerald-300">AI Assistant · Online</p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-1">
-                <button onClick={() => setChatMin(true)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors">
-                  <Minimize2 size={13} color="rgba(255,255,255,0.6)" />
-                </button>
-                <button onClick={() => setChatOpen(false)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors">
-                  <X size={13} color="rgba(255,255,255,0.6)" />
-                </button>
-              </div>
-            </div>
-
-            {/* Messages */}
-            <div className="space-y-3 px-4 py-4 overflow-y-auto" style={{ maxHeight: 320 }}>
-              {msgs.map((m, i) => (
-                <div key={i} className={`flex ${m.from === 'user' ? 'justify-end' : 'items-start gap-2'}`}>
-                  {m.from === 'sarah' && (
-                    <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-white/20">
-                      <Image src="/sarah.jpg" alt="Sarah" width={28} height={28} style={{ objectFit: 'cover', objectPosition: 'center top' }} />
-                    </div>
-                  )}
-                  <div>
-                    <div className="rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed max-w-[230px] whitespace-pre-line"
-                      style={{
-                        background: m.from === 'sarah' ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg,#29ABE2,#1A237E)',
-                        color: 'white',
-                        borderRadius: m.from === 'sarah' ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
-                      }}>
-                      {m.text}
-                    </div>
-                    <p className="text-[9px] text-blue-300/40 mt-1 px-1">{m.time}</p>
-                  </div>
-                </div>
-              ))}
-              {typing && (
-                <div className="flex items-start gap-2">
-                  <div className="w-7 h-7 rounded-full overflow-hidden border border-white/20">
-                    <Image src="/sarah.jpg" alt="" width={28} height={28} style={{ objectFit: 'cover', objectPosition: 'center top' }} />
-                  </div>
-                  <div className="rounded-2xl px-4 py-3" style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '4px 16px 16px 16px' }}>
-                    <div className="flex gap-1 items-center h-3">
-                      {[0,1,2].map(j => <span key={j} className="w-1.5 h-1.5 rounded-full bg-blue-300 animate-bounce" style={{ animationDelay: `${j*0.15}s` }} />)}
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEnd} />
-            </div>
-
-            {/* Quick chips */}
-            <div className="px-4 pb-2 flex flex-wrap gap-1.5">
-              {quickChips.map(q => (
-                <button key={q} onClick={() => sendChat(q)}
-                  className="text-[10px] font-medium px-2.5 py-1 rounded-full transition-all hover:bg-white/20"
-                  style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.15)' }}>
-                  {q}
-                </button>
-              ))}
-            </div>
-
-            {/* Input */}
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-white/10">
-              <input
-                value={chatInput}
-                onChange={e => setChatInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChat()}
-                placeholder={recording ? '🎙 Listening...' : 'Ask Sarah anything...'}
-                className="flex-1 text-xs py-2.5 px-3.5 rounded-xl outline-none placeholder-blue-300/50 text-white"
-                style={{ background: 'rgba(255,255,255,0.08)', border: `1px solid ${recording ? 'rgba(236,72,153,0.5)' : 'rgba(255,255,255,0.14)'}` }}
-                onMouseDown={e => e.stopPropagation()}
-              />
-              <button onClick={toggleRecording}
-                className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-110 flex-shrink-0"
-                style={{ background: recording ? 'rgba(236,72,153,0.4)' : 'rgba(255,255,255,0.1)', border: `1px solid ${recording ? 'rgba(236,72,153,0.5)' : 'rgba(255,255,255,0.15)'}` }}>
-                {recording ? <MicOff size={14} color="#EC4899" className="animate-pulse" /> : <Mic size={14} color="rgba(255,255,255,0.7)" />}
-              </button>
-              <button onClick={() => sendChat()}
-                className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-110 flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)' }}>
-                <Send size={14} color="white" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Minimised bar */}
-        {chatOpen && chatMin && (
-          <div className="mb-4 flex items-center gap-3 px-4 py-2.5 rounded-2xl shadow-xl cursor-pointer"
-            style={{ background: 'linear-gradient(135deg, #0c1e50, #1a3a8f)', border: '1px solid rgba(255,255,255,0.15)' }}
-            onClick={() => setChatMin(false)} onMouseDown={e => e.stopPropagation()}>
-            <div className="relative w-7 h-7 rounded-full overflow-hidden border border-white/30">
-              <Image src="/sarah.jpg" alt="Sarah" fill style={{ objectFit: 'cover', objectPosition: 'center top' }} />
-            </div>
-            <span className="text-white text-xs font-semibold">Sarah AI</span>
-            <Maximize2 size={12} color="rgba(255,255,255,0.5)" />
-          </div>
-        )}
-
-        {/* Floating bubble */}
-        <div
-          onClick={() => { if (!hasMoved) setChatOpen(o => !o) }}
-          className={`select-none cursor-pointer ${!dragging && !chatOpen ? 'animate-float' : ''}`}
-          style={{ position: 'relative', width: 64, height: 64 }}
-        >
-          <div className="absolute rounded-full animate-pulse pointer-events-none"
-            style={{ inset: -8, background: 'radial-gradient(circle,rgba(41,171,226,0.5),transparent)', opacity: 0.7 }} />
-          <div style={{ width: 64, height: 64, borderRadius: '50%', overflow: 'hidden', border: '3px solid rgba(255,255,255,0.35)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', position: 'relative' }}>
-            <Image src="/sarah.jpg" alt="Sarah" fill sizes="64px" style={{ objectFit: 'cover', objectPosition: 'center top' }} />
-          </div>
-          <span className="absolute animate-pulse-dot"
-            style={{ bottom: 2, right: 2, width: 14, height: 14, borderRadius: '50%', background: '#34D399', border: '2.5px solid white', display: 'block' }} />
-        </div>
-      </div>
     </div>
   )
 }

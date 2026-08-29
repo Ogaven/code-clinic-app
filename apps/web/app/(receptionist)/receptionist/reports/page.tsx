@@ -2,8 +2,9 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { BarChart2, Download, Bot, Loader2, Star, MessageSquare, TrendingUp } from 'lucide-react'
+import { BarChart2, Calendar, Download, Bot, Loader2, Star, MessageSquare, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import ClinicalReportBoard from '@/components/reports/ClinicalReportBoard'
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -628,9 +629,9 @@ function CaseAcceptanceTab() {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
-type ReportsTab = 'flow' | 'feedback' | 'case-acceptance'
+type ReportsTab = 'flow' | 'feedback' | 'case-acceptance' | 'clinical'
 
-const VALID_TABS: ReportsTab[] = ['flow', 'feedback', 'case-acceptance']
+const VALID_TABS: ReportsTab[] = ['flow', 'feedback', 'case-acceptance', 'clinical']
 
 function ReceptionistReportsContent() {
   const searchParams = useSearchParams()
@@ -652,9 +653,10 @@ function ReceptionistReportsContent() {
         </div>
         <div className="flex gap-0.5 px-6 pt-3">
           {([
-            { key: 'flow',             label: 'Patient Flow',    icon: <BarChart2 size={13} /> },
-            { key: 'feedback',         label: 'Feedback',        icon: <Star size={13} />      },
-            { key: 'case-acceptance',  label: 'Case Acceptance', icon: <TrendingUp size={13} />},
+            { key: 'flow',             label: 'Patient Flow',      icon: <BarChart2 size={13} /> },
+            { key: 'feedback',         label: 'Feedback',          icon: <Star size={13} />      },
+            { key: 'case-acceptance',  label: 'Case Acceptance',   icon: <TrendingUp size={13} />},
+            { key: 'clinical',         label: 'Daily / Weekly',    icon: <Calendar size={13} />  },
           ] as { key: ReportsTab; label: string; icon: React.ReactNode }[]).map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={cn(
@@ -671,10 +673,11 @@ function ReceptionistReportsContent() {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden overflow-y-auto">
         {tab === 'flow'            && <PatientFlowTab />}
         {tab === 'feedback'        && <FeedbackTab />}
         {tab === 'case-acceptance' && <CaseAcceptanceTab />}
+        {tab === 'clinical'        && <ClinicalReportBoard patientBasePath="/receptionist/patients" />}
       </div>
     </div>
   )

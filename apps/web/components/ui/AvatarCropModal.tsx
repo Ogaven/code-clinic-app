@@ -20,6 +20,10 @@ export default function AvatarCropModal({ src, onCancel, onConfirm }: AvatarCrop
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null)
   const [busy, setBusy] = useState(false)
+  // Natural pixel size of the loaded source image — needed to compute the
+  // same "cover" baseline scale used by confirm()'s canvas math below. See
+  // the comment on the preview <img>'s style for why this fixed a real bug.
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
 
   function onPointerDown(e: React.PointerEvent) {
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y }
@@ -88,8 +92,24 @@ export default function AvatarCropModal({ src, onCancel, onConfirm }: AvatarCrop
             src={src}
             alt="Crop preview"
             draggable={false}
+            onLoad={e => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
             className="pointer-events-none absolute left-1/2 top-1/2"
-            style={{ transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px) scale(${zoom})`, maxWidth: 'none', width: VIEWPORT, height: 'auto' }}
+            style={{
+              transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px) scale(${zoom})`,
+              maxWidth: 'none',
+              // Previously fixed at `width: VIEWPORT, height: 'auto'`, which
+              // scales purely by width — for a landscape source photo that
+              // is a SMALLER baseline than the "cover" scale confirm() uses
+              // below (Math.max of width/height ratios). The two only agreed
+              // for portrait/square images. That mismatch meant the visible
+              // preview didn't match what actually got exported: the saved
+              // avatar came out more zoomed-in/cropped than what the user
+              // positioned here — a "double crop". Computing the same
+              // cover-fit baseline for the preview keeps what's shown and
+              // what's exported identical for every photo orientation.
+              width:  natural ? natural.w * Math.max(VIEWPORT / natural.w, VIEWPORT / natural.h) : VIEWPORT,
+              height: natural ? natural.h * Math.max(VIEWPORT / natural.w, VIEWPORT / natural.h) : 'auto',
+            }}
           />
         </div>
 

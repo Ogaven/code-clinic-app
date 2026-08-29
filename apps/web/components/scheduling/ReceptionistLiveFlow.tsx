@@ -71,6 +71,10 @@ interface ReceptionistLiveFlowProps {
   doctorId?: string
   refreshInterval?: number
   patientBasePath?: string
+  // Trims chrome (legend, Daily Report button) and caps column height with
+  // internal scroll, for embedding inside a dashboard grid card rather than
+  // rendering as the full standalone /receptionist/flow page.
+  compact?: boolean
 }
 
 function fmt(dateStr?: string) {
@@ -202,11 +206,20 @@ function DailyReport({ appointments, onClose }: { appointments: Appointment[]; o
   )
 }
 
-export default function ReceptionistLiveFlow({ doctorId, refreshInterval = 30000, patientBasePath = '/receptionist/patients' }: ReceptionistLiveFlowProps) {
+export default function ReceptionistLiveFlow({ doctorId, refreshInterval = 30000, patientBasePath = '/receptionist/patients', compact = false }: ReceptionistLiveFlowProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading]           = useState(true)
   const [advancing, setAdvancing]       = useState<string | null>(null)
   const [showReport, setShowReport]     = useState(false)
+  // Drag-and-drop state — a patient can only be dragged into the column
+  // immediately after its current one (dragStageIdx + 1), the exact same
+  // forward-only transition already offered by each card's own button. No
+  // second status system: dropping calls the same advance() below, which
+  // hits the same PATCH /scheduling/appointments/:id/status endpoint.
+  const [dragId, setDragId]           = useState<string | null>(null)
+  const [dragStageIdx, setDragStageIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  const [dragError, setDragError]     = useState<string | null>(null)
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   const fetchFlow = useCallback(async () => {
@@ -234,14 +247,19 @@ export default function ReceptionistLiveFlow({ doctorId, refreshInterval = 30000
     return () => { clearInterval(fetchT); clearInterval(tickT) }
   }, [fetchFlow, refreshInterval])
 
-  async function advance(apptId: string, newStatus: string) {
+  // Returns success/failure so drag-and-drop can restore the card and show
+  // an error on rejection, per the required workflow: call the endpoint,
+  // wait for the response, only then update the board — never move the card
+  // client-side before the backend confirms.
+  async function advance(apptId: string, newStatus: string): Promise<boolean> {
     setAdvancing(apptId)
     try {
-      await fetch(`/api-proxy/scheduling/appointments/${apptId}/status`, {
+      const res = await fetch(`/api-proxy/scheduling/appointments/${apptId}/status`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       })
+      if (!res.ok) return false
       // No client-side broadcast here: PATCH /scheduling/appointments/:id/status
       // already creates a real in-app notification for every active receptionist
       // when the status becomes READY_CHECKOUT (apps/api/src/routes/scheduling.ts,
@@ -250,7 +268,44 @@ export default function ReceptionistLiveFlow({ doctorId, refreshInterval = 30000
       // route used to sit here — removed rather than pointed at a real
       // endpoint, since the server-side notification already covers this.
       await fetchFlow()
+      return true
+    } catch {
+      return false
     } finally { setAdvancing(null) }
+  }
+
+  function handleDragStart(e: React.DragEvent, apptId: string, stageIdx: number) {
+    setDragId(apptId)
+    setDragStageIdx(stageIdx)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  function handleDragEnd() {
+    setDragId(null)
+    setDragStageIdx(null)
+    setDragOverIdx(null)
+  }
+  function handleColumnDragOver(e: React.DragEvent, colIdx: number) {
+    if (dragStageIdx === null || colIdx !== dragStageIdx + 1) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverIdx !== colIdx) setDragOverIdx(colIdx)
+  }
+  function handleColumnDragLeave(colIdx: number) {
+    setDragOverIdx(prev => (prev === colIdx ? null : prev))
+  }
+  async function handleDrop(e: React.DragEvent, colIdx: number) {
+    e.preventDefault()
+    setDragOverIdx(null)
+    if (dragStageIdx === null || dragId === null || colIdx !== dragStageIdx + 1) { handleDragEnd(); return }
+    const fromStage = STAGES[dragStageIdx]
+    const apptId = dragId
+    handleDragEnd()
+    if (!fromStage.next) return
+    const ok = await advance(apptId, fromStage.next)
+    if (!ok) {
+      setDragError("Couldn't move patient — please try again.")
+      setTimeout(() => setDragError(null), 4000)
+    }
   }
 
   const totalActive = appointments.length
@@ -274,15 +329,25 @@ export default function ReceptionistLiveFlow({ doctorId, refreshInterval = 30000
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="hidden lg:flex items-center gap-2 text-[10px] text-gray-400 dark:text-white/30 mr-1">
-              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />&lt;15m</span>
-              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />15-30m</span>
-              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />&gt;30m</span>
-            </span>
-            <button onClick={() => setShowReport(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50 dark:bg-teal-500/15 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-500/25 transition-colors">
-              <FileBarChart size={12} /> <span className="hidden sm:inline">Daily Report</span>
-            </button>
+            {!compact && (
+              <span className="hidden lg:flex items-center gap-2 text-[10px] text-gray-400 dark:text-white/30 mr-1">
+                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />&lt;15m</span>
+                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />15-30m</span>
+                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />&gt;30m</span>
+              </span>
+            )}
+            {!compact && (
+              <button onClick={() => setShowReport(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50 dark:bg-teal-500/15 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-500/25 transition-colors">
+                <FileBarChart size={12} /> <span className="hidden sm:inline">Daily Report</span>
+              </button>
+            )}
+            {compact && (
+              <Link href="/receptionist/flow"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-teal-700 bg-teal-50 dark:bg-teal-500/15 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-500/25 transition-colors">
+                Full board <ChevronRight size={11} />
+              </Link>
+            )}
             <button onClick={fetchFlow}
               className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600 dark:hover:text-white transition-colors" title="Refresh">
               <RefreshCw size={14} />
@@ -290,19 +355,33 @@ export default function ReceptionistLiveFlow({ doctorId, refreshInterval = 30000
           </div>
         </div>
 
+        {dragError && (
+          <div className="px-4 sm:px-5 py-2 bg-red-50 dark:bg-red-500/10 border-b border-red-100 dark:border-red-500/20 text-[11px] font-semibold text-red-600 dark:text-red-400">
+            {dragError}
+          </div>
+        )}
+
         {/* Stage columns — stack on mobile, 2-up on tablet, 4-up on desktop */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 divide-gray-100 dark:divide-white/8">
           {STAGES.map((stage, idx) => {
             const stageAppts = appointments.filter(a => stage.statuses.includes(a.status))
+            const isValidDropTarget = dragStageIdx !== null && idx === dragStageIdx + 1
+            const isDragOver = isValidDropTarget && dragOverIdx === idx
             return (
               <div key={stage.key}
+                onDragOver={e => handleColumnDragOver(e, idx)}
+                onDragLeave={() => handleColumnDragLeave(idx)}
+                onDrop={e => handleDrop(e, idx)}
                 className={cn(
-                  'p-3.5',
+                  'p-3.5 transition-colors',
                   stage.bg,
                   idx % 2 === 1 && 'sm:border-l sm:border-gray-100 dark:sm:border-white/8',
                   idx >= 2 && 'xl:border-l xl:border-gray-100 dark:xl:border-white/8',
                   idx === 2 && 'sm:border-l-0',
-                )}>
+                  isValidDropTarget && 'ring-2 ring-inset',
+                  isDragOver && 'bg-white/80 dark:bg-white/[0.08]',
+                )}
+                style={isValidDropTarget ? { boxShadow: `inset 0 0 0 2px ${isDragOver ? stage.color : stage.color + '55'}` } : undefined}>
                 {/* Column header */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-1.5 min-w-0">
@@ -317,7 +396,7 @@ export default function ReceptionistLiveFlow({ doctorId, refreshInterval = 30000
                 </div>
 
                 {/* Cards */}
-                <div className="space-y-2 min-h-[56px]">
+                <div className={cn('space-y-2 min-h-[56px]', compact && 'max-h-[340px] overflow-y-auto pr-0.5')}>
                   {loading && stageAppts.length === 0 && (
                     <div className="h-16 bg-white/60 dark:bg-white/5 rounded-xl animate-pulse" />
                   )}
@@ -325,7 +404,13 @@ export default function ReceptionistLiveFlow({ doctorId, refreshInterval = 30000
                     const el = elapsed(appt.updatedAt)
                     return (
                       <div key={appt.id}
-                        className="group bg-white dark:bg-white/[0.05] rounded-xl border border-gray-100 dark:border-white/10 shadow-sm hover:shadow-md hover:border-gray-200 dark:hover:border-white/20 transition-all overflow-hidden">
+                        draggable
+                        onDragStart={e => handleDragStart(e, appt.id, idx)}
+                        onDragEnd={handleDragEnd}
+                        className={cn(
+                          'group bg-white dark:bg-white/[0.05] rounded-xl border border-gray-100 dark:border-white/10 shadow-sm hover:shadow-md hover:border-gray-200 dark:hover:border-white/20 transition-all overflow-hidden cursor-grab active:cursor-grabbing',
+                          dragId === appt.id && 'opacity-40',
+                        )}>
                         <Link href={`${patientBasePath}/${appt.patient.id}`}
                           className="flex items-start gap-2.5 p-2.5">
                           <Avatar
@@ -353,7 +438,10 @@ export default function ReceptionistLiveFlow({ doctorId, refreshInterval = 30000
                         {stage.next && (
                           <div className="px-2.5 pb-2.5">
                             <button
-                              onClick={() => advance(appt.id, stage.next)}
+                              onClick={async () => {
+                                const ok = await advance(appt.id, stage.next)
+                                if (!ok) { setDragError("Couldn't move patient — please try again."); setTimeout(() => setDragError(null), 4000) }
+                              }}
                               disabled={advancing === appt.id}
                               className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-bold text-white transition-all hover:opacity-90 disabled:opacity-50 min-h-[30px]"
                               style={{ background: stage.color }}>
