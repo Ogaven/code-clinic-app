@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { BarChart2, Download, Bot, Loader2, Star, MessageSquare, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -632,7 +632,7 @@ type ReportsTab = 'flow' | 'feedback' | 'case-acceptance'
 
 const VALID_TABS: ReportsTab[] = ['flow', 'feedback', 'case-acceptance']
 
-export default function ReportsPage() {
+function ReceptionistReportsContent() {
   const searchParams = useSearchParams()
   // Optional ?tab= deep link (from the Receptionist dashboard's Reports nav
   // dropdown: Case Acceptance / Patient Live Flow / Daily-Weekly Reports).
@@ -677,5 +677,15 @@ export default function ReportsPage() {
         {tab === 'case-acceptance' && <CaseAcceptanceTab />}
       </div>
     </div>
+  )
+}
+
+// useSearchParams() requires a Suspense boundary for Next.js App Router
+// static prerendering (https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout).
+export default function ReportsPage() {
+  return (
+    <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-gray-400 dark:text-white/30">Loading reports…</div>}>
+      <ReceptionistReportsContent />
+    </Suspense>
   )
 }
