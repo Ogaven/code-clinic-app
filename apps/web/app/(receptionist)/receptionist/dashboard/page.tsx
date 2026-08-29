@@ -113,7 +113,6 @@ export default function ReceptionistDashboard() {
   const [appointments, setAppts]    = useState<any[]>([])
   const [weekAppts, setWeekAppts]   = useState<any[] | null>(null)
   const [upcoming, setUpcoming]     = useState<any[]>([])
-  const [escalations, setEscalations] = useState<any[]>([])
   const [loading, setLoading]       = useState(true)
   const lastFetch = useRef(0)
   const [showCheckin, setShowCheckin]   = useState(false)
@@ -194,16 +193,14 @@ export default function ReceptionistDashboard() {
     const now = Date.now()
     if (!force && now - lastFetch.current < 5 * 60 * 1000 && stats !== null) return
     try {
-      const [s, a, u, e] = await Promise.all([
+      const [s, a, u] = await Promise.all([
         fetch(`${API}/receptionist/dashboard-stats`, { headers: authH }).then(r => r.json()),
         fetch(`${API}/receptionist/today-appointments`, { headers: authH }).then(r => r.json()),
         fetch(`${API}/receptionist/upcoming-appointments`, { headers: authH }).then(r => r.json()),
-        fetch(`${API}/receptionist/escalations`, { headers: authH }).then(r => r.json()),
       ])
       lastFetch.current = Date.now()
       setStats(s); setAppts(Array.isArray(a) ? a : [])
       setUpcoming(Array.isArray(u) ? u : [])
-      setEscalations(Array.isArray(e) ? e : [])
     } catch {} finally { setLoading(false) }
   }
 
@@ -572,49 +569,6 @@ export default function ReceptionistDashboard() {
 
       {/* ── Row 3: AI Suite Activity (compact) ─────────────────── */}
       <AiSuiteSnapshotCard />
-
-      {/* ── Escalations — kept as a compact alert strip only when there's
-          something actually urgent; not part of the fixed layout rows since
-          it has nothing to show most of the time. ─────────────────────── */}
-      {escalations.length > 0 && (
-        <div className="bg-white dark:bg-white/[0.04] rounded-2xl border-2 border-red-200 dark:border-red-500/30 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-500/20">
-            <AlertTriangle size={14} className="text-red-500 animate-pulse" />
-            <h3 className="text-xs font-bold text-red-700 dark:text-red-400">AI Escalation — Action Required</h3>
-            <span className="ml-auto text-xs font-black bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
-              {escalations.length}
-            </span>
-          </div>
-          {escalations.map((e: any) => (
-            <div key={e.id} className="flex items-start gap-3 px-4 py-2.5 border-b border-red-50 dark:border-red-500/10 last:border-0">
-              <div className="w-7 h-7 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400 text-xs font-bold flex-shrink-0">
-                {e.patient?.firstName?.[0]}{e.patient?.lastName?.[0]}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 dark:text-white">{e.patient?.firstName} {e.patient?.lastName}</p>
-                <p className="text-xs text-gray-400 dark:text-white/40 truncate">{e.type} · {e.channel}</p>
-              </div>
-              <div className="flex gap-2 flex-shrink-0">
-                <Link href="/receptionist/communications"
-                  className="text-xs font-bold bg-red-500 text-white px-2.5 py-1.5 rounded-lg hover:bg-red-600 transition-colors">
-                  Handle
-                </Link>
-                <button
-                  onClick={async () => {
-                    const token = localStorage.getItem('cc_token')
-                    await fetch(`${API}/receptionist/escalations/${e.id}/resolve`, {
-                      method: 'POST', headers: { Authorization: `Bearer ${token}` },
-                    })
-                    fetchAll()
-                  }}
-                  className="text-xs font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/60 px-2.5 py-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-white/20 transition-colors">
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* ── Book Appointment Drawer ──────────────────────────── */}
       <BookingDrawer open={showBooking} onClose={() => setShowBooking(false)} onBooked={() => { setShowBooking(false); fetchAll(true) }} />

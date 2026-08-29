@@ -66,9 +66,14 @@ const NAV: NavLink[] = [
     { label: 'Settings', href: '/receptionist/ai-suite/settings' },
   ] },
   { label: 'CRM', children: [
-    { label: 'Treatment Pipeline', disabled: true },
+    { label: 'Treatment Pipeline', href: '/receptionist/treatment-pipeline', permKey: 'treatmentPipeline' },
     { label: 'Leads', href: '/receptionist/leads', permKey: 'leads' },
-    { label: 'Referrals', disabled: true },
+    { label: 'Referrals', href: '/receptionist/referrals', permKey: 'referrals' },
+    // Campaigns stays disabled deliberately: the Admin page is almost
+    // entirely real send-actions (WhatsApp broadcast, template send,
+    // birthday message send) with no safe read-only subset to carve out —
+    // see the closeout report for the full reasoning. Not a missing
+    // permission check to fix; a scope decision for an explicit follow-up.
     { label: 'Campaigns', disabled: true },
   ] },
   { label: 'Reports', children: [
