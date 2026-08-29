@@ -42,7 +42,11 @@ const NAV: NavLink[] = [
   { label: 'Overview', href: '/receptionist/dashboard' },
   { label: 'Patients', children: [
     { label: 'Patient Profiles', href: '/receptionist/patients', permKey: 'patients' },
-    { label: 'Billing', disabled: true },
+    // Real billing exists — a full invoices/balance BillingTab on each
+    // patient's detail page (fetches GET /billing/invoices?patientId=) —
+    // there is no standalone billing list for Receptionist, so this opens
+    // the same Patients list as the real, honest entry point into it.
+    { label: 'Billing', href: '/receptionist/patients', permKey: 'patients' },
   ] },
   { label: 'Appointments', children: [
     { label: 'Appointments', href: '/receptionist/appointments', permKey: 'appointments' },
@@ -359,10 +363,9 @@ function SearchOverlay({ query, results, searching, activeIndex, inputRef, onQue
 function ProfileMenu({ user, theme, onTheme, onNavigate, onHelp, onSignOut }: { user: UserInfo; theme: AppTheme; onTheme: (theme: AppTheme) => void; onNavigate: (href: string) => void; onHelp: () => void; onSignOut: () => void }) {
   return <div className="fixed right-4 top-[70px] z-[101] w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl dark:border-white/10 dark:bg-[#0c1b38]">
     <div className="px-3 py-2"><p className="text-sm font-semibold text-gray-900 dark:text-white">{user.firstName} {user.lastName}</p><p className="text-[11px] text-gray-400">{roleLabels[user.role] || user.role}</p></div>
-    <button onClick={() => onNavigate('/receptionist/settings')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><User size={15} /> My Profile</button>
+    <button onClick={() => onNavigate('/receptionist/profile')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><User size={15} /> My Profile</button>
     <div className="my-1 border-t border-gray-100 pt-2 dark:border-white/10"><p className="flex items-center gap-2 px-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400"><Palette size={13} /> Appearance</p><div className="grid grid-cols-3 gap-1">{([['light', Sun], ['dark', Moon], ['system', Monitor]] as const).map(([value, Icon]) => <button key={value} onClick={() => onTheme(value)} className={cn('flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] capitalize text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/10', theme === value && 'bg-cyan-50 font-semibold text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300')}><span className="relative"><Icon size={15} />{theme === value && <Check size={8} className="absolute -right-2 -top-1" />}</span>{value}</button>)}</div></div>
-    <button onClick={() => onNavigate('/receptionist/settings?tab=security')} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><Palette size={15} className="opacity-0 w-0" />Change Password</button>
-    <button onClick={() => onNavigate('/receptionist/download')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><Download size={15} /> Download App</button>
+    <button onClick={() => onNavigate('/receptionist/download')} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><Download size={15} /> Download App</button>
     <button onClick={onHelp} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><HelpCircle size={15} /> Get Help</button>
     <div className="my-1 border-t border-gray-100 dark:border-white/10" />
     <button onClick={onSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><LogOut size={15} /> Sign Out</button>
@@ -391,7 +394,7 @@ function MobileMenu({ pathname, nav, user, theme, onTheme, onNavigate, onHelp, o
       </div>
       {user && <div className="border-t border-gray-100 p-3 dark:border-white/10">
         <p className="px-2 pb-2 text-xs font-semibold text-gray-800 dark:text-white">{user.firstName} {user.lastName}<span className="ml-2 font-normal text-gray-400">{roleLabels[user.role] || user.role}</span></p>
-        <button onClick={() => onNavigate('/receptionist/settings')} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"><User size={15} /> My Profile</button>
+        <button onClick={() => onNavigate('/receptionist/profile')} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"><User size={15} /> My Profile</button>
         <div className="my-2 grid grid-cols-3 gap-1">{([['light', Sun], ['dark', Moon], ['system', Monitor]] as const).map(([value, Icon]) => <button key={value} onClick={() => onTheme(value)} className={cn('flex items-center justify-center gap-1 rounded-lg py-2 text-[10px] capitalize text-gray-500 dark:text-slate-400', theme === value && 'bg-cyan-50 font-semibold text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300')}><Icon size={13} />{value}</button>)}</div>
         <button onClick={onHelp} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"><HelpCircle size={15} /> Get Help</button>
         <button onClick={onSignOut} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><LogOut size={15} /> Sign Out</button>

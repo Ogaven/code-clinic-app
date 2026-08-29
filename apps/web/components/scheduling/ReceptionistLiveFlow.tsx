@@ -339,6 +339,11 @@ export default function ReceptionistLiveFlow({ doctorId, refreshInterval = 30000
                               {appt.patient.firstName} {appt.patient.lastName}
                             </p>
                             <p className="text-[10px] text-gray-400 dark:text-white/30 truncate">{appt.service.name}</p>
+                            {appt.doctor?.user && (
+                              <p className="text-[10px] font-medium truncate" style={{ color: stage.color }}>
+                                Dr. {appt.doctor.user.firstName} {appt.doctor.user.lastName}
+                              </p>
+                            )}
                           </div>
                           <span className={cn('flex items-center gap-1 px-1.5 py-0.5 rounded-full flex-shrink-0', el.bg)}>
                             <Clock size={9} style={{ color: el.color }} />

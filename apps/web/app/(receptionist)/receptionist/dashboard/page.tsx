@@ -5,48 +5,21 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  Calendar, ChevronRight, Clock, AlertTriangle, CheckCircle2, Zap,
+  Calendar, AlertTriangle, Zap,
   Plus, X, Send, Mic, MicOff,
   Minimize2, Maximize2, LogIn, LogOut, Search, UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fetchWithAuth } from '@/lib/api'
-import ReceptionistLiveFlow from '@/components/scheduling/ReceptionistLiveFlow'
 import BookingDrawer from '@/components/scheduling/BookingDrawer'
 import PatientsOverviewCard from '@/components/receptionist/PatientsOverviewCard'
 import PatientSatisfactionCard from '@/components/receptionist/PatientSatisfactionCard'
 import GrowthCrmCard from '@/components/receptionist/GrowthCrmCard'
 import AiSuiteSnapshotCard from '@/components/receptionist/AiSuiteSnapshotCard'
 
-// ── Status config ─────────────────────────────────────────────
-const STATUS_COLOR: Record<string, string> = {
-  PENDING:        'bg-slate-100 text-slate-600',
-  CONFIRMED:      'bg-blue-100 text-blue-700',
-  CHECKED_IN:     'bg-yellow-100 text-yellow-700',
-  IN_CHAIR:       'bg-orange-100 text-orange-700',
-  WITH_PROVIDER:  'bg-teal-100 text-teal-700',
-  READY_CHECKOUT: 'bg-purple-100 text-purple-700',
-  COMPLETED:      'bg-green-100 text-green-700',
-  CANCELLED:      'bg-red-100 text-red-600',
-  NO_SHOW:        'bg-gray-100 text-gray-500',
-}
-const STATUS_LABEL: Record<string, string> = {
-  PENDING:'Scheduled', CONFIRMED:'Confirmed', CHECKED_IN:'Checked In',
-  IN_CHAIR:'In Chair', WITH_PROVIDER:'With Provider', READY_CHECKOUT:'Ready Checkout',
-  COMPLETED:'Done', CANCELLED:'Cancelled', NO_SHOW:'No Show',
-}
-const STATUS_NEXT: Record<string, { status: string; label: string }> = {
-  PENDING:        { status: 'CONFIRMED',      label: 'Confirm' },
-  CONFIRMED:      { status: 'CHECKED_IN',     label: 'Check In' },
-  CHECKED_IN:     { status: 'IN_CHAIR',       label: 'Seat' },
-  IN_CHAIR:       { status: 'WITH_PROVIDER',  label: 'To Provider' },
-  WITH_PROVIDER:  { status: 'READY_CHECKOUT', label: 'Ready ✓' },
-  READY_CHECKOUT: { status: 'COMPLETED',      label: 'Checkout' },
-}
-
 // Same stage grouping as ReceptionistLiveFlow's STAGES, kept in sync
-// deliberately so the "Live now" summary card above never disagrees with
-// the actual board rendered lower on this page.
+// deliberately so the "Live now" summary card here never disagrees with
+// the actual board at /receptionist/flow.
 const LIVE_STAGE_STATUSES = {
   arrived:  ['ARRIVED', 'CHECKED_IN'],
   waiting:  ['WAITING'],
@@ -54,62 +27,44 @@ const LIVE_STAGE_STATUSES = {
   checkout: ['READY_CHECKOUT'],
 }
 
-// ── Patient row ───────────────────────────────────────────────
-function PatientRow({ appt, onRefresh }: { appt: any; onRefresh: () => void }) {
-  const isActive = ['CHECKED_IN','IN_CHAIR','WITH_PROVIDER'].includes(appt.status)
-  const time = new Date(appt.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
+// Same status set + colours as the Admin dashboard's "Appointments This
+// Week" card (apps/web/app/(admin)/dashboard/page.tsx) — kept visually and
+// semantically identical so Receptionist reads as the same product, not a
+// re-invented one.
+const WEEK_STATUSES = [
+  { key: 'CONFIRMED', label: 'Confirmed', color: '#2563EB' },
+  { key: 'PENDING', label: 'Pending', color: '#D97706' },
+  { key: 'NO_SHOW', label: 'No-show', color: '#DC2626' },
+  { key: 'RESCHEDULED', label: 'Rescheduled', color: '#7C3AED' },
+  { key: 'CANCELLED', label: 'Cancelled', color: '#9CA3AF' },
+]
 
-  async function changeStatus(status: string) {
-    const token = localStorage.getItem('cc_token')
-    await fetch(`/api-proxy/scheduling/appointments/${appt.id}/status`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
-    onRefresh()
-  }
-
-  const next = STATUS_NEXT[appt.status]
-
+function DistributionBar({ segments, total }: { segments: { color: string; count: number }[]; total: number }) {
+  const denom = Math.max(total, 1)
   return (
-    <div className={cn(
-      'group flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-50 dark:border-white/5 last:border-0',
-      isActive && 'border-l-4 border-l-cyan-500 bg-cyan-50/40 dark:bg-cyan-900/10',
-    )}>
-      <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-        style={{ background: appt.service?.colour || '#29ABE2' }}>
-        {appt.patient?.firstName?.[0]}{appt.patient?.lastName?.[0]}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{appt.patient?.firstName} {appt.patient?.lastName}</p>
-        <p className="text-xs text-gray-400 truncate">{appt.service?.name} · Dr. {appt.doctor?.user?.firstName} {appt.doctor?.user?.lastName}</p>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold bg-cyan-500 text-white px-2 py-0.5 rounded-full whitespace-nowrap">{time}</span>
-        <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', STATUS_COLOR[appt.status] || 'bg-gray-100 text-gray-500')}>
-          {STATUS_LABEL[appt.status] || appt.status}
-        </span>
-        {/* Quick advance — visible on hover */}
-        <div className="hidden group-hover:flex items-center gap-1 ml-1">
-          {next && (
-            <button onClick={() => changeStatus(next.status)}
-              className="text-[10px] font-bold bg-cyan-500 text-white px-2 py-0.5 rounded-lg hover:bg-cyan-600 transition-colors">
-              {next.label}
-            </button>
-          )}
-          {(appt.status === 'PENDING' || appt.status === 'CONFIRMED') && (
-            <button onClick={() => changeStatus('CANCELLED')}
-              className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-lg hover:bg-red-200 transition-colors">
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
+    <div className="flex h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+      {segments.filter(s => s.count > 0).map((s, i) => (
+        <div key={i} style={{ width: `${(s.count / denom) * 100}%`, background: s.color }} />
+      ))}
     </div>
   )
 }
 
-// ── Compact stat tile (Appointments Today / Live now) ──────────
+function ChipLegend({ items, loading }: { items: { label: string; count: number; color: string }[]; loading: boolean }) {
+  return (
+    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+      {items.map(it => (
+        <span key={it.label} className="inline-flex items-center gap-1 text-[10px]">
+          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: it.color }} />
+          <span className="text-gray-500 dark:text-slate-400">{it.label}</span>
+          <span className="font-bold text-gray-700 dark:text-slate-200">{loading ? '—' : it.count}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// ── Compact stat tile (Live now) ──────────
 function OperationalCard({ icon, iconBg, title, badge, breakdown, loading }: {
   icon: React.ReactNode; iconBg: string; title: string; badge?: string
   breakdown: { label: string; value: number; color: string }[]
@@ -156,8 +111,8 @@ export default function ReceptionistDashboard() {
   const [user, setUser]             = useState<any>(null)
   const [stats, setStats]           = useState<any>(null)
   const [appointments, setAppts]    = useState<any[]>([])
+  const [weekAppts, setWeekAppts]   = useState<any[] | null>(null)
   const [upcoming, setUpcoming]     = useState<any[]>([])
-  const [active, setActive]         = useState<any>(null)
   const [escalations, setEscalations] = useState<any[]>([])
   const [loading, setLoading]       = useState(true)
   const lastFetch = useRef(0)
@@ -239,19 +194,33 @@ export default function ReceptionistDashboard() {
     const now = Date.now()
     if (!force && now - lastFetch.current < 5 * 60 * 1000 && stats !== null) return
     try {
-      const [s, a, u, ac, e] = await Promise.all([
+      const [s, a, u, e] = await Promise.all([
         fetch(`${API}/receptionist/dashboard-stats`, { headers: authH }).then(r => r.json()),
         fetch(`${API}/receptionist/today-appointments`, { headers: authH }).then(r => r.json()),
         fetch(`${API}/receptionist/upcoming-appointments`, { headers: authH }).then(r => r.json()),
-        fetch(`${API}/receptionist/active-consultation`, { headers: authH }).then(r => r.json()),
         fetch(`${API}/receptionist/escalations`, { headers: authH }).then(r => r.json()),
       ])
       lastFetch.current = Date.now()
       setStats(s); setAppts(Array.isArray(a) ? a : [])
       setUpcoming(Array.isArray(u) ? u : [])
-      setActive(ac); setEscalations(Array.isArray(e) ? e : [])
+      setEscalations(Array.isArray(e) ? e : [])
     } catch {} finally { setLoading(false) }
   }
+
+  // "Appointments This Week" (Mon–Sun) — same real endpoint and date-range
+  // convention as the Admin dashboard's equivalent card.
+  useEffect(() => {
+    const now = new Date()
+    const dow = now.getDay()
+    const monday = new Date(now); monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1))
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
+    const iso = (d: Date) => d.toISOString().slice(0, 10)
+    fetch(`${API}/scheduling/appointments?startDate=${iso(monday)}&endDate=${iso(sunday)}`, { headers: authH })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setWeekAppts(d) })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function nowTime() {
     return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' })
@@ -356,16 +325,8 @@ export default function ReceptionistDashboard() {
 
   const sk = stats === null
 
-  // Appointments Today breakdown — computed from the same today-appointments
-  // list the detail views below use, so the number here can never disagree
-  // with what a receptionist sees when they scroll down.
-  const apptBreakdown = [
-    { label: 'confirmed',  value: appointments.filter(a => a.status === 'CONFIRMED').length,  color: '#2563EB' },
-    { label: 'pending',    value: appointments.filter(a => a.status === 'PENDING').length,     color: '#D97706' },
-    { label: 'no-show',    value: appointments.filter(a => a.status === 'NO_SHOW').length,     color: '#6B7280' },
-    { label: 'cancelled',  value: appointments.filter(a => a.status === 'CANCELLED').length,   color: '#DC2626' },
-    { label: 'completed',  value: appointments.filter(a => a.status === 'COMPLETED').length,   color: '#059669' },
-  ].filter(b => b.value > 0)
+  const weekCounts = WEEK_STATUSES.map(s => ({ ...s, count: (weekAppts ?? []).filter(a => a.status === s.key).length }))
+  const weekTotal  = weekAppts ? weekAppts.length : 0
 
   const liveBreakdown = [
     { label: 'arrived',  value: appointments.filter(a => LIVE_STAGE_STATUSES.arrived.includes(a.status)).length,  color: '#3B82F6' },
@@ -505,66 +466,60 @@ export default function ReceptionistDashboard() {
         </div>
       )}
 
-      {/* ── Hero ────────────────────────────────────────────────── */}
-      <div className="relative flex items-center justify-between gap-4 px-1 pt-1 pb-2">
-        {/* Greeting text */}
-        <div className="flex-1">
-          <p className="text-gray-400 dark:text-white/40 text-sm font-medium mb-1">
-            {new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'Africa/Nairobi' })}
-          </p>
-          <h1 className="text-3xl font-black text-gray-800 dark:text-white mb-1">
-            {greeting()}, <span style={{ color: '#29ABE2' }}>{user?.firstName}!</span> 👋
+      {/* ── Header: greeting + dental illustration + compact quick actions ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Image src="/dental30.png" alt="" width={34} height={26} className="hidden sm:block flex-shrink-0"
+            style={{ objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(41,171,226,0.35))' }} />
+          <h1 className="text-lg sm:text-xl font-black text-gray-800 dark:text-white truncate">
+            {greeting()}, <span style={{ color: '#29ABE2' }}>{user?.firstName}</span>! 👋
           </h1>
-          <p className="text-gray-500 dark:text-white/50 text-sm">
-            <span className="font-bold text-cyan-600">{stats?.appointments?.total || 0}</span> appointments today ·{' '}
-            <span className="font-bold text-green-500">{stats?.appointments?.confirmed || 0}</span> confirmed ·{' '}
-            <span className="font-bold text-amber-500">{stats?.appointments?.pending || 0}</span> pending
-          </p>
         </div>
 
-        {/* Dental illustration — kept, but compact per redesign spec */}
-        <div className="hidden sm:block flex-shrink-0">
-          <Image src="/dental30.png" alt="" width={96} height={72}
-            style={{ objectFit:'contain', filter:'drop-shadow(0 8px 28px rgba(41,171,226,0.4))' }}/>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => { setCheckinMode('in'); setShowCheckin(true) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white hover:-translate-y-0.5 transition-all"
+            style={{ background: 'linear-gradient(135deg,#0891b2,#06b6d4)' }}>
+            <LogIn size={13} /> Check In
+          </button>
+          <button
+            onClick={() => { setCheckinMode('out'); setShowCheckin(true) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white hover:-translate-y-0.5 transition-all"
+            style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}>
+            <LogOut size={13} /> Check Out
+          </button>
+          <button
+            onClick={() => setShowBooking(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
+            <Plus size={13} className="text-cyan-500" /> Book
+          </button>
+          <button
+            onClick={() => { setNewPatient({ firstName: '', lastName: '', phone: '', email: '', gender: 'UNKNOWN' }); setAddPatientError(''); setShowAddPatient(true) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
+            <UserPlus size={13} className="text-purple-500" /> Add Patient
+          </button>
         </div>
       </div>
 
-      {/* ── Quick Actions ──────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-3">
-        <button
-          onClick={() => { setCheckinMode('in'); setShowCheckin(true) }}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-black text-white hover:-translate-y-0.5 transition-all shadow-lg"
-          style={{ background: 'linear-gradient(135deg,#0891b2,#06b6d4)', boxShadow: '0 4px 20px rgba(6,182,212,0.4)' }}>
-          <LogIn size={16} /> Check In Patient
-        </button>
-        <button
-          onClick={() => { setCheckinMode('out'); setShowCheckin(true) }}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-black text-white hover:-translate-y-0.5 transition-all shadow-lg"
-          style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: '0 4px 20px rgba(16,185,129,0.4)' }}>
-          <LogOut size={16} /> Check Out Patient
-        </button>
-        <button
-          onClick={() => setShowBooking(true)}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
-          <Plus size={16} className="text-cyan-500" /> Book Appointment
-        </button>
-        <button
-          onClick={() => { setNewPatient({ firstName: '', lastName: '', phone: '', email: '', gender: 'UNKNOWN' }); setAddPatientError(''); setShowAddPatient(true) }}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-black hover:-translate-y-0.5 transition-all border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white">
-          <UserPlus size={16} className="text-purple-500" /> Add Patient
-        </button>
-      </div>
-
-      {/* ── Top operational row: Appointments Today / Live now / Upcoming ── */}
+      {/* ── Row 1: Appointments This Week / Patient Live Flow / Upcoming ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <OperationalCard
-          icon={<Calendar size={18} className="text-white" />}
-          iconBg="linear-gradient(135deg, #0891b2, #06b6d4)"
-          title="Appointments Today"
-          badge="Today"
-          breakdown={apptBreakdown}
-          loading={sk}
-        />
+        {/* Appointments This Week — same visual language as the Admin
+            dashboard's equivalent card (number + distribution bar + chip
+            legend), reusing the same GET /scheduling/appointments endpoint. */}
+        <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-3.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Appointments This Week</p>
+            <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-300"><Calendar size={13} /></span>
+          </div>
+          <div className="mt-2 flex items-center gap-3">
+            <p className="text-3xl font-extrabold leading-none text-gray-800 dark:text-white">{weekAppts ? weekTotal : '—'}</p>
+            <div className="h-8 w-px flex-shrink-0 bg-gray-100 dark:bg-white/10" />
+            <DistributionBar segments={weekCounts} total={weekTotal} />
+          </div>
+          <ChipLegend items={weekCounts} loading={!weekAppts} />
+        </div>
+
         <OperationalCard
           icon={<Zap size={18} className="text-white" />}
           iconBg="linear-gradient(135deg, #0d9488, #14b8a6)"
@@ -578,7 +533,7 @@ export default function ReceptionistDashboard() {
         <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
             <h3 className="text-sm font-bold text-gray-800 dark:text-white">Upcoming Appointments</h3>
-            <Link href="/receptionist/appointments" className="text-xs text-cyan-600 dark:text-cyan-400 font-semibold hover:underline">All</Link>
+            <Link href="/receptionist/appointments" className="text-xs text-cyan-600 dark:text-cyan-400 font-semibold hover:underline">View all</Link>
           </div>
           <div className="divide-y divide-gray-50 dark:divide-white/5 max-h-[220px] overflow-y-auto">
             {upcoming.length === 0 ? (
@@ -608,204 +563,58 @@ export default function ReceptionistDashboard() {
         </div>
       </div>
 
-      {/* ── Patients Overview / Patient Satisfaction / Growth & CRM ──── */}
+      {/* ── Row 2: Patients Overview / Patient Satisfaction / Growth & CRM ──── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <PatientsOverviewCard newToday={stats?.newPatients?.count ?? 0} returningToday={stats?.returningPatients?.count ?? 0} loading={sk} />
         <PatientSatisfactionCard />
         <GrowthCrmCard />
       </div>
 
-      {/* ── AI Suite Activity ──────────────────────────────────── */}
+      {/* ── Row 3: AI Suite Activity (compact) ─────────────────── */}
       <AiSuiteSnapshotCard />
 
-      {/* ── Live Patient Flow — full width board ───────────────── */}
-      <ReceptionistLiveFlow />
-
-      {/* ── AI Suite Quick Links: Follow-up / Confirmation ─────── */}
-      <div className="grid grid-cols-2 gap-4">
-        <Link href="/receptionist/ai-suite/followup-dashboard"
-          className="dark-pop bg-white dark:bg-white/[0.04] rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all group">
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
-              <CheckCircle2 size={18} className="text-white" />
-            </div>
-            <ChevronRight size={14} className="text-gray-300 dark:text-white/20 group-hover:text-cyan-500 transition-colors mt-1" />
+      {/* ── Escalations — kept as a compact alert strip only when there's
+          something actually urgent; not part of the fixed layout rows since
+          it has nothing to show most of the time. ─────────────────────── */}
+      {escalations.length > 0 && (
+        <div className="bg-white dark:bg-white/[0.04] rounded-2xl border-2 border-red-200 dark:border-red-500/30 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-500/20">
+            <AlertTriangle size={14} className="text-red-500 animate-pulse" />
+            <h3 className="text-xs font-bold text-red-700 dark:text-red-400">AI Escalation — Action Required</h3>
+            <span className="ml-auto text-xs font-black bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
+              {escalations.length}
+            </span>
           </div>
-          <p className="text-sm font-black text-gray-800 dark:text-white">Follow-up Dashboard</p>
-          <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">AI follow-up activity</p>
-        </Link>
-        <Link href="/receptionist/ai-suite/confirmation-dashboard"
-          className="dark-pop bg-white dark:bg-white/[0.04] rounded-2xl p-4 border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-md transition-all group">
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}>
-              <Calendar size={18} className="text-white" />
-            </div>
-            <ChevronRight size={14} className="text-gray-300 dark:text-white/20 group-hover:text-cyan-500 transition-colors mt-1" />
-          </div>
-          <p className="text-sm font-black text-gray-800 dark:text-white">Confirmation Dashboard</p>
-          <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Appointment confirmations</p>
-        </Link>
-      </div>
-
-      {/* ── Supporting detail: Today's Patients / Active Consultation / Escalations ── */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 min-w-0">
-
-        {/* ── LEFT COLUMN ─────────────────────────────────────── */}
-        <div className="space-y-4 min-w-0">
-
-          {/* Today's Patient List */}
-          <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/8">
-              <div>
-                <h3 className="text-sm font-bold text-gray-800 dark:text-white">Today's Patients</h3>
-                <p className="text-xs text-gray-400 dark:text-white/40">{appointments.length} scheduled</p>
+          {escalations.map((e: any) => (
+            <div key={e.id} className="flex items-start gap-3 px-4 py-2.5 border-b border-red-50 dark:border-red-500/10 last:border-0">
+              <div className="w-7 h-7 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400 text-xs font-bold flex-shrink-0">
+                {e.patient?.firstName?.[0]}{e.patient?.lastName?.[0]}
               </div>
-              <div className="flex items-center gap-2">
-                <select
-                  onChange={async e => {
-                    const d = new Date()
-                    if (e.target.value === 'tomorrow') d.setDate(d.getDate() + 1)
-                    else if (e.target.value === 'week') d.setDate(d.getDate() + 7)
-                    const iso = d.toISOString().slice(0, 10)
-                    const res = await fetch(`${API}/receptionist/today-appointments?date=${iso}`, { headers: authH })
-                    if (res.ok) setAppts(await res.json())
-                  }}
-                  className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-gray-600 dark:text-white dark:bg-gray-800 focus:outline-none">
-                  <option value="today" className="dark:bg-gray-800">Today</option>
-                  <option value="tomorrow" className="dark:bg-gray-800">Tomorrow</option>
-                  <option value="week" className="dark:bg-gray-800">This week</option>
-                </select>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800 dark:text-white">{e.patient?.firstName} {e.patient?.lastName}</p>
+                <p className="text-xs text-gray-400 dark:text-white/40 truncate">{e.type} · {e.channel}</p>
               </div>
-            </div>
-
-            <div>
-              {appointments.length === 0 ? (
-                <div className="px-4 py-3 text-center">
-                  <Calendar size={22} className="mx-auto mb-1.5 text-gray-200" />
-                  <p className="text-sm text-gray-400">No appointments scheduled</p>
-                </div>
-              ) : (
-                appointments.slice(0, 6).map(appt => <PatientRow key={appt.id} appt={appt} onRefresh={fetchAll} />)
-              )}
-            </div>
-
-            {appointments.length > 6 && (
-              <div className="px-4 py-2 border-t border-gray-50 dark:border-white/8">
-                <Link href="/receptionist/appointments"
-                  className="text-xs font-semibold text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 flex items-center gap-1">
-                  View all {appointments.length} appointments <ChevronRight size={12} />
+              <div className="flex gap-2 flex-shrink-0">
+                <Link href="/receptionist/communications"
+                  className="text-xs font-bold bg-red-500 text-white px-2.5 py-1.5 rounded-lg hover:bg-red-600 transition-colors">
+                  Handle
                 </Link>
-              </div>
-            )}
-          </div>
-
-          {/* Escalation Alerts */}
-          {escalations.length > 0 && (
-            <div className="bg-white dark:bg-white/[0.04] rounded-2xl border-2 border-red-200 dark:border-red-500/30 shadow-sm overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-500/20">
-                <AlertTriangle size={15} className="text-red-500 animate-pulse" />
-                <h3 className="text-sm font-bold text-red-700 dark:text-red-400">AI Escalation — Action Required</h3>
-                <span className="ml-auto text-xs font-black bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
-                  {escalations.length}
-                </span>
-              </div>
-              {escalations.map((e: any) => (
-                <div key={e.id} className="flex items-start gap-3 px-4 py-3 border-b border-red-50 dark:border-red-500/10 last:border-0">
-                  <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400 text-xs font-bold flex-shrink-0">
-                    {e.patient?.firstName?.[0]}{e.patient?.lastName?.[0]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-800 dark:text-white">{e.patient?.firstName} {e.patient?.lastName}</p>
-                    <p className="text-xs text-gray-400 dark:text-white/40 truncate">{e.type} · {e.channel}</p>
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <Link href="/receptionist/communications"
-                      className="text-xs font-bold bg-red-500 text-white px-2.5 py-1.5 rounded-lg hover:bg-red-600 transition-colors">
-                      Handle
-                    </Link>
-                    <button
-                      onClick={async () => {
-                        const token = localStorage.getItem('cc_token')
-                        await fetch(`${API}/receptionist/escalations/${e.id}/resolve`, {
-                          method: 'POST', headers: { Authorization: `Bearer ${token}` },
-                        })
-                        fetchAll()
-                      }}
-                      className="text-xs font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/60 px-2.5 py-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-white/20 transition-colors">
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── RIGHT COLUMN: Active Consultation ────────────────── */}
-        <div className="space-y-4 min-w-0">
-          <div className="bg-white dark:bg-white/[0.04] rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 dark:border-white/5">
-              <div className="flex items-center gap-2">
-                <span className={cn('w-2 h-2 rounded-full', active ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300')} />
-                <h3 className="text-sm font-bold text-gray-800 dark:text-white">Active Consultation</h3>
+                <button
+                  onClick={async () => {
+                    const token = localStorage.getItem('cc_token')
+                    await fetch(`${API}/receptionist/escalations/${e.id}/resolve`, {
+                      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+                    })
+                    fetchAll()
+                  }}
+                  className="text-xs font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/60 px-2.5 py-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-white/20 transition-colors">
+                  Dismiss
+                </button>
               </div>
             </div>
-
-            {active ? (
-              <div className="p-4 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-lg font-black flex-shrink-0"
-                    style={{ background: active.service?.colour || '#29ABE2' }}>
-                    {active.patient?.firstName?.[0]}{active.patient?.lastName?.[0]}
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-800 dark:text-white">{active.patient?.firstName} {active.patient?.lastName}</p>
-                    <p className="text-xs text-gray-400">{active.patient?.gender} · {active.patient?.dob ? new Date().getFullYear() - new Date(active.patient.dob).getFullYear() + ' yrs' : ''}</p>
-                    <p className="text-xs text-cyan-600 dark:text-cyan-400 font-semibold">{active.service?.name}</p>
-                  </div>
-                </div>
-                <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-3">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Doctor</p>
-                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Dr. {active.doctor?.user?.firstName} {active.doctor?.user?.lastName}</p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={async () => {
-                      const token = localStorage.getItem('cc_token')
-                      await fetch(`${API}/scheduling/appointments/${active.id}/status`, {
-                        method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ status: 'COMPLETED' }),
-                      })
-                      fetchAll()
-                    }}
-                    className="flex-1 text-xs font-bold bg-emerald-500 text-white py-2 rounded-xl hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1">
-                    <CheckCircle2 size={12} /> Mark Completed
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const token = localStorage.getItem('cc_token')
-                      await fetch(`${API}/scheduling/appointments/${active.id}/status`, {
-                        method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ status: 'NO_SHOW' }),
-                      })
-                      fetchAll()
-                    }}
-                    className="flex-1 text-xs font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/60 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-white/20 transition-colors">
-                    No Show
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="px-4 py-3 text-center">
-                <Clock size={22} className="mx-auto mb-1.5 text-gray-200" />
-                <p className="text-sm text-gray-400">No active consultation</p>
-              </div>
-            )}
-          </div>
+          ))}
         </div>
-      </div>
+      )}
 
       {/* ── Book Appointment Drawer ──────────────────────────── */}
       <BookingDrawer open={showBooking} onClose={() => setShowBooking(false)} onBooked={() => { setShowBooking(false); fetchAll(true) }} />
