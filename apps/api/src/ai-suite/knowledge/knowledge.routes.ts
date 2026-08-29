@@ -2,9 +2,19 @@ import { Router } from 'express'
 import multer from 'multer'
 import { ingestText, ingestUrl, ingestFile } from './knowledge-ingest.service'
 import { prisma } from '../../lib/prisma'
+import { requireAuth } from '../../middleware/auth'
+import { clinicalStaff } from '../../middleware/rbac'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
+
+// This clinic knowledge base is read/managed by Admin, Doctor and
+// Receptionist today (the Admin and Receptionist Knowledge Base pages both
+// call these exact routes) — clinicalStaff matches that existing audience
+// exactly. Every route below was previously unauthenticated; this was a
+// real gap (see feature/knowledge-studio report), not an intentional public
+// surface, so it's fixed here rather than left in place.
+router.use(requireAuth, clinicalStaff)
 
 // ── GET /ai-suite/knowledge ───────────────────────────────────────────────────
 // Returns all AiKnowledgeBase rows, grouped by title so multi-chunk documents
