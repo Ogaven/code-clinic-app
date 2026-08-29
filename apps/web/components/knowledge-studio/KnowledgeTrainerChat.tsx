@@ -233,17 +233,24 @@ export default function KnowledgeTrainerChat() {
 
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
 
-  async function sendMessage(text: string) {
+  // `baseMessages` defaults to current state for the normal composer-driven
+  // send, but retryLast() passes an explicit array instead of relying on it —
+  // React state setters are async, so reading the `messages` closure right
+  // after calling setMessages() would still see the pre-update value.
+  async function sendMessage(text: string, baseMessages: ChatMessage[] = messages) {
     const trimmed = text.trim()
     if (!trimmed || loading) return
     const userMsg: ChatMessage = { id: uid(), role: 'user', content: trimmed }
-    const nextMessages = [...messages, userMsg]
+    const nextMessages = [...baseMessages, userMsg]
     setMessages(nextMessages)
     setInput('')
     setLoading(true)
     try {
       const token = localStorage.getItem('cc_token')
-      const history = nextMessages.slice(-10).map(m => ({ role: m.role, content: m.content }))
+      // History is prior turns ONLY — the new message is sent separately as
+      // `message` and the backend appends it as the final turn itself.
+      // Including it in history too would send it to Claude twice.
+      const history = baseMessages.slice(-10).map(m => ({ role: m.role, content: m.content }))
       const res = await fetch('/api-proxy/ai-suite/knowledge-studio/chat', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -268,10 +275,19 @@ export default function KnowledgeTrainerChat() {
   function retryLast() {
     const lastUser = [...messages].reverse().find(m => m.role === 'user')
     if (!lastUser) return
-    // Drop everything from the last user message onward, then resend it
+    // Drop everything from the last user message onward, then resend it —
+    // `base` is passed explicitly into sendMessage rather than left to the
+    // `messages` state/closure, which wouldn't reflect this truncation yet.
     const idx = messages.findIndex(m => m.id === lastUser.id)
-    setMessages(messages.slice(0, idx))
-    sendMessage(lastUser.content)
+    const base = messages.slice(0, idx)
+    setMessages(base)
+    sendMessage(lastUser.content, base)
+  }
+
+  function startNewChat() {
+    setMessages([])
+    setShowComposerFor(null)
+    setInput('')
   }
 
   function onFeedback(id: string, feedback: 'correct' | 'needs_correction') {
@@ -314,7 +330,7 @@ export default function KnowledgeTrainerChat() {
               </div>
             )}
           </div>
-          <button onClick={() => setMessages([])} title="New chat"
+          <button onClick={startNewChat} title="New chat"
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/20 hover:bg-cyan-100 dark:hover:bg-cyan-900/30 transition-colors">
             <Plus size={13} /> New Chat
           </button>
