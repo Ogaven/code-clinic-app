@@ -1,25 +1,13 @@
-import { execSync } from 'child_process'
-import path from 'path'
 import { Gender } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { prisma } from './lib/prisma'
-const DB_DIR = path.resolve(__dirname, '../../../packages/database')
-const PRISMA_BIN = path.join(DB_DIR, 'node_modules/.bin/prisma')
 
 export async function runStartup() {
-  // ── 1. Push schema to DB (works on fresh PostgreSQL, no migration files needed) ──
-  try {
-    console.log('[startup] Running prisma db push...')
-    execSync(`"${PRISMA_BIN}" db push --schema="${path.join(DB_DIR, 'prisma/schema.prisma')}" --accept-data-loss`, {
-      stdio: 'inherit',
-      env: { ...process.env },
-    })
-    console.log('[startup] Schema pushed.')
-  } catch (err: any) {
-    console.error('[startup] DB migration failed but continuing:', err.message)
-  }
+  // Schema deployment (prisma db push / migrate) is an explicit operator action
+  // performed during deploy (see deploy-api.sh), not an application-runtime
+  // side effect. Runtime startup only verifies connectivity/health below.
 
-  // ── 2. Seed if database is empty or sparse ────────────────────
+  // ── Seed if database is empty or sparse ────────────────────
   try {
     const [userCount, patientCount, apptCount] = await Promise.all([
       prisma.user.count(),
