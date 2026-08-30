@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
+import { adminAndReceptionist } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
 
@@ -15,7 +16,7 @@ function fillVariables(body: string, vars: Record<string, string>): string {
 }
 
 // GET /templates
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const templates = await prisma.messageTemplate.findMany({
       where: { isActive: true },
@@ -29,12 +30,12 @@ router.get('/', requireAuth, async (req, res) => {
 })
 
 // GET /templates/meta — returns available categories and variable names
-router.get('/meta', requireAuth, (_req, res) => {
+router.get('/meta', requireAuth, adminAndReceptionist, (_req, res) => {
   res.json({ categories: CATEGORIES, variables: VARIABLES })
 })
 
 // POST /templates
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const { title, body, category = 'General', variables = [] } = req.body
     if (!title?.trim() || !body?.trim()) return res.status(400).json({ error: 'title and body required' })
@@ -54,7 +55,7 @@ router.post('/', requireAuth, async (req, res) => {
 })
 
 // PUT /templates/:id
-router.put('/:id', requireAuth, async (req, res) => {
+router.put('/:id', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const { title, body, category, variables } = req.body
     const template = await prisma.messageTemplate.update({
@@ -73,7 +74,7 @@ router.put('/:id', requireAuth, async (req, res) => {
 })
 
 // DELETE /templates/:id  (soft delete)
-router.delete('/:id', requireAuth, async (req, res) => {
+router.delete('/:id', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     await prisma.messageTemplate.update({ where: { id: req.params.id }, data: { isActive: false } })
     res.json({ ok: true })
@@ -83,7 +84,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
 })
 
 // GET /templates/:id/preview?patientId=  — resolve variables with real patient data
-router.get('/:id/preview', requireAuth, async (req, res) => {
+router.get('/:id/preview', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const template = await prisma.messageTemplate.findUnique({ where: { id: req.params.id } })
     if (!template) return res.status(404).json({ error: 'Not found' })
@@ -127,7 +128,7 @@ router.get('/:id/preview', requireAuth, async (req, res) => {
 })
 
 // POST /templates/:id/send  — send to a patient segment with variable substitution
-router.post('/:id/send', requireAuth, async (req, res) => {
+router.post('/:id/send', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const template = await prisma.messageTemplate.findUnique({ where: { id: req.params.id } })
     if (!template) return res.status(404).json({ error: 'Template not found' })
