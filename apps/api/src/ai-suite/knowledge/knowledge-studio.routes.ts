@@ -303,9 +303,29 @@ router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Respo
       return res.status(500).json({ error: 'Failed to get a response from the clinic AI', conversationId, userMessageId })
     }
 
-    const assistantMsg = await prisma.knowledgeStudioMessage.create({
-      data: { conversationId, role: 'assistant', content: reply },
-    })
+    const assistantMsg = body.retryOf !== undefined
+      ? await prisma.$transaction(async (tx) => {
+          // Serialize commits for this retry target across every API instance.
+          // A duplicate request may still reach the provider, but only one
+          // assistant response can be committed for the unanswered user row.
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${userMessageId}))`
+          const target = await tx.knowledgeStudioMessage.findUnique({ where: { id: userMessageId } })
+          if (!target) return null
+          const answered = await tx.knowledgeStudioMessage.findFirst({
+            where: { conversationId, createdAt: { gt: target.createdAt } },
+          })
+          if (answered) return null
+          return tx.knowledgeStudioMessage.create({
+            data: { conversationId, role: 'assistant', content: reply },
+          })
+        }, { timeout: 15_000 })
+      : await prisma.knowledgeStudioMessage.create({
+          data: { conversationId, role: 'assistant', content: reply },
+        })
+
+    if (!assistantMsg) {
+      return res.status(409).json({ error: 'This message already has a response' })
+    }
 
     if (isFirstTurn) {
       // Deterministic title from the first real message — no extra LLM call
