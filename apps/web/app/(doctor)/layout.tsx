@@ -123,16 +123,14 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     } catch {}
   }, [token])
 
-  const fetchDoctorAvatar = useCallback(async (userId: string) => {
+  const fetchDoctorAvatar = useCallback(async (_userId: string) => {
     if (!token) return
     try {
-      const r = await fetch('/api-proxy/doctors', {
+      const r = await fetch('/api-proxy/doctors/me', {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!r.ok) return
-      const docs = await r.json()
-      if (!Array.isArray(docs)) return
-      const me = docs.find((d: any) => d.userId === userId)
+      const me = await r.json()
       if (me?.avatarUrl) {
         setAvatarUrl(me.avatarUrl)
         localStorage.setItem('cc_avatar', me.avatarUrl)

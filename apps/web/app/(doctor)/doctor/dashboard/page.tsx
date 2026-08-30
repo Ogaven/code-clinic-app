@@ -103,16 +103,15 @@ export default function DoctorDashboardPage() {
     try {
       const u = JSON.parse(localStorage.getItem('cc_user') || '{}')
       setUser(u)
-      const dr = await fetch('/api-proxy/doctors', { headers: { Authorization: `Bearer ${token}` } })
-      const doctors = await dr.json()
-      const me = Array.isArray(doctors) ? doctors.find((d: any) => d.userId === u.id) : null
+      const dr = await fetch('/api-proxy/doctors/me', { headers: { Authorization: `Bearer ${token}` } })
+      const me = dr.ok ? await dr.json() : null
       setDoctor(me)
       const today = new Date().toISOString().slice(0, 10)
       const apptRes = await fetch(`/api-proxy/scheduling/appointments?startDate=${today}&endDate=${today}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const all = await apptRes.json()
-      setAppts(Array.isArray(all) && me ? all.filter((a: any) => a.doctorId === me.id) : [])
+      setAppts(Array.isArray(all) && me ? all : [])
       // Fetch check-in status
       const ciRes = await fetch('/api-proxy/doctors/check-in/today', { headers: { Authorization: `Bearer ${token}` } })
       if (ciRes.ok) {

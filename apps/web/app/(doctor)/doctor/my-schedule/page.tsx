@@ -145,13 +145,9 @@ export default function MySchedulePage() {
     if (!token) return
     setLoading(true)
     try {
-      const u = JSON.parse(localStorage.getItem('cc_user') || '{}')
-      // doctorId is stored in cc_user during login for DOCTOR-role users
-      const myDoctorId = u.doctorId as string | undefined
-      // Fetch doctor record (needed for block-time endpoint)
-      const dr   = await fetch('/api-proxy/doctors', { headers: { Authorization: `Bearer ${token}` } })
-      const docs = await dr.json()
-      const me   = Array.isArray(docs) ? (docs.find((d: any) => d.id === myDoctorId) ?? null) : null
+      const dr = await fetch('/api-proxy/doctors/me', { headers: { Authorization: `Bearer ${token}` } })
+      const me = dr.ok ? await dr.json() : null
+      const myDoctorId = me?.id as string | undefined
       setDoctor(me)
       if (!myDoctorId) return
       const { start, end } = getRange()
