@@ -4,7 +4,7 @@ This matrix reflects the current Admin and Receptionist scheduling workspaces. `
 
 | Area | Admin | Receptionist | Doctor | Enforcement |
 | --- | --- | --- | --- | --- |
-| Appointments | R/C/U/D/S | R/C/U/D/S | R/C/U/S | Delete restricted to Admin/Receptionist; create/update/status remain clinical staff |
+| Appointments | R/C/U/D/S | R/C/U/S | R/C/U/S | Delete remains Admin-only; create/update/status remain clinical staff |
 | Working hours | R/U | R/U | R | Update restricted to Admin/Receptionist |
 | Doctor schedules | R/U/D | R/U/D | R | Mutations restricted to Admin/Receptionist |
 | Special days | R/C/D | R/C/D | R | Mutations restricted to Admin/Receptionist |
