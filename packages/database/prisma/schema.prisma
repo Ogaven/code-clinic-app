@@ -113,6 +113,7 @@ model User {
   appointments      Appointment[]  @relation("CreatedBy")
   staffConfirmedAppointments Appointment[] @relation("StaffConfirmedBy")
   treatmentNotes    TreatmentNote[]
+  staffAttendances  StaffAttendance[]
   messageTemplates  MessageTemplate[]
   pushSubscriptions PushSubscription[]
 
@@ -140,6 +141,7 @@ model Doctor {
   appointments   Appointment[]
   blockedTimes   BlockedTime[]
   schedules      DoctorSchedule[]
+  treatmentPlans TreatmentPlan[]
 
   @@map("doctors")
 }
@@ -778,6 +780,8 @@ model TreatmentPlan {
   id          String   @id @default(cuid())
   patientId   String
   patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId    String?
+  doctor      Doctor?  @relation(fields: [doctorId], references: [id], onDelete: SetNull)
   serviceId   String?
   stage       String   @default("Consulted")
   status      String   @default("Planned")
@@ -791,8 +795,33 @@ model TreatmentPlan {
   updatedAt   DateTime @updatedAt
 
   @@index([patientId])
+  @@index([doctorId])
   @@index([stage])
   @@map("treatment_plans")
+}
+
+model StaffAttendance {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attendanceDate   DateTime  @db.Date
+  checkInAt        DateTime
+  checkOutAt       DateTime?
+  status           String    @default("PRESENT")
+  source           String    @default("WEB")
+  checkInLat       Float?
+  checkInLng       Float?
+  checkInAccuracy  Float?
+  checkOutLat      Float?
+  checkOutLng      Float?
+  checkOutAccuracy Float?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([userId, attendanceDate])
+  @@index([attendanceDate, status])
+  @@index([userId, checkInAt])
+  @@map("staff_attendance")
 }
 
 model TreatmentNote {
