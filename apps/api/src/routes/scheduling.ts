@@ -4,7 +4,7 @@ import type { PrismaClient } from '@prisma/client'
 import multer from 'multer'
 import * as XLSX from 'xlsx'
 import { requireAuth } from '../middleware/auth'
-import { clinicalStaff } from '../middleware/rbac'
+import { clinicalStaff, adminAndReceptionist } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
 import { formatPatientId } from '../lib/utils'
@@ -574,7 +574,7 @@ router.patch('/appointments/:id/staff-confirm', requireAuth, auditLog('appointme
 })
 
 // ─── Delete appointment (admin only) ─────────────────────────────────────────
-router.delete('/appointments/:id', requireAuth, auditLog('appointments'), async (req, res) => {
+router.delete('/appointments/:id', requireAuth, adminAndReceptionist, auditLog('appointments'), async (req, res) => {
   if (req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Admin only' }); return }
   try {
     await prisma.$transaction(async (tx) => {
@@ -647,7 +647,7 @@ router.get('/doctors/:id/availability', requireAuth, async (req, res) => {
 })
 
 // ─── Block time ───────────────────────────────────────────────────────────────
-router.post('/doctors/:id/block-time', requireAuth, async (req, res) => {
+router.post('/doctors/:id/block-time', requireAuth, adminAndReceptionist, async (req, res) => {
   const { startAt, endAt, reason } = req.body
 
   const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id } })
@@ -664,13 +664,13 @@ router.post('/doctors/:id/block-time', requireAuth, async (req, res) => {
   res.status(201).json(block)
 })
 
-router.delete('/doctors/:id/block-time/:blockId', requireAuth, async (req, res) => {
+router.delete('/doctors/:id/block-time/:blockId', requireAuth, adminAndReceptionist, async (req, res) => {
   await prisma.blockedTime.delete({ where: { id: req.params.blockId } })
   res.json({ message: 'Block removed' })
 })
 
 // Batch-create blocked times (used for recurring day-of-week blocks)
-router.post('/doctors/:id/block-time-batch', requireAuth, async (req, res) => {
+router.post('/doctors/:id/block-time-batch', requireAuth, adminAndReceptionist, async (req, res) => {
   const { slots } = req.body as { slots: Array<{ startAt: string; endAt: string; reason?: string }> }
 
   const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id } })
@@ -718,7 +718,7 @@ router.get('/working-hours', requireAuth, async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }) }
 })
 
-router.put('/working-hours', requireAuth, async (req, res) => {
+router.put('/working-hours', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const days: Array<{ dayOfWeek: number; isOpen: boolean; openTime: string; closeTime: string; breaks: any[] }> = req.body
     const results = await Promise.all(days.map(d =>
@@ -743,7 +743,7 @@ router.get('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }) }
 })
 
-router.put('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
+router.put('/doctor-schedule/:doctorId', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const { doctorId } = req.params
     const days: Array<{ dayOfWeek: number; isOpen: boolean; openTime?: string; closeTime?: string; breaks?: any[]; slots?: string[] }> = req.body
@@ -762,7 +762,7 @@ router.put('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }) }
 })
 
-router.delete('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
+router.delete('/doctor-schedule/:doctorId', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     await prisma.doctorSchedule.deleteMany({ where: { doctorId: req.params.doctorId } })
     res.json({ cleared: true })
@@ -783,7 +783,7 @@ router.get('/special-days', requireAuth, async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }) }
 })
 
-router.post('/special-days', requireAuth, async (req, res) => {
+router.post('/special-days', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const { date, type, openTime, closeTime, note } = req.body
     const d = await prisma.specialDay.upsert({
@@ -795,7 +795,7 @@ router.post('/special-days', requireAuth, async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }) }
 })
 
-router.delete('/special-days/:id', requireAuth, async (req, res) => {
+router.delete('/special-days/:id', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     await prisma.specialDay.delete({ where: { id: req.params.id } })
     res.json({ deleted: true })
@@ -831,7 +831,7 @@ function parseDateStr(raw: string): string | null {
   return `${y}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`
 }
 
-router.post('/import-appointments', requireAuth, clinicalStaff, upload.single('file'), async (req, res) => {
+router.post('/import-appointments', requireAuth, adminAndReceptionist, upload.single('file'), async (req, res) => {
   if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
 
   try {
@@ -1131,7 +1131,7 @@ router.get('/booking-settings', requireAuth, async (_req, res) => {
   }
 })
 
-router.post('/booking-settings', requireAuth, clinicalStaff, async (req, res) => {
+router.post('/booking-settings', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const { allowOverlapping } = req.body as { allowOverlapping: boolean }
     await prisma.appSetting.upsert({
