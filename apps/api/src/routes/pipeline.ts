@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
+import { authenticatedDoctorId } from '../lib/doctor-access'
 
 const router = Router()
 
@@ -72,12 +73,16 @@ function resolvePeriod(key: string, customStart?: string, customEnd?: string): {
 // of `period` — see the comment above `moneyAtRisk`.
 router.get('/treatment', requireAuth, async (req, res) => {
   try {
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     const periodKey = ((req.query.period as string) || 'month') as PeriodKey
     const { start: periodStart, end: periodEnd, label: periodLabel } =
       resolvePeriod(periodKey, req.query.start as string | undefined, req.query.end as string | undefined)
     const plans = await prisma.treatmentPlan.findMany({
+      where: doctorId ? { doctorId } : {},
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, patientNumber: true } },
+        doctor: { include: { user: { select: { firstName: true, lastName: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -130,7 +135,7 @@ router.get('/treatment', requireAuth, async (req, res) => {
         costPerUnit:   Number(p.costPerUnit),
         discount:      Number(p.discount),
         treatmentName,
-        doctorName:    doctorByPatient.get(p.patientId) || '—',
+        doctorName:    p.doctor ? `Dr. ${p.doctor.user.firstName} ${p.doctor.user.lastName}` : 'Unassigned',
         value,
         daysSince,
       }
@@ -202,11 +207,12 @@ router.patch('/treatment/:id/stage', requireAuth, async (req, res) => {
     if (!stage || !VALID_STAGES.includes(stage)) {
       res.status(400).json({ error: `Invalid stage. Must be one of: ${VALID_STAGES.join(', ')}` }); return
     }
-    const plan = await prisma.treatmentPlan.update({
-      where: { id: req.params.id },
-      data:  { stage },
-    })
-    res.json({ id: plan.id, stage: plan.stage })
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+    const result = await prisma.treatmentPlan.updateMany({ where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) }, data: { stage } })
+    if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    res.json({ id: req.params.id, stage })
   } catch (e) {
     console.error('[Pipeline] stage update error:', e)
     res.status(500).json({ error: 'Failed to update stage' })
@@ -222,11 +228,12 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
     if (!status || !VALID_STATUSES.includes(status)) {
       res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }); return
     }
-    const plan = await prisma.treatmentPlan.update({
-      where: { id: req.params.id },
-      data:  { status },
-    })
-    res.json({ id: plan.id, status: plan.status })
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+    const result = await prisma.treatmentPlan.updateMany({ where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) }, data: { status } })
+    if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    res.json({ id: req.params.id, status })
   } catch (e) {
     console.error('[Pipeline] status update error:', e)
     res.status(500).json({ error: 'Failed to update status' })
@@ -243,8 +250,11 @@ router.patch('/treatment/bulk-status', requireAuth, async (req, res) => {
     if (!status || !VALID_STATUSES.includes(status)) {
       res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }); return
     }
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     const result = await prisma.treatmentPlan.updateMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, ...(doctorId ? { doctorId } : {}) },
       data:  { status },
     })
     res.json({ updated: result.count })
@@ -264,8 +274,11 @@ router.patch('/treatment/bulk', requireAuth, async (req, res) => {
     if (!stage || !VALID_STAGES.includes(stage)) {
       res.status(400).json({ error: `Invalid stage. Must be one of: ${VALID_STAGES.join(', ')}` }); return
     }
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     const result = await prisma.treatmentPlan.updateMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, ...(doctorId ? { doctorId } : {}) },
       data:  { stage },
     })
     res.json({ updated: result.count })
@@ -278,6 +291,7 @@ router.patch('/treatment/bulk', requireAuth, async (req, res) => {
 // DELETE /pipeline/treatment/bulk — remove multiple plans (must be BEFORE /:id)
 router.delete('/treatment/bulk', requireAuth, async (req, res) => {
   try {
+    if (!['ADMIN', 'RECEPTIONIST'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
     const { ids } = req.body as { ids: string[] }
     if (!Array.isArray(ids) || ids.length === 0) {
       res.status(400).json({ error: 'ids must be a non-empty array' }); return
@@ -293,6 +307,7 @@ router.delete('/treatment/bulk', requireAuth, async (req, res) => {
 // DELETE /pipeline/treatment/:id — remove a plan from the pipeline
 router.delete('/treatment/:id', requireAuth, async (req, res) => {
   try {
+    if (!['ADMIN', 'RECEPTIONIST'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
     await prisma.treatmentPlan.delete({ where: { id: req.params.id } })
     res.json({ ok: true })
   } catch (e) {
@@ -302,15 +317,17 @@ router.delete('/treatment/:id', requireAuth, async (req, res) => {
 })
 
 // GET /pipeline/needs-review — plans that are stale and need Justine's attention
-router.get('/needs-review', requireAuth, async (_req, res) => {
+router.get('/needs-review', requireAuth, async (req, res) => {
   try {
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     const now = new Date()
     const sixtyDaysAgo  = new Date(now.getTime() - 60  * 86_400_000)
     const ninetyDaysAgo = new Date(now.getTime() - 90  * 86_400_000)
 
     // Consulted > 60 days (consult only, no follow-up action)
     const consultStale = await prisma.treatmentPlan.findMany({
-      where:   { stage: 'Consulted', createdAt: { lt: sixtyDaysAgo } },
+      where:   { stage: 'Consulted', createdAt: { lt: sixtyDaysAgo }, ...(doctorId ? { doctorId } : {}) },
       include: { patient: { select: { id: true, firstName: true, lastName: true, phone: true, patientNumber: true } } },
       orderBy: { createdAt: 'asc' },
     })
@@ -320,6 +337,7 @@ router.get('/needs-review', requireAuth, async (_req, res) => {
       where: {
         stage:     { in: ['Accepted & Unscheduled', 'Accepted & Scheduled', 'Treatment Presented', 'Follow-up Due'] },
         updatedAt: { lt: ninetyDaysAgo },
+        ...(doctorId ? { doctorId } : {}),
       },
       include: { patient: { select: { id: true, firstName: true, lastName: true, phone: true, patientNumber: true } } },
       orderBy: { updatedAt: 'asc' },

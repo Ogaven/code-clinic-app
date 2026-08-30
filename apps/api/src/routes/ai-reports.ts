@@ -1,22 +1,27 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
-import { adminOnly, clinicalStaff } from '../middleware/rbac'
+import { adminAndReceptionist, clinicalStaff } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { checkAndSendAppointmentConfirmations, checkAndSendPostAppointmentFollowups } from '../ai-suite/scheduler/followup.service'
+import { authenticatedDoctorId } from '../lib/doctor-access'
 
 const router = Router()
 
 // GET /ai-suite/followup-report
 // Returns recent FOLLOWUP and MISSED_APPOINTMENT messages sent, grouped by date.
-router.get('/followup-report', requireAuth, clinicalStaff, async (_req, res) => {
+router.get('/followup-report', requireAuth, clinicalStaff, async (req, res) => {
   try {
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+    const patientScope = doctorId ? { patient: { appointments: { some: { doctorId } } } } : {}
 
     const messages = await prisma.aiScheduledMessage.findMany({
       where: {
         templateType: { in: ['FOLLOWUP', 'MISSED_APPOINTMENT'] },
         sent:         true,
         scheduledFor: { gte: since },
+        ...patientScope,
       },
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
@@ -29,6 +34,7 @@ router.get('/followup-report', requireAuth, clinicalStaff, async (_req, res) => 
       where: {
         followUpStatus: { not: 'NONE' },
         updatedAt:      { gte: since },
+        ...patientScope,
       },
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
@@ -76,15 +82,19 @@ router.get('/followup-report', requireAuth, clinicalStaff, async (_req, res) => 
 
 // GET /ai-suite/confirmation-report
 // Returns appointment confirmation messages sent in the last 30 days.
-router.get('/confirmation-report', requireAuth, clinicalStaff, async (_req, res) => {
+router.get('/confirmation-report', requireAuth, clinicalStaff, async (req, res) => {
   try {
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+    const patientScope = doctorId ? { patient: { appointments: { some: { doctorId } } } } : {}
 
     const confirmations = await prisma.aiScheduledMessage.findMany({
       where: {
         templateType: 'APPOINTMENT_CONFIRMATION',
         sent:         true,
         scheduledFor: { gte: since },
+        ...patientScope,
       },
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
@@ -99,6 +109,7 @@ router.get('/confirmation-report', requireAuth, clinicalStaff, async (_req, res)
       where: {
         patientId: { in: patientIds },
         startAt:   { gte: since },
+        ...(doctorId ? { doctorId } : {}),
       },
       include: {
         patient: { select: { id: true, firstName: true, lastName: true } },
@@ -145,7 +156,7 @@ router.get('/confirmation-report', requireAuth, clinicalStaff, async (_req, res)
 })
 
 // POST /ai-suite/trigger/followups — manually trigger post-appointment follow-up run
-router.post('/trigger/followups', requireAuth, clinicalStaff, async (_req, res) => {
+router.post('/trigger/followups', requireAuth, adminAndReceptionist, async (_req, res) => {
   try {
     const result = await checkAndSendPostAppointmentFollowups(true)
     res.json({ sent: result.sent, skipped: result.skipped })
@@ -155,7 +166,7 @@ router.post('/trigger/followups', requireAuth, clinicalStaff, async (_req, res) 
 })
 
 // POST /ai-suite/trigger/confirmations — manually trigger confirmation run (bypasses time gate)
-router.post('/trigger/confirmations', requireAuth, clinicalStaff, async (_req, res) => {
+router.post('/trigger/confirmations', requireAuth, adminAndReceptionist, async (_req, res) => {
   try {
     checkAndSendAppointmentConfirmations(true).catch(e => console.error('[TriggerConfirmations]', e))
     res.json({ message: 'Confirmation run triggered' })

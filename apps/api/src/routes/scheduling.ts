@@ -15,6 +15,7 @@ import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../ai-suite/whatsapp/
 import { getGreetingName, toProper } from '../utils/nameHelper'
 import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
+import { appointmentVisibleToUser, authenticatedDoctorId } from '../lib/doctor-access'
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
@@ -80,9 +81,17 @@ router.get('/calendar', requireAuth, async (req, res) => {
   const date    = new Date(dateStr + 'T00:00:00+03:00')
   const nextDay = new Date(dateStr + 'T23:59:59+03:00')
 
+  const scopedDoctorId = await authenticatedDoctorId(prisma, req.user!)
+  if (req.user!.role === 'DOCTOR' && !scopedDoctorId) {
+    res.status(404).json({ error: 'Doctor record not found' }); return
+  }
+  const doctorWhere = scopedDoctorId ? { id: scopedDoctorId, isActive: true } : { isActive: true }
+  const appointmentWhere = { startAt: { gte: date, lte: nextDay }, ...(scopedDoctorId ? { doctorId: scopedDoctorId } : {}) }
+  const blockedWhere = { startAt: { gte: date, lte: nextDay }, ...(scopedDoctorId ? { doctorId: scopedDoctorId } : {}) }
+
   const [appointments, blockedTimes, doctors] = await Promise.all([
     prisma.appointment.findMany({
-      where: { startAt: { gte: date, lte: nextDay } },
+      where: appointmentWhere,
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, phone: true, avatarR2Key: true } },
         doctor:  { include: { user: { select: { id: true, firstName: true, lastName: true, avatarR2Key: true } } } },
@@ -91,11 +100,11 @@ router.get('/calendar', requireAuth, async (req, res) => {
       orderBy: { startAt: 'asc' },
     }),
     prisma.blockedTime.findMany({
-      where: { startAt: { gte: date, lte: nextDay } },
+      where: blockedWhere,
       include: { doctor: { include: { user: { select: { firstName: true, lastName: true } } } } },
     }),
     prisma.doctor.findMany({
-      where: { isActive: true },
+      where: doctorWhere,
       include: { user: { select: { id: true, firstName: true, lastName: true, avatarR2Key: true } } },
       orderBy: { user: { firstName: 'asc' } },
     }),
@@ -223,6 +232,9 @@ router.get('/appointments/status-counts', requireAuth, async (req, res) => {
 
 // ─── Single appointment ───────────────────────────────────────────────────────
 router.get('/appointments/:id', requireAuth, async (req, res) => {
+  if (!(await appointmentVisibleToUser(prisma, req.user!, req.params.id))) {
+    res.status(404).json({ error: 'Appointment not found' }); return
+  }
   const appt = await prisma.appointment.findUnique({
     where: { id: req.params.id },
     include: {
@@ -251,7 +263,12 @@ const createApptSchema = z.object({
 })
 
 router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSchema), auditLog('appointments'), async (req, res) => {
-  const { patientId, doctorId, serviceId, startAt, endAt: endAtStr, notes, notify } = req.body
+  const { patientId, serviceId, startAt, endAt: endAtStr, notes, notify } = req.body
+  let { doctorId } = req.body
+  if (req.user!.role === 'DOCTOR') {
+    doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (!doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+  }
 
   const service = await prisma.service.findUnique({ where: { id: serviceId } })
   if (!service) { res.status(404).json({ error: 'Service not found' }); return }
@@ -312,6 +329,12 @@ const PATCH_VALID_STATUSES = [
 router.patch('/appointments/:id', requireAuth, clinicalStaff, validate(rescheduleSchema), auditLog('appointments'), async (req, res) => {
   const existing = await prisma.appointment.findUnique({ where: { id: req.params.id }, include: { service: true } })
   if (!existing) { res.status(404).json({ error: 'Appointment not found' }); return }
+  if (!(await appointmentVisibleToUser(prisma, req.user!, existing.id))) {
+    res.status(404).json({ error: 'Appointment not found' }); return
+  }
+  if (req.user!.role === 'DOCTOR' && req.body.doctorId && req.body.doctorId !== existing.doctorId) {
+    res.status(403).json({ error: 'Doctors cannot reassign appointments' }); return
+  }
 
   if (req.body.status && !PATCH_VALID_STATUSES.includes(req.body.status)) {
     res.status(400).json({ error: 'Invalid status' }); return
@@ -404,6 +427,22 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
   console.log('[CHECKIN]', { id: req.params.id, status: req.body.status, role: (req as any).user?.role })
   const { status } = req.body
   if (!validStatuses.includes(status)) { res.status(400).json({ error: 'Invalid status' }); return }
+
+  const existing = await prisma.appointment.findUnique({ where: { id: req.params.id }, select: { id: true, status: true, doctorId: true } })
+  if (!existing || !(await appointmentVisibleToUser(prisma, req.user!, req.params.id))) {
+    res.status(404).json({ error: 'Appointment not found' }); return
+  }
+  if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) {
+    res.status(403).json({ error: 'Clinical staff only' }); return
+  }
+  const doctorTransitions: Record<string, string[]> = {
+    ARRIVED: ['WAITING'], CHECKED_IN: ['WAITING'], WAITING: ['IN_CHAIR', 'IN_OPERATORY'],
+    IN_OPERATORY: ['WITH_PROVIDER', 'READY_CHECKOUT'], IN_CHAIR: ['WITH_PROVIDER', 'READY_CHECKOUT'],
+    WITH_PROVIDER: ['READY_CHECKOUT', 'SESSION_COMPLETE'],
+  }
+  if (req.user!.role === 'DOCTOR' && !(doctorTransitions[existing.status] || []).includes(status)) {
+    res.status(409).json({ error: `Transition from ${existing.status} to ${status} is not allowed` }); return
+  }
 
   // Record stage timestamps as patient progresses through the flow
   const now = new Date()
@@ -560,6 +599,8 @@ router.delete('/appointments/:id', requireAuth, auditLog('appointments'), async 
 // ─── Check-in WhatsApp notification ──────────────────────────────────────────
 router.post('/appointments/:id/checkin-notify', requireAuth, async (req, res) => {
   try {
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
+    if (!(await appointmentVisibleToUser(prisma, req.user!, req.params.id))) { res.status(404).json({ error: 'Not found' }); return }
     const appt = await prisma.appointment.findUnique({
       where: { id: req.params.id },
       include: {
@@ -630,7 +671,13 @@ router.post('/doctors/:id/block-time', requireAuth, async (req, res) => {
 })
 
 router.delete('/doctors/:id/block-time/:blockId', requireAuth, async (req, res) => {
-  await prisma.blockedTime.delete({ where: { id: req.params.blockId } })
+  const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id }, select: { userId: true } })
+  if (!doctor) { res.status(404).json({ error: 'Doctor not found' }); return }
+  if (!['ADMIN', 'RECEPTIONIST'].includes(req.user!.role) && doctor.userId !== req.user!.id) {
+    res.status(403).json({ error: 'Not authorized' }); return
+  }
+  const result = await prisma.blockedTime.deleteMany({ where: { id: req.params.blockId, doctorId: req.params.id } })
+  if (result.count !== 1) { res.status(404).json({ error: 'Blocked time not found' }); return }
   res.json({ message: 'Block removed' })
 })
 
@@ -684,6 +731,7 @@ router.get('/working-hours', requireAuth, async (req, res) => {
 })
 
 router.put('/working-hours', requireAuth, async (req, res) => {
+  if (req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Admin only' }); return }
   try {
     const days: Array<{ dayOfWeek: number; isOpen: boolean; openTime: string; closeTime: string; breaks: any[] }> = req.body
     const results = await Promise.all(days.map(d =>
@@ -711,6 +759,12 @@ router.get('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
 router.put('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
   try {
     const { doctorId } = req.params
+    if (req.user!.role === 'DOCTOR') {
+      const ownDoctorId = await authenticatedDoctorId(prisma, req.user!)
+      if (!ownDoctorId || ownDoctorId !== doctorId) { res.status(403).json({ error: 'Not authorized' }); return }
+    } else if (!['ADMIN', 'RECEPTIONIST'].includes(req.user!.role)) {
+      res.status(403).json({ error: 'Not authorized' }); return
+    }
     const days: Array<{ dayOfWeek: number; isOpen: boolean; openTime?: string; closeTime?: string; breaks?: any[]; slots?: string[] }> = req.body
     if (!days || days.length === 0) {
       await prisma.doctorSchedule.deleteMany({ where: { doctorId } })
@@ -728,6 +782,12 @@ router.put('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
 })
 
 router.delete('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
+  if (req.user!.role === 'DOCTOR') {
+    const ownDoctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (!ownDoctorId || ownDoctorId !== req.params.doctorId) { res.status(403).json({ error: 'Not authorized' }); return }
+  } else if (!['ADMIN', 'RECEPTIONIST'].includes(req.user!.role)) {
+    res.status(403).json({ error: 'Not authorized' }); return
+  }
   try {
     await prisma.doctorSchedule.deleteMany({ where: { doctorId: req.params.doctorId } })
     res.json({ cleared: true })
@@ -749,6 +809,7 @@ router.get('/special-days', requireAuth, async (req, res) => {
 })
 
 router.post('/special-days', requireAuth, async (req, res) => {
+  if (req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Admin only' }); return }
   try {
     const { date, type, openTime, closeTime, note } = req.body
     const d = await prisma.specialDay.upsert({
@@ -761,6 +822,7 @@ router.post('/special-days', requireAuth, async (req, res) => {
 })
 
 router.delete('/special-days/:id', requireAuth, async (req, res) => {
+  if (req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Admin only' }); return }
   try {
     await prisma.specialDay.delete({ where: { id: req.params.id } })
     res.json({ deleted: true })
