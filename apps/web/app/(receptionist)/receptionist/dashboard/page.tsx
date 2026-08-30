@@ -199,22 +199,33 @@ export default function ReceptionistDashboard() {
   const flowCounts = FLOW_STAGES.map(s => ({ ...s, count: appointments.filter((a: Appt) => s.statuses.includes(a.status)).length }))
   const flowTotal  = flowCounts.reduce((s, f) => s + f.count, 0)
 
-  // Upcoming Appointments timeline geometry — same pixel-based layout as the
-  // Admin dashboard's equivalent card, over the real `upcoming` appointments
-  // already fetched from GET /receptionist/upcoming-appointments.
-  const DAY_START_HOUR = 8, DAY_END_HOUR = 18, HOUR_PX = 84
-  const timelineWidth = (DAY_END_HOUR - DAY_START_HOUR) * HOUR_PX
-  const hourMarks = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
-  const pxOf = (t: number) => {
-    const d = new Date(t)
-    const hourFloat = d.getHours() + d.getMinutes() / 60
-    return Math.max(0, Math.min(timelineWidth, (hourFloat - DAY_START_HOUR) * HOUR_PX))
+  // Upcoming Appointments — GET /receptionist/upcoming-appointments returns
+  // the next 6 appointments with startAt >= now and status PENDING/CONFIRMED
+  // (no date-range cap — it can genuinely span into tomorrow or later, it is
+  // NOT "today only"), already sorted ascending. Grouped here by real
+  // Africa/Kampala calendar day (Nairobi shares the UTC+3 offset and is the
+  // convention already used everywhere else in this app) so the card never
+  // claims "Today" for appointments that aren't.
+  const kampalaDateStr = (t: number | string) => new Date(t).toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
+  const todayKampalaStr = kampalaDateStr(Date.now())
+  const tomorrowKampalaStr = kampalaDateStr(Date.now() + 86400000)
+  const dateGroupLabel = (dateStr: string) => {
+    if (dateStr === todayKampalaStr) return 'Today'
+    if (dateStr === tomorrowKampalaStr) return 'Tomorrow'
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
   }
-  const nowPx = pxOf(Date.now())
-  const futureAppts: Appt[] = (upcoming as Appt[])
-    .filter(a => new Date(a.startAt).getTime() >= Date.now() && a.status !== 'CANCELLED')
-    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
-    .slice(0, 8)
+  const upcomingAppts: Appt[] = upcoming as Appt[]
+  const upcomingGroups: { dateStr: string; label: string; items: Appt[] }[] = []
+  for (const a of upcomingAppts) {
+    const d = kampalaDateStr(a.startAt)
+    const last = upcomingGroups[upcomingGroups.length - 1]
+    if (last && last.dateStr === d) last.items.push(a)
+    else upcomingGroups.push({ dateStr: d, label: dateGroupLabel(d), items: [a] })
+  }
+  const upcomingAllToday = upcomingGroups.length > 0 && upcomingGroups.every(g => g.dateStr === todayKampalaStr)
+  const upcomingSubtitle = upcomingAppts.length === 0 ? null : upcomingAllToday
+    ? `Today · ${new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Nairobi' })}`
+    : `Next ${upcomingAppts.length} appointment${upcomingAppts.length !== 1 ? 's' : ''}`
 
   return (
     <div className="p-5 space-y-5 max-w-[1600px] mx-auto overflow-x-hidden">
@@ -347,39 +358,47 @@ export default function ReceptionistDashboard() {
         </div>
       )}
 
-      {/* ── Header: greeting + dental illustration + compact quick actions ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <Image src="/dental3d.png" alt="" width={72} height={49} className="hidden sm:block flex-shrink-0"
-            style={{ objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(41,171,226,0.35))' }} />
+      {/* ── Hero: greeting + quick actions (left) + large 3D dental art
+          (right, decorative, blended into the background — not inside a
+          card). Quick actions now sit directly under the greeting rather
+          than floating at the far right. ─────────────────────────────── */}
+      <div className="relative flex items-center gap-4 px-1 py-1">
+        <div className="min-w-0 flex-1">
           <h1 className="text-lg sm:text-xl font-black text-gray-800 dark:text-white truncate">
             {greeting()}, <span style={{ color: '#29ABE2' }}>{user?.firstName}</span>! 👋
           </h1>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => { setCheckinMode('in'); setShowCheckin(true) }}
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5"
+              style={{ background: 'linear-gradient(135deg,#0891b2,#06b6d4)' }}>
+              <LogIn size={12} /> Check In
+            </button>
+            <button
+              onClick={() => { setCheckinMode('out'); setShowCheckin(true) }}
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5"
+              style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}>
+              <LogOut size={12} /> Check Out
+            </button>
+            <button
+              onClick={() => setShowBooking(true)}
+              className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-clinic-navy transition hover:-translate-y-0.5 dark:border-white/10 dark:bg-white/5 dark:text-white">
+              <Plus size={12} className="text-cyan-500" /> Book Appointment
+            </button>
+            <button
+              onClick={() => { setNewPatient(EMPTY_PATIENT_FORM); setAddPatientError(''); setShowAddPatient(true) }}
+              className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-clinic-navy transition hover:-translate-y-0.5 dark:border-white/10 dark:bg-white/5 dark:text-white">
+              <UserPlus size={12} className="text-purple-500" /> Add Patient
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => { setCheckinMode('in'); setShowCheckin(true) }}
-            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5"
-            style={{ background: 'linear-gradient(135deg,#0891b2,#06b6d4)' }}>
-            <LogIn size={12} /> Check In
-          </button>
-          <button
-            onClick={() => { setCheckinMode('out'); setShowCheckin(true) }}
-            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:-translate-y-0.5"
-            style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-            <LogOut size={12} /> Check Out
-          </button>
-          <button
-            onClick={() => setShowBooking(true)}
-            className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-clinic-navy transition hover:-translate-y-0.5 dark:border-white/10 dark:bg-white/5 dark:text-white">
-            <Plus size={12} className="text-cyan-500" /> Book Appointment
-          </button>
-          <button
-            onClick={() => { setNewPatient(EMPTY_PATIENT_FORM); setAddPatientError(''); setShowAddPatient(true) }}
-            className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-clinic-navy transition hover:-translate-y-0.5 dark:border-white/10 dark:bg-white/5 dark:text-white">
-            <UserPlus size={12} className="text-purple-500" /> Add Patient
-          </button>
+        {/* Large 3D dental hero art — decorative, transparent PNG, never
+            cropped/recoloured. Hidden below sm so it never crushes the
+            greeting/buttons on narrow screens. */}
+        <div className="hidden flex-shrink-0 select-none sm:block" style={{ width: 'clamp(170px, 20vw, 280px)' }} aria-hidden="true">
+          <Image src="/images/receptionist-dental-hero.png" alt="" width={1164} height={1034} priority
+            style={{ width: '100%', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 10px 28px rgba(41,171,226,0.28))' }} />
         </div>
       </div>
 
@@ -461,52 +480,68 @@ export default function ReceptionistDashboard() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.05fr_1.3fr_0.85fr]">
         <PatientsOverviewCard />
 
-        {/* Upcoming Appointments — identical horizontally-scrollable
-            timeline presentation to the Admin dashboard's equivalent card,
-            over the real GET /receptionist/upcoming-appointments data. */}
-        <CompactCard title="Upcoming Appointments" action={<Link href="/receptionist/appointments" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all</Link>}>
+        {/* Upcoming Appointments — real GET /receptionist/upcoming-appointments
+            data (next 6, startAt >= now, PENDING/CONFIRMED, NOT date-capped —
+            see upcomingGroups above). Wider cards grouped by real Kampala
+            calendar day with a horizontal scroll row per group, instead of
+            the old cramped fixed-hour pixel timeline that clipped names. */}
+        <CompactCard
+          title="Upcoming Appointments"
+          action={<Link href="/receptionist/appointments" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all</Link>}
+          className="flex h-full flex-col"
+        >
+          {upcomingSubtitle && (
+            <p className="-mt-1.5 mb-2.5 text-[10px] font-semibold text-gray-400 dark:text-white/30">{upcomingSubtitle}</p>
+          )}
           {upcoming.length === 0 && !loading ? (
-            <div className="flex h-36 flex-col items-center justify-center gap-1 text-center">
+            <div className="flex flex-1 flex-col items-center justify-center gap-1 text-center">
               <Calendar size={20} className="text-gray-200 dark:text-white/15" />
-              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No more appointments today</p>
+              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No upcoming appointments</p>
             </div>
-          ) : futureAppts.length === 0 ? (
-            <div className="h-36 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
+          ) : upcomingAppts.length === 0 ? (
+            <div className="h-36 flex-1 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
           ) : (
-            <div className="no-scrollbar w-full overflow-x-auto">
-              <div style={{ width: timelineWidth, minWidth: '100%' }} className="relative">
-                <div className="relative h-4">
-                  {hourMarks.map(h => (
-                    <span key={h} className="absolute -translate-x-1/2 whitespace-nowrap text-[9px] font-medium text-gray-500 dark:text-slate-400" style={{ left: (h - DAY_START_HOUR) * HOUR_PX }}>
-                      {h > 12 ? h - 12 : h}{h >= 12 ? 'PM' : 'AM'}
-                    </span>
-                  ))}
-                </div>
-                <div className="relative mt-1 rounded-xl bg-gray-50 dark:bg-white/5" style={{ height: 112 }}>
-                  {hourMarks.map(h => (
-                    <div key={h} className="absolute top-0 bottom-0 border-l border-gray-200/70 dark:border-white/5" style={{ left: (h - DAY_START_HOUR) * HOUR_PX }} />
-                  ))}
-                  {nowPx >= 0 && nowPx <= timelineWidth && (
-                    <div className="absolute top-0 bottom-0 z-10 w-px bg-clinic-blue dark:bg-cyan-400" style={{ left: nowPx }}>
-                      <span className="absolute -top-1.5 left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-clinic-blue dark:bg-cyan-400" />
+            <div
+              className="no-scrollbar flex flex-1 items-stretch gap-3 overflow-x-auto pb-1"
+              onWheel={e => { if (e.deltaY !== 0) { e.currentTarget.scrollLeft += e.deltaY } }}
+            >
+              {upcomingGroups.map(group => (
+                <div key={group.dateStr} className="flex flex-shrink-0 items-stretch gap-2">
+                  {/* Date-group label — only shown when appointments span more
+                      than one real day, so a single-day list isn't cluttered
+                      with a label that just repeats the subtitle above. */}
+                  {upcomingGroups.length > 1 && (
+                    <div className="flex flex-shrink-0 items-center">
+                      <span className="whitespace-nowrap rounded-full bg-gray-100 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-gray-500 dark:bg-white/10 dark:text-white/40">
+                        {group.label}
+                      </span>
                     </div>
                   )}
-                  {futureAppts.map((a, i) => {
-                    const left = pxOf(new Date(a.startAt).getTime())
-                    const right = a.endAt ? pxOf(new Date(a.endAt).getTime()) : left + 84
-                    const width = Math.max(right - left, 76)
-                    const top = 8 + (i % 3) * 33
-                    const time = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true })
-                    const isNearest = i === 0
+                  {group.items.map(a => {
+                    const time = new Date(a.startAt).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' })
                     return (
-                      <div key={a.id} className={cn('absolute flex items-center gap-1.5 overflow-hidden rounded-full py-1 pl-1 pr-2.5 text-white shadow-sm', isNearest && 'ring-2 ring-clinic-blue ring-offset-1 dark:ring-cyan-400 dark:ring-offset-slate-900')} style={{ left, top, width, background: a.service?.colour || '#29ABE2' }} title={`${time} · ${a.patient.firstName} ${a.patient.lastName} · ${a.service.name}`}>
-                        <Avatar firstName={a.patient.firstName} lastName={a.patient.lastName} size="xs" colour="rgba(255,255,255,0.3)" />
-                        <span className="truncate text-[10px] font-bold">{a.patient.firstName}</span>
+                      <div key={a.id} className="flex w-[180px] flex-shrink-0 flex-col justify-between rounded-2xl border border-gray-100 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ background: a.service?.colour || '#29ABE2' }} />
+                          <span className="text-xs font-bold text-clinic-navy dark:text-white">{time}</span>
+                        </div>
+                        <div className="mt-2.5 flex items-center gap-2">
+                          <Avatar firstName={a.patient.firstName} lastName={a.patient.lastName} size="sm" colour={a.service?.colour} />
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-bold text-gray-800 dark:text-white">{a.patient.firstName} {a.patient.lastName}</p>
+                            {a.doctor?.user && (
+                              <p className="truncate text-[10px] text-gray-400 dark:text-white/30">Dr. {a.doctor.user.firstName}</p>
+                            )}
+                          </div>
+                        </div>
+                        {a.service?.name && (
+                          <p className="mt-2 truncate text-[10px] font-medium text-gray-400 dark:text-white/30">{a.service.name}</p>
+                        )}
                       </div>
                     )
                   })}
                 </div>
-              </div>
+              ))}
             </div>
           )}
         </CompactCard>

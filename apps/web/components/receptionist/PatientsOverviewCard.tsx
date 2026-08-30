@@ -43,48 +43,61 @@ export default function PatientsOverviewCard() {
   }, [])
 
   return (
-    <CompactCard title="Patients Overview" action={<Link href="/receptionist/patients" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all patients</Link>}>
+    <CompactCard
+      title="Patients Overview"
+      action={<Link href="/receptionist/patients" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all patients</Link>}
+      className="flex h-full flex-col"
+    >
       {!m ? (
         <div className="h-32 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
       ) : (() => {
         const seenCount = m.newPatientsThisMonth + m.returningPatientsThisMonth
         const barTotal = Math.max(totalPatients ?? seenCount, 1)
+        // Same real data as before (no new/fabricated metrics) — reflowed
+        // into a 2x2 grid of larger tiles instead of a cramped single row,
+        // so the card's real content fills the height the 3x3 grid row
+        // stretches it to, rather than leaving a blank lower half.
         const segs = [
-          { key: 'total', label: 'Total Patients', value: totalPatients },
-          { key: 'seen', label: 'Patients Seen', value: seenCount },
-          { key: 'returning', label: 'Returning', value: m.returningPatientsThisMonth },
-          { key: 'fresh', label: 'New Patients', value: m.newPatientsThisMonth },
+          { key: 'total',     label: 'Total Patients', value: totalPatients },
+          { key: 'seen',      label: 'Patients Seen',  value: seenCount },
+          { key: 'returning', label: 'Returning',      value: m.returningPatientsThisMonth },
+          { key: 'fresh',     label: 'New Patients',   value: m.newPatientsThisMonth },
         ]
         return (
-          <>
-            <div className="flex items-center justify-between px-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-400 dark:text-white/30">
-              <span>Returning</span>
-              <span>New</span>
+          <div className="flex flex-1 flex-col justify-between gap-4">
+            <div>
+              <div className="flex items-center justify-between px-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-400 dark:text-white/30">
+                <span>Returning</span>
+                <span>New</span>
+              </div>
+              <div className="mt-1.5 flex h-3 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+                <div style={{ width: `${(m.returningPatientsThisMonth / barTotal) * 100}%`, background: '#10B981' }} />
+                <div style={{ width: `${(m.newPatientsThisMonth / barTotal) * 100}%`, background: '#F59E0B' }} />
+              </div>
             </div>
-            <div className="mt-1 flex h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
-              <div style={{ width: `${(m.returningPatientsThisMonth / barTotal) * 100}%`, background: '#10B981' }} />
-              <div style={{ width: `${(m.newPatientsThisMonth / barTotal) * 100}%`, background: '#F59E0B' }} />
-            </div>
-            <div className="mt-4 grid grid-cols-4 gap-2">
+
+            <div className="grid flex-1 grid-cols-2 gap-3">
               {segs.map(s => {
                 const people = avatars[s.key] ?? []
                 return (
-                  <div key={s.key}>
-                    <div className="mb-1.5 flex items-center">
-                      <div className="flex -space-x-1.5">
+                  <div key={s.key} className="flex flex-col justify-between rounded-xl bg-gray-50 p-3.5 dark:bg-white/[0.04]">
+                    <div className="flex items-center">
+                      <div className="flex -space-x-2">
                         {people.length > 0 ? people.slice(0, 3).map(p => (
-                          <Avatar key={p.id} firstName={p.firstName} lastName={p.lastName} avatarUrl={p.avatarUrl} size="xs" />
-                        )) : <span className="grid h-6 w-6 place-items-center rounded-full bg-gray-100 text-gray-300 dark:bg-white/5"><Users size={11} /></span>}
+                          <Avatar key={p.id} firstName={p.firstName} lastName={p.lastName} avatarUrl={p.avatarUrl} size="sm" />
+                        )) : <span className="grid h-8 w-8 place-items-center rounded-full bg-gray-100 text-gray-300 dark:bg-white/10"><Users size={13} /></span>}
                       </div>
-                      <span className="ml-auto grid h-5 w-5 flex-shrink-0 place-items-center rounded-full bg-gray-50 text-gray-400 dark:bg-white/5 dark:text-white/30"><ArrowUpRight size={10} /></span>
+                      <span className="ml-auto grid h-6 w-6 flex-shrink-0 place-items-center rounded-full bg-white text-gray-400 shadow-sm dark:bg-white/10 dark:text-white/30"><ArrowUpRight size={12} /></span>
                     </div>
-                    <p className="text-xl font-extrabold leading-tight text-clinic-navy dark:text-white">{s.value !== null ? s.value.toLocaleString() : '—'}</p>
-                    <p className="text-[9px] font-medium leading-tight text-gray-500 dark:text-slate-400">{s.label}</p>
+                    <div className="mt-3">
+                      <p className="text-2xl font-extrabold leading-tight text-clinic-navy dark:text-white">{s.value !== null ? s.value.toLocaleString() : '—'}</p>
+                      <p className="text-[10px] font-medium leading-tight text-gray-500 dark:text-slate-400">{s.label}</p>
+                    </div>
                   </div>
                 )
               })}
             </div>
-          </>
+          </div>
         )
       })()}
     </CompactCard>

@@ -50,10 +50,11 @@ const NAV: NavLink[] = [
     // the same Patients list as the real, honest entry point into it.
     { label: 'Billing', href: '/receptionist/patients', permKey: 'patients' },
   ] },
-  { label: 'Appointments', children: [
-    { label: 'Appointments', href: '/receptionist/appointments', permKey: 'appointments' },
-    { label: 'Scheduling', href: '/receptionist/scheduling', permKey: 'scheduling' },
-  ] },
+  // Direct item, not a dropdown — matches Overview/Live Flow. Scheduling
+  // keeps its own real route (/receptionist/scheduling, still reachable via
+  // the mobile bottom nav and Book Appointment flow) but is intentionally no
+  // longer exposed through this nav entry.
+  { label: 'Appointments', href: '/receptionist/appointments', permKey: 'appointments' },
   { label: 'Live Flow', href: '/receptionist/flow', permKey: 'liveFlow' },
   { label: 'AI Suite', children: [
     { label: 'Agent Control', href: '/receptionist/ai-suite' },

@@ -1,15 +1,25 @@
 'use client'
 
 // Dedicated Receptionist "My Profile" page — mirrors apps/web/app/(admin)/
-// profile/page.tsx exactly (same endpoints, same avatar-crop flow, same
-// localStorage/event sync pattern) so personal profile editing lives in its
-// own place, separate from apps/web/app/(receptionist)/receptionist/settings
-// (organization-level settings: notifications, appearance, integrations).
+// profile/page.tsx (same endpoints, same localStorage/event sync pattern) so
+// personal profile editing lives in its own place, separate from
+// apps/web/app/(receptionist)/receptionist/settings (organization-level
+// settings: notifications, appearance, integrations).
+//
+// Avatar upload deliberately does NOT force a crop on every upload — it
+// previously always routed through AvatarCropModal, which permanently baked
+// in a square crop (and re-encoded every photo as JPEG) before the original
+// was ever saved. The original file is now uploaded as-is; the backend
+// (POST /employees/:id/avatar) already validates the real MIME type and
+// accepts JPEG/PNG/WebP up to 5MB unchanged — cropping was a frontend-only
+// step, not a backend requirement. Circular display elsewhere (header
+// avatar, etc.) still visually crops via CSS object-cover — that's
+// display-only and never touches the stored file.
 
 import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import { Camera, Save, Lock, Mail, User, AlertCircle, CheckCircle, Loader2, Eye, EyeOff } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
-import AvatarCropModal from '@/components/ui/AvatarCropModal'
 
 const roleColors: Record<string, string> = {
   ADMIN: '#1A237E', DOCTOR: '#29ABE2', RECEPTIONIST: '#10B981',
@@ -20,7 +30,6 @@ export default function ReceptionistProfilePage() {
   const [user,      setUser]      = useState<any>(null)
   const [preview,   setPreview]   = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [cropSrc,   setCropSrc]   = useState<string | null>(null)
   const [saving,    setSaving]    = useState(false)
   const [toast,     setToast]     = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
@@ -56,21 +65,20 @@ export default function ReceptionistProfilePage() {
 
   function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
+    e.target.value = ''
     if (!file) return
     if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5MB', 'error'); return }
-    const reader = new FileReader()
-    reader.onload = ev => setCropSrc(ev.target?.result as string)
-    reader.readAsDataURL(file)
-    e.target.value = ''
+    uploadAvatarFile(file)
   }
 
-  async function uploadAvatarBlob(blob: Blob) {
-    setCropSrc(null)
-    setPreview(URL.createObjectURL(blob))
+  // Uploads the original file as-is — no forced crop/re-encode. The backend
+  // validates the real MIME type and stores it unchanged.
+  async function uploadAvatarFile(file: File) {
+    setPreview(URL.createObjectURL(file))
     setUploading(true)
     try {
       const form = new FormData()
-      form.append('avatar', blob, 'avatar.jpg')
+      form.append('avatar', file, file.name)
       const res = await fetch(`/api-proxy/employees/${user.id}/avatar`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -200,45 +208,58 @@ export default function ReceptionistProfilePage() {
         <h3 className="font-semibold text-clinic-navy dark:text-white mb-4 flex items-center gap-2">
           <User size={16} className="text-clinic-blue" /> Profile Photo
         </h3>
-        <div className="flex items-center gap-6">
-          {/* Avatar */}
-          <div className="relative flex-shrink-0">
-            <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-gray-100 shadow-md">
-              {preview ? (
-                <img src={preview} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-white text-2xl font-semibold"
-                  style={{ background: `linear-gradient(135deg,${roleColor},${roleColor}99)` }}>
-                  {initials}
-                </div>
+        <div className="flex flex-col md:flex-row md:items-center gap-6">
+          <div className="flex min-w-0 flex-1 items-center gap-6">
+            {/* Avatar — large, object-contain so the full uploaded photo is
+                visible (never cropped/zoomed), on a neutral backing for
+                whatever space the photo's own aspect ratio doesn't fill. */}
+            <div className="relative flex-shrink-0">
+              <div className="flex h-32 w-32 sm:h-40 sm:w-40 items-center justify-center overflow-hidden rounded-2xl border-2 border-gray-100 bg-gray-50 shadow-md dark:border-white/10 dark:bg-white/5">
+                {preview ? (
+                  <img src={preview} alt="Avatar" className="h-full w-full object-contain object-center" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-3xl font-semibold text-white"
+                    style={{ background: `linear-gradient(135deg,${roleColor},${roleColor}99)` }}>
+                    {initials}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="absolute -bottom-2 -right-2 w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-lg hover:scale-110 transition-all"
+                style={{ background: 'linear-gradient(135deg,#0891b2,#06b6d4)' }}>
+                {uploading ? <Loader2 size={14} className="animate-spin"/> : <Camera size={14}/>}
+              </button>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
+                className="hidden" onChange={handleAvatarChange} />
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800 dark:text-white">
+                {user.firstName} {user.lastName}
+              </p>
+              <p className="text-xs font-medium mt-0.5" style={{ color: roleColor }}>{user.role}</p>
+              <p className="text-xs text-gray-400 mt-3 leading-relaxed">
+                Click the camera icon to upload a new photo.<br/>
+                JPEG, PNG or WebP — max 5MB. Uploaded as-is, no automatic cropping.
+              </p>
+              {preview && (
+                <button onClick={removeAvatar} disabled={uploading}
+                  className="mt-2 text-xs font-semibold text-red-500 hover:text-red-600 disabled:opacity-50">
+                  Remove photo
+                </button>
               )}
             </div>
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-              className="absolute -bottom-2 -right-2 w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-lg hover:scale-110 transition-all"
-              style={{ background: 'linear-gradient(135deg,#0891b2,#06b6d4)' }}>
-              {uploading ? <Loader2 size={14} className="animate-spin"/> : <Camera size={14}/>}
-            </button>
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
-              className="hidden" onChange={handleAvatarChange} />
           </div>
 
-          <div>
-            <p className="text-sm font-semibold text-gray-800 dark:text-white">
-              {user.firstName} {user.lastName}
-            </p>
-            <p className="text-xs font-medium mt-0.5" style={{ color: roleColor }}>{user.role}</p>
-            <p className="text-xs text-gray-400 mt-3 leading-relaxed">
-              Click the camera icon to upload a new photo.<br/>
-              JPEG, PNG or WebP — max 5MB.
-            </p>
-            {preview && (
-              <button onClick={removeAvatar} disabled={uploading}
-                className="mt-2 text-xs font-semibold text-red-500 hover:text-red-600 disabled:opacity-50">
-                Remove photo
-              </button>
-            )}
+          {/* Decorative 3D dental art — same asset as the dashboard hero,
+              filling the unused right side of this section on desktop;
+              stacks below and shrinks on mobile rather than crowding the
+              photo/controls. Never obscures inputs or camera control. */}
+          <div className="mx-auto flex-shrink-0 select-none md:mx-0" style={{ width: 'clamp(120px, 16vw, 220px)' }} aria-hidden="true">
+            <Image src="/images/receptionist-dental-hero.png" alt="" width={1164} height={1034}
+              style={{ width: '100%', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 8px 20px rgba(41,171,226,0.25))' }} />
           </div>
         </div>
       </div>
@@ -334,10 +355,6 @@ export default function ReceptionistProfilePage() {
           </button>
         </div>
       </form>
-
-      {cropSrc && (
-        <AvatarCropModal src={cropSrc} onCancel={() => setCropSrc(null)} onConfirm={uploadAvatarBlob} />
-      )}
 
     </div>
   )
