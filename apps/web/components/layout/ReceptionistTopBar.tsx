@@ -50,11 +50,15 @@ const NAV: NavLink[] = [
     // the same Patients list as the real, honest entry point into it.
     { label: 'Billing', href: '/receptionist/patients', permKey: 'patients' },
   ] },
-  // Direct item, not a dropdown — matches Overview/Live Flow. Scheduling
-  // keeps its own real route (/receptionist/scheduling, still reachable via
-  // the mobile bottom nav and Book Appointment flow) but is intentionally no
-  // longer exposed through this nav entry.
-  { label: 'Appointments', href: '/receptionist/appointments', permKey: 'appointments' },
+  // Direct item, not a dropdown — matches Admin's own top-nav pattern
+  // exactly (Appointments -> /scheduling, apps/web/components/layout/TopBar.tsx).
+  // /receptionist/scheduling is the full Calendar/Appointments/Doctors/
+  // Services/Settings workspace (apps/web/app/(receptionist)/receptionist/
+  // scheduling/page.tsx) — same tab structure Admin gives its own users.
+  // The standalone /receptionist/appointments route still exists and still
+  // works (dashboard "View all" links, direct bookmarks) but is no longer
+  // the nav entry's target now that the fuller workspace is available.
+  { label: 'Appointments', href: '/receptionist/scheduling', permKey: 'appointments' },
   { label: 'Live Flow', href: '/receptionist/flow', permKey: 'liveFlow' },
   { label: 'AI Suite', children: [
     { label: 'Agent Control', href: '/receptionist/ai-suite' },

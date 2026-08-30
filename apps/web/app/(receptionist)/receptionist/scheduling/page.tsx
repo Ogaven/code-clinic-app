@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { CalendarDays, Users, Stethoscope, Plug, Settings, X, Upload, ClipboardList } from 'lucide-react'
+import { CalendarDays, ListChecks, Users, Stethoscope, Settings, X, Upload, ClipboardList } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MultiDoctorCalendar  from '@/components/scheduling/MultiDoctorCalendar'
 import BookingDrawer        from '@/components/scheduling/BookingDrawer'
 import AppointmentModal     from '@/components/scheduling/AppointmentModal'
+import ReceptionistAppointmentsList from '@/components/scheduling/ReceptionistAppointmentsList'
 import DoctorsTab           from '@/components/scheduling/DoctorsTab'
 import ServicesTab          from '@/components/scheduling/ServicesTab'
 import WorkingHoursTab      from '@/components/scheduling/WorkingHoursTab'
@@ -16,22 +17,34 @@ import ConnectionsTab       from '@/components/scheduling/ConnectionsTab'
 import BookingSettingsTab   from '@/components/scheduling/BookingSettingsTab'
 import DailyReportTab       from '@/components/scheduling/DailyReportTab'
 
-type Tab = 'calendar' | 'doctors' | 'services' | 'connections' | 'settings' | 'report'
-type SettingsSub = 'working-hours' | 'doctors-schedule' | 'special-days' | 'booking'
+type Tab = 'calendar' | 'appointments' | 'doctors' | 'services' | 'settings' | 'report'
+type SettingsSub = 'working-hours' | 'doctors-schedule' | 'special-days' | 'connections' | 'booking'
 
+// Primary tab order/labels match the Admin /scheduling page exactly
+// (apps/web/app/(admin)/scheduling/page.tsx: Calendar, Appointments, Doctors,
+// Services, Settings). Connections used to be a separate primary tab here —
+// moved into Settings' sub-tabs below, same as Admin already does, rather
+// than kept as a duplicate top-level entry. Daily Report is a genuine
+// Receptionist-only feature with no Admin equivalent, kept as its own tab
+// after Settings so it stays visually separate from the 5 Admin-equivalent
+// tabs rather than mixed in among them.
 const TABS: { key: Tab; label: string; Icon: React.ElementType }[] = [
-  { key: 'calendar',    label: 'Calendar',    Icon: CalendarDays },
-  { key: 'doctors',     label: 'Doctors',     Icon: Users        },
-  { key: 'services',    label: 'Services',    Icon: Stethoscope  },
-  { key: 'connections', label: 'Connections', Icon: Plug          },
-  { key: 'settings',    label: 'Settings',    Icon: Settings      },
-  { key: 'report',      label: 'Daily Report', Icon: ClipboardList },
+  { key: 'calendar',     label: 'Calendar',     Icon: CalendarDays },
+  { key: 'appointments', label: 'Appointments', Icon: ListChecks   },
+  { key: 'doctors',      label: 'Doctors',      Icon: Users        },
+  { key: 'services',     label: 'Services',     Icon: Stethoscope  },
+  { key: 'settings',     label: 'Settings',     Icon: Settings      },
+  { key: 'report',       label: 'Daily Report', Icon: ClipboardList },
 ]
 
+// 'connections' added here (Admin's Settings sub-tabs already include it) —
+// 'booking' is a pre-existing Receptionist-only addition with no Admin
+// equivalent, kept at the end.
 const SETTINGS_SUBS: { key: SettingsSub; label: string }[] = [
   { key: 'working-hours',    label: 'Working Hours'    },
   { key: 'doctors-schedule', label: 'Doctors Schedule' },
   { key: 'special-days',     label: 'Special Days'     },
+  { key: 'connections',      label: 'Connections'      },
   { key: 'booking',          label: 'Booking Rules'    },
 ]
 
@@ -94,9 +107,9 @@ export default function AppointmentsPage() {
             onClickAppointment={setSelectedAppt}
           />
         )}
+        {tab === 'appointments' && <ReceptionistAppointmentsList />}
         {tab === 'doctors'     && <DoctorsTab />}
         {tab === 'services'    && <ServicesTab />}
-        {tab === 'connections' && <ConnectionsTab />}
         {tab === 'report'      && <div className="flex-1 overflow-y-auto"><DailyReportTab /></div>}
         {tab === 'settings' && (
           <div className="flex flex-col flex-1 overflow-hidden">
@@ -117,6 +130,7 @@ export default function AppointmentsPage() {
               {settingsSub === 'working-hours'    && <WorkingHoursTab />}
               {settingsSub === 'doctors-schedule' && <ProvidersScheduleTab />}
               {settingsSub === 'special-days'     && <SpecialDaysTab />}
+              {settingsSub === 'connections'      && <ConnectionsTab />}
               {settingsSub === 'booking'          && <BookingSettingsTab />}
             </div>
           </div>
