@@ -508,7 +508,7 @@ export default function ReceptionistDashboard() {
             GET /receptionist/upcoming-appointments data. This replaces the
             wider grouped-card presentation from the previous pass, which
             was a new design rather than a match to Admin's existing one. */}
-        <CompactCard title="Upcoming Appointments" action={<Link href="/receptionist/appointments" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all</Link>}>
+        <CompactCard title="Upcoming Appointments" action={<Link href="/receptionist/scheduling" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all</Link>}>
           {loading ? (
             <div className="h-36 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
           ) : futureAppts.length === 0 && nextBeyondToday ? (
@@ -525,7 +525,7 @@ export default function ReceptionistDashboard() {
           ) : futureAppts.length === 0 ? (
             <div className="flex h-36 flex-col items-center justify-center gap-1 text-center">
               <Calendar size={20} className="text-gray-200 dark:text-white/15" />
-              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No upcoming appointments</p>
+              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No more appointments today</p>
             </div>
           ) : (
             <div className="no-scrollbar w-full overflow-x-auto">
