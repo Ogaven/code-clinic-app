@@ -159,7 +159,7 @@ export default function KnowledgeSourcesPanel() {
               </div>
               <h3 className="text-sm font-bold text-gray-800 dark:text-white">Remove this source?</h3>
               <p className="text-sm text-gray-500 dark:text-white/50">
-                <span className="font-semibold text-gray-700 dark:text-white/70">{pendingDelete.title}</span> will be permanently removed from the shared knowledge base. Every AI channel that uses it (WhatsApp, website, Facebook, Instagram) will stop drawing on this information immediately. This can't be undone.
+                <span className="font-semibold text-gray-700 dark:text-white/70">{pendingDelete.title}</span> will be permanently removed from the shared knowledge base. WhatsApp, Website, Facebook Messenger and Instagram DM will stop drawing on this information immediately. This can't be undone.
               </p>
               <div className="flex gap-2 pt-2">
                 <button onClick={() => setPendingDelete(null)} disabled={deleting}
