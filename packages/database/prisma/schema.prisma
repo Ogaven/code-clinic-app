@@ -115,6 +115,9 @@ model User {
   messageTemplates  MessageTemplate[]
   pushSubscriptions PushSubscription[]
 
+  knowledgeStudioConversations KnowledgeStudioConversation[]
+  knowledgeStudioProvenance    KnowledgeStudioProvenance[]
+
   @@index([isActive])
   @@map("users")
 }
@@ -910,14 +913,85 @@ model AiMessage {
 model AiKnowledgeBase {
   id        String                      @id @default(cuid())
   title     String
-  type      String                      // PDF | IMAGE | AUDIO | VIDEO | URL | TEXT
+  type      String                      // PDF | IMAGE | AUDIO | VIDEO | URL | TEXT | STAFF_TRAINING
   content   String
   embedding Unsupported("vector")?
   sourceUrl String?
   createdAt DateTime                    @default(now())
   updatedAt DateTime                    @updatedAt
 
+  provenance KnowledgeStudioProvenance?
+
   @@map("ai_knowledge_base")
+}
+
+model KnowledgeStudioConversation {
+  id         String    @id @default(cuid())
+  title      String    @default("New conversation")
+  createdBy  String
+  user       User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  messages   KnowledgeStudioMessage[]
+  provenance KnowledgeStudioProvenance[]
+
+  @@index([createdBy, archivedAt, updatedAt])
+  @@map("knowledge_studio_conversations")
+}
+
+model KnowledgeStudioMessage {
+  id             String                      @id @default(cuid())
+  conversationId String
+  conversation   KnowledgeStudioConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String
+  grounded       Boolean                     @default(false)
+  feedback       String?
+  createdAt      DateTime                    @default(now())
+
+  sources        KnowledgeStudioMessageSource[]
+  provenance     KnowledgeStudioProvenance[]
+
+  @@index([conversationId, createdAt])
+  @@map("knowledge_studio_messages")
+}
+
+model KnowledgeStudioMessageSource {
+  id          String                 @id @default(cuid())
+  messageId   String
+  message     KnowledgeStudioMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  knowledgeId String?
+  title       String
+  sourceUrl   String?
+  score       Int?
+  createdAt   DateTime               @default(now())
+
+  @@index([messageId])
+  @@index([knowledgeId])
+  @@map("knowledge_studio_message_sources")
+}
+
+model KnowledgeStudioProvenance {
+  id             String                       @id @default(cuid())
+  knowledgeId    String                       @unique
+  knowledge      AiKnowledgeBase              @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  createdBy      String
+  user           User                         @relation(fields: [createdBy], references: [id])
+  conversationId String?
+  conversation   KnowledgeStudioConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  messageId      String?
+  message        KnowledgeStudioMessage?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  sourceType     String
+  category       String?
+  approvedAt     DateTime
+  createdAt      DateTime                     @default(now())
+
+  @@index([createdBy])
+  @@index([conversationId])
+  @@index([messageId])
+  @@map("knowledge_studio_provenance")
 }
 
 model AiAgentConfig {

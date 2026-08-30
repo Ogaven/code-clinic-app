@@ -28,11 +28,17 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 //
 // This is a STAFF-ONLY, INTERNAL surface for testing and improving the clinic
 // AI's shared knowledge. It deliberately does NOT create AiConversation/
-// AiMessage rows (see report §13 "Analytics Isolation") — training chats must
+// AiMessage rows (see report §16 "Analytics Isolation") — training chats must
 // never inflate Conversations Today, channel counts, or AI/Human handling
-// stats. Conversation *history* is therefore not yet durably persisted; see
-// the proposed schema in the final report. Each chat turn here is stateless
-// server-side — the client resends the recent transcript on every call.
+// stats. Its own history lives in the dedicated KnowledgeStudioConversation/
+// KnowledgeStudioMessage tables instead — a completely separate table family,
+// invisible to every analytics query that reads AiConversation/AiMessage.
+//
+// Conversation history is server-authoritative: the client sends only
+// { conversationId?, message } (or { retryOf } — see the /chat handler
+// below) and the server loads the actual persisted transcript from the DB
+// for LLM context. A client can no longer inject fake historical assistant
+// turns by tampering with a browser-held transcript.
 //
 // Retrieval uses retrieveSharedClinicKnowledge() (./shared-retrieval.ts),
 // re-implementing getAgentReplyV2's real production algorithm rather than
@@ -43,7 +49,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 // Detects imperative "teach the AI" phrasing in the STAFF message only (never
 // the AI's reply). This only ever produces a client-side suggestion banner —
 // nothing becomes durable knowledge without the explicit Save-as-Knowledge
-// approval flow (§7 "Direct Teach Mode" — nothing saves silently).
+// approval flow (see /save below — nothing saves silently).
 const TEACH_PATTERNS = [
   /^(teach|remind|note|fyi|please note|remember)\b[:,]?\s*(the ai|sarah|the clinic ai)?/i,
   /^(our|the clinic'?s?)\b.+(is|are|closes?|opens?|costs?|charges?)\b/i,
@@ -59,47 +65,213 @@ function detectTeachIntent(message: string): { suggestSave: boolean; suggestedCo
 }
 
 const MAX_MESSAGE_CHARS  = 4000
-const MAX_HISTORY_ITEMS  = 20
+const MAX_HISTORY_ITEMS  = 20   // bounded recent-turns window loaded for LLM context
 const MAX_TITLE_CHARS    = 200
 const MAX_CATEGORY_CHARS = 40
 const MAX_CONTENT_CHARS  = 4000
 const MAX_NOTES_CHARS    = 1000
+const ALLOWED_FEEDBACK   = ['CORRECT', 'NEEDS_CORRECTION'] as const
 
-type HistoryTurn = { role: 'user' | 'assistant'; content: string }
-
-// Rejects the request outright on malformed history rather than silently
-// dropping bad entries — a client sending garbage should see a 400, not have
-// its request quietly reinterpreted.
-function validateHistory(raw: unknown): { ok: true; history: HistoryTurn[] } | { ok: false; error: string } {
-  if (raw === undefined) return { ok: true, history: [] }
-  if (!Array.isArray(raw)) return { ok: false, error: 'history must be an array' }
-  if (raw.length > MAX_HISTORY_ITEMS) return { ok: false, error: `history is too long (${MAX_HISTORY_ITEMS} message max)` }
-
-  const history: HistoryTurn[] = []
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') return { ok: false, error: 'history contains a malformed entry' }
-    const { role, content } = item as any
-    if (role !== 'user' && role !== 'assistant') return { ok: false, error: `history contains an invalid role: ${String(role)}` }
-    if (typeof content !== 'string' || !content.trim()) return { ok: false, error: 'history contains an empty or non-string message' }
-    if (content.length > MAX_MESSAGE_CHARS) return { ok: false, error: `a history message exceeds ${MAX_MESSAGE_CHARS} characters` }
-    history.push({ role, content })
-  }
-  return { ok: true, history }
+function short60(text: string): string {
+  const trimmed = text.trim()
+  return trimmed.length > 60 ? `${trimmed.slice(0, 60).trim()}…` : trimmed
 }
 
+// ── GET /ai-suite/knowledge-studio/conversations ──────────────────────────────
+// Owner-scoped, newest-updated-first, cursor-paginated.
+router.get('/conversations', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+  try {
+    const limitRaw = parseInt(String(req.query.limit ?? '20'), 10)
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 50) : 20
+    const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : undefined
+    const includeArchived = req.query.includeArchived === 'true'
+
+    const rows = await prisma.knowledgeStudioConversation.findMany({
+      where: { createdBy: req.user!.id, ...(includeArchived ? {} : { archivedAt: null }) },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: { id: true, title: true, createdAt: true, updatedAt: true, archivedAt: true },
+    })
+
+    const hasMore = rows.length > limit
+    const conversations = hasMore ? rows.slice(0, limit) : rows
+    res.json({ conversations, nextCursor: hasMore ? conversations[conversations.length - 1].id : null })
+  } catch (err: any) {
+    console.error('[Knowledge Studio] list conversations error:', err.message)
+    res.status(500).json({ error: 'Failed to load conversations' })
+  }
+})
+
+// ── POST /ai-suite/knowledge-studio/conversations ─────────────────────────────
+router.post('/conversations', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+  try {
+    const rawTitle = req.body?.title
+    let trimmedTitle = ''
+    if (rawTitle !== undefined && rawTitle !== null) {
+      if (typeof rawTitle !== 'string') return res.status(400).json({ error: 'title must be a string' })
+      if (rawTitle.length > MAX_TITLE_CHARS) return res.status(400).json({ error: `title is too long (${MAX_TITLE_CHARS} char max)` })
+      trimmedTitle = rawTitle.trim()
+    }
+
+    const convo = await prisma.knowledgeStudioConversation.create({
+      data: { createdBy: req.user!.id, ...(trimmedTitle ? { title: trimmedTitle } : {}) },
+    })
+    res.status(201).json({ id: convo.id, title: convo.title, createdAt: convo.createdAt, updatedAt: convo.updatedAt, archivedAt: convo.archivedAt })
+  } catch (err: any) {
+    console.error('[Knowledge Studio] create conversation error:', err.message)
+    res.status(500).json({ error: 'Failed to create conversation' })
+  }
+})
+
+// ── GET /ai-suite/knowledge-studio/conversations/:id ──────────────────────────
+// Returns 404 (never 403) for a non-owned id — existence is not revealed to
+// non-owners.
+router.get('/conversations/:id', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+  try {
+    const convo = await prisma.knowledgeStudioConversation.findUnique({ where: { id: req.params.id } })
+    if (!convo || convo.createdBy !== req.user!.id) return res.status(404).json({ error: 'Conversation not found' })
+
+    const messages = await prisma.knowledgeStudioMessage.findMany({
+      where: { conversationId: convo.id },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, role: true, content: true, feedback: true, createdAt: true },
+    })
+
+    res.json({ id: convo.id, title: convo.title, createdAt: convo.createdAt, updatedAt: convo.updatedAt, archivedAt: convo.archivedAt, messages })
+  } catch (err: any) {
+    console.error('[Knowledge Studio] get conversation error:', err.message)
+    res.status(500).json({ error: 'Failed to load conversation' })
+  }
+})
+
+// ── PATCH /ai-suite/knowledge-studio/conversations/:id ────────────────────────
+// Only title and archivedAt are mutable — no createdBy reassignment, no
+// message mutation via this route.
+router.patch('/conversations/:id', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+  try {
+    const convo = await prisma.knowledgeStudioConversation.findUnique({ where: { id: req.params.id } })
+    if (!convo || convo.createdBy !== req.user!.id) return res.status(404).json({ error: 'Conversation not found' })
+
+    const data: { title?: string; archivedAt?: Date | null } = {}
+
+    if ('title' in (req.body || {})) {
+      const t = req.body.title
+      if (typeof t !== 'string' || !t.trim()) return res.status(400).json({ error: 'title must be a non-empty string' })
+      if (t.length > MAX_TITLE_CHARS) return res.status(400).json({ error: `title is too long (${MAX_TITLE_CHARS} char max)` })
+      data.title = t.trim()
+    }
+
+    if ('archivedAt' in (req.body || {})) {
+      const a = req.body.archivedAt
+      if (a === null) {
+        data.archivedAt = null
+      } else if (typeof a === 'string' && !isNaN(Date.parse(a))) {
+        data.archivedAt = new Date(a)
+      } else {
+        return res.status(400).json({ error: 'archivedAt must be an ISO date string or null' })
+      }
+    }
+
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: 'No valid fields to update (only title, archivedAt are allowed)' })
+
+    const updated = await prisma.knowledgeStudioConversation.update({ where: { id: convo.id }, data })
+    res.json({ id: updated.id, title: updated.title, createdAt: updated.createdAt, updatedAt: updated.updatedAt, archivedAt: updated.archivedAt })
+  } catch (err: any) {
+    console.error('[Knowledge Studio] update conversation error:', err.message)
+    res.status(500).json({ error: 'Failed to update conversation' })
+  }
+})
+
+// ── DELETE /ai-suite/knowledge-studio/conversations/:id ───────────────────────
+// Permanent delete, intended to run only after explicit frontend
+// confirmation — this is a "New Chat" history list, not a recycle bin.
+// Cascades to messages via the schema's onDelete: Cascade.
+router.delete('/conversations/:id', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+  try {
+    const convo = await prisma.knowledgeStudioConversation.findUnique({ where: { id: req.params.id } })
+    if (!convo || convo.createdBy !== req.user!.id) return res.status(404).json({ error: 'Conversation not found' })
+
+    await prisma.knowledgeStudioConversation.delete({ where: { id: convo.id } })
+    res.json({ success: true })
+  } catch (err: any) {
+    console.error('[Knowledge Studio] delete conversation error:', err.message)
+    res.status(500).json({ error: 'Failed to delete conversation' })
+  }
+})
+
 // ── POST /ai-suite/knowledge-studio/chat ──────────────────────────────────────
-// body: { message: string, history?: { role: 'user'|'assistant', content: string }[] }
+// body: { conversationId?: string, message: string } to send a new turn, OR
+//       { retryOf: string } to regenerate a reply for an existing, still-
+//       unanswered USER message (see the retry branch below for why this
+//       reuses the row instead of creating a duplicate).
 router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
   try {
-    const message = String(req.body?.message ?? '').trim()
-    if (!message) return res.status(400).json({ error: 'message is required' })
-    if (message.length > MAX_MESSAGE_CHARS) return res.status(400).json({ error: `message is too long (${MAX_MESSAGE_CHARS} char max)` })
+    const body = req.body || {}
+    let conversationId: string
+    let userMessageId: string
+    let messageContent: string
 
-    const historyResult = validateHistory(req.body?.history)
-    if (!historyResult.ok) return res.status(400).json({ error: historyResult.error })
-    const history = historyResult.history
+    if (body.retryOf !== undefined) {
+      if (typeof body.retryOf !== 'string') return res.status(400).json({ error: 'retryOf must be a string' })
 
-    const hits = await retrieveSharedClinicKnowledge(message)
+      const existing = await prisma.knowledgeStudioMessage.findUnique({
+        where: { id: body.retryOf },
+        include: { conversation: true },
+      })
+      if (!existing || existing.conversation.createdBy !== req.user!.id) return res.status(404).json({ error: 'Message not found' })
+      if (existing.role !== 'user') return res.status(400).json({ error: 'Only a user message can be retried' })
+
+      // Only the most recent turn may be retried — if anything already
+      // followed it, that's a real assistant reply to a real question, and
+      // retrying here must never orphan or duplicate it.
+      const later = await prisma.knowledgeStudioMessage.findFirst({
+        where: { conversationId: existing.conversationId, createdAt: { gt: existing.createdAt } },
+      })
+      if (later) return res.status(409).json({ error: 'This message already has a response — only the most recent turn can be retried' })
+
+      conversationId = existing.conversationId
+      userMessageId = existing.id
+      messageContent = existing.content
+    } else {
+      const message = String(body.message ?? '').trim()
+      if (!message) return res.status(400).json({ error: 'message is required' })
+      if (message.length > MAX_MESSAGE_CHARS) return res.status(400).json({ error: `message is too long (${MAX_MESSAGE_CHARS} char max)` })
+
+      if (body.conversationId !== undefined) {
+        if (typeof body.conversationId !== 'string') return res.status(400).json({ error: 'conversationId must be a string' })
+        const convo = await prisma.knowledgeStudioConversation.findUnique({ where: { id: body.conversationId } })
+        if (!convo || convo.createdBy !== req.user!.id) return res.status(404).json({ error: 'Conversation not found' })
+        conversationId = convo.id
+      } else {
+        const created = await prisma.knowledgeStudioConversation.create({ data: { createdBy: req.user!.id } })
+        conversationId = created.id
+      }
+
+      // Persisted before the provider call — if the provider fails below,
+      // this row survives so the honest record is preserved and Retry has
+      // something to retry (see the failure branch further down).
+      const userMsg = await prisma.knowledgeStudioMessage.create({
+        data: { conversationId, role: 'user', content: message },
+      })
+      userMessageId = userMsg.id
+      messageContent = message
+    }
+
+    // Server-authoritative, bounded context — freshly loaded from the DB,
+    // ending with the current turn's own persisted row. The current message
+    // is therefore included exactly once: it is never separately re-appended
+    // to this array.
+    const recent = await prisma.knowledgeStudioMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: MAX_HISTORY_ITEMS + 1,
+    })
+    const ordered = recent.slice().reverse()
+    const providerMessages = ordered.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+    const isFirstTurn = ordered.length === 1
+
+    const hits = await retrieveSharedClinicKnowledge(messageContent)
     const contextBlock = hits.length > 0
       ? hits.map(h => `${h.title}: ${h.content}`).join('\n\n')
       : null
@@ -114,19 +286,41 @@ router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Respo
       contextBlock ? `CLINIC KNOWLEDGE BASE (grounding context for this answer):\n${contextBlock}` : 'CLINIC KNOWLEDGE BASE: (no matching entries found for this question)',
     ].join('\n')
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [...history, { role: 'user', content: message }],
+    let reply: string
+    try {
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-5',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: providerMessages,
+      })
+      const block = response.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
+      reply = block?.text || "Sorry, I couldn't generate a response."
+    } catch (err: any) {
+      console.error('[Knowledge Studio] chat error:', err.message)
+      // The USER turn (new or retried) stays persisted exactly as it was —
+      // no fabricated assistant response, no duplicate row created here.
+      return res.status(500).json({ error: 'Failed to get a response from the clinic AI', conversationId, userMessageId })
+    }
+
+    const assistantMsg = await prisma.knowledgeStudioMessage.create({
+      data: { conversationId, role: 'assistant', content: reply },
     })
 
-    const block = response.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
-    const reply = block?.text || "Sorry, I couldn't generate a response."
+    if (isFirstTurn) {
+      // Deterministic title from the first real message — no extra LLM call
+      // spent just to name a conversation.
+      await prisma.knowledgeStudioConversation.update({ where: { id: conversationId }, data: { title: short60(messageContent) } })
+    } else {
+      await prisma.knowledgeStudioConversation.update({ where: { id: conversationId }, data: {} })
+    }
 
-    const teach = detectTeachIntent(message)
+    const teach = detectTeachIntent(messageContent)
 
     res.json({
+      conversationId,
+      userMessageId,
+      messageId: assistantMsg.id,
       reply,
       sources: hits.map(h => ({ id: h.id, title: h.title, sourceUrl: h.sourceUrl })),
       grounded: hits.length > 0,
@@ -139,6 +333,32 @@ router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Respo
   }
 })
 
+// ── PATCH /ai-suite/knowledge-studio/messages/:id/feedback ────────────────────
+// Records staff feedback only — never writes to AiKnowledgeBase. Saving a
+// correction remains a separate, explicit Save-as-Knowledge action (see
+// /save below).
+router.patch('/messages/:id/feedback', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+  try {
+    const feedback = req.body?.feedback ?? null
+    if (feedback !== null && !ALLOWED_FEEDBACK.includes(feedback)) {
+      return res.status(400).json({ error: `feedback must be one of ${ALLOWED_FEEDBACK.join(', ')}, or null` })
+    }
+
+    const msg = await prisma.knowledgeStudioMessage.findUnique({
+      where: { id: req.params.id },
+      include: { conversation: true },
+    })
+    if (!msg || msg.conversation.createdBy !== req.user!.id) return res.status(404).json({ error: 'Message not found' })
+    if (msg.role !== 'assistant') return res.status(400).json({ error: 'Only assistant messages can receive feedback' })
+
+    const updated = await prisma.knowledgeStudioMessage.update({ where: { id: msg.id }, data: { feedback } })
+    res.json({ id: updated.id, feedback: updated.feedback })
+  } catch (err: any) {
+    console.error('[Knowledge Studio] feedback error:', err.message)
+    res.status(500).json({ error: 'Failed to record feedback' })
+  }
+})
+
 // ── POST /ai-suite/knowledge-studio/save ──────────────────────────────────────
 // Explicit staff approval → durable AiKnowledgeBase entry, immediately part of
 // the SAME corpus retrieveKnowledge() (and getAgentReplyV2) read from — no
@@ -146,6 +366,9 @@ router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Respo
 // change (AiKnowledgeBase.type is a free-form String). Category has no
 // dedicated column either, so it's folded into the title as "[Category] ..."
 // — searchable, zero schema change, documented here so it isn't a mystery.
+// Deliberately NEVER auto-triggered by feedback, teach-intent detection, or
+// conversation activity — this is the only path that writes to
+// AiKnowledgeBase from this file.
 router.post('/save', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
   try {
     const { title, category, content, notes } = req.body || {}
