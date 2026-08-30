@@ -446,9 +446,17 @@
    fine, so synthesis is left on and Tailwind's weight scale (font-medium/
    semibold/bold/black) works normally again. Hierarchy is still reinforced
    with colour/size, not weight alone. */
+:root {
+  --cc-ui-letter-spacing: 0.008em;
+  --cc-heading-letter-spacing: 0.004em;
+  --cc-ui-line-height: 1.5;
+  --cc-heading-line-height: 1.25;
+}
+
 .cc-admin-shell, .cc-receptionist-shell {
   font-family: var(--font-questrial), 'Inter', system-ui, sans-serif;
-  letter-spacing: -0.006em;
+  letter-spacing: var(--cc-ui-letter-spacing);
+  line-height: var(--cc-ui-line-height);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -456,7 +464,8 @@
 .cc-admin-shell h1, .cc-admin-shell h2, .cc-admin-shell h3, .cc-admin-shell h4,
 .cc-receptionist-shell h1, .cc-receptionist-shell h2, .cc-receptionist-shell h3, .cc-receptionist-shell h4 {
   font-family: var(--font-questrial), 'Inter', system-ui, sans-serif;
-  letter-spacing: -0.008em;
+  letter-spacing: var(--cc-heading-letter-spacing);
+  line-height: var(--cc-heading-line-height);
 }
 
 /* Hides the native scrollbar on an horizontally-scrollable element while
