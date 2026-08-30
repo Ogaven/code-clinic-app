@@ -4,6 +4,24 @@ import { useEffect, useState, useRef } from 'react'
 import { Loader2, Save, Camera, Check, X, Plus, Ban, Trash2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+// PATCH /doctors/:id and DELETE /doctors/:id are backend adminOnly
+// (apps/api/src/routes/doctors.ts) — Create (POST /doctors), avatar upload
+// (POST /doctors/:id/avatar) and block-time are not, so RECEPTIONIST keeps
+// those. isAdmin here only hides/disables the two admin-only actions so a
+// receptionist never sees a control that the backend would 403 — it does
+// not grant anything the backend doesn't already allow.
+function getTokenRole(): string {
+  try {
+    if (typeof window === 'undefined') return ''
+    const ccUser = localStorage.getItem('cc_user')
+    if (ccUser) { const u = JSON.parse(ccUser); if (u?.role) return u.role }
+    const token = localStorage.getItem('cc_token')
+    if (!token) return ''
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return payload.role || ''
+  } catch { return '' }
+}
+
 interface Doctor {
   id: string; userId: string
   firstName: string; lastName: string
@@ -99,6 +117,9 @@ export default function DoctorsTab() {
 
   // Active/inactive filter for sidebar
   const [showInactive, setShowInactive] = useState(false)
+
+  const [isAdmin, setIsAdmin] = useState(false)
+  useEffect(() => { setIsAdmin(getTokenRole().toUpperCase() === 'ADMIN') }, [])
 
   // Block-time state
   const [blockedTimes, setBlockedTimes] = useState<BlockedTime[]>([])
@@ -526,12 +547,14 @@ export default function DoctorsTab() {
                   </p>
                 </div>
               </button>
-              <button
-                onClick={e => openDeleteConfirm(d, e)}
-                title="Delete doctor"
-                className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/20 text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all">
-                <Trash2 size={13} />
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={e => openDeleteConfirm(d, e)}
+                  title="Delete doctor"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/20 text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all">
+                  <Trash2 size={13} />
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -541,6 +564,19 @@ export default function DoctorsTab() {
       {selected ? (
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-2xl space-y-6 pb-10">
+
+            {/* Profile fields, schedule and Save/Deactivate below are backend
+                adminOnly (PATCH /doctors/:id) — disabled/hidden here for
+                non-admin so the receptionist view is honestly read-only
+                instead of silently 403ing on save. Photo upload and Block
+                Time Slots stay interactive since those backend routes have
+                no admin restriction. */}
+            {!isAdmin && (
+              <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/15 dark:text-amber-400">
+                <AlertTriangle size={13} className="flex-shrink-0" />
+                Read-only — editing doctor profiles requires Admin access. Photo and blocked times can still be updated.
+              </div>
+            )}
 
             {/* ─── Profile: photo + name/email/phone ─── */}
             <div className="flex items-start gap-5">
@@ -574,19 +610,19 @@ export default function DoctorsTab() {
               <div className="flex-1 grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">First Name</label>
-                  <input value={firstName} onChange={e => setFirstName(e.target.value)} className={inputCls} placeholder="First name" />
+                  <input value={firstName} onChange={e => setFirstName(e.target.value)} disabled={!isAdmin} className={cn(inputCls, !isAdmin && 'opacity-60 cursor-not-allowed')} placeholder="First name" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Last Name</label>
-                  <input value={lastName} onChange={e => setLastName(e.target.value)} className={inputCls} placeholder="Last name" />
+                  <input value={lastName} onChange={e => setLastName(e.target.value)} disabled={!isAdmin} className={cn(inputCls, !isAdmin && 'opacity-60 cursor-not-allowed')} placeholder="Last name" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Email</label>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} placeholder="email@codeclinic.ug" />
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} disabled={!isAdmin} className={cn(inputCls, !isAdmin && 'opacity-60 cursor-not-allowed')} placeholder="email@codeclinic.ug" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Phone</label>
-                  <input value={phone} onChange={e => setPhone(e.target.value)} className={inputCls} placeholder="+256 700 000 000" />
+                  <input value={phone} onChange={e => setPhone(e.target.value)} disabled={!isAdmin} className={cn(inputCls, !isAdmin && 'opacity-60 cursor-not-allowed')} placeholder="+256 700 000 000" />
                 </div>
               </div>
             </div>
@@ -595,8 +631,8 @@ export default function DoctorsTab() {
             <div>
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Description</label>
               <textarea value={description} onChange={e => setDescription(e.target.value)}
-                rows={2} placeholder="Specialisation, experience, approach to patient care..."
-                className={cn(inputCls, 'resize-none')} />
+                rows={2} placeholder="Specialisation, experience, approach to patient care..." disabled={!isAdmin}
+                className={cn(inputCls, 'resize-none', !isAdmin && 'opacity-60 cursor-not-allowed')} />
             </div>
 
             {/* ─── Calendar colour ─── */}
@@ -604,8 +640,8 @@ export default function DoctorsTab() {
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Calendar Colour</label>
               <div className="flex flex-wrap gap-2">
                 {COLOURS.map(c => (
-                  <button key={c} onClick={() => setColour(c)}
-                    className="w-8 h-8 rounded-full transition-all hover:scale-110 border-2"
+                  <button key={c} onClick={() => setColour(c)} disabled={!isAdmin}
+                    className={cn('w-8 h-8 rounded-full transition-all border-2', isAdmin ? 'hover:scale-110' : 'opacity-60 cursor-not-allowed')}
                     style={{
                       background: c,
                       borderColor: colour === c ? '#1A237E' : 'transparent',
@@ -628,9 +664,11 @@ export default function DoctorsTab() {
                     {/* Toggle switch */}
                     <button
                       onClick={() => updateDay(i, { active: !schedule[i].active })}
+                      disabled={!isAdmin}
                       className={cn(
                         'relative w-10 h-[22px] rounded-full flex-shrink-0 transition-all',
                         schedule[i].active ? 'bg-clinic-blue shadow-sm shadow-clinic-blue/30' : 'bg-gray-200 dark:bg-white/15',
+                        !isAdmin && 'opacity-60 cursor-not-allowed',
                       )}>
                       <span className={cn(
                         'absolute top-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-all',
@@ -650,8 +688,8 @@ export default function DoctorsTab() {
                     {schedule[i].active ? (
                       <div className="flex items-center gap-2 flex-1">
                         <input type="time" value={schedule[i].start}
-                          onChange={e => updateDay(i, { start: e.target.value })}
-                          className="px-2.5 py-1.5 text-xs font-semibold border border-gray-200 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/10 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue transition-all" />
+                          onChange={e => updateDay(i, { start: e.target.value })} disabled={!isAdmin}
+                          className={cn('px-2.5 py-1.5 text-xs font-semibold border border-gray-200 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/10 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue transition-all', !isAdmin && 'opacity-60 cursor-not-allowed')} />
                         {/* Track line */}
                         <div className="flex-1 relative flex items-center">
                           <div className="w-full h-[3px] rounded-full" style={{ background: colour + '40' }} />
@@ -660,8 +698,8 @@ export default function DoctorsTab() {
                           </div>
                         </div>
                         <input type="time" value={schedule[i].end}
-                          onChange={e => updateDay(i, { end: e.target.value })}
-                          className="px-2.5 py-1.5 text-xs font-semibold border border-gray-200 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/10 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue transition-all" />
+                          onChange={e => updateDay(i, { end: e.target.value })} disabled={!isAdmin}
+                          className={cn('px-2.5 py-1.5 text-xs font-semibold border border-gray-200 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/10 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-clinic-blue/20 focus:border-clinic-blue transition-all', !isAdmin && 'opacity-60 cursor-not-allowed')} />
                       </div>
                     ) : (
                       <div className="flex-1 flex items-center gap-2">
@@ -691,12 +729,13 @@ export default function DoctorsTab() {
                     {list.map(s => {
                       const active = selectedServices.includes(s.id)
                       return (
-                        <button key={s.id} onClick={() => toggleService(s.id)}
+                        <button key={s.id} onClick={() => toggleService(s.id)} disabled={!isAdmin}
                           className={cn(
                             'px-3 py-1 rounded-lg text-xs font-medium transition-all border',
                             active
                               ? 'text-white border-transparent shadow-sm'
                               : 'bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20',
+                            !isAdmin && 'opacity-60 cursor-not-allowed',
                           )}
                           style={active ? { background: s.colour, borderColor: s.colour } : {}}>
                           {s.name}
@@ -715,23 +754,25 @@ export default function DoctorsTab() {
             </div>
 
             {/* ─── Save button ─── */}
-            <div className="flex flex-wrap gap-3 pt-2">
-              <button onClick={handleSave} disabled={saving}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-white text-sm transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60"
-                style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 14px rgba(41,171,226,0.3)' }}>
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Save Changes
-              </button>
-              <button onClick={handleToggleActive} disabled={saving}
-                className={cn(
-                  'flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold border transition-all disabled:opacity-60',
-                  selected.isActive
-                    ? 'text-red-500 border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/10'
-                    : 'text-emerald-600 border-emerald-200 dark:border-emerald-900/30 hover:bg-emerald-50 dark:hover:bg-emerald-900/10',
-                )}>
-                {selected.isActive ? <><Ban size={14} /> Deactivate</> : <><Check size={14} /> Reactivate</>}
-              </button>
-            </div>
+            {isAdmin && (
+              <div className="flex flex-wrap gap-3 pt-2">
+                <button onClick={handleSave} disabled={saving}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-white text-sm transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60"
+                  style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow: '0 4px 14px rgba(41,171,226,0.3)' }}>
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Save Changes
+                </button>
+                <button onClick={handleToggleActive} disabled={saving}
+                  className={cn(
+                    'flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold border transition-all disabled:opacity-60',
+                    selected.isActive
+                      ? 'text-red-500 border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/10'
+                      : 'text-emerald-600 border-emerald-200 dark:border-emerald-900/30 hover:bg-emerald-50 dark:hover:bg-emerald-900/10',
+                  )}>
+                  {selected.isActive ? <><Ban size={14} /> Deactivate</> : <><Check size={14} /> Reactivate</>}
+                </button>
+              </div>
+            )}
 
             {/* ─── Block Time Slots ─── */}
             <div className="pt-2">

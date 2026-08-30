@@ -28,6 +28,22 @@ const emptyForm = () => ({
   durationMins: 30, priceUGX: 0, colour: '#29ABE2', vatApplicable: true,
 })
 
+// Every mutation here (create, edit, delete, merge, photo) is backend
+// adminOnly (apps/api/src/routes/services.ts) — unlike DoctorsTab, there is
+// no receptionist-permitted mutation at all, so the receptionist view is
+// fully read-only: view services only, no Add/Edit/Merge/Delete.
+function getTokenRole(): string {
+  try {
+    if (typeof window === 'undefined') return ''
+    const ccUser = localStorage.getItem('cc_user')
+    if (ccUser) { const u = JSON.parse(ccUser); if (u?.role) return u.role }
+    const token = localStorage.getItem('cc_token')
+    if (!token) return ''
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return payload.role || ''
+  } catch { return '' }
+}
+
 export default function ServicesTab() {
   const token   = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
@@ -51,8 +67,10 @@ export default function ServicesTab() {
   const [photoFile,   setPhotoFile]   = useState<File | null>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const photoRef = useRef<HTMLInputElement>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => { fetchServices() }, [])
+  useEffect(() => { setIsAdmin(getTokenRole().toUpperCase() === 'ADMIN') }, [])
 
   async function fetchServices() {
     setLoading(true)
@@ -281,11 +299,13 @@ export default function ServicesTab() {
               </button>
             ))}
           </div>
-          <button onClick={openNew}
-            className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
-            style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-            <Plus size={14} /> Add Service
-          </button>
+          {isAdmin && (
+            <button onClick={openNew}
+              className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-md"
+              style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+              <Plus size={14} /> Add Service
+            </button>
+          )}
         </div>
 
         {/* Stats row */}
@@ -323,23 +343,25 @@ export default function ServicesTab() {
                           : s.name[0]
                         }
                       </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openEdit(s)}
-                          className="p-1 rounded-lg text-gray-400 hover:text-clinic-blue hover:bg-blue-50 dark:hover:bg-clinic-blue/10 transition-colors"
-                          title="Edit">
-                          <Pencil size={12} />
-                        </button>
-                        <button onClick={() => { setMergeSource(s); setMergeTargetId('') }}
-                          className="p-1 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
-                          title="Merge into…">
-                          <GitMerge size={12} />
-                        </button>
-                        <button onClick={() => setDeleteTarget(s)}
-                          className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-                          title="Delete">
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
+                      {isAdmin && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => openEdit(s)}
+                            className="p-1 rounded-lg text-gray-400 hover:text-clinic-blue hover:bg-blue-50 dark:hover:bg-clinic-blue/10 transition-colors"
+                            title="Edit">
+                            <Pencil size={12} />
+                          </button>
+                          <button onClick={() => { setMergeSource(s); setMergeTargetId('') }}
+                            className="p-1 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+                            title="Merge into…">
+                            <GitMerge size={12} />
+                          </button>
+                          <button onClick={() => setDeleteTarget(s)}
+                            className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                            title="Delete">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <p className="text-xs font-bold text-gray-800 dark:text-gray-100 leading-tight mb-1">{s.name}</p>
                     <p className="text-[10px] text-gray-400 dark:text-gray-500">{s.durationMins} min</p>

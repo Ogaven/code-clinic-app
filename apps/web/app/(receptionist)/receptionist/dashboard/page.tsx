@@ -213,6 +213,7 @@ export default function ReceptionistDashboard() {
   // filter/sort/slice logic runs.
   const kampalaDateStr = (t: number | string) => new Date(t).toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
   const todayKampalaStr = kampalaDateStr(Date.now())
+  const tomorrowKampalaStr = kampalaDateStr(Date.now() + 86400000)
   const DAY_START_HOUR = 8, DAY_END_HOUR = 18, HOUR_PX = 84
   const timelineWidth = (DAY_END_HOUR - DAY_START_HOUR) * HOUR_PX
   const hourMarks = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
@@ -222,10 +223,27 @@ export default function ReceptionistDashboard() {
     return Math.max(0, Math.min(timelineWidth, (hourFloat - DAY_START_HOUR) * HOUR_PX))
   }
   const nowPx = pxOf(Date.now())
-  const futureAppts: Appt[] = (upcoming as Appt[])
-    .filter(a => new Date(a.startAt).getTime() >= Date.now() && a.status !== 'CANCELLED' && kampalaDateStr(a.startAt) === todayKampalaStr)
+  // All real future (non-cancelled) appointments from the endpoint, sorted —
+  // used both to build today's timeline (futureAppts, a same-day subset) and,
+  // when that subset is empty, to truthfully report the actual next
+  // appointment instead of implying there are none at all.
+  const allFutureAppts: Appt[] = (upcoming as Appt[])
+    .filter(a => new Date(a.startAt).getTime() >= Date.now() && a.status !== 'CANCELLED')
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+  const futureAppts: Appt[] = allFutureAppts
+    .filter(a => kampalaDateStr(a.startAt) === todayKampalaStr)
     .slice(0, 8)
+  // Nearest appointment beyond today, only relevant when today's timeline is
+  // empty — real data from the same endpoint, Africa/Kampala throughout.
+  const nextBeyondToday: Appt | null = futureAppts.length === 0 ? (allFutureAppts[0] ?? null) : null
+  const nextBeyondTodayWhen = nextBeyondToday ? (() => {
+    const dateStr = kampalaDateStr(nextBeyondToday.startAt)
+    const time = new Date(nextBeyondToday.startAt).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' })
+    const dayLabel = dateStr === tomorrowKampalaStr
+      ? 'Tomorrow'
+      : new Date(nextBeyondToday.startAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
+    return `${dayLabel} · ${time}`
+  })() : ''
 
   return (
     <div className="p-5 space-y-5 max-w-[1600px] mx-auto overflow-x-hidden">
@@ -493,10 +511,21 @@ export default function ReceptionistDashboard() {
         <CompactCard title="Upcoming Appointments" action={<Link href="/receptionist/appointments" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all</Link>}>
           {loading ? (
             <div className="h-36 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
+          ) : futureAppts.length === 0 && nextBeyondToday ? (
+            // Truthful tail state: today's timeline is genuinely empty, but the
+            // real endpoint data does contain a later appointment — say so
+            // instead of implying there's nothing upcoming at all.
+            <div className="flex h-36 flex-col items-center justify-center gap-1.5 text-center">
+              <Calendar size={20} className="text-gray-200 dark:text-white/15" />
+              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No more appointments today</p>
+              <p className="text-[11px] font-semibold text-clinic-blue dark:text-cyan-400">
+                Next: {nextBeyondTodayWhen} · {nextBeyondToday.patient.firstName} {nextBeyondToday.patient.lastName}
+              </p>
+            </div>
           ) : futureAppts.length === 0 ? (
             <div className="flex h-36 flex-col items-center justify-center gap-1 text-center">
               <Calendar size={20} className="text-gray-200 dark:text-white/15" />
-              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No more appointments today</p>
+              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No upcoming appointments</p>
             </div>
           ) : (
             <div className="no-scrollbar w-full overflow-x-auto">
