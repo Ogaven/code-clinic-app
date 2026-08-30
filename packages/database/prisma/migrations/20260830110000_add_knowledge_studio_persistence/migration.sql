@@ -33,4 +33,3 @@ ALTER TABLE "knowledge_studio_conversations" ADD CONSTRAINT "knowledge_studio_co
 
 -- AddForeignKey
 ALTER TABLE "knowledge_studio_messages" ADD CONSTRAINT "knowledge_studio_messages_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "knowledge_studio_conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
