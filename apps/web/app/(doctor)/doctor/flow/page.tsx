@@ -16,21 +16,14 @@ export default function DoctorFlowPage() {
     const token = localStorage.getItem('cc_token')
     const raw   = localStorage.getItem('cc_user')
     if (!token || !raw) { setLoading(false); return }
-    const u = JSON.parse(raw)
     try {
-      const r = await fetch('/api-proxy/doctors', {
+      const r = await fetch('/api-proxy/doctors/me', {
         headers: { Authorization: `Bearer ${token}` },
       })
-      if (!r.ok) { setError('Could not load doctor records.'); setLoading(false); return }
-      const ds = await r.json()
-      if (!Array.isArray(ds)) { setError('Unexpected response from doctors API.'); setLoading(false); return }
-
-      // Try userId match first, then email fallback
-      let me = ds.find((d: any) => d.userId === u.id)
-      if (!me) me = ds.find((d: any) => d.email === u.email || d.user?.email === u.email)
-
-      // null = no match found (show all patients), string = filtered by doctor
-      setDoctorId(me?.id ?? null)
+      if (!r.ok) { setDoctorId(null); setError('Your Doctor profile could not be resolved.'); return }
+      const me = await r.json()
+      if (!me?.id) { setDoctorId(null); setError('Your Doctor profile could not be resolved.'); return }
+      setDoctorId(me.id)
     } catch (e) {
       console.error(e)
       setError('Network error — tap retry.')
@@ -79,7 +72,7 @@ export default function DoctorFlowPage() {
       )}
 
       {/* doctorId === undefined means still loading; null or string means ready */}
-      {!loading && !error && doctorId !== undefined && (
+      {!loading && !error && typeof doctorId === 'string' && (
         <LivePatientFlow
           doctorId={doctorId ?? undefined}
           refreshInterval={15000}

@@ -62,9 +62,8 @@ export default function DoctorProfilePage() {
       const t = (localStorage.getItem('cc_theme') as Theme) || 'dark'
       setTheme(t)
 
-      const dr = await fetch('/api-proxy/doctors', { headers: { Authorization: `Bearer ${token}` } })
-      const docs = await dr.json()
-      const me = Array.isArray(docs) ? docs.find((d: any) => d.userId === u.id) : null
+      const dr = await fetch('/api-proxy/doctors/me', { headers: { Authorization: `Bearer ${token}` } })
+      const me = dr.ok ? await dr.json() : null
       setDoctor(me)
       if (me) {
         setSpec(me.specialisation || '')
