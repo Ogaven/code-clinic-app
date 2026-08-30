@@ -14,8 +14,13 @@ export interface GuardResult {
 // ── Extractors from response text ──────────────────────────────
 
 function extractUGXPrices(text: string): number[] {
-  const matches = text.matchAll(/(\d{1,3}(?:,\d{3})*)\s*(?:UGX|shillings|\/\-)/gi)
-  return [...matches].map(m => parseInt(m[1].replace(/,/g, ''), 10))
+  // Real incident (2026-08-27): Sarah's actual phrasing puts the currency
+  // BEFORE the number ("UGX 150,000"), which this regex never matched — it
+  // only looked for the number-then-suffix order ("150,000 UGX"/"/-"), so
+  // this check was silently inert against Sarah's real, observed output.
+  const suffixed = text.matchAll(/(\d{1,3}(?:,\d{3})*)\s*(?:UGX|shillings|\/-)/gi)
+  const prefixed = text.matchAll(/(?:UGX|shillings)\s*(\d{1,3}(?:,\d{3})*)/gi)
+  return [...suffixed, ...prefixed].map(m => parseInt(m[1].replace(/,/g, ''), 10))
 }
 
 function extractTimeMentions(text: string): string[] {
@@ -73,10 +78,17 @@ function getAllPricesFromTools(tools: ToolRecord[]): number[] {
   const prices: number[] = []
   for (const t of tools) {
     if (!t.result || t.result.error) continue
-    // get_services → array of { price_ugx }
+    // search_services' REAL result shape is a single object with camelCase
+    // priceUGX ({found, serviceId, name, priceUGX}) — this previously only
+    // looked for an array of snake_case price_ugx, which never matched, so
+    // getAllPricesFromTools silently returned nothing for every real
+    // search_services call and every quoted price failed verification.
+    if (typeof t.result.priceUGX === 'number') prices.push(t.result.priceUGX)
+    // get_services (legacy/other tools) → array of { price_ugx }
     if (Array.isArray(t.result)) {
       for (const item of t.result) {
         if (item.price_ugx) prices.push(item.price_ugx)
+        if (item.priceUGX) prices.push(item.priceUGX)
         if (item.total_ugx) prices.push(item.total_ugx)
         if (item.balance_ugx) prices.push(item.balance_ugx)
       }
@@ -175,10 +187,17 @@ export async function antiHallucinationGuard(
 ): Promise<GuardResult> {
   // If no tools were called:
   // - denial language ("nothing has been booked", "you have no appointment") without a DB lookup → unsafe
+  // - a price mentioned with zero tool calls this turn → unsafe (real incident:
+  //   Sarah quoted a wrong clear-aligner price from memory/training data
+  //   instead of a live search_services lookup — "it should check the
+  //   services section", for any service, not just this one)
   // - everything else (greetings, general questions) → safe
   if (toolResults.length === 0) {
     if (hasBookingDenialLanguage(responseText)) {
       return { safe: false, reason: 'Response claims no appointment exists but no lookup tool was called to verify' }
+    }
+    if (extractUGXPrices(responseText).length > 0) {
+      return { safe: false, reason: 'Price mentioned but no tool was called this turn — cannot verify against a live Services lookup' }
     }
     return { safe: true }
   }
@@ -193,9 +212,13 @@ export async function antiHallucinationGuard(
   const mentionedPrices = extractUGXPrices(responseText)
   if (mentionedPrices.length > 0) {
     const confirmedPrices = getAllPricesFromTools(toolResults)
-    // get_services or get_patient_balance must have been called
+    // search_services is the REAL, current tool name — this previously
+    // checked for 'get_services' (never a real tool name in V2_TOOLS), so
+    // this check always failed and blocked every legitimately-sourced price
+    // quote, while genuinely wrong prices slipped through the zero-tools
+    // path above (now also fixed).
     const priceToolsCalled = toolResults.some(t =>
-      ['get_services', 'get_patient_balance', 'get_patient_appointments', 'book_appointment'].includes(t.tool)
+      ['search_services', 'get_patient_balance', 'get_patient_appointments', 'book_appointment'].includes(t.tool)
     )
     if (!priceToolsCalled) {
       return { safe: false, reason: 'Price mentioned but no price lookup tool was called' }

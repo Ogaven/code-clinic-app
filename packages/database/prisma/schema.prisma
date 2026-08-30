@@ -111,6 +111,7 @@ model User {
   expenses          Expense[]      @relation("RecordedBy")
   payroll           StaffPayroll[]
   appointments      Appointment[]  @relation("CreatedBy")
+  staffConfirmedAppointments Appointment[] @relation("StaffConfirmedBy")
   treatmentNotes    TreatmentNote[]
   messageTemplates  MessageTemplate[]
   pushSubscriptions PushSubscription[]
@@ -301,6 +302,13 @@ model Appointment {
   departedAt    DateTime?
   followUpSent   Boolean   @default(false)
   followUpSentAt DateTime?
+  // Staff personally called and verbally confirmed this appointment with the
+  // patient — when set, Sarah's own same-day reminder must not also send for
+  // this appointment (staff and the bot messaging the same patient
+  // independently, with neither aware of the other, was a real complaint).
+  staffConfirmedAt   DateTime?
+  staffConfirmedById String?
+  staffConfirmedBy   User?     @relation("StaffConfirmedBy", fields: [staffConfirmedById], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

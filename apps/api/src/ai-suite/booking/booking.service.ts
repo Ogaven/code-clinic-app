@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
+import { createEscalation } from '../../services/agent/guards/escalation'
 
 export interface AvailableSlot {
   doctorId: string
@@ -338,14 +339,30 @@ export async function rescheduleAppointment(appointmentId: string, newStartAt: D
 // ── cancelAppointment ─────────────────────────────────────────────────────────
 
 export async function cancelAppointment(appointmentId: string) {
-  return prisma.appointment.update({
+  const result = await prisma.appointment.update({
     where: { id: appointmentId },
     data:  { status: 'CANCELLED' },
     include: {
       doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
       service: { select: { name: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
     },
   })
+
+  // Mandatory safeguard (2026-08-27): this is the only cancel path the live
+  // Sarah agent (WhatsApp/website) actually calls — an automated cancellation
+  // with zero staff visibility caused a real incident elsewhere in the app.
+  // Every call here now raises a real Escalation so staff can verify it was
+  // actually what the patient wanted, not just log it silently.
+  const when = result.startAt.toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' })
+  createEscalation({
+    patientId:   result.patient.id,
+    phoneNumber: result.patient.phone,
+    channel:     'WHATSAPP',
+    reason:      `🚨 AUTOMATED CANCELLATION — please verify this was correct. ${result.patient.firstName} ${result.patient.lastName}'s ${result.service.name} appointment with Dr ${result.doctor.user.firstName} on ${when} was cancelled by Sarah during a conversation.`,
+  }).catch((e: any) => console.error('[cancelAppointment] Escalation failed:', e?.message))
+
+  return result
 }
 
 // ── getNextAppointment ────────────────────────────────────────────────────────

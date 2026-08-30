@@ -23,7 +23,7 @@ import { redis } from '../../lib/redis'
 import { antiHallucinationGuard, type ToolRecord } from '../../services/agent/guards/anti-hallucination'
 import { getGreetingName, guardianTitle, isMinor, normalizeRelation, toProper } from '../../utils/nameHelper'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
-import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
+import { sendWhatsAppMessage, sendWhatsAppTemplate, containsPhrase } from '../whatsapp/whatsapp.service'
 
 function sanitizeForClaude(content: string): string {
   if (content.startsWith('__MEDIA_IMAGE__:')) {
@@ -398,6 +398,35 @@ function isClinicOpenNow(): boolean {
   if (day === 0) return false
   if (day === 6) return mins >= 9 * 60 && mins < 15 * 60
   return mins >= 8 * 60 && mins < 18 * 60
+}
+
+// ── Resolve which patient is actually texting, when several share a phone ────
+// Real incident (2026-08-27, WHATSAPP +256775359176): two real patients share
+// one family phone — Sarah Mirembe (adult) and her son Ghandi (a minor, dob
+// 2020). A bare findFirst({where:{phone}}) picked Ghandi's older record, so
+// every reply that night addressed her as "Mummy" and searched only Ghandi's
+// appointments — which is why she was told her own real 10am Root Canal
+// appointment that day "doesn't exist", and never once got called by her own
+// name. get_patient_appointments was already fixed for this exact multi-
+// patient-per-phone shape back in June (see its own comment) but this
+// separate context-building lookup, which decides the greeting name and
+// minor/guardian framing Claude is told to use, was never given the same fix.
+// When multiple real patients share a number, an adult is overwhelmingly more
+// likely to be the one physically typing than a minor, so prefer the adult
+// record for context purposes — appointments for every patient on the phone
+// are still checked via get_patient_appointments regardless of this pick.
+async function resolveTextingPatient(phone: string): Promise<{
+  id: string; firstName: string; lastName: string; dob: Date | null
+  nextOfKinName: string | null; nextOfKinRelation: string | null
+} | null> {
+  const candidates = await prisma.patient.findMany({
+    where:  { phone: { in: phoneVariants(phone) } },
+    select: { id: true, firstName: true, lastName: true, dob: true, nextOfKinName: true, nextOfKinRelation: true },
+  })
+  if (candidates.length === 0) return null
+  if (candidates.length === 1) return candidates[0]
+  const adult = candidates.find(p => !isMinor(p.dob))
+  return adult ?? candidates[0]
 }
 
 // ── Guardian context ──────────────────────────────────────────────────────────
@@ -843,11 +872,19 @@ const SERVICE_ALIASES: Record<string, string> = {
   'remove teeth':  'Extraction',
   'root canal':    'Root Canal Therapy (Incisors/Premolars)',
   'nerve':         'Root Canal Therapy (Incisors/Premolars)',
-  'braces':        'Braces Consultation',
-  'brace':         'Braces Consultation',
-  'aligner':       'Braces Consultation',
-  'aligners':      'Braces Consultation',
-  'orthodont':     'Braces Consultation',
+  // Real incident (2026-08-27): these all pointed to "Braces Consultation",
+  // which does not exist as a real Service — there is no orthodontic service
+  // by that name in the database, only "Orthodontic Consultation". The alias
+  // lookup silently found no match, search_services returned "not found",
+  // and Sarah quoted a price from memory instead — the real, wrong price a
+  // patient was given. Matches the prompt's own worked example (see
+  // "Aligner treatment starts with an Orthodontic Consultation at UGX
+  // 200,000") of the actually-correct answer.
+  'braces':        'Orthodontic Consultation',
+  'brace':         'Orthodontic Consultation',
+  'aligner':       'Orthodontic Consultation',
+  'aligners':      'Orthodontic Consultation',
+  'orthodont':     'Orthodontic Consultation',
   'implant':       'Implant',
   'implants':      'Implant',
   'x-ray':         'Dental X-ray',
@@ -1318,8 +1355,8 @@ async function handleAwaitingCancelConfirmation(
   state: BookingStateEntry
 ): Promise<string> {
   const lower = message.toLowerCase()
-  const isYes = ['yes', 'yeah', 'yep', 'confirm', 'sure', 'okay', 'ok', 'proceed'].some(w => lower.includes(w))
-  const isNo  = ['no', "don't", 'dont', 'keep', 'never mind', 'nevermind', 'stop'].some(w => lower.includes(w))
+  const isYes = ['yes', 'yeah', 'yep', 'confirm', 'sure', 'okay', 'ok', 'proceed'].some(w => containsPhrase(lower, w))
+  const isNo  = ['no', "don't", 'dont', 'keep', 'never mind', 'nevermind', 'stop'].some(w => containsPhrase(lower, w))
 
   if (isYes && state.appointmentId) {
     try {
@@ -2628,7 +2665,7 @@ export async function getAgentReplyV2(
     const kbKeywords = latestMessage.split(/\s+/).filter(w => w.length >= 4).slice(0, 5)
 
     const [patient, dbMessages, menu, allHours, kbEntries] = await Promise.all([
-      prisma.patient.findFirst({ where: { phone: from }, select: { id: true, firstName: true, lastName: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } }),
+      resolveTextingPatient(from),
       prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 10 })
         .then(msgs => msgs.reverse()),
       getCachedMenu(),
@@ -2834,9 +2871,14 @@ export async function getAgentReplyV2(
       if (toolBlocks.length === 0) {
         const rawReply = textBlock ? sanitizeForWhatsApp(textBlock.text as string) : `I'm here to help! Could you rephrase that for me? 😊`
 
-        // Anti-hallucination guard: block any reply that claims a booking succeeded
-        // without a matching book_appointment tool call returning success: true
-        if (allToolRecords.length > 0) {
+        // Anti-hallucination guard: blocks a reply that claims a booking
+        // succeeded without a matching successful book_appointment call, OR
+        // states a price with no live search_services call behind it this
+        // turn (real incident, 2026-08-27 — Sarah quoted a wrong clear-
+        // aligner price from memory). Always runs now, not just when tools
+        // were called this turn — a price stated with zero tool calls is
+        // exactly the case that needs catching.
+        {
           const guard = await antiHallucinationGuard(rawReply, allToolRecords)
           if (!guard.safe) {
             console.warn(`[GUARD-FIRED] conv=${conversationId} phone=${from} reason="${guard.reason}"`)
@@ -2887,15 +2929,23 @@ export async function getAgentReplyV2(
               console.warn(`[GUARD-FIRED] No slots available for auto-retry conv=${conversationId}`)
             }
 
-            // Retry failed or no slots — hand off to human
+            // Retry failed or no slots — hand off to human. Message is
+            // reason-aware: a blocked price quote isn't a booking issue, and
+            // saying "booked" in reply to a price question is exactly the
+            // confusing-AI impression that caused the real complaint.
+            const isPriceIssue = /price/i.test(guard.reason || '')
             console.warn(`[GUARD-FIRED] Escalating to human conv=${conversationId}`)
             alertStaffOfConcern({
               conversationId,
               patientPhone: from,
-              message: `Booking hand-off: Sarah tried to confirm a booking but could not complete it automatically. Patient was shown available slots and likely expects a confirmation. Please follow up to book them in.`,
+              message: isPriceIssue
+                ? `Pricing hand-off: Sarah was about to quote a price that couldn't be verified against Services (${guard.reason}). Please follow up with the correct price.`
+                : `Booking hand-off: Sarah tried to confirm a booking but could not complete it automatically. Patient was shown available slots and likely expects a confirmation. Please follow up to book them in.`,
               channel,
             }).catch((e: any) => console.error('[GUARD-FIRED] alertStaffOfConcern failed:', e?.message))
-            return `I want to make sure this is booked correctly for you — let me get one of our team to confirm this with you directly, they'll be in touch shortly 😊`
+            return isPriceIssue
+              ? `Let me double-check that price for you and get one of our team to confirm — they'll be in touch shortly 😊`
+              : `I want to make sure this is booked correctly for you — let me get one of our team to confirm this with you directly, they'll be in touch shortly 😊`
           }
         }
 
@@ -3017,7 +3067,7 @@ export async function getAgentReplyV2OpenAI(
     const kbKeywords = latestMessage.split(/\s+/).filter(w => w.length >= 4).slice(0, 5)
 
     const [patient, dbMessages, menu, allHours, kbEntries] = await Promise.all([
-      prisma.patient.findFirst({ where: { phone: from }, select: { id: true, firstName: true, lastName: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } }),
+      resolveTextingPatient(from),
       prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 10 })
         .then(msgs => msgs.reverse()),
       getCachedMenu(),
@@ -3212,8 +3262,11 @@ export async function getAgentReplyV2OpenAI(
           console.warn(`[AgentV2-OpenAI] Discarded a reply that looked like leaked internal reasoning: "${candidate.slice(0, 100)}"`)
         }
 
-        // Anti-hallucination guard — identical to the Claude path, unmodified.
-        if (allToolRecords.length > 0) {
+        // Anti-hallucination guard — identical to the Claude path. Always
+        // runs now, not just when tools were called this turn, so a price
+        // stated with zero tool calls this turn is caught (see Claude path
+        // comment for the real incident this closes).
+        {
           const guard = await antiHallucinationGuard(rawReply, allToolRecords)
           if (!guard.safe) {
             console.warn(`[GUARD-FIRED-OPENAI] conv=${conversationId} phone=${from} reason="${guard.reason}"`)
@@ -3262,14 +3315,19 @@ export async function getAgentReplyV2OpenAI(
               console.warn(`[GUARD-FIRED-OPENAI] No slots available for auto-retry conv=${conversationId}`)
             }
 
+            const isPriceIssue = /price/i.test(guard.reason || '')
             console.warn(`[GUARD-FIRED-OPENAI] Escalating to human conv=${conversationId}`)
             alertStaffOfConcern({
               conversationId,
               patientPhone: from,
-              message: `Booking hand-off: Sarah (OpenAI pilot) tried to confirm a booking but could not complete it automatically. Patient was shown available slots and likely expects a confirmation. Please follow up to book them in.`,
+              message: isPriceIssue
+                ? `Pricing hand-off: Sarah (OpenAI pilot) was about to quote a price that couldn't be verified against Services (${guard.reason}). Please follow up with the correct price.`
+                : `Booking hand-off: Sarah (OpenAI pilot) tried to confirm a booking but could not complete it automatically. Patient was shown available slots and likely expects a confirmation. Please follow up to book them in.`,
               channel,
             }).catch((e: any) => console.error('[GUARD-FIRED-OPENAI] alertStaffOfConcern failed:', e?.message))
-            return `I want to make sure this is booked correctly for you — let me get one of our team to confirm this with you directly, they'll be in touch shortly 😊`
+            return isPriceIssue
+              ? `Let me double-check that price for you and get one of our team to confirm — they'll be in touch shortly 😊`
+              : `I want to make sure this is booked correctly for you — let me get one of our team to confirm this with you directly, they'll be in touch shortly 😊`
           }
         }
 

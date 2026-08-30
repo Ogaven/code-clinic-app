@@ -538,6 +538,41 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
   res.json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })
 
+// ─── Staff phone-confirmed toggle ────────────────────────────────────────────
+// Staff personally called and verbally confirmed the appointment with the
+// patient — Sarah's own same-day reminder must not also send for it (real
+// complaint: staff and the bot messaging the same patient independently,
+// with neither aware of what the other did).
+router.patch('/appointments/:id/staff-confirm', requireAuth, auditLog('appointments'), async (req, res) => {
+  const { confirmed } = req.body as { confirmed?: boolean }
+  try {
+    const appointment = await prisma.appointment.update({
+      where: { id: req.params.id },
+      data: confirmed
+        ? { staffConfirmedAt: new Date(), staffConfirmedById: req.user!.id }
+        : { staffConfirmedAt: null, staffConfirmedById: null },
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true } },
+      },
+    })
+    try {
+      await prisma.patientActivity.create({
+        data: {
+          patientId: appointment.patient.id,
+          userId: req.user!.id,
+          userName: `${req.user!.role} ${req.user!.firstName || ''} ${req.user!.lastName || ''}`.trim(),
+          action: confirmed ? 'Confirmed by phone (staff)' : 'Removed phone confirmation',
+          metadata: JSON.stringify({ appointmentId: appointment.id }),
+        },
+      })
+    } catch { /* non-critical */ }
+    res.json({ id: appointment.id, staffConfirmedAt: appointment.staffConfirmedAt })
+  } catch (e: any) {
+    if (e?.code === 'P2025') { res.status(404).json({ error: 'Appointment not found' }); return }
+    res.status(500).json({ error: 'Failed to update staff-confirmed flag' })
+  }
+})
+
 // ─── Delete appointment (admin only) ─────────────────────────────────────────
 router.delete('/appointments/:id', requireAuth, auditLog('appointments'), async (req, res) => {
   if (req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Admin only' }); return }

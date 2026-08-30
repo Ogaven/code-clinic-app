@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { X, Phone, Clock, Stethoscope, User, Check, XCircle, AlertTriangle, Loader2, ExternalLink, Edit2, Save, CalendarDays, RotateCcw } from 'lucide-react'
+import { X, Phone, Clock, Stethoscope, User, Check, XCircle, AlertTriangle, Loader2, ExternalLink, Edit2, Save, CalendarDays, RotateCcw, PhoneCall } from 'lucide-react'
 import { cn, formatPhone, formatUGX } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
 
@@ -12,6 +12,7 @@ interface Appointment {
   endAt: string
   status: string
   notes?: string | null
+  staffConfirmedAt?: string | null
   patient: { id: string; firstName: string; lastName: string; phone: string }
   doctor: { id?: string; user: { firstName: string; lastName: string } }
   service: { name: string; colour: string; priceUGX?: number }
@@ -64,7 +65,13 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
   const [saving,       setSaving]       = useState(false)
   const [saveError,    setSaveError]    = useState('')
   const [notifyPatient, setNotifyPatient] = useState(true)
+  const [staffConfirmedAt, setStaffConfirmedAt] = useState<string | null>(null)
+  const [confirmSaving, setConfirmSaving] = useState(false)
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+
+  useEffect(() => {
+    setStaffConfirmedAt(appointment?.staffConfirmedAt ?? null)
+  }, [appointment?.id, appointment?.staffConfirmedAt])
 
   const autoEditCalledRef = useRef<string | null>(null)
   useEffect(() => {
@@ -111,6 +118,23 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
       })
       if (res.ok) { onStatusChange?.(appointment!.id, status); onClose() }
     } finally { setLoading(null) }
+  }
+
+  async function toggleStaffConfirmed() {
+    const next = !staffConfirmedAt
+    setConfirmSaving(true)
+    try {
+      const res = await fetch(`/api-proxy/scheduling/appointments/${appointment!.id}/staff-confirm`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ confirmed: next }),
+      })
+      if (res.ok) {
+        const d = await res.json()
+        setStaffConfirmedAt(d.staffConfirmedAt ?? null)
+        window.dispatchEvent(new Event('appointment-updated'))
+      }
+    } finally { setConfirmSaving(false) }
   }
 
   async function saveReschedule() {
@@ -237,6 +261,25 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                       {notifyPatient ? 'Notify patient of this action' : "Don't notify patient"}
                     </span>
                   </label>
+                )}
+
+                {canEdit && (
+                  <button
+                    onClick={toggleStaffConfirmed}
+                    disabled={confirmSaving}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-colors disabled:opacity-60',
+                      staffConfirmedAt
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                        : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+                    )}
+                    title="Toggle when staff has personally called and verbally confirmed this appointment with the patient — Sarah's own reminder is skipped while this is on"
+                  >
+                    {confirmSaving ? <Loader2 size={12} className="animate-spin" /> : <PhoneCall size={12} />}
+                    {staffConfirmedAt
+                      ? `Confirmed by phone — ${new Date(staffConfirmedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })} (Sarah's reminder off)`
+                      : 'Mark as confirmed by phone (staff called patient)'}
+                  </button>
                 )}
                 {canEdit && (
                   <div className="flex flex-wrap gap-2 pt-2">

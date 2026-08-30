@@ -7,6 +7,21 @@ import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { hasOutboundConsent } from '../scheduler/guardian-routing.service'
 import { sendPushToUser } from '../../services/push.service'
 
+// ── Whole-word/phrase matching for reminder-reply intent detection ────────────
+// A real appointment was auto-cancelled (2026-08-24, Auntie Loy) because her
+// reply "Good afternoon, ... can I come at 10 o'clock?" contains "no" as a
+// substring of "afterNOon", and the old check used plain .includes(), which
+// matches ANY occurrence of the phrase anywhere in the message — "afternoon",
+// "know", "not sure", "November", "noon" would all wrongly match 'no'. This
+// matches each phrase as a whole word/phrase with boundaries, not a substring.
+// Emoji/symbol entries (no letters/digits) have no word boundaries, so a plain
+// substring check is correct and safe for those.
+export function containsPhrase(lower: string, phrase: string): boolean {
+  if (!/[a-z0-9]/i.test(phrase)) return lower.includes(phrase)
+  const escaped = phrase.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?:^|[^a-z0-9'])${escaped}(?:[^a-z0-9']|$)`, 'i').test(lower)
+}
+
 // ── Classify outbound message type for audit log ──────────────────────────────
 
 function classifyMessage(body: string): string {
@@ -358,16 +373,16 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
         const isYes = [
           'yes', 'yeah', 'yep', 'yep!', 'sure', 'ok', 'okay', 'confirm',
           'i will', "i'll be there", 'will come', 'coming', 'will be there', '✓', '👍',
-        ].some(w => lower.includes(w))
+        ].some(w => containsPhrase(lower, w))
 
         const isCancel = [
           'no', 'nope', "can't", "cannot", "won't", 'wont', "i can't",
           'not coming', 'unable', 'cancel',
-        ].some(w => lower.includes(w))
+        ].some(w => containsPhrase(lower, w))
 
         const isReschedule = [
           'reschedule', 'change', 'different time', 'another time', 'move', 'postpone',
-        ].some(w => lower.includes(w))
+        ].some(w => containsPhrase(lower, w))
 
         if (isYes) {
           // Confirm their next upcoming appointment
@@ -450,6 +465,24 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
           await sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false)
+
+          // Mandatory safeguard (2026-08-27): a real appointment was auto-cancelled
+          // via a misread reminder reply and went unnoticed until the patient
+          // walked in. notifyJulian alone is a single WhatsApp text that can be
+          // missed among others — every automated cancellation now ALSO raises a
+          // real, persistent Escalation (same mechanism used for clinical
+          // emergencies) so it shows up in the staff inbox and can't be missed,
+          // regardless of how the cancel was triggered or whether it was correct.
+          const apptLabel = upcoming
+            ? `${upcoming.startAt.toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' })}`
+            : 'an appointment (could not re-verify which one)'
+          createEscalation({
+            patientId:   patient.id,
+            phoneNumber: from,
+            channel:     'WHATSAPP',
+            reason:      `🚨 AUTOMATED CANCELLATION — please verify this was correct. ${patient.firstName} ${patient.lastName}'s appointment on ${apptLabel} was auto-cancelled by a reminder-reply match. Their message: "${text.slice(0, 200)}"`,
+            transcript:  text,
+          }).catch((e: any) => console.error('[Reminder-reply cancel] Escalation failed:', e?.message))
           notifyJulian(from, `❌ ${patient.firstName} ${patient.lastName} cancelled their appointment via reminder reply: "${text.slice(0, 200)}". Appointment marked CANCELLED.`).catch(() => {})
           return
         }

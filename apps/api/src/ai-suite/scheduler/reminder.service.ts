@@ -404,12 +404,28 @@ export async function checkAndSendSameDayReminders(): Promise<void> {
       startAt: { gte: dayStart, lte: dayEnd, gt: now }, // today in Kampala AND not already passed
       status:  { in: [...SAME_DAY_ELIGIBLE_STATUSES] },
       patient: { isActive: true },
+      // Staff personally called and verbally confirmed — Sarah must not also
+      // send her own reminder for this appointment (real complaint: staff
+      // and the bot messaging the same patient independently).
+      staffConfirmedAt: null,
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } } },
       doctor:  { include: { user: { select: { firstName: true } } } },
     },
   })
+
+  const staffConfirmedTodayCount = await prisma.appointment.count({
+    where: {
+      startAt: { gte: dayStart, lte: dayEnd, gt: now },
+      status:  { in: [...SAME_DAY_ELIGIBLE_STATUSES] },
+      patient: { isActive: true },
+      staffConfirmedAt: { not: null },
+    },
+  })
+  if (staffConfirmedTodayCount > 0) {
+    console.log(`[SameDayReminder] Skipping ${staffConfirmedTodayCount} appointment(s) today already staff-confirmed by phone`)
+  }
 
   if (appointments.length === 0) return
   console.log(`[SameDayReminder] Checking ${appointments.length} appointment(s) for today (${dateStr}, Africa/Kampala)`)
