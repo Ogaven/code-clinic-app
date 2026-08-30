@@ -12,6 +12,7 @@ import { uploadLimiter } from '../middleware/rateLimit'
 import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
 import { normalizePhone, phoneVariants } from '../utils/phone'
+import { createPatientWithBotConsent } from '../services/patient-consent.service'
 
 const createPatientSchema = z.object({
   firstName:          z.string().min(1),
@@ -30,6 +31,7 @@ const createPatientSchema = z.object({
   referralSource:     z.string().optional().or(z.literal('')),
   importSource:       z.string().optional(),
   patientType:        z.enum(['NEW', 'EXISTING']).optional(),
+  consentBotComms:    z.boolean().optional().default(true),
   status:             z.enum(['NEW_LEAD','UPCOMING','ACTIVE','DUE_RECALL','LAPSED','DORMANT','BALANCE_OWING']).optional(),
 })
 
@@ -245,14 +247,14 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
     const {
       firstName, lastName, phone, email, gender, dob, address, district,
       nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
-      referralSource, importSource, patientType,
+      referralSource, importSource, patientType, consentBotComms,
     } = req.body
     if (!firstName || !lastName || !phone) {
       res.status(400).json({ error: 'firstName, lastName and phone are required' }); return
     }
     const medHistory = Array.isArray(medicalHistory) ? medicalHistory.join(', ') : (medicalHistory ?? undefined)
-    const patient = await prisma.patient.create({
-      data: {
+    const patient = await prisma.$transaction(async (tx) => {
+      return createPatientWithBotConsent(tx, {
         firstName, lastName, phone: normalizePhone(phone),
         email:             email             || undefined,
         gender:            gender            || undefined,
@@ -267,13 +269,9 @@ router.post('/', requireAuth, clinicalStaff, validate(createPatientSchema), audi
         referralSource:    referralSource    || undefined,
         patientType:       patientType       || 'NEW',
         ...(importSource ? { importSource, status: 'ACTIVE' as any } : {}),
-      },
+      }, consentBotComms)
     })
-    // Default opt-in for bot communications — fire-and-forget (non-blocking)
-    prisma.patientConsent.create({
-      data: { patientId: patient.id, consentType: 'BOT_COMMUNICATION', granted: req.body.consentBotComms !== false },
-    }).catch((e: Error) => console.error('[PatientCreate] Consent record failed:', e.message))
-
+    // Audit after the patient and initial consent transaction commits.
     logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'PATIENT', entityId: patient.id, entityName: `${patient.firstName} ${patient.lastName}`, req })
     res.status(201).json({ ...patient, patientId: formatPatientId(patient.patientNumber), accountBalance: Number(patient.accountBalance) })
   } catch { res.status(500).json({ error: 'Failed to create patient' }) }
