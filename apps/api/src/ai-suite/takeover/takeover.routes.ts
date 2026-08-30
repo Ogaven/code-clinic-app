@@ -4,6 +4,7 @@ import { prisma } from '../../lib/prisma'
 import { fetchPostThumbnail } from '../facebook/facebook.routes'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { requireAuth } from '../../middleware/auth'
+import { authenticatedDoctorId } from '../../lib/doctor-access'
 
 const router = Router()
 
@@ -424,8 +425,10 @@ router.post('/conversations/:conversationId/send', async (req, res) => {
 // to find which conversations were active today, then reads just the fields
 // the card needs for those conversations. Read-only — no writes, no Prisma
 // schema changes, no message sends.
-router.get('/snapshot', requireAuth, async (_req, res) => {
+router.get('/snapshot', requireAuth, async (req, res) => {
   try {
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     // Africa/Kampala "today" — fixed UTC+3, no DST, computed explicitly
     // rather than relying on the API process's TZ env var.
     const KAMPALA_OFFSET_MS = 3 * 60 * 60 * 1000
@@ -451,7 +454,7 @@ router.get('/snapshot', requireAuth, async (_req, res) => {
     }
 
     const conversations = await prisma.aiConversation.findMany({
-      where:  { id: { in: convIds } },
+      where:  { id: { in: convIds }, ...(doctorId ? { patient: { appointments: { some: { doctorId } } } } : {}) },
       select: {
         channel:      true,
         agentEnabled: true,

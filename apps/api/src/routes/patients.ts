@@ -13,6 +13,7 @@ import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
 import { normalizePhone, phoneVariants } from '../utils/phone'
 import { createPatientWithBotConsent } from '../services/patient-consent.service'
+import { authenticatedDoctorId, requireDoctorPatientAccess } from '../lib/doctor-access'
 
 const createPatientSchema = z.object({
   firstName:          z.string().min(1),
@@ -126,6 +127,8 @@ function cleanError(msg: string): string {
 }
 
 const router = Router()
+router.use(requireAuth)
+router.param('id', requireDoctorPatientAccess(prisma))
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
 
 // GET /patients
@@ -136,6 +139,10 @@ router.get('/', requireAuth, async (req, res) => {
     const sortBy   = req.query.sortBy   as string | undefined
     const limit    = Math.min(Number(req.query.limit) || 50, 500)
     const offset   = Number(req.query.offset) || 0
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) {
+      res.status(404).json({ error: 'Doctor record not found' }); return
+    }
 
     // Build search where clause
     const ccMatch = q ? /^CC-(\d+)$/i.exec(q.trim()) : null
@@ -210,7 +217,13 @@ router.get('/', requireAuth, async (req, res) => {
       filterWhere.createdAt = { gte: start, lte: end }
     }
 
-    const where = { ...searchWhere, ...filterWhere }
+    const where = {
+      AND: [
+        searchWhere,
+        filterWhere,
+        ...(doctorId ? [{ appointments: { some: { doctorId } } }] : []),
+      ],
+    }
 
     // Build order
     let orderBy: any = { createdAt: 'desc' }
