@@ -371,7 +371,7 @@ router.patch('/messages/:id/feedback', requireAuth, clinicalStaff, async (req: R
 // AiKnowledgeBase from this file.
 router.post('/save', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
   try {
-    const { title, category, content, notes } = req.body || {}
+    const { conversationId, messageId, title, category, content, notes } = req.body || {}
     if (!title || typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'title is required' })
     if (!content || typeof content !== 'string' || !content.trim()) return res.status(400).json({ error: 'content is required' })
     if (title.length > MAX_TITLE_CHARS) return res.status(400).json({ error: `title is too long (${MAX_TITLE_CHARS} char max)` })
@@ -385,25 +385,62 @@ router.post('/save', requireAuth, clinicalStaff, async (req: Request, res: Respo
       if (notes.length > MAX_NOTES_CHARS) return res.status(400).json({ error: `notes is too long (${MAX_NOTES_CHARS} char max)` })
     }
 
+    // Ownership checks — a conversationId/messageId belonging to someone else
+    // must never be attachable to a save, and its existence must never leak.
+    let verifiedConversationId: string | null = null
+    let verifiedMessageId: string | null = null
+    if (conversationId !== undefined && conversationId !== null) {
+      if (typeof conversationId !== 'string') return res.status(400).json({ error: 'conversationId must be a string' })
+      const convo = await prisma.knowledgeStudioConversation.findUnique({ where: { id: conversationId } })
+      if (!convo || convo.createdBy !== req.user!.id) return res.status(404).json({ error: 'Conversation not found' })
+      verifiedConversationId = convo.id
+    }
+    if (messageId !== undefined && messageId !== null) {
+      if (typeof messageId !== 'string') return res.status(400).json({ error: 'messageId must be a string' })
+      const msg = await prisma.knowledgeStudioMessage.findUnique({ where: { id: messageId }, include: { conversation: true } })
+      if (!msg || msg.conversation.createdBy !== req.user!.id) return res.status(404).json({ error: 'Message not found' })
+      if (verifiedConversationId && msg.conversationId !== verifiedConversationId) {
+        return res.status(400).json({ error: 'messageId does not belong to conversationId' })
+      }
+      verifiedMessageId = msg.id
+      verifiedConversationId = verifiedConversationId ?? msg.conversationId
+    }
+
     const fullTitle = category && String(category).trim() ? `[${String(category).trim()}] ${title.trim()}` : title.trim()
     const fullContent = notes && String(notes).trim() ? `${content.trim()}\n\n(Staff note: ${String(notes).trim()})` : content.trim()
+    const now = new Date()
 
-    const entry = await prisma.aiKnowledgeBase.create({
-      data: {
-        title:   fullTitle,
-        type:    'STAFF_TRAINING',
-        content: fullContent,
-        // Provenance, zero schema change: sourceUrl is unused by retrieval
-        // matching (only title/content are searched), so it's a safe place
-        // to record who approved this and when without touching the text
-        // that actually gets embedded/matched/shown to patients.
-        sourceUrl: `staff-training://${req.user!.id}`,
-      },
+    // One transaction — either both rows exist afterward, or neither does.
+    const { entry, provenance } = await prisma.$transaction(async tx => {
+      const entry = await tx.aiKnowledgeBase.create({
+        data: {
+          title:   fullTitle,
+          type:    'STAFF_TRAINING',
+          content: fullContent,
+          // Kept temporarily for backward compatibility with interim rows
+          // created before this transaction existed — KnowledgeStudioProvenance
+          // below is now the authoritative provenance record, not this string.
+          sourceUrl: `staff-training://${req.user!.id}`,
+        },
+      })
+      const provenance = await tx.knowledgeStudioProvenance.create({
+        data: {
+          knowledgeId: entry.id,
+          createdBy: req.user!.id,
+          conversationId: verifiedConversationId,
+          messageId: verifiedMessageId,
+          sourceType: 'STAFF_TRAINING',
+          category: category && String(category).trim() ? String(category).trim() : null,
+          approvedAt: now,
+        },
+      })
+      return { entry, provenance }
     })
 
     res.status(201).json({
       success: true,
       entry: { id: entry.id, title: entry.title, type: entry.type, createdAt: entry.createdAt },
+      provenance: { id: provenance.id, approvedAt: provenance.approvedAt },
     })
   } catch (err: any) {
     console.error('[Knowledge Studio] save error:', err.message)
