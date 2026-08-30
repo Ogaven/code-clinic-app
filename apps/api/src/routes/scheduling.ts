@@ -4,7 +4,7 @@ import type { PrismaClient } from '@prisma/client'
 import multer from 'multer'
 import * as XLSX from 'xlsx'
 import { requireAuth } from '../middleware/auth'
-import { clinicalStaff, adminAndReceptionist } from '../middleware/rbac'
+import { clinicalStaff, adminOnly, adminAndReceptionist } from '../middleware/rbac'
 import { validate } from '../middleware/validate'
 import { auditLog } from '../middleware/audit'
 import { formatPatientId } from '../lib/utils'
@@ -574,7 +574,7 @@ router.patch('/appointments/:id/staff-confirm', requireAuth, auditLog('appointme
 })
 
 // ─── Delete appointment (admin only) ─────────────────────────────────────────
-router.delete('/appointments/:id', requireAuth, adminAndReceptionist, auditLog('appointments'), async (req, res) => {
+router.delete('/appointments/:id', requireAuth, adminOnly, auditLog('appointments'), async (req, res) => {
   if (req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Admin only' }); return }
   try {
     await prisma.$transaction(async (tx) => {
