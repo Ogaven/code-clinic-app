@@ -44,8 +44,8 @@ function authHeaders(): Record<string, string> {
 
 // ── Correction composer ────────────────────────────────────────────────────
 function CorrectionComposer({
-  initialContent, onCancel, onSaved,
-}: { initialContent: string; onCancel: () => void; onSaved: () => void }) {
+  conversationId, messageId, initialContent, onCancel, onSaved,
+}: { conversationId: string | null; messageId: string; initialContent: string; onCancel: () => void; onSaved: () => void }) {
   const [step, setStep] = useState<'edit' | 'review'>('edit')
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState(CATEGORIES[0])
@@ -60,7 +60,7 @@ function CorrectionComposer({
       const res = await fetch('/api-proxy/ai-suite/knowledge-studio/save', {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, category, content, notes }),
+        body: JSON.stringify({ conversationId, messageId, title, category, content, notes }),
       })
       if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || 'Failed to save'); return }
       onSaved()
@@ -133,9 +133,10 @@ function CorrectionComposer({
 
 // ── Single message bubble ───────────────────────────────────────────────────
 function MessageBubble({
-  msg, onFeedback, onRetry, showComposerFor, setShowComposerFor, onSaved,
+  msg, conversationId, onFeedback, onRetry, showComposerFor, setShowComposerFor, onSaved,
 }: {
   msg: ChatMessage
+  conversationId: string | null
   onFeedback: (id: string, feedback: 'CORRECT' | 'NEEDS_CORRECTION') => void
   onRetry: (id: string) => void
   showComposerFor: string | null
@@ -231,6 +232,8 @@ function MessageBubble({
 
         {showComposerFor === msg.id && !msg.correctionSaved && (
           <CorrectionComposer
+            conversationId={conversationId}
+            messageId={msg.id}
             initialContent={msg.suggestedContent || ''}
             onCancel={() => setShowComposerFor(null)}
             onSaved={() => { onSaved(msg.id); setShowComposerFor(null) }}
@@ -528,7 +531,7 @@ export default function KnowledgeTrainerChat() {
             <p className="text-xs text-gray-400 dark:text-white/25 max-w-[240px]">Answers are grounded in the same Knowledge Base WhatsApp, the website and social AI use.</p>
           </div>
         ) : messages.map(msg => (
-          <MessageBubble key={msg.id} msg={msg} onFeedback={onFeedback} onRetry={retryMessage}
+          <MessageBubble key={msg.id} msg={msg} conversationId={conversationId} onFeedback={onFeedback} onRetry={retryMessage}
             showComposerFor={showComposerFor} setShowComposerFor={setShowComposerFor} onSaved={onSaved} />
         ))}
         {sending && (
