@@ -525,7 +525,7 @@ export default function ReceptionistDashboard() {
           ) : futureAppts.length === 0 ? (
             <div className="flex h-36 flex-col items-center justify-center gap-1 text-center">
               <Calendar size={20} className="text-gray-200 dark:text-white/15" />
-              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No more appointments today</p>
+              <p className="text-xs font-medium text-gray-400 dark:text-slate-500">No upcoming appointments</p>
             </div>
           ) : (
             <div className="no-scrollbar w-full overflow-x-auto">
