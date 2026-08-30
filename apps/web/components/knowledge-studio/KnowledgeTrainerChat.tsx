@@ -363,6 +363,7 @@ export default function KnowledgeTrainerChat() {
       const d = await res.json()
       setMessages((d.messages || []).map((m: any): ChatMessage => ({
         id: m.id, role: m.role, content: m.content, feedback: m.feedback ?? null,
+        grounded: m.grounded, sources: m.sources,
       })))
     } catch { setMessages([]) } finally { setLoadingConversation(false) }
   }

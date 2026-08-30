@@ -135,7 +135,10 @@ router.get('/conversations/:id', requireAuth, clinicalStaff, async (req: Request
     const messages = await prisma.knowledgeStudioMessage.findMany({
       where: { conversationId: convo.id },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, role: true, content: true, feedback: true, createdAt: true },
+      select: {
+        id: true, role: true, content: true, feedback: true, grounded: true, createdAt: true,
+        sources: { select: { id: true, knowledgeId: true, title: true, sourceUrl: true, score: true } },
+      },
     })
 
     res.json({ id: convo.id, title: convo.title, createdAt: convo.createdAt, updatedAt: convo.updatedAt, archivedAt: convo.archivedAt, messages })
@@ -303,8 +306,19 @@ router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Respo
       return res.status(500).json({ error: 'Failed to get a response from the clinic AI', conversationId, userMessageId })
     }
 
+    // Persist grounded status and a snapshot of the sources actually
+    // supplied to the model — without this, "Sources used" and the
+    // not-grounded warning would only be correct on the initial response
+    // and silently disappear/reset the next time this conversation is
+    // reopened (GET /conversations/:id reads only what's in the DB).
     const assistantMsg = await prisma.knowledgeStudioMessage.create({
-      data: { conversationId, role: 'assistant', content: reply },
+      data: {
+        conversationId,
+        role: 'assistant',
+        content: reply,
+        grounded: hits.length > 0,
+        sources: { create: hits.map(h => ({ knowledgeId: h.id, title: h.title, sourceUrl: h.sourceUrl, score: h.score })) },
+      },
     })
 
     if (isFirstTurn) {
