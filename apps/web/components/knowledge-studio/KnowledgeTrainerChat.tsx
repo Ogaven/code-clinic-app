@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Bot, Send, Sparkles, Copy, Check, RotateCcw, ThumbsUp, ThumbsDown,
-  X, BookOpen, Plus, History, Info,
+  X, BookOpen, Plus, History, Pencil, Trash2, AlertTriangle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -19,14 +19,28 @@ interface ChatMessage {
   grounded?: boolean
   suggestSave?: boolean
   suggestedContent?: string
-  feedback?: 'correct' | 'needs_correction'
+  feedback?: 'CORRECT' | 'NEEDS_CORRECTION' | null
   correctionSaved?: boolean
   error?: boolean
+  pending?: boolean
+}
+
+interface ConversationSummary {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  archivedAt: string | null
 }
 
 const CATEGORIES = ['Hours', 'Pricing', 'Services', 'Policies', 'Doctors', 'Location', 'Insurance', 'Other']
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }
+
+function authHeaders(): Record<string, string> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+  return { Authorization: `Bearer ${token}` }
+}
 
 // ── Correction composer ────────────────────────────────────────────────────
 function CorrectionComposer({
@@ -43,10 +57,9 @@ function CorrectionComposer({
   async function save() {
     setSaving(true); setError('')
     try {
-      const token = localStorage.getItem('cc_token')
       const res = await fetch('/api-proxy/ai-suite/knowledge-studio/save', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, category, content, notes }),
       })
       if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || 'Failed to save'); return }
@@ -123,8 +136,8 @@ function MessageBubble({
   msg, onFeedback, onRetry, showComposerFor, setShowComposerFor, onSaved,
 }: {
   msg: ChatMessage
-  onFeedback: (id: string, feedback: 'correct' | 'needs_correction') => void
-  onRetry: () => void
+  onFeedback: (id: string, feedback: 'CORRECT' | 'NEEDS_CORRECTION') => void
+  onRetry: (id: string) => void
   showComposerFor: string | null
   setShowComposerFor: (id: string | null) => void
   onSaved: (id: string) => void
@@ -161,7 +174,7 @@ function MessageBubble({
 
         {!msg.error && msg.grounded === false && (
           <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-            <Info size={11} /> Not found in the knowledge base — this answer isn't grounded.
+            <AlertTriangle size={11} /> Not found in the knowledge base — this answer isn't grounded.
           </p>
         )}
 
@@ -174,23 +187,29 @@ function MessageBubble({
           </div>
         )}
 
-        {!msg.error && (
+        {msg.error ? (
+          <div className="mt-1.5">
+            <button onClick={() => onRetry(msg.id)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors">
+              <RotateCcw size={12} /> Retry
+            </button>
+          </div>
+        ) : (
           <div className="mt-1.5 flex items-center gap-1">
             <button onClick={copy} title="Copy response" className="w-6 h-6 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600 dark:hover:text-white/70 transition-colors">
               {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
             </button>
-            <button onClick={onRetry} title="Retry" className="w-6 h-6 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600 dark:hover:text-white/70 transition-colors">
+            <button onClick={() => onRetry(msg.id)} title="Retry" className="w-6 h-6 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600 dark:hover:text-white/70 transition-colors">
               <RotateCcw size={12} />
             </button>
             <span className="w-px h-3.5 bg-gray-200 dark:bg-white/10 mx-1" />
-            <button onClick={() => onFeedback(msg.id, 'correct')}
+            <button onClick={() => onFeedback(msg.id, 'CORRECT')}
               className={cn('flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors',
-                msg.feedback === 'correct' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600')}>
+                msg.feedback === 'CORRECT' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600')}>
               <ThumbsUp size={11} /> Correct
             </button>
-            <button onClick={() => { onFeedback(msg.id, 'needs_correction'); setShowComposerFor(msg.id) }}
+            <button onClick={() => { onFeedback(msg.id, 'NEEDS_CORRECTION'); setShowComposerFor(msg.id) }}
               className={cn('flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors',
-                msg.feedback === 'needs_correction' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600')}>
+                msg.feedback === 'NEEDS_CORRECTION' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600')}>
               <ThumbsDown size={11} /> Needs correction
             </button>
           </div>
@@ -222,76 +241,228 @@ function MessageBubble({
   )
 }
 
-// ── Main panel ───────────────────────────────────────────────────────────────
-export default function KnowledgeTrainerChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [showComposerFor, setShowComposerFor] = useState<string | null>(null)
-  const [showHistoryNote, setShowHistoryNote] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
+// ── History panel ────────────────────────────────────────────────────────────
+function HistoryPanel({
+  conversations, activeId, loading, onSelect, onNew, onRename, onDelete, onClose,
+}: {
+  conversations: ConversationSummary[]
+  activeId: string | null
+  loading: boolean
+  onSelect: (id: string) => void
+  onNew: () => void
+  onRename: (id: string, title: string) => void
+  onDelete: (id: string) => void
+  onClose: () => void
+}) {
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<ConversationSummary | null>(null)
 
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
-
-  // `baseMessages` defaults to current state for the normal composer-driven
-  // send, but retryLast() passes an explicit array instead of relying on it —
-  // React state setters are async, so reading the `messages` closure right
-  // after calling setMessages() would still see the pre-update value.
-  async function sendMessage(text: string, baseMessages: ChatMessage[] = messages) {
-    const trimmed = text.trim()
-    if (!trimmed || loading) return
-    const userMsg: ChatMessage = { id: uid(), role: 'user', content: trimmed }
-    const nextMessages = [...baseMessages, userMsg]
-    setMessages(nextMessages)
-    setInput('')
-    setLoading(true)
-    try {
-      const token = localStorage.getItem('cc_token')
-      // History is prior turns ONLY — the new message is sent separately as
-      // `message` and the backend appends it as the final turn itself.
-      // Including it in history too would send it to Claude twice.
-      const history = baseMessages.slice(-10).map(m => ({ role: m.role, content: m.content }))
-      const res = await fetch('/api-proxy/ai-suite/knowledge-studio/chat', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: trimmed, history }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        setMessages(m => [...m, { id: uid(), role: 'assistant', content: d.error || 'Something went wrong.', error: true }])
-        return
-      }
-      const data = await res.json()
-      setMessages(m => [...m, {
-        id: uid(), role: 'assistant', content: data.reply,
-        sources: data.sources, grounded: data.grounded,
-        suggestSave: data.suggestSave, suggestedContent: data.suggestedContent,
-      }])
-    } catch {
-      setMessages(m => [...m, { id: uid(), role: 'assistant', content: "Couldn't reach the clinic AI — please try again.", error: true }])
-    } finally { setLoading(false) }
+  function startRename(c: ConversationSummary) { setRenamingId(c.id); setRenameValue(c.title) }
+  function commitRename() {
+    if (renamingId && renameValue.trim()) onRename(renamingId, renameValue.trim())
+    setRenamingId(null)
   }
 
-  function retryLast() {
-    const lastUser = [...messages].reverse().find(m => m.role === 'user')
-    if (!lastUser) return
-    // Drop everything from the last user message onward, then resend it —
-    // `base` is passed explicitly into sendMessage rather than left to the
-    // `messages` state/closure, which wouldn't reflect this truncation yet.
-    const idx = messages.findIndex(m => m.id === lastUser.id)
-    const base = messages.slice(0, idx)
-    setMessages(base)
-    sendMessage(lastUser.content, base)
+  return (
+    <div className="absolute right-0 top-full mt-2 w-72 max-h-96 overflow-y-auto rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0e2045] shadow-xl z-20">
+      <div className="p-2 border-b border-gray-100 dark:border-white/10">
+        <button onClick={onNew} className="w-full flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/20 hover:bg-cyan-100 dark:hover:bg-cyan-900/30 transition-colors">
+          <Plus size={13} /> New Chat
+        </button>
+      </div>
+      <div className="py-1">
+        {loading ? (
+          <div className="px-3 py-6 text-center text-xs text-gray-400">Loading…</div>
+        ) : conversations.length === 0 ? (
+          <div className="px-3 py-6 text-center text-xs text-gray-400">No previous chats yet</div>
+        ) : conversations.map(c => (
+          <div key={c.id}
+            className={cn('group flex items-center gap-1 px-2 py-1.5 mx-1 rounded-lg cursor-pointer',
+              c.id === activeId ? 'bg-cyan-50 dark:bg-cyan-900/20' : 'hover:bg-gray-50 dark:hover:bg-white/5')}>
+            {renamingId === c.id ? (
+              <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenamingId(null) }}
+                onBlur={commitRename}
+                className="flex-1 min-w-0 px-1.5 py-0.5 text-xs rounded border border-cyan-300 dark:border-cyan-500/40 bg-white dark:bg-white/10 dark:text-white focus:outline-none" />
+            ) : (
+              <button onClick={() => onSelect(c.id)} className="flex-1 min-w-0 text-left text-xs font-semibold text-gray-700 dark:text-white/80 truncate py-0.5">
+                {c.title}
+              </button>
+            )}
+            <button onClick={() => startRename(c)} title="Rename" className="opacity-0 group-hover:opacity-100 w-6 h-6 flex-shrink-0 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 dark:hover:text-white/70">
+              <Pencil size={11} />
+            </button>
+            <button onClick={() => setPendingDelete(c)} title="Delete" className="opacity-0 group-hover:opacity-100 w-6 h-6 flex-shrink-0 flex items-center justify-center rounded text-gray-400 hover:text-red-500">
+              <Trash2 size={11} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {pendingDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setPendingDelete(null)}>
+          <div onClick={e => e.stopPropagation()} className="bg-white dark:bg-[#0e2045] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 w-full max-w-sm p-5 space-y-3">
+            <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
+              <AlertTriangle size={18} className="text-red-500" />
+            </div>
+            <h3 className="text-sm font-bold text-gray-800 dark:text-white">Delete this chat?</h3>
+            <p className="text-sm text-gray-500 dark:text-white/50">
+              <span className="font-semibold text-gray-700 dark:text-white/70">{pendingDelete.title}</span> and all its messages will be permanently deleted. This can't be undone.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setPendingDelete(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/60">Cancel</button>
+              <button onClick={() => { onDelete(pendingDelete.id); setPendingDelete(null) }} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors">
+                <Trash2 size={13} /> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main panel ───────────────────────────────────────────────────────────────
+export default function KnowledgeTrainerChat() {
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [conversationsLoading, setConversationsLoading] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [loadingConversation, setLoadingConversation] = useState(false)
+
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [showComposerFor, setShowComposerFor] = useState<string | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, sending])
+  useEffect(() => { loadConversations() }, [])
+
+  async function loadConversations() {
+    setConversationsLoading(true)
+    try {
+      const res = await fetch('/api-proxy/ai-suite/knowledge-studio/conversations', { headers: authHeaders() })
+      if (res.ok) { const d = await res.json(); setConversations(d.conversations || []) }
+    } catch {} finally { setConversationsLoading(false) }
+  }
+
+  async function selectConversation(id: string) {
+    setShowHistory(false)
+    setLoadingConversation(true)
+    setConversationId(id)
+    setShowComposerFor(null)
+    try {
+      const res = await fetch(`/api-proxy/ai-suite/knowledge-studio/conversations/${id}`, { headers: authHeaders() })
+      if (!res.ok) { setMessages([]); return }
+      const d = await res.json()
+      setMessages((d.messages || []).map((m: any): ChatMessage => ({
+        id: m.id, role: m.role, content: m.content, feedback: m.feedback ?? null,
+      })))
+    } catch { setMessages([]) } finally { setLoadingConversation(false) }
   }
 
   function startNewChat() {
+    setShowHistory(false)
+    setConversationId(null)
     setMessages([])
     setShowComposerFor(null)
     setInput('')
   }
 
-  function onFeedback(id: string, feedback: 'correct' | 'needs_correction') {
+  async function renameConversation(id: string, title: string) {
+    setConversations(cs => cs.map(c => c.id === id ? { ...c, title } : c))
+    try {
+      await fetch(`/api-proxy/ai-suite/knowledge-studio/conversations/${id}`, {
+        method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      })
+    } catch {}
+  }
+
+  async function deleteConversation(id: string) {
+    setConversations(cs => cs.filter(c => c.id !== id))
+    if (conversationId === id) startNewChat()
+    try {
+      await fetch(`/api-proxy/ai-suite/knowledge-studio/conversations/${id}`, { method: 'DELETE', headers: authHeaders() })
+    } catch {}
+  }
+
+  async function sendMessage(text: string) {
+    const trimmed = text.trim()
+    if (!trimmed || sending) return
+    const userMsg: ChatMessage = { id: uid(), role: 'user', content: trimmed }
+    setMessages(m => [...m, userMsg])
+    setInput('')
+    setSending(true)
+    try {
+      const res = await fetch('/api-proxy/ai-suite/knowledge-studio/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: trimmed, conversationId: conversationId || undefined }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // The server persisted the USER turn even on failure — replace our
+        // optimistic local id with the real one so Retry targets the actual row.
+        if (data.userMessageId) setMessages(m => m.map(x => x.id === userMsg.id ? { ...x, id: data.userMessageId } : x))
+        if (data.conversationId && !conversationId) { setConversationId(data.conversationId); loadConversations() }
+        setMessages(m => [...m, { id: uid(), role: 'assistant', content: data.error || 'Something went wrong.', error: true }])
+        return
+      }
+      if (data.conversationId && data.conversationId !== conversationId) { setConversationId(data.conversationId); loadConversations() }
+      else loadConversations()
+      setMessages(m => [
+        ...m.map(x => x.id === userMsg.id ? { ...x, id: data.userMessageId } : x),
+        { id: data.messageId, role: 'assistant', content: data.reply, sources: data.sources, grounded: data.grounded, suggestSave: data.suggestSave, suggestedContent: data.suggestedContent },
+      ])
+    } catch {
+      setMessages(m => [...m, { id: uid(), role: 'assistant', content: "Couldn't reach the clinic AI — please try again.", error: true }])
+    } finally { setSending(false) }
+  }
+
+  // Retry regenerates a reply for an existing unanswered USER message rather
+  // than resending it as a brand-new turn — the server rejects retryOf if
+  // anything already followed that message, so this only ever applies to a
+  // genuinely stuck/failed last turn.
+  async function retryMessage(anchorId: string) {
+    if (sending) return
+    const anchor = messages.find(m => m.id === anchorId)
+    const targetUserId = anchor?.role === 'user' ? anchor.id : [...messages].reverse().find(m => m.role === 'user')?.id
+    if (!targetUserId) return
+
+    const idx = messages.findIndex(m => m.id === targetUserId)
+    setMessages(messages.slice(0, idx + 1))
+    setSending(true)
+    try {
+      const res = await fetch('/api-proxy/ai-suite/knowledge-studio/chat', {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retryOf: targetUserId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setMessages(m => [...m, { id: uid(), role: 'assistant', content: data.error || 'Something went wrong.', error: true }])
+        return
+      }
+      setMessages(m => [...m, {
+        id: data.messageId, role: 'assistant', content: data.reply,
+        sources: data.sources, grounded: data.grounded, suggestSave: data.suggestSave, suggestedContent: data.suggestedContent,
+      }])
+      loadConversations()
+    } catch {
+      setMessages(m => [...m, { id: uid(), role: 'assistant', content: "Couldn't reach the clinic AI — please try again.", error: true }])
+    } finally { setSending(false) }
+  }
+
+  async function onFeedback(id: string, feedback: 'CORRECT' | 'NEEDS_CORRECTION') {
     setMessages(m => m.map(msg => msg.id === id ? { ...msg, feedback } : msg))
+    try {
+      await fetch(`/api-proxy/ai-suite/knowledge-studio/messages/${id}/feedback`, {
+        method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ feedback }),
+      })
+    } catch {}
   }
 
   function onSaved(id: string) {
@@ -315,19 +486,26 @@ export default function KnowledgeTrainerChat() {
           </div>
           <div className="min-w-0">
             <h2 className="text-sm font-black text-gray-800 dark:text-white truncate">AI Knowledge Trainer</h2>
-            <p className="text-[11px] text-gray-400 dark:text-white/35 truncate">Test, correct and improve what Code Clinic AI knows.</p>
+            <p className="text-[11px] text-gray-400 dark:text-white/35 truncate">Reflects WhatsApp, Website, Messenger &amp; Instagram DM knowledge — not Voice, SMS or Comments yet.</p>
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           <div className="relative">
-            <button onClick={() => setShowHistoryNote(s => !s)} title="Previous chats"
+            <button onClick={() => setShowHistory(s => !s)} title="Previous chats"
               className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600 dark:hover:text-white/70 transition-colors">
               <History size={15} />
             </button>
-            {showHistoryNote && (
-              <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0e2045] shadow-xl p-3 z-20 text-[11px] text-gray-500 dark:text-white/50">
-                Persistent chat history isn't available yet — it needs a small, separate database table that's pending approval. Right now each chat lives only for this browser session.
-              </div>
+            {showHistory && (
+              <HistoryPanel
+                conversations={conversations}
+                activeId={conversationId}
+                loading={conversationsLoading}
+                onSelect={selectConversation}
+                onNew={startNewChat}
+                onRename={renameConversation}
+                onDelete={deleteConversation}
+                onClose={() => setShowHistory(false)}
+              />
             )}
           </div>
           <button onClick={startNewChat} title="New chat"
@@ -339,18 +517,21 @@ export default function KnowledgeTrainerChat() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {messages.length === 0 && (
+        {loadingConversation ? (
+          <div className="h-full flex items-center justify-center">
+            <div className="w-5 h-5 border-2 border-gray-200 dark:border-white/10 border-t-cyan-500 rounded-full animate-spin" />
+          </div>
+        ) : messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center gap-2 py-10">
             <Bot size={28} className="text-gray-200 dark:text-white/10" />
             <p className="text-sm font-semibold text-gray-500 dark:text-white/40">Ask the clinic AI or teach it something</p>
             <p className="text-xs text-gray-400 dark:text-white/25 max-w-[240px]">Answers are grounded in the same Knowledge Base WhatsApp, the website and social AI use.</p>
           </div>
-        )}
-        {messages.map(msg => (
-          <MessageBubble key={msg.id} msg={msg} onFeedback={onFeedback} onRetry={retryLast}
+        ) : messages.map(msg => (
+          <MessageBubble key={msg.id} msg={msg} onFeedback={onFeedback} onRetry={retryMessage}
             showComposerFor={showComposerFor} setShowComposerFor={setShowComposerFor} onSaved={onSaved} />
         ))}
-        {loading && (
+        {sending && (
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg,#0d9488,#14b8a6)' }}>
               <Bot size={13} className="text-white" />
@@ -376,7 +557,7 @@ export default function KnowledgeTrainerChat() {
           className="flex-1 resize-none max-h-32 px-3.5 py-2.5 text-sm rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
         />
         <button
-          disabled={!input.trim() || loading}
+          disabled={!input.trim() || sending}
           onClick={() => sendMessage(input)}
           className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-xl text-white transition-all disabled:opacity-40"
           style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)' }}>
