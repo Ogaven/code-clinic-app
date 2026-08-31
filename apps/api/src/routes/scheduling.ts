@@ -582,9 +582,12 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
 // patient — Sarah's own same-day reminder must not also send for it (real
 // complaint: staff and the bot messaging the same patient independently,
 // with neither aware of what the other did).
-router.patch('/appointments/:id/staff-confirm', requireAuth, auditLog('appointments'), async (req, res) => {
+router.patch('/appointments/:id/staff-confirm', requireAuth, clinicalStaff, auditLog('appointments'), async (req, res) => {
   const { confirmed } = req.body as { confirmed?: boolean }
   try {
+    if (!(await appointmentVisibleToUser(prisma, req.user!, req.params.id))) {
+      res.status(404).json({ error: 'Appointment not found' }); return
+    }
     const appointment = await prisma.appointment.update({
       where: { id: req.params.id },
       data: confirmed
@@ -688,7 +691,7 @@ router.get('/doctors/:id/availability', requireAuth, async (req, res) => {
 })
 
 // ─── Block time ───────────────────────────────────────────────────────────────
-router.post('/doctors/:id/block-time', requireAuth, adminAndReceptionist, async (req, res) => {
+router.post('/doctors/:id/block-time', requireAuth, async (req, res) => {
   const { startAt, endAt, reason } = req.body
 
   const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id } })
@@ -717,7 +720,7 @@ router.delete('/doctors/:id/block-time/:blockId', requireAuth, async (req, res) 
 })
 
 // Batch-create blocked times (used for recurring day-of-week blocks)
-router.post('/doctors/:id/block-time-batch', requireAuth, adminAndReceptionist, async (req, res) => {
+router.post('/doctors/:id/block-time-batch', requireAuth, async (req, res) => {
   const { slots } = req.body as { slots: Array<{ startAt: string; endAt: string; reason?: string }> }
 
   const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id } })
@@ -790,7 +793,7 @@ router.get('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }) }
 })
 
-router.put('/doctor-schedule/:doctorId', requireAuth, adminAndReceptionist, async (req, res) => {
+router.put('/doctor-schedule/:doctorId', requireAuth, async (req, res) => {
   try {
     const { doctorId } = req.params
     if (req.user!.role === 'DOCTOR') {
