@@ -5,6 +5,14 @@
 #   the Next.js standalone output. The server (Linux, Node 20, pnpm 10) builds
 #   cleanly. Source files are pushed first, then built in place.
 #
+# NOTE: the rsync step below pushes whatever is in the LOCAL working directory,
+#   not what's committed to git — it will happily ship uncommitted or
+#   not-yet-pushed local edits. That already caused production's working tree
+#   to drift from its own git history once. Final production deployment for
+#   a reviewed release should use the git-based method instead (fetch, then
+#   `git merge --ff-only origin/main`, then build on the server), not this
+#   script, until it's redesigned to sync via git rather than rsync.
+#
 # Usage (from repo root, in Git Bash):
 #   bash deploy-web.sh
 

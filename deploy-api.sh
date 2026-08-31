@@ -27,14 +27,19 @@ echo '[deploy-api] Copying compiled dist/ to server...'
 ssh "$SERVER" "rm -rf $REMOTE_DIR/apps/api/dist"
 (cd apps/api && tar -czf - dist) | ssh "$SERVER" "cd $REMOTE_DIR/apps/api && tar -xzf -"
 
-# startup.js runs `prisma db push --schema=<this file>` on every restart.
-# Without copying the schema here, the server keeps an old schema and drops
-# any tables/columns added since the last manual schema update.
+# Schema migrations are an explicit, operator-controlled deploy step — this
+# script does not apply them. The API runtime does not mutate schema either
+# (the old automatic `prisma db push` at startup was removed). This step only
+# copies schema.prisma so `prisma generate` below produces a client matching
+# the schema this release expects; run `prisma migrate deploy` separately,
+# after a database backup, before restarting the API.
 echo '[deploy-api] Copying Prisma schema to server...'
 scp packages/database/prisma/schema.prisma "$SERVER:$REMOTE_DIR/packages/database/prisma/schema.prisma"
 
-# Regenerate Prisma client on the server so the runtime types match the new schema.
-# Without this, any newly added model fields cause "Unknown argument" Prisma errors.
+# Regenerate Prisma client on the server so the runtime types match the new
+# schema. This only generates client code — it does not touch the database.
+# Without it, any newly added model fields cause "Unknown argument" Prisma
+# errors even after the real migration has been applied separately.
 echo '[deploy-api] Regenerating Prisma client on server...'
 ssh "$SERVER" "cd $REMOTE_DIR && packages/database/node_modules/.bin/prisma generate --schema=packages/database/prisma/schema.prisma"
 
