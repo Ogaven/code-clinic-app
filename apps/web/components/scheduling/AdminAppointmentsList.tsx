@@ -130,7 +130,7 @@ function displayCode(appt: Appt): string {
 const LIMIT = 25
 const API = '/api-proxy'
 
-export default function AdminAppointmentsList() {
+export default function AdminAppointmentsList({ userRole = 'ADMIN' }: { userRole?: string } = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { Authorization: `Bearer ${token}` }
 
@@ -449,7 +449,7 @@ export default function AdminAppointmentsList() {
           appointment={editAppt || selected}
           onClose={() => { setSelected(null); setEditAppt(null) }}
           onStatusChange={() => { setRefreshKey(k => k + 1); setSelected(null); setEditAppt(null) }}
-          userRole="ADMIN"
+          userRole={userRole}
           autoEdit={!!editAppt}
         />
       )}
