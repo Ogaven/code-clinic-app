@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireAuth } from '../middleware/auth'
+import { adminAndReceptionist } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { sendWhatsAppMessage, sendWhatsAppMessageDirect, sendWhatsAppTemplate } from '../ai-suite/whatsapp/whatsapp.service'
 
@@ -78,7 +79,7 @@ async function runBroadcast(campaignId: string, segment: string, message: string
 }
 
 // GET /campaigns — campaign history
-router.get('/', requireAuth, async (_req, res) => {
+router.get('/', requireAuth, adminAndReceptionist, async (_req, res) => {
   try {
     const campaigns = await prisma.campaign.findMany({
       where:   { channel: 'WHATSAPP', type: 'BROADCAST' },
@@ -93,7 +94,7 @@ router.get('/', requireAuth, async (_req, res) => {
 })
 
 // GET /campaigns/segment-count?segment=ACTIVE
-router.get('/segment-count', requireAuth, async (req, res) => {
+router.get('/segment-count', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const segment = (req.query.segment as string) || 'ALL'
     if (!VALID_SEGMENTS.includes(segment)) {
@@ -108,7 +109,7 @@ router.get('/segment-count', requireAuth, async (req, res) => {
 })
 
 // POST /campaigns/whatsapp/broadcast
-router.post('/whatsapp/broadcast', requireAuth, async (req, res) => {
+router.post('/whatsapp/broadcast', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const { segment, message, scheduleAt } = req.body
 
@@ -153,7 +154,7 @@ router.post('/whatsapp/broadcast', requireAuth, async (req, res) => {
 // TIMEZONE: today's month/day must be read via explicit Africa/Kampala, not
 // server-local Date accessors — see birthday.service.ts for the full
 // explanation of why this was previously showing birthdays a day early.
-router.get('/birthdays/today', requireAuth, async (_req, res) => {
+router.get('/birthdays/today', requireAuth, adminAndReceptionist, async (_req, res) => {
   try {
     const now        = new Date()
     const todayMonth = parseInt(now.toLocaleDateString('en-US', { month: 'numeric', timeZone: 'Africa/Kampala' }))
@@ -201,7 +202,7 @@ router.get('/birthdays/today', requireAuth, async (_req, res) => {
 // POST /campaigns/birthdays/:patientId/generate — Claude-drafted birthday message body
 // Returns ONLY the middle personalized section — the template wrapper (greeting +
 // clinic signature) is added automatically on send.
-router.post('/birthdays/:patientId/generate', requireAuth, async (req, res) => {
+router.post('/birthdays/:patientId/generate', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const { styleHint } = req.body as { styleHint?: string }
 
@@ -250,7 +251,7 @@ Plain text only — no markdown, no asterisks, no bullet points.`,
 // POST /campaigns/birthdays/:patientId/send — explicit staff-triggered send only.
 // Routes via approved cc_birthday_greeting template on Kenya WABA (no 24h window limit,
 // no billing block). Falls back to freeform on the same WABA if template is still pending.
-router.post('/birthdays/:patientId/send', requireAuth, async (req, res) => {
+router.post('/birthdays/:patientId/send', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const { message } = req.body
     if (!message?.trim()) { res.status(400).json({ error: 'Message required' }); return }

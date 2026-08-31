@@ -226,7 +226,7 @@ export default function DoctorPatientsPage() {
             {loading ? 'Loading…' : `${filtered.length} patient${filtered.length !== 1 ? 's' : ''} seen`}
           </p>
         </div>
-        {selectedIds.size > 0 ? (
+        {false && selectedIds.size > 0 ? (
           <button
             onClick={() => setShowBulkDeleteModal(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-red-500 hover:bg-red-600 text-white transition-colors min-h-[44px] shadow-sm">
@@ -279,7 +279,7 @@ export default function DoctorPatientsPage() {
       </div>
 
       {/* Select All bar — shown when patients exist */}
-      {!loading && filtered.length > 0 && (
+      {false && !loading && filtered.length > 0 && (
         <div className="flex items-center gap-2 px-1">
           <input
             type="checkbox"
@@ -313,14 +313,14 @@ export default function DoctorPatientsPage() {
               )}>
 
                 {/* Checkbox */}
-                <div className="flex-shrink-0 pt-3" onClick={e => toggleSelect(p.id, e)}>
+                {false && <div className="flex-shrink-0 pt-3" onClick={e => toggleSelect(p.id, e)}>
                   <input
                     type="checkbox"
                     checked={selectedIds.has(p.id)}
                     onChange={() => {}}
                     className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
                   />
-                </div>
+                </div>}
 
                 {/* Avatar */}
                 <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900/40 dark:to-blue-800/40 flex items-center justify-center flex-shrink-0 font-bold text-blue-600 dark:text-blue-300 text-sm">
@@ -376,7 +376,7 @@ export default function DoctorPatientsPage() {
       </div>
 
       {/* ── Bulk Delete Confirmation Modal ───────────────────────────────────── */}
-      {showBulkDeleteModal && (
+      {false && showBulkDeleteModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl max-w-sm w-full p-6 animate-fade-in">
             <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-2">

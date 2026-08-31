@@ -40,7 +40,7 @@ const INCLUDE = {
 }
 
 // POST /doctors — create new doctor (RECEPTIONIST + ADMIN allowed)
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, adminOnly, async (req, res) => {
   try {
     const { firstName, lastName, email, phone, specialisation } = req.body
     if (!firstName || !lastName || !email) {
@@ -83,6 +83,14 @@ router.get('/', requireAuth, async (_req, res) => {
     })
     res.json(doctors.map(formatDoctor))
   } catch { res.status(500).json({ error: 'Failed to fetch doctors' }) }
+})
+
+// GET /doctors/me - authenticated Doctor identity without exposing the directory
+router.get('/me', requireAuth, async (req, res) => {
+  if (req.user!.role !== 'DOCTOR') { res.status(403).json({ error: 'Doctor only' }); return }
+  const doctor = await prisma.doctor.findUnique({ where: { userId: req.user!.id }, include: INCLUDE })
+  if (!doctor) { res.status(404).json({ error: 'Doctor record not found' }); return }
+  res.json(formatDoctor(doctor))
 })
 
 // GET /doctors/all (all staff — includes inactive)
@@ -186,6 +194,9 @@ router.post('/:id/avatar', requireAuth, uploadLimiter, upload.single('avatar'), 
       include: { user: true },
     })
     if (!doctor) return res.status(404).json({ error: 'Doctor not found' })
+    if (req.user!.role !== 'ADMIN' && doctor.userId !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' })
+    }
 
     let avatarUrl: string
 

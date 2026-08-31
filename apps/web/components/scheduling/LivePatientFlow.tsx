@@ -260,11 +260,12 @@ export default function LivePatientFlow({ doctorId, refreshInterval = 30000, pat
   async function advance(apptId: string, newStatus: string) {
     setAdvancing(apptId)
     try {
-      await fetch(`/api-proxy/scheduling/appointments/${apptId}/status`, {
+      const response = await fetch(`/api-proxy/scheduling/appointments/${apptId}/status`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       })
+      if (!response.ok) return
       if (newStatus === 'READY_CHECKOUT') {
         const appt = appointments.find(a => a.id === apptId)
         if (appt) {

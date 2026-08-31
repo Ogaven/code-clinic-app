@@ -6,8 +6,11 @@ import multer from 'multer'
 import { uploadAvatar, getPublicUrl } from '../services/storage/r2'
 import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
+import { authenticatedDoctorId, requireDoctorPatientAccess } from '../lib/doctor-access'
 
 const router = Router()
+router.use(requireAuth)
+router.param('id', requireDoctorPatientAccess(prisma))
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -149,9 +152,14 @@ router.get('/patients/:id/treatment-plans', requireAuth, async (req, res) => {
 router.post('/patients/:id/treatment-plans', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
     const { serviceId, toothNumber, quantity, costPerUnit, discount, notes, status } = req.body
+    const doctorId = req.user!.role === 'DOCTOR'
+      ? await authenticatedDoctorId(prisma, req.user!)
+      : (req.body.doctorId || null)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     const plan = await prisma.treatmentPlan.create({
       data: {
         patientId: req.params.id,
+        doctorId,
         serviceId: serviceId || null,
         toothNumber: toothNumber || null,
         quantity: Number(quantity) || 1,
@@ -172,6 +180,9 @@ router.post('/patients/:id/treatment-plans', requireAuth, doctorOrAdmin, async (
 // PUT /clinical/patients/:id/treatment-plans/:planId
 router.put('/patients/:id/treatment-plans/:planId', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    const existing = await prisma.treatmentPlan.findFirst({ where: { id: req.params.planId, patientId: req.params.id, ...(doctorId ? { doctorId } : {}) } })
+    if (!existing) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     const { serviceId, toothNumber, quantity, costPerUnit, discount, notes, status } = req.body
     const plan = await prisma.treatmentPlan.update({
       where: { id: req.params.planId },
@@ -198,7 +209,9 @@ router.put('/patients/:id/treatment-plans/:planId', requireAuth, doctorOrAdmin, 
 // DELETE /clinical/patients/:id/treatment-plans/:planId
 router.delete('/patients/:id/treatment-plans/:planId', requireAuth, doctorOrAdmin, async (req, res) => {
   try {
-    await prisma.treatmentPlan.delete({ where: { id: req.params.planId } })
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    const result = await prisma.treatmentPlan.deleteMany({ where: { id: req.params.planId, patientId: req.params.id, ...(doctorId ? { doctorId } : {}) } })
+    if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     logAudit({ userId: req.user!.id, actionType: 'DELETE', entityType: 'TREATMENT_PLAN', entityId: req.params.planId, entityName: `patient ${req.params.id}`, severity: 'WARNING', req })
     res.json({ message: 'Deleted' })
   } catch (e) {

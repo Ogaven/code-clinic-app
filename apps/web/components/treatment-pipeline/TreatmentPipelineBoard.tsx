@@ -124,7 +124,8 @@ const COLUMN_PAGE_SIZE = 40
 export default function TreatmentPipelineBoard({
   patientBasePath = '/patients',
   schedulingBasePath = '/scheduling',
-}: { patientBasePath?: string; schedulingBasePath?: string } = {}) {
+  canDelete = true,
+}: { patientBasePath?: string; schedulingBasePath?: string; canDelete?: boolean } = {}) {
   const API    = '/api-proxy'
   const router = useRouter()
   const token  = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
@@ -437,6 +438,7 @@ export default function TreatmentPipelineBoard({
           onToggle={() => setReviewOpen(v => !v)}
           onAction={handleReviewAction}
           onNavigate={(patientId) => router.push(`${schedulingBasePath}?patientId=${patientId}`)}
+          canDelete={canDelete}
         />
       )}
 
@@ -468,13 +470,13 @@ export default function TreatmentPipelineBoard({
             >
               <CheckCircle2 size={11} className="inline mr-1" />Complete
             </button>
-            <button
+            {canDelete && <button
               onClick={handleBulkDelete}
               disabled={bulkLoading}
               className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-400/15 dark:text-red-300 dark:hover:bg-red-400/25 transition-colors disabled:opacity-40 ml-auto"
             >
               <Trash2 size={11} className="inline mr-1" />Delete
-            </button>
+            </button>}
           </div>
           <button onClick={() => setSelectedIds(new Set())} className="text-gray-400 hover:text-gray-600 dark:hover:text-white">
             <X size={16} />
@@ -831,13 +833,14 @@ function MoveModal({
 // ── Needs Review Section ──────────────────────────────────────────────────────
 
 function NeedsReviewSection({
-  data, open, onToggle, onAction, onNavigate,
+  data, open, onToggle, onAction, onNavigate, canDelete,
 }: {
   data:       NeedsReviewData
   open:       boolean
   onToggle:   () => void
   onAction:   (planId: string, action: 'complete' | 'decline' | 'remove') => void
   onNavigate: (patientId: string) => void
+  canDelete:  boolean
 }) {
   const fmt = (d: string | null) =>
     d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'
@@ -879,13 +882,13 @@ function NeedsReviewSection({
         >
           <CalendarPlus size={11} className="inline mr-0.5" />Book
         </button>
-        <button
+        {canDelete && <button
           onClick={() => onAction(plan.id, 'remove')}
           className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-white/30 dark:hover:bg-red-400/10 transition-colors"
           title="Remove from pipeline"
         >
           <Trash2 size={12} />
-        </button>
+        </button>}
       </div>
     </div>
   )

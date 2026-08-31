@@ -113,8 +113,11 @@ model User {
   appointments      Appointment[]  @relation("CreatedBy")
   staffConfirmedAppointments Appointment[] @relation("StaffConfirmedBy")
   treatmentNotes    TreatmentNote[]
+  staffAttendances  StaffAttendance[]
   messageTemplates  MessageTemplate[]
   pushSubscriptions PushSubscription[]
+
+  knowledgeStudioConversations KnowledgeStudioConversation[]
 
   @@index([isActive])
   @@map("users")
@@ -138,6 +141,7 @@ model Doctor {
   appointments   Appointment[]
   blockedTimes   BlockedTime[]
   schedules      DoctorSchedule[]
+  treatmentPlans TreatmentPlan[]
 
   @@map("doctors")
 }
@@ -776,6 +780,8 @@ model TreatmentPlan {
   id          String   @id @default(cuid())
   patientId   String
   patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId    String?
+  doctor      Doctor?  @relation(fields: [doctorId], references: [id], onDelete: SetNull)
   serviceId   String?
   stage       String   @default("Consulted")
   status      String   @default("Planned")
@@ -789,8 +795,33 @@ model TreatmentPlan {
   updatedAt   DateTime @updatedAt
 
   @@index([patientId])
+  @@index([doctorId])
   @@index([stage])
   @@map("treatment_plans")
+}
+
+model StaffAttendance {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attendanceDate   DateTime  @db.Date
+  checkInAt        DateTime
+  checkOutAt       DateTime?
+  status           String    @default("PRESENT")
+  source           String    @default("WEB")
+  checkInLat       Float?
+  checkInLng       Float?
+  checkInAccuracy  Float?
+  checkOutLat      Float?
+  checkOutLng      Float?
+  checkOutAccuracy Float?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([userId, attendanceDate])
+  @@index([attendanceDate, status])
+  @@index([userId, checkInAt])
+  @@map("staff_attendance")
 }
 
 model TreatmentNote {
@@ -926,6 +957,46 @@ model AiKnowledgeBase {
   updatedAt DateTime                    @updatedAt
 
   @@map("ai_knowledge_base")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AI KNOWLEDGE TRAINING STUDIO — persistent conversations
+//
+// Structurally isolated from AiConversation/AiMessage on purpose: those
+// models back customer-facing channel analytics (Conversations Today,
+// AI/Human handling, customer/clinic-replied-last, per-channel counts).
+// Knowledge Studio conversations are internal staff activity and must never
+// be counted there. See feature/knowledge-studio report for the full
+// reasoning — this is a completely separate table family, not a shared
+// "channel" value on the existing models.
+// ─────────────────────────────────────────────────────────────────────────
+
+model KnowledgeStudioConversation {
+  id         String    @id @default(cuid())
+  title      String    @default("New conversation")
+  createdBy  String
+  user       User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  messages   KnowledgeStudioMessage[]
+
+  @@index([createdBy, archivedAt, updatedAt])
+  @@map("knowledge_studio_conversations")
+}
+
+model KnowledgeStudioMessage {
+  id             String                      @id @default(cuid())
+  conversationId String
+  conversation   KnowledgeStudioConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String                      // user | assistant — enforced at the API layer, matching this schema's existing house style for AiConversation/AiMessage
+  content        String
+  feedback       String?                     // CORRECT | NEEDS_CORRECTION | null — enforced at the API layer
+  createdAt      DateTime                    @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("knowledge_studio_messages")
 }
 
 model AiAgentConfig {

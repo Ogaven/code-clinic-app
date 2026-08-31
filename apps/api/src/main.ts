@@ -46,12 +46,14 @@ import templatesRouter from './routes/templates'
 import sponsorsRouter from './routes/sponsors'
 import pushRouter from './routes/push'
 import quizFunnelsRouter from './routes/quiz-funnels'
+import attendanceRouter from './routes/attendance'
 
 // AI Suite routers
 import aiSuiteRouter     from './ai-suite/whatsapp/whatsapp.routes'
 import smsRouter         from './ai-suite/sms/sms.routes'
 import takeoverRouter    from './ai-suite/takeover/takeover.routes'
 import aiKnowledgeRouter from './ai-suite/knowledge/knowledge.routes'
+import knowledgeStudioRouter from './ai-suite/knowledge/knowledge-studio.routes'
 import leadNurtureRouter from './ai-suite/lead-nurture/lead-nurture.routes'
 import debtRouter        from './ai-suite/debt/debt.routes'
 import voiceRouter       from './ai-suite/voice/voice.routes'
@@ -162,6 +164,7 @@ app.get('/health', async (_req, res) => {
 app.use('/auth',         authRouter)
 app.use('/employees',    employeesRouter)
 app.use('/staff',        permissionsRouter)
+app.use('/attendance',   attendanceRouter)
 
 // Google Calendar OAuth callback alias — Google redirects to this URL
 // (integrationsRouter handles /google-calendar/callback internally)
@@ -219,6 +222,8 @@ app.use('/ai-suite/sms',          smsRouter)
 app.use('/ai-suite',              takeoverRouter)
 // Knowledge base:   GET/POST/DELETE /ai-suite/knowledge/...
 app.use('/ai-suite/knowledge',    aiKnowledgeRouter)
+// AI Knowledge Training Studio: POST /ai-suite/knowledge-studio/chat, /save (requireAuth — see report §10)
+app.use('/ai-suite/knowledge-studio', knowledgeStudioRouter)
 // Lead nurture:     POST /ai-suite/lead-nurture/trigger
 app.use('/ai-suite/lead-nurture', leadNurtureRouter)
 // Debt outreach:    POST /ai-suite/debt/trigger
