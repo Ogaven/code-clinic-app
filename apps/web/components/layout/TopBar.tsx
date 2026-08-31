@@ -27,6 +27,10 @@ const NAV: NavLink[] = [
   { label: 'Overview', href: '/dashboard' },
   { label: 'Patients', href: '/patients' },
   { label: 'Appointments', href: '/scheduling' },
+  { label: 'Staff', children: [
+    { label: 'Staff List', href: '/employees' }, { label: 'Attendance', href: '/admin/staff/attendance' },
+    { label: 'Permissions', href: '/admin/staff/permissions' },
+  ] },
   { label: 'Treatments', children: [{ label: 'Treatment Pipeline', href: '/treatment-pipeline' }] },
   { label: 'Billing', children: [
     { label: 'Accounts', href: '/accounts/dashboard' }, { label: 'Sales', href: '/accounts/invoices' },

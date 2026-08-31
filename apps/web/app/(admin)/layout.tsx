@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Overview', '/admin/dashboard': 'Overview', '/scheduling': 'Appointments', '/appointments': 'Appointments',
   '/patients': 'Patients', '/stocks': 'Stocks & Inventory', '/employees': 'Staff List', '/audit-log': 'Audit Log',
-  '/admin/staff/permissions': 'Staff Permissions', '/accounts': 'Accounts', '/reports': 'Reports',
+  '/admin/staff/permissions': 'Staff Permissions', '/admin/staff/attendance': 'Staff Attendance', '/accounts': 'Accounts', '/reports': 'Reports',
   '/reports/clinical': 'Daily / Weekly Reports', '/reports/patient-flow': 'Patient Live Flow',
   '/reports/case-acceptance': 'Case Acceptance', '/ai-suite': 'Agent Control', '/ai-suite/inbox': 'Conversations',
   '/ai-suite/escalations': 'Escalations', '/ai-suite/calls': 'Call Logs', '/ai-suite/voice-studio': 'Voice Studio',

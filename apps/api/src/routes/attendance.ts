@@ -11,6 +11,14 @@ const locationSchema = z.object({
   accuracy: z.number().positive().max(100_000).optional(),
   source: z.enum(['WEB', 'PWA', 'ADMIN']).default('WEB'),
 }).refine(v => (v.latitude == null) === (v.longitude == null), 'Latitude and longitude must be supplied together')
+const geofenceSchema = z.object({
+  enabled: z.boolean().default(false),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  radiusMetres: z.number().int().min(10).max(50_000),
+  maximumAccuracyMetres: z.number().int().min(5).max(10_000).default(250),
+})
+const GEOFENCE_KEY = 'attendance_clinic_geofence'
 
 const KAMPALA_OFFSET_MS = 3 * 60 * 60 * 1000
 
@@ -68,14 +76,32 @@ router.get('/me', requireAuth, async (req, res) => {
   res.json(await prisma.staffAttendance.findMany({ where: { userId: req.user!.id }, orderBy: { attendanceDate: 'desc' }, take: limit }))
 })
 
+router.get('/config', requireAuth, async (_req, res) => {
+  const row = await prisma.appSetting.findUnique({ where: { key: GEOFENCE_KEY } })
+  if (!row) { res.json({ configured: false, enabled: false }); return }
+  try { res.json({ configured: true, ...geofenceSchema.parse(JSON.parse(row.value)) }) }
+  catch { res.status(500).json({ error: 'Attendance geofence configuration is invalid' }) }
+})
+
+router.put('/config', requireAuth, adminOnly, async (req, res) => {
+  const parsed = geofenceSchema.safeParse(req.body)
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid geofence configuration' }); return }
+  await prisma.appSetting.upsert({ where: { key: GEOFENCE_KEY }, update: { value: JSON.stringify(parsed.data) }, create: { key: GEOFENCE_KEY, value: JSON.stringify(parsed.data) } })
+  res.json({ configured: true, ...parsed.data })
+})
+
 router.get('/admin', requireAuth, adminOnly, async (req, res) => {
-  const day = kampalaDay(req.query.date ? new Date(`${req.query.date}T12:00:00+03:00`) : new Date())
+  const fromValue = typeof req.query.from === 'string' ? req.query.from : typeof req.query.date === 'string' ? req.query.date : undefined
+  const toValue = typeof req.query.to === 'string' ? req.query.to : fromValue
+  const from = kampalaDay(fromValue ? new Date(`${fromValue}T12:00:00+03:00`) : new Date()).date
+  const to = kampalaDay(toValue ? new Date(`${toValue}T12:00:00+03:00`) : new Date()).date
   const role = typeof req.query.role === 'string' ? req.query.role : undefined
   const userId = typeof req.query.userId === 'string' ? req.query.userId : undefined
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined
   const rows = await prisma.staffAttendance.findMany({
-    where: { attendanceDate: day.date, ...(userId ? { userId } : {}), ...(role ? { user: { role: role as any } } : {}) },
+    where: { attendanceDate: { gte: from, lte: to }, ...(userId ? { userId } : {}), ...(status ? { status } : {}), ...(role ? { user: { role: role as any } } : {}) },
     include: { user: { select: { id: true, firstName: true, lastName: true, role: true, isActive: true } } },
-    orderBy: { checkInAt: 'asc' },
+    orderBy: [{ attendanceDate: 'desc' }, { checkInAt: 'asc' }],
   })
   res.json(rows)
 })
