@@ -36,7 +36,11 @@ const CHANNELS: { key: string; apiVal: string; label: string; iconSrc: string; i
 // (SYSTEM messages are excluded server-side, never counted either way).
 // agentEnabled === true -> AI handling, false -> Human handling. Nothing
 // here re-derives or reinterprets those values client-side.
-export default function AiSuiteSnapshotCard() {
+// `inboxHref` defaults to the Receptionist inbox (unchanged behaviour for
+// existing callers). Doctors don't have inbox/takeover access, so the Doctor
+// dashboard passes its own AI Suite hub instead — the card's data stays
+// doctor-scoped via /ai-suite/snapshot regardless of where the link points.
+export default function AiSuiteSnapshotCard({ inboxHref = '/receptionist/ai-suite/inbox' }: { inboxHref?: string } = {}) {
   const [data, setData] = useState<Snapshot | null>(null)
 
   useEffect(() => {
@@ -50,7 +54,7 @@ export default function AiSuiteSnapshotCard() {
   const total = data?.totalConversations ?? 0
 
   return (
-    <CompactCard title="Today's AI Activity" action={<Link href="/receptionist/ai-suite/inbox" className="flex items-center gap-0.5 text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View AI Suite <ArrowUpRight size={11} /></Link>}>
+    <CompactCard title="Today's AI Activity" action={<Link href={inboxHref} className="flex items-center gap-0.5 text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View AI Suite <ArrowUpRight size={11} /></Link>}>
       {!data ? (
         <div className="h-40 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
       ) : (
@@ -84,7 +88,7 @@ export default function AiSuiteSnapshotCard() {
               const count = data.channels?.[c.key] ?? 0
               const pct = total > 0 ? Math.round((count / total) * 100) : 0
               return (
-                <Link key={c.key} href={`/receptionist/ai-suite/inbox?channel=${c.apiVal}`}
+                <Link key={c.key} href={`${inboxHref}?channel=${c.apiVal}`}
                   className="flex items-center justify-between rounded-lg px-1 py-0.5 text-[10px] transition-colors hover:bg-gray-50 dark:hover:bg-white/5">
                   <span className="flex items-center gap-1.5 text-gray-500 dark:text-slate-400">
                     <span className="relative grid h-4 w-4 flex-shrink-0 place-items-center">

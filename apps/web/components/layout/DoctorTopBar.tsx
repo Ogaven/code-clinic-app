@@ -21,6 +21,7 @@ const NAV: Nav[] = [
   { label: 'AI Suite', children: [
     { label: 'Follow-up Dashboard', href: '/doctor/ai-suite/followup-dashboard' },
     { label: 'Confirmation Dashboard', href: '/doctor/ai-suite/confirmation-dashboard' },
+    { label: 'Knowledge Base', href: '/doctor/ai-suite/knowledge' },
   ] },
   { label: 'Reports', children: [{ label: 'Treatment Pipeline', href: '/doctor/reports/treatment-pipeline' }] },
 ]

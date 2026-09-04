@@ -54,6 +54,7 @@ const ROUTE_FEATURE: Array<[string, string]> = [
   ['/doctor/messages',                                       'communications'],
   ['/doctor/ai-suite/followup-dashboard',                    'aiSuiteFollowup'],
   ['/doctor/ai-suite/confirmation-dashboard',                'aiSuiteConfirmation'],
+  ['/doctor/ai-suite/knowledge',                             'knowledgeBase'],
   ['/accounts',                                              'accounts'],
   ['/audit-log',                                             'auditLog'],
 ]
