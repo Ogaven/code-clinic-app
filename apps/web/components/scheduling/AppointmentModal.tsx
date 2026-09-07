@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { X, Phone, Clock, Stethoscope, User, Check, XCircle, AlertTriangle, Loader2, ExternalLink, Edit2, Save, CalendarDays, RotateCcw, PhoneCall } from 'lucide-react'
+import { X, Phone, Clock, Stethoscope, User, Check, XCircle, AlertTriangle, Loader2, ExternalLink, Edit2, Save, CalendarDays, RotateCcw, PhoneCall, Trash2 } from 'lucide-react'
 import { cn, formatPhone, formatUGX } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar'
 
@@ -25,6 +25,12 @@ interface Props {
   onBookFollowUp?: (patient: { id: string; firstName: string; lastName: string; phone: string }, doctorId?: string) => void
   userRole?: string
   autoEdit?: boolean
+  // Opt-in only — callers must explicitly pass true. Absent/false means no
+  // Delete UI is ever rendered, regardless of userRole, so Receptionist and
+  // Doctor screens that reuse this modal are unaffected unless they choose
+  // to opt in (which they must not, for appointment deletion).
+  canDelete?: boolean
+  onDeleted?: () => void
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
@@ -51,7 +57,7 @@ const STATUS_NEXT: Record<string, { status: string; label: string; colour: strin
   READY_CHECKOUT: { status: 'COMPLETED',      label: 'Complete Checkout',    colour: 'bg-green-600' },
 }
 
-export default function AppointmentModal({ appointment, onClose, onStatusChange, onBookFollowUp, userRole = 'ADMIN', autoEdit }: Props) {
+export default function AppointmentModal({ appointment, onClose, onStatusChange, onBookFollowUp, userRole = 'ADMIN', autoEdit, canDelete = false, onDeleted }: Props) {
   const [loading,      setLoading]      = useState<string | null>(null)
   const [editMode,     setEditMode]     = useState(false)
   const [doctors,      setDoctors]      = useState<any[]>([])
@@ -67,6 +73,9 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
   const [notifyPatient, setNotifyPatient] = useState(true)
   const [staffConfirmedAt, setStaffConfirmedAt] = useState<string | null>(null)
   const [confirmSaving, setConfirmSaving] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting,     setDeleting]     = useState(false)
+  const [deleteError,  setDeleteError]  = useState('')
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
   useEffect(() => {
@@ -87,6 +96,7 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
   const start = new Date(appointment.startAt)
   const end   = new Date(appointment.endAt)
   const canEdit = !['COMPLETED', 'CANCELLED', 'CANCELLED_RESCHEDULED', 'NO_SHOW'].includes(appointment.status)
+  const canShowDelete = canDelete && userRole === 'ADMIN'
 
   async function openEdit() {
     const d   = new Date(appointment!.startAt)
@@ -155,6 +165,32 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
       if (res.ok) { window.dispatchEvent(new Event('appointment-updated')); onStatusChange?.(appointment!.id, appointment!.status); onClose() }
       else { const d = await res.json(); setSaveError(d.error || 'Failed to save') }
     } catch { setSaveError('Network error') } finally { setSaving(false) }
+  }
+
+  // Permanent deletion — distinct from Cancel. Never sends any patient
+  // communication. On success the modal closes itself (matching every other
+  // action here); on failure the confirmation stays open with the real error
+  // visible, so a genuine failure is never mistaken for success.
+  async function confirmDelete() {
+    setDeleting(true); setDeleteError('')
+    try {
+      const res = await fetch(`/api-proxy/scheduling/appointments/${appointment!.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        window.dispatchEvent(new Event('appointment-updated'))
+        onDeleted?.()
+        onClose()
+      } else {
+        const d = await res.json().catch(() => ({}))
+        setDeleteError(d.error || 'Failed to delete appointment')
+      }
+    } catch {
+      setDeleteError('Network error')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const inputCls = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
@@ -331,6 +367,18 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
                     </button>
                   </div>
                 )}
+
+                {/* ── Danger zone — permanent deletion, deliberately separated from Cancel above ── */}
+                {canShowDelete && (
+                  <div className="pt-2 border-t border-gray-100 dark:border-white/8">
+                    <button
+                      onClick={() => { setDeleteError(''); setShowDeleteConfirm(true) }}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                      <Trash2 size={12} />
+                      Delete appointment permanently
+                    </button>
+                  </div>
+                )}
               </>
             )}
 
@@ -424,6 +472,39 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
           </div>
         </div>
       </div>
+
+      {/* ── Delete confirmation — separate overlay, above the modal itself ── */}
+      {showDeleteConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-[60]" onClick={() => !deleting && setShowDeleteConfirm(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-[60] p-4 pointer-events-none">
+            <div className="pointer-events-auto w-full max-w-sm bg-white dark:bg-[#0f1729] rounded-2xl shadow-2xl border border-gray-100 dark:border-white/10 p-6 space-y-4">
+              <h3 className="text-base font-black text-gray-800 dark:text-white">Delete appointment?</h3>
+              <p className="text-sm text-gray-500 dark:text-white/60">
+                This will permanently remove this appointment. This action cannot be undone.
+              </p>
+              {deleteError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{deleteError}</p>
+              )}
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deleting}
+                  className="px-4 py-2.5 text-sm font-semibold text-gray-600 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/8 rounded-xl transition-colors disabled:opacity-60">
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  {deleting ? 'Deleting…' : 'Delete appointment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   )
 }

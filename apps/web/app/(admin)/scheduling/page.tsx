@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CalendarDays, ListChecks, Users, Stethoscope, Settings, X, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MultiDoctorCalendar  from '@/components/scheduling/MultiDoctorCalendar'
@@ -42,6 +42,13 @@ export default function SchedulingPage() {
   const [prefillStartAt,  setPrefillStartAt]  = useState<Date | undefined>()
   const [prefillPatient,  setPrefillPatient]  = useState<{ id: string; firstName: string; lastName: string; phone: string } | undefined>()
   const [selectedAppt,    setSelectedAppt]    = useState<any | null>(null)
+  const [toast,           setToast]           = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3000)
+    return () => clearTimeout(t)
+  }, [toast])
 
   function handleBookSlot(doctorId: string, startAt: Date) {
     setPrefillDoctorId(doctorId || undefined)
@@ -142,7 +149,15 @@ export default function SchedulingPage() {
             setDrawerOpen(true)
           }}
           userRole="ADMIN"
+          canDelete={true}
+          onDeleted={() => { setSelectedAppt(null); setToast('Appointment deleted.') }}
         />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[70] bg-clinic-navy dark:bg-cyan-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg animate-fade-in">
+          {toast}
+        </div>
       )}
 
       {importOpen && (

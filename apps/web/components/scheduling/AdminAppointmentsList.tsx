@@ -174,6 +174,7 @@ export default function AdminAppointmentsList({ userRole = 'ADMIN' }: { userRole
   const [editAppt,   setEditAppt]   = useState<Appt | null>(null)
   const [menuOpen,   setMenuOpen]   = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [toast,      setToast]      = useState<string | null>(null)
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   function handleSearchChange(val: string) {
@@ -241,6 +242,12 @@ export default function AdminAppointmentsList({ userRole = 'ADMIN' }: { userRole
     window.addEventListener('appointment-updated', onUpdated)
     return () => window.removeEventListener('appointment-updated', onUpdated)
   }, [])
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3000)
+    return () => clearTimeout(t)
+  }, [toast])
 
   // Export respects the active filters by fetching the FULL matching set
   // (not just the current 25-row page) via the same filtered query, unpaginated.
@@ -451,7 +458,15 @@ export default function AdminAppointmentsList({ userRole = 'ADMIN' }: { userRole
           onStatusChange={() => { setRefreshKey(k => k + 1); setSelected(null); setEditAppt(null) }}
           userRole={userRole}
           autoEdit={!!editAppt}
+          canDelete={userRole === 'ADMIN'}
+          onDeleted={() => { setRefreshKey(k => k + 1); setSelected(null); setEditAppt(null); setToast('Appointment deleted.') }}
         />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[70] bg-clinic-navy dark:bg-cyan-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg animate-fade-in">
+          {toast}
+        </div>
       )}
     </div>
   )

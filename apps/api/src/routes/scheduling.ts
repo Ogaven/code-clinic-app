@@ -16,6 +16,7 @@ import { getGreetingName, toProper } from '../utils/nameHelper'
 import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
 import { appointmentVisibleToUser, authenticatedDoctorId } from '../lib/doctor-access'
+import { deleteAppointmentPermanently } from '../services/appointment-delete.service'
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
@@ -616,20 +617,16 @@ router.patch('/appointments/:id/staff-confirm', requireAuth, clinicalStaff, audi
 })
 
 // ─── Delete appointment (admin only) ─────────────────────────────────────────
+// Permanent removal, distinct from cancellation. No patient communication is
+// ever sent by this route. See appointment-delete.service.ts for exactly
+// which dependent records are preserved vs. detached.
 router.delete('/appointments/:id', requireAuth, adminOnly, auditLog('appointments'), async (req, res) => {
-  if (req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Admin only' }); return }
   try {
-    await prisma.$transaction(async (tx) => {
-      // Nullify invoice FK first to avoid constraint error on appointments with invoices
-      await tx.invoice.updateMany({
-        where: { appointmentId: req.params.id },
-        data:  { appointmentId: null },
-      })
-      await tx.appointment.delete({ where: { id: req.params.id } })
-    })
+    await prisma.$transaction(tx => deleteAppointmentPermanently(tx, req.params.id))
     res.json({ message: 'Appointment deleted' })
   } catch (e: any) {
     if (e?.code === 'P2025') { res.status(404).json({ error: 'Appointment not found' }); return }
+    if (e?.code === 'P2003') { res.status(409).json({ error: 'Cannot delete: other records still reference this appointment' }); return }
     res.status(500).json({ error: 'Failed to delete appointment' })
   }
 })
