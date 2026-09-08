@@ -118,6 +118,7 @@ model User {
   pushSubscriptions PushSubscription[]
 
   knowledgeStudioConversations KnowledgeStudioConversation[]
+  aiKnowledgeIngestions        AiKnowledgeIngestion[]
 
   @@index([isActive])
   @@map("users")
@@ -949,7 +950,7 @@ model AiMessage {
 model AiKnowledgeBase {
   id        String                      @id @default(cuid())
   title     String
-  type      String                      // PDF | IMAGE | AUDIO | VIDEO | URL | TEXT
+  type      String                      // PDF | DOCX | IMAGE | AUDIO | VIDEO | URL | TEXT
   content   String
   embedding Unsupported("vector")?
   sourceUrl String?
@@ -957,6 +958,48 @@ model AiKnowledgeBase {
   updatedAt DateTime                    @updatedAt
 
   @@map("ai_knowledge_base")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MULTIMEDIA KNOWLEDGE INGESTION — staging area between "file uploaded" and
+// "durable knowledge saved". A row here is NEVER itself read by retrieval —
+// only confirmed content that has been chunked into AiKnowledgeBase (via
+// POST .../ingest/:id/confirm) is ever seen by the AI. This is what makes
+// the extract -> preview -> confirm flow real: staff see exactly what was
+// extracted before it becomes something the clinic AI can say to a patient.
+//
+// Visibility matches the existing AiKnowledgeBase model this feeds (shared,
+// clinic-wide, gated by requireAuth + clinicalStaff only — no per-row owner
+// check), not the per-user-owned KnowledgeStudioConversation model. createdBy
+// is kept for audit ("who uploaded this") but is not used to filter access.
+model AiKnowledgeIngestion {
+  id               String    @id @default(cuid())
+  createdBy        String
+  user             User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  originalFilename String
+  sanitizedFilename String
+  mimeType         String
+  category         String    // DOCUMENT | IMAGE | AUDIO | VIDEO
+  sizeBytes        Int
+  sha256           String
+  r2Key            String
+
+  // PROCESSING -> EXTRACTED -> CONFIRMED, or PROCESSING -> FAILED.
+  // EXTRACTED is a dead end until a human confirms it — nothing here reaches
+  // AiKnowledgeBase without that explicit step.
+  status           String    @default("PROCESSING")
+  extractedTitle   String?
+  extractedText    String?
+  errorMessage     String?
+
+  confirmedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([sha256])
+  @@index([status, createdAt])
+  @@map("ai_knowledge_ingestions")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

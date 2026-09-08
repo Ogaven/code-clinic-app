@@ -1,5 +1,6 @@
 import { uploadFile } from '../../services/storage/r2'
 import { prisma } from '../../lib/prisma'
+import { extractFromPdf } from './media-extract.service'
 
 // ── Chunking ──────────────────────────────────────────────────────────────────
 // Breaks at the last sentence boundary within maxChars, falling back to a hard
@@ -29,15 +30,31 @@ function chunkAtSentenceBoundary(text: string, maxChars = 1000): string[] {
 // ── ingestText ────────────────────────────────────────────────────────────────
 
 export async function ingestText(title: string, content: string): Promise<void> {
+  await ingestExtractedText(title, content, 'TEXT')
+}
+
+// Shared by every ingestion path that ends with "chunk this text and save it
+// as real, retrievable knowledge" — plain pasted text, and now also the
+// confirmed output of the multimedia extract -> preview -> confirm flow
+// (see knowledge-ingestion.routes.ts's POST /ingest/:id/confirm). sourceUrl
+// carries the R2 key for media-derived knowledge, so "where did this come
+// from" stays traceable after the staging row itself is just an audit trail.
+export async function ingestExtractedText(
+  title: string,
+  content: string,
+  type: string,
+  sourceUrl?: string,
+): Promise<number> {
   const chunks = chunkAtSentenceBoundary(content)
 
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
     await prisma.aiKnowledgeBase.create({
-      data: { title, type: 'TEXT', content: chunk },
+      data: { title, type, content: chunks[i], sourceUrl: i === 0 ? sourceUrl : undefined },
     })
   }
 
-  console.log(`[AI-KB] Ingested "${title}" — ${chunks.length} chunk(s)`)
+  console.log(`[AI-KB] Ingested "${title}" (${type}) — ${chunks.length} chunk(s)`)
+  return chunks.length
 }
 
 // ── ingestUrl ─────────────────────────────────────────────────────────────────
@@ -92,11 +109,8 @@ export async function ingestFile(
 
   // PDF — extract text with pdf-parse, then chunk
   if (mimeType === 'application/pdf' || ext === 'pdf') {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParseModule = require('pdf-parse')
-    const pdfParse = pdfParseModule.default || pdfParseModule
-    const data = await pdfParse(buffer)
-    return ingestText(filename, data.text)
+    const text = await extractFromPdf(buffer)
+    return ingestText(filename, text)
   }
 
   // Media files — upload to R2, save a single descriptive row
