@@ -54,6 +54,7 @@ import smsRouter         from './ai-suite/sms/sms.routes'
 import takeoverRouter    from './ai-suite/takeover/takeover.routes'
 import aiKnowledgeRouter from './ai-suite/knowledge/knowledge.routes'
 import knowledgeStudioRouter from './ai-suite/knowledge/knowledge-studio.routes'
+import knowledgeIngestionRouter from './ai-suite/knowledge/knowledge-ingestion.routes'
 import leadNurtureRouter from './ai-suite/lead-nurture/lead-nurture.routes'
 import debtRouter        from './ai-suite/debt/debt.routes'
 import voiceRouter       from './ai-suite/voice/voice.routes'
@@ -220,6 +221,12 @@ app.use('/ai-suite/sms',          smsRouter)
 //                   POST /ai-suite/takeover/:id
 //                   POST /ai-suite/handback/:id
 app.use('/ai-suite',              takeoverRouter)
+// Multimedia ingestion staging (upload -> extract -> preview -> confirm):
+// mounted BEFORE the general knowledge router below so its more specific
+// /ai-suite/knowledge/ingest/* paths are never shadowed by that router's
+// own routes (defensive — the two don't currently overlap, but this keeps
+// it that way if either router's routes change).
+app.use('/ai-suite/knowledge/ingest', knowledgeIngestionRouter)
 // Knowledge base:   GET/POST/DELETE /ai-suite/knowledge/...
 app.use('/ai-suite/knowledge',    aiKnowledgeRouter)
 // AI Knowledge Training Studio: POST /ai-suite/knowledge-studio/chat, /save (requireAuth — see report §10)

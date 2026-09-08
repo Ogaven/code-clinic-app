@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import type { Readable } from 'stream'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import sharp from 'sharp'
 import fs from 'fs'
@@ -89,6 +90,20 @@ export async function getSignedDownloadUrl(key: string, expiresIn = 3600): Promi
   }
   const command = new GetObjectCommand({ Bucket: BUCKET, Key: key })
   return getSignedUrl(s3, command, { expiresIn })
+}
+
+// Reads the raw bytes back — used only where a caller genuinely needs the
+// content again (e.g. retrying a failed extraction without asking staff to
+// re-upload). Not used on any hot path.
+export async function downloadFile(key: string): Promise<Buffer> {
+  if (key.startsWith('local:')) {
+    return fs.promises.readFile(path.join(UPLOADS_DIR, key.replace('local:', '')))
+  }
+  const result = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }))
+  const stream = result.Body as Readable
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  return Buffer.concat(chunks)
 }
 
 export async function deleteFile(key: string): Promise<void> {
