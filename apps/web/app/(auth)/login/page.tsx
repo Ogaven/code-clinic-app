@@ -36,11 +36,13 @@ export default function LoginPage() {
   const [error, setError]   = useState<string | null>(null)
   const [dark, setDark]     = useState(true)
   const [ready, setReady]   = useState(false)
+  const [reduceMotion, setReduceMotion] = useState(false)
 
   useEffect(() => {
     const isDark = localStorage.getItem('cc_theme') !== 'light'
     setDark(isDark)
     document.documentElement.classList.toggle('dark', isDark)
+    setReduceMotion(window.matchMedia('(prefers-reduced-motion: reduce)').matches)
     setTimeout(() => setReady(true), 60)
 
     // Show OAuth error if redirected back from Google with error
@@ -101,137 +103,133 @@ export default function LoginPage() {
     window.location.href = '/api-proxy/auth/google'
   }
 
-  /* Theme tokens */
-  const pageBg   = dark ? 'linear-gradient(150deg,#020818 0%,#070f3d 35%,#0d1b6e 70%,#1251a8 100%)' : 'linear-gradient(150deg,#EBF0FF 0%,#D6E4FF 50%,#E8F4FF 100%)'
-  const cardBg   = dark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.92)'
-  const cardBdr  = dark ? 'rgba(255,255,255,0.14)' : 'rgba(186,212,255,0.9)'
+  /* Theme tokens — glass panel over the full-bleed dental photograph */
+  const fallbackBg = dark ? '#050b22' : '#cfe4ff'
+  const cardBg   = dark ? 'rgba(8,15,40,0.60)' : 'rgba(255,255,255,0.68)'
+  const cardBdr  = dark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.75)'
   const titleClr = dark ? '#fff' : '#1A237E'
   const subClr   = dark ? '#93C5FD' : '#5A6A85'
   const lblClr   = dark ? '#C8D8F0' : '#374151'
   const inputBg  = dark ? 'rgba(255,255,255,0.07)' : '#F3F7FF'
   const inputBdr = dark ? 'rgba(255,255,255,0.16)' : '#BDD0FF'
   const inputClr = dark ? '#fff' : '#1A237E'
-  const socialBg = dark ? 'rgba(255,255,255,0.09)' : '#fff'
-  const socialBdr= dark ? 'rgba(255,255,255,0.18)' : '#DDE8FF'
-  const chipBg   = dark ? 'rgba(13,27,110,0.7)' : 'rgba(255,255,255,0.85)'
-  const chipBdr  = dark ? 'rgba(41,171,226,0.3)' : 'rgba(26,35,126,0.15)'
-  const chipTxt  = dark ? '#E0F0FF' : '#1A237E'
+  // Tonal scrim behind the card zone — theme-coloured (navy / soft-white),
+  // never flat grey, so the photo keeps its colour while staying legible.
+  const sideScrim   = dark
+    ? 'linear-gradient(100deg, rgba(3,8,26,0.80) 0%, rgba(3,8,26,0.46) 36%, rgba(3,8,26,0.10) 58%, transparent 70%)'
+    : 'linear-gradient(100deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.22) 36%, rgba(255,255,255,0.04) 58%, transparent 70%)'
+  const bottomScrim = dark
+    ? 'linear-gradient(to top, rgba(3,8,26,0.88) 0%, rgba(3,8,26,0.5) 32%, transparent 68%)'
+    : 'linear-gradient(to top, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.28) 32%, transparent 68%)'
 
   return (
-    <div className="h-screen w-screen overflow-hidden relative flex"
-      style={{ background: pageBg, transition: 'background 0.5s' }}>
+    <div className="relative min-h-screen w-full overflow-x-hidden">
 
-      {/* Dot grid */}
-      <div className="absolute inset-0 pointer-events-none"
-        style={{ backgroundImage:'radial-gradient(circle,rgba(255,255,255,0.04) 1px,transparent 1px)', backgroundSize:'36px 36px' }}/>
+      {/* Full-bleed dental photograph — the visual hero. Object-position shifts
+          per breakpoint so the tooth cluster (which sits right-of-centre in the
+          source) stays clear of the card at every width. */}
+      <div className="fixed inset-0 -z-20" style={{ background: fallbackBg }}>
+        <Image
+          src="/images/login-dental-bg.jpg"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-[68%_28%] md:object-[76%_center] xl:object-right"
+        />
+      </div>
 
-      {/* Glow blobs */}
-      <div className="absolute rounded-full pointer-events-none" style={{ width:600,height:600,background:`radial-gradient(circle,${dark?'rgba(41,171,226,0.18)':'rgba(41,171,226,0.1)'},transparent)`,top:'-200px',left:'-150px' }}/>
-      <div className="absolute rounded-full pointer-events-none" style={{ width:400,height:400,background:`radial-gradient(circle,${dark?'rgba(124,58,237,0.12)':'rgba(124,58,237,0.06)'},transparent)`,bottom:'-100px',right:'-80px' }}/>
+      {/* Theme-coloured tonal scrims — ground the glass card and footer against
+          the photo. Always navy or soft-white, never a flat grey wash. */}
+      <div className="fixed inset-0 -z-10 hidden md:block pointer-events-none" style={{ background: sideScrim, transition: 'background 0.4s' }}/>
+      <div className="fixed inset-0 -z-10 pointer-events-none" style={{ background: bottomScrim, transition: 'background 0.4s' }}/>
 
       {/* Theme toggle */}
       <button onClick={toggleTheme}
-        className="absolute top-5 right-5 z-50 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110"
-        style={{ background:dark?'rgba(255,255,255,0.1)':'rgba(26,35,126,0.08)', border:`1px solid ${dark?'rgba(255,255,255,0.2)':'rgba(26,35,126,0.12)'}` }}>
+        className="fixed top-5 right-5 z-50 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110"
+        style={{ background:dark?'rgba(255,255,255,0.14)':'rgba(255,255,255,0.55)', border:`1px solid ${dark?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.7)'}`, backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)' }}
+        aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
         {dark ? <Sun size={17} color="#FCD34D"/> : <Moon size={17} color="#1A237E"/>}
       </button>
 
-      {/* ── LEFT: login card ── */}
-      <div className="flex items-center justify-center w-full lg:w-1/2 px-5 relative z-10">
-        <div className="w-full max-w-[400px]"
-          style={{ opacity:ready?1:0, transform:ready?'translateY(0)':'translateY(20px)', transition:'opacity 0.5s, transform 0.5s' }}>
+      {/* Login zone — left ~40% at tablet/desktop (glass card centred within
+          it, never overlapping the tooth on the right); lower-centred over the
+          photo on mobile, with a bottom scrim for legibility. */}
+      <div className="relative z-10 min-h-screen w-full flex flex-col md:flex-row">
+        <div className="flex-1 flex items-end md:items-center justify-center px-4 md:px-6 lg:px-0 pb-[max(6rem,calc(env(safe-area-inset-bottom)+5rem))] md:pb-0 md:w-[52%] lg:w-[46%] xl:w-[41%] md:flex-none">
+          <div className="w-full max-w-[440px] md:max-w-[340px] lg:max-w-[420px] xl:max-w-[500px]"
+            style={reduceMotion ? undefined : { opacity:ready?1:0, transform:ready?'translateY(0)':'translateY(18px)', transition:'opacity 0.5s, transform 0.5s' }}>
 
-          <div className="rounded-3xl px-6 py-6"
-            style={{ background:cardBg, backdropFilter:'blur(36px)', WebkitBackdropFilter:'blur(36px)', border:`1px solid ${cardBdr}`, boxShadow:dark?'0 24px 64px rgba(0,0,0,0.5)':'0 24px 64px rgba(26,35,126,0.14)' }}>
+            <div className="rounded-[32px] px-7 py-7 sm:px-8 sm:py-8 md:px-6 md:py-6 lg:px-8 lg:py-8"
+              style={{ background:cardBg, backdropFilter:'blur(28px)', WebkitBackdropFilter:'blur(28px)', border:`1px solid ${cardBdr}`, boxShadow:dark?'0 24px 64px rgba(0,0,0,0.5)':'0 24px 64px rgba(26,35,126,0.18)' }}>
 
-            <Image src="/logo.png" alt="Code Clinic" width={115} height={40} className={dark?'brightness-0 invert mb-4':'mb-4'} style={{ transition:'filter 0.3s' }}/>
+              <Image src="/logo.png" alt="Code Clinic" width={130} height={45} className={dark?'brightness-0 invert mb-5':'mb-5'} style={{ transition:'filter 0.3s' }}/>
 
-            <h2 className="text-xl font-bold mb-0.5" style={{ color:titleClr, fontFamily:'Plus Jakarta Sans' }}>
-              We brighten your smile 😁
-            </h2>
-            <p className="text-xs mb-4" style={{ color:subClr }}>Sign in with your clinic credentials</p>
+              <h2 className="text-2xl md:text-xl lg:text-2xl font-bold mb-1" style={{ color:titleClr, fontFamily:'Plus Jakarta Sans' }}>
+                We brighten your smile 😁
+              </h2>
+              <p className="text-sm mb-5" style={{ color:subClr }}>Sign in with your clinic credentials</p>
 
-            <form onSubmit={handleLogin} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color:lblClr }}>Email</label>
-                <div className="relative">
-                  <Mail size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color:inputClr, opacity:0.4 }}/>
-                  <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@codeclinic.ug" required
-                    className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none transition-all"
-                    style={{ background:inputBg, border:`1.5px solid ${inputBdr}`, color:inputClr, caretColor:'#29ABE2' }}
-                    onFocus={e=>{e.target.style.borderColor='#29ABE2';e.target.style.boxShadow='0 0 0 3px rgba(41,171,226,0.15)'}}
-                    onBlur={e=>{e.target.style.borderColor=inputBdr;e.target.style.boxShadow='none'}}/>
+              <form onSubmit={handleLogin} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color:lblClr }}>Email</label>
+                  <div className="relative">
+                    <Mail size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color:inputClr, opacity:0.4 }}/>
+                    <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@codeclinic.ug" required
+                      className="w-full pl-9 pr-4 py-3 rounded-xl text-sm outline-none transition-all"
+                      style={{ background:inputBg, border:`1.5px solid ${inputBdr}`, color:inputClr, caretColor:'#29ABE2' }}
+                      onFocus={e=>{e.target.style.borderColor='#29ABE2';e.target.style.boxShadow='0 0 0 3px rgba(41,171,226,0.15)'}}
+                      onBlur={e=>{e.target.style.borderColor=inputBdr;e.target.style.boxShadow='none'}}/>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold" style={{ color:lblClr }}>Password</label>
-                  <button type="button" className="text-xs font-semibold hover:underline" style={{ color:'#29ABE2' }}>Forgot?</button>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold" style={{ color:lblClr }}>Password</label>
+                    <button type="button" className="text-xs font-semibold hover:underline" style={{ color:'#29ABE2' }}>Forgot?</button>
+                  </div>
+                  <div className="relative">
+                    <Lock size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color:inputClr, opacity:0.4 }}/>
+                    <input type={showPwd?'text':'password'} value={pwd} onChange={e=>setPwd(e.target.value)} placeholder="••••••••" required
+                      className="w-full pl-9 pr-10 py-3 rounded-xl text-sm outline-none transition-all"
+                      style={{ background:inputBg, border:`1.5px solid ${inputBdr}`, color:inputClr }}
+                      onFocus={e=>{e.target.style.borderColor='#29ABE2';e.target.style.boxShadow='0 0 0 3px rgba(41,171,226,0.15)'}}
+                      onBlur={e=>{e.target.style.borderColor=inputBdr;e.target.style.boxShadow='none'}}/>
+                    <button type="button" onClick={()=>setShow(!showPwd)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1"
+                      aria-label={showPwd ? 'Hide password' : 'Show password'}
+                      style={{ color:inputClr, opacity:0.45 }}>
+                      {showPwd ? <EyeOff size={14}/> : <Eye size={14}/>}
+                    </button>
+                  </div>
                 </div>
-                <div className="relative">
-                  <Lock size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color:inputClr, opacity:0.4 }}/>
-                  <input type={showPwd?'text':'password'} value={pwd} onChange={e=>setPwd(e.target.value)} placeholder="••••••••" required
-                    className="w-full pl-9 pr-10 py-2.5 rounded-xl text-sm outline-none transition-all"
-                    style={{ background:inputBg, border:`1.5px solid ${inputBdr}`, color:inputClr }}
-                    onFocus={e=>{e.target.style.borderColor='#29ABE2';e.target.style.boxShadow='0 0 0 3px rgba(41,171,226,0.15)'}}
-                    onBlur={e=>{e.target.style.borderColor=inputBdr;e.target.style.boxShadow='none'}}/>
-                  <button type="button" onClick={()=>setShow(!showPwd)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color:inputClr, opacity:0.45 }}>
-                    {showPwd ? <EyeOff size={14}/> : <Eye size={14}/>}
-                  </button>
-                </div>
-              </div>
 
-              {error && (
-                <div className="rounded-xl px-3.5 py-2 text-xs flex items-center gap-2"
-                  style={{ background:'rgba(239,68,68,0.13)', border:'1px solid rgba(239,68,68,0.3)', color:'#FCA5A5' }}>
-                  ⚠ {error}
-                </div>
-              )}
+                {error && (
+                  <div role="alert" aria-live="polite" className="rounded-xl px-3.5 py-2 text-xs flex items-center gap-2"
+                    style={{ background:'rgba(239,68,68,0.13)', border:'1px solid rgba(239,68,68,0.3)', color:'#FCA5A5' }}>
+                    ⚠ {error}
+                  </div>
+                )}
 
-              <button type="submit" disabled={loading}
-                className={cn('w-full py-3 rounded-xl font-bold text-white text-sm flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 active:scale-[0.98]', loading&&'opacity-60 cursor-not-allowed')}
-                style={{ background:loading?'#6B7280':'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow:'0 6px 24px rgba(41,171,226,0.38)' }}>
-                {loading&&<Loader2 size={14} className="animate-spin"/>}
-                {loading?'Signing in...':'Sign In →'}
-              </button>
-            </form>
+                <button type="submit" disabled={loading}
+                  className={cn('w-full py-3 rounded-xl font-bold text-white text-sm flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 active:scale-[0.98]', loading&&'opacity-60 cursor-not-allowed')}
+                  style={{ background:loading?'#6B7280':'linear-gradient(135deg,#1A237E,#29ABE2)', boxShadow:'0 6px 24px rgba(41,171,226,0.38)' }}>
+                  {loading&&<Loader2 size={14} className="animate-spin"/>}
+                  {loading?'Signing in...':'Sign In →'}
+                </button>
+              </form>
 
+            </div>
+            <p className="text-center text-[11px] mt-3" style={{ color:dark?'rgba(255,255,255,0.55)':'rgba(26,35,126,0.45)' }}>©2026 elyrac Ai</p>
           </div>
-          <p className="text-center text-[11px] mt-3" style={{ color:dark?'rgba(255,255,255,0.2)':'rgba(26,35,126,0.3)' }}>©2026 elyrac Ai</p>
         </div>
+
+        {/* Right visual zone — the photograph shows through here; deliberately
+            empty, never covered by the card. */}
+        <div className="hidden md:block md:w-[48%] lg:w-[54%] xl:w-[59%] md:flex-none" aria-hidden="true"/>
       </div>
 
-      {/* ── RIGHT: dental image (desktop only) ── */}
-      <div className="hidden lg:flex items-center justify-center relative z-10" style={{ width:'50%' }}>
-        <div className="absolute rounded-full animate-pulse pointer-events-none"
-          style={{ width:460,height:460,background:'radial-gradient(circle,rgba(41,171,226,0.28),transparent)',zIndex:1 }}/>
-        <div className="absolute top-8 left-0 right-0 text-center z-20 pointer-events-none">
-          <p className="font-bold text-lg" style={{ color:dark?'rgba(255,255,255,0.85)':'rgba(26,35,126,0.75)', fontFamily:'Plus Jakarta Sans' }}>
-            Code Clinic Management System
-          </p>
-          <p className="text-sm mt-0.5" style={{ color:dark?'rgba(147,197,253,0.7)':'rgba(26,35,126,0.5)' }}>Painless Dentistry, Lifesaving Smiles.</p>
-        </div>
-        <div className="relative" style={{ zIndex:10 }}>
-          <Image src="/dental3d.png" alt="Dental 3D" width={480} height={420} priority
-            style={{ filter:'drop-shadow(0 24px 64px rgba(41,171,226,0.5))', maxHeight:'70vh', width:'auto', objectFit:'contain' }}/>
-        </div>
-        <div className="absolute rounded-2xl px-3.5 py-2.5 z-20 shadow-2xl" style={{ top:'20%',left:'4%',background:chipBg,backdropFilter:'blur(20px)',border:`1px solid ${chipBdr}` }}>
-          <p className="text-lg mb-0.5">🦷</p><p className="text-xs font-bold" style={{ color:chipTxt }}>Your smile is your<br/>best accessory</p>
-        </div>
-        <div className="absolute rounded-2xl px-3.5 py-2.5 z-20 shadow-2xl" style={{ bottom:'20%',left:'4%',background:chipBg,backdropFilter:'blur(20px)',border:`1px solid ${chipBdr}` }}>
-          <p className="text-lg mb-0.5">✨</p><p className="text-xs font-bold" style={{ color:chipTxt }}>5,000+ smiles<br/>transformed</p>
-        </div>
-        <div className="absolute rounded-2xl px-3.5 py-2.5 z-20 shadow-2xl" style={{ top:'20%',right:'4%',background:chipBg,backdropFilter:'blur(20px)',border:`1px solid ${chipBdr}` }}>
-          <p className="text-lg mb-0.5">🏆</p><p className="text-xs font-bold" style={{ color:chipTxt }}>98% patient<br/>satisfaction</p>
-        </div>
-        <div className="absolute rounded-2xl px-3.5 py-2.5 z-20 shadow-xl" style={{ bottom:'20%',right:'4%',background:'rgba(16,185,129,0.18)',backdropFilter:'blur(20px)',border:'1px solid rgba(16,185,129,0.32)' }}>
-          <p className="text-lg mb-0.5">💙</p><p className="text-xs font-bold text-white">Pain-free dentistry<br/>is our promise</p>
-        </div>
-      </div>
-
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, textAlign: 'center', padding: '16px', fontSize: '13px', color: '#94A3B8', zIndex: 40 }}>
+      <div style={{ position:'fixed', bottom:0, left:0, right:0, textAlign:'center', padding:'16px', paddingBottom:'max(16px, env(safe-area-inset-bottom))', fontSize:'13px', color:dark?'rgba(255,255,255,0.65)':'rgba(26,35,126,0.65)', zIndex:40 }}>
         <a href="/privacy.html" style={{ color: '#29ABE2', textDecoration: 'none' }}>Privacy Policy</a>
         {' · '}
         <a href="/terms.html" style={{ color: '#29ABE2', textDecoration: 'none' }}>Terms of Service</a>
