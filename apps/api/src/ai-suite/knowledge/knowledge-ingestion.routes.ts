@@ -3,16 +3,16 @@ import multer from 'multer'
 import { requireAuth } from '../../middleware/auth'
 import { clinicalStaff } from '../../middleware/rbac'
 import { prisma } from '../../lib/prisma'
-import { uploadFile, downloadFile, deleteFile } from '../../services/storage/r2'
-import { validateUpload, sanitizeFilename, buildStorageKey, sha256Hex, UploadCategory } from './upload-validation'
-import { extractFromImage, transcribeAudio, extractFromVideo, extractFromDocx, extractFromPdf } from './media-extract.service'
-import { ingestExtractedText } from './knowledge-ingest.service'
+import { uploadFile, deleteFile } from '../../services/storage/r2'
+import { validateUpload, sanitizeFilename, buildStorageKey, sha256Hex } from './upload-validation'
+import { runExtraction, updatePreview, retryIngestion, confirmIngestion, discardIngestion } from './knowledge-ingestion.service'
 
 const router = Router()
 
 // Largest allowed category (VIDEO, see upload-validation.ts) sets the multer
 // ceiling; validateUpload() enforces the real per-category limit afterwards.
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 250 * 1024 * 1024 } })
+const MAX_UPLOAD_BYTES = 60 * 1024 * 1024
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES } })
 
 // multer errors (e.g. LIMIT_FILE_SIZE) throw before the route handler runs —
 // without this they'd fall through to main.ts's generic 500 handler as an
@@ -20,7 +20,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 250
 function handleUpload(req: Request, res: Response, next: (err?: any) => void) {
   upload.single('file')(req, res, (err: any) => {
     if (!err) return next()
-    if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'File is too large (250MB max)' })
+    if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: `File is too large (${MAX_UPLOAD_BYTES / (1024 * 1024)}MB max)` })
     console.error('[Knowledge Ingest] multer error:', err.message)
     res.status(400).json({ error: 'Upload failed — the file could not be read' })
   })
@@ -37,54 +37,18 @@ function handleUpload(req: Request, res: Response, next: (err?: any) => void) {
 // comment on AiKnowledgeIngestion for why — not per-uploader like Knowledge
 // Studio's own conversations). Never exposed to anyone who isn't clinical
 // staff; unauthenticated or non-staff requests never reach these handlers.
+// This router.use() applies to EVERY route below (Express middleware
+// ordering — a router.use() with no path covers everything registered
+// after it in the same router) — see
+// __tests__/knowledge-ingestion.routes.test.ts's "router wiring" test for
+// an explicit structural assertion of this.
+//
+// The state-machine logic (extraction dispatch, confirm/retry/discard, with
+// the idempotency and error-recovery guarantees that need testing without a
+// live DB) lives in knowledge-ingestion.service.ts — these handlers are
+// thin: parse the request, call the service, map the result to HTTP.
 // ─────────────────────────────────────────────────────────────────────────
 router.use(requireAuth, clinicalStaff)
-
-const MAX_TITLE_CHARS = 200
-const MAX_CONTENT_CHARS = 200_000 // generous ceiling for edited preview text — well below anything that would produce an unreasonable number of chunks
-
-function kbTypeFor(category: UploadCategory, ext: string): string {
-  if (category === 'DOCUMENT') return ext === 'docx' ? 'DOCX' : ext === 'pdf' ? 'PDF' : 'TEXT'
-  return category // IMAGE | AUDIO | VIDEO
-}
-
-const IMAGE_MIME_BY_EXT: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }
-
-async function runExtraction(id: string, category: UploadCategory, ext: string, mimeType: string, buffer: Buffer, filename: string) {
-  try {
-    let text: string
-    if (category === 'DOCUMENT') {
-      if (ext === 'pdf') {
-        text = await extractFromPdf(buffer)
-      } else if (ext === 'docx') {
-        text = await extractFromDocx(buffer)
-      } else {
-        text = buffer.toString('utf-8')
-      }
-    } else if (category === 'IMAGE') {
-      text = await extractFromImage(buffer, IMAGE_MIME_BY_EXT[ext] || mimeType)
-    } else if (category === 'AUDIO') {
-      text = await transcribeAudio(buffer, filename)
-    } else {
-      text = await extractFromVideo(buffer, filename)
-    }
-
-    text = (text || '').trim()
-    if (!text) throw new Error('No usable text could be extracted from this file.')
-    if (text.length > MAX_CONTENT_CHARS) text = text.slice(0, MAX_CONTENT_CHARS)
-
-    await prisma.aiKnowledgeIngestion.update({
-      where: { id },
-      data: { status: 'EXTRACTED', extractedTitle: filename, extractedText: text, errorMessage: null },
-    })
-  } catch (err: any) {
-    console.error('[Knowledge Ingest] extraction failed:', err.message)
-    await prisma.aiKnowledgeIngestion.update({
-      where: { id },
-      data: { status: 'FAILED', errorMessage: String(err.message || 'Extraction failed').slice(0, 500) },
-    })
-  }
-}
 
 // ── POST /ai-suite/knowledge/ingest/upload ─────────────────────────────────
 // Validates, uploads to storage, then extracts SYNCHRONOUSLY before
@@ -120,21 +84,40 @@ router.post('/upload', handleUpload, async (req: Request, res: Response) => {
     const r2Key = buildStorageKey(category, sanitized)
     await uploadFile(file.buffer, file.mimetype, r2Key)
 
-    const row = await prisma.aiKnowledgeIngestion.create({
-      data: {
-        createdBy: req.user!.id,
-        originalFilename: file.originalname.slice(0, 300),
-        sanitizedFilename: sanitized,
-        mimeType: file.mimetype || 'application/octet-stream',
-        category,
-        sizeBytes: file.size,
-        sha256: hash,
-        r2Key,
-        status: 'PROCESSING',
-      },
-    })
+    // The row is persisted BEFORE extraction runs — if extraction crashes
+    // unexpectedly (not caught inside runExtraction, e.g. a process-level
+    // error), the row still exists as PROCESSING rather than being lost,
+    // and is visible in the queue for staff to retry or discard.
+    //
+    // R2 and Postgres aren't in one transaction, so if the DB write below
+    // fails AFTER the upload above already succeeded, the file would
+    // otherwise be orphaned in storage forever with nothing in the DB ever
+    // pointing at it (it can't even be discarded — there'd be no row to
+    // discard). Compensating delete closes that gap: best-effort, and if
+    // IT also fails we've lost nothing we didn't already lose (the DB
+    // write failed either way, so the request fails and reports an error
+    // regardless).
+    let row
+    try {
+      row = await prisma.aiKnowledgeIngestion.create({
+        data: {
+          createdBy: req.user!.id,
+          originalFilename: file.originalname.slice(0, 300),
+          sanitizedFilename: sanitized,
+          mimeType: file.mimetype || 'application/octet-stream',
+          category,
+          sizeBytes: file.size,
+          sha256: hash,
+          r2Key,
+          status: 'PROCESSING',
+        },
+      })
+    } catch (createErr) {
+      await deleteFile(r2Key).catch(err => console.error('[Knowledge Ingest] orphan cleanup failed for', r2Key, err.message))
+      throw createErr
+    }
 
-    await runExtraction(row.id, category, ext, file.mimetype, file.buffer, file.originalname)
+    await runExtraction(prisma, row.id, category, ext, file.mimetype, file.buffer, file.originalname)
     const final = await prisma.aiKnowledgeIngestion.findUnique({ where: { id: row.id } })
 
     res.status(201).json({
@@ -182,27 +165,9 @@ router.get('/:id', async (req: Request, res: Response) => {
 // is a draft, not a fait accompli.
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
-    const row = await prisma.aiKnowledgeIngestion.findUnique({ where: { id: req.params.id } })
-    if (!row) return res.status(404).json({ error: 'Upload not found' })
-    if (row.status !== 'EXTRACTED') return res.status(400).json({ error: 'Only an extracted preview can be edited' })
-
-    const data: { extractedTitle?: string; extractedText?: string } = {}
-    if ('extractedTitle' in (req.body || {})) {
-      const t = req.body.extractedTitle
-      if (typeof t !== 'string' || !t.trim()) return res.status(400).json({ error: 'extractedTitle must be a non-empty string' })
-      if (t.length > MAX_TITLE_CHARS) return res.status(400).json({ error: `Title is too long (${MAX_TITLE_CHARS} char max)` })
-      data.extractedTitle = t.trim()
-    }
-    if ('extractedText' in (req.body || {})) {
-      const c = req.body.extractedText
-      if (typeof c !== 'string' || !c.trim()) return res.status(400).json({ error: 'extractedText must be a non-empty string' })
-      if (c.length > MAX_CONTENT_CHARS) return res.status(400).json({ error: 'Content is too long' })
-      data.extractedText = c.trim()
-    }
-    if (Object.keys(data).length === 0) return res.status(400).json({ error: 'No valid fields to update' })
-
-    const updated = await prisma.aiKnowledgeIngestion.update({ where: { id: row.id }, data })
-    res.json({ ingestion: updated })
+    const result = await updatePreview(prisma, req.params.id, req.body)
+    if (!result.ok) return res.status(result.status).json({ error: result.error })
+    res.json({ ingestion: result.ingestion })
   } catch (err: any) {
     console.error('[Knowledge Ingest] update error:', err.message)
     res.status(500).json({ error: 'Failed to update preview' })
@@ -215,46 +180,25 @@ router.patch('/:id', async (req: Request, res: Response) => {
 // meaningless / could duplicate confirmed knowledge).
 router.post('/:id/retry', async (req: Request, res: Response) => {
   try {
-    const row = await prisma.aiKnowledgeIngestion.findUnique({ where: { id: req.params.id } })
-    if (!row) return res.status(404).json({ error: 'Upload not found' })
-    if (row.status !== 'FAILED') return res.status(400).json({ error: 'Only a failed upload can be retried' })
-
-    await prisma.aiKnowledgeIngestion.update({ where: { id: row.id }, data: { status: 'PROCESSING', errorMessage: null } })
-
-    const buffer = await downloadFile(row.r2Key)
-    const ext = row.originalFilename.split('.').pop()?.toLowerCase() || ''
-    await runExtraction(row.id, row.category as UploadCategory, ext, row.mimeType, buffer, row.originalFilename)
-
-    const final = await prisma.aiKnowledgeIngestion.findUnique({ where: { id: row.id } })
-    res.json({ ingestion: final })
+    const result = await retryIngestion(prisma, req.params.id)
+    if (!result.ok) return res.status(result.status).json({ error: result.error })
+    res.json({ ingestion: result.ingestion })
   } catch (err: any) {
     console.error('[Knowledge Ingest] retry error:', err.message)
-    await prisma.aiKnowledgeIngestion.update({ where: { id: req.params.id }, data: { status: 'FAILED', errorMessage: 'Retry failed. Please try again.' } }).catch(() => {})
     res.status(500).json({ error: 'Retry failed. Please try again.' })
   }
 })
 
 // ── POST /ai-suite/knowledge/ingest/:id/confirm ────────────────────────────
 // The ONLY path by which anything from this staging table ever becomes real,
-// retrievable AiKnowledgeBase content. Nothing saves silently.
+// retrievable AiKnowledgeBase content. Nothing saves silently. See
+// confirmIngestion() in knowledge-ingestion.service.ts for the atomic
+// claim that makes this safe against concurrent double-confirm.
 router.post('/:id/confirm', async (req: Request, res: Response) => {
   try {
-    const row = await prisma.aiKnowledgeIngestion.findUnique({ where: { id: req.params.id } })
-    if (!row) return res.status(404).json({ error: 'Upload not found' })
-    if (row.status !== 'EXTRACTED') return res.status(400).json({ error: 'Only an extracted preview can be confirmed' })
-    if (!row.extractedText || !row.extractedTitle) return res.status(400).json({ error: 'Nothing to confirm — extraction produced no content' })
-
-    const ext = row.originalFilename.split('.').pop()?.toLowerCase() || ''
-    const kbType = kbTypeFor(row.category as UploadCategory, ext)
-
-    const chunkCount = await ingestExtractedText(row.extractedTitle, row.extractedText, kbType, row.r2Key)
-
-    const updated = await prisma.aiKnowledgeIngestion.update({
-      where: { id: row.id },
-      data: { status: 'CONFIRMED', confirmedAt: new Date() },
-    })
-
-    res.json({ ingestion: updated, chunkCount })
+    const result = await confirmIngestion(prisma, req.params.id)
+    if (!result.ok) return res.status(result.status).json({ error: result.error })
+    res.json({ ingestion: result.ingestion, chunkCount: result.chunkCount })
   } catch (err: any) {
     console.error('[Knowledge Ingest] confirm error:', err.message)
     res.status(500).json({ error: 'Failed to save to the knowledge base' })
@@ -267,13 +211,8 @@ router.post('/:id/confirm', async (req: Request, res: Response) => {
 // any other source instead). Also removes the underlying stored file.
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const row = await prisma.aiKnowledgeIngestion.findUnique({ where: { id: req.params.id } })
-    if (!row) return res.status(404).json({ error: 'Upload not found' })
-    if (row.status === 'CONFIRMED') return res.status(400).json({ error: 'This has already been saved to the knowledge base — delete it from the knowledge base list instead' })
-
-    await prisma.aiKnowledgeIngestion.delete({ where: { id: row.id } })
-    await deleteFile(row.r2Key).catch(() => {}) // best-effort — a dangling R2 object is not worth failing the request over
-
+    const result = await discardIngestion(prisma, req.params.id)
+    if (!result.ok) return res.status(result.status).json({ error: result.error })
     res.json({ success: true })
   } catch (err: any) {
     console.error('[Knowledge Ingest] delete error:', err.message)

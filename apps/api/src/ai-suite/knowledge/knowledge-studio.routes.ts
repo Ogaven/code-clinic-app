@@ -4,6 +4,8 @@ import { requireAuth } from '../../middleware/auth'
 import { clinicalStaff } from '../../middleware/rbac'
 import { prisma } from '../../lib/prisma'
 import { retrieveSharedClinicKnowledge } from './shared-retrieval'
+import { collapseToAlternatingRoles } from './message-history'
+import { commitAssistantReply } from './knowledge-studio.service'
 
 const router = Router()
 
@@ -268,34 +270,13 @@ router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Respo
     const ordered = recent.slice().reverse()
     const isFirstTurn = ordered.length === 1
 
-    // ROOT CAUSE of "Failed to get a response from the clinic AI": the user
-    // turn is persisted BEFORE the provider call (by design, so Retry has a
-    // row to target — see below). If the provider call ever fails, that row
-    // stays in the DB as an unanswered 'user' message. The NEXT turn in that
-    // conversation (a fresh message, or even a Retry) reloads history fresh
-    // from the DB and would then contain two consecutive role:'user' entries
-    // with no assistant reply between them. Anthropic's Messages API requires
-    // strict user/assistant alternation starting with 'user' and rejects
-    // non-alternating input — so the provider call throws again, which is
-    // caught below and produces this exact same generic error. Because
-    // history is always reloaded from the DB, this doesn't self-heal: once a
-    // single failure happens, EVERY later turn in that conversation fails the
-    // same way forever (only "New Chat" recovers it). Fix: collapse
-    // consecutive same-role runs into one turn (joining their text) before
-    // sending to the provider, so an orphaned unanswered user row never
-    // breaks alternation for whatever comes after it.
-    const providerMessages: { role: 'user' | 'assistant'; content: string }[] = []
-    for (const m of ordered) {
-      const role = m.role as 'user' | 'assistant'
-      const last = providerMessages[providerMessages.length - 1]
-      if (last && last.role === role) last.content += `\n\n${m.content}`
-      else providerMessages.push({ role, content: m.content })
-    }
-    // The provider requires the sequence to start with 'user' — true for
-    // every real conversation here (the first row is always the first user
-    // message), but guarded defensively in case a future data path changes
-    // that invariant.
-    while (providerMessages.length > 0 && providerMessages[0].role !== 'user') providerMessages.shift()
+    // See message-history.ts's collapseToAlternatingRoles for the full
+    // explanation — this is the fix for the "Failed to get a response from
+    // the clinic AI" root cause (an orphaned unanswered user row breaking
+    // Anthropic's required role alternation on every later turn).
+    const providerMessages = collapseToAlternatingRoles(
+      ordered.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    )
 
     const hits = await retrieveSharedClinicKnowledge(messageContent)
     const contextBlock = hits.length > 0
@@ -343,18 +324,7 @@ router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Respo
     // request (double-submit, client retry-on-timeout racing the original)
     // may still reach the provider, but only one assistant response can ever
     // be committed for a given unanswered user row.
-    const assistantMsg = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${userMessageId}))`
-      const target = await tx.knowledgeStudioMessage.findUnique({ where: { id: userMessageId } })
-      if (!target) return null
-      const answered = await tx.knowledgeStudioMessage.findFirst({
-        where: { conversationId, createdAt: { gt: target.createdAt } },
-      })
-      if (answered) return null
-      return tx.knowledgeStudioMessage.create({
-        data: { conversationId, role: 'assistant', content: reply },
-      })
-    }, { timeout: 15_000 })
+    const assistantMsg = await commitAssistantReply(prisma, userMessageId, conversationId, reply)
 
     if (!assistantMsg) {
       return res.status(409).json({ error: 'This message already has a response' })

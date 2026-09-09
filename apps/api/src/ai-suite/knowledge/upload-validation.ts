@@ -36,13 +36,27 @@ const RULES: FormatRule[] = [
     category: 'AUDIO',
     mimes: ['audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/wav', 'audio/x-wav', 'audio/wave', 'audio/aac'],
     extensions: ['mp3', 'm4a', 'wav', 'aac'],
-    maxBytes: 100 * 1024 * 1024,
+    // Extraction is SYNCHRONOUS within one HTTP request (no job queue exists
+    // yet — see knowledge-ingestion.routes.ts's own comment on /upload).
+    // 100MB of typical 128kbps MP3 is ~100 minutes of audio — genuinely
+    // unrealistic to transcribe within one request/response cycle without
+    // risking a reverse-proxy timeout. 25MB (~25 min at 128kbps) is a
+    // deliberately conservative ceiling sized for real clinic use cases
+    // (voice notes, short recorded briefings), not arbitrary meeting/lecture
+    // -length audio. See EXTRACTION_TIMEOUT_MS below for the hard backstop.
+    maxBytes: 25 * 1024 * 1024,
   },
   {
     category: 'VIDEO',
     mimes: ['video/mp4', 'video/quicktime', 'video/webm'],
     extensions: ['mp4', 'mov', 'webm'],
-    maxBytes: 250 * 1024 * 1024,
+    // Same synchronous-processing constraint as AUDIO, compounded: video
+    // needs an ffmpeg audio-extraction pass BEFORE transcription even
+    // starts. 250MB of typical clinic-recorded H.264 could be a 10-20+
+    // minute clip — not realistic to process end-to-end in one request.
+    // 60MB (roughly a few minutes of typical mobile-recorded video) is
+    // sized the same way: real short clinic clips, not long-form recordings.
+    maxBytes: 60 * 1024 * 1024,
   },
 ]
 
