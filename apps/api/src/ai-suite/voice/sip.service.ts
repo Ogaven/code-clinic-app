@@ -231,7 +231,7 @@ function parseRemoteSdp(sdp: string): { ip: string; port: number } | null {
 //   1. Opens a dgram UDP socket on SIP_RTP_PORT to receive/send RTP
 //   2. Connects to ElevenLabs ConvAI WebSocket
 //   3. Bridges audio bidirectionally every 20ms
-//   4. ConvAI calls our /ai-suite/voice/llm endpoint (Claude + all 16 tools)
+//   4. ConvAI calls our /ai-suite/voice/llm endpoint (OpenAI + all 16 tools)
 //
 // Falls back to one-way greeting mode if ConvAI is unavailable.
 

@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { doctorOrAdmin, clinicalStaff } from '../middleware/rbac'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import multer from 'multer'
 import { uploadAvatar, getPublicUrl } from '../services/storage/r2'
 import { prisma } from '../lib/prisma'
@@ -13,7 +13,7 @@ router.use(requireAuth)
 router.param('id', requireDoctorPatientAccess(prisma))
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 // ─── Helper: log activity ─────────────────────────────────────────────────
 async function logActivity(patientId: string, userId: string, userName: string, action: string, metadata?: any) {
@@ -85,14 +85,16 @@ router.post('/patients/:id/dental-chart/ai-summary', requireAuth, doctorOrAdmin,
       ? 'You are a periodontist. Analyze the periodontal chart data and provide a professional clinical summary. Include: BOP percentage, suggested 2017 AAP classification staging and grading, areas of concern, and recommended treatment priorities. Use clear clinical language suitable for a patient file.'
       : 'You are a dental assistant. Analyze the following dental chart data (in JSON format, using FDI notation) and provide a concise, professional summary for a patient file. Focus on active issues (caries, planned treatments), significant restorations (crowns, implants, root canals), and missing teeth. Be specific about tooth numbers.'
 
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: JSON.stringify(chartData) }],
+    const message = await openai.responses.create({
+      model: 'gpt-5.6-sol',
+      input: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: JSON.stringify(chartData) },
+      ],
+      max_output_tokens: 1024,
     })
 
-    const summary = message.content[0].type === 'text' ? message.content[0].text : ''
+    const summary = message.output_text ?? ''
 
     const field = isPerio ? 'aiPerioSummary' : 'aiSummary'
     const chart = await prisma.dentalChart.upsert({
@@ -113,19 +115,21 @@ router.post('/dental-chart/smart-entry', requireAuth, doctorOrAdmin, async (req,
   try {
     const { command } = req.body
 
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 512,
-      system: `You are a dental charting assistant. Parse natural language into JSON commands. Use FDI notation. Return ONLY valid JSON with no markdown.
+    const message = await openai.responses.create({
+      model: 'gpt-5.6-luna',
+      input: [
+        { role: 'system', content: `You are a dental charting assistant. Parse natural language into JSON commands. Use FDI notation. Return ONLY valid JSON with no markdown.
 Format: { "commands": [{ "toothNumber": "string", "type": "surface"|"condition", "surface"?: "occlusal"|"buccal"|"lingual"|"mesial"|"distal", "status"?: "Healthy"|"Caries"|"Planned Treatment"|"Amalgam"|"Composite"|"Gold"|"Sealant", "condition"?: "Missing"|"Implant"|"Root Canal"|"Crown"|"Fracture"|"To be Extracted"|"Impacted"|"Mobile"|"Supraerupted"|"Bridge Abutment"|"Pontic"|"Denture" }]}
 Examples:
 Input: "Caries on 16 occlusal" -> {"commands":[{"toothNumber":"16","type":"surface","surface":"occlusal","status":"Caries"}]}
 Input: "Mark 48 as missing" -> {"commands":[{"toothNumber":"48","type":"condition","condition":"Missing"}]}
-Input: "Crown on 25" -> {"commands":[{"toothNumber":"25","type":"condition","condition":"Crown"}]}`,
-      messages: [{ role: 'user', content: command }],
+Input: "Crown on 25" -> {"commands":[{"toothNumber":"25","type":"condition","condition":"Crown"}]}` },
+        { role: 'user', content: command },
+      ],
+      max_output_tokens: 512,
     })
 
-    const text = message.content[0].type === 'text' ? message.content[0].text : '{}'
+    const text = message.output_text ?? '{}'
     const parsed = JSON.parse(text)
     res.json(parsed)
   } catch (e: any) {

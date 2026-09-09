@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import {
   getAvailableSlots,
@@ -25,7 +24,7 @@ import { getGreetingName, guardianTitle, isMinor, normalizeRelation, toProper } 
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, containsPhrase } from '../whatsapp/whatsapp.service'
 
-function sanitizeForClaude(content: string): string {
+function sanitizeIncomingMessage(content: string): string {
   if (content.startsWith('__MEDIA_IMAGE__:')) {
     const visionIdx = content.indexOf('__VISION__')
     if (visionIdx !== -1) return `[Patient sent an image. Description: ${content.slice(visionIdx + 10)}]`
@@ -513,7 +512,7 @@ async function buildContext(
 
   const conversationHistory = dbMessages
     .filter(m => m.role !== 'SYSTEM')
-    .map(m => (m.role === 'USER' ? `Patient: ${sanitizeForClaude(m.content)}` : `Sarah: ${m.content}`))
+    .map(m => (m.role === 'USER' ? `Patient: ${sanitizeIncomingMessage(m.content)}` : `Sarah: ${m.content}`))
     .join('\n')
 
   let appointments = 'none on record'
@@ -701,18 +700,19 @@ async function respondToTangentThenRedirect(
   message: string,
   pendingPromptText: string
 ): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return pendingPromptText
   try {
-    const client = new Anthropic({ apiKey })
-    const response = await client.messages.create({
-      model:      'claude-sonnet-5',
-      max_tokens: 80,
-      system:     `You are Sarah, a warm dental assistant at Code Clinic. Give a brief (1-2 sentence), friendly, informative answer using general dental knowledge. Do NOT state clinic-specific prices, doctor names, or availability unless certain. No em dashes. No markdown.`,
-      messages:   [{ role: 'user', content: `The patient asked: "${message}". Answer briefly and warmly.` }],
+    const client = new OpenAI({ apiKey })
+    const response = await client.responses.create({
+      model:      'gpt-5.6-luna',
+      input: [
+        { role: 'system', content: `You are Sarah, a warm dental assistant at Code Clinic. Give a brief (1-2 sentence), friendly, informative answer using general dental knowledge. Do NOT state clinic-specific prices, doctor names, or availability unless certain. No em dashes. No markdown.` },
+        { role: 'user', content: `The patient asked: "${message}". Answer briefly and warmly.` },
+      ],
+      max_output_tokens: 80,
     })
-    const block = response.content[0]
-    const answer = block?.type === 'text' ? sanitizeForWhatsApp(block.text) : ''
+    const answer = (response.output_text ?? '').trim() ? sanitizeForWhatsApp(response.output_text) : ''
     return answer ? `${answer}\n\n${pendingPromptText}` : pendingPromptText
   } catch {
     return pendingPromptText
@@ -720,18 +720,20 @@ async function respondToTangentThenRedirect(
 }
 
 async function respondToClinicalFollowUp(message: string): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return `Our team's on it and will be in touch soon 🙏`
   try {
-    const client = new Anthropic({ apiKey })
-    const response = await client.messages.create({
-      model:      'claude-sonnet-5',
-      max_tokens: 120,
-      system:     `You are Sarah, a warm dental assistant at Code Clinic. The patient previously reported a clinical concern and our team has already been notified. Answer their follow-up question with 1-2 friendly sentences using general dental knowledge. If it fits naturally at the end, add: "Our team's on it and will be in touch soon 🙏" - only if it flows well. Do NOT say you've alerted the team again. No em dashes. No markdown.`,
-      messages:   [{ role: 'user', content: message }],
+    const client = new OpenAI({ apiKey })
+    const response = await client.responses.create({
+      model:      'gpt-5.6-luna',
+      input: [
+        { role: 'system', content: `You are Sarah, a warm dental assistant at Code Clinic. The patient previously reported a clinical concern and our team has already been notified. Answer their follow-up question with 1-2 friendly sentences using general dental knowledge. If it fits naturally at the end, add: "Our team's on it and will be in touch soon 🙏" - only if it flows well. Do NOT say you've alerted the team again. No em dashes. No markdown.` },
+        { role: 'user', content: message },
+      ],
+      max_output_tokens: 120,
     })
-    const block = response.content[0]
-    if (block?.type === 'text') return sanitizeForWhatsApp(block.text)
+    const text = (response.output_text ?? '').trim()
+    if (text) return sanitizeForWhatsApp(text)
   } catch { /* fall through */ }
   return `Our team's on it and will be in touch soon 🙏`
 }
@@ -1525,10 +1527,10 @@ export async function getAgentReply(
   from: string,
   latestMessage: string
 ): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY
 
   if (!apiKey) {
-    console.warn('[Agent] ANTHROPIC_API_KEY not set — returning fallback')
+    console.warn('[Agent] OPENAI_API_KEY not set — returning fallback')
     return `Hi! I've received your message and a team member will be with you shortly. For urgent matters please call us directly.`
   }
 
@@ -1594,7 +1596,7 @@ export async function getAgentReply(
   const wantsHuman = /talk to|speak to|speak with|talk with|call me|ring me|real person|human|julian|receptionist/i.test(latestMessage)
   if (wantsHuman) {
     clearBookingState(from)
-    // Fall through to Claude — the system prompt handles escalation to Julian
+    // Fall through to the model call — the system prompt handles escalation to Julian
   }
 
   // ── Booking state machine ─────────────────────────────────────────────────
@@ -1608,7 +1610,7 @@ export async function getAgentReply(
     if (!isSlotChoice && !isYesNo && isNewTopic) {
       clearBookingState(from)
       console.log(`[Agent] Booking flow escaped for ${from}: patient changed topic`)
-      // fall through to Claude call below
+      // fall through to the model call below
     } else {
       switch (bookingState.state) {
         case 'AWAITING_SERVICE':
@@ -1631,10 +1633,10 @@ export async function getAgentReply(
     if (intent === 'CHECK')   return handleCheckAppointment(from)
     if (intent === 'CONFIRM') return handleConfirmAppointment(from)
     if (intent) return handleIdleBookIntent(from, intent, latestMessage)
-    // fall through to normal Claude call
+    // fall through to normal model call
   }
 
-  // ── Normal Claude call with RAG context ───────────────────────────────────
+  // ── Normal model call with RAG context ────────────────────────────────────
   // Compute EAT time before parallel queries so we can look up today's hours
   const now        = new Date()
   const eatDate    = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
@@ -1705,11 +1707,10 @@ export async function getAgentReply(
   } catch { /* non-critical — use hardcoded fallback */ }
 
   try {
-    const client = new Anthropic({ apiKey })
+    const client = new OpenAI({ apiKey })
 
-    // Split system prompt into cacheable (static) and dynamic parts.
-    // The static part (persona + clinic info + services/doctors) rarely changes —
-    // Anthropic will cache it after the first call, reducing cost by ~70%.
+    // Split system prompt into static and dynamic parts — the static part
+    // (persona + clinic info + services/doctors) rarely changes between calls.
     const staticSystem = [
       activeSystemPrompt,
       '',
@@ -1748,27 +1749,27 @@ export async function getAgentReply(
       `CONVERSATION HISTORY: ${context.conversationHistory ? 'Shown in the messages above — you already know this person. Do NOT re-introduce yourself.' : 'No prior messages — this is the first contact.'}`,
     ].join('\n')
 
-    const response = await client.messages.create({
-      model:      'claude-sonnet-5',
-      max_tokens: 200,
-      system: [
-        { type: 'text', text: staticSystem },
-        { type: 'text', text: dynamicSystem },
+    const response = await client.responses.create({
+      model: 'gpt-5.6-sol',
+      input: [
+        { role: 'system', content: staticSystem },
+        { role: 'system', content: dynamicSystem },
+        ...messages,
       ],
-      messages,
+      max_output_tokens: 200,
     })
 
-    const block = response.content[0]
-    if (block && block.type === 'text') return sanitizeForWhatsApp(block.text)
+    const text = (response.output_text ?? '').trim()
+    if (text) return sanitizeForWhatsApp(text)
 
     return `I'm here to help! Could you please rephrase that for me?`
   } catch (err) {
-    console.error('[Agent] Claude API error:', err)
+    console.error('[Agent] OpenAI API error:', err)
     return `Sorry, I'm having a small issue right now. Please try again or call the clinic directly.`
   }
 }
 
-// ── V2: Claude-tool-driven agent ──────────────────────────────────────────────
+// ── V2: OpenAI-tool-driven agent ────────────────────────────────────────────
 // Feature-flagged to test numbers only. V1 (getAgentReply + state machine)
 // is COMPLETELY UNCHANGED for all other phone numbers.
 // To expand to production: add numbers to V2_TEST_NUMBERS or remove the gate.
@@ -2034,132 +2035,7 @@ CLINIC INFO:
 Code Clinic | Kiira Road, opposite Police Playground, Kamwokya, Kampala
 Phone/WhatsApp: +256 394 836 298 / +256 741 087667 | Email: dentist@codeclinic.ug | Website: codeclinic.ug`
 
-const V2_TOOLS: Anthropic.Tool[] = [
-  {
-    name: 'search_services',
-    description: 'Find a dental service matching what the patient described. Returns serviceId needed for check_availability.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: { type: 'string' as const, description: 'What the patient wants, e.g. "cleaning", "filling", "toothache help", "whitening"' },
-      },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'search_doctors',
-    description: 'Find a doctor by name. Handles nicknames ("Steve" finds "Steven"). Returns doctorId and booking mode.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        name: { type: 'string' as const, description: 'Doctor name, partial name, or nickname — no Dr prefix needed' },
-      },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'check_availability',
-    description: 'Get real available appointment slots for booking. Pass date to target a specific day (e.g. tomorrow). Returns up to 5 slots with display text and ISO datetimes.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        serviceId: { type: 'string' as const, description: 'Service ID from search_services' },
-        doctorId:  { type: 'string' as const, description: 'Doctor ID from search_doctors — omit for any available doctor' },
-        date:      { type: 'string' as const, description: 'ISO date YYYY-MM-DD for the specific day to search (e.g. "2026-06-19" for tomorrow). Omit to search from today.' },
-        daysAhead: { type: 'number' as const, description: 'Days to search from date (default 1 when date given, 7 when omitted)' },
-      },
-      required: ['serviceId'],
-    },
-  },
-  {
-    name: 'book_appointment',
-    description: 'Create a real appointment. ONLY call after patient confirmed a slot by replying with a number from your list. Use the exact startAt ISO string from check_availability.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        doctorId:    { type: 'string' as const, description: 'Doctor ID (from check_availability slot result)' },
-        serviceId:   { type: 'string' as const, description: 'Service ID (from check_availability slot result)' },
-        slotStartAt:       { type: 'string' as const, description: 'Exact ISO 8601 datetime from check_availability — must match exactly' },
-        patientFirstName:  { type: 'string' as const, description: "Patient's first name — provide if you know it and no patient record exists yet. Omit for known patients." },
-      },
-      required: ['doctorId', 'serviceId', 'slotStartAt'],
-    },
-  },
-  {
-    name: 'cancel_appointment',
-    description: "Cancel a patient's appointment. Get appointmentId from get_patient_appointments. Only cancel after patient confirms.",
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        appointmentId: { type: 'string' as const, description: 'Appointment ID to cancel' },
-      },
-      required: ['appointmentId'],
-    },
-  },
-  {
-    name: 'reschedule_appointment',
-    description: 'Reschedule an appointment to a new slot. Call check_availability first for the new slot, then call this with the exact new startAt.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        appointmentId:  { type: 'string' as const, description: 'Appointment ID to reschedule' },
-        newSlotStartAt: { type: 'string' as const, description: 'Exact ISO 8601 datetime from check_availability for the new slot' },
-      },
-      required: ['appointmentId', 'newSlotStartAt'],
-    },
-  },
-  {
-    name: 'get_patient_appointments',
-    description: "Get this patient's upcoming appointments. Use when they ask about their appointment or want to cancel/reschedule.",
-    input_schema: {
-      type: 'object' as const,
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'flag_clinical_concern',
-    description: "Alert clinic staff via WhatsApp. Use for: (1) genuine clinical emergencies — heavy bleeding, spreading swelling, severe pain; (2) ANY time you are about to promise a patient that someone will follow up, call back, or confirm something — you MUST call this tool before making that promise so the front desk is actually notified.",
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        summary:     { type: 'string' as const, description: 'Brief summary of the clinical concern, 1-2 sentences' },
-        sarahAdvice: { type: 'string' as const, description: 'One sentence summarising what you are telling the patient right now — so Julian knows what advice has already been given' },
-      },
-      required: ['summary', 'sarahAdvice'],
-    },
-  },
-  {
-    name: 'get_doctors_available_today',
-    description: 'Returns which doctors are scheduled to work today and which are not, based on their working days. Use when the patient asks who is available today or whether a specific doctor comes in on a given day.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'get_patient_info',
-    description: 'Returns name and date-of-birth for all patients linked to this phone number.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {},
-      required: [],
-    },
-  },
-]
-
-// Same tool set as V2_TOOLS, with a cache breakpoint on the last entry — the tool
-// definitions never change, so Anthropic can reuse them across calls instead of
-// reprocessing every tool schema on every request. Kept separate from V2_TOOLS so
-// getCommentReply's COMMENT_TOOLS filter (which reuses V2_TOOLS) is unaffected.
-const V2_TOOLS_CACHED: Anthropic.Tool[] = V2_TOOLS.map((tool, i) =>
-  i === V2_TOOLS.length - 1
-    ? { ...tool, cache_control: { type: 'ephemeral' as const } }
-    : tool
-)
-
-// Same 10 tools as V2_TOOLS, translated into OpenAI's function-calling shape
+// The 10 tools available to the DM/chat agent, in OpenAI's function-calling shape.
 // for the website-widget pilot. Genuinely translated, not find-replaced:
 // Claude's input_schema/required maps to OpenAI's parameters/required, and
 // tools with truly optional fields (check_availability, book_appointment)
@@ -2602,397 +2478,6 @@ async function executeV2Tool(
   }
 }
 
-export async function getAgentReplyV2(
-  conversationId: string,
-  from:           string,
-  latestMessage:  string,
-  channel?:       string
-): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return `Hi! I've received your message and a team member will be with you shortly.`
-
-  const todayKey  = `ratelimit:${from}:${new Date().toISOString().slice(0, 10)}`
-  const current   = await redis.get(todayKey)
-  const callCount = current ? parseInt(current, 10) + 1 : 1
-  await redis.setex(todayKey, 86400, String(callCount))
-  if (callCount > 25) {
-    const eatNow    = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
-    const eatHour   = eatNow.getHours()
-    const eatDow    = eatNow.getDay() // 0=Sun,6=Sat
-    const isSat     = eatDow === 6
-    const isWeekday = eatDow >= 1 && eatDow <= 5
-    const isOpen    = (isWeekday && eatHour >= 8 && eatHour < 18) || (isSat && eatHour >= 8 && eatHour < 14)
-    return isOpen
-      ? `Hi! I've noted everything from our conversation 😊 My colleague Julian will follow up with you shortly.`
-      : `Hi! I've noted everything and will make sure the team picks this up first thing when we open 😊 Feel free to call us on +256 394 836 298 if it's urgent.`
-  }
-
-  try {
-    // ── Post-booking short-circuit ────────────────────────────────────────────
-    // If Sarah just confirmed a booking and the patient sends a polite close
-    // (no question, no change signal, short), skip Claude entirely to prevent
-    // the re-check-availability bug where Sarah sees the now-taken slot as a
-    // booking failure and sends a contradictory message.
-    const lastAgentMsg = await prisma.aiMessage.findFirst({
-      where:   { conversationId, role: 'AGENT' },
-      orderBy: { createdAt: 'desc' },
-      select:  { content: true },
-    })
-    if (
-      lastAgentMsg?.content.includes("You're booked ✅") ||
-      lastAgentMsg?.content.includes("I've got that noted for")
-    ) {
-      const msg = latestMessage.trim()
-      const hasNewRequest =
-        msg.length > 60 ||
-        /[?]/.test(msg) ||
-        /\b(change|reschedule|actually|instead|cancel|wait|also|another|different|wrong|mistake|move)\b/i.test(msg) ||
-        /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|morning|afternoon|evening)\b/i.test(msg) ||
-        /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(msg)
-      if (!hasNewRequest) {
-        const closes = [
-          `You're welcome! See you then 😊`,
-          `See you then! 😊`,
-          `My pleasure! See you soon 😊`,
-        ]
-        const reply = closes[Math.floor(Math.random() * closes.length)]
-        console.log(`[Agent] Post-booking close from ${from}: "${msg.slice(0, 50)}" → short-circuit`)
-        return reply
-      }
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
-    const kbKeywords = latestMessage.split(/\s+/).filter(w => w.length >= 4).slice(0, 5)
-
-    const [patient, dbMessages, menu, allHours, kbEntries] = await Promise.all([
-      resolveTextingPatient(from),
-      prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 10 })
-        .then(msgs => msgs.reverse()),
-      getCachedMenu(),
-      prisma.workingHours.findMany({ orderBy: { dayOfWeek: 'asc' } }).catch(
-        () => [] as Array<{ dayOfWeek: number; isOpen: boolean; openTime: string; closeTime: string }>
-      ),
-      kbKeywords.length > 0
-        ? prisma.aiKnowledgeBase.findMany({
-            where: {
-              OR: kbKeywords.flatMap(kw => [
-                { title: { contains: kw, mode: 'insensitive' } },
-                { content: { contains: kw, mode: 'insensitive' } },
-              ]),
-            },
-            take: 5,
-            select: { title: true, content: true },
-          }).catch(() => [] as Array<{ title: string; content: string }>)
-        : Promise.resolve([] as Array<{ title: string; content: string }>),
-    ])
-
-    const isPlaceholderName = patient?.firstName?.toLowerCase() === 'whatsapp' || patient?.lastName?.toLowerCase() === 'patient'
-    const patientName = isPlaceholderName ? 'there' : getGreetingName(patient)
-    const guardianContext = patient ? await getGuardianDependentsContext(patient.id) : ''
-
-    const patientIsMinor = !isPlaceholderName && patient?.dob ? isMinor(patient.dob) : false
-    let minorPatientContext = ''
-    if (patient && patientIsMinor) {
-      const nokName   = patient.nextOfKinName
-        ? getGreetingName({ firstName: patient.nextOfKinName, lastName: '' })
-        : null
-      const title     = guardianTitle(patient.nextOfKinRelation, nokName)
-      const relation  = normalizeRelation(patient.nextOfKinRelation)
-      const ageYears  = Math.floor(
-        (Date.now() - new Date(patient.dob!).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-      )
-      minorPatientContext =
-        `MINOR PATIENT — ADDRESS GUARDIAN, NOT CHILD:\n` +
-        `The patient on record is ${patientName} (${ageYears} years old), a minor.\n` +
-        `The person texting is their ${relation}${patient.nextOfKinName ? ` (${patient.nextOfKinName})` : ''}.\n` +
-        `CRITICAL: Address this person as "${title}" — NEVER use "${patientName}" as a greeting (that is the child's name).\n` +
-        `When discussing appointments, say "${patientName}'s appointment" not "your appointment".\n` +
-        `When asking about wellbeing, ask how ${patientName} is doing, not how "you" are doing.`
-    }
-
-    const DAY_NAMES   = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-    const now         = new Date()
-    const eatDate     = new Date(now.getTime() + 3 * 60 * 60 * 1000)  // explicit UTC+3 — no locale-parse ambiguity
-    const eatDow      = eatDate.getUTCDay()
-    const eatHour     = eatDate.getUTCHours()
-    const eatMinute   = eatDate.getUTCMinutes()
-    const todayHours  = allHours.find(h => h.dayOfWeek === eatDow)
-    const eatTotal    = eatHour * 60 + eatMinute
-    const openTotal   = todayHours ? parseInt(todayHours.openTime.split(':')[0]) * 60 + parseInt(todayHours.openTime.split(':')[1] || '0') : 0
-    const closeTotal  = todayHours ? parseInt(todayHours.closeTime.split(':')[0]) * 60 + parseInt(todayHours.closeTime.split(':')[1] || '0') : 0
-    const isOpen      = !!(todayHours?.isOpen && eatTotal >= openTotal && eatTotal < closeTotal)
-    const eatDateTime = now.toLocaleString('en-GB', {
-      timeZone: 'Africa/Nairobi', weekday: 'long', year: 'numeric',
-      month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
-    })
-    const hoursTable = allHours.length > 0
-      ? allHours.map(h => `${DAY_NAMES[h.dayOfWeek]}: ${h.isOpen ? `${h.openTime} – ${h.closeTime}` : 'Closed'}`).join('\n')
-      : '(clinic hours not configured)'
-
-    // SARAH_V2_SYSTEM_BASE is a constant — identical on every single call, regardless
-    // of channel, patient, or message. Cached as its own block so Anthropic reuses it
-    // instead of reprocessing the full ~200-line persona/rules prompt every request.
-    // Everything below varies per-call (date/time, patient name, KB, channel context)
-    // and stays uncached in a second block appended after it.
-    const dynamicSystemPrompt = [
-      // ── Comment override must come FIRST — before the full Sarah base ─────────
-      ...(channel === 'FACEBOOK_COMMENT' || channel === 'INSTAGRAM_COMMENT' ? [
-        'CRITICAL INSTRUCTION — PUBLIC COMMENT MODE:',
-        `This response will be posted as a PUBLIC comment on a ${channel === 'FACEBOOK_COMMENT' ? 'Facebook Page post' : 'Instagram post'}, visible to all followers. ALL standard response rules are suspended. Only these rules apply:`,
-        '• Write EXACTLY 1-2 SHORT sentences. No lists. No bullet points. No paragraphs.',
-        '• For ANY question about services, prices, appointments, or personal matters: reply only with "Hi! 😊 Send us a DM and we\'ll help you out!"',
-        '• For simple questions about hours or location: answer in one brief sentence only.',
-        '• NEVER list multiple services. NEVER give detailed information publicly.',
-        '• NEVER say "I have noted", "flagged", "Julian will follow up", "the team will", or anything about internal process.',
-        '• Do NOT use tools. Do NOT look up patient records.',
-        '',
-      ] : []),
-      '',
-      `CURRENT DATE/TIME IN KAMPALA: ${eatDateTime}`,
-      `CLINIC STATUS RIGHT NOW: ${isOpen ? 'OPEN' : 'CLOSED'}`,
-      `CLINIC HOURS:\n${hoursTable}`,
-      '',
-      isPlaceholderName
-        ? `PATIENT NAME: unknown — their real name is not on file. If you need to address them or add their name to a booking, ask naturally once: "What's your name? 😊" — NEVER say "your name is showing as...", "on our system...", "in our records...", or quote any internal value. Just ask warmly.`
-        : patientIsMinor && minorPatientContext
-          ? `PATIENT NAME: (minor — see MINOR PATIENT context below — do NOT greet them as "${patientName}", that is the child's name)`
-          : `PATIENT NAME: ${patientName} — address them by this name`,
-      '',
-      ...(minorPatientContext ? [minorPatientContext, ''] : []),
-      ...(guardianContext ? ['GUARDIAN CONTEXT:', guardianContext, ''] : []),
-      ...(channel === 'FACEBOOK' || channel === 'INSTAGRAM' ? [
-        `SOCIAL MEDIA CONTEXT: This person is messaging via ${channel === 'FACEBOOK' ? 'Facebook Messenger' : 'Instagram DM'} — NOT WhatsApp. Never suggest they "WhatsApp us" or call our WhatsApp number to message you. If they need human support, say "drop us a message here and one of our team will reply shortly 😊". If their name is unknown, ask naturally once during the conversation.`,
-        '',
-      ] : []),
-      ...(channel === 'WEBSITE' ? [
-        'WEBSITE VISITOR CONTEXT: This person is chatting via the clinic website widget — not WhatsApp. If their name is unknown (PATIENT NAME shows "there"), and at least one exchange has already happened, naturally ask for their name once: "By the way, what\'s your name? 😊" — do this only once, never repeat it.',
-        '',
-        'CRITICAL RULE — NEVER INVENT INFORMATION:',
-        'Never mention a phone number unless it comes directly from your tools or knowledge base. The ONLY phone number you are allowed to give is the clinic WhatsApp: +256741087667. Never say any other number under any circumstances.',
-        'Never mention a service or price that was not returned by search_services. If search_services did not return a specific service and price, you cannot say it exists.',
-        '',
-        'INSURANCE RULE:',
-        'When asked about insurance, say: "I\'m not sure about our current insurance partnerships — please WhatsApp us on +256741087667 and our team will confirm whether we work with your provider 😊". Never guess or mention specific insurance companies as confirmed partners.',
-        '',
-        'BREVITY RULE FOR WEBSITE:',
-        'Keep responses short — maximum 3 sentences. Do not list multiple services unless specifically asked. Do not mention doctor names unless asked. Do not push to book in every message. Answer the question asked, then stop.',
-        '',
-      ] : []),
-      ...((() => {
-        const DEFAULT_KB = 'Clinic Contact & Hours: Code Clinic is located on Kiira Road, opposite Police Playground, Kamwokya, Kampala. WhatsApp: +256741087667. Phone: +256 394 836 298. Email: dentist@codeclinic.ug. Open Monday to Friday 8am–6pm, Saturday 8am–2pm, closed Sunday.'
-        let entries: string
-        if (kbEntries.length === 0) {
-          entries = DEFAULT_KB
-        } else {
-          const words = latestMessage.toLowerCase().split(/\W+/).filter(w => w.length > 3)
-          const scored = kbEntries
-            .map(e => {
-              const text = `${e.title} ${e.content}`.toLowerCase()
-              const score = words.filter(w => text.includes(w)).length
-              return { e, score }
-            })
-            .sort((a, b) => b.score - a.score)
-          const top = scored.slice(0, 5).map(s => s.e)
-          entries = top.map(e => `${e.title}: ${e.content}`).join('\n\n')
-        }
-        return ['CLINIC KNOWLEDGE BASE (use this for questions about the clinic, services, procedures, policies):', entries, '']
-      })()),
-      'AVAILABLE SERVICES (use search_services to get IDs for check_availability):',
-      menu.services,
-      '',
-      'AVAILABLE DOCTORS (use search_doctors to get IDs for check_availability):',
-      menu.doctors,
-    ].join('\n')
-
-    // Build alternating user/assistant message history from DB
-    const history = dbMessages.filter(m => m.role !== 'SYSTEM')
-    const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
-    for (const m of history) {
-      const role    = m.role === 'USER' ? 'user' : 'assistant'
-      const content = sanitizeForClaude(m.content)
-      const last    = apiMessages[apiMessages.length - 1]
-      if (last && last.role === role) {
-        last.content += '\n' + content
-      } else {
-        apiMessages.push({ role, content })
-      }
-    }
-    // Must start with user
-    while (apiMessages.length > 0 && apiMessages[0].role !== 'user') apiMessages.shift()
-    // Ensure latest user message is present at end
-    if (apiMessages.length === 0 || apiMessages[apiMessages.length - 1].role !== 'user') {
-      apiMessages.push({ role: 'user', content: latestMessage })
-    }
-
-    // If patient wants a human, fire a real WhatsApp alert BEFORE calling Claude
-    // so Sarah's response ("I've passed you to Julian") is accurate
-    if (/talk to|speak to|speak with|talk with|call me|ring me|real person|human|julian|receptionist/i.test(latestMessage)) {
-      const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
-      sendWhatsAppMessage(
-        staffNumber,
-        `👤 Patient requesting human\nPhone: ${from}\nMessage: "${latestMessage.slice(0, 200)}"\n\nPlease follow up via the AI Suite inbox.`
-      ).catch((e: any) => console.error('[V2] Human escalation alert failed:', e?.message))
-    }
-
-    const client         = new Anthropic({ apiKey })
-    const shownSlots: AvailableSlot[] = []
-    const allToolRecords: ToolRecord[] = []
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let messages: any[] = apiMessages
-
-    // Compound requests (e.g. cancel + look up service/doctor + recheck availability
-    // + book) can genuinely need 5-6 sequential tool round-trips before a final
-    // reply. At 4, real bookings were exhausting the cap before ever reaching
-    // book_appointment and falling through to the generic "small issue" fallback —
-    // reproduced from real logs (McKenna Sage, 2026-08-16 ~18:42 UTC): 5 tool calls
-    // (get_patient_appointments, cancel_appointment, search_services,
-    // search_doctors, check_availability) consumed all 4 iterations with no
-    // booking ever attempted.
-    for (let iter = 0; iter < 8; iter++) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response: any = await client.messages.create({
-        model:      'claude-sonnet-5',
-        max_tokens: 1024,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        system: [
-          { type: 'text', text: SARAH_V2_SYSTEM_BASE, cache_control: { type: 'ephemeral' } },
-          { type: 'text', text: dynamicSystemPrompt },
-        ] as any,
-        tools:      V2_TOOLS_CACHED,
-        messages,
-      })
-      console.log(`[AgentV2] usage: in=${response.usage?.input_tokens ?? '?'} (cache_read=${response.usage?.cache_read_input_tokens ?? 0}, cache_write=${response.usage?.cache_creation_input_tokens ?? 0}) out=${response.usage?.output_tokens ?? '?'}`)
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const toolBlocks: any[] = (response.content ?? []).filter((b: any) => b.type === 'tool_use')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const textBlock: any    = (response.content ?? []).find((b: any) => b.type === 'text')
-
-      if (toolBlocks.length === 0) {
-        const rawReply = textBlock ? sanitizeForWhatsApp(textBlock.text as string) : `I'm here to help! Could you rephrase that for me? 😊`
-
-        // Anti-hallucination guard: blocks a reply that claims a booking
-        // succeeded without a matching successful book_appointment call, OR
-        // states a price with no live search_services call behind it this
-        // turn (real incident, 2026-08-27 — Sarah quoted a wrong clear-
-        // aligner price from memory). Always runs now, not just when tools
-        // were called this turn — a price stated with zero tool calls is
-        // exactly the case that needs catching.
-        {
-          const guard = await antiHallucinationGuard(rawReply, allToolRecords)
-          if (!guard.safe) {
-            console.warn(`[GUARD-FIRED] conv=${conversationId} phone=${from} reason="${guard.reason}"`)
-            console.warn(`[GUARD-FIRED] Blocked reply: "${rawReply.slice(0, 120)}"`)
-
-            // Restore slots from Redis if shownSlots was populated cross-turn
-            if (shownSlots.length === 0) {
-              const cachedForRetry = await redis.get(`v2:slots:${conversationId}`).catch(() => null)
-              if (cachedForRetry) {
-                try {
-                  const parsedForRetry = JSON.parse(cachedForRetry) as Array<{
-                    doctorId: string; doctorName: string; serviceId: string
-                    serviceName: string; startAt: string; endAt: string
-                  }>
-                  shownSlots.splice(0, shownSlots.length, ...parsedForRetry.map(s => ({
-                    ...s, startAt: new Date(s.startAt), endAt: new Date(s.endAt),
-                  })))
-                } catch {}
-              }
-            }
-
-            // Auto-retry: attempt to book the top available slot directly
-            if (shownSlots.length > 0) {
-              const topSlot = shownSlots[0]
-              console.warn(`[GUARD-FIRED] Auto-retry slotStartAt=${topSlot.startAt.toISOString()} service=${topSlot.serviceName}`)
-              try {
-                const retryResult = await executeV2Tool(
-                  'book_appointment',
-                  { slotStartAt: topSlot.startAt.toISOString() },
-                  from,
-                  conversationId,
-                  shownSlots,
-                )
-                const retryParsed = JSON.parse(retryResult)
-                if (retryParsed.success === true) {
-                  console.warn(`[GUARD-FIRED] Auto-retry SUCCEEDED apptId=${retryParsed.appointmentId}`)
-                  return sanitizeForWhatsApp(retryParsed.confirmation as string)
-                }
-                if (retryParsed.error === 'NEAR_TERM_DUPLICATE' && retryParsed.sarah_message) {
-                  console.warn(`[GUARD-FIRED] Auto-retry NTD — returning sarah_message verbatim for ${from}`)
-                  return sanitizeForWhatsApp(retryParsed.sarah_message as string)
-                }
-                console.warn(`[GUARD-FIRED] Auto-retry non-success: ${retryResult.slice(0, 150)}`)
-              } catch (retryErr: any) {
-                console.warn(`[GUARD-FIRED] Auto-retry threw: ${retryErr?.message}`)
-              }
-            } else {
-              console.warn(`[GUARD-FIRED] No slots available for auto-retry conv=${conversationId}`)
-            }
-
-            // Retry failed or no slots — hand off to human. Message is
-            // reason-aware: a blocked price quote isn't a booking issue, and
-            // saying "booked" in reply to a price question is exactly the
-            // confusing-AI impression that caused the real complaint.
-            const isPriceIssue = /price/i.test(guard.reason || '')
-            console.warn(`[GUARD-FIRED] Escalating to human conv=${conversationId}`)
-            alertStaffOfConcern({
-              conversationId,
-              patientPhone: from,
-              message: isPriceIssue
-                ? `Pricing hand-off: Sarah was about to quote a price that couldn't be verified against Services (${guard.reason}). Please follow up with the correct price.`
-                : `Booking hand-off: Sarah tried to confirm a booking but could not complete it automatically. Patient was shown available slots and likely expects a confirmation. Please follow up to book them in.`,
-              channel,
-            }).catch((e: any) => console.error('[GUARD-FIRED] alertStaffOfConcern failed:', e?.message))
-            return isPriceIssue
-              ? `Let me double-check that price for you and get one of our team to confirm — they'll be in touch shortly 😊`
-              : `I want to make sure this is booked correctly for you — let me get one of our team to confirm this with you directly, they'll be in touch shortly 😊`
-          }
-        }
-
-        console.log(`[AgentV2] Reply after ${iter} tool round(s) for ${from}: "${rawReply.slice(0, 80)}"`)
-        return rawReply
-      }
-
-      // Append assistant turn and execute all tool calls
-      messages = [...messages, { role: 'assistant', content: response.content }]
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const results: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = []
-      for (const block of toolBlocks) {
-        console.log(`[AgentV2] Tool: ${block.name}(${JSON.stringify(block.input ?? {}).slice(0, 100)})`)
-        const result = await executeV2Tool(
-          block.name as string,
-          (block.input ?? {}) as Record<string, unknown>,
-          from,
-          conversationId,
-          shownSlots,
-          channel
-        )
-        console.log(`[AgentV2] Result: ${result.slice(0, 150)}`)
-        // Structural backstop: NEAR_TERM_DUPLICATE bypasses Claude entirely — return verbatim
-        if (block.name === 'book_appointment') {
-          try {
-            const parsed = JSON.parse(result)
-            if (!parsed.success && parsed.sarah_message) {
-              console.log(`[AgentV2] book_appointment failed (${parsed.error ?? 'unknown'}) — returning sarah_message verbatim for ${from}`)
-              return sanitizeForWhatsApp(parsed.sarah_message as string)
-            }
-          } catch {}
-        }
-        // Track for anti-hallucination guard
-        try { allToolRecords.push({ tool: block.name as string, result: JSON.parse(result) }) } catch {}
-        results.push({ type: 'tool_result', tool_use_id: block.id as string, content: result })
-      }
-      messages = [...messages, { role: 'user', content: results }]
-    }
-
-    return `I ran into a small issue — please try again in a moment and I'll get that sorted for you 😊`
-  } catch (err: any) {
-    console.error('[AgentV2] Error:', err?.message)
-    return `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
-  }
-}
-
 // Model: gpt-5.6-sol, OpenAI's current flagship — deliberately NOT the
 // cost-optimized luna tier used for comment replies. This channel shares the
 // full booking tool set and the anti-hallucination guard with WhatsApp, so
@@ -3204,7 +2689,7 @@ export async function getAgentReplyV2OpenAI(
     const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
     for (const m of history) {
       const role    = m.role === 'USER' ? 'user' : 'assistant'
-      const content = sanitizeForClaude(m.content)
+      const content = sanitizeIncomingMessage(m.content)
       const last    = apiMessages[apiMessages.length - 1]
       if (last && last.role === role) {
         last.content += '\n' + content
@@ -3361,8 +2846,32 @@ export async function getAgentReplyV2OpenAI(
     return `I ran into a small issue — please try again in a moment and I'll get that sorted for you 😊`
   } catch (err: any) {
     console.error('[AgentV2-OpenAI] Error:', err?.message)
+    await escalateOnRepeatedProviderFailure(conversationId, from, channel).catch(
+      (e: any) => console.error('[AgentV2-OpenAI] escalateOnRepeatedProviderFailure failed:', e?.message)
+    )
     return `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
   }
+}
+
+// If the LAST agent turn in this conversation was also this exact provider-
+// failure fallback, two consecutive AI attempts have now failed for the same
+// patient — flag staff so a human picks it up instead of the patient getting
+// the same canned line indefinitely while OpenAI is degraded. Deliberately
+// does not change what the patient receives; only adds a background alert.
+async function escalateOnRepeatedProviderFailure(conversationId: string, from: string, channel?: string): Promise<void> {
+  const lastAgentMsg = await prisma.aiMessage.findFirst({
+    where:   { conversationId, role: 'AGENT' },
+    orderBy: { createdAt: 'desc' },
+    select:  { content: true },
+  })
+  if (lastAgentMsg?.content !== `Sorry, I'm having a small issue right now. Please try again in a moment 😊`) return
+
+  await alertStaffOfConcern({
+    conversationId,
+    patientPhone: from,
+    message: `AI provider failure: two consecutive replies to this patient have failed. Please check in on this conversation directly.`,
+    channel,
+  })
 }
 
 // ── Defense-in-depth: catch a reply that leaked internal reasoning instead of
@@ -3424,129 +2933,10 @@ function validateCommentReply(rawText: string): string | null {
 // Uses a minimal prompt with NO Sarah base — prevents service-listing and
 // internal-process language from leaking into publicly-visible comment replies.
 
-export async function getCommentReply(
-  conversationId: string,
-  text:           string,
-  channel:        'FACEBOOK_COMMENT' | 'INSTAGRAM_COMMENT',
-  fromId:         string,
-  postCaption?:   string,
-): Promise<string> {
-  const FALLBACK = "Hi! 😊 Send us a DM and we'll help you out!"
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return FALLBACK
-
-  // ── EAT date context (UTC+3) ──────────────────────────────────────────────
-  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-  const nowEAT      = new Date(Date.now() + 3 * 60 * 60 * 1000) // shift to EAT
-  const todayIdx    = nowEAT.getUTCDay()
-  const tomorrowIdx = (todayIdx + 1) % 7
-  const todayName   = DAYS[todayIdx]
-  const tomorrowName = DAYS[tomorrowIdx]
-  const hour        = nowEAT.getUTCHours()
-  const isOpenNow   = (todayIdx >= 1 && todayIdx <= 5 && hour >= 8 && hour < 18) ||
-                      (todayIdx === 6 && hour >= 8 && hour < 14)
-  const openStatus  = isOpenNow ? 'currently OPEN' : 'currently CLOSED'
-
-  // ── Conversation history (last 6 messages, skip the one just saved) ───────
-  const recentMsgs = await prisma.aiMessage.findMany({
-    where:   { conversationId },
-    orderBy: { createdAt: 'desc' },
-    take:    7,
-  })
-  // Reverse to chronological order; drop the last (most recent) since it's the
-  // current comment we just stored — it will be passed as the final user turn.
-  const historyMsgs = recentMsgs.slice(1).reverse()
-
-  const platform    = channel === 'FACEBOOK_COMMENT' ? 'Facebook' : 'Instagram'
-  const postContext = postCaption
-    ? `\nThis comment is on a post about: "${postCaption.slice(0, 200)}"\nYou may reference the post topic briefly if it's relevant and helpful.`
-    : ''
-  const system = `You are the Code Clinic social media account writing a reply to a public ${platform} comment.
-This reply will be PUBLICLY VISIBLE to all followers. Keep it short, warm, and professional.
-
-Current date/time: ${todayName}, ${nowEAT.toISOString().slice(0, 10)}, ${String(hour).padStart(2, '0')}:${String(nowEAT.getUTCMinutes()).padStart(2, '0')} EAT. We are ${openStatus}.
-Tomorrow is ${tomorrowName}.
-Opening hours: Mon–Fri 8am–6pm, Sat 8am–2pm, closed Sunday.
-Location: Kiira Road, Kamwokya, Kampala.${postContext}
-
-RULES (mandatory):
-1. Maximum 2 short sentences. No bullet points, no lists, no paragraphs, no bold or asterisks — plain text only.
-2. Answer simple, safe public questions directly and honestly — pricing for a specific service (e.g. "How much for a cleaning?" / "How much are braces?"), hours, location, or whether a service exists. Always call search_services to get the real price before quoting one — never invent a number, and never quote a stale or remembered figure.
-3. Never dump the full price list — if asked broadly what services are offered, name one or two examples (using search_services) and invite a DM for the rest.
-4. Reserve the DM deflection ONLY for things that genuinely need privacy: a specific patient's medical symptoms/concerns, personal contact or scheduling details, complaints, or anything requiring back-and-forth. For those only, reply with: "Hi! 😊 Send us a DM and we'll help you out!"
-5. EDUCATIONAL vs PERSONAL SYMPTOM — only call flag_clinical_concern when the commenter describes THEIR OWN active symptom, pain, or something requiring a real follow-up promise. General "what causes X", "why does Y happen", "how does Z work" questions are dental EDUCATION — answer them warmly in 1-2 sentences using general dental knowledge and do NOT call flag_clinical_concern for them. Also do NOT call flag_clinical_concern for administrative questions like pricing, hours, or general info.
-6. For hours/location/day questions: use the real date context above to answer specifically (e.g. "Yes, we're open on ${tomorrowName}!").
-7. NEVER mention staff names, say "I've noted", "flagged", "the team will follow up", or describe any internal process.
-8. Use friendly language and one emoji where natural.
-9. SCOPE — this account only ever discusses dentistry, Code Clinic's services, or this clinic. If a comment is off-topic, nonsensical, spam, or about anything unrelated to dental care — even something harmless-sounding like relationship advice, a random compliment about something unrelated, or another business — do NOT answer the substance of it. Give a brief, friendly redirect back to dental topics instead, e.g. "Haha, this is Code Clinic's dental page 😊 Any dental questions I can help with?" Never give advice, information, or opinions on non-dental topics, however innocuous it seems.
-10. OUTPUT FORMAT — CRITICAL: wrap ONLY the exact customer-facing text in <reply></reply> tags, e.g. <reply>Yes, we're open Saturdays 8am-2pm! 😊</reply>. Everything inside the tags is posted publicly exactly as written, with no further editing — so it must be pure final prose: no bullet points, no bold, no meta-commentary, no reasoning about which rule applies. If you need to think through the decision (is this in scope? is this educational or personal?), do that OUTSIDE the tags — anything outside <reply></reply> is never posted and is only for your own reasoning.`
-
-  // Build messages array with history for multi-turn context
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let messages: any[] = []
-  for (const msg of historyMsgs) {
-    messages.push({
-      role:    msg.role === 'USER' ? 'user' : 'assistant',
-      content: msg.content,
-    })
-  }
-  messages.push({ role: 'user', content: text })
-
-  const COMMENT_TOOLS = V2_TOOLS.filter(t => t.name === 'search_services' || t.name === 'flag_clinical_concern')
-
-  try {
-    const client = new Anthropic({ apiKey })
-    for (let iter = 0; iter < 3; iter++) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response: any = await client.messages.create({
-        model:      'claude-haiku-4-5-20251001',
-        max_tokens: 300,
-        system,
-        tools:      COMMENT_TOOLS,
-        messages,
-      })
-      console.log(`[${channel}] Claude usage: in=${response.usage?.input_tokens ?? '?'} (cache_read=${response.usage?.cache_read_input_tokens ?? 0}, cache_write=${response.usage?.cache_creation_input_tokens ?? 0}) out=${response.usage?.output_tokens ?? '?'}`)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const toolBlocks: any[] = (response.content ?? []).filter((b: any) => b.type === 'tool_use')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const textBlock: any    = (response.content ?? []).find((b: any) => b.type === 'text')
-
-      if (toolBlocks.length === 0) {
-        const validated = textBlock ? validateCommentReply(textBlock.text) : null
-        if (validated) return validated
-        if (textBlock?.text?.trim()) console.warn(`[${channel}] getCommentReply: discarded an invalid reply: "${textBlock.text.trim().slice(0, 100)}"`)
-        break
-      }
-
-      messages = [...messages, { role: 'assistant', content: response.content }]
-      const results: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = []
-      for (const block of toolBlocks) {
-        console.log(`[${channel}] Comment tool: ${block.name}(${JSON.stringify(block.input ?? {}).slice(0, 100)})`)
-        const result = await executeV2Tool(
-          block.name as string,
-          (block.input ?? {}) as Record<string, unknown>,
-          fromId,
-          conversationId,
-          [],
-          channel,
-        )
-        results.push({ type: 'tool_result', tool_use_id: block.id as string, content: result })
-      }
-      messages = [...messages, { role: 'user', content: results }]
-    }
-  } catch (err: any) {
-    console.error(`[${channel}] getCommentReply error:`, err?.message)
-  }
-  return FALLBACK
-}
-
-// ── Dedicated public comment reply — OpenAI pilot (Phase 1, flagged) ─────────
-// Parallel implementation of getCommentReply on OpenAI's Responses API, gated
-// behind COMMENT_REPLY_PROVIDER=openai (see facebook.routes.ts). Same system
-// prompt content and same two tools (search_services, flag_clinical_concern)
-// as the Claude path, translated into OpenAI's function-calling shape — this
-// is a side-by-side pilot, not a replacement. Reuses executeV2Tool for actual
-// tool execution so business logic isn't duplicated across providers.
+// ── Dedicated public comment reply ────────────────────────────────────────────
+// Same system prompt content and same two tools (search_services,
+// flag_clinical_concern), in OpenAI's function-calling shape. Reuses
+// executeV2Tool for actual tool execution so business logic isn't duplicated.
 //
 // Model: gpt-5.6-luna — OpenAI's current cost-optimized tier (verified against
 // developers.openai.com/api/docs/pricing), chosen because this channel already

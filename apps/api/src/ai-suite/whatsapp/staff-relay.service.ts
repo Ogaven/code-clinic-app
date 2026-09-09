@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { findSoonestAvailableSlot, createAppointment } from '../booking/booking.service'
 import { clearBookingState } from '../booking/booking.state'
 import { sendWhatsAppMessage } from './whatsapp.service'
@@ -119,27 +119,24 @@ export async function handleStaffReply(
       return 'AMBIGUOUS'
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY
+    const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) {
-      console.error('[StaffRelay] Missing ANTHROPIC_API_KEY')
+      console.error('[StaffRelay] Missing OPENAI_API_KEY')
       return 'RELAYED'
     }
 
-    const anthropic = new Anthropic({ apiKey })
-    const res = await anthropic.messages.create({
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      system:     'You are Sarah, a warm dental assistant at Code Clinic in Kampala. Write in plain conversational text only. No em dashes, no asterisks, no markdown.',
-      messages: [{
-        role:    'user',
-        content: `Your colleague at the front desk just told you: "${staffMessage}" regarding a patient who said: "${concernSummary}". Relay this to the patient in your own warm words, as if you just checked with your colleague and came back with an answer. Keep it under 3 sentences.`,
-      }],
+    const openai = new OpenAI({ apiKey })
+    const res = await openai.responses.create({
+      model: 'gpt-5.6-luna',
+      input: [
+        { role: 'system', content: 'You are Sarah, a warm dental assistant at Code Clinic in Kampala. Write in plain conversational text only. No em dashes, no asterisks, no markdown.' },
+        { role: 'user', content: `Your colleague at the front desk just told you: "${staffMessage}" regarding a patient who said: "${concernSummary}". Relay this to the patient in your own warm words, as if you just checked with your colleague and came back with an answer. Keep it under 3 sentences.` },
+      ],
+      max_output_tokens: 200,
     })
 
-    const block     = res.content[0]
-    const relayText = block?.type === 'text'
-      ? block.text.trim()
-      : `Hi ${firstName}, I just checked with my colleague — ${staffMessage}`
+    const relayText = (res.output_text ?? '').trim()
+      || `Hi ${firstName}, I just checked with my colleague — ${staffMessage}`
 
     await sendWhatsAppMessage(patientPhone, relayText)
     await prisma.aiMessage.create({

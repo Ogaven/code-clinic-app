@@ -5,6 +5,7 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     include: ['src/**/*.{test,spec}.ts'],
+    setupFiles: ['src/__tests__/setup/no-real-sends.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

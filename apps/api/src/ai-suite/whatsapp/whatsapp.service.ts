@@ -1,4 +1,4 @@
-import { getAgentReplyV2 } from '../agent/agent.service'
+import { getAgentReplyV2OpenAI } from '../agent/agent.service'
 import { isAgentEnabled, takeoverConversation } from '../takeover/takeover.service'
 import { setBookingState } from '../booking/booking.state'
 import { createEscalation, notifyJulian } from '../../services/agent/guards/escalation'
@@ -529,8 +529,8 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
       }
     }
 
-    // ── 7. Get Sarah's reply from Claude ──────────────────────────────────────
-    const agentReply = await getAgentReplyV2(conversation.id, from, text)
+    // ── 7. Get Sarah's reply from OpenAI ───────────────────────────────────────
+    const agentReply = await getAgentReplyV2OpenAI(conversation.id, from, text)
 
     // ── 7b. Rating detection ─────────────────────────────────────────────────
     // If patient sends a bare 1–5 number (or "X stars"), persist as PatientFeedback.

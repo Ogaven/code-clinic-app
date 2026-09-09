@@ -1,4 +1,4 @@
-import { getAgentReply } from '../agent/agent.service'
+import { getAgentReplyV2OpenAI } from '../agent/agent.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 
@@ -57,7 +57,7 @@ export async function processInboundSMS(from: string, text: string): Promise<voi
     }
 
     // ── 5. Get Sarah's reply ──────────────────────────────────────────────────
-    const agentReply = await getAgentReply(conversation.id, from, text)
+    const agentReply = await getAgentReplyV2OpenAI(conversation.id, from, text, 'SMS')
 
     // ── 6. Persist agent reply ────────────────────────────────────────────────
     await prisma.aiMessage.create({

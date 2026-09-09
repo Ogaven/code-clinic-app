@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk'
 import crypto from 'crypto'
 import { searchKnowledge } from '../knowledge/rag'
 import nodemailer from 'nodemailer'
@@ -815,33 +814,43 @@ async function handle_get_knowledge_base_info() {
   }
 }
 
-// ── TOOL DEFINITIONS (Anthropic format) ────────────────────────
+// ── TOOL DEFINITIONS (OpenAI function-calling format) ───────────
+// Converted 1:1 from the former Anthropic tool schema (same name,
+// description, and JSON-schema parameters) as part of the OpenAI provider
+// cutover — no tool behaviour changed, only the schema wrapper shape.
 
-export const AGENT_TOOLS: Anthropic.Tool[] = [
+export const AGENT_TOOLS = [
   {
+    type: 'function' as const,
     name: 'get_patient_by_phone',
     description: 'ALWAYS call this first when a patient contacts us. Returns full patient profile including balance and upcoming appointments.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         phone_number: { type: 'string', description: 'Phone number in Uganda format e.g. +256700123456 or 0700123456' },
       },
       required: ['phone_number'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'get_patient_appointments',
     description: 'Get all appointments for a patient. Call before discussing any appointment.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: { patient_id: { type: 'string' } },
       required: ['patient_id'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'get_doctor_availability',
     description: 'Check available time slots for a specific doctor on a specific date. Always call before suggesting or confirming any appointment time.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         doctor_id: { type: 'string' },
@@ -849,42 +858,55 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
         duration_minutes: { type: 'number', description: 'Duration of the service in minutes' },
       },
       required: ['doctor_id', 'date', 'duration_minutes'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'get_all_doctors',
     description: 'Get list of all active doctors with working days and specialisations. Call before mentioning any doctor.',
-    input_schema: { type: 'object' as const, properties: {}, required: [] },
+    parameters: { type: 'object' as const, properties: {}, required: [], additionalProperties: false },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'get_doctors_available_today',
     description: "Call when a patient asks who is available today, who they can see, or which doctors have slots. Returns only doctors who are scheduled to work AND have free time that day — live from the database. Call this BEFORE asking which service the patient needs. You do NOT need a service name or duration to use this tool.",
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         date: { type: 'string', description: 'Date in YYYY-MM-DD format. Omit to use today in Kampala time.' },
       },
       required: [],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'get_services',
     description: 'Get all available services with prices and durations. ALWAYS call before mentioning any price.',
-    input_schema: { type: 'object' as const, properties: {}, required: [] },
+    parameters: { type: 'object' as const, properties: {}, required: [], additionalProperties: false },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'get_patient_balance',
     description: 'Get outstanding balance for a patient. Call before discussing any payment.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: { patient_id: { type: 'string' } },
       required: ['patient_id'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'book_appointment',
     description: 'Book an appointment. ONLY call after patient has verbally confirmed ALL details (date, time, doctor, service).',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         patient_id: { type: 'string' },
@@ -895,12 +917,15 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
         notes: { type: 'string', description: 'Optional notes' },
       },
       required: ['patient_id', 'doctor_id', 'service_id', 'date', 'time'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'reschedule_appointment',
     description: 'Reschedule an existing appointment. Only call after patient confirms new date and time.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         appointment_id: { type: 'string' },
@@ -908,51 +933,66 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
         new_time: { type: 'string', description: 'HH:MM (24-hour)' },
       },
       required: ['appointment_id', 'new_date', 'new_time'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'cancel_appointment',
     description: 'Cancel an appointment. Only call after patient explicitly confirms cancellation.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         appointment_id: { type: 'string' },
         reason: { type: 'string', description: 'Optional cancellation reason' },
       },
       required: ['appointment_id'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'confirm_appointment',
     description: 'Mark an appointment as confirmed when patient confirms they will attend.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: { appointment_id: { type: 'string' } },
       required: ['appointment_id'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'get_agent_memory',
     description: 'ALWAYS call this after get_patient_by_phone. Loads interaction history so you remember the patient across sessions.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: { patient_id: { type: 'string' } },
       required: ['patient_id'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'search_knowledge_base',
     description: 'Search the clinic knowledge base for answers to questions. Use before answering any FAQ. If confidence is low, escalate.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: { query: { type: 'string', description: 'The question to search for' } },
       required: ['query'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'create_patient',
     description: 'Create a new patient profile when they are not found in the system.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         full_name: { type: 'string' },
@@ -961,12 +1001,15 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
         date_of_birth: { type: 'string', description: 'YYYY-MM-DD' },
       },
       required: ['full_name', 'phone'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'escalate_to_human',
     description: 'IMMEDIATELY escalate when: cannot answer, patient is upset, request is outside scope, tool returns error, dental emergency, or anything uncertain.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         reason: { type: 'string', description: 'Why are you escalating?' },
@@ -974,12 +1017,15 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
         channel: { type: 'string', enum: ['VOICE', 'WHATSAPP'] },
       },
       required: ['reason', 'urgency', 'channel'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'save_interaction_memory',
     description: 'Call at the END of every interaction to save what happened. This is mandatory — every interaction must be remembered.',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         patient_id: { type: 'string', description: 'Patient ID (optional if unknown caller)' },
@@ -991,12 +1037,16 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
         agent_mode: { type: 'string' },
       },
       required: ['phone_number', 'channel', 'interaction_type', 'summary', 'outcome', 'agent_mode'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'get_knowledge_base_info',
     description: 'Get basic clinic information (location, hours, payment methods, contact). Call when patient asks general questions about the clinic.',
-    input_schema: { type: 'object' as const, properties: {}, required: [] },
+    parameters: { type: 'object' as const, properties: {}, required: [], additionalProperties: false },
+    strict: false,
   },
 ]
 

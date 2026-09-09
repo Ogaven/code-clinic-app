@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachable } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { getGreetingName, guardianTitle, isMinor, normalizeRelation } from '../../utils/nameHelper'
@@ -58,7 +58,7 @@ async function generatePersonalizedFollowup(params: {
   guardianAddress?: string
   childName?: string
 }): Promise<string | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return null
 
   const noteSection = params.noteContent && params.noteContent.trim().length >= 20
@@ -89,17 +89,13 @@ Rules:
 - Output ONLY the message text, nothing else`
 
   try {
-    const client = new Anthropic({ apiKey })
-    const response = await client.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
+    const client = new OpenAI({ apiKey })
+    const response = await client.responses.create({
+      model: 'gpt-5.6-luna',
+      input: [{ role: 'user', content: prompt }],
+      max_output_tokens: 300,
     })
-    const text = response.content
-      .filter(b => b.type === 'text')
-      .map(b => (b as any).text)
-      .join('')
-      .trim()
+    const text = (response.output_text ?? '').trim()
     return text || null
   } catch (err: any) {
     console.error('[PersonalizedFollowup] Failed:', err?.message || err)

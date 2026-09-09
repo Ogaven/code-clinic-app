@@ -1,11 +1,11 @@
 import { Router } from 'express'
 import { AppointmentStatus } from '@prisma/client'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
 
-const router  = Router()
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const router = Router()
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 function kampalaDay(offsetDays = 0) {
   const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
@@ -98,27 +98,33 @@ async function send_notification(target_role: string, message: string, fromUserI
   return { success: true, message: `Notification sent to ${recipients.length} ${target_role} user(s)` }
 }
 
-// ── Tool definitions for Claude ───────────────────────────────
+// ── Tool definitions (OpenAI function-calling format) ─────────
 
-const TOOLS: Anthropic.Tool[] = [
+const TOOLS = [
   {
+    type: 'function' as const,
     name: 'get_today_stats',
     description: 'Get today\'s clinic statistics: appointment counts, AI agent status, escalations',
-    input_schema: { type: 'object' as const, properties: {}, required: [] },
+    parameters: { type: 'object' as const, properties: {}, required: [], additionalProperties: false },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'search_patients',
     description: 'Search for patients by name, phone, or email',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: { query: { type: 'string', description: 'Search term' } },
       required: ['query'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'create_appointment',
     description: 'Create a new appointment for a patient',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         patient_id:  { type: 'string', description: 'Patient ID' },
@@ -127,58 +133,75 @@ const TOOLS: Anthropic.Tool[] = [
         datetime:    { type: 'string', description: 'ISO 8601 datetime string' },
       },
       required: ['patient_id', 'doctor_id', 'service_id', 'datetime'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'update_appointment_status',
     description: 'Update the status of an appointment (CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW)',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         appointment_id: { type: 'string' },
         status:         { type: 'string' },
       },
       required: ['appointment_id', 'status'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'pause_agent',
     description: 'Pause an AI agent by type (e.g. BOOKING, REMINDER, FOLLOWUP)',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: { agent_type: { type: 'string' } },
       required: ['agent_type'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'send_notification',
     description: 'Send an in-app notification to staff by role (ADMIN, DOCTOR, ACCOUNTS)',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: {
         target_role: { type: 'string' },
         message:     { type: 'string' },
       },
       required: ['target_role', 'message'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'open_page',
     description: 'Navigate the user to a different page in the app',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: { route: { type: 'string', description: 'App route e.g. /receptionist/patients' } },
       required: ['route'],
+      additionalProperties: false,
     },
+    strict: false,
   },
   {
+    type: 'function' as const,
     name: 'highlight_element',
     description: 'Highlight a specific UI element to guide the user',
-    input_schema: {
+    parameters: {
       type: 'object' as const,
       properties: { element_id: { type: 'string' }, label: { type: 'string' } },
       required: ['element_id'],
+      additionalProperties: false,
     },
+    strict: false,
   },
 ]
 
@@ -199,17 +222,18 @@ async function executeTool(name: string, input: any, userId: string, userName: s
 // ── POST /assistant/chat ──────────────────────────────────────
 
 router.post('/chat', requireAuth, async (req, res) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey || apiKey === 'sk-ant-...') {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) {
     res.json({
-      content: "I'm Sarah, Code Clinic's AI assistant! To enable my full capabilities, please add your Anthropic API key to the .env file as ANTHROPIC_API_KEY. Once configured, I can answer questions, book appointments, and much more!",
+      content: "I'm Sarah, Code Clinic's AI assistant! To enable my full capabilities, please add your OpenAI API key to the .env file as OPENAI_API_KEY. Once configured, I can answer questions, book appointments, and much more!",
       clientActions: [],
     })
     return
   }
 
   try {
-    const { messages, context } = req.body
+    // Client sends prior turns as simple { role, content } pairs — provider-neutral.
+    const { messages, context } = req.body as { messages: Array<{ role: string; content: string }>; context?: { page?: string } }
     const user = req.user!
     const userName = `${user.firstName} ${user.lastName}`
 
@@ -246,50 +270,42 @@ When asked to perform an action that modifies data (book appointment, mark as co
 
 When using open_page or highlight_element tools, explain what you're doing in natural language.`
 
-    // First API call
-    const firstResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 1024,
-      system: systemPrompt,
-      tools: TOOLS,
-      messages,
-    })
-    console.log(`[ASSISTANT] call1 in=${firstResponse.usage.input_tokens} out=${firstResponse.usage.output_tokens}`)
-
     const clientActions: any[] = []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let input: any[] = [
+      { role: 'system', content: systemPrompt },
+      ...messages,
+    ]
 
-    if (firstResponse.stop_reason === 'tool_use') {
-      // Execute all tool calls
-      const toolUseBlocks = firstResponse.content.filter(b => b.type === 'tool_use') as Anthropic.ToolUseBlock[]
-      const toolResults: Anthropic.MessageParam = {
-        role: 'user',
-        content: await Promise.all(toolUseBlocks.map(async (block) => {
-          const { result, clientAction } = await executeTool(block.name, block.input, user.id, userName)
-          if (clientAction) clientActions.push(clientAction)
-          return {
-            type: 'tool_result' as const,
-            tool_use_id: block.id,
-            content: JSON.stringify(result),
-          }
-        })),
+    for (let iter = 0; iter < 4; iter++) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response: any = await openai.responses.create({
+        model: 'gpt-5.6-sol',
+        input,
+        tools: TOOLS,
+        max_output_tokens: 1024,
+      })
+      console.log(`[ASSISTANT] call${iter + 1} in=${response.usage?.input_tokens ?? '?'} out=${response.usage?.output_tokens ?? '?'}`)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolCalls: any[] = (response.output ?? []).filter((o: any) => o.type === 'function_call')
+
+      if (toolCalls.length === 0) {
+        res.json({ content: response.output_text || '', clientActions })
+        return
       }
 
-      // Second call with tool results
-      const finalResponse = await anthropic.messages.create({
-        model: 'claude-sonnet-5',
-        max_tokens: 1024,
-        system: systemPrompt,
-        tools: TOOLS,
-        messages: [...messages, { role: 'assistant', content: firstResponse.content }, toolResults],
-      })
-      console.log(`[ASSISTANT] call2 in=${finalResponse.usage.input_tokens} out=${finalResponse.usage.output_tokens}`)
-
-      const text = finalResponse.content.find(b => b.type === 'text') as Anthropic.TextBlock | undefined
-      res.json({ content: text?.text || 'Done!', clientActions })
-    } else {
-      const text = firstResponse.content.find(b => b.type === 'text') as Anthropic.TextBlock | undefined
-      res.json({ content: text?.text || '', clientActions })
+      input = [...input, ...response.output]
+      for (const call of toolCalls) {
+        let args: any = {}
+        try { args = JSON.parse(call.arguments || '{}') } catch { /* leave empty on parse failure */ }
+        const { result, clientAction } = await executeTool(call.name, args, user.id, userName)
+        if (clientAction) clientActions.push(clientAction)
+        input.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result) })
+      }
     }
+
+    res.json({ content: 'Done!', clientActions })
   } catch (e: any) {
     console.error('[ASSISTANT]', e.message)
     res.status(500).json({ error: 'Assistant unavailable', content: 'Sorry, I ran into an issue. Please try again! 🙏' })

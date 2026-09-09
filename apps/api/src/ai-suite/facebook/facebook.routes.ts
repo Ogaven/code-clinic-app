@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import * as fs from 'fs'
-import { getAgentReplyV2, getCommentReply, getCommentReplyOpenAI } from '../agent/agent.service'
+import { getAgentReplyV2OpenAI, getCommentReplyOpenAI } from '../agent/agent.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 import { maybeNotifyStaff } from '../whatsapp/whatsapp.service'
@@ -316,15 +316,12 @@ export async function processComment(
       return
     }
 
-    // Live go-live (2026-08-26): COMMENT_REPLY_PROVIDER=openai on production.
-    // Scoped to this file only — WhatsApp, website widget, and every other
-    // channel are untouched and remain on Claude regardless of this flag.
-    const usingOpenAI = process.env.COMMENT_REPLY_PROVIDER === 'openai'
-    const reply = usingOpenAI
-      ? await getCommentReplyOpenAI(conversation.id, text, channel, fromId, postCaption ?? undefined)
-      : await getCommentReply(conversation.id, text, channel, fromId, postCaption ?? undefined)
+    // OpenAI is the only comment-reply provider now (live since 2026-08-26,
+    // formerly gated behind COMMENT_REPLY_PROVIDER — Anthropic cut over
+    // entirely as of the provider hotfix, so this call is unconditional).
+    const reply = await getCommentReplyOpenAI(conversation.id, text, channel, fromId, postCaption ?? undefined)
 
-    if (usingOpenAI) logOpenAICommentReply(channel, fromId, text, reply)
+    logOpenAICommentReply(channel, fromId, text, reply)
 
     await prisma.aiMessage.create({
       data: {
@@ -465,7 +462,7 @@ export async function processSocialMessage(
       return
     }
 
-    const reply = await getAgentReplyV2(conversation.id, senderId, text, channel)
+    const reply = await getAgentReplyV2OpenAI(conversation.id, senderId, text, channel)
 
     await prisma.aiMessage.create({
       data: { conversationId: conversation.id, role: 'AGENT', content: reply },

@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { requireAuth } from '../middleware/auth'
 import { adminAndReceptionist } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
@@ -9,7 +9,7 @@ import { sendWhatsAppMessage, sendWhatsAppMessageDirect, sendWhatsAppTemplate } 
 const KENYA_PHONE_NUMBER_ID = '1163288503545718'
 const BIRTHDAY_TEMPLATE     = 'cc_birthday_greeting'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 const router = Router()
 
@@ -199,7 +199,7 @@ router.get('/birthdays/today', requireAuth, adminAndReceptionist, async (_req, r
   }
 })
 
-// POST /campaigns/birthdays/:patientId/generate — Claude-drafted birthday message body
+// POST /campaigns/birthdays/:patientId/generate — AI-drafted birthday message body
 // Returns ONLY the middle personalized section — the template wrapper (greeting +
 // clinic signature) is added automatically on send.
 router.post('/birthdays/:patientId/generate', requireAuth, adminAndReceptionist, async (req, res) => {
@@ -222,10 +222,9 @@ router.post('/birthdays/:patientId/generate', requireAuth, adminAndReceptionist,
       ? `\nStyle/tone guidance from staff: "${styleHint.trim()}"`
       : ''
 
-    const response = await anthropic.messages.create({
-      model:      'claude-sonnet-5',
-      max_tokens: 200,
-      messages:   [{
+    const response = await openai.responses.create({
+      model: 'gpt-5.6-luna',
+      input: [{
         role:    'user',
         content: `Write the personalized body of a birthday WhatsApp message for a dental clinic patient named ${patient.firstName}${ageStr}. The clinic is Code Clinic in Kampala, Uganda.
 
@@ -235,10 +234,10 @@ Include a warm personal touch and a gentle promotional nudge (e.g. a complimenta
 
 Plain text only — no markdown, no asterisks, no bullet points.`,
       }],
+      max_output_tokens: 200,
     })
 
-    const block = response.content[0]
-    const draft = block?.type === 'text' ? block.text.trim() : null
+    const draft = (response.output_text ?? '').trim() || null
     if (!draft) { res.status(500).json({ error: 'No response from AI' }); return }
 
     res.json({ draft })

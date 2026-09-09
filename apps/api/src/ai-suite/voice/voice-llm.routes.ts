@@ -14,11 +14,10 @@
 //     "custom_llm_extra_body": { "caller_phone": "256...", "call_id": "..." }
 //   }
 //
-// We run our unified Claude agent (with all 16 tools) and return an
+// We run our unified OpenAI agent (with all 16 tools) and return an
 // OpenAI-format response.
 
 import { Router }    from 'express'
-import Anthropic     from '@anthropic-ai/sdk'
 import { prisma }    from '../../lib/prisma'
 import { runAgent }  from '../../services/agent/unified-agent'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
@@ -75,7 +74,7 @@ router.post('/llm', async (req, res) => {
       }).catch(() => null)
     }
 
-    // ── Run Claude agent ────────────────────────────────────────────────────
+    // ── Run OpenAI agent ─────────────────────────────────────────────────────
     const agentResponse = await runAgent({
       phoneNumber:      callerPhone,
       channel:          'VOICE',
@@ -116,7 +115,7 @@ function openAiResponse(content: string, id: string) {
     id:      `chatcmpl-${id}`,
     object:  'chat.completion',
     created: Math.floor(Date.now() / 1000),
-    model:   'claude-sonnet-5',
+    model:   'gpt-5.6-sol',
     choices: [{
       index:         0,
       message:       { role: 'assistant', content },

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import * as fs from 'fs'
 import { processInbound, sendWhatsAppMessage } from './whatsapp.service'
 import { enqueueMessage } from './message-buffer'
@@ -7,8 +7,8 @@ import { handleStaffReply, STAFF_NUMBER, type AlertMeta } from './staff-relay.se
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 
-const router    = Router()
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const router = Router()
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 // ── Log conversation + send reply without going through full processInbound ──────
 async function sendDirectReply(from: string, inboundText: string, reply: string, wamid: string): Promise<void> {
@@ -276,35 +276,37 @@ router.post('/webhook', async (req: Request, res: Response) => {
             continue
           }
 
-          // ── Image → Claude vision → Sarah's direct response ─────────────────
+          // ── Image → OpenAI vision → Sarah's direct response ──────────────────
           if (msg.type === 'image' && msg.image?.id) {
             let handled = false
             try {
               const media = await downloadWhatsAppMedia(msg.image.id)
               if (media) {
                 const base64   = Buffer.from(media.buffer).toString('base64')
-                const mimeType = (media.mimeType || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
+                const mimeType = media.mimeType || 'image/jpeg'
 
-                const visionRes = await anthropic.messages.create({
-                  model:      'claude-sonnet-5',
-                  max_tokens: 300,
-                  system:     'You are Sarah, a dental clinic assistant at Code Clinic in Kampala Uganda. A patient sent you an image. Look at it carefully. If it shows a dental concern (tooth pain, swelling, broken tooth, cavity, gum issue, etc), acknowledge what you see, show empathy, and suggest they book an appointment. If it is not dental related, respond warmly and ask how you can help. Keep response under 150 words, plain text, no markdown, no asterisks.',
-                  messages: [{
-                    role:    'user',
-                    content: [{ type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } }],
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const visionRes: any = await openai.responses.create({
+                  model: 'gpt-5.6-luna',
+                  input: [{
+                    role: 'user',
+                    content: [
+                      { type: 'input_text', text: 'You are Sarah, a dental clinic assistant at Code Clinic in Kampala Uganda. A patient sent you an image. Look at it carefully. If it shows a dental concern (tooth pain, swelling, broken tooth, cavity, gum issue, etc), acknowledge what you see, show empathy, and suggest they book an appointment. If it is not dental related, respond warmly and ask how you can help. Keep response under 150 words, plain text, no markdown, no asterisks.' },
+                      { type: 'input_image', image_url: `data:${mimeType};base64,${base64}`, detail: 'auto' },
+                    ],
                   }],
+                  max_output_tokens: 300,
                 })
 
-                const block = visionRes.content[0]
-                const reply = block?.type === 'text' ? block.text : null
+                const reply = (visionRes.output_text ?? '').trim() || null
                 if (reply) {
-                  console.log('[Claude Vision] replied:', reply.slice(0, 80))
+                  console.log('[OpenAI Vision] replied:', reply.slice(0, 80))
                   await sendDirectReply(from, '[Patient sent an image]', reply, msg.id)
                   handled = true
                 }
               }
             } catch (err) {
-              console.warn('[Claude Vision] failed:', err)
+              console.warn('[OpenAI Vision] failed:', err)
             }
 
             if (!handled) {
@@ -318,7 +320,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
             continue
           }
 
-          // ── Document / PDF → pdf-parse → Claude → Sarah's response ──────────
+          // ── Document / PDF → pdf-parse → OpenAI → Sarah's response ──────────
           if (msg.type === 'document' && msg.document?.id) {
             let handled = false
             try {
@@ -337,18 +339,17 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 }
 
                 if (extractedText) {
-                  const docRes = await anthropic.messages.create({
-                    model:      'claude-sonnet-5',
-                    max_tokens: 200,
-                    messages: [{
+                  const docRes = await openai.responses.create({
+                    model: 'gpt-5.6-luna',
+                    input: [{
                       role:    'user',
                       content: `A patient sent a document with this content: ${extractedText}\n\nYou are Sarah, a friendly dental clinic assistant at Code Clinic in Kampala Uganda. Respond helpfully in context of dental care. Plain text only, no markdown, no asterisks, no bullet points.`,
                     }],
+                    max_output_tokens: 200,
                   })
-                  const block = docRes.content[0]
-                  const reply = block?.type === 'text' ? block.text : null
+                  const reply = (docRes.output_text ?? '').trim() || null
                   if (reply) {
-                    console.log('[Document] Claude replied:', reply.slice(0, 80))
+                    console.log('[Document] OpenAI replied:', reply.slice(0, 80))
                     await sendDirectReply(from, `[Patient sent a document: ${filename || 'file'}]`, reply, msg.id)
                     handled = true
                   }

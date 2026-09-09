@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma'
-import { getWebsiteAgentReply } from '../ai-suite/website/website.agent'
+import { getAgentReplyV2OpenAI } from '../ai-suite/agent/agent.service'
 
 const router = Router()
 
@@ -68,7 +68,7 @@ router.post('/message', async (req, res) => {
       data: { conversationId: conv.id, role: 'USER', content: message },
     })
 
-    const reply = await getWebsiteAgentReply(conv.id, sessionId, message)
+    const reply = await getAgentReplyV2OpenAI(conv.id, sessionId, message, 'WEBSITE')
 
     await prisma.aiMessage.create({
       data: { conversationId: conv.id, role: 'AGENT', content: reply },

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { requireAuth } from '../../middleware/auth'
 import { clinicalStaff } from '../../middleware/rbac'
 import { prisma } from '../../lib/prisma'
@@ -7,21 +7,19 @@ import { retrieveSharedClinicKnowledge } from './shared-retrieval'
 
 const router = Router()
 
-// PROVIDER ARCHITECTURE — audited before writing this: there is no shared
-// Anthropic/provider wrapper anywhere in this codebase to reuse. `new
-// Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })` is instantiated
-// independently in 16 different files (agent.service.ts x5, unified-agent.ts,
-// website.agent.ts, staff-relay.service.ts, followup.service.ts,
-// whatsapp.routes.ts, routes/agent.ts, routes/assistant.ts,
-// routes/campaigns.ts, routes/clinical.ts, services/knowledge/rag.ts) — every
-// AI feature in this app builds its own client the same way this file does.
-// That IS the actual "provider architecture." The alternative — reusing one
-// of getAgentReplyV2/getCommentReplyOpenAI/runAgent directly — was rejected:
+// PROVIDER ARCHITECTURE — there is no shared LLM-client wrapper anywhere in
+// this codebase; every AI feature independently instantiates its own client
+// (originally Anthropic, cut over to OpenAI in the 2026-09-07 provider
+// migration — see agent.service.ts, unified-agent.ts, staff-relay.service.ts,
+// followup.service.ts, whatsapp.routes.ts, routes/agent.ts, routes/assistant.ts,
+// routes/campaigns.ts, routes/clinical.ts, services/knowledge/rag.ts). That IS
+// the actual "provider architecture." The alternative — reusing one of
+// getAgentReplyV2OpenAI/getCommentReplyOpenAI/runAgent directly — was rejected:
 // those are tightly coupled to patient/conversation records, channel-specific
 // persona rules and booking tools, and forcing an internal staff tool through
 // that pipeline (or modifying it to add a "training mode") would risk the
 // production patient agent, which this task explicitly must not touch.
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI KNOWLEDGE TRAINING STUDIO
@@ -288,14 +286,15 @@ router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Respo
 
     let reply: string
     try {
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-5',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: providerMessages,
+      const response = await openai.responses.create({
+        model: 'gpt-5.6-sol',
+        input: [
+          { role: 'system', content: systemPrompt },
+          ...providerMessages,
+        ],
+        max_output_tokens: 1024,
       })
-      const block = response.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
-      reply = block?.text || "Sorry, I couldn't generate a response."
+      reply = response.output_text || "Sorry, I couldn't generate a response."
     } catch (err: any) {
       console.error('[Knowledge Studio] chat error:', err.message)
       // The USER turn (new or retried) stays persisted exactly as it was —

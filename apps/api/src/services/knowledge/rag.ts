@@ -1,5 +1,4 @@
 import OpenAI from 'openai'
-import Anthropic from '@anthropic-ai/sdk'
 import fs from 'fs'
 import { prisma } from '../../lib/prisma'
 
@@ -7,10 +6,6 @@ import { prisma } from '../../lib/prisma'
 function getOpenAI(): OpenAI {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured')
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-}
-
-function getAnthropic(): Anthropic {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 }
 
 // ── Embedding ────────────────────────────────────────────────────
@@ -159,35 +154,29 @@ export async function ingestAudioTranscript(
   }
 }
 
-// ── Ingest image (via Claude Vision) ───────────────────────────
+// ── Ingest image (via OpenAI Vision) ────────────────────────────
 
 export async function ingestImage(
   buffer: Buffer,
   title: string,
   r2Key: string
 ): Promise<string> {
-  const anthropic = getAnthropic()
+  const openai = getOpenAI()
   const base64 = buffer.toString('base64')
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-5',
-    max_tokens: 2048,
-    messages: [{
+  const response = await openai.responses.create({
+    model: 'gpt-5.6-sol',
+    input: [{
       role: 'user',
       content: [
-        {
-          type: 'image',
-          source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
-        },
-        {
-          type: 'text',
-          text: 'Please extract and describe all text, information, and content from this image in detail. Include any prices, names, dates, procedures, or clinic information you can see.',
-        },
+        { type: 'input_text', text: 'Please extract and describe all text, information, and content from this image in detail. Include any prices, names, dates, procedures, or clinic information you can see.' },
+        { type: 'input_image', image_url: `data:image/jpeg;base64,${base64}`, detail: 'auto' },
       ],
     }],
+    max_output_tokens: 2048,
   })
 
-  const extracted = (response.content[0] as any).text || ''
+  const extracted = response.output_text || ''
   return ingestText(title, extracted, 'IMAGE', r2Key)
 }
 

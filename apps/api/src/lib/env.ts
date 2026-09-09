@@ -19,7 +19,7 @@ const envSchema = z.object({
   APP_URL:  z.string().min(1).default('http://localhost:3000'),
 
   // AI (required for chat features)
-  ANTHROPIC_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
 
   // Optional services — app degrades gracefully when absent
   REDIS_URL:            z.string().optional(),

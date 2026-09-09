@@ -1,13 +1,23 @@
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { routeAgentContext } from './agent-router'
 import { buildSystemPrompt } from './agent-prompt'
 import { AGENT_TOOLS, executeAgentTool, ToolContext } from './agent-tools'
 import { antiHallucinationGuard, ToolRecord } from './guards/anti-hallucination'
 import { shouldEscalate, getEscalationUrgency, createEscalation, getSafeEscalationResponse } from './guards/escalation'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+// Model choice mirrors the DM/comment-reply cutover: this path drives real
+// bookings/cancellations over voice and WhatsApp test calls, so it gets the
+// flagship tier rather than the cost-optimized one used for comment replies.
+const MODEL = 'gpt-5.6-sol'
 
 // ── Agent run params ──────────────────────────────────────────
+
+export interface AgentMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
 
 export interface AgentRunParams {
   phoneNumber: string
@@ -15,7 +25,7 @@ export interface AgentRunParams {
   direction: 'INBOUND' | 'OUTBOUND'
   incomingMessage?: string
   outboundQueueId?: string
-  conversationHistory?: Anthropic.MessageParam[]
+  conversationHistory?: AgentMessage[]
 }
 
 export interface AgentRunResult {
@@ -23,21 +33,11 @@ export interface AgentRunResult {
   escalated: boolean
 }
 
-// ── Extract text from Claude response ─────────────────────────
-
-function extractText(content: Anthropic.ContentBlock[]): string {
-  return content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map(b => b.text)
-    .join('\n')
-    .trim()
-}
-
 // ── Main agent runner ─────────────────────────────────────────
 
 export async function runAgent(params: AgentRunParams): Promise<AgentRunResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey || apiKey.startsWith('sk-ant-...') || apiKey === '') {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) {
     return {
       text: "Hello! I'm Sarah from Code Clinic. Our AI system is currently being configured. Please call us directly at 0205477000 and our team will be happy to help you!",
       escalated: false,
@@ -74,18 +74,14 @@ export async function runAgent(params: AgentRunParams): Promise<AgentRunResult> 
     channel: params.channel,
   }
 
-  // 4. Build initial messages
-  const initialMessage: Anthropic.MessageParam = {
-    role: 'user',
-    content: params.incomingMessage || '[Call started — begin the conversation]',
-  }
-
-  let messages: Anthropic.MessageParam[] = [
+  // 4. Build initial input — system prompt + history + the incoming message
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let input: any[] = [
+    { role: 'system', content: systemPrompt },
     ...(params.conversationHistory || []),
-    ...(params.conversationHistory?.length ? [] : [initialMessage]),
   ]
   if (!params.conversationHistory?.length) {
-    messages = [initialMessage]
+    input.push({ role: 'user', content: params.incomingMessage || '[Call started — begin the conversation]' })
   }
 
   // 5. Multi-round tool-use loop (max 5 rounds)
@@ -94,65 +90,54 @@ export async function runAgent(params: AgentRunParams): Promise<AgentRunResult> 
   const MAX_ROUNDS = 5
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 1024,
-      system: systemPrompt,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const response: any = await openai.responses.create({
+      model: MODEL,
+      input,
       tools: AGENT_TOOLS,
-      messages,
+      max_output_tokens: 1024,
     })
 
-    if (response.stop_reason !== 'tool_use') {
-      // Done — extract final response
-      finalText = extractText(response.content)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toolCalls: any[] = (response.output ?? []).filter((o: any) => o.type === 'function_call')
+
+    if (toolCalls.length === 0) {
+      finalText = (response.output_text ?? '').trim()
       break
     }
 
+    input = [...input, ...response.output]
+
     // Process all tool calls in this round
-    const toolUseBlocks = response.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
-    )
+    for (const call of toolCalls) {
+      let args: any = {}
+      try { args = JSON.parse(call.arguments || '{}') } catch { /* leave empty on parse failure */ }
 
-    const toolResultContents: Anthropic.ToolResultBlockParam[] = await Promise.all(
-      toolUseBlocks.map(async (block) => {
-        const result = await executeAgentTool(block.name, block.input, toolCtx, {
-          transcript: params.conversationHistory
-            ?.filter(m => m.role === 'user')
-            .map(m => typeof m.content === 'string' ? m.content : '')
-            .join('\n'),
-        })
-
-        allToolRecords.push({ tool: block.name, result })
-
-        return {
-          type: 'tool_result' as const,
-          tool_use_id: block.id,
-          content: JSON.stringify(result),
-        }
+      const result = await executeAgentTool(call.name, args, toolCtx, {
+        transcript: params.conversationHistory
+          ?.filter(m => m.role === 'user')
+          .map(m => m.content)
+          .join('\n'),
       })
-    )
 
-    // Anti-hallucination check after tool execution (skip on intermediate rounds)
-    // We check the final response, not intermediate tool calls
+      allToolRecords.push({ tool: call.name, result })
+      input.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result) })
+    }
 
-    // Append assistant response + tool results to message history
-    messages = [
-      ...messages,
-      { role: 'assistant', content: response.content },
-      { role: 'user', content: toolResultContents },
-    ]
-
-    // If last round and still tool_use, force a final answer
+    // If last round and still calling tools, force a final answer
     if (round === MAX_ROUNDS - 1) {
-      const finalResponse = await anthropic.messages.create({
-        model: 'claude-sonnet-5',
-        max_tokens: 512,
-        system: systemPrompt + '\n\nIMPORTANT: You have reached the tool call limit. Give your final response to the patient now.',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const finalResponse: any = await openai.responses.create({
+        model: MODEL,
+        input: [
+          ...input,
+          { role: 'system', content: 'IMPORTANT: You have reached the tool call limit. Give your final response to the patient now.' },
+        ],
         tools: AGENT_TOOLS,
-        tool_choice: { type: 'none' } as any,
-        messages,
+        tool_choice: 'none',
+        max_output_tokens: 512,
       })
-      finalText = extractText(finalResponse.content)
+      finalText = (finalResponse.output_text ?? '').trim()
     }
   }
 
@@ -187,7 +172,7 @@ export async function runAgent(params: AgentRunParams): Promise<AgentRunResult> 
 // Used by WhatsApp channel for multi-turn conversations
 
 export async function continueAgent(
-  params: AgentRunParams & { conversationHistory: Anthropic.MessageParam[] }
+  params: AgentRunParams & { conversationHistory: AgentMessage[] }
 ): Promise<AgentRunResult> {
   return runAgent(params)
 }

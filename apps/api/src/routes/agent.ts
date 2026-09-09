@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import { requireAuth } from '../middleware/auth'
@@ -12,8 +12,8 @@ import { runAgent } from '../services/agent/unified-agent'
 import { prisma } from '../lib/prisma'
 import { normalizePhone, phoneVariants } from '../utils/phone'
 
-const router    = Router()
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const router = Router()
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 // ════════════════════════════════════════════
 // WHATSAPP
@@ -76,7 +76,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
     // webhooks for the same message collapse to one processing call in the buffer.
     const msgId     = body.gatewayId || body.id || body.messageId || body.data?.id || ''
 
-    // Neutral fallbacks — used only when Claude processing fails
+    // Neutral fallbacks — used only when AI media processing fails
     const MEDIA_DESCRIPTIONS: Record<string, string> = {
       Image:    '[Patient sent an image]',
       Audio:    '[Patient sent a voice note]',
@@ -86,7 +86,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
     }
     let text = rawText || MEDIA_DESCRIPTIONS[mediaType] || ''
 
-    // ── Audio / Voice note → OGG→MP3 via FFmpeg → Claude transcription ───────
+    // ── Audio / Voice note → OGG→MP3 via FFmpeg → OpenAI Whisper transcription ─
     if (mediaType === 'Audio' || mediaType === 'Voice') {
       console.log('[Sarah Media]', mediaType, 'from', rawFrom)
       const audioUrl = body.body?.url || body.url || body.mediaUrl || body.audioUrl
@@ -145,12 +145,12 @@ router.post('/whatsapp/webhook', async (req, res) => {
         } catch (err: any) {
           console.error('[AT Audio] FULL ERROR:', err)
           console.error('[AT Audio] Error stack:', err?.stack)
-          console.error('[Claude Audio] AT transcription failed:', err?.message || err)
+          console.error('[Whisper] AT transcription failed:', err?.message || err)
         }
       }
     }
 
-    // ── Image → Claude vision → inline display + description for Sarah ─────────
+    // ── Image → OpenAI vision → inline display + description for Sarah ─────────
     if (mediaType === 'Image') {
       const imageUrl = body.body?.url || body.url || body.mediaUrl || body.imageUrl
       console.log('[Sarah Media]', 'Image', 'from', rawFrom)
@@ -162,25 +162,26 @@ router.post('/whatsapp/webhook', async (req, res) => {
           const ct       = dlRes.headers.get('content-type') || 'image/jpeg'
           const mimeType = ct.startsWith('image/') ? ct.split(';')[0].trim() : 'image/jpeg'
 
-          const visionRes = await anthropic.messages.create({
-            model:      'claude-sonnet-5',
-            max_tokens: 200,
-            system:     'Describe what you see in this image in one or two plain sentences, focusing on any visible medical or dental concerns.',
-            messages: [{
-              role:    'user',
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              content: [{ type: 'image', source: { type: 'base64', media_type: mimeType as any, data: base64 } }],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const visionRes: any = await openai.responses.create({
+            model: 'gpt-5.6-luna',
+            input: [{
+              role: 'user',
+              content: [
+                { type: 'input_text', text: 'Describe what you see in this image in one or two plain sentences, focusing on any visible medical or dental concerns.' },
+                { type: 'input_image', image_url: `data:${mimeType};base64,${base64}`, detail: 'auto' },
+              ],
             }],
+            max_output_tokens: 200,
           })
-          const block       = visionRes.content[0]
-          const description = block?.type === 'text' ? block.text.trim() : null
+          const description = (visionRes.output_text ?? '').trim() || null
           if (description) {
-            console.log('[Claude Vision] AT image described:', description.slice(0, 80))
+            console.log('[OpenAI Vision] AT image described:', description.slice(0, 80))
             // Store base64 for inbox display + vision text for Sarah
             text = `__MEDIA_IMAGE__:data:${mimeType};base64,${base64}__VISION__${description}`
           }
         } catch (err: any) {
-          console.error('[Claude Vision] AT image processing failed:', err?.message || err)
+          console.error('[OpenAI Vision] AT image processing failed:', err?.message || err)
         }
       }
     }

@@ -218,7 +218,7 @@ export default function DevDashboard() {
             { k: 'DATABASE',      v: 'PostgreSQL 15' },
             { k: 'CACHE',         v: health?.redis?.status === 'ok' ? 'Redis' : 'In-memory (NoOp)' },
             { k: 'STORAGE',       v: 'Cloudflare R2' },
-            { k: 'AI_PROVIDER',   v: 'Anthropic Claude' },
+            { k: 'AI_PROVIDER',   v: 'OpenAI' },
             { k: 'AUTH',          v: 'JWT + Google OAuth' },
           ].map(({ k, v }) => (
             <div key={k} className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-white/[0.02] border border-white/[0.04]">

@@ -1,42 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
-import { runAgent } from '../unified-agent'
 import { prisma } from '../../../lib/prisma'
-import { normalizePhone } from '../../../utils/phone'
-
-// ── In-memory session store (Redis-upgradeable) ────────────────
-// Key: phone number → { history, lastActive }
-// Sessions expire after 24 hours of inactivity
-
-interface Session {
-  history: Anthropic.MessageParam[]
-  lastActive: Date
-  patientId?: string
-}
-
-const sessions = new Map<string, Session>()
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
-
-function cleanExpiredSessions() {
-  const cutoff = new Date(Date.now() - SESSION_TTL_MS)
-  for (const [key, session] of sessions.entries()) {
-    if (session.lastActive < cutoff) sessions.delete(key)
-  }
-}
-
-function getSession(phone: string): Session {
-  const existing = sessions.get(phone)
-  if (existing && existing.lastActive.getTime() > Date.now() - SESSION_TTL_MS) {
-    return existing
-  }
-  const newSession: Session = { history: [], lastActive: new Date() }
-  sessions.set(phone, newSession)
-  return newSession
-}
-
-function updateSession(phone: string, session: Session) {
-  session.lastActive = new Date()
-  sessions.set(phone, session)
-}
 
 // ── Send WhatsApp message via Africa's Talking ─────────────────
 
@@ -97,103 +59,6 @@ export async function sendWhatsAppMessage(phone: string, message: string): Promi
   }).catch(() => { /* non-blocking */ })
 }
 
-// ── Split long messages (WhatsApp 1600 char limit) ─────────────
-
-function splitMessage(text: string, maxLen = 1580): string[] {
-  if (text.length <= maxLen) return [text]
-
-  const parts: string[] = []
-  let remaining = text
-
-  while (remaining.length > maxLen) {
-    // Find natural break point (sentence end or newline)
-    let cutAt = remaining.lastIndexOf('\n', maxLen)
-    if (cutAt < maxLen * 0.5) cutAt = remaining.lastIndexOf('. ', maxLen)
-    if (cutAt < maxLen * 0.5) cutAt = maxLen
-
-    parts.push(remaining.slice(0, cutAt).trim())
-    remaining = remaining.slice(cutAt).trim()
-  }
-  if (remaining) parts.push(remaining)
-  return parts
-}
-
-// ── Main webhook handler ───────────────────────────────────────
-
-export async function handleWhatsAppWebhook(body: any): Promise<void> {
-  cleanExpiredSessions()
-
-  // Parse Africa's Talking webhook payload
-  // AT WhatsApp sends: { from, body: { message }, messageId, waNumber }
-  const from    = body.from    || body.data?.from    || body.phoneNumber
-  const text    = body.text    || body.data?.text    || body.body?.message || body.message
-  const msgId   = body.id      || body.messageId     || body.data?.id
-
-  if (!from || !text) {
-    console.warn('[WHATSAPP WEBHOOK] Missing from or text:', body)
-    return
-  }
-
-  // Normalise phone number
-  const phoneNumber = normalizePhone(from)
-
-  console.log(`[WHATSAPP] Inbound from ${phoneNumber}: ${text.slice(0, 80)}`)
-
-  // Load or create session
-  const session = getSession(phoneNumber)
-
-  // Append user message to history
-  session.history.push({ role: 'user', content: text })
-
-  try {
-    // Run agent with full conversation history
-    const result = await runAgent({
-      phoneNumber,
-      channel: 'WHATSAPP',
-      direction: 'INBOUND',
-      incomingMessage: text,
-      conversationHistory: session.history,
-    })
-
-    // Append assistant response to history
-    session.history.push({ role: 'assistant', content: result.text })
-
-    // Trim history to last 20 turns (prevent infinite growth)
-    if (session.history.length > 40) {
-      session.history = session.history.slice(-40)
-    }
-
-    updateSession(phoneNumber, session)
-
-    // Send response (split if needed, with 1-second delay between parts)
-    const parts = splitMessage(result.text)
-    for (let i = 0; i < parts.length; i++) {
-      if (i > 0) await new Promise(r => setTimeout(r, 1000))
-      await sendWhatsAppMessage(phoneNumber, parts[i])
-    }
-
-    // Log inbound message
-    const patient = await prisma.patient.findFirst({ where: { phone: phoneNumber } })
-    await prisma.agentLog.create({
-      data: {
-        patientId: patient?.id,
-        type: 'WHATSAPP_INBOUND',
-        channel: 'WHATSAPP',
-        transcript: `Patient: ${text}\nAgent: ${result.text}`,
-        outcome: result.escalated ? 'ESCALATED' : 'COMPLETED',
-        escalated: result.escalated,
-      },
-    }).catch(() => { /* non-blocking */ })
-
-  } catch (err: any) {
-    console.error('[WHATSAPP] Agent error:', err.message)
-    await sendWhatsAppMessage(
-      phoneNumber,
-      "I'm sorry, I ran into a technical issue. Please call us directly at 0205477000 and our team will help you right away! 🙏"
-    )
-  }
-}
-
 // ── Send WhatsApp follow-up for missed calls ───────────────────
 
 export async function sendMissedCallWhatsApp(
@@ -214,4 +79,3 @@ export async function sendMissedCallWhatsApp(
 
   await sendWhatsAppMessage(phone, message)
 }
-

@@ -160,7 +160,7 @@ export function createConvAISession(opts: ConvAIOptions): ConvAISession {
 
 // ── Agent provisioning ────────────────────────────────────────────────────────
 // Creates an ElevenLabs ConvAI agent configured for Code Clinic, pointing the
-// LLM at our custom endpoint so Claude + all 16 tools run the conversation.
+// LLM at our custom endpoint so OpenAI + all 16 tools run the conversation.
 
 export async function provisionCodeClinicAgent(
   apiKey:      string,
@@ -192,7 +192,7 @@ Clinic details:
         prompt: {
           prompt:     systemPrompt,
           // 'custom-llm' routes conversation through our OpenAI-compatible endpoint
-          // so Claude + all 16 tools handle the intelligence.
+          // so OpenAI + all 16 tools handle the intelligence.
           llm:        'custom-llm',
           custom_llm: { url: llmEndpoint },
           temperature: 0.7,
