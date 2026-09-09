@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Eye, EyeOff, Loader2, Mail, Lock, Sun, Moon } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Mail, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { setAuthCookie } from '@/lib/api'
+import { questrial } from '../../fonts/questrial'
 
 function GoogleIcon() {
   return (
@@ -56,13 +57,6 @@ export default function LoginPage() {
       .then(d => { if (d.needsSetup) router.replace('/setup') })
       .catch(() => {})
   }, [])
-
-  function toggleTheme() {
-    const next = !dark
-    setDark(next)
-    document.documentElement.classList.toggle('dark', next)
-    localStorage.setItem('cc_theme', next ? 'dark' : 'light')
-  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -118,21 +112,20 @@ export default function LoginPage() {
     ? 'linear-gradient(to top, rgba(3,8,26,0.92) 0%, rgba(3,8,26,0.65) 35%, rgba(3,8,26,0.30) 65%, transparent 90%)'
     : 'linear-gradient(to top, rgba(255,255,255,0.90) 0%, rgba(255,255,255,0.58) 35%, rgba(255,255,255,0.24) 65%, transparent 90%)'
 
+  // Same Questrial treatment as the rest of Code Clinic (see .cc-admin-shell /
+  // .cc-receptionist-shell in globals.css) — identical font-family stack and
+  // tracking/line-height tokens, applied inline since this page's scope can't
+  // add a new global class.
+  const uiFont      = { fontFamily: 'var(--font-questrial), Inter, system-ui, sans-serif', letterSpacing: '0.008em', lineHeight: 1.5 }
+  const headingFont = { fontFamily: 'var(--font-questrial), Inter, system-ui, sans-serif', letterSpacing: '0.004em', lineHeight: 1.25 }
+
   return (
-    <div className="relative z-0 min-h-screen w-full overflow-x-hidden flex flex-col" style={{ background: pageBg, transition: 'background 0.5s' }}>
+    <div className={cn("relative z-0 min-h-screen w-full overflow-x-hidden flex flex-col", questrial.variable)} style={{ background: pageBg, transition: 'background 0.5s' }}>
       <style>{`
         @keyframes loginCardIn { from { opacity: 0; transform: translateY(18px) } to { opacity: 1; transform: translateY(0) } }
         .login-card-in { animation: loginCardIn 0.5s ease-out both }
         @media (prefers-reduced-motion: reduce) { .login-card-in { animation: none } }
       `}</style>
-
-      {/* Theme toggle */}
-      <button onClick={toggleTheme}
-        className="fixed top-5 right-5 z-50 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110"
-        style={{ background:dark?'rgba(255,255,255,0.14)':'rgba(255,255,255,0.55)', border:`1px solid ${dark?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.7)'}`, backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)' }}
-        aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
-        {dark ? <Sun size={17} color="#FCD34D"/> : <Moon size={17} color="#1A237E"/>}
-      </button>
 
       {/* ONE continuous full-viewport dental/blue environment. Mobile gets a
           full-bleed cover photo (cropped is fine there — the card sits low
@@ -181,14 +174,14 @@ export default function LoginPage() {
           above). No dedicated "right column" — this is the only content
           zone; the environment behind it is a single background layer. */}
       <div className="relative z-10 flex-1 w-full flex items-center justify-center md:justify-start px-4 md:pl-[5%] pb-[max(4rem,calc(env(safe-area-inset-bottom)+3rem))] md:pb-8">
-        <div className="w-full max-w-[440px] md:max-w-[340px] lg:max-w-[420px] xl:max-w-[460px] login-card-in">
+        <div className="w-full max-w-[440px] md:max-w-[340px] lg:max-w-[420px] xl:max-w-[460px] login-card-in" style={uiFont}>
 
             <div className="rounded-[32px] px-7 py-7 sm:px-8 sm:py-8 md:px-6 md:py-6 lg:px-8 lg:py-8"
               style={{ background:cardBg, backdropFilter:'blur(28px)', WebkitBackdropFilter:'blur(28px)', border:`1px solid ${cardBdr}`, boxShadow:dark?'0 24px 64px rgba(0,0,0,0.5)':'0 24px 64px rgba(26,35,126,0.18)' }}>
 
               <Image src="/logo.png" alt="Code Clinic" width={130} height={45} className={dark?'brightness-0 invert mb-5':'mb-5'} style={{ transition:'filter 0.3s' }}/>
 
-              <h2 className="text-2xl md:text-xl lg:text-2xl font-bold mb-1" style={{ color:titleClr, fontFamily:'Plus Jakarta Sans' }}>
+              <h2 className="text-2xl md:text-xl lg:text-2xl font-bold mb-1" style={{ color:titleClr, ...headingFont }}>
                 We brighten your smile 😁
               </h2>
               <p className="text-sm mb-5" style={{ color:subClr }}>Sign in with your clinic credentials</p>
@@ -247,7 +240,7 @@ export default function LoginPage() {
           </div>
       </div>
 
-      <div style={{ position:'fixed', bottom:0, left:0, right:0, textAlign:'center', padding:'16px', paddingBottom:'max(16px, env(safe-area-inset-bottom))', fontSize:'13px', color:dark?'rgba(255,255,255,0.65)':'rgba(26,35,126,0.65)', zIndex:40 }}>
+      <div style={{ position:'fixed', bottom:0, left:0, right:0, textAlign:'center', padding:'16px', paddingBottom:'max(16px, env(safe-area-inset-bottom))', fontSize:'13px', color:dark?'rgba(255,255,255,0.65)':'rgba(26,35,126,0.65)', zIndex:40, ...uiFont }}>
         <a href="/privacy.html" style={{ color: '#29ABE2', textDecoration: 'none' }}>Privacy Policy</a>
         {' · '}
         <a href="/terms.html" style={{ color: '#29ABE2', textDecoration: 'none' }}>Terms of Service</a>
