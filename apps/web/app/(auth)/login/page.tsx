@@ -35,15 +35,11 @@ export default function LoginPage() {
   const [loading, setLoad]  = useState(false)
   const [error, setError]   = useState<string | null>(null)
   const [dark, setDark]     = useState(true)
-  const [ready, setReady]   = useState(false)
-  const [reduceMotion, setReduceMotion] = useState(false)
 
   useEffect(() => {
     const isDark = localStorage.getItem('cc_theme') !== 'light'
     setDark(isDark)
     document.documentElement.classList.toggle('dark', isDark)
-    setReduceMotion(window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-    setTimeout(() => setReady(true), 60)
 
     // Show OAuth error if redirected back from Google with error
     const oauthError = new URLSearchParams(window.location.search).get('error')
@@ -103,46 +99,32 @@ export default function LoginPage() {
     window.location.href = '/api-proxy/auth/google'
   }
 
-  /* Theme tokens — glass panel over the full-bleed dental photograph */
-  const fallbackBg = dark ? '#050b22' : '#cfe4ff'
-  const cardBg   = dark ? 'rgba(8,15,40,0.60)' : 'rgba(255,255,255,0.68)'
-  const cardBdr  = dark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.75)'
+  /* Theme tokens. Light-mode page background is colour-matched to the
+     dental photo's own sampled background (~#63b2f5-#76bcf9) so the photo
+     blends into the page with no visible seam/frame — ONE continuous
+     environment, per the approved direction. */
+  const pageBg   = dark ? 'linear-gradient(150deg,#020818 0%,#070f3d 35%,#0d1b6e 70%,#1251a8 100%)' : 'linear-gradient(135deg,#66B4F5 0%,#72BAF6 100%)'
+  const cardBg   = dark ? 'rgba(8,15,40,0.50)' : 'rgba(255,255,255,0.58)'
+  const cardBdr  = dark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.8)'
   const titleClr = dark ? '#fff' : '#1A237E'
   const subClr   = dark ? '#93C5FD' : '#5A6A85'
   const lblClr   = dark ? '#C8D8F0' : '#374151'
   const inputBg  = dark ? 'rgba(255,255,255,0.07)' : '#F3F7FF'
   const inputBdr = dark ? 'rgba(255,255,255,0.16)' : '#BDD0FF'
   const inputClr = dark ? '#fff' : '#1A237E'
-  // Tonal scrim behind the card zone — theme-coloured (navy / soft-white),
-  // never flat grey, so the photo keeps its colour while staying legible.
-  const sideScrim   = dark
-    ? 'linear-gradient(100deg, rgba(3,8,26,0.80) 0%, rgba(3,8,26,0.46) 36%, rgba(3,8,26,0.10) 58%, transparent 70%)'
-    : 'linear-gradient(100deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.22) 36%, rgba(255,255,255,0.04) 58%, transparent 70%)'
-  const bottomScrim = dark
-    ? 'linear-gradient(to top, rgba(3,8,26,0.88) 0%, rgba(3,8,26,0.5) 32%, transparent 68%)'
-    : 'linear-gradient(to top, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.28) 32%, transparent 68%)'
+  // Bottom scrim for mobile only, where the photo is a full-bleed cover
+  // background behind the card and needs a legibility assist.
+  const mobileScrim = dark
+    ? 'linear-gradient(to top, rgba(3,8,26,0.92) 0%, rgba(3,8,26,0.65) 35%, rgba(3,8,26,0.30) 65%, transparent 90%)'
+    : 'linear-gradient(to top, rgba(255,255,255,0.90) 0%, rgba(255,255,255,0.58) 35%, rgba(255,255,255,0.24) 65%, transparent 90%)'
 
   return (
-    <div className="relative min-h-screen w-full overflow-x-hidden">
-
-      {/* Full-bleed dental photograph — the visual hero. Object-position shifts
-          per breakpoint so the tooth cluster (which sits right-of-centre in the
-          source) stays clear of the card at every width. */}
-      <div className="fixed inset-0 -z-20" style={{ background: fallbackBg }}>
-        <Image
-          src="/images/login-dental-bg.jpg"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-[68%_28%] md:object-[76%_center] xl:object-right"
-        />
-      </div>
-
-      {/* Theme-coloured tonal scrims — ground the glass card and footer against
-          the photo. Always navy or soft-white, never a flat grey wash. */}
-      <div className="fixed inset-0 -z-10 hidden md:block pointer-events-none" style={{ background: sideScrim, transition: 'background 0.4s' }}/>
-      <div className="fixed inset-0 -z-10 pointer-events-none" style={{ background: bottomScrim, transition: 'background 0.4s' }}/>
+    <div className="relative z-0 min-h-screen w-full overflow-x-hidden flex flex-col" style={{ background: pageBg, transition: 'background 0.5s' }}>
+      <style>{`
+        @keyframes loginCardIn { from { opacity: 0; transform: translateY(18px) } to { opacity: 1; transform: translateY(0) } }
+        .login-card-in { animation: loginCardIn 0.5s ease-out both }
+        @media (prefers-reduced-motion: reduce) { .login-card-in { animation: none } }
+      `}</style>
 
       {/* Theme toggle */}
       <button onClick={toggleTheme}
@@ -152,13 +134,54 @@ export default function LoginPage() {
         {dark ? <Sun size={17} color="#FCD34D"/> : <Moon size={17} color="#1A237E"/>}
       </button>
 
-      {/* Login zone — left ~40% at tablet/desktop (glass card centred within
-          it, never overlapping the tooth on the right); lower-centred over the
-          photo on mobile, with a bottom scrim for legibility. */}
-      <div className="relative z-10 min-h-screen w-full flex flex-col md:flex-row">
-        <div className="flex-1 flex items-end md:items-center justify-center px-4 md:px-6 lg:px-0 pb-[max(6rem,calc(env(safe-area-inset-bottom)+5rem))] md:pb-0 md:w-[52%] lg:w-[46%] xl:w-[41%] md:flex-none">
-          <div className="w-full max-w-[440px] md:max-w-[340px] lg:max-w-[420px] xl:max-w-[500px]"
-            style={reduceMotion ? undefined : { opacity:ready?1:0, transform:ready?'translateY(0)':'translateY(18px)', transition:'opacity 0.5s, transform 0.5s' }}>
+      {/* ONE continuous full-viewport dental/blue environment. Mobile gets a
+          full-bleed cover photo (cropped is fine there — the card sits low
+          with a scrim). Tablet/desktop gets the SAME photo at a deliberately
+          smaller-than-cover scale, right-anchored with no crop of its own
+          frame, so it reads as part of the page rather than a filled
+          background — the page's colour-matched background shows through
+          wherever the photo doesn't reach, with no visible seam or frame. */}
+      <div className="md:hidden fixed inset-0 -z-20">
+        <Image
+          src="/images/login-dental-bg.jpg"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-[68%_25%]"
+        />
+        <div className="absolute inset-0" style={{ background: mobileScrim }}/>
+      </div>
+      {/* Desktop/tablet composition — a wrapper sized to the photo's OWN
+          rendered box (not the full viewport), right-anchored and vertically
+          centred, deliberately smaller than "cover" so the complete scene
+          stays fully visible with breathing room. Because the mask is
+          applied to a box that exactly matches the image's own dimensions,
+          its percentages align with the image's real edges, so it dissolves
+          into the matched page background with no visible seam — sizing the
+          wrapper to the content is what a viewport-wide mask (tried first)
+          got wrong. */}
+      <div
+        className="hidden md:block fixed right-0 top-1/2 -translate-y-1/2 md:w-[500px] lg:w-[650px] xl:w-[1080px] 2xl:w-[1350px]"
+        style={{ aspectRatio: '2400 / 1632' }}
+        aria-hidden="true"
+      >
+        <div
+          className="absolute inset-0 bg-no-repeat bg-cover bg-right"
+          style={{
+            backgroundImage: "url('/images/login-dental-bg.jpg')",
+            WebkitMaskImage: 'radial-gradient(ellipse 85% 85% at 72% 50%, black 55%, transparent 100%)',
+            maskImage: 'radial-gradient(ellipse 85% 85% at 72% 50%, black 55%, transparent 100%)',
+          }}
+        />
+      </div>
+
+      {/* Glass login card — floats over the SAME backdrop, left-inset, well
+          clear of the dental composition (which is controlled independently
+          above). No dedicated "right column" — this is the only content
+          zone; the environment behind it is a single background layer. */}
+      <div className="relative z-10 flex-1 w-full flex items-center justify-center md:justify-start px-4 md:pl-[5%] pb-[max(4rem,calc(env(safe-area-inset-bottom)+3rem))] md:pb-8">
+        <div className="w-full max-w-[440px] md:max-w-[340px] lg:max-w-[420px] xl:max-w-[460px] login-card-in">
 
             <div className="rounded-[32px] px-7 py-7 sm:px-8 sm:py-8 md:px-6 md:py-6 lg:px-8 lg:py-8"
               style={{ background:cardBg, backdropFilter:'blur(28px)', WebkitBackdropFilter:'blur(28px)', border:`1px solid ${cardBdr}`, boxShadow:dark?'0 24px 64px rgba(0,0,0,0.5)':'0 24px 64px rgba(26,35,126,0.18)' }}>
@@ -222,11 +245,6 @@ export default function LoginPage() {
             </div>
             <p className="text-center text-[11px] mt-3" style={{ color:dark?'rgba(255,255,255,0.55)':'rgba(26,35,126,0.45)' }}>©2026 elyrac Ai</p>
           </div>
-        </div>
-
-        {/* Right visual zone — the photograph shows through here; deliberately
-            empty, never covered by the card. */}
-        <div className="hidden md:block md:w-[48%] lg:w-[54%] xl:w-[59%] md:flex-none" aria-hidden="true"/>
       </div>
 
       <div style={{ position:'fixed', bottom:0, left:0, right:0, textAlign:'center', padding:'16px', paddingBottom:'max(16px, env(safe-area-inset-bottom))', fontSize:'13px', color:dark?'rgba(255,255,255,0.65)':'rgba(26,35,126,0.65)', zIndex:40 }}>
