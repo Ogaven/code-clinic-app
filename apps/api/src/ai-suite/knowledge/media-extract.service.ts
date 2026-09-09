@@ -36,7 +36,10 @@ function getOpenAI(): OpenAI {
 // fragments of the API key in some auth-error responses) — every provider
 // call in this file is wrapped so ONLY this curated, safe message ever
 // escapes to a caller. err.message/stack still go to the server log.
-function sanitizedProviderError(err: any, action: string): Error {
+// Exported so its status-code -> message mapping can be unit tested
+// directly with fake error shapes (see __tests__/media-extract.service.test.ts)
+// without ever calling the real OpenAI API.
+export function sanitizedProviderError(err: any, action: string): Error {
   console.error(`[Knowledge Ingest] ${action} error:`, err?.message ?? err)
   const status = err?.status ?? err?.response?.status
   if (status === 429) return new Error(`The AI provider is temporarily busy — please retry ${action} in a moment.`)
