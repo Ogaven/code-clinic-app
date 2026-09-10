@@ -8,6 +8,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   themeColor: '#1A237E',
+  // Without this, every existing env(safe-area-inset-*) usage in the app is
+  // inert on iOS — Safari only reserves/reports safe-area insets when the
+  // viewport opts into covering the full display.
+  viewportFit: 'cover',
 }
 
 export const metadata: Metadata = {
