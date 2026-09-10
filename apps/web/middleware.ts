@@ -105,7 +105,16 @@ export function middleware(request: NextRequest) {
   // Permission check — skip for ADMIN and DEVELOPER (always have full access)
   if (role && role !== 'ADMIN' && role !== 'DEVELOPER') {
     for (const [prefix, feature] of ROUTE_FEATURE) {
-      if (pathname.startsWith(prefix) && permissions[feature] === false) {
+      if (!pathname.startsWith(prefix)) continue
+      // Legacy read fallback: staff permissioned before the 'scheduling' ->
+      // 'appointments' merge may still have 'scheduling: false' persisted
+      // with no 'appointments' key at all — without this, that explicit
+      // deny would silently go inert (missing key = allowed). New writes
+      // from the permissions registry only ever use 'appointments'.
+      const value = feature === 'appointments' && permissions['appointments'] === undefined
+        ? permissions['scheduling']
+        : permissions[feature]
+      if (value === false) {
         return NextResponse.redirect(new URL(home, request.url))
       }
     }

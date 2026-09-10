@@ -1,10 +1,20 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
+import { accountsOrAdmin } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 
 const router = Router()
 
-router.get('/items', requireAuth, async (_req, res) => {
+// Previously requireAuth-only — any authenticated user of any role could
+// read/write/delete inventory via direct API calls, even though the only
+// nav links and route access to /stocks (Sidebar.tsx, (admin)/layout.tsx's
+// ACCOUNTS allowlist) are ADMIN and ACCOUNTS. No Receptionist/Doctor UI or
+// product requirement ever existed for this data (see WORKSTREAM A final
+// closure pass). Restricted to match the existing, unambiguous product
+// design rather than inventing new policy.
+router.use(requireAuth, accountsOrAdmin)
+
+router.get('/items', async (_req, res) => {
   try {
     const items = await prisma.stockItem.findMany({ orderBy: { name: 'asc' } })
     res.json(items)
@@ -13,7 +23,7 @@ router.get('/items', requireAuth, async (_req, res) => {
   }
 })
 
-router.post('/items', requireAuth, async (req, res) => {
+router.post('/items', async (req, res) => {
   try {
     const { name, category, quantity, unit, reorderLevel, unitCost, supplier } = req.body
     const item = await prisma.stockItem.create({
@@ -25,7 +35,7 @@ router.post('/items', requireAuth, async (req, res) => {
   }
 })
 
-router.put('/items/:id', requireAuth, async (req, res) => {
+router.put('/items/:id', async (req, res) => {
   try {
     const { name, category, quantity, unit, reorderLevel, unitCost, supplier } = req.body
     const item = await prisma.stockItem.update({
@@ -38,7 +48,7 @@ router.put('/items/:id', requireAuth, async (req, res) => {
   }
 })
 
-router.delete('/items/:id', requireAuth, async (req, res) => {
+router.delete('/items/:id', async (req, res) => {
   try {
     await prisma.stockItem.delete({ where: { id: req.params.id } })
     res.json({ deleted: true })

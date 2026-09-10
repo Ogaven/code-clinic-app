@@ -57,6 +57,19 @@ router.get('/', requireAuth, allStaff, async (_req, res) => {
   res.json(withAvatars)
 })
 
+// GET /employees/summary — minimal staff fields for assignment dropdowns
+// (e.g. LeadsPipeline.tsx). GET / above returns email/phone/lastLogin/doctor
+// scheduling metadata that non-admin dropdown consumers never needed
+// (see WORKSTREAM A final closure pass, employee data minimization).
+router.get('/summary', requireAuth, allStaff, async (_req, res) => {
+  const employees = await prisma.user.findMany({
+    where: { role: { not: 'ADMIN' } },
+    select: { id: true, firstName: true, lastName: true, role: true, isActive: true },
+    orderBy: { createdAt: 'asc' },
+  })
+  res.json(employees)
+})
+
 // POST /employees
 router.post('/', requireAuth, adminOnly, validate(createEmployeeSchema), auditLog('employees'), async (req, res) => {
   const { firstName, lastName, email, phone, role, specialisation, colour } = req.body
