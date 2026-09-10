@@ -14,6 +14,18 @@ export default function VoiceStudioPage() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { Authorization: `Bearer ${token}` }
 
+  // Training, deletion, set-default and global settings writes are adminOnly
+  // server-side (voice.routes.ts) — Receptionist keeps view/preview/read
+  // access only. Read once on mount, same localStorage cc_user pattern
+  // LeadsPipeline.tsx uses for its own cosmetic role check.
+  const [isAdmin, setIsAdmin] = useState(false)
+  useEffect(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem('cc_user') || '{}')
+      setIsAdmin(u.role === 'ADMIN')
+    } catch { setIsAdmin(false) }
+  }, [])
+
   const [settings, setSettings]     = useState<Settings | null>(null)
   const [voices, setVoices]         = useState<VoiceProfile[]>([])
   const [loading, setLoading]       = useState(true)
@@ -167,26 +179,30 @@ export default function VoiceStudioPage() {
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Persona Name</label>
-            <input value={personaName} onChange={e => setPersonaName(e.target.value)}
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500" />
+            <input value={personaName} onChange={e => setPersonaName(e.target.value)} disabled={!isAdmin}
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed" />
           </div>
           <div>
             <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Stability ({stability.toFixed(2)})</label>
-            <input type="range" min={0} max={1} step={0.05} value={stability} onChange={e => setStability(parseFloat(e.target.value))}
-              className="w-full h-2 accent-cyan-500 mt-3" />
+            <input type="range" min={0} max={1} step={0.05} value={stability} onChange={e => setStability(parseFloat(e.target.value))} disabled={!isAdmin}
+              className="w-full h-2 accent-cyan-500 mt-3 disabled:opacity-60 disabled:cursor-not-allowed" />
           </div>
           <div>
             <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Similarity ({similarity.toFixed(2)})</label>
-            <input type="range" min={0} max={1} step={0.05} value={similarity} onChange={e => setSimilarity(parseFloat(e.target.value))}
-              className="w-full h-2 accent-cyan-500 mt-3" />
+            <input type="range" min={0} max={1} step={0.05} value={similarity} onChange={e => setSimilarity(parseFloat(e.target.value))} disabled={!isAdmin}
+              className="w-full h-2 accent-cyan-500 mt-3 disabled:opacity-60 disabled:cursor-not-allowed" />
           </div>
         </div>
-        <button onClick={saveSettings} disabled={savingSettings}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-60"
-          style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
-          {savingSettings && <Loader2 size={13} className="animate-spin" />}
-          Save Settings
-        </button>
+        {isAdmin ? (
+          <button onClick={saveSettings} disabled={savingSettings}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-60"
+            style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
+            {savingSettings && <Loader2 size={13} className="animate-spin" />}
+            Save Settings
+          </button>
+        ) : (
+          <p className="text-xs text-gray-400 dark:text-white/40">Only Admin can change voice settings.</p>
+        )}
       </div>
 
       {/* ── Preview ───────────────────────────────────── */}
@@ -224,79 +240,83 @@ export default function VoiceStudioPage() {
                   Default
                 </span>
               )}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {!v.isDefault && (
-                  <button onClick={() => assignVoice(v.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-100 transition-colors">
-                    <Star size={11} /> Use
+              {isAdmin && (
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {!v.isDefault && (
+                    <button onClick={() => assignVoice(v.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-100 transition-colors">
+                      <Star size={11} /> Use
+                    </button>
+                  )}
+                  <button onClick={() => deleteVoice(v.id)}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 transition-colors">
+                    <Trash2 size={13} />
                   </button>
-                )}
-                <button onClick={() => deleteVoice(v.id)}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 transition-colors">
-                  <Trash2 size={13} />
-                </button>
-              </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Clone new voice ───────────────────────────── */}
-      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
-        <h2 className="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
-          <Star size={15} className="text-amber-500" /> Clone a Custom Voice
-        </h2>
-        <p className="text-xs text-gray-400 dark:text-white/40">
-          Record or upload a voice sample to clone it with ElevenLabs AI.
-        </p>
-        <div>
-          <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Voice Name</label>
-          <input value={trainName} onChange={e => setTrainName(e.target.value)} placeholder="e.g. Sarah UG"
-            className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500" />
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={toggleRecording}
-            className={cn(
-              'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white transition-all',
-              recording && 'animate-pulse',
-            )}
-            style={{ background: recording ? '#ef4444' : 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-            {recording ? <><MicOff size={15} /> Stop</> : <><Mic size={15} /> Record Sample</>}
-          </button>
-          <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:border-cyan-400 hover:text-cyan-500 cursor-pointer transition-all text-sm font-medium">
-            <Upload size={14} /> Upload Audio
-            <input ref={fileRef} type="file" accept="audio/*" className="hidden"
-              onChange={e => {
-                const f = e.target.files?.[0]
-                if (!f) return
-                setSamples(s => [...s, { id: Date.now().toString(), name: f.name, blob: f }])
-                e.target.value = ''
-              }} />
-          </label>
-        </div>
-
-        {samples.length > 0 && (
-          <div className="space-y-2">
-            {samples.map((s, i) => (
-              <div key={s.id} className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-700/20">
-                <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold">{i + 1}</div>
-                <p className="flex-1 text-sm font-medium text-gray-800 dark:text-white truncate">{s.name}</p>
-                <button onClick={() => setSamples(ss => ss.filter(x => x.id !== s.id))}
-                  className="w-7 h-7 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20 flex items-center justify-center text-red-400">
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
+      {/* ── Clone new voice (POST /train is adminOnly) ─── */}
+      {isAdmin && (
+        <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
+          <h2 className="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
+            <Star size={15} className="text-amber-500" /> Clone a Custom Voice
+          </h2>
+          <p className="text-xs text-gray-400 dark:text-white/40">
+            Record or upload a voice sample to clone it with ElevenLabs AI.
+          </p>
+          <div>
+            <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Voice Name</label>
+            <input value={trainName} onChange={e => setTrainName(e.target.value)} placeholder="e.g. Sarah UG"
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50 dark:bg-white/5 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500" />
           </div>
-        )}
 
-        <button onClick={trainVoice} disabled={training || !trainName.trim() || samples.length === 0 || !settings?.elevenLabsKeySet}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white text-sm transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ background: 'linear-gradient(135deg,#7c3aed,#9333ea)' }}>
-          {training ? <><Loader2 size={15} className="animate-spin" /> Cloning...</> : <><CheckCircle2 size={15} /> Clone &amp; Save Voice</>}
-        </button>
-      </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button onClick={toggleRecording}
+              className={cn(
+                'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm text-white transition-all',
+                recording && 'animate-pulse',
+              )}
+              style={{ background: recording ? '#ef4444' : 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
+              {recording ? <><MicOff size={15} /> Stop</> : <><Mic size={15} /> Record Sample</>}
+            </button>
+            <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:border-cyan-400 hover:text-cyan-500 cursor-pointer transition-all text-sm font-medium">
+              <Upload size={14} /> Upload Audio
+              <input ref={fileRef} type="file" accept="audio/*" className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  setSamples(s => [...s, { id: Date.now().toString(), name: f.name, blob: f }])
+                  e.target.value = ''
+                }} />
+            </label>
+          </div>
+
+          {samples.length > 0 && (
+            <div className="space-y-2">
+              {samples.map((s, i) => (
+                <div key={s.id} className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-700/20">
+                  <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold">{i + 1}</div>
+                  <p className="flex-1 text-sm font-medium text-gray-800 dark:text-white truncate">{s.name}</p>
+                  <button onClick={() => setSamples(ss => ss.filter(x => x.id !== s.id))}
+                    className="w-7 h-7 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20 flex items-center justify-center text-red-400">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button onClick={trainVoice} disabled={training || !trainName.trim() || samples.length === 0 || !settings?.elevenLabsKeySet}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white text-sm transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: 'linear-gradient(135deg,#7c3aed,#9333ea)' }}>
+            {training ? <><Loader2 size={15} className="animate-spin" /> Cloning...</> : <><CheckCircle2 size={15} /> Clone &amp; Save Voice</>}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

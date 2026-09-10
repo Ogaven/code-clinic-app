@@ -223,10 +223,12 @@ export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Real staff for lead assignment — same endpoint the Employees admin page
-  // uses, never hard-coded.
+  // Real staff for lead assignment — narrow summary endpoint (id/name/role/
+  // isActive only), never hard-coded. Leads assignment doesn't need the
+  // email/phone/lastLogin/doctor-scheduling fields GET /employees returns
+  // (see WORKSTREAM A final closure pass, employee data minimization).
   useEffect(() => {
-    fetch(`${API}/employees`, { headers: authH as any })
+    fetch(`${API}/employees/summary`, { headers: authH as any })
       .then(r => r.ok ? r.json() : [])
       .then(d => setStaff(Array.isArray(d) ? d.filter((s: StaffMember) => s.isActive) : []))
       .catch(() => {})
