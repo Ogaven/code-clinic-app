@@ -451,6 +451,12 @@
   --cc-heading-letter-spacing: 0.004em;
   --cc-ui-line-height: 1.5;
   --cc-heading-line-height: 1.25;
+  /* Shared safe-area tokens (iPhone notch/home-indicator, Android gesture
+     bar) — a fallback of 0px keeps these harmless on devices/browsers
+     without env() support. Requires viewport-fit=cover (see app/layout.tsx
+     Viewport export) or these report 0 even on a real notched device. */
+  --cc-safe-top: env(safe-area-inset-top, 0px);
+  --cc-safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .cc-admin-shell, .cc-receptionist-shell {
