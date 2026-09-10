@@ -16,6 +16,7 @@ import PatientsOverviewCard from '@/components/receptionist/PatientsOverviewCard
 import PatientSatisfactionCard from '@/components/receptionist/PatientSatisfactionCard'
 import GrowthCrmCard from '@/components/receptionist/GrowthCrmCard'
 import AiSuiteSnapshotCard from '@/components/receptionist/AiSuiteSnapshotCard'
+import AttendanceCard from '@/components/attendance/AttendanceCard'
 import { CompactCard, DistributionBar, ChipLegend } from '@/components/receptionist/DashboardPrimitives'
 import PatientFormFields, { EMPTY_PATIENT_FORM, buildPatientRequestBody, type PatientFormValues } from '@/components/patients/PatientFormFields'
 
@@ -421,6 +422,15 @@ export default function ReceptionistDashboard() {
           <Image src="/images/receptionist-dental-hero.png" alt="" width={1164} height={1034} priority
             style={{ width: '100%', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 6px 16px rgba(41,171,226,0.25))' }} />
         </div>
+      </div>
+
+      {/* Staff attendance — same shared AttendanceCard component and
+          GET/POST /attendance/* endpoints already used by the Doctor
+          dashboard (apps/api/src/routes/attendance.ts). Constrained to
+          max-w-md so it reads as a compact utility card, not a competing
+          hero, consistent with this page's "no dead vertical space" design. */}
+      <div className="max-w-md">
+        <AttendanceCard />
       </div>
 
       {/* ═══ ROW 1 — Appointments This Week | Treatment Pipeline | Patient Live Flow Summary ═══ */}

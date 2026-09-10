@@ -3,15 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { CalendarDays, Clock3, LogIn, LogOut, MapPin, TrendingUp, UserCheck } from 'lucide-react'
+import { CalendarDays, TrendingUp, UserCheck } from 'lucide-react'
 import { cn, formatUGX } from '@/lib/utils'
 import LivePatientFlow from '@/components/scheduling/LivePatientFlow'
 import Avatar from '@/components/ui/Avatar'
 import AiSuiteSnapshotCard from '@/components/receptionist/AiSuiteSnapshotCard'
+import AttendanceCard from '@/components/attendance/AttendanceCard'
 
 const API = '/api-proxy'
 const terminal = new Set(['COMPLETED','CANCELLED','CANCELLED_RESCHEDULED','NO_SHOW','DEPARTED'])
-const time = (value?: string) => value ? new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' }) : '—'
 
 // Same appointment-status vocabulary as the Admin dashboard's "Appointments
 // This Week" card (apps/web/app/(admin)/dashboard/page.tsx) and the real
@@ -89,37 +89,20 @@ function ChipLegend({ items, loading }: { items: { label: string; count: number;
 export default function DoctorDashboardPage() {
   const [doctor, setDoctor] = useState<any>(null)
   const [appointments, setAppointments] = useState<any[]>([])
-  const [attendance, setAttendance] = useState<any>(null)
-  const [geofence, setGeofence] = useState<any>(null)
   const [pipeline, setPipeline] = useState<any>(null)
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
 
   const load = useCallback(async () => {
     const token = localStorage.getItem('cc_token'), headers = { Authorization: `Bearer ${token}` }
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Kampala' }).format(new Date())
     const requests = await Promise.allSettled([
       fetch(`${API}/doctors/me`, { headers }), fetch(`${API}/scheduling/appointments?startDate=${today}&endDate=${today}`, { headers }),
-      fetch(`${API}/attendance/today`, { headers }), fetch(`${API}/attendance/config`, { headers }),
       fetch(`${API}/pipeline/treatment?period=month`, { headers }),
     ])
     const json = async (index: number) => requests[index].status === 'fulfilled' && (requests[index] as PromiseFulfilledResult<Response>).value.ok ? (requests[index] as PromiseFulfilledResult<Response>).value.json() : null
     setDoctor(await json(0)); const appts = await json(1); setAppointments(Array.isArray(appts) ? appts : appts?.appointments || [])
-    setAttendance(await json(2)); setGeofence(await json(3)); setPipeline(await json(4))
+    setPipeline(await json(2))
   }, [])
   useEffect(() => { load() }, [load])
-
-  async function attendanceAction(action: 'check-in' | 'check-out') {
-    setBusy(true); setMessage('')
-    try {
-      let location: Record<string, number> = {}
-      if ('geolocation' in navigator) location = await new Promise(resolve => navigator.geolocation.getCurrentPosition(p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy }), () => resolve({}), { enableHighAccuracy: true, timeout: 8000 }))
-      const token = localStorage.getItem('cc_token')
-      const response = await fetch(`${API}/attendance/${action}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...location, source: 'WEB' }) })
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Attendance update failed')
-      setMessage(action === 'check-in' ? 'Checked in successfully.' : 'Checked out successfully.'); await load()
-    } catch (error: any) { setMessage(error.message) } finally { setBusy(false) }
-  }
 
   const current = useMemo(() => appointments.filter(a => !terminal.has(a.status)).sort((a,b) => +new Date(a.startAt) - +new Date(b.startAt)), [appointments])
   const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cc_user') || '{}') : {}
@@ -151,12 +134,7 @@ export default function DoctorDashboardPage() {
         </div>
         <Image src="/dental3d.png" alt="Dental care" width={400} height={308} className="pointer-events-none absolute -bottom-8 right-1 hidden h-auto opacity-90 md:block md:w-[30%] md:max-w-[230px] lg:-bottom-10 lg:w-[32%] lg:max-w-[270px] xl:w-[36%] xl:max-w-[320px]"/>
       </div>
-      <div className="rounded-3xl border bg-card p-5 shadow-sm">
-        <div className="flex items-start justify-between"><div><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Attendance today</p><h2 className="mt-1 text-xl font-semibold">{attendance?.currentlyCheckedIn ? 'You are checked in' : attendance?.checkedIn ? 'Shift completed' : 'Not checked in'}</h2></div><div className="rounded-xl bg-cyan-50 p-3 text-cyan-700 dark:bg-cyan-400/10"><Clock3 size={20}/></div></div>
-        <div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl bg-muted/50 p-3"><span className="text-muted-foreground">In</span><p className="font-semibold">{time(attendance?.attendance?.checkInAt)}</p></div><div className="rounded-xl bg-muted/50 p-3"><span className="text-muted-foreground">Out</span><p className="font-semibold">{time(attendance?.attendance?.checkOutAt)}</p></div></div>
-        <button disabled={busy || Boolean(attendance?.attendance?.checkOutAt)} onClick={() => attendanceAction(attendance?.currentlyCheckedIn ? 'check-out' : 'check-in')} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#172568] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{attendance?.currentlyCheckedIn ? <LogOut size={16}/> : <LogIn size={16}/>} {busy ? 'Updating…' : attendance?.currentlyCheckedIn ? 'Check out' : 'Check in'}</button>
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><MapPin size={13}/>{geofence?.enabled ? 'Clinic geofence enabled; location is recorded for review.' : 'Location is recorded when browser permission is available.'}</p>{message && <p className="mt-2 text-xs font-medium text-cyan-700 dark:text-cyan-300">{message}</p>}
-      </div>
+      <AttendanceCard />
     </section>
 
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
