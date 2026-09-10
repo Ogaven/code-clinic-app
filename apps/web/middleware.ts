@@ -34,13 +34,26 @@ const ROUTE_ROLE: Array<[string, string[]]> = [
 
 // Route prefix → permission key. Checked only for non-ADMIN, non-DEVELOPER roles.
 // A feature is blocked only when explicitly set to false; missing key = allowed.
+//
+// '/receptionist/scheduling' and '/receptionist/appointments' used to gate on
+// DIFFERENT keys ('scheduling' vs 'appointments') even though the desktop
+// TopBar's "Appointments" link already points at /receptionist/scheduling
+// (the fuller workspace) tagged with the 'appointments' key — so disabling
+// 'appointments' hid the nav link but never blocked the page, while the
+// separate 'scheduling' key blocked a page nothing linked to any more.
+// Merged onto one real key, 'appointments' (see WORKSTREAM A Part B security
+// findings). Escalations, Treatment Pipeline, Referrals and Campaigns were
+// real nav-permKey'd links with NO route entry here at all — frontend hiding
+// only, never enforced — added below using the permKey each nav item
+// already declares (ReceptionistTopBar.tsx).
 const ROUTE_FEATURE: Array<[string, string]> = [
-  ['/receptionist/scheduling',                               'scheduling'],
+  ['/receptionist/scheduling',                               'appointments'],
   ['/receptionist/appointments',                             'appointments'],
   ['/receptionist/patients',                                 'patients'],
   ['/receptionist/leads',                                    'leads'],
   ['/receptionist/flow',                                     'liveFlow'],
   ['/receptionist/ai-suite/inbox',                           'aiSuiteInbox'],
+  ['/receptionist/ai-suite/escalations',                     'aiSuiteInbox'],
   ['/receptionist/ai-suite/followup-dashboard',              'aiSuiteFollowup'],
   ['/receptionist/ai-suite/confirmation-dashboard',          'aiSuiteConfirmation'],
   ['/receptionist/ai-suite/calls',                           'callLogs'],
@@ -48,6 +61,9 @@ const ROUTE_FEATURE: Array<[string, string]> = [
   ['/receptionist/ai-suite/knowledge',                       'knowledgeBase'],
   ['/receptionist/reports',                                  'reports'],
   ['/receptionist/communications',                           'communications'],
+  ['/receptionist/treatment-pipeline',                       'treatmentPipeline'],
+  ['/receptionist/referrals',                                'referrals'],
+  ['/receptionist/campaigns',                                'campaigns'],
   ['/doctor/schedule',                                       'appointments'],
   ['/doctor/patients',                                       'patients'],
   ['/doctor/flow',                                           'liveFlow'],

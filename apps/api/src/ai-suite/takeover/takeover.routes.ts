@@ -4,13 +4,31 @@ import { prisma } from '../../lib/prisma'
 import { fetchPostThumbnail } from '../facebook/facebook.routes'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { requireAuth } from '../../middleware/auth'
+import { adminAndReceptionist } from '../../middleware/rbac'
 import { authenticatedDoctorId } from '../../lib/doctor-access'
 
 const router = Router()
 
+// Every route below except /snapshot had no auth middleware at all — anyone
+// who could reach the API could read every patient conversation (WhatsApp/
+// Facebook/Instagram/Website), send messages as the clinic, delete
+// conversations, and flip channel toggles, all without logging in (see
+// WORKSTREAM A Part B security findings). The inbox and settings pages that
+// call these routes already send an Authorization header on every request
+// (apps/web/.../ai-suite/inbox/page.tsx, .../ai-suite/settings/page.tsx) and
+// are only reachable by Admin/Receptionist (Admin's inbox/escalations pages
+// re-export Receptionist's verbatim) — Doctor uses a completely separate
+// messaging system (/doctor/messages) that never calls these routes, and
+// Accounts has no nav path here at all. Each route below is restricted to
+// adminAndReceptionist individually rather than via router.use() because
+// /snapshot is the one exception: it's read by the Doctor dashboard's AI
+// Activity card too (it has its own DOCTOR-scoping logic below) and keeps
+// its original requireAuth-only scope, unchanged from before this pass.
+router.use(requireAuth)
+
 // POST /ai-suite/takeover/:conversationId
 // Staff member takes over a conversation — Sarah goes silent.
-router.post('/takeover/:conversationId', async (req, res) => {
+router.post('/takeover/:conversationId', adminAndReceptionist, async (req, res) => {
   try {
     const staffId = (req.body.staffId as string | undefined) ?? 'unknown'
     await takeoverConversation(req.params.conversationId, staffId)
@@ -23,7 +41,7 @@ router.post('/takeover/:conversationId', async (req, res) => {
 
 // POST /ai-suite/handback/:conversationId
 // Staff hands the conversation back to Sarah.
-router.post('/handback/:conversationId', async (req, res) => {
+router.post('/handback/:conversationId', adminAndReceptionist, async (req, res) => {
   try {
     await handbackConversation(req.params.conversationId)
     res.json({ success: true })
@@ -37,7 +55,7 @@ router.post('/handback/:conversationId', async (req, res) => {
 // Returns conversations filtered by ?channel=whatsapp|instagram|facebook|website
 // By default excludes archived conversations; ?archived=true returns only archived ones.
 // Ordered by most recently updated conversation first.
-router.get('/conversations', async (req, res) => {
+router.get('/conversations', adminAndReceptionist, async (req, res) => {
   try {
     const channelParam  = (req.query.channel as string | undefined)?.toUpperCase()
     const wantsArchived = req.query.archived === 'true'
@@ -145,7 +163,7 @@ router.get('/conversations', async (req, res) => {
 // Staff starts a new outbound WhatsApp conversation to a number not yet in the system.
 // Reuses an existing ACTIVE conversation for the number if one already exists (same
 // dedup convention as the inbound webhook path) instead of creating a duplicate contact.
-router.post('/conversations', async (req, res) => {
+router.post('/conversations', adminAndReceptionist, async (req, res) => {
   try {
     const { phoneNumber, displayName } = req.body as { phoneNumber?: string; displayName?: string }
     if (!phoneNumber?.trim()) return res.status(400).json({ error: 'phoneNumber required' })
@@ -191,7 +209,7 @@ router.post('/conversations', async (req, res) => {
 
 // DELETE /ai-suite/conversations/:conversationId
 // Permanently removes a conversation and its messages (cascade).
-router.delete('/conversations/:conversationId', async (req, res) => {
+router.delete('/conversations/:conversationId', adminAndReceptionist, async (req, res) => {
   try {
     await prisma.aiConversation.delete({ where: { id: req.params.conversationId } })
     res.json({ success: true })
@@ -202,7 +220,7 @@ router.delete('/conversations/:conversationId', async (req, res) => {
 })
 
 // PATCH /ai-suite/conversations/:conversationId/archive
-router.patch('/conversations/:conversationId/archive', async (req, res) => {
+router.patch('/conversations/:conversationId/archive', adminAndReceptionist, async (req, res) => {
   try {
     const conv = await prisma.aiConversation.update({
       where: { id: req.params.conversationId },
@@ -216,7 +234,7 @@ router.patch('/conversations/:conversationId/archive', async (req, res) => {
 })
 
 // PATCH /ai-suite/conversations/:conversationId/unarchive
-router.patch('/conversations/:conversationId/unarchive', async (req, res) => {
+router.patch('/conversations/:conversationId/unarchive', adminAndReceptionist, async (req, res) => {
   try {
     await prisma.aiConversation.update({
       where: { id: req.params.conversationId },
@@ -230,7 +248,7 @@ router.patch('/conversations/:conversationId/unarchive', async (req, res) => {
 })
 
 // GET /ai-suite/channel-toggles
-router.get('/channel-toggles', async (_req, res) => {
+router.get('/channel-toggles', adminAndReceptionist, async (_req, res) => {
   try {
     const cfg = await prisma.aiAgentConfig.findFirst()
     res.json({
@@ -245,7 +263,7 @@ router.get('/channel-toggles', async (_req, res) => {
 })
 
 // PATCH /ai-suite/channel-toggles
-router.patch('/channel-toggles', async (req, res) => {
+router.patch('/channel-toggles', adminAndReceptionist, async (req, res) => {
   try {
     const { fbDmsEnabled, igDmsEnabled, fbCommentsEnabled, igCommentsEnabled } = req.body as Record<string, boolean>
     const cfg = await prisma.aiAgentConfig.findFirst()
@@ -267,7 +285,7 @@ router.patch('/channel-toggles', async (req, res) => {
 
 // GET /ai-suite/conversations/:conversationId/messages
 // Returns all messages for a conversation in chronological order.
-router.get('/conversations/:conversationId/messages', async (req, res) => {
+router.get('/conversations/:conversationId/messages', adminAndReceptionist, async (req, res) => {
   try {
     const messages = await prisma.aiMessage.findMany({
       where:   { conversationId: req.params.conversationId },
@@ -282,7 +300,7 @@ router.get('/conversations/:conversationId/messages', async (req, res) => {
 
 // GET /ai-suite/posts?channel=facebook_comment|instagram_comment
 // Returns conversations grouped by postId for the threaded comment view.
-router.get('/posts', async (req, res) => {
+router.get('/posts', adminAndReceptionist, async (req, res) => {
   try {
     const channel = ((req.query.channel as string | undefined) ?? 'facebook_comment').toUpperCase()
     const convs = await prisma.aiConversation.findMany({
@@ -364,7 +382,7 @@ router.get('/posts', async (req, res) => {
 
 // POST /ai-suite/conversations/:conversationId/send
 // Staff sends a message directly while in human-takeover mode.
-router.post('/conversations/:conversationId/send', async (req, res) => {
+router.post('/conversations/:conversationId/send', adminAndReceptionist, async (req, res) => {
   try {
     const { text } = req.body as { text?: string }
     if (!text?.trim()) return res.status(400).json({ error: 'text required' })

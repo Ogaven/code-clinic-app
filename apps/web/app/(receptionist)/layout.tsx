@@ -174,7 +174,7 @@ function showLocalNotification(title: string, body: string, url?: string) {
 
 const BOTTOM_NAV = [
   { href: '/receptionist/dashboard',      icon: LayoutDashboard, label: 'Home' },
-  { href: '/receptionist/scheduling',     icon: CalendarDays,    label: 'Schedule',  permKey: 'scheduling' },
+  { href: '/receptionist/scheduling',     icon: CalendarDays,    label: 'Schedule',  permKey: 'appointments' },
   { href: '/receptionist/patients',       icon: Users,           label: 'Patients',  permKey: 'patients' },
   { href: '/receptionist/ai-suite/inbox', icon: Inbox,           label: 'Conversations', permKey: 'aiSuiteInbox' },
   { href: '/receptionist/flow',           icon: Zap,             label: 'Flow',      permKey: 'liveFlow' },

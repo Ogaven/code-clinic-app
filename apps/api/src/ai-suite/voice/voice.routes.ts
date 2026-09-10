@@ -6,16 +6,36 @@ import { provisionCodeClinicAgent, getOrCreateAgentId } from './elevenlabs-conv-
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 
 import { prisma } from '../../lib/prisma'
+import { requireAuth } from '../../middleware/auth'
+import { adminOnly, adminAndReceptionist } from '../../middleware/rbac'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage() })
+
+// None of the routes below had auth middleware — anyone reaching the API
+// could read call logs, list/delete cloned voice profiles, trigger arbitrary
+// outbound calls (POST /call — dials any number via the clinic's SIP trunk),
+// or spend ElevenLabs credits via /preview and /train, all without logging
+// in (see WORKSTREAM A Part B security findings). requireAuth alone is not
+// enough here: reading call logs, viewing settings/voices, and previewing a
+// voice sample are normal Voice Studio operations already used by both
+// Admin and Receptionist (adminAndReceptionist below); but training a new
+// voice, deleting one, setting the clinic-wide default voice, changing
+// global voice settings, provisioning the ElevenLabs agent, and triggering
+// outbound calls are administrative/global-configuration actions and are
+// restricted to adminOnly — no confirmed legitimate non-admin caller exists
+// for /call or /no-answer-sms, and per-route classification below. This
+// file is mounted separately from voice-llm.routes.ts, which stays
+// unauthenticated on purpose — ElevenLabs' own servers call that one
+// directly and cannot send our staff bearer token.
+router.use(requireAuth)
 
 // ── POST /ai-suite/voice/call ─────────────────────────────────────────────────
 // Trigger an outbound call.  Fire-and-forget — returns immediately while the
 // SIP INVITE goes out asynchronously.
 // Body: { toNumber, reason? }
 
-router.post('/call', async (req, res) => {
+router.post('/call', adminOnly, async (req, res) => {
   try {
     const { toNumber, reason } = req.body as { toNumber?: string; reason?: string }
     if (!toNumber) return res.status(400).json({ error: 'toNumber required' })
@@ -73,7 +93,7 @@ router.post('/call', async (req, res) => {
 // Can also be called from external systems (e.g., a missed-call webhook).
 // Body: { toNumber, patientName? }
 
-router.post('/no-answer-sms', async (req, res) => {
+router.post('/no-answer-sms', adminOnly, async (req, res) => {
   try {
     const { toNumber, patientName } = req.body as {
       toNumber:     string
@@ -99,7 +119,7 @@ router.post('/no-answer-sms', async (req, res) => {
 // Recent call history — 50 most recent VOICE agent logs with patient info and
 // recording metadata.
 
-router.get('/calls', async (_req, res) => {
+router.get('/calls', adminAndReceptionist, async (_req, res) => {
   try {
     const logs = await prisma.agentLog.findMany({
       where:   { channel: 'VOICE' },
@@ -119,7 +139,7 @@ router.get('/calls', async (_req, res) => {
 
 // ── GET /ai-suite/voice/settings ─────────────────────────────────────────────
 
-router.get('/settings', async (_req, res) => {
+router.get('/settings', adminAndReceptionist, async (_req, res) => {
   try {
     const keys = ['voice_persona_name', 'voice_elevenlabs_id', 'voice_stability', 'voice_similarity_boost']
     const rows = await prisma.appSetting.findMany({ where: { key: { in: keys } } })
@@ -138,7 +158,7 @@ router.get('/settings', async (_req, res) => {
 
 // ── POST /ai-suite/voice/settings ────────────────────────────────────────────
 
-router.post('/settings', async (req, res) => {
+router.post('/settings', adminOnly, async (req, res) => {
   try {
     const { personaName, elevenLabsVoiceId, stability, similarityBoost } =
       req.body as { personaName?: string; elevenLabsVoiceId?: string; stability?: number; similarityBoost?: number }
@@ -161,7 +181,7 @@ router.post('/settings', async (req, res) => {
 
 // ── GET /ai-suite/voice/voices ───────────────────────────────────────────────
 
-router.get('/voices', async (_req, res) => {
+router.get('/voices', adminAndReceptionist, async (_req, res) => {
   try {
     const profiles = await prisma.voiceProfile.findMany({ orderBy: { createdAt: 'desc' } })
     res.json(profiles)
@@ -173,7 +193,7 @@ router.get('/voices', async (_req, res) => {
 // ── POST /ai-suite/voice/preview ─────────────────────────────────────────────
 // Body: { text, voiceId? }  Returns audio/mpeg stream.
 
-router.post('/preview', async (req, res) => {
+router.post('/preview', adminAndReceptionist, async (req, res) => {
   try {
     const { text, voiceId } = req.body as { text?: string; voiceId?: string }
     if (!text?.trim()) return res.status(400).json({ error: 'text required' })
@@ -212,7 +232,7 @@ router.post('/preview', async (req, res) => {
 // ── POST /ai-suite/voice/train ───────────────────────────────────────────────
 // Multipart: { name: string, file: audio file }
 
-router.post('/train', upload.single('file'), async (req, res) => {
+router.post('/train', adminOnly, upload.single('file'), async (req, res) => {
   try {
     const { name } = req.body as { name?: string }
     const file = req.file
@@ -247,7 +267,7 @@ router.post('/train', upload.single('file'), async (req, res) => {
 
 // ── PUT /ai-suite/voice/voices/:id/assign ────────────────────────────────────
 
-router.put('/voices/:id/assign', async (req, res) => {
+router.put('/voices/:id/assign', adminOnly, async (req, res) => {
   try {
     const profile = await prisma.voiceProfile.findUnique({ where: { id: req.params.id } })
     if (!profile) return res.status(404).json({ error: 'Voice not found' })
@@ -270,7 +290,7 @@ router.put('/voices/:id/assign', async (req, res) => {
 
 // ── DELETE /ai-suite/voice/voices/:id ────────────────────────────────────────
 
-router.delete('/voices/:id', async (req, res) => {
+router.delete('/voices/:id', adminOnly, async (req, res) => {
   try {
     const profile = await prisma.voiceProfile.findUnique({ where: { id: req.params.id } })
     if (!profile) return res.status(404).json({ error: 'Voice not found' })
@@ -293,7 +313,7 @@ router.delete('/voices/:id', async (req, res) => {
 // ── GET /ai-suite/voice/agent ─────────────────────────────────────────────────
 // Returns the current ElevenLabs ConvAI agent config (id + whether it exists).
 
-router.get('/agent', async (_req, res) => {
+router.get('/agent', adminAndReceptionist, async (_req, res) => {
   try {
     const apiKey  = process.env.ELEVENLABS_API_KEY
     const row     = await prisma.appSetting.findUnique({ where: { key: 'voice_elevenlabs_agent_id' } })
@@ -318,7 +338,7 @@ router.get('/agent', async (_req, res) => {
 // stores the agent_id in AppSettings.  Idempotent — safe to call multiple times.
 // Body: { apiUrl? }  — override the LLM endpoint URL
 
-router.post('/agent/provision', async (req, res) => {
+router.post('/agent/provision', adminOnly, async (req, res) => {
   try {
     const apiKey = process.env.ELEVENLABS_API_KEY
     if (!apiKey) return res.status(503).json({ error: 'ELEVENLABS_API_KEY not set' })
