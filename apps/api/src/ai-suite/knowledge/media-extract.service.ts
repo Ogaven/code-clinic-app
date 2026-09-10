@@ -12,16 +12,14 @@ import OpenAI from 'openai'
 // knowledge-ingest.service.ts's ingestFile and the comment this replaced in
 // KnowledgeSourcesPanel.tsx for why it was removed).
 //
-// PROVIDER CHOICE: this file uses the `openai` SDK (already a dependency —
-// see apps/api/src/ai-suite/agent/agent.service.ts's getAgentReplyV2OpenAI
-// and package.json) rather than @anthropic-ai/sdk (the provider the rest of
-// Knowledge Studio uses for chat). Reason: OpenAI's API is the only provider
-// already integrated in this codebase that offers both (a) audio
-// transcription (Whisper) and (b) vision — Anthropic's Messages API used
-// elsewhere here supports vision but not audio transcription, and adding a
-// SECOND new provider just for images would mean two different failure
-// modes/configs for one feature. Using OpenAI for both keeps multimedia
-// extraction on one provider with one API key to configure.
+// PROVIDER CHOICE: this file uses the `openai` SDK, matching every other AI
+// feature in this codebase since the 2026-09-07 provider migration (see
+// knowledge-studio.routes.ts's own provider-architecture comment). It
+// instantiates its own client independently rather than importing one from
+// elsewhere because OpenAI's API is the only provider integrated here that
+// offers both (a) audio transcription (Whisper) and (b) vision in one
+// place — keeping multimedia extraction on one provider with one API key
+// to configure, rather than splitting image and audio handling across two.
 // ─────────────────────────────────────────────────────────────────────────
 
 function getOpenAI(): OpenAI {
