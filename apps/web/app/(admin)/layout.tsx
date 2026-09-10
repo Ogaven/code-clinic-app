@@ -7,6 +7,10 @@ import { cn } from '@/lib/utils'
 import { questrial } from '../fonts/questrial'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import MobileHeader from '@/components/mobile/MobileHeader'
+import MobileBottomNav from '@/components/mobile/MobileBottomNav'
+import MobileProfileSheet from '@/components/mobile/MobileProfileSheet'
+import { usePwaInstall } from '@/lib/pwaInstall'
 
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Overview', '/admin/dashboard': 'Overview', '/scheduling': 'Appointments', '/appointments': 'Appointments',
@@ -27,6 +31,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<any>(null)
   const [theme, setTheme] = useState<AppTheme>('system')
   const [dark, setDark] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  // Mounted here (always-on for the session), not inside MobileProfileSheet
+  // (which only mounts when opened) — beforeinstallprompt fires once, early,
+  // and a listener attached late would miss it.
+  const pwaInstall = usePwaInstall()
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
@@ -71,9 +80,46 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const title = pageTitles[pathname] || (pathname.startsWith('/patients/') ? 'Patient Profile' : null)
     || Object.entries(pageTitles).find(([key]) => pathname.startsWith(key + '/'))?.[1] || 'Overview'
 
+  function signOut() {
+    localStorage.removeItem('cc_token'); localStorage.removeItem('cc_user')
+    document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
+    window.location.href = '/login'
+  }
+
+  // The new mobile bottom-nav/header/profile-sheet is scoped to ADMIN only —
+  // ACCOUNTS shares this layout but has its own restricted route allowlist
+  // above and no equivalent mobile-nav config (out of this task's scope), so
+  // it keeps the existing TopBar (with its own hamburger drawer) at every
+  // width rather than losing navigation on mobile.
+  const isAdmin = user?.role === 'ADMIN'
+
   return <div className={cn('cc-admin-shell flex h-screen flex-col overflow-hidden', questrial.variable, dark ? 'bg-transparent' : 'bg-clinic-bg')}>
-    <TopBar title={title} user={user} theme={theme} onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }} />
-    <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+    <div className={isAdmin ? 'hidden xl:block' : ''}>
+      <TopBar title={title} user={user} theme={theme} onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }} />
+    </div>
+    {isAdmin && (
+      <MobileHeader
+        homeHref="/dashboard"
+        notificationsHref="/admin/notifications"
+        user={user}
+        onProfileClick={() => setProfileOpen(true)}
+        searchEndpoint="/api-proxy/patients"
+        onSelectPatient={id => router.push(`/patients/${id}`)}
+      />
+    )}
+    <main className={cn('flex-1 overflow-y-auto p-4 lg:p-6', isAdmin && 'pb-24 xl:pb-6')}>{children}</main>
+    {isAdmin && <MobileBottomNav role="ADMIN" perms={{}} />}
+    {isAdmin && profileOpen && (
+      <MobileProfileSheet
+        user={user}
+        theme={theme}
+        onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }}
+        profileHref="/profile"
+        onClose={() => setProfileOpen(false)}
+        onSignOut={signOut}
+        install={pwaInstall}
+      />
+    )}
     <SarahChatbot />
   </div>
 }

@@ -133,14 +133,30 @@ self.addEventListener('pushsubscriptionchange', (e) => {
   )
 })
 
+// Never trust a URL from a push payload directly — resolve it against our
+// own origin and reject anything that resolves elsewhere (an open redirect
+// otherwise: a malformed or ever-tampered payload could send a device to an
+// external phishing page via what looks like a legitimate Code Clinic push).
+function safeNotificationUrl(rawUrl) {
+  const fallback = '/dashboard' // role-agnostic — each shell's own layout redirects non-matching roles to their real home
+  if (!rawUrl || typeof rawUrl !== 'string') return fallback
+  try {
+    const resolved = new URL(rawUrl, self.location.origin)
+    if (resolved.origin !== self.location.origin) return fallback
+    return resolved.pathname + resolved.search + resolved.hash
+  } catch {
+    return fallback
+  }
+}
+
 self.addEventListener('notificationclick', (e) => {
   e.notification.close()
   if (e.action === 'dismiss') return
-  const url = (e.notification.data && e.notification.data.url) || '/receptionist/dashboard'
+  const url = safeNotificationUrl(e.notification.data && e.notification.data.url)
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
       for (const c of cs) {
-        if (c.url.includes(self.location.origin) && 'focus' in c) {
+        if (c.url.startsWith(self.location.origin) && 'focus' in c) {
           c.navigate(url)
           return c.focus()
         }

@@ -1,17 +1,17 @@
 'use client'
 
-import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import {
-  LayoutDashboard, CalendarDays, Users, Zap, Inbox,
-  HelpCircle, X, Send, CheckCircle2,
-} from 'lucide-react'
+import { HelpCircle, X, Send, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AppTheme, applyTheme, readTheme } from '@/lib/theme'
 import { questrial } from '../fonts/questrial'
 import ReceptionistTopBar from '@/components/layout/ReceptionistTopBar'
 import SarahChatbot from '@/components/receptionist/SarahChatbot'
+import MobileHeader from '@/components/mobile/MobileHeader'
+import MobileBottomNav from '@/components/mobile/MobileBottomNav'
+import MobileProfileSheet from '@/components/mobile/MobileProfileSheet'
+import { usePwaInstall } from '@/lib/pwaInstall'
 
 async function fetchLivePerms(token: string): Promise<Record<string, boolean>> {
   try {
@@ -172,16 +172,8 @@ function showLocalNotification(title: string, body: string, url?: string) {
   } catch {}
 }
 
-const BOTTOM_NAV = [
-  { href: '/receptionist/dashboard',      icon: LayoutDashboard, label: 'Home' },
-  { href: '/receptionist/scheduling',     icon: CalendarDays,    label: 'Schedule',  permKey: 'scheduling' },
-  { href: '/receptionist/patients',       icon: Users,           label: 'Patients',  permKey: 'patients' },
-  { href: '/receptionist/ai-suite/inbox', icon: Inbox,           label: 'Conversations', permKey: 'aiSuiteInbox' },
-  { href: '/receptionist/flow',           icon: Zap,             label: 'Flow',      permKey: 'liveFlow' },
-]
 
 export default function ReceptionistLayout({ children }: { children: React.ReactNode }) {
-  const pathname  = usePathname()
   const router    = useRouter()
   const [user, setUser]         = useState<any>(null)
   const [permsMap, setPermsMap] = useState<Record<string, boolean>>({})
@@ -191,6 +183,11 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const [showHelp, setShowHelp] = useState(false)
   const [notifPerm, setNotifPerm] = useState<string>('default')
   const [notifications, setNotifications] = useState<any[]>([])
+  const [profileOpen, setProfileOpen] = useState(false)
+  // Mounted here (always-on for the session), not inside MobileProfileSheet
+  // (which only mounts when opened) — beforeinstallprompt fires once, early,
+  // and a listener attached late would miss it.
+  const pwaInstall = usePwaInstall()
 
   const API = '/api-proxy'
 
@@ -326,25 +323,44 @@ export default function ReceptionistLayout({ children }: { children: React.React
     }
   }
 
-  const allowed = (key?: string) => !key || permsMap[key] !== false
-  const visibleBottomNav = BOTTOM_NAV.filter(item => allowed(item.permKey))
+  function signOut() {
+    localStorage.removeItem('cc_token'); localStorage.removeItem('cc_user')
+    document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
+    window.location.href = '/login'
+  }
 
   return (
     <div className={cn('cc-receptionist-shell flex h-screen flex-col overflow-hidden', questrial.variable, dark ? 'bg-transparent' : 'bg-clinic-bg')}>
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
-      <ReceptionistTopBar
-        user={user}
-        perms={permsMap}
-        theme={theme}
-        onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }}
-        unread={unread}
-        notifications={notifications}
-        onNotificationsOpen={fetchUnread}
-        onMarkAllRead={markAllRead}
-        onOpenNotification={openNotification}
-        onOpenHelp={() => setShowHelp(true)}
-      />
+      {/* Desktop floating-pill header — unchanged, xl breakpoint and up. */}
+      <div className="hidden xl:block">
+        <ReceptionistTopBar
+          user={user}
+          perms={permsMap}
+          theme={theme}
+          onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }}
+          unread={unread}
+          notifications={notifications}
+          onNotificationsOpen={fetchUnread}
+          onMarkAllRead={markAllRead}
+          onOpenNotification={openNotification}
+          onOpenHelp={() => setShowHelp(true)}
+        />
+      </div>
+
+      {/* Mobile/tablet header — compact, logo + search/notifications/profile only. */}
+      {user && (
+        <MobileHeader
+          homeHref="/receptionist/dashboard"
+          notificationsHref="/receptionist/notifications"
+          unread={unread}
+          user={user}
+          onProfileClick={() => setProfileOpen(true)}
+          searchEndpoint="/api-proxy/patients"
+          onSelectPatient={id => router.push(`/receptionist/patients/${id}`)}
+        />
+      )}
 
       {/* Notification-permission nudge (only until granted/denied) */}
       {notifPerm !== 'granted' && notifPerm !== 'denied' && (
@@ -356,26 +372,20 @@ export default function ReceptionistLayout({ children }: { children: React.React
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto pb-16 xl:pb-0">{children}</main>
+      <main className="flex-1 overflow-y-auto pb-24 xl:pb-0">{children}</main>
 
-      {/* ── Mobile Bottom Nav — quick single-tap access; the hamburger in
-          ReceptionistTopBar covers the full nav tree (CRM/Reports dropdowns
-          don't fit here). Shown below the xl breakpoint, matching where the
-          floating nav island itself disappears. ─────────────────────── */}
-      <nav className="xl:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#0a1f4a] border-t border-gray-100 dark:border-white/10 flex items-center justify-around px-2 py-1.5"
-        style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
-        {visibleBottomNav.map(({ href, icon: Icon, label }) => {
-          const active = pathname === href || pathname.startsWith(href + '/')
-          return (
-            <Link key={href} href={href}
-              className={cn('flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl min-w-[44px] transition-all',
-                active ? 'text-cyan-500' : 'text-gray-400 dark:text-white/40')}>
-              <Icon size={20} />
-              <span className="text-[9px] font-semibold">{label}</span>
-            </Link>
-          )
-        })}
-      </nav>
+      <MobileBottomNav role="RECEPTIONIST" perms={permsMap} />
+      {profileOpen && user && (
+        <MobileProfileSheet
+          user={user}
+          theme={theme}
+          onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }}
+          profileHref="/receptionist/profile"
+          onClose={() => setProfileOpen(false)}
+          onSignOut={signOut}
+          install={pwaInstall}
+        />
+      )}
 
       {/* Global Sarah chatbot bubble — persists across every Receptionist
           route now, not just Dashboard (see SarahChatbot.tsx). */}
