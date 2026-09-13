@@ -324,7 +324,16 @@ async function getCachedMenu(): Promise<{ services: string; doctors: string }> {
   ])
 
   const services = allServices
-    .map(s => `- ${s.name}: UGX ${Number(s.priceUGX).toLocaleString('en-GB')} (${s.durationMins} mins)`)
+    .map(s => {
+      const price = Number(s.priceUGX)
+      // A price of 0/null/NaN is a real but unpriced/placeholder record, not a
+      // free service. Never print it as a real UGX figure the model could quote —
+      // see PRICING — FAIL CLOSED, CRITICAL in SARAH_V2_SYSTEM_BASE.
+      const priceLabel = Number.isFinite(price) && price > 0
+        ? `UGX ${price.toLocaleString('en-GB')}`
+        : 'price not yet confirmed — do NOT state a number, tell the patient the team will confirm it'
+      return `- ${s.name}: ${priceLabel} (${s.durationMins} mins)`
+    })
     .join('\n')
 
   const doctors = allDoctors
@@ -1842,6 +1851,14 @@ NEVER FABRICATE — this rule overrides everything:
 - If you don't have real data, say so plainly: call the relevant tool immediately, or say "I'd rather Julian confirm that for you" and flag it for the team
 - If something went wrong, acknowledge it simply and move to fixing it — never fabricate an excuse
 
+PRICING — FAIL CLOSED, CRITICAL:
+- Only ever state a price when search_services returns priceConfirmed:true with a real priceUGX amount. Copy that number exactly — never round, estimate, or adjust it.
+- If search_services returns priceConfirmed:false, or found:false, or a priceNote — that service does NOT have a confirmed price. NEVER say "UGX 0", NEVER say the service is free, and NEVER invent a number. Zero is never a real price unless the patient is told about an explicit promotion — which you do not currently have.
+- In that case, respond warmly and naturally, e.g.: "I don't have a confirmed price for [service] at the moment — I'll have the team confirm the current price for you 😊" Then continue the conversation normally (offer to book a consultation, answer their next question, etc.).
+- Never expose internal words to a patient: "database", "record", "tool", "system", "null", "undefined", "currently listed at". Speak like a receptionist quoting a price she knows, not like a machine reading out a field.
+- If a patient's question is ambiguous between multiple services (e.g. "cementing" could mean a crown, bridge, or retainer), ask ONE short clarifying question first — do not guess which service and do not quote a price until you know which one they mean.
+- Do not tack an unrelated question (like asking the patient's name) onto the same reply as a price answer or any other direct informational answer — answer what they asked, nothing more, unless a name is genuinely needed for a booking you are actively completing.
+
 APPOINTMENT LOOKUP RULE — CRITICAL:
 - On ANY message that mentions cancelling, rescheduling, "can't make it", or otherwise implies the patient already has a booking — you MUST call get_patient_appointments BEFORE saying anything about whether an appointment exists. This applies even on a brand-new conversation thread where you have no prior context.
 - NEVER say "I don't see any appointments", "I'm not seeing any upcoming appointments", or anything similar without having actually called get_patient_appointments on this turn first. Real patients with real upcoming appointments have been wrongly told they have none — this is never acceptable.
@@ -2186,7 +2203,20 @@ async function executeV2Tool(
       case 'search_services': {
         const service = await matchService(toolInput.query as string)
         if (service) {
-          return JSON.stringify({ found: true, serviceId: service.id, name: service.name, priceUGX: Number(service.priceUGX) })
+          const price = Number(service.priceUGX)
+          const priceConfirmed = Number.isFinite(price) && price > 0
+          return JSON.stringify({
+            found: true,
+            serviceId: service.id,
+            name: service.name,
+            priceConfirmed,
+            // Only include a numeric price when it is a real, confirmed, positive
+            // amount — a stored 0/null/NaN is a genuine data gap, never "free".
+            // See PRICING — FAIL CLOSED, CRITICAL in SARAH_V2_SYSTEM_BASE.
+            ...(priceConfirmed
+              ? { priceUGX: price }
+              : { priceNote: 'Price not yet confirmed in our system for this service. Do NOT state a number or say it is free — tell the patient warmly that the team will confirm the current price for them.' }),
+          })
         }
         const all  = await getServices()
         const top8 = all.slice(0, 8).map(s => ({ id: s.id, name: s.name }))
@@ -2646,11 +2676,11 @@ export async function getAgentReplyV2OpenAI(
         '',
       ] : []),
       ...(channel === 'WEBSITE' ? [
-        'WEBSITE VISITOR CONTEXT: This person is chatting via the clinic website widget — not WhatsApp. If their name is unknown (PATIENT NAME shows "there"), and at least one exchange has already happened, naturally ask for their name once: "By the way, what\'s your name? 😊" — do this only once, never repeat it.',
+        'WEBSITE VISITOR CONTEXT: This person is chatting via the clinic website widget — not WhatsApp. If their name is unknown (PATIENT NAME shows "there"), and at least one exchange has already happened, naturally ask for their name once: "By the way, what\'s your name? 😊" — do this only once, never repeat it, and NEVER in the same message as a direct answer to a price, service, or availability question. Ask it on its own, in a later turn, or only once you are actively moving into booking.',
         '',
         'CRITICAL RULE — NEVER INVENT INFORMATION:',
         'Never mention a phone number unless it comes directly from your tools or knowledge base. The ONLY phone number you are allowed to give is the clinic WhatsApp: +256741087667. Never say any other number under any circumstances.',
-        'Never mention a service or price that was not returned by search_services. If search_services did not return a specific service and price, you cannot say it exists.',
+        'Never mention a service or price that was not returned by search_services. If search_services did not return a specific service and price, you cannot say it exists. If search_services returns priceConfirmed:false, do not state a price — see PRICING — FAIL CLOSED, CRITICAL.',
         '',
         'INSURANCE RULE:',
         'When asked about insurance, say: "I\'m not sure about our current insurance partnerships — please WhatsApp us on +256741087667 and our team will confirm whether we work with your provider 😊". Never guess or mention specific insurance companies as confirmed partners.',
@@ -3024,7 +3054,7 @@ Location: Kiira Road, Kamwokya, Kampala.${postContext}
 
 RULES (mandatory):
 1. Maximum 2 short sentences. No bullet points, no lists, no paragraphs, no bold or asterisks — plain text only.
-2. Answer simple, safe public questions directly and honestly — pricing for a specific service (e.g. "How much for a cleaning?" / "How much are braces?"), hours, location, or whether a service exists. Always call search_services to get the real price before quoting one — never invent a number, and never quote a stale or remembered figure.
+2. Answer simple, safe public questions directly and honestly — pricing for a specific service (e.g. "How much for a cleaning?" / "How much are braces?"), hours, location, or whether a service exists. Always call search_services to get the real price before quoting one — never invent a number, and never quote a stale or remembered figure. If search_services returns priceConfirmed:false (or found:false), do NOT say "UGX 0" or that it's free — reply warmly that you'll have the team confirm the current price, e.g. "I don't have a confirmed price for that one just yet — send us a DM and we'll sort you out! 😊"
 3. Never dump the full price list — if asked broadly what services are offered, name one or two examples (using search_services) and invite a DM for the rest.
 4. Reserve the DM deflection ONLY for things that genuinely need privacy: a specific patient's medical symptoms/concerns, personal contact or scheduling details, complaints, or anything requiring back-and-forth. For those only, reply with: "Hi! 😊 Send us a DM and we'll help you out!"
 5. EDUCATIONAL vs PERSONAL SYMPTOM — only call flag_clinical_concern when the commenter describes THEIR OWN active symptom, pain, or something requiring a real follow-up promise. General "what causes X", "why does Y happen", "how does Z work" questions are dental EDUCATION — answer them warmly in 1-2 sentences using general dental knowledge and do NOT call flag_clinical_concern for them. Also do NOT call flag_clinical_concern for administrative questions like pricing, hours, or general info.

@@ -223,10 +223,18 @@ export async function antiHallucinationGuard(
     if (!priceToolsCalled) {
       return { safe: false, reason: 'Price mentioned but no price lookup tool was called' }
     }
+    // A price of 0 (or negative) is never a real, confirmed price to state to a
+    // patient — it's a data gap, not a free service. Block this outright, even
+    // if a price-lookup tool genuinely returned 0 for a real service record.
+    for (const price of mentionedPrices) {
+      if (price <= 0) {
+        return { safe: false, reason: 'A UGX 0 (or non-positive) price was mentioned — zero is never a confirmed price' }
+      }
+    }
     // Check each mentioned price exists in tool results (allow ±1000 UGX rounding)
     for (const price of mentionedPrices) {
       const close = confirmedPrices.some(p => Math.abs(p - price) <= 1000)
-      if (!close && price > 0) {
+      if (!close) {
         return { safe: false, reason: `Price ${price.toLocaleString()} UGX mentioned but not found in database results` }
       }
     }
