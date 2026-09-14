@@ -212,6 +212,11 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
         await prisma.patientConsent.create({
           data: { patientId: patient.id, consentType: 'BOT_COMMUNICATION', granted: false },
         })
+        // Also log to ConsentLog (CRM automation's source of truth) — dynamic
+        // import avoids a circular import (this file <- guardian-routing.ts
+        // <- consent-log.service.ts), same pattern sms.service.ts uses.
+        const { recordConsent } = await import('../../crm-automation/consent-log.service')
+        await recordConsent({ patientId: patient.id, channel: 'WHATSAPP', status: 'OPT_OUT', source: 'INBOUND_KEYWORD' })
       }
       await sendWhatsAppMessage(from,
         `You've been unsubscribed from automated appointment reminders and updates from Code Clinic.\n\nIf you change your mind, reply START at any time. You can still message us whenever you need help 😊`
@@ -223,6 +228,8 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
         await prisma.patientConsent.create({
           data: { patientId: patient.id, consentType: 'BOT_COMMUNICATION', granted: true },
         })
+        const { recordConsent } = await import('../../crm-automation/consent-log.service')
+        await recordConsent({ patientId: patient.id, channel: 'WHATSAPP', status: 'OPT_IN', source: 'INBOUND_KEYWORD' })
       }
       await sendWhatsAppMessage(from,
         `Welcome back! 😊 You've been re-subscribed to appointment reminders and updates from Code Clinic.`

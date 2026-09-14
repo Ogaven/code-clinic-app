@@ -20,7 +20,7 @@ import { notifyWaitlistForOpenSlot } from '../crm-automation/waitlist.service'
 import { processDueReviewRequests } from '../crm-automation/review-request.service'
 import { tagBacklogLeads, executeBacklogCampaign, sweepBacklogNoResponse, previewBacklogEligibility } from '../crm-automation/backlog-reengagement.service'
 import { recordLeadConsent, getLeadConsentHistory, type LeadConsentPurpose, type LeadConsentSource, type LeadConsentStatus } from '../crm-automation/lead-consent.service'
-import { createWaitlistEntry, listWaitlistEntries, pauseOrRemoveWaitlistEntry, markWaitlistEntryFulfilled } from '../crm-automation/waitlist.service'
+import { createWaitlistEntry, listWaitlistEntries, pauseOrRemoveWaitlistEntry, markWaitlistEntryFulfilled, previewWaitlistMatchesForSlot } from '../crm-automation/waitlist.service'
 import {
   responseTimeLeaderboard, stageConversionRates, staleLeadsByOwner, weeklyColdLeadsDigest,
   caseAcceptanceReport, sequencePerformanceReport, agingReceivablesReport, callPerformanceReport,
@@ -335,6 +335,12 @@ router.post('/waitlist/notify', requireAuth, adminAndReceptionist, async (req: R
   const { cancelledAppointmentId } = req.body
   if (!cancelledAppointmentId) return res.status(400).json({ error: 'cancelledAppointmentId is required' })
   res.json(await notifyWaitlistForOpenSlot(cancelledAppointmentId))
+})
+
+router.post('/waitlist/preview', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const { cancelledAppointmentId } = req.body
+  if (!cancelledAppointmentId) return res.status(400).json({ error: 'cancelledAppointmentId is required' })
+  res.json(await previewWaitlistMatchesForSlot(cancelledAppointmentId))
 })
 
 // ── Post-visit review request config (Part H) ─────────────────────────────

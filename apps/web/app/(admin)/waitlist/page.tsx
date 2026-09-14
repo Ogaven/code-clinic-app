@@ -4,7 +4,7 @@
 // self-contained; does not touch the existing Scheduling/Appointments UI.
 
 import { useEffect, useState } from 'react'
-import { Plus, Search, X, CheckCircle2, AlertCircle, Loader2, ListChecks, Pause, Check, Trash2 } from 'lucide-react'
+import { Plus, Search, X, CheckCircle2, AlertCircle, Loader2, ListChecks, Pause, Check, Trash2, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const API = '/api-proxy'
@@ -27,6 +27,22 @@ interface Service { id: string; name: string }
 interface Doctor { id: string; user: { firstName: string; lastName: string } }
 interface PatientHit { id: string; firstName: string; lastName: string; phone: string }
 
+interface WaitlistMatchPreviewEntry {
+  patientId: string; patientName: string; waitlistEntryId: string
+  channel: string; wouldSend: boolean; blockedReason: string | null; requestedAt: string
+}
+interface PreviewResult {
+  eligibleCount: number
+  matches: WaitlistMatchPreviewEntry[]
+  targetingMode: 'MATCHED' | 'DISABLED_NO_SERVICE_CONTEXT' | 'DISABLED_NO_MATCH'
+}
+
+const TARGETING_MODE_LABEL: Record<string, string> = {
+  MATCHED: 'Matched',
+  DISABLED_NO_SERVICE_CONTEXT: 'That appointment has no service set — nothing to match on',
+  DISABLED_NO_MATCH: 'No active waitlist entries match this slot',
+}
+
 export default function WaitlistPage() {
   const [entries, setEntries] = useState<WaitlistEntry[]>([])
   const [services, setServices] = useState<Service[]>([])
@@ -35,6 +51,10 @@ export default function WaitlistPage() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewAppointmentId, setPreviewAppointmentId] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null)
 
   const [patientQuery, setPatientQuery] = useState('')
   const [patientResults, setPatientResults] = useState<PatientHit[]>([])
@@ -109,6 +129,21 @@ export default function WaitlistPage() {
     showToast('Marked fulfilled'); load()
   }
 
+  async function previewMatches() {
+    if (!previewAppointmentId.trim()) { showToast('Appointment ID is required', false); return }
+    setPreviewLoading(true)
+    setPreviewResult(null)
+    try {
+      const r = await fetch(`${API}/crm-automation/waitlist/preview`, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ cancelledAppointmentId: previewAppointmentId.trim() }),
+      })
+      if (r.ok) setPreviewResult(await r.json())
+      else { const d = await r.json(); showToast(d.error || 'Failed to preview matches', false) }
+    } catch { showToast('Network error', false) }
+    setPreviewLoading(false)
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-4xl">
       {toast && (
@@ -123,9 +158,15 @@ export default function WaitlistPage() {
           <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center gap-2"><ListChecks size={20} className="text-cyan-500" /> Same-Day Waitlist</h1>
           <p className="text-xs text-gray-400 mt-0.5">Explicit patient requests — used to safely target who gets notified when a slot opens up</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 transition-colors">
-          <Plus size={14} /> Add to Waitlist
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setShowPreview(true); setPreviewResult(null); setPreviewAppointmentId('') }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-gray-600 dark:text-white/70 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 transition-colors">
+            <Eye size={14} /> Preview Matches
+          </button>
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 transition-colors">
+            <Plus size={14} /> Add to Waitlist
+          </button>
+        </div>
       </div>
 
       {loading ? <div className="flex justify-center py-10"><Loader2 className="animate-spin text-gray-400" /></div> : (
@@ -235,6 +276,52 @@ export default function WaitlistPage() {
                 {saving ? 'Saving…' : 'Add to Waitlist'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showPreview && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPreview(false)}>
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-800 dark:text-white">Preview Waitlist Matches</h2>
+              <button onClick={() => setShowPreview(false)}><X size={18} className="text-gray-400" /></button>
+            </div>
+            <p className="text-xs text-gray-400">
+              Read-only — shows who would be contacted for a cancelled appointment's slot, and why anyone would be skipped. Nothing is sent from here.
+            </p>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cancelled Appointment ID</label>
+              <div className="flex gap-2">
+                <input value={previewAppointmentId} onChange={e => setPreviewAppointmentId(e.target.value)} placeholder="appointment id"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-xl" />
+                <button onClick={previewMatches} disabled={previewLoading}
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-60 flex items-center gap-1.5">
+                  {previewLoading ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />} Preview
+                </button>
+              </div>
+            </div>
+
+            {previewResult && (
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-gray-500">
+                  {TARGETING_MODE_LABEL[previewResult.targetingMode] ?? previewResult.targetingMode}
+                  {previewResult.targetingMode === 'MATCHED' && ` — ${previewResult.eligibleCount} matched`}
+                </p>
+                {previewResult.matches.map(m => (
+                  <div key={m.waitlistEntryId} className="flex items-center justify-between gap-3 bg-gray-50 dark:bg-white/5 rounded-xl p-3">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800 dark:text-white">{m.patientName}</p>
+                      <p className="text-[11px] text-gray-400">{m.channel} · requested {new Date(m.requestedAt).toLocaleDateString()}</p>
+                    </div>
+                    <span className={cn('text-xs font-bold px-2.5 py-1 rounded-lg flex-shrink-0',
+                      m.wouldSend ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>
+                      {m.wouldSend ? 'Would notify' : `Skipped: ${m.blockedReason}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

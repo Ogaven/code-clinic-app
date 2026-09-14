@@ -12,6 +12,7 @@ import {
 import { createConvAISession, getOrCreateAgentId } from './elevenlabs-conv-ai.service'
 import { prisma } from '../../lib/prisma'
 import { normalizePhone } from '../../utils/phone'
+import { recordMissedCall } from '../../crm-automation/missed-call.service'
 
 // ── drachtio-srf ──────────────────────────────────────────────────────────────
 // drachtio-srf connects to a drachtio-server process which handles SIP signaling.
@@ -570,6 +571,12 @@ export async function handleInboundCall(req: any, res: any): Promise<void> {
   const agentSetting = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
   if (agentSetting?.value === 'false') {
     console.log(`[SIP] Calling agents disabled — declining inbound call from ${callerNumber}`)
+    recordMissedCall({
+      provider:       'SIP_DRACHTIO',
+      externalCallId: callId,
+      fromNumber:     callerNumber,
+      toNumber:       process.env.SIP_PHONE_NUMBER || 'unknown',
+    }).catch(err => console.error('[SIP] recordMissedCall (declined) failed:', err?.message ?? err))
     res.send(486)
     return
   }
@@ -601,6 +608,12 @@ export async function handleInboundCall(req: any, res: any): Promise<void> {
     })
   } catch (err: any) {
     console.error(`[SIP] Failed to handle inbound call from ${callerNumber}:`, err?.message ?? String(err))
+    recordMissedCall({
+      provider:       'SIP_DRACHTIO',
+      externalCallId: callId,
+      fromNumber:     callerNumber,
+      toNumber:       process.env.SIP_PHONE_NUMBER || 'unknown',
+    }).catch(mcErr => console.error('[SIP] recordMissedCall (setup failure) failed:', mcErr?.message ?? mcErr))
     try { res.send(500) } catch { /* already responded */ }
   }
 }
