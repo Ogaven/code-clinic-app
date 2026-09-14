@@ -17,6 +17,10 @@ import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
 import { appointmentVisibleToUser, authenticatedDoctorId } from '../lib/doctor-access'
 import { deleteAppointmentPermanently } from '../services/appointment-delete.service'
+import { recordVisitFlag } from '../crm-automation/patient-tags.service'
+import { notifyWaitlistForOpenSlot } from '../crm-automation/waitlist.service'
+import { scheduleReviewRequest } from '../crm-automation/review-request.service'
+import { checkAndConvertLeadOnBooking } from '../crm-automation/lead-patient-link.service'
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
@@ -304,6 +308,9 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
   // Staff notifications (fire-and-forget)
   notifyStaff(prisma, 'booked', appointment).catch(() => {})
 
+  // CRM Automation (Part N) — a QUALIFIED lead matching this patient auto-converts.
+  checkAndConvertLeadOnBooking(appointment.patient).catch((e: any) => console.error('[CrmAutomation] checkAndConvertLeadOnBooking failed:', e?.message))
+
   logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'APPOINTMENT', entityId: appointment.id, entityName: `${appointment.patient.firstName} ${appointment.patient.lastName} — ${appointment.service.name}`, req })
   res.status(201).json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })
 })
@@ -510,6 +517,36 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
     if (status === 'CANCELLED') {
       sendAppointmentNotification(appointment.id, 'cancelled', notify).catch((e: any) =>
         console.error('[CANCELLED] Patient WhatsApp notification failed:', e?.message)
+      )
+
+      // CRM Automation (Part A/G) — a cancellation within 24h of the
+      // appointment counts as a late-cancel visit flag, and always opens a
+      // same-day waitlist opportunity regardless of how close to the
+      // appointment it was.
+      const LATE_CANCEL_WINDOW_MS = 24 * 60 * 60 * 1000
+      const isLateCancel = appointment.startAt.getTime() - now.getTime() < LATE_CANCEL_WINDOW_MS
+      if (isLateCancel) {
+        recordVisitFlag(appointment.patient.id, 'LATE_CANCEL').catch((e: any) =>
+          console.error('[CrmAutomation] recordVisitFlag(LATE_CANCEL) failed:', e?.message)
+        )
+      }
+      notifyWaitlistForOpenSlot(appointment.id).catch((e: any) =>
+        console.error('[CrmAutomation] notifyWaitlistForOpenSlot failed:', e?.message)
+      )
+    }
+
+    // CRM Automation (Part A) — no-show visit flag + count.
+    if (status === 'NO_SHOW') {
+      recordVisitFlag(appointment.patient.id, 'NO_SHOW').catch((e: any) =>
+        console.error('[CrmAutomation] recordVisitFlag(NO_SHOW) failed:', e?.message)
+      )
+    }
+
+    // CRM Automation (Part H) — schedule (not send) a post-visit review
+    // request once the appointment is genuinely completed.
+    if (status === 'COMPLETED') {
+      scheduleReviewRequest(appointment.id, appointment.patient.id).catch((e: any) =>
+        console.error('[CrmAutomation] scheduleReviewRequest failed:', e?.message)
       )
     }
 

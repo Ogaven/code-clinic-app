@@ -13,10 +13,11 @@ import { cn } from '@/lib/utils'
 import TimelineTab from '@/components/patients/TimelineTab'
 import GuardianSection from '@/components/patients/GuardianSection'
 import RecentAiConversation from '@/components/patients/RecentAiConversation'
+import CrmTagsTab from '@/components/patients/CrmTagsTab'
 
 const toProperCase = (str: string) => str.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 
-type Tab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline'
+type Tab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline' | 'crm'
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'timeline',      label: 'Timeline',        icon: Activity   },
@@ -28,6 +29,10 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'notes',         label: 'Notes',           icon: FileText   },
   { key: 'billing',       label: 'Billing',         icon: DollarSign },
   { key: 'documents',     label: 'Documents',       icon: Folder     },
+  // CRM Automation (Part U/T V) — the server strips financial tag fields for
+  // any role other than ADMIN/ACCOUNTS, so Receptionist automatically never
+  // sees balance/payment/value-tier data here, with no client-side check.
+  { key: 'crm',           label: 'CRM Tags',        icon: Sparkles   },
 ]
 
 const STATUS_CFG: Record<string, { label: string; cls: string }> = {
@@ -1659,6 +1664,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
         {tab === 'documents'    && <DocumentsTab patientId={id} />}
         {tab === 'activity'     && <ActivityTab patientId={id} />}
         {tab === 'timeline'     && <TimelineTab patientId={id} />}
+        {tab === 'crm'          && <CrmTagsTab patientId={id} token={token} />}
       </div>
 
       {/* Merge Patient Dialog */}

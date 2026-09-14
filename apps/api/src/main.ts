@@ -21,6 +21,7 @@ import servicesRouter from './routes/services'
 import accountsRouter from './routes/accounts'
 import aiRouter from './routes/ai'
 import crmRouter from './routes/crm'
+import crmAutomationRouter from './routes/crm-automation'
 import campaignsRouter, { runScheduledCampaigns } from './routes/campaigns'
 import pipelineRouter from './routes/pipeline'
 import developerRouter from './routes/developer'
@@ -83,6 +84,15 @@ import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurtu
 import { updatePatientStatuses }           from './ai-suite/scheduler/patient-status.service'
 import { checkAndSendBirthdayAlerts }     from './ai-suite/scheduler/birthday.service'
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
+
+// CRM Automation (feature/crm-tag-automation) — sequence-touch dispatch, Lead
+// SLA sweep, and the daily derived-tag job all follow the exact same
+// setInterval + DB-status idiom as the schedulers above.
+import { processDueScheduledTouches }      from './crm-automation/sequence-dispatcher'
+import { checkLeadSlas }                   from './crm-automation/lead-sla.service'
+import { sweepStaleContactedLeads }        from './crm-automation/lead-stage.service'
+import { runDailyPatientTagDerivation }    from './crm-automation/patient-tags.service'
+import { processDueReviewRequests }        from './crm-automation/review-request.service'
 
 // Lock process timezone to EAT (UTC+3) — must be set before any Date operations.
 // Africa/Kampala and Africa/Nairobi are both fixed UTC+3 with no DST, so this
@@ -181,8 +191,9 @@ app.use('/stocks',       stocksRouter)
 app.use('/accounts',            accountsRouter)
 app.use('/accounts/quickbooks', quickbooksRouter)
 app.use('/ai',           aiRouter)
-app.use('/crm',          crmRouter)
-app.use('/campaigns',    campaignsRouter)
+app.use('/crm',              crmRouter)
+app.use('/crm-automation',   crmAutomationRouter)
+app.use('/campaigns',        campaignsRouter)
 app.use('/templates',    templatesRouter)
 app.use('/pipeline',     pipelineRouter)
 app.use('/developer',    developerRouter)
@@ -397,6 +408,31 @@ runStartup().then(() => {
   setInterval(() => {
     checkAndSendWeekendReport().catch(err => console.error('[WeekendReport] Scheduler error:', err))
   }, ONE_MINUTE)
+
+  // ── CRM Automation (feature/crm-tag-automation) ──────────────────────────
+  // Scheduled sequence touches — day-0/3/5/7/30 sends are calendar facts, so
+  // this is unavoidably a poll on [status, scheduledFor], same idiom as
+  // OutboundQueue/AiScheduledMessage above. Enrollment itself is NOT driven
+  // by this interval — see crm-automation/automation-events.service.ts.
+  setInterval(() => {
+    processDueScheduledTouches().catch(err => console.error('[CrmSequenceDispatch] Scheduler error:', err))
+  }, FIVE_MINUTES)
+  // Lead SLA sweep — 15/30-minute thresholds need finer-than-hourly checks.
+  setInterval(() => {
+    checkLeadSlas().catch(err => console.error('[CrmLeadSla] Scheduler error:', err))
+  }, FIVE_MINUTES)
+  // CONTACTED -> LOST after 48h of silence.
+  setInterval(() => {
+    sweepStaleContactedLeads().catch(err => console.error('[CrmLeadStaleSweep] Scheduler error:', err))
+  }, ONE_HOUR)
+  // Post-visit review requests — delay is configurable per ReviewRequestConfig.
+  setInterval(() => {
+    processDueReviewRequests().catch(err => console.error('[CrmReviewRequest] Scheduler error:', err))
+  }, ONE_HOUR)
+  // Daily derived-tag job (recallStatus/balanceStatus/lifecycleStage/valueTier).
+  setInterval(() => {
+    runDailyPatientTagDerivation().catch(err => console.error('[CrmPatientTagDerivation] Scheduler error:', err))
+  }, TWENTY_FOUR_HOURS)
 
   // Run once 2 minutes after startup (gives DB time to settle after migrations)
   setTimeout(() => {

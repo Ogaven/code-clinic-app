@@ -6,6 +6,7 @@ import { prisma } from '../../lib/prisma'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { hasOutboundConsent } from '../scheduler/guardian-routing.service'
 import { sendPushToUser } from '../../services/push.service'
+import { findOrCreateLeadForChannel } from '../../crm-automation/lead-intake.service'
 
 // ── Whole-word/phrase matching for reminder-reply intent detection ────────────
 // A real appointment was auto-cancelled (2026-08-24, Auntie Loy) because her
@@ -269,21 +270,20 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
     }
 
     // ── 2b. Create or update Lead for unknown contacts ───────────────────────
+    // Routed through the single lead-creation orchestration entry point
+    // (Part K) — acknowledgement is skipped here because Sarah (the AI
+    // agent) already replies to this same inbound message in real time
+    // through the normal pipeline; sending a second "thanks for reaching
+    // out" would be a duplicate.
     if (!patient) {
-      const existingLead = await prisma.lead.findFirst({
-        where:   { phone: from, status: { notIn: ['CONVERTED', 'LOST'] } },
-        orderBy: { createdAt: 'desc' },
+      await findOrCreateLeadForChannel({
+        where:      { phone: from, status: { notIn: ['CONVERTED', 'LOST'] } },
+        createData: { phone: from, source: 'WHATSAPP', status: 'NEW', stage: 'NEW', lastMessage: text },
+        onExistingMessage: text,
+        intakeOptions: { skipAcknowledgement: true },
+        // The lead just messaged us on WhatsApp — real operational contact-origin evidence.
+        contactEvidence: { channel: 'WHATSAPP', source: 'INBOUND_MESSAGE' },
       })
-      if (!existingLead) {
-        await prisma.lead.create({
-          data: { phone: from, source: 'WHATSAPP', status: 'NEW', stage: 'NEW', lastMessage: text },
-        })
-      } else {
-        await prisma.lead.update({
-          where: { id: existingLead.id },
-          data:  { lastMessage: text },
-        })
-      }
       // Alert staff for EVERY lead message so they can follow up in real-time
       const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
       const preview     = text.slice(0, 200)

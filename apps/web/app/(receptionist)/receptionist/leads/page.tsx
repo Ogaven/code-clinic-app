@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Plus, Search, RefreshCw, UserCheck, X, CheckCircle2, AlertCircle, Eye, Phone, Mail, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { slaBadge, LeadAutomationPanel } from '@/components/leads/LeadAutomationStatus'
 
 interface Lead {
   id: string
@@ -16,6 +17,19 @@ interface Lead {
   convertedToPatientId: string | null
   createdAt:   string
   updatedAt:   string
+  // CRM Automation — same fields the Admin Leads page reads; GET /crm/leads
+  // already returns every column, so no separate endpoint is needed here.
+  assignedTo?:        string | null
+  firstHumanReplyAt?: string | null
+  slaState?:          string | null
+  lossReason?:        string | null
+}
+
+interface StaffMember {
+  id: string
+  firstName: string
+  lastName: string
+  isActive: boolean
 }
 
 const SOURCES  = ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'WEBSITE', 'QUIZ', 'WALKIN', 'OTHER'] as const
@@ -84,8 +98,36 @@ export default function LeadsPage() {
   const [converting, setConverting]= useState<Lead | null>(null)
   const [viewLead,   setViewLead]  = useState<Lead | null>(null)
   const [busy,       setBusy]      = useState(false)
+  const [staff,      setStaff]     = useState<StaffMember[]>([])
 
   const [form, setForm] = useState({ name: '', phone: '', email: '', source: 'WALKIN', notes: '' })
+
+  // Real staff for lead assignment — same /employees endpoint the Admin
+  // Leads page uses, never hard-coded.
+  useEffect(() => {
+    fetch(`${API}/employees`, { headers: authH as any })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setStaff(Array.isArray(d) ? d.filter((s: StaffMember) => s.isActive) : []))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function staffName(id: string | null | undefined): string {
+    if (!id) return 'Unassigned'
+    const s = staff.find(s => s.id === id)
+    return s ? `${s.firstName} ${s.lastName}` : 'Unassigned'
+  }
+
+  async function assignLead(lead: Lead, staffId: string | null) {
+    try {
+      await fetch(`${API}/crm/leads/${lead.id}`, {
+        method: 'PATCH', headers: authH as any,
+        body: JSON.stringify({ assignedTo: staffId }),
+      })
+      setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, assignedTo: staffId } : l))
+      setViewLead(v => v && v.id === lead.id ? { ...v, assignedTo: staffId } : v)
+    } catch { showToast('Failed to reassign lead', false) }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -231,6 +273,7 @@ export default function LeadsPage() {
                   <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Source</th>
                   <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Status</th>
                   <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden md:table-cell">Last Message</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden lg:table-cell">Owner</th>
                   <th className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400 hidden sm:table-cell">Date</th>
                   <th className="px-4 py-3 text-right text-[10px] font-black uppercase tracking-widest text-gray-400">Actions</th>
                 </tr>
@@ -268,6 +311,18 @@ export default function LeadsPage() {
                       >
                         {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
                       </select>
+                      {(() => {
+                        const badge = slaBadge(lead)
+                        return badge ? (
+                          <span className={cn('block w-fit mt-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold', badge.className)}>{badge.text}</span>
+                        ) : null
+                      })()}
+                      {lead.status === 'LOST' && lead.lossReason && (
+                        <p className="text-[10px] text-red-500 mt-1 max-w-[140px] truncate">Lost: {lead.lossReason}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5 hidden lg:table-cell text-xs text-gray-500 whitespace-nowrap">
+                      {staffName(lead.assignedTo)}
                     </td>
                     <td className="px-4 py-3.5 hidden md:table-cell max-w-[200px]">
                       {lead.lastMessage ? (
@@ -350,6 +405,21 @@ export default function LeadsPage() {
               </span>
               <span className="text-[10px] text-gray-400 ml-auto">{fmtDate(viewLead.createdAt)}</span>
             </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Assigned to</label>
+              <select
+                value={viewLead.assignedTo ?? ''}
+                onChange={e => assignLead(viewLead, e.target.value || null)}
+                className="w-full text-sm font-semibold px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 cursor-pointer outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500">
+                <option value="">Unassigned</option>
+                {staff.map(s => <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>)}
+              </select>
+            </div>
+
+            {/* CRM Automation (Part T) — same owner/SLA/stale/stage-history
+                panel used on the Admin Leads page. */}
+            <LeadAutomationPanel lead={viewLead} token={token} />
 
             {viewLead.lastMessage && (
               <div className="bg-gray-50 rounded-2xl p-4">

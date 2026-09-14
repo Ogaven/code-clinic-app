@@ -6,6 +6,7 @@ import { getAgentReplyV2OpenAI } from '../agent/agent.service'
 import { isAgentEnabled }       from '../takeover/takeover.service'
 import { prisma }               from '../../lib/prisma'
 import { sendWhatsAppMessage }  from '../whatsapp/whatsapp.service'
+import { findOrCreateLeadForChannel } from '../../crm-automation/lead-intake.service'
 
 const STAFF_WHATSAPP = process.env.STAFF_WHATSAPP_NUMBER ?? '+256394836298'
 
@@ -85,16 +86,18 @@ router.post('/message', async (req, res) => {
           `🌐 *Website Visitor Message*\n👤 Name: ${nameLabel}\n💬 Message: "${message.slice(0, 200)}"\n📋 Session: ${sessionId.slice(0, 20)}\n\n→ Open inbox to respond:\nhttps://codeclinicemr.com/ai-suite/inbox`,
         ).catch((e: any) => console.error('[Website] Staff alert error:', e?.message))
 
-        // Upsert lead
-        if (!existing) {
-          await prisma.lead.create({
-            data: { phone: sessionId, source: 'WEBSITE', status: 'NEW', stage: 'NEW', lastMessage: message, name: extractedName || null },
-          })
-        } else {
-          const updateData: Record<string, unknown> = { lastMessage: message }
-          if (extractedName && !existing.name) updateData.name = extractedName
-          await prisma.lead.update({ where: { id: existing.id }, data: updateData })
-        }
+        // Upsert lead — routed through the single lead-creation orchestration
+        // entry point (Part K). Acknowledgement is skipped: the AI agent
+        // already replies to this same inbound message in real time.
+        await findOrCreateLeadForChannel({
+          where:      { phone: sessionId, source: 'WEBSITE', status: { notIn: ['CONVERTED', 'LOST'] } },
+          createData: { phone: sessionId, source: 'WEBSITE', status: 'NEW', stage: 'NEW', lastMessage: message, name: extractedName || null },
+          onExistingMessage: message,
+          onExistingNameIfMissing: extractedName,
+          intakeOptions: { skipAcknowledgement: true },
+          // The lead just messaged us via the website chat widget — real operational contact-origin evidence.
+          contactEvidence: { channel: 'WHATSAPP', source: 'WEB_FORM' },
+        })
       } catch (e: any) {
         console.error('[Website] Post-response error:', e?.message)
       }

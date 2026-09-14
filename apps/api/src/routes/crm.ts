@@ -2,8 +2,8 @@ import { Router, Request, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { requireRole } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
-import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
 import { phoneVariants } from '../utils/phone'
+import { findOrCreateLeadForChannel, handleNewLeadCreated } from '../crm-automation/lead-intake.service'
 
 const router = Router()
 
@@ -41,27 +41,39 @@ router.post('/leads', requireAuth, async (req: Request, res: Response) => {
   const { name, phone, email, source, status, notes, lastMessage } = req.body
   if (!source) return res.status(400).json({ error: 'Source is required' })
   try {
-    const lead = await prisma.lead.create({
-      data: {
-        name:        name        || null,
-        phone:       phone       || null,
-        email:       email       || null,
-        source:      source,
-        status:      status      || 'NEW',
-        stage:       status      || 'NEW',
-        notes:       notes       || null,
-        lastMessage: lastMessage || null,
-      },
-    })
-    res.status(201).json(lead)
-    // FIX 3 — Warm Sarah message for manually-added leads with a phone number
-    if (phone) {
-      const firstName = (name || '').trim().split(' ')[0] || 'there'
-      const warmMsg = `Hi ${firstName}! 😊 Thanks for reaching out to Code Clinic. We received your message and one of our team will be in touch shortly. Is there anything else I can help you with in the meantime?`
-      sendWhatsAppMessage(String(phone), warmMsg).catch((e: any) =>
-        console.error('[CRM] Lead warm message failed:', e?.message)
-      )
+    const createData = {
+      name:        name        || null,
+      phone:       phone       || null,
+      email:       email       || null,
+      source:      source,
+      status:      status      || 'NEW',
+      stage:       status      || 'NEW',
+      notes:       notes       || null,
+      lastMessage: lastMessage || null,
     }
+
+    // Routed through the single lead-creation orchestration entry point
+    // (Part K) — dedupes by phone (when provided) so re-adding the same
+    // walk-in/manual contact never creates a second Lead row. No phone means
+    // nothing to dedupe on, so it always creates (matches every other
+    // channel's behavior: phone is the one reliable identity key here).
+    // handleNewLeadCreated performs source attribution, owner routing, task
+    // creation, owner notification, dry-run-gated acknowledgement, and starts
+    // the 15-minute SLA clock — replacing the old unconditional real
+    // WhatsApp send that used to live here.
+    let lead
+    if (phone) {
+      ({ lead } = await findOrCreateLeadForChannel({
+        where: { phone, status: { notIn: ['CONVERTED', 'LOST'] } },
+        createData,
+        onExistingMessage: lastMessage || undefined,
+      }))
+    } else {
+      lead = await prisma.lead.create({ data: createData })
+      handleNewLeadCreated(lead).catch((e: any) => console.error('[CRM] New lead automation failed:', e?.message))
+    }
+
+    res.status(201).json(lead)
   } catch (e) {
     res.status(500).json({ error: 'Failed to create lead' })
   }

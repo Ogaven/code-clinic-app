@@ -4,6 +4,7 @@ import { getAgentReplyV2OpenAI, getCommentReplyOpenAI } from '../agent/agent.ser
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 import { maybeNotifyStaff } from '../whatsapp/whatsapp.service'
+import { findOrCreateLeadForChannel } from '../../crm-automation/lead-intake.service'
 
 const router = Router()
 
@@ -268,17 +269,20 @@ export async function processComment(
     }
 
     const baseChannel = channel === 'FACEBOOK_COMMENT' ? 'FACEBOOK' : 'INSTAGRAM'
-    const existingLead = await prisma.lead.findFirst({
-      where:   { phone: fromId, status: { notIn: ['CONVERTED', 'LOST'] } },
-      orderBy: { createdAt: 'desc' },
+    // Routed through the single lead-creation orchestration entry point
+    // (Part K). Acknowledgement is skipped: the AI agent already replies to
+    // this same comment in real time through the normal pipeline.
+    await findOrCreateLeadForChannel({
+      where:      { phone: fromId, status: { notIn: ['CONVERTED', 'LOST'] } },
+      createData: { name: fromName || undefined, phone: fromId, source: baseChannel, status: 'NEW', stage: 'NEW', lastMessage: text },
+      onExistingMessage: text,
+      intakeOptions: { skipAcknowledgement: true },
+      // The lead just commented — real operational contact-origin evidence.
+      // Lead-directed sends in this codebase (ack/SLA warm message) only ever
+      // go via WhatsApp today, so evidence is recorded against that channel
+      // regardless of the originating social platform.
+      contactEvidence: { channel: 'WHATSAPP', source: 'INBOUND_MESSAGE' },
     })
-    if (!existingLead) {
-      await prisma.lead.create({
-        data: { name: fromName || undefined, phone: fromId, source: baseChannel, status: 'NEW', stage: 'NEW', lastMessage: text },
-      })
-    } else {
-      await prisma.lead.update({ where: { id: existingLead.id }, data: { lastMessage: text } })
-    }
 
     // Store user message with commentId + postCaption in metadata
     await prisma.aiMessage.create({
@@ -415,22 +419,18 @@ export async function processSocialMessage(
       conversation = { ...conversation, displayName: resolvedName, profilePictureUrl: pictureUrl }
     }
 
-    // Create or update Lead for this social contact
+    // Create or update Lead for this social contact — routed through the
+    // single lead-creation orchestration entry point (Part K).
+    // Acknowledgement is skipped: the AI agent already replies to this same
+    // DM in real time through the normal pipeline.
     const source = channel // 'FACEBOOK' | 'INSTAGRAM'
-    const existingLead = await prisma.lead.findFirst({
-      where:   { phone: senderId, status: { notIn: ['CONVERTED', 'LOST'] } },
-      orderBy: { createdAt: 'desc' },
+    await findOrCreateLeadForChannel({
+      where:      { phone: senderId, status: { notIn: ['CONVERTED', 'LOST'] } },
+      createData: { phone: senderId, source, status: 'NEW', stage: 'NEW', lastMessage: text },
+      onExistingMessage: text,
+      intakeOptions: { skipAcknowledgement: true },
+      contactEvidence: { channel: 'WHATSAPP', source: 'INBOUND_MESSAGE' },
     })
-    if (!existingLead) {
-      await prisma.lead.create({
-        data: { phone: senderId, source, status: 'NEW', stage: 'NEW', lastMessage: text },
-      })
-    } else {
-      await prisma.lead.update({
-        where: { id: existingLead.id },
-        data:  { lastMessage: text },
-      })
-    }
 
     await prisma.aiMessage.create({
       data: { conversationId: conversation.id, role: 'USER', content: text },

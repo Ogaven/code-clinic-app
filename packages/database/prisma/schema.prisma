@@ -86,6 +86,95 @@ enum PatientStatus {
 }
 
 // ─────────────────────────────────────────────
+// CRM AUTOMATION — Patient Tag Taxonomy enums
+// Additive only. Distinct names/fields chosen to avoid colliding with
+// existing free-text Patient.referredBy / Patient.referralSource (legacy
+// referral-program fields, left untouched) and existing PatientStatus.
+// ─────────────────────────────────────────────
+
+enum TreatmentType {
+  CLEANING
+  FILLING
+  CROWN
+  ROOT_CANAL
+  EXTRACTION
+  ORTHO
+  IMPLANT
+  WHITENING
+  DENTURE
+}
+
+enum TreatmentPlanStatus {
+  NONE
+  PROPOSED
+  INCOMPLETE
+  ACCEPTED
+  DECLINED
+}
+
+enum RecallInterval {
+  THREE_MONTH
+  SIX_MONTH
+  TWELVE_MONTH
+}
+
+enum PatientLifecycleStage {
+  NEW
+  ESTABLISHED
+}
+
+enum RecallStatus {
+  NOT_DUE
+  DUE
+  OVERDUE_30
+  OVERDUE_90
+  OVERDUE_180_PLUS
+}
+
+enum DeclineReason {
+  COST
+  TIMING
+  SECOND_OPINION
+  UNKNOWN
+  OTHER
+}
+
+enum PatientPaymentType {
+  INSURANCE
+  SELF_PAY
+  FINANCING_ACTIVE
+}
+
+enum BalanceStatus {
+  CURRENT
+  OWING
+}
+
+enum ValueTier {
+  STANDARD
+  HIGH_VALUE
+}
+
+enum RiskFlag {
+  PERIO_RISK
+  HIGH_CARIES_RISK
+  EMERGENCY_HISTORY
+}
+
+enum ReferralSourceType {
+  GOOGLE
+  INSURANCE_DIRECTORY
+  PATIENT_REFERRAL
+  OTHER
+}
+
+enum CommsChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+}
+
+// ─────────────────────────────────────────────
 
 model User {
   id                String    @id @default(uuid())
@@ -119,6 +208,10 @@ model User {
 
   knowledgeStudioConversations KnowledgeStudioConversation[]
 
+  // ── CRM Automation (additive) ──
+  assignedTasks     Task[]            @relation("TaskAssignee")
+  collectionsCases  CollectionsCase[] @relation("CollectionsCaseOwner")
+
   @@index([isActive])
   @@map("users")
 }
@@ -142,6 +235,10 @@ model Doctor {
   blockedTimes   BlockedTime[]
   schedules      DoctorSchedule[]
   treatmentPlans TreatmentPlan[]
+
+  // ── CRM Automation (additive) — Patient.providerId assignment ──
+  crmAssignedPatients Patient[] @relation("PatientAssignedProvider")
+  waitlistEntries     WaitlistEntry[]
 
   @@map("doctors")
 }
@@ -233,6 +330,41 @@ model Patient {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
+  // ── CRM Automation — Patient Tag Taxonomy (Part A, additive) ──
+  // Clinical / treatment
+  treatmentTypes        TreatmentType[]       @default([])
+  treatmentPlanStatus   TreatmentPlanStatus   @default(NONE)
+  recallInterval        RecallInterval?
+  providerId            String?
+  provider              Doctor?               @relation("PatientAssignedProvider", fields: [providerId], references: [id])
+  // Lifecycle / behavioral
+  lifecycleStage        PatientLifecycleStage @default(NEW)
+  recallStatus          RecallStatus          @default(NOT_DUE)
+  noShowCount           Int                   @default(0)
+  lateCancelCount       Int                   @default(0)
+  declineReason         DeclineReason?
+  declineReasonNote     String?               // free-text extension, only meaningful when declineReason = OTHER
+  // Financial — outstanding amount reuses existing accountBalance (no redundant field)
+  paymentType           PatientPaymentType?
+  balanceStatus         BalanceStatus         @default(CURRENT)
+  balanceAgingBucket    String?               // "CURRENT" | "30" | "60" | "90" | "90_PLUS" — derived
+  valueTier             ValueTier             @default(STANDARD)
+  // Risk / urgency
+  riskFlags             RiskFlag[]            @default([])
+  // Source / preference — distinct fields from legacy referredBy/referralSource above
+  // (those back an existing, unrelated patient-referral-program feature and are left untouched)
+  crmReferralSource     ReferralSourceType?
+  crmReferredByPatientId String?
+  crmReferredByPatient  Patient?              @relation("CrmReferredBy", fields: [crmReferredByPatientId], references: [id])
+  crmReferrals          Patient[]             @relation("CrmReferredBy")
+  commsChannelPref      CommsChannel?
+  languagePref          String?
+  // Cross-cutting automation flags
+  waitlistAvailable     Boolean               @default(false)
+  negativeExperience    Boolean               @default(false)
+  tagsUpdatedAt         DateTime?
+  tagsUpdatedBy         String?               // User.id; null = system/automated update
+
   guardian              Patient?  @relation("GuardianDependents", fields: [guardianId], references: [id])
   dependents            Patient[] @relation("GuardianDependents")
   familyAccount         FamilyAccount? @relation(fields: [familyAccountId], references: [id])
@@ -256,11 +388,26 @@ model Patient {
   patientConsents       PatientConsent[]
   botMessageLogs        BotMessageLog[]
 
+  // ── CRM Automation relations (additive) ──
+  sequenceEnrollments   SequenceEnrollment[]
+  scheduledTouches      ScheduledTouch[]
+  consentLogs           ConsentLog[]
+  callEvents            CallEvent[]
+  collectionsCase       CollectionsCase?
+  waitlistNotifications WaitlistNotification[]
+  reviewRequestLogs     ReviewRequestLog[]
+  waitlistEntries       WaitlistEntry[]
+
   @@index([isActive, createdAt])
   @@index([lastName, firstName])
   @@index([status])
   @@index([guardianId])
   @@index([familyAccountId])
+  // CRM automation lookups (Part S)
+  @@index([recallStatus])
+  @@index([treatmentPlanStatus])
+  @@index([balanceStatus])
+  @@index([providerId])
   @@map("patients")
 }
 
@@ -281,6 +428,7 @@ model Service {
 
   appointments   Appointment[]
   feeSchedules   FeeSchedule[]
+  waitlistEntries WaitlistEntry[]
 
   @@unique([name])
   @@map("services")
@@ -425,10 +573,29 @@ model Lead {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  nurtureLogs NurtureLog[]
+  // ── Lead Pipeline Automation (Part J-Q, additive) ──
+  firstReplyAt      DateTime?  // first STAFF outbound reply to this lead (response-time SLA metric — see reporting.service.ts)
+  firstHumanReplyAt DateTime?  // first reply explicitly logged as human-by-the-assigned-owner — drives NEW->CONTACTED (Part N)
+  lastInboundReplyAt DateTime? // most recent message FROM the lead (inbound only — never written by logHumanReply) — drives the "responds again within 48h" half of CONTACTED->QUALIFIED (Part N)
+  lastOutboundAt     DateTime? // most recent STAFF outbound message to the lead — drives "no response within 48h of last outbound" for CONTACTED->LOST (Part N)
+  slaState          String?    @default("PENDING") // PENDING | REPLIED | ESCALATED_15 | ESCALATED_30 | STALE_24H | CANCELLED
+  qualifyingIntent  String?    // set when owner marks a qualifying intent signal (pricing/appointment/etc.) — Part N
+  lossReason        String?    // required whenever status is set to LOST (automated "no_response" or manual override reason)
+  backlogTag        Boolean    @default(false)  // Part Q one-time backlog re-engagement
+  backlogNoResponse Boolean    @default(false)
+  backlogCampaignAt DateTime?
+
+  nurtureLogs         NurtureLog[]
+  stageHistory        LeadStageHistory[]
+  slaEvents           LeadSlaEvent[]
+  sequenceEnrollments SequenceEnrollment[]
+  consentLogs         LeadConsentLog[]
 
   @@index([source])
   @@index([status])
+  @@index([assignedTo])
+  @@index([firstReplyAt])
+  @@index([createdAt])
   @@map("leads")
 }
 
@@ -1259,4 +1426,381 @@ model ProcessedWamid {
 
   @@index([processedAt])
   @@map("processed_wamids")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CRM AUTOMATION — Patient Tag Engine + Lead Pipeline Automation
+// All models below are additive/new. Nothing above this line was restructured.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Automation trigger engine (Part B) ──────────────────────────────────────
+// Append-only event log. A tag/value write (API edit or the daily derived-tag
+// job) calls into a single shared emitter that inserts a row here and, in the
+// same call, synchronously evaluates active SequenceDefinitions — this is the
+// actual "event" in event-driven; nothing polls this table to decide what to
+// enroll. A low-frequency sweep (see ScheduledTouch dispatcher) only re-checks
+// unprocessed rows as a crash-recovery safety net, mirroring the existing
+// OutboundQueue/AiScheduledMessage retry idiom already used in this codebase.
+model AutomationEvent {
+  id          String    @id @default(cuid())
+  entityType  String    // "PATIENT" | "LEAD"
+  entityId    String
+  eventType   String    // e.g. recall_status_changed, treatment_plan_status_changed,
+                         // balance_status_changed, visit_flag_no_show, visit_flag_late_cancel,
+                         // lead_created, lead_stage_changed, lead_sla_escalated, ...
+  fromValue   String?
+  toValue     String?
+  metadata    String?   // JSON
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([entityType, entityId])
+  @@index([processedAt, createdAt])
+  @@map("automation_events")
+}
+
+// ── Multi-touch sequence engine (Part C/D) ──────────────────────────────────
+model SequenceDefinition {
+  id               String   @id @default(cuid())
+  key              String   @unique // stable machine key, e.g. "recall_overdue_30"
+  name             String
+  description      String?
+  entityType       String   // "PATIENT" | "LEAD"
+  triggerEventType String   // matches AutomationEvent.eventType
+  triggerCondition String?  // JSON, e.g. {"toValue":"OVERDUE_30"}
+  audienceRule     String?  // JSON — additional eligibility filter evaluated at enrollment time
+  exclusionRule    String?  // JSON — e.g. {"balanceStatus":"OWING","treatmentPlanStatus":"INCOMPLETE"}
+  conflictGroup    String?  // sequences sharing a group cannot both hold an ACTIVE enrollment for the same entity (Part D)
+  channel          String   // SMS | WHATSAPP | EMAIL
+  // Marketing sequences require an EXPLICIT ConsentLog opt-in before any
+  // send — never the legacy default-opt-in fallback (see consent-log.service.ts
+  // hasExplicitOptIn vs getChannelConsentStatus, and the compliance note in
+  // the final report). Operational sequences (recall reminders, collections
+  // follow-up) keep inheriting the existing default-opt-in behavior already
+  // used elsewhere in this codebase for healthcare operational comms.
+  isMarketing      Boolean  @default(true)
+  owner            String?  // default owner User.id for sequences that need one (e.g. collections)
+  status           String   @default("DRAFT") // DRAFT | ACTIVE | PAUSED | ARCHIVED
+  version          Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  touches     SequenceTouchTemplate[]
+  enrollments SequenceEnrollment[]
+
+  @@index([entityType, status])
+  @@index([triggerEventType, status])
+  @@map("sequence_definitions")
+}
+
+model SequenceTouchTemplate {
+  id              String   @id @default(cuid())
+  sequenceId      String
+  sequence        SequenceDefinition @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  order           Int                // 0, 1, 2 ... execution order within the sequence
+  delayDays       Int                // day offset from enrollment — day 0 / 3 / 5 / 7-10 / 30, per sequence (Part C — never hardcoded globally)
+  channel         String
+  messageTemplate String
+  createdAt       DateTime @default(now())
+
+  scheduledTouches ScheduledTouch[]
+
+  @@unique([sequenceId, order])
+  @@map("sequence_touch_templates")
+}
+
+model SequenceEnrollment {
+  id         String   @id @default(cuid())
+  sequenceId String
+  sequence   SequenceDefinition @relation(fields: [sequenceId], references: [id])
+  entityType String   // "PATIENT" | "LEAD"
+  patientId  String?
+  patient    Patient? @relation(fields: [patientId], references: [id])
+  leadId     String?
+  lead       Lead?    @relation(fields: [leadId], references: [id])
+  status     String   @default("ACTIVE") // ACTIVE | COMPLETED | EXITED_REPLY | EXITED_BOOKED | EXITED_TAG_CHANGE | EXITED_DUPLICATE | STOPPED
+  exitReason String?
+  enrolledAt DateTime @default(now())
+  exitedAt   DateTime?
+
+  scheduledTouches ScheduledTouch[]
+
+  @@index([patientId, status])
+  @@index([leadId, status])
+  @@index([sequenceId, status])
+  @@map("sequence_enrollments")
+}
+
+// The unavoidably time-based half of the engine — matches the existing
+// OutboundQueue/AiScheduledMessage [status, scheduledFor] dispatch idiom
+// already used elsewhere in this codebase for exactly this reason.
+model ScheduledTouch {
+  id              String   @id @default(cuid())
+  enrollmentId    String
+  enrollment      SequenceEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  touchTemplateId String
+  touchTemplate   SequenceTouchTemplate @relation(fields: [touchTemplateId], references: [id])
+  patientId       String?
+  patient         Patient? @relation(fields: [patientId], references: [id])
+  scheduledFor    DateTime
+  status          String   @default("PENDING") // PENDING | SENT | SKIPPED | CANCELLED | FAILED | DRY_RUN
+  sentAt          DateTime?
+  dryRun          Boolean  @default(true)
+  resultDetail    String?
+  createdAt       DateTime @default(now())
+
+  @@index([status, scheduledFor])
+  @@map("scheduled_touches")
+}
+
+// ── Collections / treatment-plan-follow-up routing (Part E) ────────────────
+model CollectionsCase {
+  id         String    @id @default(cuid())
+  patientId  String    @unique
+  patient    Patient   @relation(fields: [patientId], references: [id])
+  ownerId    String?
+  owner      User?     @relation("CollectionsCaseOwner", fields: [ownerId], references: [id])
+  status     String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | CLOSED
+  reason     String    // e.g. "BALANCE_OWING_TREATMENT_INCOMPLETE"
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  resolvedAt DateTime?
+
+  @@index([status, ownerId])
+  @@map("collections_cases")
+}
+
+// ── Generic assignable task (Parts E, F, K) ─────────────────────────────────
+model Task {
+  id           String    @id @default(cuid())
+  entityType   String    // "LEAD" | "PATIENT" | "COLLECTIONS_CASE" | "MISSED_CALL"
+  entityId     String
+  assignedToId String?
+  assignedTo   User?     @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  title        String
+  description  String?
+  status       String    @default("OPEN") // OPEN | DONE | DISMISSED
+  dueAt        DateTime?
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  @@index([entityType, entityId])
+  @@index([assignedToId, status])
+  @@map("tasks")
+}
+
+// ── Lead owner routing config (Part L) ──────────────────────────────────────
+model RoutingRule {
+  id              String   @id @default(cuid())
+  name            String
+  entityType      String   @default("LEAD")
+  mode            String   // "SOURCE_BASED" | "ROUND_ROBIN"
+  sourceMap       String?  // JSON: {"WHATSAPP":"userId1","WEBSITE":"userId2"} — used when mode=SOURCE_BASED
+  eligibleUserIds String?  // JSON array of active User ids — used when mode=ROUND_ROBIN
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String?
+
+  @@index([entityType, isActive])
+  @@map("routing_rules")
+}
+
+model RoutingState {
+  id                 String   @id @default(cuid())
+  routingRuleId      String   @unique
+  lastAssignedUserId String?
+  updatedAt          DateTime @updatedAt
+
+  @@map("routing_state")
+}
+
+// ── Lead stage history (Part P) ─────────────────────────────────────────────
+model LeadStageHistory {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromStage String?
+  toStage   String
+  changedAt DateTime @default(now())
+  changedBy String?  // User.id; null = automation
+  trigger   String   // "AUTOMATION" | "MANUAL"
+  reason    String?
+
+  @@index([leadId, changedAt])
+  @@map("lead_stage_history")
+}
+
+// ── Lead SLA engine audit trail (Part M) ────────────────────────────────────
+model LeadSlaEvent {
+  id       String   @id @default(cuid())
+  leadId   String
+  lead     Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type     String   // "ESCALATION_15" | "WARM_MESSAGE_30" | "STALE_24H" | "SLA_CANCELLED"
+  firedAt  DateTime @default(now())
+  metadata String?
+
+  @@index([leadId, type])
+  @@map("lead_sla_events")
+}
+
+// ── Consent / opt-in log (Part I) — append-only, never overwritten ─────────
+model ConsentLog {
+  id        String       @id @default(cuid())
+  patientId String
+  patient   Patient      @relation(fields: [patientId], references: [id])
+  channel   CommsChannel
+  status    String       // "OPT_IN" | "OPT_OUT"
+  source    String       // "PATIENT_REQUEST" | "STAFF_ENTRY" | "INBOUND_KEYWORD" | "REGISTRATION_DEFAULT" | "IMPORT"
+  changedBy String?      // User.id; null = system/patient-initiated
+  metadata  String?
+  createdAt DateTime     @default(now())
+
+  @@index([patientId, channel, createdAt])
+  @@map("consent_logs")
+}
+
+// ── Lead-level consent / contact-origin log (release-blocker fix) ──────────
+// Deliberately separate from ConsentLog (patient-only) — Leads previously had
+// NO consent model at all, so every lead-directed send silently had zero
+// gate. Append-only: every consent/contact-origin event is a new row, never
+// an update. "OPERATIONAL" evidence records that the LEAD itself initiated
+// contact on a channel (inbound WhatsApp/FB/IG/website message, quiz
+// submission) — that licenses a direct reply to their own inquiry, NOT
+// indefinite marketing. "MARKETING" requires an explicit, separate opt-in
+// event and is never inferred from operational contact.
+enum LeadConsentPurpose {
+  OPERATIONAL
+  MARKETING
+}
+
+model LeadConsentLog {
+  id               String             @id @default(cuid())
+  leadId           String
+  lead             Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  channel          CommsChannel
+  status           String             // "OPT_IN" | "OPT_OUT"
+  purpose          LeadConsentPurpose
+  source           String             // "INBOUND_MESSAGE" | "WEB_FORM" | "QUIZ" | "WALK_IN" | "STAFF_ENTRY" | "IMPORT" | "OTHER"
+  recordedAt       DateTime           @default(now())
+  recordedByUserId String?            // User.id; null = system-recorded (e.g. an inbound message arriving)
+  metadata         String?
+
+  @@index([leadId, channel, purpose, recordedAt])
+  @@map("lead_consent_logs")
+}
+
+// ── Missed-call text-back (Part F) — architecture is provider-agnostic;
+// see final report for the missing real telephony-provider requirement.
+model CallEvent {
+  id             String    @id @default(cuid())
+  provider       String    // "MOCK" today; e.g. "TWILIO" once a real provider is connected
+  externalCallId String?
+  fromNumber     String
+  toNumber       String
+  direction      String    @default("INBOUND")
+  status         String    // "MISSED" | "ANSWERED" | "VOICEMAIL"
+  patientId      String?
+  patient        Patient?  @relation(fields: [patientId], references: [id])
+  occurredAt     DateTime  @default(now())
+  textBackStatus String?   // "PENDING" | "DRY_RUN_SENT" | "SENT" | "SKIPPED_CONSENT" | "SKIPPED_NO_PROVIDER"
+  textBackSentAt DateTime?
+  metadata       String?
+
+  @@index([status, occurredAt])
+  @@index([patientId])
+  @@map("call_events")
+}
+
+// ── Same-day waitlist (Part G) ──────────────────────────────────────────────
+model WaitlistNotification {
+  id                String    @id @default(cuid())
+  patientId         String
+  patient           Patient   @relation(fields: [patientId], references: [id])
+  appointmentSlotId String?   // the Appointment whose cancellation opened this slot
+  waitlistEntryId   String?   // the specific WaitlistEntry this notification fulfills, when matched via one
+  waitlistEntry     WaitlistEntry? @relation(fields: [waitlistEntryId], references: [id])
+  channel           String
+  status            String    @default("PENDING") // PENDING | DRY_RUN_SENT | SENT | DECLINED | BOOKED
+  notifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([patientId])
+  @@map("waitlist_notifications")
+}
+
+// ── Explicit per-patient waitlist request (replaces the boolean-only proxy) ─
+// Patient.waitlistAvailable is left in place for backwards compatibility
+// (nothing that already reads it is removed) but is no longer the primary
+// signal — a real WaitlistEntry captures WHAT the patient is actually
+// waiting for, which the boolean alone never could.
+model WaitlistEntry {
+  id                 String    @id @default(cuid())
+  patientId          String
+  patient            Patient   @relation(fields: [patientId], references: [id])
+  serviceId          String
+  service            Service   @relation(fields: [serviceId], references: [id])
+  preferredDoctorId  String?
+  preferredDoctor    Doctor?   @relation(fields: [preferredDoctorId], references: [id])
+  preferredDateFrom  DateTime?
+  preferredDateTo    DateTime?
+  timePreference     String?   // free text, e.g. "mornings", "after 3pm"
+  isActive           Boolean   @default(true)
+  priority           Int?
+  requestedAt        DateTime  @default(now())
+  fulfilledAt        DateTime?
+  cancelledAt        DateTime?
+  notes              String?
+  createdByUserId    String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  notifications      WaitlistNotification[]
+
+  @@index([serviceId, isActive, requestedAt])
+  @@index([patientId, isActive])
+  @@map("waitlist_entries")
+}
+
+// ── Post-visit review request (Part H) — reuses existing GBP infrastructure
+// in routes/business-profile.ts (place id from /business-profile/locations)
+// for the actual review link; this just tracks the send-side workflow.
+model ReviewRequestConfig {
+  id                 String   @id @default(cuid())
+  delayHours         Int      @default(24)
+  isActive           Boolean  @default(false)
+  gbpPlaceId         String?  // Google place id, one-time admin lookup via /business-profile/locations
+  reviewLinkOverride String?  // manual override; takes precedence over the derived GBP link when set
+  updatedAt          DateTime @updatedAt
+  updatedBy          String?
+
+  @@map("review_request_config")
+}
+
+model ReviewRequestLog {
+  id            String    @id @default(cuid())
+  patientId     String
+  patient       Patient   @relation(fields: [patientId], references: [id])
+  appointmentId String    @unique
+  scheduledFor  DateTime
+  status        String    @default("PENDING") // PENDING | SUPPRESSED_NEGATIVE_EXPERIENCE | DRY_RUN_SENT | SENT | FAILED
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, scheduledFor])
+  @@map("review_request_logs")
+}
+
+// ── Backlog re-engagement (Part Q) — one-time, never auto-executed ─────────
+model BacklogCampaignRun {
+  id          String    @id @default(cuid())
+  status      String    @default("NOT_STARTED") // NOT_STARTED | TAGGED | CAMPAIGN_SENT | COMPLETED
+  approvedBy  String?   // required (non-null) before execution may proceed
+  approvedAt  DateTime?
+  leadCount   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("backlog_campaign_runs")
 }
