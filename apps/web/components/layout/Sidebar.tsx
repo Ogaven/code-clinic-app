@@ -12,7 +12,7 @@ import {
   ListChecks, Inbox, Phone, Mic, AlertCircle,
   ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
   Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2, ScrollText, UserPlus, Shield,
-  ClipboardList, BarChart2, HelpCircle,
+  ClipboardList, BarChart2, HelpCircle, Zap, Clock,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -39,6 +39,7 @@ const adminNav: NavGroup[] = [
       { label: 'Dashboard',    href: '/dashboard',    icon: LayoutDashboard },
       { label: 'Scheduling',   href: '/scheduling',   icon: CalendarDays },
       { label: 'Appointments', href: '/appointments', icon: ListChecks },
+      { label: 'Waitlist',     href: '/waitlist',     icon: Clock },
       { label: 'Patients',     href: '/patients',     icon: Users },
       { label: 'Staff List',        href: '/employees',             icon: UserCog },
       { label: 'Staff Permissions', href: '/admin/staff/permissions', icon: Shield },
@@ -62,6 +63,7 @@ const adminNav: NavGroup[] = [
     items: [
       { label: 'AI Suite',            href: '/ai-suite',            icon: Bot,      sub: AI_SUITE_SUB },
       { label: 'Leads',              href: '/leads',               icon: UserPlus },
+      { label: 'CRM Automation',      href: '/admin/crm-automation', icon: Zap },
       { label: 'Campaigns',           href: '/campaigns',           icon: Megaphone },
       { label: 'Quiz Funnels',        href: '/quiz-funnels',        icon: HelpCircle },
       { label: 'Treatment Pipeline',  href: '/treatment-pipeline',  icon: Kanban },

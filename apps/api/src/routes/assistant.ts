@@ -3,6 +3,7 @@ import { AppointmentStatus } from '@prisma/client'
 import OpenAI from 'openai'
 import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
+import { checkAndConvertLeadOnBooking } from '../crm-automation/lead-patient-link.service'
 
 const router = Router()
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -56,11 +57,15 @@ async function create_appointment(patient_id: string, doctor_id: string, service
   const appt = await prisma.appointment.create({
     data: { patientId: patient_id, doctorId: doctor_id, serviceId: service_id, startAt, endAt, status: 'CONFIRMED' },
     include: {
-      patient: { select: { firstName: true, lastName: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
       doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
       service: { select: { name: true } },
     },
   })
+
+  // CRM Automation (Part N) — a QUALIFIED lead matching this patient auto-converts.
+  checkAndConvertLeadOnBooking(appt.patient).catch((e: any) => console.error('[CrmAutomation] checkAndConvertLeadOnBooking failed:', e?.message))
+
   return { id: appt.id, message: `Appointment created: ${appt.patient.firstName} ${appt.patient.lastName} with Dr. ${appt.doctor.user.firstName} for ${appt.service.name} at ${startAt.toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit' })}` }
 }
 

@@ -2,6 +2,7 @@ import { searchKnowledge } from '../knowledge/rag'
 import nodemailer from 'nodemailer'
 import { prisma } from '../../lib/prisma'
 import { phoneVariants } from '../../utils/phone'
+import { checkAndConvertLeadOnBooking } from '../../crm-automation/lead-patient-link.service'
 
 async function sendEmail(opts: { to: string; subject: string; text: string }) {
   try {
@@ -495,6 +496,9 @@ async function handle_book_appointment(
       notes: input.notes,
     },
   })
+
+  // CRM Automation (Part N) — a QUALIFIED lead matching this patient auto-converts.
+  checkAndConvertLeadOnBooking(patient).catch((e: any) => console.error('[CrmAutomation] checkAndConvertLeadOnBooking failed:', e?.message))
 
   // Save memory
   await prisma.agentMemory.create({

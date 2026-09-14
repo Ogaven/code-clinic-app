@@ -13,6 +13,7 @@ import AvatarUpload from '@/components/ui/AvatarUpload'
 import TimelineTab from '@/components/patients/TimelineTab'
 import GuardianSection from '@/components/patients/GuardianSection'
 import RecentAiConversation from '@/components/patients/RecentAiConversation'
+import CrmTagsTab from '@/components/patients/CrmTagsTab'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ interface ToothState {
   history?: { date: string; changeType: string; item: string; oldStatus?: string; newStatus: string }[]
 }
 
-type ActiveTab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline' | 'audit'
+type ActiveTab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline' | 'audit' | 'crm'
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -1834,7 +1835,7 @@ export default function PatientProfilePage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const tp = searchParams.get('tab') as ActiveTab | null
-    const valid: ActiveTab[] = ['timeline','overview','appointments','dental','perio','treatment','notes','billing','documents','activity','audit']
+    const valid: ActiveTab[] = ['timeline','overview','appointments','dental','perio','treatment','notes','billing','documents','activity','audit','crm']
     return tp && valid.includes(tp) ? tp : 'timeline'
   })
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
@@ -2149,6 +2150,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
     { key: 'notes',        label: 'Notes',           icon: FileText   },
     { key: 'billing',      label: 'Billing',         icon: DollarSign },
     { key: 'documents',    label: 'Documents',       icon: Folder     },
+    { key: 'crm',          label: 'CRM Tags',        icon: Sparkles   },
     { key: 'audit',        label: 'Audit Trail',     icon: ShieldCheck },
   ]
 
@@ -2163,6 +2165,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
       case 'billing': return <BillingTab patient={patient} token={token} />
       case 'documents': return <DocumentsTab patientId={id!} token={token} />
       case 'activity': return <ActivityTab patientId={id!} token={token} />
+      case 'crm':      return <CrmTagsTab patientId={id!} token={token} />
       case 'audit':    return <AuditTrailTab patientId={id!} token={token} />
       case 'timeline': return <TimelineTab patientId={id!} />
     }

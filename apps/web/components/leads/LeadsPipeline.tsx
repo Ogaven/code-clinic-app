@@ -6,6 +6,7 @@ import {
   Phone, Mail, MessageSquare, ExternalLink, Clock, Tag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { slaBadge, LeadAutomationPanel } from '@/components/leads/LeadAutomationStatus'
 
 // ── Types ────────────────────────────────────────────────────────
 interface Lead {
@@ -21,6 +22,13 @@ interface Lead {
   convertedToPatientId: string | null
   createdAt:   string
   updatedAt:   string
+  // CRM Automation (Parts M/N/T) — already returned by GET /crm/leads today
+  // since Prisma includes every column by default; declared here so the
+  // frontend can read them without an `any` cast.
+  firstReplyAt?:      string | null
+  firstHumanReplyAt?: string | null
+  slaState?:          string | null
+  lossReason?:        string | null
 }
 
 interface ConversationSummary {
@@ -509,6 +517,17 @@ export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
                       {lead.lastMessage && (
                         <p className="text-[11px] text-gray-500 dark:text-white/50 line-clamp-2 leading-relaxed">{lead.lastMessage}</p>
                       )}
+                      {lead.status === 'LOST' && lead.lossReason && (
+                        <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 truncate">Lost: {lead.lossReason}</p>
+                      )}
+                      {(() => {
+                        const badge = slaBadge(lead)
+                        return badge ? (
+                          <span className={cn('inline-block mt-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold', badge.className)}>
+                            {badge.text}
+                          </span>
+                        ) : null
+                      })()}
                       <div className="flex items-center justify-between mt-2 gap-1.5">
                         <span className="text-[10px] text-gray-300 dark:text-white/25 flex-shrink-0">{fmtDate(lead.updatedAt)}</span>
                         <div className="flex items-center gap-2 min-w-0">
@@ -683,6 +702,11 @@ export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
                   <span className="flex items-center gap-1"><Tag size={11} /> Created {fmtDate(viewLead.createdAt)}</span>
                   <span className="flex items-center gap-1"><Clock size={11} /> Updated {fmtDate(viewLead.updatedAt)}</span>
                 </div>
+
+                {/* CRM Automation (Part T) — response timer / SLA state / stale
+                    indicator / stage history, kept in the drawer rather than the
+                    card itself so cards stay uncluttered. */}
+                <LeadAutomationPanel lead={viewLead} token={token} />
 
                 {/* Original enquiry / last message from the Lead record itself */}
                 {viewLead.lastMessage && (

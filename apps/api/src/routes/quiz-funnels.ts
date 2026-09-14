@@ -6,6 +6,9 @@ import { prisma } from '../lib/prisma'
 import { normalizePhone } from '../utils/phone'
 import { env } from '../lib/env'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { findOrCreateLeadForChannel } from '../crm-automation/lead-intake.service'
+import { sendOrSimulate } from '../crm-automation/dry-run'
+import { decideLeadSend, isAllowed } from '../crm-automation/lead-consent.service'
 
 const router = Router()
 
@@ -179,8 +182,15 @@ router.post('/:id/submit', async (req, res) => {
 
     const normalizedPhone = normalizePhone(String(phone))
 
-    const lead = await prisma.lead.create({
-      data: {
+    // Routed through the single lead-creation orchestration entry point
+    // (Part K) — dedupes by phone so retaking the quiz never creates a
+    // second Lead row for the same person. Part K's generic acknowledgement
+    // is skipped because this route sends its own quiz-result-specific
+    // message below (through the same dry-run gate); sending both would be
+    // a duplicate acknowledgement.
+    const { lead, isNew } = await findOrCreateLeadForChannel({
+      where: { phone: normalizedPhone, status: { notIn: ['CONVERTED', 'LOST'] } },
+      createData: {
         name:        String(name).trim(),
         phone:       normalizedPhone,
         email:       email || null,
@@ -192,6 +202,12 @@ router.post('/:id/submit', async (req, res) => {
         quizAnswers: JSON.stringify(resolvedAnswers),
         notes:       `Quiz: ${quiz.title}${tier ? ` — Result: ${tier.title}` : ''}`,
       },
+      onExistingMessage: `Retook quiz: ${quiz.title}${tier ? ` — Result: ${tier.title}` : ''}`,
+      intakeOptions: { skipAcknowledgement: true },
+      // Quiz submission is real operational contact-origin evidence — but
+      // only licenses the immediate requested follow-up (the result message
+      // below), never indefinite marketing.
+      contactEvidence: { channel: 'WHATSAPP', source: 'QUIZ' },
     })
 
     res.json({
@@ -200,13 +216,20 @@ router.post('/:id/submit', async (req, res) => {
       tier: tier ? { title: tier.title, message: tier.message, cta: tier.cta, ctaLink: tier.ctaLink || null } : null,
     })
 
-    // Warm WhatsApp message, same fire-and-forget pattern as manual lead creation
-    if (normalizedPhone) {
-      const firstName = String(name).trim().split(' ')[0] || 'there'
-      const warmMsg = `Hi ${firstName}! 😊 Thanks for taking the "${quiz.title}" quiz with Code Clinic. ${tier?.cta ? tier.cta + ' — just reply here and we\'ll help you book it in.' : 'One of our team will be in touch shortly.'}`
-      sendWhatsAppMessage(normalizedPhone, warmMsg).catch((e: any) =>
-        console.error('[QuizFunnels] Warm message failed:', e?.message)
-      )
+    // Quiz-result-specific message — dry-run gated like every other outbound
+    // send in this workstream (Part W: no real patient messages during
+    // development/testing). Only sent for a newly-created lead; a repeat
+    // quiz-taker on an existing lead just gets the onExistingMessage note above.
+    if (normalizedPhone && isNew) {
+      decideLeadSend(lead.id, 'WHATSAPP', 'OPERATIONAL').then(consent => {
+        if (!isAllowed(consent)) {
+          console.warn('[QuizFunnels] Result message blocked by consent decision:', consent.reason)
+          return
+        }
+        const firstName = String(name).trim().split(' ')[0] || 'there'
+        const warmMsg = `Hi ${firstName}! 😊 Thanks for taking the "${quiz.title}" quiz with Code Clinic. ${tier?.cta ? tier.cta + ' — just reply here and we\'ll help you book it in.' : 'One of our team will be in touch shortly.'}`
+        return sendOrSimulate('OPERATIONAL', 'WHATSAPP', normalizedPhone, warmMsg, () => sendWhatsAppMessage(normalizedPhone, warmMsg))
+      }).catch((e: any) => console.error('[QuizFunnels] Warm message failed:', e?.message))
     }
   } catch (e: any) {
     console.error('[QuizFunnels] Submit error:', e.message)

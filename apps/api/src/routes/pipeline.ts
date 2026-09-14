@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
 import { authenticatedDoctorId } from '../lib/doctor-access'
+import { checkAndConvertLeadOnTreatmentStart, checkAndConvertLeadsForPatients } from '../crm-automation/lead-patient-link.service'
 
 const router = Router()
 
@@ -267,6 +268,17 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
       data:  { status, ...followUpData },
     })
     if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+
+    // CRM Automation (Part N) — "treatment started" -> a QUALIFIED lead
+    // matching this patient auto-converts. updateMany doesn't return the
+    // row, so patientId/phone are fetched with one small follow-up read,
+    // only when status is actually the "started" transition.
+    if (status === 'In Progress') {
+      prisma.treatmentPlan.findUnique({ where: { id: req.params.id }, select: { patient: { select: { id: true, phone: true } } } })
+        .then(plan => plan && checkAndConvertLeadOnTreatmentStart(plan.patient))
+        .catch((e: any) => console.error('[CrmAutomation] checkAndConvertLeadOnTreatmentStart failed:', e?.message))
+    }
+
     res.json({ id: req.params.id, status, ...followUpData })
   } catch (e) {
     console.error('[Pipeline] status update error:', e)
@@ -312,10 +324,29 @@ router.patch('/treatment/bulk-status', requireAuth, async (req, res) => {
     if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
     const doctorId = await authenticatedDoctorId(prisma, req.user!)
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+
+    // CRM Automation (Part N) — fetch the affected patients BEFORE the bulk
+    // write (updateMany doesn't return rows), so a bulk "In Progress" move
+    // auto-converts a matching QUALIFIED lead per affected patient exactly
+    // like the single-plan endpoint does. One query for all plans, not N+1.
+    const affectedPatients = status === 'In Progress'
+      ? await prisma.treatmentPlan.findMany({
+          where:  { id: { in: ids }, ...(doctorId ? { doctorId } : {}) },
+          select: { patient: { select: { id: true, phone: true } } },
+          distinct: ['patientId'],
+        })
+      : []
+
     const result = await prisma.treatmentPlan.updateMany({
       where: { id: { in: ids }, ...(doctorId ? { doctorId } : {}) },
       data:  { status },
     })
+
+    if (affectedPatients.length > 0) {
+      checkAndConvertLeadsForPatients(affectedPatients.map(p => p.patient))
+        .catch((e: any) => console.error('[CrmAutomation] bulk checkAndConvertLeadsForPatients failed:', e?.message))
+    }
+
     res.json({ updated: result.count })
   } catch (e) {
     console.error('[Pipeline] bulk status update error:', e)
