@@ -3,25 +3,39 @@
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw, Save, Shield, Check } from 'lucide-react'
 
+// Every key below is checked by middleware.ts's ROUTE_FEATURE table against a
+// real route prefix — this list was rebuilt from that table plus a live audit
+// of every nav item that declares a permKey (ReceptionistTopBar.tsx,
+// (receptionist)/layout.tsx), not carried over by assumption. Two stale
+// issues found during that audit were fixed rather than reproduced here:
+// 'scheduling' and 'appointments' used to be separate keys gating different
+// route prefixes even though only one nav link (Appointments) ever pointed
+// at either of them — merged into the single 'appointments' key. Treatment
+// Pipeline, Referrals and Campaigns had real permKey'd nav links but no
+// corresponding middleware route entry at all (toggling them only hid the
+// link — direct navigation still worked) — now wired in middleware.ts too.
+// See WORKSTREAM A Part B security findings for the full trace.
 const FEATURE_GROUPS = [
   {
     label: 'CLINIC',
     color: 'text-blue-600 dark:text-blue-400',
     features: [
-      { key: 'scheduling',     label: 'Scheduling' },
-      { key: 'appointments',   label: 'Appointments' },
-      { key: 'patients',       label: 'Patients' },
-      { key: 'leads',          label: 'Leads' },
-      { key: 'liveFlow',       label: 'Live Flow' },
-      { key: 'communications', label: 'Communications' },
-      { key: 'reports',        label: 'Reports' },
+      { key: 'appointments',      label: 'Scheduling & Appointments' },
+      { key: 'patients',          label: 'Patients' },
+      { key: 'leads',             label: 'Leads / CRM' },
+      { key: 'liveFlow',          label: 'Live Flow' },
+      { key: 'treatmentPipeline', label: 'Treatment Pipeline' },
+      { key: 'referrals',         label: 'Referrals' },
+      { key: 'campaigns',         label: 'Campaigns' },
+      { key: 'communications',    label: 'Communications' },
+      { key: 'reports',           label: 'Reports' },
     ],
   },
   {
     label: 'AI SUITE',
     color: 'text-cyan-600 dark:text-cyan-400',
     features: [
-      { key: 'aiSuiteInbox',        label: 'Conversations' },
+      { key: 'aiSuiteInbox',        label: 'Conversations & Escalations' },
       { key: 'aiSuiteFollowup',     label: 'Follow-up Dashboard' },
       { key: 'aiSuiteConfirmation', label: 'Confirmation Dashboard' },
       { key: 'callLogs',            label: 'Call Logs' },
@@ -33,7 +47,20 @@ const FEATURE_GROUPS = [
     label: 'FINANCE',
     color: 'text-amber-600 dark:text-amber-400',
     features: [
-      { key: 'accounts', label: 'Accounts' },
+      // One coarse key guards the whole /accounts/* prefix — Sales,
+      // Expenses, Payroll, Chart of Accounts, Reconciliation and Reports
+      // are all pages under that same prefix with no finer-grained keys of
+      // their own (there's no separate route guard to attach a per-page
+      // toggle to). Stocks lives at /stocks, a different prefix with no
+      // role or permission guard at all — flagged as a security finding,
+      // not silently folded into this key.
+      { key: 'accounts', label: 'Accounts / Finance' },
+    ],
+  },
+  {
+    label: 'ADMINISTRATION',
+    color: 'text-slate-600 dark:text-slate-300',
+    features: [
       { key: 'auditLog', label: 'Audit Log' },
     ],
   },

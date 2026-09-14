@@ -1,7 +1,19 @@
 import { Router } from 'express'
 import { prisma } from '../../lib/prisma'
+import { requireAuth } from '../../middleware/auth'
+import { adminAndReceptionist } from '../../middleware/rbac'
 
 const router = Router()
+
+// All routes below previously had no auth middleware at all — anyone who
+// could reach the API could toggle production messaging/calling agents off
+// (see WORKSTREAM A Part B security findings). Every route here is global
+// configuration (which agents run clinic-wide, the escalation phone/
+// template, whether calling agents run at all) — restricted to the two
+// roles that have real, existing UI for this page (Admin's /ai-suite re-
+// exports Receptionist's /receptionist/ai-suite page verbatim; Doctor and
+// Accounts have no nav path here at all and no established need).
+router.use(requireAuth, adminAndReceptionist)
 
 // ── Agent catalogue ───────────────────────────────────────────────────────────
 

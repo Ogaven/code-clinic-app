@@ -4,6 +4,8 @@ import { requireAuth } from '../../middleware/auth'
 import { clinicalStaff } from '../../middleware/rbac'
 import { prisma } from '../../lib/prisma'
 import { retrieveSharedClinicKnowledge } from './shared-retrieval'
+import { collapseToAlternatingRoles } from './message-history'
+import { commitAssistantReply } from './knowledge-studio.service'
 
 const router = Router()
 
@@ -266,8 +268,15 @@ router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Respo
       take: MAX_HISTORY_ITEMS + 1,
     })
     const ordered = recent.slice().reverse()
-    const providerMessages = ordered.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
     const isFirstTurn = ordered.length === 1
+
+    // See message-history.ts's collapseToAlternatingRoles for the full
+    // explanation — this is the fix for the "Failed to get a response from
+    // the clinic AI" root cause (an orphaned unanswered user row breaking
+    // Anthropic's required role alternation on every later turn).
+    const providerMessages = collapseToAlternatingRoles(
+      ordered.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    )
 
     const hits = await retrieveSharedClinicKnowledge(messageContent)
     const contextBlock = hits.length > 0
@@ -297,30 +306,25 @@ router.post('/chat', requireAuth, clinicalStaff, async (req: Request, res: Respo
       reply = response.output_text || "Sorry, I couldn't generate a response."
     } catch (err: any) {
       console.error('[Knowledge Studio] chat error:', err.message)
+      // Safe, differentiated wording without leaking provider internals
+      // (never err.message/stack — those go to the server log only).
+      const status = err?.status ?? err?.response?.status
+      const message = status === 429
+        ? 'The clinic AI is temporarily busy — please try again in a moment.'
+        : status === 401 || status === 403
+          ? 'The clinic AI is not configured correctly. Contact an administrator.'
+          : 'Failed to get a response from the clinic AI'
       // The USER turn (new or retried) stays persisted exactly as it was —
       // no fabricated assistant response, no duplicate row created here.
-      return res.status(500).json({ error: 'Failed to get a response from the clinic AI', conversationId, userMessageId })
+      return res.status(502).json({ error: message, conversationId, userMessageId })
     }
 
-    const assistantMsg = body.retryOf !== undefined
-      ? await prisma.$transaction(async (tx) => {
-          // Serialize commits for this retry target across every API instance.
-          // A duplicate request may still reach the provider, but only one
-          // assistant response can be committed for the unanswered user row.
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${userMessageId}))`
-          const target = await tx.knowledgeStudioMessage.findUnique({ where: { id: userMessageId } })
-          if (!target) return null
-          const answered = await tx.knowledgeStudioMessage.findFirst({
-            where: { conversationId, createdAt: { gt: target.createdAt } },
-          })
-          if (answered) return null
-          return tx.knowledgeStudioMessage.create({
-            data: { conversationId, role: 'assistant', content: reply },
-          })
-        }, { timeout: 15_000 })
-      : await prisma.knowledgeStudioMessage.create({
-          data: { conversationId, role: 'assistant', content: reply },
-        })
+    // Serialize assistant-row commits per user turn across every API
+    // instance, for BOTH a fresh send and a retry — a duplicate/overlapping
+    // request (double-submit, client retry-on-timeout racing the original)
+    // may still reach the provider, but only one assistant response can ever
+    // be committed for a given unanswered user row.
+    const assistantMsg = await commitAssistantReply(prisma, userMessageId, conversationId, reply)
 
     if (!assistantMsg) {
       return res.status(409).json({ error: 'This message already has a response' })

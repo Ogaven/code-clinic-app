@@ -1,4 +1,3 @@
-import crypto from 'crypto'
 import { searchKnowledge } from '../knowledge/rag'
 import nodemailer from 'nodemailer'
 import { prisma } from '../../lib/prisma'
@@ -22,23 +21,6 @@ async function sendEmail(opts: { to: string; subject: string; text: string }) {
 async function sendSMS(to: string, message: string): Promise<void> {
   const { sendWhatsAppMessage } = await import('../../ai-suite/whatsapp/whatsapp.service')
   await sendWhatsAppMessage(to, message)
-}
-
-// ── Encryption helpers (medical notes) ─────────────────────────
-
-function decryptMedicalNotes(encrypted: string | null): string | null {
-  if (!encrypted || !process.env.ENCRYPTION_KEY) return null
-  try {
-    const key = Buffer.from(process.env.ENCRYPTION_KEY, 'hex')
-    const [ivHex, authTagHex, ciphertext] = encrypted.split(':')
-    const iv = Buffer.from(ivHex, 'hex')
-    const authTag = Buffer.from(authTagHex, 'hex')
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
-    decipher.setAuthTag(authTag)
-    return decipher.update(ciphertext, 'hex', 'utf8') + decipher.final('utf8')
-  } catch {
-    return null
-  }
 }
 
 // ── Kampala time helpers ───────────────────────────────────────
@@ -138,7 +120,10 @@ async function handle_get_patient_by_phone(input: { phone_number: string }) {
     email: patient.email,
     date_of_birth: patient.dob?.toISOString().split('T')[0],
     gender: patient.gender,
-    medical_notes: decryptMedicalNotes(patient.medicalNotesEncrypted),
+    // GDPR data minimisation: this tool is for reception/booking duties only.
+    // Never add medical_notes, medicalHistory, allergies, dentalChart,
+    // treatmentNotes, diagnoses, or prescriptions to this return value —
+    // the receptionist agent has no legitimate need for clinical data.
     total_outstanding_ugx: outstanding,
     last_visit_date: lastAppt?.startAt.toISOString().split('T')[0],
     last_doctor: lastAppt
