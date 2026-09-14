@@ -120,7 +120,8 @@ export async function processDueScheduledTouches(limit = 200): Promise<{ process
 
     let result
     try {
-      result = await sendOrSimulate(channel as 'SMS' | 'WHATSAPP' | 'EMAIL', recipient.to, body, () =>
+      const feature = touch.touchTemplate.sequence.isMarketing ? 'MARKETING' : 'OPERATIONAL'
+      result = await sendOrSimulate(feature, channel as 'SMS' | 'WHATSAPP' | 'EMAIL', recipient.to, body, () =>
         sendViaChannel(channel, recipient.to, body)
       )
     } catch (err: any) {

@@ -18,7 +18,7 @@
 // 'SKIPPED_NO_PROVIDER' for the parts that need a real integration.
 // ─────────────────────────────────────────────────────────────────────────
 import { prisma } from '../lib/prisma'
-import { sendOrSimulate, isCrmAutomationLive } from './dry-run'
+import { sendOrSimulate, isCrmFeatureLive } from './dry-run'
 import { sendSMS } from '../ai-suite/sms/sms.service'
 import { getChannelConsentStatus } from './consent-log.service'
 import { phoneVariants } from '../utils/phone'
@@ -71,7 +71,7 @@ async function processTextBack(callEventId: string): Promise<void> {
 
   const body = `Sorry we missed your call! This is Code Clinic — reply here or call us back and we'll get you sorted.`
 
-  if (!REAL_SMS_PROVIDER_CONNECTED && isCrmAutomationLive()) {
+  if (!REAL_SMS_PROVIDER_CONNECTED && isCrmFeatureLive('OPERATIONAL')) {
     // Live mode requested but there's genuinely no SMS provider to call —
     // report the gap rather than silently substituting another channel.
     await prisma.callEvent.update({
@@ -81,7 +81,7 @@ async function processTextBack(callEventId: string): Promise<void> {
     return
   }
 
-  const result = await sendOrSimulate('SMS', call.fromNumber, body, () => sendSMS(call.fromNumber, body))
+  const result = await sendOrSimulate('OPERATIONAL', 'SMS', call.fromNumber, body, () => sendSMS(call.fromNumber, body))
 
   await prisma.callEvent.update({
     where: { id: call.id },

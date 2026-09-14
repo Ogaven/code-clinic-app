@@ -32,7 +32,7 @@ import type { Lead, Prisma, CommsChannel } from '@prisma/client'
 import { emitAutomationEvent } from './automation-events.service'
 import { pickOwnerForNewLead } from './lead-routing.service'
 import { recordInboundLeadMessage } from './lead-stage.service'
-import { sendOrSimulate, isCrmAutomationLive } from './dry-run'
+import { sendOrSimulate, isCrmFeatureLive } from './dry-run'
 import { sendPushToUser } from '../services/push.service'
 import { recordLeadConsent, decideLeadSend, isAllowed, type LeadConsentSource } from './lead-consent.service'
 
@@ -97,7 +97,7 @@ export async function handleNewLeadCreated(
     const title = 'New lead assigned'
     const body  = `${lead.name || lead.phone || 'A new lead'} via ${lead.source}`
     await prisma.notification.create({ data: { userId: ownerId, type: 'MESSAGE', title, body, href: '/leads' } })
-    if (isCrmAutomationLive()) {
+    if (isCrmFeatureLive('OPERATIONAL')) {
       await sendPushToUser(ownerId, { title, body, url: '/leads' })
     }
   }
@@ -114,7 +114,7 @@ export async function handleNewLeadCreated(
     } else {
       const firstName = (lead.name || '').trim().split(/\s+/)[0] || 'there'
       const ackMessage = `Hi ${firstName}! Thanks for reaching out to Code Clinic 😊 One of our team will be in touch shortly.`
-      const result = await sendOrSimulate('WHATSAPP', lead.phone, ackMessage, () => sendWhatsAppMessage(lead.phone!, ackMessage))
+      const result = await sendOrSimulate('OPERATIONAL', 'WHATSAPP', lead.phone, ackMessage, () => sendWhatsAppMessage(lead.phone!, ackMessage))
       acknowledgement = { dryRun: result.dryRun }
     }
   }

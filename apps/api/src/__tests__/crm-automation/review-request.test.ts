@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
@@ -72,5 +72,43 @@ describe('processDueReviewRequests', () => {
     expect(result.sent).toBe(1)
     expect(sendWhatsAppMessage).not.toHaveBeenCalled()
     expect(prismaMock.reviewRequestLog.update).toHaveBeenCalledWith({ where: { id: 'log-1' }, data: { status: 'DRY_RUN_SENT', sentAt: expect.any(Date) } })
+  })
+})
+
+describe('processDueReviewRequests — CRM_REVIEW_REQUEST_AUTOMATION_LIVE feature flag (release-blocker fix — per-feature gating)', () => {
+  const ORIGINAL_NODE_ENV = process.env.NODE_ENV
+  beforeEach(() => { process.env.NODE_ENV = 'production' })
+  afterEach(() => {
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV
+    delete process.env.CRM_AUTOMATION_LIVE
+    delete process.env.CRM_REVIEW_REQUEST_AUTOMATION_LIVE
+  })
+
+  it('master ON but REVIEW_REQUEST feature flag OFF -> scheduled but no real provider call', async () => {
+    process.env.CRM_AUTOMATION_LIVE = 'true' // REVIEW_REQUEST flag deliberately not set
+    prismaMock.reviewRequestLog.findMany.mockResolvedValueOnce([
+      { id: 'log-1', patientId: 'p-1', patient: { negativeExperience: false, firstName: 'Jo', phone: '+256700000001' } },
+    ])
+    prismaMock.reviewRequestConfig.findFirst.mockResolvedValue({ gbpPlaceId: 'place-1', reviewLinkOverride: null })
+
+    const result = await processDueReviewRequests()
+
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+    expect(prismaMock.reviewRequestLog.update).toHaveBeenCalledWith({ where: { id: 'log-1' }, data: { status: 'DRY_RUN_SENT', sentAt: expect.any(Date) } })
+    expect(result.sent).toBe(1)
+  })
+
+  it('master+feature ON -> a real send is attempted', async () => {
+    process.env.CRM_AUTOMATION_LIVE = 'true'
+    process.env.CRM_REVIEW_REQUEST_AUTOMATION_LIVE = 'true'
+    prismaMock.reviewRequestLog.findMany.mockResolvedValueOnce([
+      { id: 'log-1', patientId: 'p-1', patient: { negativeExperience: false, firstName: 'Jo', phone: '+256700000001' } },
+    ])
+    prismaMock.reviewRequestConfig.findFirst.mockResolvedValue({ gbpPlaceId: 'place-1', reviewLinkOverride: null })
+
+    await processDueReviewRequests()
+
+    expect(sendWhatsAppMessage).toHaveBeenCalledTimes(1)
+    expect(prismaMock.reviewRequestLog.update).toHaveBeenCalledWith({ where: { id: 'log-1' }, data: { status: 'SENT', sentAt: expect.any(Date) } })
   })
 })

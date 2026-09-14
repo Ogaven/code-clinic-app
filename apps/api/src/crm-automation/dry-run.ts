@@ -1,20 +1,63 @@
 // ─────────────────────────────────────────────────────────────────────────
-// CRM Automation — global live/dry-run gate.
+// CRM Automation — per-feature live/dry-run gates.
 //
-// Per the build spec (Part W): no automation built in this workstream may
-// send a real WhatsApp/SMS/email/push/social message, missed-call text-back,
-// review request, or re-engagement campaign until explicitly turned on.
+// A single global CRM_AUTOMATION_LIVE flag used to be the ONLY gate for every
+// send-capable path (acknowledgement, SLA warm messages, backlog campaigns,
+// waitlist notifications, review requests, sequence touches, missed-call
+// text-back). That meant flipping one switch armed everything at once,
+// including features (backlog/marketing/waitlist broadcast) this business
+// explicitly wants to stay off until separately, deliberately configured.
 //
-// isCrmAutomationLive() is the single choke point every send-capable path in
-// crm-automation/* must call before touching a real provider. It defaults to
-// OFF (dry-run) unless CRM_AUTOMATION_LIVE=true is explicitly set, and it is
-// ALWAYS forced OFF under NODE_ENV=test regardless of that env var, so tests
+// isCrmFeatureLive(feature) is now the single choke point every send-capable
+// path must call. Each feature has its own env var; CRM_AUTOMATION_LIVE is
+// kept as a master kill switch (defense in depth, not a substitute for the
+// per-feature gate):
+//   MASTER OFF              -> every feature is dry-run, regardless of its
+//                              own flag.
+//   MASTER ON + feature OFF -> that feature is dry-run.
+//   MASTER ON + feature ON  -> that feature may execute (still subject to
+//                              consent/eligibility checks elsewhere).
+// NODE_ENV=test forces every feature OFF regardless of any env var, so tests
 // can never fire a real send no matter how the environment is configured.
 // ─────────────────────────────────────────────────────────────────────────
 
-export function isCrmAutomationLive(): boolean {
+export type CrmFeature = 'OPERATIONAL' | 'MARKETING' | 'BACKLOG' | 'WAITLIST' | 'REVIEW_REQUEST'
+
+export const CRM_FEATURES: CrmFeature[] = ['OPERATIONAL', 'MARKETING', 'BACKLOG', 'WAITLIST', 'REVIEW_REQUEST']
+
+const FEATURE_ENV_VAR: Record<CrmFeature, string> = {
+  OPERATIONAL:    'CRM_OPERATIONAL_AUTOMATION_LIVE',
+  MARKETING:      'CRM_MARKETING_AUTOMATION_LIVE',
+  BACKLOG:        'CRM_BACKLOG_REENGAGEMENT_LIVE',
+  WAITLIST:       'CRM_WAITLIST_AUTOMATION_LIVE',
+  REVIEW_REQUEST: 'CRM_REVIEW_REQUEST_AUTOMATION_LIVE',
+}
+
+function isMasterLive(): boolean {
   if (process.env.NODE_ENV === 'test') return false
   return process.env.CRM_AUTOMATION_LIVE === 'true'
+}
+
+// Back-compat export — reports ONLY the master kill-switch state. Retained
+// because a couple of call sites (reporting/status) legitimately want "is
+// automation live at all"; no send path may use this alone to decide
+// whether to fire — that's what isCrmFeatureLive() is for.
+export function isCrmAutomationLive(): boolean {
+  return isMasterLive()
+}
+
+export function isCrmFeatureLive(feature: CrmFeature): boolean {
+  if (process.env.NODE_ENV === 'test') return false
+  if (!isMasterLive()) return false
+  return process.env[FEATURE_ENV_VAR[feature]] === 'true'
+}
+
+// Admin-visibility helper (Part 11) — current mode per feature, safe to
+// return over an API response (no secrets, just booleans).
+export function crmFeatureStatus(): Record<CrmFeature, boolean> {
+  const status = {} as Record<CrmFeature, boolean>
+  for (const feature of CRM_FEATURES) status[feature] = isCrmFeatureLive(feature)
+  return status
 }
 
 export interface DryRunSendResult {
@@ -28,14 +71,17 @@ export interface DryRunSendResult {
 
 // Every "send a message" call site in crm-automation/* routes through this
 // so dry-run mode is enforced in exactly one place instead of scattered
-// `if (isLive)` checks that could be forgotten at a new call site.
+// `if (isLive)` checks that could be forgotten at a new call site. `feature`
+// is mandatory — there is no path where a caller can send without declaring
+// which feature bucket it belongs to.
 export async function sendOrSimulate(
+  feature: CrmFeature,
   channel: 'SMS' | 'WHATSAPP' | 'EMAIL',
   to: string,
   body: string,
   realSend: () => Promise<unknown>
 ): Promise<DryRunSendResult> {
-  if (!isCrmAutomationLive()) {
+  if (!isCrmFeatureLive(feature)) {
     return { dryRun: true, wouldSend: { channel, to, body } }
   }
   await realSend()

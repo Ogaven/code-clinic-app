@@ -49,6 +49,55 @@ interface ReviewConfig {
   reviewLinkOverride: string | null
 }
 
+// ── Automation mode status (Part 11) — read-only. Reports which CRM
+// automation features are actually live right now, one flag per feature —
+// never raw environment values/secrets, and no browser-side toggle exists
+// for these (they're server env vars, set deliberately by an operator, not
+// something this UI can flip).
+const FEATURE_LABELS: Record<string, string> = {
+  OPERATIONAL:    'Operational Leads',
+  MARKETING:      'Marketing',
+  BACKLOG:        'Backlog Re-engagement',
+  WAITLIST:       'Waitlist Notifications',
+  REVIEW_REQUEST: 'Review Requests',
+}
+
+function AutomationModeStatus() {
+  const [status, setStatus] = useState<{ masterLive: boolean; features: Record<string, boolean> } | null>(null)
+
+  useEffect(() => {
+    fetch(`${API}/crm-automation/automation-status`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(setStatus)
+      .catch(() => {})
+  }, [])
+
+  if (!status) return null
+
+  return (
+    <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4">
+      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-2.5">Current Automation Mode</p>
+      <div className="flex flex-wrap gap-2">
+        {Object.entries(FEATURE_LABELS).map(([key, label]) => {
+          const live = status.features[key] === true
+          return (
+            <span key={key}
+              className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold',
+                live ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300'
+                     : 'bg-gray-100 text-gray-500 dark:bg-white/8 dark:text-white/50')}>
+              <span className={cn('w-1.5 h-1.5 rounded-full', live ? 'bg-emerald-500' : 'bg-gray-400')} />
+              {label}: {live ? 'LIVE' : 'OFF'}
+            </span>
+          )
+        })}
+      </div>
+      {!status.masterLive && (
+        <p className="text-[11px] text-gray-400 dark:text-white/40 mt-2">Master automation switch is off — every feature above is forced to dry-run regardless of its own setting.</p>
+      )}
+    </div>
+  )
+}
+
 function Toast({ toast }: { toast: { msg: string; ok: boolean } | null }) {
   if (!toast) return null
   return (
@@ -74,6 +123,8 @@ export default function CrmAutomationSettingsPage() {
         <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center gap-2"><Zap size={20} className="text-cyan-500" /> CRM Automation Settings</h1>
         <p className="text-xs text-gray-400 mt-0.5">Lead owner routing, multi-touch sequences, and post-visit review requests</p>
       </div>
+
+      <AutomationModeStatus />
 
       <div className="flex gap-1.5 bg-gray-100 dark:bg-white/5 rounded-2xl p-1.5 w-fit">
         {(['routing', 'sequences', 'review'] as const).map(t => (

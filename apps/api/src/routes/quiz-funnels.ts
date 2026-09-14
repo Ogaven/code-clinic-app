@@ -228,7 +228,7 @@ router.post('/:id/submit', async (req, res) => {
         }
         const firstName = String(name).trim().split(' ')[0] || 'there'
         const warmMsg = `Hi ${firstName}! 😊 Thanks for taking the "${quiz.title}" quiz with Code Clinic. ${tier?.cta ? tier.cta + ' — just reply here and we\'ll help you book it in.' : 'One of our team will be in touch shortly.'}`
-        return sendOrSimulate('WHATSAPP', normalizedPhone, warmMsg, () => sendWhatsAppMessage(normalizedPhone, warmMsg))
+        return sendOrSimulate('OPERATIONAL', 'WHATSAPP', normalizedPhone, warmMsg, () => sendWhatsAppMessage(normalizedPhone, warmMsg))
       }).catch((e: any) => console.error('[QuizFunnels] Warm message failed:', e?.message))
     }
   } catch (e: any) {

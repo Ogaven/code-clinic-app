@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
@@ -128,6 +128,49 @@ describe('notifyWaitlistForOpenSlot — explicit WaitlistEntry matching (release
     prismaMock.waitlistEntry.findMany.mockResolvedValue([entry()])
     await notifyWaitlistForOpenSlot('appt-1')
     expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+  })
+})
+
+describe('notifyWaitlistForOpenSlot — CRM_WAITLIST_AUTOMATION_LIVE feature flag (release-blocker fix — per-feature gating)', () => {
+  const ORIGINAL_NODE_ENV = process.env.NODE_ENV
+  beforeEach(() => { process.env.NODE_ENV = 'production' })
+  afterEach(() => {
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV
+    delete process.env.CRM_AUTOMATION_LIVE
+    delete process.env.CRM_WAITLIST_AUTOMATION_LIVE
+  })
+
+  it('matching is computed even while OFF, but no real provider call is made', async () => {
+    prismaMock.appointment.findUnique.mockResolvedValue({ serviceId: 'svc-1', doctorId: null, startAt: new Date() })
+    prismaMock.waitlistEntry.findMany.mockResolvedValue([entry()])
+    const result = await notifyWaitlistForOpenSlot('appt-1')
+    expect(result.targetingMode).toBe('MATCHED')
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+  })
+
+  it('master+feature ON with a valid match and consent -> a real send is attempted', async () => {
+    process.env.CRM_AUTOMATION_LIVE = 'true'
+    process.env.CRM_WAITLIST_AUTOMATION_LIVE = 'true'
+    prismaMock.appointment.findUnique.mockResolvedValue({ serviceId: 'svc-1', doctorId: null, startAt: new Date() })
+    prismaMock.waitlistEntry.findMany.mockResolvedValue([entry()])
+    prismaMock.consentLog.findFirst.mockResolvedValue({ status: 'OPT_IN' })
+
+    const result = await notifyWaitlistForOpenSlot('appt-1')
+
+    expect(sendWhatsAppMessage).toHaveBeenCalledTimes(1)
+    expect(result.notified[0].dryRun).toBe(false)
+  })
+
+  it('master ON but WAITLIST feature flag OFF -> still dry-run even with a valid match and consent', async () => {
+    process.env.CRM_AUTOMATION_LIVE = 'true' // WAITLIST flag deliberately not set
+    prismaMock.appointment.findUnique.mockResolvedValue({ serviceId: 'svc-1', doctorId: null, startAt: new Date() })
+    prismaMock.waitlistEntry.findMany.mockResolvedValue([entry()])
+    prismaMock.consentLog.findFirst.mockResolvedValue({ status: 'OPT_IN' })
+
+    const result = await notifyWaitlistForOpenSlot('appt-1')
+
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+    expect(result.notified[0].dryRun).toBe(true)
   })
 })
 

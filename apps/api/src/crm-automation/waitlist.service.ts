@@ -100,7 +100,7 @@ export async function notifyWaitlistForOpenSlot(cancelledAppointmentId: string, 
     }
 
     const body = `Hi ${patient.firstName}, a same-day slot just opened up at Code Clinic for the service you're waitlisted for — reply here if you'd like to grab it!`
-    const result = await sendOrSimulate(channel, patient.phone, body, () => sendViaChannel(channel, patient.phone, body))
+    const result = await sendOrSimulate('WAITLIST', channel, patient.phone, body, () => sendViaChannel(channel, patient.phone, body))
 
     await prisma.waitlistNotification.create({
       data: {

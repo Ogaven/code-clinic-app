@@ -79,7 +79,7 @@ export async function processDueReviewRequests(limit = 100): Promise<{ processed
     }
 
     const body = `Hi ${log.patient.firstName}, thanks for visiting Code Clinic! If you have a moment, we'd love a quick Google review: ${link}`
-    const result = await sendOrSimulate('WHATSAPP', log.patient.phone, body, () => sendWhatsAppMessage(log.patient.phone, body))
+    const result = await sendOrSimulate('REVIEW_REQUEST', 'WHATSAPP', log.patient.phone, body, () => sendWhatsAppMessage(log.patient.phone, body))
 
     await prisma.reviewRequestLog.update({
       where: { id: log.id },

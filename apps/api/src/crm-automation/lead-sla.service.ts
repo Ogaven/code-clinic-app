@@ -14,7 +14,7 @@
 // false escalation can fire after a reply.
 // ─────────────────────────────────────────────────────────────────────────
 import { prisma } from '../lib/prisma'
-import { isCrmAutomationLive, sendOrSimulate } from './dry-run'
+import { isCrmFeatureLive, sendOrSimulate } from './dry-run'
 import { sendPushToUser, type PushPayload } from '../services/push.service'
 import { decideLeadSend, isAllowed } from './lead-consent.service'
 
@@ -40,7 +40,7 @@ async function notifyUser(userId: string, title: string, body: string, href: str
   // Browser push IS an external, staff-facing send — gated per Part W
   // ("push notification to real staff" is explicitly listed as prohibited
   // during development/testing).
-  if (isCrmAutomationLive()) {
+  if (isCrmFeatureLive('OPERATIONAL')) {
     const payload: PushPayload = { title, body, url: href ?? undefined }
     await sendPushToUser(userId, payload)
   }
@@ -99,7 +99,7 @@ export async function checkLeadSlas(): Promise<{ escalated15: number; warm30: nu
       if (isAllowed(consent)) {
         const firstName = (lead.name || '').trim().split(/\s+/)[0] || 'there'
         const body = `Hi ${firstName}! Just checking in — we haven't heard back yet. Still interested in booking with Code Clinic? Reply here whenever you're ready 😊`
-        const result = await sendOrSimulate('WHATSAPP', lead.phone, body, () => sendWhatsAppMessage(lead.phone!, body))
+        const result = await sendOrSimulate('OPERATIONAL', 'WHATSAPP', lead.phone, body, () => sendWhatsAppMessage(lead.phone!, body))
         dryRun = result.dryRun
       } else {
         consentReason = consent.reason

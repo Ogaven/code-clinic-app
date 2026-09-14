@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
@@ -69,6 +69,55 @@ describe('handleNewLeadCreated — Part K new-lead intake', () => {
     await handleNewLeadCreated({ ...baseLead, assignedTo: 'owner-1' })
     expect(prismaMock.notification.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ userId: 'owner-1' }) }))
     expect(sendPushToUser).not.toHaveBeenCalled()
+  })
+})
+
+describe('handleNewLeadCreated — CRM_OPERATIONAL_AUTOMATION_LIVE feature flag (release-blocker fix — per-feature gating)', () => {
+  const ORIGINAL_NODE_ENV = process.env.NODE_ENV
+  beforeEach(() => { process.env.NODE_ENV = 'production' })
+  afterEach(() => {
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV
+    delete process.env.CRM_AUTOMATION_LIVE
+    delete process.env.CRM_OPERATIONAL_AUTOMATION_LIVE
+  })
+
+  it('master ON but OPERATIONAL feature flag OFF -> still dry-run even with operational evidence', async () => {
+    process.env.CRM_AUTOMATION_LIVE = 'true' // OPERATIONAL flag deliberately not set
+    prismaMock.leadConsentLog.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ channel: 'WHATSAPP', purpose: 'OPERATIONAL', status: 'OPT_IN', recordedAt: new Date() })
+    const baseLead = { id: 'lead-1', name: 'Jo Doe', phone: '+256700000001', email: null, source: 'QUIZ', assignedTo: null } as any
+
+    const result = await handleNewLeadCreated(baseLead)
+
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+    expect(result.acknowledgement).toEqual({ dryRun: true })
+  })
+
+  it('master+OPERATIONAL feature ON with operational evidence -> a real acknowledgement send is attempted', async () => {
+    process.env.CRM_AUTOMATION_LIVE = 'true'
+    process.env.CRM_OPERATIONAL_AUTOMATION_LIVE = 'true'
+    prismaMock.leadConsentLog.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ channel: 'WHATSAPP', purpose: 'OPERATIONAL', status: 'OPT_IN', recordedAt: new Date() })
+    const baseLead = { id: 'lead-1', name: 'Jo Doe', phone: '+256700000001', email: null, source: 'QUIZ', assignedTo: null } as any
+
+    const result = await handleNewLeadCreated(baseLead)
+
+    expect(sendWhatsAppMessage).toHaveBeenCalledTimes(1)
+    expect(result.acknowledgement).toEqual({ dryRun: false })
+  })
+
+  it('master+OPERATIONAL feature ON but NO consent evidence -> still blocked, no message', async () => {
+    process.env.CRM_AUTOMATION_LIVE = 'true'
+    process.env.CRM_OPERATIONAL_AUTOMATION_LIVE = 'true'
+    prismaMock.leadConsentLog.findFirst.mockResolvedValue(null)
+    const baseLead = { id: 'lead-1', name: 'Jo Doe', phone: '+256700000001', email: null, source: 'QUIZ', assignedTo: null } as any
+
+    const result = await handleNewLeadCreated(baseLead)
+
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+    expect(result.acknowledgement).toEqual({ blocked: 'no_contact_origin_evidence' })
   })
 })
 

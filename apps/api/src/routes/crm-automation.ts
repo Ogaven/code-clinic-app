@@ -25,7 +25,7 @@ import {
   responseTimeLeaderboard, stageConversionRates, staleLeadsByOwner, weeklyColdLeadsDigest,
   caseAcceptanceReport, sequencePerformanceReport, agingReceivablesReport, callPerformanceReport,
 } from '../crm-automation/reporting.service'
-import { isCrmAutomationLive } from '../crm-automation/dry-run'
+import { isCrmAutomationLive, crmFeatureStatus } from '../crm-automation/dry-run'
 
 const router = Router()
 
@@ -406,7 +406,14 @@ router.post('/dispatch/run', requireAuth, adminOnly, async (_req: Request, res: 
   const sla = await checkLeadSlas()
   const staleContacted = await sweepStaleContactedLeads()
   const reviews = await processDueReviewRequests()
-  res.json({ live: isCrmAutomationLive(), touches, sla, staleContacted, reviews })
+  res.json({ live: isCrmAutomationLive(), features: crmFeatureStatus(), touches, sla, staleContacted, reviews })
+})
+
+// ── Automation mode status (Part 11 — Admin visibility) ───────────────────
+// Read-only booleans only, never raw env values/secrets. Backing the Admin
+// CRM Automation Settings page's "current mode" panel.
+router.get('/automation-status', requireAuth, adminAndReceptionist, async (_req: Request, res: Response) => {
+  res.json({ masterLive: isCrmAutomationLive(), features: crmFeatureStatus() })
 })
 
 // ── Lead consent (release-blocker fix) ────────────────────────────────────

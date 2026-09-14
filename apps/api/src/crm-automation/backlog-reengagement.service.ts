@@ -88,7 +88,7 @@ export async function executeBacklogCampaign(runId: string, approvedByUserId: st
     if (!isAllowed(consent)) { skippedNoConsent++; continue }
     const firstName = (lead.name || '').trim().split(/\s+/)[0]
     const body = `Hi${firstName ? ' ' + firstName : ''}! It's been a while since we heard from you — Code Clinic would love to help with your dental care whenever you're ready. Reply here if you'd like to book.`
-    const result = await sendOrSimulate('WHATSAPP', lead.phone, body, () => sendWhatsAppMessage(lead.phone!, body))
+    const result = await sendOrSimulate('BACKLOG', 'WHATSAPP', lead.phone, body, () => sendWhatsAppMessage(lead.phone!, body))
     if (result.dryRun) anyDryRun = true
     await prisma.lead.update({ where: { id: lead.id }, data: { backlogCampaignAt: new Date() } })
     sent++

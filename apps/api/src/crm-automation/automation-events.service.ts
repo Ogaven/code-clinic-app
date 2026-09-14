@@ -11,7 +11,7 @@
 // retry idiom this codebase already uses for OutboundQueue/AiScheduledMessage.
 // ─────────────────────────────────────────────────────────────────────────
 import { prisma } from '../lib/prisma'
-import { isCrmAutomationLive } from './dry-run'
+import { isCrmFeatureLive } from './dry-run'
 import type { AutomationEvent, SequenceDefinition } from '@prisma/client'
 
 export type EntityType = 'PATIENT' | 'LEAD'
@@ -112,7 +112,9 @@ export async function enrollEntityInSequence(
   })
 
   const now = new Date()
-  const dryRun = !isCrmAutomationLive()
+  // Informational marker only — the real send decision happens at dispatch
+  // time in sequence-dispatcher.ts, which re-checks the feature gate fresh.
+  const dryRun = !isCrmFeatureLive(sequence.isMarketing ? 'MARKETING' : 'OPERATIONAL')
   await prisma.scheduledTouch.createMany({
     data: touches.map(t => ({
       enrollmentId: enrollment.id,

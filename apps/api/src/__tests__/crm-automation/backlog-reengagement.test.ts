@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
@@ -92,6 +92,60 @@ describe('previewBacklogEligibility — dry-run count before activation', () => 
     expect(result.totalTagged).toBe(2)
     expect(result.eligibleToSend).toBe(0)
     expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+  })
+})
+
+describe('executeBacklogCampaign — CRM_BACKLOG_REENGAGEMENT_LIVE feature flag (release-blocker fix — per-feature gating)', () => {
+  const ORIGINAL_NODE_ENV = process.env.NODE_ENV
+  beforeEach(() => { process.env.NODE_ENV = 'production' })
+  afterEach(() => {
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV
+    delete process.env.CRM_AUTOMATION_LIVE
+    delete process.env.CRM_BACKLOG_REENGAGEMENT_LIVE
+  })
+
+  it('master+feature ON but NO marketing consent -> still blocked, never a real send', async () => {
+    process.env.CRM_AUTOMATION_LIVE = 'true'
+    process.env.CRM_BACKLOG_REENGAGEMENT_LIVE = 'true'
+    prismaMock.backlogCampaignRun.findUniqueOrThrow.mockResolvedValue({ id: 'run-1', status: 'TAGGED' })
+    prismaMock.lead.findMany.mockResolvedValue([{ id: 'l-1', phone: '+256700000001', name: 'Jo' }])
+    prismaMock.leadConsentLog.findFirst.mockResolvedValue(null)
+
+    const result = await executeBacklogCampaign('run-1', 'admin-1')
+
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+    expect(result.sent).toBe(0)
+    expect(result.skippedNoConsent).toBe(1)
+  })
+
+  it('master+feature ON WITH explicit marketing consent -> a real send is attempted', async () => {
+    process.env.CRM_AUTOMATION_LIVE = 'true'
+    process.env.CRM_BACKLOG_REENGAGEMENT_LIVE = 'true'
+    prismaMock.backlogCampaignRun.findUniqueOrThrow.mockResolvedValue({ id: 'run-1', status: 'TAGGED' })
+    prismaMock.lead.findMany.mockResolvedValue([{ id: 'l-1', phone: '+256700000001', name: 'Jo' }])
+    prismaMock.leadConsentLog.findFirst
+      .mockResolvedValueOnce(null) // opt-out check
+      .mockResolvedValueOnce({ channel: 'WHATSAPP', purpose: 'MARKETING', status: 'OPT_IN' })
+
+    const result = await executeBacklogCampaign('run-1', 'admin-1')
+
+    expect(sendWhatsAppMessage).toHaveBeenCalledTimes(1)
+    expect(result.sent).toBe(1)
+    expect(result.anyDryRun).toBe(false)
+  })
+
+  it('master ON but BACKLOG feature flag OFF -> still dry-run even with explicit consent', async () => {
+    process.env.CRM_AUTOMATION_LIVE = 'true' // BACKLOG flag deliberately not set
+    prismaMock.backlogCampaignRun.findUniqueOrThrow.mockResolvedValue({ id: 'run-1', status: 'TAGGED' })
+    prismaMock.lead.findMany.mockResolvedValue([{ id: 'l-1', phone: '+256700000001', name: 'Jo' }])
+    prismaMock.leadConsentLog.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ channel: 'WHATSAPP', purpose: 'MARKETING', status: 'OPT_IN' })
+
+    const result = await executeBacklogCampaign('run-1', 'admin-1')
+
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+    expect(result.anyDryRun).toBe(true)
   })
 })
 
