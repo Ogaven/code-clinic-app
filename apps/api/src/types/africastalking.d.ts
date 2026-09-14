@@ -1,4 +1,5 @@
-// 'africastalking' ships no type declarations of its own. Both call sites in
-// this codebase treat it as untyped (`as any` / plain `require()`), so this
-// only needs to satisfy module resolution, not describe the real API shape.
-declare module 'africastalking';
+// The 'africastalking' SDK ships no type declarations and no @types package
+// exists for it. sms.service.ts already treats the imported module as `any`
+// (dynamic import cast), so this only needs to satisfy TS7016 — no need to
+// hand-type the whole SDK surface.
+declare module 'africastalking'
