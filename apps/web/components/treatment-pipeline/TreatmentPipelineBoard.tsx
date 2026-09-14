@@ -12,7 +12,7 @@
 // custom prop signature like this one.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus, Search } from 'lucide-react'
+import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus, Search, CalendarClock, BellRing } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
@@ -36,6 +36,10 @@ interface Plan {
   createdAt:     string
   updatedAt:     string
   daysSince:     number
+  // Internal treatment follow-up / hold scheduling (not shown to patient).
+  followUpAt:     string | null
+  followUpReason: string | null
+  followUpNote:   string | null
 }
 
 interface Metrics {
@@ -117,6 +121,47 @@ function urgencyBorderColor(daysSince: number) {
   return '#E5E7EB'
 }
 
+// ── Internal follow-up / hold scheduling helpers ─────────────────────────────
+// Africa/Kampala is a fixed UTC+3 offset with no DST — mirrors the server-side
+// kampala-time.ts util so "today"/"due soon" never disagrees with the alert
+// scheduler that actually fires the reminders.
+const KAMPALA_OFFSET_MS = 3 * 60 * 60 * 1000
+const DUE_SOON_WINDOW_DAYS = 3
+
+function kampalaStartOfDay(d: Date): Date {
+  const shifted = new Date(d.getTime() + KAMPALA_OFFSET_MS)
+  const y = shifted.getUTCFullYear(), m = shifted.getUTCMonth(), day = shifted.getUTCDate()
+  return new Date(Date.UTC(y, m, day, 0, 0, 0, 0) - KAMPALA_OFFSET_MS)
+}
+
+type FollowUpUrgency = 'OVERDUE' | 'DUE_TODAY' | 'DUE_SOON' | null
+
+// Days between a follow-up date and Kampala "today" (negative = past).
+function followUpDiffDays(followUpAt: string | null): number | null {
+  if (!followUpAt) return null
+  const today = kampalaStartOfDay(new Date())
+  const day   = kampalaStartOfDay(new Date(followUpAt))
+  return Math.round((day.getTime() - today.getTime()) / 86_400_000)
+}
+
+// Mirrors bucketFollowUp() in apps/api/src/services/treatment-followup-alerts.service.ts
+function followUpUrgency(followUpAt: string | null): FollowUpUrgency {
+  const diff = followUpDiffDays(followUpAt)
+  if (diff === null) return null
+  if (diff < 0) return 'OVERDUE'
+  if (diff === 0) return 'DUE_TODAY'
+  if (diff <= DUE_SOON_WINDOW_DAYS) return 'DUE_SOON'
+  return null
+}
+
+const FOLLOW_UP_REASON_PRESETS = [
+  'School / Patient unavailable',
+  'Awaiting funds',
+  'Other',
+]
+
+type FollowUpFilterKey = 'all' | 'due_today' | 'due_week' | 'overdue' | 'on_hold' | 'no_date'
+
 const COLUMN_PAGE_SIZE = 40
 
 // ── Main board ─────────────────────────────────────────────────────────────────
@@ -148,6 +193,11 @@ export default function TreatmentPipelineBoard({
   const [search,         setSearch]         = useState('')
   const [doctorFilter,   setDoctorFilter]   = useState('all')
   const [stageFilter,    setStageFilter]    = useState('all')
+  const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilterKey>('all')
+  // Internal follow-up / hold scheduling modal — either a pending drag/move
+  // into "On Hold" (pendingStatus set, nothing written yet) or an in-place
+  // edit on a plan already On Hold (pendingStatus null).
+  const [followUpModal,  setFollowUpModal]  = useState<{ plan: Plan; pendingStatus: string | null } | null>(null)
   // Columns render only the first COLUMN_PAGE_SIZE cards until expanded — an
   // "All time" board can hold years of plans, and rendering hundreds of full
   // drag-and-drop cards at once per column is the kind of DOM cost the page
@@ -192,25 +242,50 @@ export default function TreatmentPipelineBoard({
 
   const handleDragEnd = () => { setDragId(null); setDropOver(null) }
 
-  // Move via modal (touch fallback) — updates the real Treatment Plan status
-  async function handleMove(planId: string, targetStatus: string) {
+  // Shared status write — optimistic update + PATCH /status, optionally
+  // carrying the internal follow-up fields in the same request (used when
+  // the "On Hold" modal submits status + follow-up together). This is the
+  // one write path that keeps Treatment Plan status, Pipeline's board, and
+  // Case Acceptance's report all reading the same live field — unchanged
+  // from before, just now optionally extended with additive fields.
+  async function applyStatusChange(
+    planId: string,
+    targetStatus: string,
+    followUp?: { followUpAt: string | null; followUpReason: string | null; followUpNote: string | null },
+  ) {
     const plan = plans.find(p => p.id === planId)
-    if (!plan || plan.status === targetStatus) { setMovePlan(null); return }
+    if (!plan) return
+    const prevStatus = plan.status
 
-    // Optimistic update
-    setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: targetStatus } : p))
-    setMovePlan(null)
+    setPlans(prev => prev.map(p => p.id === planId
+      ? { ...p, status: targetStatus, ...(followUp ?? {}) }
+      : p))
 
     try {
       await fetch(`${API}/pipeline/treatment/${planId}/status`, {
         method:  'PATCH',
         headers: authH as any,
-        body:    JSON.stringify({ status: targetStatus }),
+        body:    JSON.stringify({ status: targetStatus, ...(followUp ?? {}) }),
       })
     } catch {
       // Revert on failure
-      setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: plan.status } : p))
+      setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: prevStatus } : p))
     }
+  }
+
+  // Move via modal (touch fallback) — updates the real Treatment Plan status.
+  // Moving INTO "On Hold" routes through the follow-up modal instead of
+  // writing immediately, so staff can capture a follow-up date/reason/note.
+  async function handleMove(planId: string, targetStatus: string) {
+    const plan = plans.find(p => p.id === planId)
+    if (!plan || plan.status === targetStatus) { setMovePlan(null); return }
+    setMovePlan(null)
+
+    if (targetStatus === 'On Hold') {
+      setFollowUpModal({ plan, pendingStatus: targetStatus })
+      return
+    }
+    await applyStatusChange(planId, targetStatus)
   }
 
   const handleDragOver = (e: React.DragEvent, statusId: string) => {
@@ -229,20 +304,15 @@ export default function TreatmentPipelineBoard({
     const plan = plans.find(p => p.id === planId)
     if (!plan || plan.status === targetStatus) return
 
-    // Optimistic update — this is the write that keeps Treatment Plan status,
-    // Pipeline's board, and Case Acceptance's report all reading one live field.
-    setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: targetStatus } : p))
-
-    try {
-      await fetch(`${API}/pipeline/treatment/${planId}/status`, {
-        method:  'PATCH',
-        headers: authH as any,
-        body:    JSON.stringify({ status: targetStatus }),
-      })
-    } catch {
-      // Revert on failure
-      setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: plan.status } : p))
+    // Dragging INTO "On Hold" opens the follow-up capture modal instead of
+    // writing immediately — no optimistic move until staff confirm/cancel,
+    // so a cancelled drag leaves the card exactly where it was.
+    if (targetStatus === 'On Hold') {
+      setFollowUpModal({ plan, pendingStatus: targetStatus })
+      return
     }
+
+    await applyStatusChange(planId, targetStatus)
   }
 
   // ── Bulk actions ──────────────────────────────────────────────────────────
@@ -314,6 +384,33 @@ export default function TreatmentPipelineBoard({
     })
   }
 
+  // ── Internal follow-up / hold scheduling ────────────────────────────────────
+  // Submits the follow-up capture form. When opened from a drag/move into
+  // "On Hold" (pendingStatus set), writes status + follow-up together via
+  // the same PATCH /status the board already uses. When opened to edit a
+  // plan already On Hold (pendingStatus null), writes only the follow-up
+  // fields via PATCH /follow-up — status is left untouched. Internal-only:
+  // never triggers any patient-facing message.
+  async function submitFollowUp(
+    planId: string,
+    pendingStatus: string | null,
+    fields: { followUpAt: string | null; followUpReason: string | null; followUpNote: string | null },
+  ) {
+    setFollowUpModal(null)
+    if (pendingStatus) {
+      await applyStatusChange(planId, pendingStatus, fields)
+      return
+    }
+    setPlans(prev => prev.map(p => p.id === planId ? { ...p, ...fields } : p))
+    try {
+      await fetch(`${API}/pipeline/treatment/${planId}/follow-up`, {
+        method:  'PATCH',
+        headers: authH as any,
+        body:    JSON.stringify(fields),
+      })
+    } catch { load() }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   // Real doctor names already present on the fetched plans — never a
@@ -332,9 +429,22 @@ export default function TreatmentPipelineBoard({
         const hay = `${p.patient.firstName} ${p.patient.lastName} ${p.treatmentName}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
+      if (followUpFilter !== 'all') {
+        if (followUpFilter === 'on_hold') {
+          if (p.status !== 'On Hold') return false
+        } else if (followUpFilter === 'no_date') {
+          if (p.followUpAt) return false
+        } else {
+          const diff = followUpDiffDays(p.followUpAt)
+          if (diff === null) return false
+          if (followUpFilter === 'overdue'   && !(diff < 0)) return false
+          if (followUpFilter === 'due_today' && diff !== 0) return false
+          if (followUpFilter === 'due_week'  && !(diff >= 0 && diff <= 6)) return false
+        }
+      }
       return true
     })
-  }, [plans, search, doctorFilter, stageFilter])
+  }, [plans, search, doctorFilter, stageFilter, followUpFilter])
 
   const plansByStatus = (statusId: string) => filteredPlans.filter(p => p.status === statusId)
   const statusTotal   = (statusId: string) => plansByStatus(statusId).reduce((s, p) => s + p.value, 0)

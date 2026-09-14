@@ -5,6 +5,7 @@ import { createEscalation, notifyJulian } from '../../services/agent/guards/esca
 import { prisma } from '../../lib/prisma'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { hasOutboundConsent } from '../scheduler/guardian-routing.service'
+import { classifyConfirmationReply, findPendingConfirmation, applyConfirmationReply } from './confirmation-reply.service'
 import { sendPushToUser } from '../../services/push.service'
 
 // ── Whole-word/phrase matching for reminder-reply intent detection ────────────
@@ -350,6 +351,35 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
     if (!agentOn) {
       console.log(`[WhatsApp] Conversation ${conversation.id} in human takeover — message saved, no auto-reply`)
       return
+    }
+
+    // ── 5b. Appointment-confirmation reply fast-path ──────────────────────────
+    // Strict, exact-match keyword classification ONLY (yes/confirm/1,
+    // no/cancel/2, reschedule/change/3) for patients with an OPEN
+    // APPOINTMENT_CONFIRMATION (see confirmation-reply.service.ts). Bypasses
+    // the general LLM agent entirely so this specific, high-volume reply path
+    // can never reach the cancel_appointment tool on ambiguous free text.
+    // Cancel/reschedule NEVER change Appointment.status here — they only flag
+    // the appointment for staff review. Anything that doesn't match exactly
+    // (e.g. "maybe next week I think") falls straight through, unchanged, to
+    // the reminder-reply detection and general-agent flow below.
+    if (patient) {
+      const confirmationClassification = classifyConfirmationReply(text)
+      if (confirmationClassification) {
+        const pending = await findPendingConfirmation(patient.id)
+        if (pending) {
+          const { replyText } = await applyConfirmationReply({
+            classification: confirmationClassification,
+            conversationId: conversation.id,
+            appointmentId:  pending.appointmentId,
+            patientName:    `${patient.firstName} ${patient.lastName}`,
+            phone:          from,
+          })
+          await sendWhatsAppMessage(from, replyText, wamid, false)
+          console.log(`[ApptConfirmation] Reply fast-path: ${patient.firstName} ${patient.lastName} -> ${confirmationClassification}`)
+          return
+        }
+      }
     }
 
     // ── 6. Reminder reply detection ───────────────────────────────────────────
@@ -730,13 +760,16 @@ export async function maybeNotifyStaff(
 // Send a WhatsApp template message via Meta Cloud API directly.
 // All cc_* templates are APPROVED in Meta. Callers must provide their own freeform
 // fallback on throw — the throw-on-error contract is preserved from the old AT path.
+// Returns the Meta wamid (or 'unknown') so callers that suppress the internal
+// conversation log (logToConversation: false) can still attach it to their own
+// manually-created AiMessage row for delivery-status webhook correlation.
 export async function sendWhatsAppTemplate(
   to: string,
   templateName: string,
   params: string[],
   logToConversation: boolean = true,
   phoneNumberIdOverride?: string,
-): Promise<void> {
+): Promise<string> {
   const token         = process.env.WHATSAPP_TOKEN
   const phoneNumberId = phoneNumberIdOverride ?? process.env.WHATSAPP_PHONE_NUMBER_ID
   if (!token || !phoneNumberId) {
@@ -771,9 +804,10 @@ export async function sendWhatsAppTemplate(
     throw new Error(detail)
   }
 
-  const msgId = json.messages?.[0]?.id ?? null
-  console.log(`[WhatsApp] Template '${templateName}' sent to +${normalizedTo} (wamid: ${msgId ?? 'unknown'})`)
+  const msgId = json.messages?.[0]?.id ?? 'unknown'
+  console.log(`[WhatsApp] Template '${templateName}' sent to +${normalizedTo} (wamid: ${msgId})`)
   const logText = `[Template: ${templateName}] ${params.join(' | ')}`
   logOutboundMessage(to, logText, templateName)
-  if (logToConversation) logAgentMessageToConversation(to, logText, msgId ?? undefined)
+  if (logToConversation) logAgentMessageToConversation(to, logText, msgId !== 'unknown' ? msgId : undefined)
+  return msgId
 }

@@ -1,6 +1,8 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma'
 import { requireAuth } from '../middleware/auth'
+import { startOfKampalaDay, endOfKampalaDay, startOfKampalaWeek, startOfKampalaMonth, kampalaTodayRange } from '../utils/kampala-time'
+import { getPatientActivitySummary, getAppointmentStatusBreakdown } from '../services/patient-analytics.service'
 
 const router = Router()
 
@@ -121,11 +123,9 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
 })
 
 // ─── Clinical Report ──────────────────────────────────────────────────────────
-
-const SEEN_STATUSES = new Set([
-  'ARRIVED','WAITING','IN_OPERATORY','WITH_PROVIDER','SESSION_COMPLETE',
-  'CHECKOUT','DEPARTED','COMPLETED','CHECKED_IN','IN_CHAIR','READY_CHECKOUT','IN_PROGRESS',
-])
+// Status breakdown / patient-activity numbers below come from the canonical
+// patient-analytics.service.ts (shared with Dashboard) rather than a
+// locally-duplicated status set.
 
 const REVIEW_KEYWORDS = ['recall','review','check','consult','follow']
 
@@ -137,37 +137,36 @@ function isReview(service: { name: string; category: string } | null): boolean {
 
 function cproper(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '' }
 
+// A browser-supplied Y-M-D (or Y-M) string names a Kampala calendar date/
+// month, not a UTC one. Anchor it to a UTC instant safely inside that
+// Kampala day (noon UTC = 15:00 Kampala, still the same calendar date since
+// the offset is only +3h with no DST) so the shared kampala-time helpers can
+// resolve the correct Kampala-midnight boundaries regardless of the API
+// host's system timezone.
+function kampalaAnchor(y: number, m: number, d: number): Date {
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0, 0))
+}
+
 function parseDayRange(dateStr: string): { start: Date; end: Date } {
   const [y, m, d] = dateStr.split('-').map(Number)
-  return { start: new Date(y, m - 1, d, 0, 0, 0, 0), end: new Date(y, m - 1, d, 23, 59, 59, 999) }
+  const anchor = kampalaAnchor(y, m, d)
+  return { start: startOfKampalaDay(anchor), end: endOfKampalaDay(anchor) }
 }
 
 function parseWeekRange(weekStartStr: string): { start: Date; end: Date } {
   const [y, m, d] = weekStartStr.split('-').map(Number)
-  return { start: new Date(y, m - 1, d, 0, 0, 0, 0), end: new Date(y, m - 1, d + 6, 23, 59, 59, 999) }
-}
-
-function todayDateStr(): string {
-  const n = new Date()
-  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`
-}
-
-function currentMondayStr(): string {
-  const n = new Date()
-  const day = n.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  const m = new Date(n); m.setDate(n.getDate() + diff); m.setHours(0,0,0,0)
-  return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`
-}
-
-function currentMonthStr(): string {
-  const n = new Date()
-  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`
+  const start = startOfKampalaWeek(kampalaAnchor(y, m, d))
+  const end   = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+  return { start, end }
 }
 
 function parseMonthRange(monthStr: string): { start: Date; end: Date } {
   const [y, m] = monthStr.split('-').map(Number)
-  return { start: new Date(y, m - 1, 1, 0, 0, 0, 0), end: new Date(y, m, 0, 23, 59, 59, 999) }
+  const start = startOfKampalaMonth(kampalaAnchor(y, m, 15))
+  const nextY  = m === 12 ? y + 1 : y
+  const nextM  = m === 12 ? 1 : m + 1
+  const end    = startOfKampalaMonth(kampalaAnchor(nextY, nextM, 15))
+  return { start, end }
 }
 
 // GET /reports/clinical?view=daily&date=YYYY-MM-DD
@@ -179,62 +178,68 @@ router.get('/clinical', requireAuth, async (req, res) => {
     let start: Date, end: Date
 
     if (view === 'weekly') {
-      const ws = (req.query.weekStart as string) || currentMondayStr()
-      ;({ start, end } = parseWeekRange(ws))
+      if (req.query.weekStart) {
+        ;({ start, end } = parseWeekRange(req.query.weekStart as string))
+      } else {
+        start = startOfKampalaWeek()
+        end   = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+      }
     } else if (view === 'monthly') {
-      const ms = (req.query.month as string) || currentMonthStr()
-      ;({ start, end } = parseMonthRange(ms))
+      if (req.query.month) {
+        ;({ start, end } = parseMonthRange(req.query.month as string))
+      } else {
+        start = startOfKampalaMonth()
+        end   = startOfKampalaMonth(new Date(start.getTime() + 32 * 24 * 60 * 60 * 1000))
+      }
     } else {
-      const ds = (req.query.date as string) || todayDateStr()
-      ;({ start, end } = parseDayRange(ds))
+      if (req.query.date) {
+        ;({ start, end } = parseDayRange(req.query.date as string))
+      } else {
+        ;({ start, end } = kampalaTodayRange())
+      }
     }
 
     const label = view === 'weekly'
-      ? `Week of ${start.toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' })}`
+      ? `Week of ${start.toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric', timeZone: 'Africa/Kampala' })}`
       : view === 'monthly'
-      ? start.toLocaleDateString('en-GB', { month:'long', year:'numeric' })
-      : start.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
+      ? start.toLocaleDateString('en-GB', { month:'long', year:'numeric', timeZone: 'Africa/Kampala' })
+      : start.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone: 'Africa/Kampala' })
 
-    // All appointments in the period
+    const range = { start, end }
+
+    // All appointments in the period (half-open [start, end), same
+    // convention as the shared patient-analytics service below, so the
+    // "seen" set used for reviews/follow-up matches the canonical one).
     const appts = await prisma.appointment.findMany({
-      where: { startAt: { gte: start, lte: end } },
+      where: { startAt: { gte: start, lt: end } },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, phone: true, patientType: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
         doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
         service: { select: { id: true, name: true, category: true } },
       },
       orderBy: { startAt: 'asc' },
     })
 
-    const totalScheduled = appts.length
-    const seen           = appts.filter((a: any) => SEEN_STATUSES.has(a.status))
-    const reviews        = appts.filter((a: any) => isReview(a.service)).length
-    const confirmed      = appts.filter((a: any) => a.status === 'CONFIRMED').length
-    const pending        = appts.filter((a: any) => a.status === 'PENDING').length
-    const cancelled      = appts.filter((a: any) => a.status === 'CANCELLED').length
-    const noShows        = appts.filter((a: any) => a.status === 'NO_SHOW').length
-    const rescheduled    = appts.filter((a: any) => a.status === 'RESCHEDULED' || a.status === 'CANCELLED_RESCHEDULED').length
+    // Canonical status breakdown + patient-activity summary — shared with
+    // Dashboard via patient-analytics.service.ts so both surfaces agree on
+    // what "seen"/"new"/"returning" and each status bucket mean. Buckets
+    // always sum exactly to scheduledTotal (every AppointmentStatus value is
+    // assigned to exactly one bucket, including IMPORTED under "seen").
+    const [statusBreakdown, activitySummary] = await Promise.all([
+      getAppointmentStatusBreakdown(range),
+      getPatientActivitySummary(range),
+    ])
 
-    // New vs Returning — use explicit patientType when set, else fall back to prior-appointment check
-    const seenWithType    = seen.filter((a: any) => a.patient.patientType != null)
-    const seenUnclassified = seen.filter((a: any) => a.patient.patientType == null)
-
-    const seenIds = [...new Set(seenUnclassified.map((a: any) => a.patientId as string))]
-    const priorRows = seenIds.length
-      ? await prisma.appointment.findMany({
-          where: {
-            patientId: { in: seenIds },
-            startAt:   { lt: start },
-            status:    { in: ['COMPLETED','DEPARTED','SESSION_COMPLETE'] },
-          },
-          select: { patientId: true },
-        })
-      : []
-    const withPrior        = new Set((priorRows as any[]).map(a => a.patientId))
-    const newPatients      = seenWithType.filter((a: any) => a.patient.patientType === 'NEW').length
-                           + seenUnclassified.filter((a: any) => !withPrior.has(a.patientId)).length
-    const returningPatients = seenWithType.filter((a: any) => a.patient.patientType === 'EXISTING').length
-                           + seenUnclassified.filter((a: any) => withPrior.has(a.patientId)).length
+    const totalScheduled   = statusBreakdown.scheduledTotal
+    const confirmed        = statusBreakdown.buckets.confirmed
+    const pending           = statusBreakdown.buckets.pending
+    const cancelled         = statusBreakdown.buckets.cancelled
+    const noShows           = statusBreakdown.buckets.noShow
+    const rescheduled       = statusBreakdown.buckets.rescheduled
+    const totalSeen         = statusBreakdown.buckets.seen
+    const newPatients       = activitySummary.newPatients
+    const returningPatients = activitySummary.returningPatients
+    const reviews           = appts.filter((a: any) => isReview(a.service)).length
 
     // Cancelled / No-show that haven't rebooked any future appointment
     const dnAppts = appts.filter((a: any) => a.status === 'CANCELLED' || a.status === 'NO_SHOW')
@@ -251,9 +256,11 @@ router.get('/clinical', requireAuth, async (req, res) => {
           select: { patientId: true },
         })
       : []
-    const hasRebooked            = new Set((futureRows as any[]).map(a => a.patientId))
-    const cancelledNotRescheduled = appts
-      .filter((a: any) => a.status === 'CANCELLED' && !hasRebooked.has(a.patientId)).length
+    // Still used to drive the "Needs Follow-up" list below — whether a
+    // cancelled/no-show patient has rebooked is a per-patient signal inside
+    // that list, not a separate top-level reconciliation bucket (Cancelled
+    // is just Cancelled — see statusBreakdown.buckets.cancelled above).
+    const hasRebooked = new Set((futureRows as any[]).map(a => a.patientId))
 
     // Follow-up list: cancelled/no-show patients who haven't rebooked
     const followUpAppts = dnAppts.filter((a: any) => !hasRebooked.has(a.patientId))
@@ -295,8 +302,8 @@ router.get('/clinical', requireAuth, async (req, res) => {
 
     res.json({
       period:  { view, start: start.toISOString(), end: end.toISOString(), label },
-      metrics: { totalScheduled, totalSeen: seen.length, newPatients, returningPatients,
-                 reviews, confirmed, pending, cancelled, rescheduled, noShows, cancelledNotRescheduled },
+      metrics: { totalScheduled, totalSeen, newPatients, returningPatients,
+                 reviews, confirmed, pending, cancelled, rescheduled, noShows },
       followUpList,
     })
   } catch (e: any) {

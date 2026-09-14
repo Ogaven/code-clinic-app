@@ -4,6 +4,7 @@ import { adminAndReceptionist, clinicalStaff } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { checkAndSendAppointmentConfirmations, checkAndSendPostAppointmentFollowups } from '../ai-suite/scheduler/followup.service'
 import { authenticatedDoctorId } from '../lib/doctor-access'
+import { kampalaTomorrowRange } from '../utils/kampala-time'
 
 const router = Router()
 
@@ -81,7 +82,17 @@ router.get('/followup-report', requireAuth, clinicalStaff, async (req, res) => {
 })
 
 // GET /ai-suite/confirmation-report
-// Returns appointment confirmation messages sent in the last 30 days.
+// Returns:
+//  - confirmations: APPOINTMENT_CONFIRMATION messages sent in the last 30 days (log view)
+//  - tomorrowAppointments: EVERY real appointment for tomorrow (Kampala time), each with a
+//    computed confirmationStatus reflecting only states that actually exist in the data —
+//    NOT_SENT / AWAITING_REPLY / CONFIRMED / CANCEL_REQUESTED / RESCHEDULE_REQUESTED / FAILED.
+//    CANCEL_REQUESTED/RESCHEDULE_REQUESTED come from the strict reply fast-path
+//    (confirmation-reply.service.ts) which never itself sets Appointment.status —
+//    a real "Cancelled" appointment simply drops out of this list on the next fetch
+//    once staff (or the general agent flow) actually cancels it.
+//  - eligibleTomorrowCount: appointments tomorrow that have NOT yet had a confirmation sent —
+//    the number the frontend's "Send confirmation messages to X eligible appointments" dialog uses.
 router.get('/confirmation-report', requireAuth, clinicalStaff, async (req, res) => {
   try {
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
@@ -89,6 +100,7 @@ router.get('/confirmation-report', requireAuth, clinicalStaff, async (req, res) 
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     const patientScope = doctorId ? { patient: { appointments: { some: { doctorId } } } } : {}
 
+    // ── Confirmation message log (last 30 days) ────────────────────────────────
     const confirmations = await prisma.aiScheduledMessage.findMany({
       where: {
         templateType: 'APPOINTMENT_CONFIRMATION',
@@ -100,23 +112,6 @@ router.get('/confirmation-report', requireAuth, clinicalStaff, async (req, res) 
         patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
       },
       orderBy: { scheduledFor: 'desc' },
-      take: 200,
-    })
-
-    // Also pull corresponding appointment statuses
-    const patientIds = [...new Set(confirmations.map(c => c.patientId))]
-    const upcomingAppts = await prisma.appointment.findMany({
-      where: {
-        patientId: { in: patientIds },
-        startAt:   { gte: since },
-        ...(doctorId ? { doctorId } : {}),
-      },
-      include: {
-        patient: { select: { id: true, firstName: true, lastName: true } },
-        doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
-        service: { select: { name: true } },
-      },
-      orderBy: { startAt: 'desc' },
       take: 200,
     })
 
@@ -149,7 +144,110 @@ router.get('/confirmation-report', requireAuth, clinicalStaff, async (req, res) 
       return { ...c, replied: !!firstReply, replyContent: firstReply?.content ?? null, replyAt: firstReply?.createdAt ?? null }
     })
 
-    res.json({ confirmations: confirmationsWithReply, upcomingAppts })
+    // ── Tomorrow's real appointments, with a real confirmation status ──────────
+    const { start: tomorrowStart, end: tomorrowEnd } = kampalaTomorrowRange()
+    const tomorrowAppointmentsRaw = await prisma.appointment.findMany({
+      where: {
+        startAt: { gte: tomorrowStart, lt: tomorrowEnd },
+        status:  { in: ['PENDING', 'CONFIRMED'] }, // excludes CANCELLED/NO_SHOW/RESCHEDULED/CANCELLED_RESCHEDULED
+        ...(doctorId ? { doctorId } : {}),
+      },
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
+        service: { select: { name: true } },
+      },
+      orderBy: { startAt: 'asc' },
+      take: 200,
+    })
+
+    const tomorrowPatientIds = [...new Set(tomorrowAppointmentsRaw.map(a => a.patientId))]
+    const tomorrowConfirmationMsgs = tomorrowPatientIds.length > 0 ? await prisma.aiScheduledMessage.findMany({
+      where: {
+        patientId:    { in: tomorrowPatientIds },
+        templateType: 'APPOINTMENT_CONFIRMATION',
+        sent:         true,
+        scheduledFor: { gte: tomorrowStart, lt: tomorrowEnd },
+      },
+    }) : []
+    const confirmationByPatientId = new Map(tomorrowConfirmationMsgs.map(m => [m.patientId, m]))
+
+    const tPhones = [...new Set(tomorrowAppointmentsRaw.map(a => a.patient?.phone).filter(Boolean) as string[])]
+    const tEarliest = tomorrowConfirmationMsgs.length > 0
+      ? tomorrowConfirmationMsgs.reduce((min, m) => (m.createdAt < min ? m.createdAt : min), tomorrowConfirmationMsgs[0].createdAt)
+      : tomorrowStart
+
+    // AGENT messages (delivery status + confirmation-reply-fast-path tags) and
+    // USER messages (raw reply detection) for these phones since the earliest send.
+    const tConvMsgs = tPhones.length > 0 ? await prisma.aiMessage.findMany({
+      where: {
+        createdAt:    { gte: tEarliest },
+        conversation: { phoneNumber: { in: tPhones } },
+      },
+      include: { conversation: { select: { phoneNumber: true } } },
+      orderBy:  { createdAt: 'asc' },
+    }) : []
+
+    const msgsByPhone = new Map<string, typeof tConvMsgs>()
+    for (const m of tConvMsgs) {
+      const phone = m.conversation.phoneNumber
+      if (!msgsByPhone.has(phone)) msgsByPhone.set(phone, [])
+      msgsByPhone.get(phone)!.push(m)
+    }
+
+    let eligibleTomorrowCount = 0
+    const tomorrowAppointments = tomorrowAppointmentsRaw.map(appt => {
+      const scheduledMsg = confirmationByPatientId.get(appt.patientId)
+
+      if (!scheduledMsg) {
+        eligibleTomorrowCount++
+        return {
+          id: appt.id, patient: appt.patient, doctor: appt.doctor, service: appt.service,
+          startAt: appt.startAt, status: appt.status,
+          confirmationStatus: 'NOT_SENT' as const,
+          confirmationSentAt: null, repliedAt: null, deliveryStatus: null,
+        }
+      }
+
+      const phone     = appt.patient?.phone
+      const phoneMsgs = phone ? (msgsByPhone.get(phone) || []) : []
+
+      // Live delivery status: nearest AGENT message at/after the send — its
+      // `status` field is kept current by the Meta status webhook (see
+      // whatsapp.routes.ts) via wamid, so 'failed' here is real, not guessed.
+      const agentMsg = phoneMsgs.find(m => m.role === 'AGENT' && m.createdAt >= scheduledMsg.createdAt)
+      const deliveryStatus = agentMsg?.status ?? scheduledMsg.deliveryStatus ?? null
+
+      // Strict classification tag written by the confirmation-reply fast-path (if any).
+      const classifiedMsg = phoneMsgs.find(m =>
+        m.role === 'AGENT' && m.createdAt >= scheduledMsg.createdAt &&
+        typeof m.metadata === 'string' && m.metadata.includes('"type":"confirmation_reply"')
+      )
+      let classification: string | null = null
+      if (classifiedMsg?.metadata) {
+        try { classification = JSON.parse(classifiedMsg.metadata).classification ?? null } catch { /* ignore malformed metadata */ }
+      }
+
+      const repliedMsg = phoneMsgs.find(m => m.role === 'USER' && m.createdAt >= scheduledMsg.createdAt)
+
+      let confirmationStatus: 'FAILED' | 'CANCEL_REQUESTED' | 'RESCHEDULE_REQUESTED' | 'CONFIRMED' | 'AWAITING_REPLY'
+      if (deliveryStatus === 'failed') confirmationStatus = 'FAILED'
+      else if (classification === 'CANCEL_REQUESTED') confirmationStatus = 'CANCEL_REQUESTED'
+      else if (classification === 'RESCHEDULE_REQUESTED') confirmationStatus = 'RESCHEDULE_REQUESTED'
+      else if (classification === 'CONFIRM' || appt.status === 'CONFIRMED') confirmationStatus = 'CONFIRMED'
+      else confirmationStatus = 'AWAITING_REPLY'
+
+      return {
+        id: appt.id, patient: appt.patient, doctor: appt.doctor, service: appt.service,
+        startAt: appt.startAt, status: appt.status,
+        confirmationStatus,
+        confirmationSentAt: scheduledMsg.createdAt,
+        repliedAt: repliedMsg?.createdAt ?? null,
+        deliveryStatus,
+      }
+    })
+
+    res.json({ confirmations: confirmationsWithReply, tomorrowAppointments, eligibleTomorrowCount })
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch confirmation report' })
   }
@@ -165,11 +263,14 @@ router.post('/trigger/followups', requireAuth, adminAndReceptionist, async (_req
   }
 })
 
-// POST /ai-suite/trigger/confirmations — manually trigger confirmation run (bypasses time gate)
+// POST /ai-suite/trigger/confirmations — manually trigger confirmation run (bypasses time gate).
+// Awaited (not fire-and-forget) so the response can carry real counts — including
+// `outsideWindow`, the count of sends that fell back to free text outside Meta's
+// 24h session window — for the dashboard to surface to staff immediately.
 router.post('/trigger/confirmations', requireAuth, adminAndReceptionist, async (_req, res) => {
   try {
-    checkAndSendAppointmentConfirmations(true).catch(e => console.error('[TriggerConfirmations]', e))
-    res.json({ message: 'Confirmation run triggered' })
+    const result = await checkAndSendAppointmentConfirmations(true)
+    res.json({ message: 'Confirmation run complete', ...result })
   } catch (e) {
     res.status(500).json({ error: 'Failed to trigger confirmations' })
   }

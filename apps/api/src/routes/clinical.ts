@@ -7,6 +7,8 @@ import { uploadAvatar, getPublicUrl } from '../services/storage/r2'
 import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
 import { authenticatedDoctorId, requireDoctorPatientAccess } from '../lib/doctor-access'
+import { kampalaMonthToDateRange, kampalaPreviousMonthToDateRange, safePercentChange } from '../utils/kampala-time'
+import { getTotalPatients, getPatientsSeen, splitNewAndReturning } from '../services/patient-analytics.service'
 
 const router = Router()
 router.use(requireAuth)
@@ -612,7 +614,6 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
     const [
       activeThisMonthRows,
       activeLastMonthRows,
-      newThisMonth,
       noShowWeek,
       totalWeekAppts,
       collectedThisMonth,
@@ -634,12 +635,6 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
         select:   { patientId: true },
         distinct: ['patientId'],
       }),
-      // Patients who had a COMPLETED appointment this month
-      prisma.appointment.findMany({
-        where: { startAt: { gte: startOfMonth }, status: 'COMPLETED' },
-        select: { patientId: true },
-        distinct: ['patientId'],
-      }),
       prisma.appointment.count({ where: { startAt: { gte: weekStart }, status: 'NO_SHOW' } }),
       prisma.appointment.count({ where: { startAt: { gte: weekStart } } }),
       prisma.payment.aggregate({ _sum: { amountUGX: true }, where: { paidAt: { gte: startOfMonth } } }),
@@ -655,45 +650,41 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
       prisma.nurtureLog.count({ where: { createdAt: { gte: startOfMonth }, status: { in: ['SENT', 'DELIVERED'] } } }),
     ])
 
-    // Determine true new vs returning patients:
-    // New = first COMPLETED appointment this month, not imported
-    // Returning = had a COMPLETED appointment this month AND had one before this month
-    const completedThisMonthIds = newThisMonth.map((a: { patientId: string }) => a.patientId)
-
-    const [hadCompletedBefore, newPatientDetails] = await Promise.all([
-      // Which of those had any COMPLETED appointment BEFORE this month?
-      completedThisMonthIds.length > 0
-        ? prisma.appointment.findMany({
-            where:    { patientId: { in: completedThisMonthIds }, startAt: { lt: startOfMonth }, status: 'COMPLETED' },
-            select:   { patientId: true },
-            distinct: ['patientId'],
-          })
-        : Promise.resolve([]),
-      // Referral source for truly new patients (not imported)
-      completedThisMonthIds.length > 0
-        ? prisma.patient.findMany({
-            where: { id: { in: completedThisMonthIds }, OR: [{ importSource: null }, { importSource: '' }] },
-            select: { id: true, referralSource: true },
-          })
-        : Promise.resolve([]),
+    // Total/Seen/New/Returning — Kampala month-to-date, via the shared
+    // patient-analytics service (patient-analytics.service.ts) so this
+    // endpoint agrees with Reports rather than re-deriving the definitions
+    // locally with a naive `new Date()` month boundary.
+    //
+    // "Seen" is deliberately reported as New + Returning (not the service's
+    // raw getPatientsSeen count) because splitNewAndReturning excludes
+    // imported patients with no known prior visit from BOTH buckets (their
+    // true history predates the import and is unknown) — using the raw
+    // attended count here could make Seen > New + Returning on the card,
+    // which would look like a bug. This mirrors the reconciliation the
+    // dashboard already relied on before this refactor (Seen was always
+    // shown as the sum of the other two, never fetched independently).
+    const mtdRange = kampalaMonthToDateRange()
+    const [totalPatients, seenMtd] = await Promise.all([
+      getTotalPatients(),
+      getPatientsSeen(mtdRange),
     ])
+    const { newIds, returningIds } = await splitNewAndReturning(seenMtd.patientIds, mtdRange.start)
+    const newPatientsThisMonth       = newIds.length
+    const returningPatientsThisMonth = returningIds.length
+    const patientsSeenThisMonth      = newPatientsThisMonth + returningPatientsThisMonth
 
-    const returningIds = new Set(hadCompletedBefore.map((a: { patientId: string }) => a.patientId))
-    const newIds       = new Set(
-      newPatientDetails
-        .filter((p: { id: string }) => !returningIds.has(p.id))
-        .map((p: { id: string }) => p.id),
-    )
-
+    // Referral source for truly new patients this month (same rule as
+    // before: only non-imported patients whose first attended visit is in
+    // range are eligible — splitNewAndReturning already enforces that for newIds).
+    const newPatientReferrals = newIds.length > 0
+      ? await prisma.patient.findMany({ where: { id: { in: newIds } }, select: { referralSource: true } })
+      : []
     const sourceMap: Record<string, number> = {}
-    newPatientDetails
-      .filter((p: { id: string; referralSource: string | null }) => newIds.has(p.id))
-      .forEach((p: { referralSource: string | null }) => {
-        const s = p.referralSource || 'Unknown'
-        sourceMap[s] = (sourceMap[s] || 0) + 1
-      })
-    const topReferralSource    = Object.entries(sourceMap).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
-    const returningPatientsThisMonth = returningIds.size
+    newPatientReferrals.forEach((p: { referralSource: string | null }) => {
+      const s = p.referralSource || 'Unknown'
+      sourceMap[s] = (sourceMap[s] || 0) + 1
+    })
+    const topReferralSource = Object.entries(sourceMap).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
 
     const collected        = Number(collectedThisMonth._sum.amountUGX) || 0
     const billed           = Number(billedThisMonth._sum.totalUGX)     || 0
@@ -716,7 +707,9 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
       metrics: {
         activeThisMonth:           activeThisMonthRows.length,
         activeLastMonth:           activeLastMonthRows.length,
-        newPatientsThisMonth:      newIds.size,
+        totalPatients,
+        patientsSeenThisMonth,
+        newPatientsThisMonth,
         returningPatientsThisMonth,
         topReferralSource,
         noShowRate,
@@ -741,6 +734,58 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
   } catch (e) {
     console.error('[Dashboard Analytics]', e)
     res.status(500).json({ error: 'Failed to fetch dashboard analytics' })
+  }
+})
+
+// GET /clinical/analytics/dashboard/trend
+// Current Kampala month-to-date vs the same number of days into the
+// previous month (kampalaPreviousMonthToDateRange — a fair "same day count"
+// comparison, not partial-vs-full-month) for each of the 4 Patients
+// Overview metrics. percentChange is always null (never Infinity/NaN) when
+// the previous-period value is 0 — see safePercentChange in kampala-time.ts.
+router.get('/analytics/dashboard/trend', requireAuth, async (_req, res) => {
+  try {
+    const currentRange  = kampalaMonthToDateRange()
+    const previousRange = kampalaPreviousMonthToDateRange()
+
+    const [currentSeen, previousSeen, totalPatientsNow, totalPatientsAsOfPrevious] = await Promise.all([
+      getPatientsSeen(currentRange),
+      getPatientsSeen(previousRange),
+      getTotalPatients(),
+      // "Total Patients" a month ago, for a fair growth comparison — patients
+      // whose record existed by the equivalent point in the previous month.
+      prisma.patient.count({ where: { createdAt: { lt: previousRange.end } } }),
+    ])
+    const [currentSplit, previousSplit] = await Promise.all([
+      splitNewAndReturning(currentSeen.patientIds, currentRange.start),
+      splitNewAndReturning(previousSeen.patientIds, previousRange.start),
+    ])
+
+    // Same New+Returning reconciliation as the main endpoint — see comment there.
+    const currentSeenTotal  = currentSplit.newIds.length + currentSplit.returningIds.length
+    const previousSeenTotal = previousSplit.newIds.length + previousSplit.returningIds.length
+
+    const trend = (current: number, previous: number) => ({
+      current,
+      previous,
+      percentChange: safePercentChange(current, previous),
+    })
+
+    res.json({
+      range: {
+        current:  { start: currentRange.start, end: currentRange.end },
+        previous: { start: previousRange.start, end: previousRange.end },
+      },
+      trends: {
+        totalPatients:     trend(totalPatientsNow, totalPatientsAsOfPrevious),
+        patientsSeen:      trend(currentSeenTotal, previousSeenTotal),
+        newPatients:       trend(currentSplit.newIds.length, previousSplit.newIds.length),
+        returningPatients: trend(currentSplit.returningIds.length, previousSplit.returningIds.length),
+      },
+    })
+  } catch (e) {
+    console.error('[Dashboard Trend]', e)
+    res.status(500).json({ error: 'Failed to fetch dashboard trend' })
   }
 })
 

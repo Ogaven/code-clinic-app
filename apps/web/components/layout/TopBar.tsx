@@ -4,9 +4,11 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import { Bell, Check, LogOut, Menu, Monitor, Moon, Palette, Search, Settings, Sun, User, UserRound, X } from 'lucide-react'
+import { Bell, Check, LogOut, Menu, Monitor, Moon, Search, Settings, Sun, User, UserRound, X } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { AppTheme, saveTheme } from '@/lib/theme'
+import type { PwaInstallState } from '@/lib/pwaInstall'
+import ProfileMenu from '@/components/layout/ProfileMenu'
 
 type UserInfo = { firstName: string; lastName: string; role: string; avatarUrl?: string | null }
 type NavLink = { label: string; href?: string; children?: NavLink[]; disabled?: boolean }
@@ -17,6 +19,7 @@ interface TopBarProps {
   theme: AppTheme
   user?: UserInfo
   onThemeChange: (theme: AppTheme, dark: boolean) => void
+  install?: PwaInstallState
 }
 
 const roleLabels: Record<string, string> = {
@@ -75,7 +78,7 @@ const navItemCls = (active: boolean) => cn(
     : 'font-medium text-gray-500 hover:bg-white/70 hover:text-clinic-navy dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white',
 )
 
-export default function TopBar({ title, user, theme, onThemeChange }: TopBarProps) {
+export default function TopBar({ title, user, theme, onThemeChange, install }: TopBarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const searchInput = useRef<HTMLInputElement>(null)
@@ -233,7 +236,7 @@ export default function TopBar({ title, user, theme, onThemeChange }: TopBarProp
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-white/10"><strong className="text-sm font-semibold dark:text-white">Notifications</strong>{unread > 0 && <button onClick={markAllRead} className="text-xs font-semibold text-cyan-600">Mark all read</button>}</div>
         <div className="max-h-[380px] overflow-y-auto">{notifications.length === 0 ? <div className="py-12 text-center text-xs text-gray-400">No notifications yet</div> : notifications.slice(0, 8).map(item => <button key={item.id} onClick={() => openNotification(item)} className={cn('flex w-full gap-3 border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50 dark:border-white/5 dark:hover:bg-white/5', !item.isRead && 'bg-cyan-50/60 dark:bg-cyan-400/[0.06]')}><span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full" style={{ background: TYPE_DOT[item.type] || '#94a3b8' }} /><span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-gray-800 dark:text-slate-200">{item.title}</span><span className="mt-0.5 line-clamp-2 block text-[11px] text-gray-500 dark:text-slate-400">{item.body}</span></span><span className="text-[9px] text-gray-400">{timeAgo(item.createdAt)}</span></button>)}</div>
       </div></PopoverBackdrop>}
-      {profileOpen && user && <PopoverBackdrop onClose={() => setProfileOpen(false)}><ProfileMenu user={user} theme={theme} onTheme={chooseTheme} onNavigate={href => { router.push(href); setProfileOpen(false) }} onSignOut={signOut} /></PopoverBackdrop>}
+      {profileOpen && user && <PopoverBackdrop onClose={() => setProfileOpen(false)}><ProfileMenu user={user} theme={theme} onTheme={chooseTheme} profileHref="/profile" settingsHref="/settings" onNavigate={href => { router.push(href); setProfileOpen(false) }} onSignOut={signOut} install={install} /></PopoverBackdrop>}
       {menuOpen && <MobileMenu pathname={pathname} user={user} theme={theme} onTheme={chooseTheme} onNavigate={href => { router.push(href); setMenuOpen(false) }} onSignOut={signOut} onClose={() => setMenuOpen(false)} />}
     </>
   )
@@ -297,16 +300,6 @@ function SearchOverlay({ query, results, searching, activeIndex, inputRef, onQue
         ))}
       </div>
     </div>
-  </div>
-}
-
-function ProfileMenu({ user, theme, onTheme, onNavigate, onSignOut }: { user: UserInfo; theme: AppTheme; onTheme: (theme: AppTheme) => void; onNavigate: (href: string) => void; onSignOut: () => void }) {
-  return <div className="fixed right-4 top-[70px] z-[101] w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl dark:border-white/10 dark:bg-[#0c1b38]">
-    <div className="px-3 py-2"><p className="text-sm font-semibold text-gray-900 dark:text-white">{user.firstName} {user.lastName}</p><p className="text-[11px] text-gray-400">{roleLabels[user.role] || user.role}</p></div>
-    <button onClick={() => onNavigate('/profile')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><User size={15} /> My Profile</button>
-    <div className="my-1 border-t border-gray-100 pt-2 dark:border-white/10"><p className="flex items-center gap-2 px-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400"><Palette size={13} /> Appearance</p><div className="grid grid-cols-3 gap-1">{([['light', Sun], ['dark', Moon], ['system', Monitor]] as const).map(([value, Icon]) => <button key={value} onClick={() => onTheme(value)} className={cn('flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] capitalize text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/10', theme === value && 'bg-cyan-50 font-semibold text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300')}><span className="relative"><Icon size={15} />{theme === value && <Check size={8} className="absolute -right-2 -top-1" />}</span>{value}</button>)}</div></div>
-    <button onClick={() => onNavigate('/settings')} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><Settings size={15} /> Settings</button>
-    <button onClick={onSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"><LogOut size={15} /> Sign Out</button>
   </div>
 }
 

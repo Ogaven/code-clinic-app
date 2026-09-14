@@ -219,9 +219,38 @@ router.patch('/treatment/:id/stage', requireAuth, async (req, res) => {
   }
 })
 
+// Shared by PATCH /status and PATCH /follow-up — pulls the internal
+// follow-up/hold-scheduling fields out of the request body (all optional,
+// all independent of `status`). Undefined means "leave unchanged"; an
+// explicit null clears the field. followUpAt is validated as a real date
+// when present so a bad client payload can't write "Invalid Date" into
+// the DB (which would silently break the alert scheduler's comparisons).
+function parseFollowUpFields(body: any): { data: Record<string, any>; error?: string } {
+  const data: Record<string, any> = {}
+  if ('followUpAt' in body) {
+    if (body.followUpAt === null || body.followUpAt === '') {
+      data.followUpAt = null
+    } else {
+      const d = new Date(body.followUpAt)
+      if (isNaN(d.getTime())) return { data, error: 'Invalid followUpAt date' }
+      data.followUpAt = d
+    }
+  }
+  if ('followUpReason' in body) data.followUpReason = body.followUpReason === '' ? null : body.followUpReason
+  if ('followUpNote' in body) data.followUpNote = body.followUpNote === '' ? null : body.followUpNote
+  // Assigned clinician — reuses the existing TreatmentPlan.doctorId field
+  // (no new assignment field). null unassigns.
+  if ('doctorId' in body) data.doctorId = body.doctorId === '' ? null : body.doctorId
+  return { data }
+}
+
 // PATCH /pipeline/treatment/:id/status — moves a card between Pipeline's board
 // columns AND updates the real Treatment Plan status in one write, since the
 // board now reads/writes this same field (not the separate `stage` column).
+// Optionally also accepts the internal follow-up/hold fields (followUpAt,
+// followUpReason, followUpNote, doctorId) in the SAME request, so the "On
+// Hold" board modal can set status + follow-up details in one round trip —
+// purely additive, the status write semantics below are unchanged.
 router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
   try {
     const { status } = req.body
@@ -231,12 +260,42 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
     if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
     const doctorId = await authenticatedDoctorId(prisma, req.user!)
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
-    const result = await prisma.treatmentPlan.updateMany({ where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) }, data: { status } })
+    const { data: followUpData, error: followUpError } = parseFollowUpFields(req.body)
+    if (followUpError) { res.status(400).json({ error: followUpError }); return }
+    const result = await prisma.treatmentPlan.updateMany({
+      where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
+      data:  { status, ...followUpData },
+    })
     if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
-    res.json({ id: req.params.id, status })
+    res.json({ id: req.params.id, status, ...followUpData })
   } catch (e) {
     console.error('[Pipeline] status update error:', e)
     res.status(500).json({ error: 'Failed to update status' })
+  }
+})
+
+// PATCH /pipeline/treatment/:id/follow-up — sets/edits the internal follow-up
+// / hold-scheduling fields WITHOUT touching `status`. For plans already On
+// Hold (or any plan, per the underlying task) that need their follow-up date,
+// reason, note, or assigned clinician updated after the fact. Internal-only —
+// never triggers any patient-facing message.
+router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
+  try {
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+    const { data: followUpData, error: followUpError } = parseFollowUpFields(req.body)
+    if (followUpError) { res.status(400).json({ error: followUpError }); return }
+    if (Object.keys(followUpData).length === 0) { res.status(400).json({ error: 'No follow-up fields provided' }); return }
+    const result = await prisma.treatmentPlan.updateMany({
+      where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
+      data:  followUpData,
+    })
+    if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    res.json({ id: req.params.id, ...followUpData })
+  } catch (e) {
+    console.error('[Pipeline] follow-up update error:', e)
+    res.status(500).json({ error: 'Failed to update follow-up' })
   }
 })
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { RefreshCw, Loader2, BarChart2, DollarSign, MessageSquare, AlertCircle } from 'lucide-react'
+import { RefreshCw, Loader2, BarChart2, DollarSign, MessageSquare, AlertCircle, Cpu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -36,6 +36,41 @@ interface Analytics {
   digitalocean: DoBalance | { notConfigured: true }
   cachedAt: string
 }
+
+// ── OpenAI token-usage / cost analytics (Admin-only) ───────────────────────
+
+type AiUsageRange = 'today' | '7d' | '30d' | 'month' | 'prev_month'
+
+interface AiUsageDayPoint { day: string; requests: number; totalTokens: number }
+interface AiUsageChannelPoint { channel: string; requests: number; totalTokens: number }
+interface AiUsage {
+  range: AiUsageRange
+  since: string
+  until: string
+  totals: {
+    requests: number
+    failedRequests: number
+    inputTokens: number
+    cachedInputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    totalTokens: number
+    toolCalls: number
+    avgTokensPerResponse: number
+  }
+  byChannel: AiUsageChannelPoint[]
+  byDay: AiUsageDayPoint[]
+  models: string[]
+  cost: { value: number; currency: string; source: string }
+}
+
+const AI_USAGE_RANGES: { key: AiUsageRange; label: string }[] = [
+  { key: 'today',      label: 'Today' },
+  { key: '7d',         label: '7 days' },
+  { key: '30d',        label: '30 days' },
+  { key: 'month',      label: 'This month' },
+  { key: 'prev_month', label: 'Last month' },
+]
 
 // ── Channel metadata ──────────────────────────────────────────────────────────
 
@@ -166,6 +201,116 @@ function MetaWabaCard({ data, label }: { data: WabaUsage; label: string }) {
   )
 }
 
+// ── Token usage bar chart (reuses the same visual pattern as ChannelBarChart) ──
+
+function TokenBarChart({ points }: { points: AiUsageDayPoint[] }) {
+  if (!points.length) return <p className="text-xs text-gray-300 dark:text-white/20 italic">No usage data in this range</p>
+  const max = Math.max(...points.map(p => p.totalTokens), 1)
+  return (
+    <div className="flex items-end gap-[2px] h-8 w-full">
+      {points.map((p, i) => {
+        const h = Math.max(2, Math.round((p.totalTokens / max) * 32))
+        return (
+          <div key={i} title={`${p.day.slice(5)}: ${p.totalTokens.toLocaleString()} tokens (${p.requests} requests)`}
+            style={{ height: `${h}px`, flex: 1 }}
+            className="rounded-sm bg-violet-400/60 dark:bg-violet-400/40 hover:bg-violet-500 transition-colors cursor-default" />
+        )
+      })}
+    </div>
+  )
+}
+
+// ── OpenAI usage card (Admin-only — cost figures never shown to Receptionist) ──
+
+function OpenAiUsageCard({
+  data, range, onRangeChange, loading,
+}: {
+  data: AiUsage | null
+  range: AiUsageRange
+  onRangeChange: (r: AiUsageRange) => void
+  loading: boolean
+}) {
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 flex items-center gap-2">
+          <Cpu size={10} /> OpenAI Usage (Admin only)
+        </p>
+        <div className="flex gap-1">
+          {AI_USAGE_RANGES.map(r => (
+            <button key={r.key} onClick={() => onRangeChange(r.key)}
+              className={cn(
+                'px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors',
+                range === r.key
+                  ? 'bg-violet-500 text-white'
+                  : 'bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-white/40 hover:bg-gray-100 dark:hover:bg-white/10'
+              )}>
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
+        {loading || !data ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 size={20} className="animate-spin text-violet-500" />
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="text-center p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-1">Requests</p>
+                <p className="text-xl font-black text-gray-800 dark:text-white">{data.totals.requests.toLocaleString()}</p>
+                {data.totals.failedRequests > 0 && (
+                  <p className="text-[9px] text-red-400 mt-0.5">{data.totals.failedRequests} failed</p>
+                )}
+              </div>
+              <div className="text-center p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-1">Total Tokens</p>
+                <p className="text-xl font-black text-gray-800 dark:text-white">{data.totals.totalTokens.toLocaleString()}</p>
+              </div>
+              <div className="text-center p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-1">Avg Tokens / Response</p>
+                <p className="text-xl font-black text-gray-800 dark:text-white">{data.totals.avgTokensPerResponse.toLocaleString()}</p>
+              </div>
+              <div className="text-center p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl">
+                <p className="text-[9px] font-black uppercase tracking-widest text-amber-500/70 mb-1">Est. Cost</p>
+                <p className="text-xl font-black text-amber-500">${data.cost.value.toFixed(4)}</p>
+                <p className="text-[8px] text-amber-500/60 mt-0.5">Calculated from token usage</p>
+              </div>
+            </div>
+
+            <TokenBarChart points={data.byDay} />
+
+            <div className="flex flex-wrap justify-between gap-2 text-[10px] text-gray-400 dark:text-white/30">
+              <span>Input: <span className="font-bold text-gray-500 dark:text-white/40">{data.totals.inputTokens.toLocaleString()}</span></span>
+              <span>Cached: <span className="font-bold text-gray-500 dark:text-white/40">{data.totals.cachedInputTokens.toLocaleString()}</span></span>
+              <span>Output: <span className="font-bold text-gray-500 dark:text-white/40">{data.totals.outputTokens.toLocaleString()}</span></span>
+              <span>Reasoning: <span className="font-bold text-gray-500 dark:text-white/40">{data.totals.reasoningTokens.toLocaleString()}</span></span>
+              <span>Tool calls: <span className="font-bold text-gray-500 dark:text-white/40">{data.totals.toolCalls.toLocaleString()}</span></span>
+            </div>
+
+            {data.byChannel.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 dark:border-white/10">
+                {data.byChannel.map(c => (
+                  <span key={c.channel} className="text-[10px] px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-white/50">
+                    {CHANNEL_META[c.channel]?.label ?? c.channel}: <span className="font-bold">{c.totalTokens.toLocaleString()}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <p className="text-[9px] text-gray-300 dark:text-white/20 leading-relaxed">
+              Cost is {data.cost.source === 'CALCULATED_FROM_TOKEN_USAGE' ? 'calculated from logged token usage' : data.cost.source} using OpenAI&apos;s published per-token pricing for {data.models.join(', ') || 'the configured model'} — an estimate, not an actual invoiced figure.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const CHANNEL_ORDER = ['WHATSAPP', 'WEBSITE', 'FACEBOOK', 'FACEBOOK_COMMENT', 'INSTAGRAM', 'INSTAGRAM_COMMENT', 'SMS']
@@ -176,6 +321,16 @@ export default function AnalyticsPage() {
   const [loading, setLoading]       = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError]           = useState<string | null>(null)
+
+  // Provider billing/cost info is Admin-only — Receptionist (or anyone else)
+  // viewing this same shared page must never see the OpenAI usage/cost
+  // section, and must never even issue the request for it. The backend
+  // enforces this too (adminOnly on GET /ai-suite/ai-usage), so this is
+  // belt-and-braces, not the only guard.
+  const [isAdmin, setIsAdmin]           = useState(false)
+  const [aiUsage, setAiUsage]           = useState<AiUsage | null>(null)
+  const [aiUsageRange, setAiUsageRange] = useState<AiUsageRange>('30d')
+  const [aiUsageLoading, setAiUsageLoading] = useState(true)
 
   function authH() {
     const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
@@ -198,7 +353,34 @@ export default function AnalyticsPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  async function loadAiUsage(range: AiUsageRange) {
+    setAiUsageLoading(true)
+    try {
+      const res = await fetch(`${API}/ai-suite/ai-usage?range=${range}`, { headers: authH() })
+      if (!res.ok) { setAiUsage(null); return }
+      setAiUsage(await res.json())
+    } catch {
+      setAiUsage(null)
+    } finally {
+      setAiUsageLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('cc_user') : null
+      const role = stored ? JSON.parse(stored)?.role : null
+      setIsAdmin(role === 'ADMIN')
+    } catch {
+      setIsAdmin(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isAdmin) loadAiUsage(aiUsageRange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, aiUsageRange])
 
   const doBalance      = data && !('notConfigured' in data.digitalocean) ? data.digitalocean as DoBalance : null
   const doNotConfig    = !!(data && 'notConfigured' in data.digitalocean)
@@ -245,6 +427,16 @@ export default function AnalyticsPage() {
               ))}
             </div>
           </section>
+
+          {/* ── OpenAI token usage & cost (Admin only) ──── */}
+          {isAdmin && (
+            <OpenAiUsageCard
+              data={aiUsage}
+              range={aiUsageRange}
+              onRangeChange={setAiUsageRange}
+              loading={aiUsageLoading}
+            />
+          )}
 
           {/* ── Meta WhatsApp API view ─────────────────── */}
           {data.meta && (

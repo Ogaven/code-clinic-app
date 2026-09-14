@@ -3,6 +3,7 @@ import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachabl
 import { prisma } from '../../lib/prisma'
 import { getGreetingName, guardianTitle, isMinor, normalizeRelation } from '../../utils/nameHelper'
 import { resolveOutboundRecipient, alertStaffMinorNoGuardian, hasOutboundConsent } from './guardian-routing.service'
+import { kampalaTomorrowRange } from '../../utils/kampala-time'
 
 const ADMIN_WHATSAPP = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
 
@@ -610,24 +611,25 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
 // TOMORROW with status SCHEDULED or CONFIRMED that haven't been sent a
 // confirmation request, and asks each patient to confirm via WhatsApp.
 
-export async function checkAndSendAppointmentConfirmations(forceRun = false): Promise<void> {
+export async function checkAndSendAppointmentConfirmations(forceRun = false): Promise<{ sent: number; skipped: number; outsideWindow: number }> {
+  const counts = { sent: 0, skipped: 0, outsideWindow: 0 }
   const nowUTC     = new Date()
   const eatHourNow = parseInt(
     nowUTC.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
   )
-  if (!forceRun && (eatHourNow < 9 || eatHourNow >= 10)) return
+  if (!forceRun && (eatHourNow < 9 || eatHourNow >= 10)) return counts
 
-  const tomorrow        = new Date(nowUTC)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const startOfTomorrow = new Date(tomorrow.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T00:00:00+03:00')
-  const endOfTomorrow   = new Date(tomorrow.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T23:59:59+03:00')
+  // Kampala (UTC+3, no DST) "tomorrow" — single source of truth shared with
+  // the confirmation dashboard's report query, so the scheduler and the
+  // dashboard never disagree about which appointments count as "tomorrow's".
+  const { start: startOfTomorrow, end: endOfTomorrow } = kampalaTomorrowRange(nowUTC)
 
   let appointments: any[] = []
   try {
     appointments = await prisma.appointment.findMany({
       where: {
-        startAt: { gte: startOfTomorrow, lte: endOfTomorrow },
-        status:  { in: ['PENDING', 'CONFIRMED'] },
+        startAt: { gte: startOfTomorrow, lt: endOfTomorrow },
+        status:  { in: ['PENDING', 'CONFIRMED'] }, // excludes CANCELLED/NO_SHOW/RESCHEDULED/CANCELLED_RESCHEDULED
       },
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true, guardianId: true, familyAccountId: true, guardian: { select: { phone: true } } } },
@@ -637,28 +639,31 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     })
   } catch (err: any) {
     console.error('[ApptConfirmation] Query failed:', err.message)
-    return
+    return counts
   }
 
-  if (appointments.length === 0) return
+  if (appointments.length === 0) return counts
   console.log(`[ApptConfirmation] Processing ${appointments.length} appointment(s) for tomorrow`)
 
   for (const appt of appointments) {
     const patient = appt.patient
     if (!patient?.phone) continue
 
+    // ── Idempotency: don't re-send if we've already sent a confirmation for
+    // this exact tomorrow-window ─────────────────────────────────────────────
     const alreadySent = await prisma.aiScheduledMessage.findFirst({
       where: {
         patientId:    patient.id,
         templateType: 'APPOINTMENT_CONFIRMATION',
         sent:         true,
-        scheduledFor: { gte: startOfTomorrow, lte: endOfTomorrow },
+        scheduledFor: { gte: startOfTomorrow, lt: endOfTomorrow },
       },
     })
-    if (alreadySent) continue
+    if (alreadySent) { counts.skipped++; continue }
 
     if (!(await hasOutboundConsent(patient.id))) {
       console.log(`[ApptConfirmation] Skipping ${patient.firstName} — opted out of bot communications`)
+      counts.skipped++
       continue
     }
 
@@ -682,22 +687,84 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     if (!confirmRouting.ok) {
       console.warn(`[ApptConfirmation] Skipping ${patient.firstName} — minor with no active guardian`)
       await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'appointment confirmation')
+      counts.skipped++
       continue
     }
     const recipientPhone = confirmRouting.recipient.phone
+
+    // ── Template vs. free-text send ─────────────────────────────────────────
+    // Free-text WhatsApp sends are only guaranteed delivery within Meta's 24h
+    // customer-service window (i.e. the patient messaged us in the last 24h).
+    // No Meta-APPROVED template dedicated to appointment confirmations is
+    // confirmed to exist anywhere in this codebase — WA_TEMPLATE_CONFIRMATION_NAME
+    // is optional and unset by default, same as the sibling WA_TEMPLATE_REMINDER_NAME
+    // used by reminder.service.ts. If it's configured (once a template is
+    // actually approved in Meta Business Manager), try it first; otherwise —
+    // or if the template call itself fails — fall back to free text, and flag
+    // explicitly whenever that fallback happens outside the safe window so
+    // staff can see potential delivery failures.
+    const lastInbound = await prisma.aiMessage.findFirst({
+      where: { conversation: { phoneNumber: patient.phone }, role: 'USER' },
+      orderBy: { createdAt: 'desc' },
+    })
+    const withinSessionWindow = !!lastInbound && (Date.now() - lastInbound.createdAt.getTime()) < 24 * 60 * 60 * 1000
+    const templateName = process.env.WA_TEMPLATE_CONFIRMATION_NAME
+
+    let msgId: string | undefined
+    let outsideWindowRisk = false
     try {
-      await sendWhatsAppMessage(recipientPhone, msg)
+      if (templateName) {
+        try {
+          msgId = await sendWhatsAppTemplate(recipientPhone, templateName, [addr, timeStr, `Dr ${doctorFirst}`], false)
+        } catch (templateErr: any) {
+          console.warn(`[ApptConfirmation] Template '${templateName}' failed for ${recipientPhone}, falling back to free text:`, templateErr?.message)
+          if (!withinSessionWindow) {
+            outsideWindowRisk = true
+            console.warn(`[ApptConfirmation] WARNING: free-text fallback to ${recipientPhone} is OUTSIDE the 24h Meta session window — Meta may reject this message.`)
+          }
+          msgId = await sendWhatsAppMessage(recipientPhone, msg, undefined, false)
+        }
+      } else {
+        if (!withinSessionWindow) {
+          outsideWindowRisk = true
+          console.warn(`[ApptConfirmation] WARNING: sending free-text to ${recipientPhone} OUTSIDE the 24h Meta session window — Meta may reject this message. No approved appointment-confirmation template is configured (set WA_TEMPLATE_CONFIRMATION_NAME once one is approved).`)
+        }
+        msgId = await sendWhatsAppMessage(recipientPhone, msg, undefined, false)
+      }
     } catch (err: any) {
       console.error(`[ApptConfirmation] Send failed for ${recipientPhone}:`, err.message)
+      counts.skipped++
       continue
     }
 
+    if (outsideWindowRisk) counts.outsideWindow++
+
+    // Manually log the natural-language message to the conversation (rather
+    // than relying on the template call's raw "[Template: name] params" log)
+    // while still attaching the real wamid + initial 'sent' status, so the
+    // confirmation dashboard can read live delivery status (sent/delivered/
+    // read/failed) back off this AiMessage once Meta posts a status webhook.
     let conv = await prisma.aiConversation.findFirst({ where: { phoneNumber: patient.phone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
     if (!conv) conv = await prisma.aiConversation.create({ data: { patientId: patient.id, channel: 'WHATSAPP', phoneNumber: patient.phone, status: 'ACTIVE', agentEnabled: true } })
-    await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'AGENT', content: msg } })
-    await prisma.aiScheduledMessage.create({ data: { patientId: patient.id, channel: 'WHATSAPP', templateType: 'APPOINTMENT_CONFIRMATION', scheduledFor: appt.startAt, sent: true, content: msg } })
+    await prisma.aiMessage.create({
+      data: {
+        conversationId: conv.id,
+        role:           'AGENT',
+        content:        msg,
+        wamid:          msgId && msgId !== 'unknown' ? msgId : undefined,
+        status:         msgId && msgId !== 'unknown' ? 'sent' : undefined,
+      },
+    })
+    await prisma.aiScheduledMessage.create({
+      data: {
+        patientId: patient.id, channel: 'WHATSAPP', templateType: 'APPOINTMENT_CONFIRMATION',
+        scheduledFor: appt.startAt, sent: true, content: msg, deliveryStatus: 'sent',
+      },
+    })
+    counts.sent++
     console.log(`[ApptConfirmation] Sent to ${patient.firstName} ${patient.lastName} for ${timeStr} appt`)
   }
+  return counts
 }
 
 // ── checkAndSendMissedCallFollowups ───────────────────────────────────────────

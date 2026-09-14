@@ -75,7 +75,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       style={{ fontFamily: 'var(--font-questrial)', letterSpacing: '.006em', lineHeight: 1.55 }}
     >
       <div className="hidden xl:block">
-        <DoctorTopBar user={user} theme={theme} onTheme={(next) => { setTheme(next); applyTheme(next) }} />
+        <DoctorTopBar user={user} theme={theme} onTheme={(next) => { setTheme(next); applyTheme(next) }} install={pwaInstall} />
       </div>
       {user && (
         <MobileHeader

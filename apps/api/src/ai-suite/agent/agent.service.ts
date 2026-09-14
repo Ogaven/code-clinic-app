@@ -2517,6 +2517,46 @@ const OPENAI_WEBSITE_MODEL = 'gpt-5.6-sol'
 
 const OPENAI_REPLY_TAG_INSTRUCTION = `OUTPUT FORMAT — CRITICAL: wrap ONLY the exact message you want to send the patient in <reply></reply> tags, e.g. <reply>Sure! Here are the available times...</reply>. Everything inside the tags is sent to the patient verbatim — so it must be pure conversational text, never your own reasoning about which rule applies or what to say next. If you need to think through a decision, do that OUTSIDE the tags; it is never seen by the patient.`
 
+// ── Fire-and-forget OpenAI token-usage audit log ──────────────────────────────
+// Mirrors the logOutboundMessage pattern in whatsapp.service.ts: runs as an
+// unawaited async IIFE with its own internal try/catch, so a DB hiccup (or,
+// in tests, an unmocked prisma.aiUsageLog) can never surface as a rejection
+// on the caller's await chain or get swallowed by an outer catch as if the
+// OpenAI call itself had failed.
+function logAiUsage(params: {
+  conversationId?: string | null
+  channel:         string
+  model:           string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  usage?:          any
+  toolCallCount?:  number
+  succeeded?:      boolean
+  errorMessage?:   string | null
+}): void {
+  ;(async () => {
+    try {
+      const { conversationId, channel, model, usage, toolCallCount = 0, succeeded = true, errorMessage = null } = params
+      await prisma.aiUsageLog.create({
+        data: {
+          conversationId:    conversationId ?? null,
+          channel,
+          model,
+          inputTokens:       usage?.input_tokens ?? 0,
+          cachedInputTokens: usage?.input_tokens_details?.cached_tokens ?? 0,
+          outputTokens:      usage?.output_tokens ?? 0,
+          reasoningTokens:   usage?.output_tokens_details?.reasoning_tokens ?? 0,
+          totalTokens:       usage?.total_tokens ?? 0,
+          toolCallCount,
+          succeeded,
+          errorMessage,
+        },
+      })
+    } catch (e: any) {
+      console.error('[AiUsageLog] Failed to write usage log:', e?.message)
+    }
+  })()
+}
+
 // ── Website widget — OpenAI pilot (flagged, verification only) ───────────────
 // Parallel implementation of getAgentReplyV2 on OpenAI's Responses API, gated
 // behind WEBSITE_CHAT_PROVIDER=openai (see website.routes.ts). Mirrors every
@@ -2766,6 +2806,14 @@ export async function getAgentReplyV2OpenAI(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolCalls: any[] = (response.output ?? []).filter((o: any) => o.type === 'function_call')
 
+      logAiUsage({
+        conversationId: conversationId,
+        channel:        channel ?? 'WHATSAPP',
+        model:          OPENAI_WEBSITE_MODEL,
+        usage,
+        toolCallCount:  toolCalls.length,
+      })
+
       if (toolCalls.length === 0) {
         const rawText  = response.output_text ?? ''
         const tagged   = extractReplyTag(rawText)
@@ -2876,6 +2924,13 @@ export async function getAgentReplyV2OpenAI(
     return `I ran into a small issue — please try again in a moment and I'll get that sorted for you 😊`
   } catch (err: any) {
     console.error('[AgentV2-OpenAI] Error:', err?.message)
+    logAiUsage({
+      conversationId,
+      channel:      channel ?? 'WHATSAPP',
+      model:        OPENAI_WEBSITE_MODEL,
+      succeeded:    false,
+      errorMessage: (err?.message ?? 'unknown error').slice(0, 500),
+    })
     await escalateOnRepeatedProviderFailure(conversationId, from, channel).catch(
       (e: any) => console.error('[AgentV2-OpenAI] escalateOnRepeatedProviderFailure failed:', e?.message)
     )
@@ -3088,6 +3143,14 @@ RULES (mandatory):
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolCalls: any[] = (response.output ?? []).filter((o: any) => o.type === 'function_call')
 
+      logAiUsage({
+        conversationId,
+        channel,
+        model:         OPENAI_COMMENT_MODEL,
+        usage,
+        toolCallCount: toolCalls.length,
+      })
+
       if (toolCalls.length === 0) {
         const raw = response.output_text ?? ''
         const validated = validateCommentReply(raw)
@@ -3107,6 +3170,13 @@ RULES (mandatory):
     }
   } catch (err: any) {
     console.error(`[${channel}] getCommentReplyOpenAI error:`, err?.message)
+    logAiUsage({
+      conversationId,
+      channel,
+      model:        OPENAI_COMMENT_MODEL,
+      succeeded:    false,
+      errorMessage: (err?.message ?? 'unknown error').slice(0, 500),
+    })
   }
   return FALLBACK
 }
