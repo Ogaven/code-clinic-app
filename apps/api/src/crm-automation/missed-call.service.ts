@@ -1,25 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────
 // CRM Automation — missed-call text-back (Part F).
 //
-// PROVIDER GAP (see final report): this codebase has no PSTN/carrier
-// telephony integration. The only voice pipeline is a self-hosted AI agent
-// on a drachtio SIP trunk (ai-suite/voice/sip.service.ts) — it logs calls
-// the AI itself answered, not "an inbound call to a normal business line
-// went unanswered". "SMS" in this codebase (ai-suite/sms/sms.service.ts)
-// is also, today, a WhatsApp passthrough, not a real SMS provider, despite
-// `africastalking` being a dependency.
+// The voice pipeline is a self-hosted AI agent on a drachtio SIP trunk
+// (ai-suite/voice/sip.service.ts) that auto-answers every inbound call —
+// there is no ring/no-answer window. A genuine "missed call" only happens
+// when (a) staff toggle the AI receptionist off (calling_agents_enabled
+// setting false — the trunk declines with SIP 486) or (b) call setup
+// itself throws. Both paths call recordMissedCall() directly from
+// sip.service.ts's handleInboundCall.
 //
-// What's built here is the provider-agnostic event/action architecture the
-// spec asks for in that situation: recordMissedCall() is a generic intake
-// point any provider's webhook could call (Twilio, Africa's Talking Voice,
-// or the existing drachtio trunk once it's extended to report true PSTN
-// misses); processTextBackQueue() is the dispatcher. Both run against a
-// MOCK provider in tests/dry-run and clearly record textBackStatus =
-// 'SKIPPED_NO_PROVIDER' for the parts that need a real integration.
+// Real Africa's Talking carrier SMS is now wired (ai-suite/sms/sms.service.ts,
+// isRealSmsProviderConfigured()) rather than the WhatsApp passthrough this
+// used to fall back to unconditionally. Actual sending still requires the
+// dedicated CRM_MISSED_CALL_TEXTBACK_LIVE flag (see dry-run.ts) — deploying
+// this code does not by itself start sending real SMS.
 // ─────────────────────────────────────────────────────────────────────────
 import { prisma } from '../lib/prisma'
 import { sendOrSimulate, isCrmFeatureLive } from './dry-run'
-import { sendSMS } from '../ai-suite/sms/sms.service'
+import { sendSMS, isRealSmsProviderConfigured } from '../ai-suite/sms/sms.service'
 import { getChannelConsentStatus } from './consent-log.service'
 import { phoneVariants } from '../utils/phone'
 
@@ -55,12 +53,6 @@ async function processTextBack(callEventId: string): Promise<void> {
   const call = await prisma.callEvent.findUniqueOrThrow({ where: { id: callEventId } })
   if (call.textBackStatus !== 'PENDING') return
 
-  // No real SMS provider is wired in this codebase today (see file header)
-  // — sendSMS() is currently a WhatsApp passthrough. Route the text-back
-  // through WhatsApp (the only channel that is actually real here) rather
-  // than silently pretend a carrier SMS was sent.
-  const REAL_SMS_PROVIDER_CONNECTED = false
-
   if (call.patientId) {
     const consented = await getChannelConsentStatus(call.patientId, 'SMS')
     if (!consented) {
@@ -71,9 +63,10 @@ async function processTextBack(callEventId: string): Promise<void> {
 
   const body = `Sorry we missed your call! This is Code Clinic — reply here or call us back and we'll get you sorted.`
 
-  if (!REAL_SMS_PROVIDER_CONNECTED && isCrmFeatureLive('OPERATIONAL')) {
-    // Live mode requested but there's genuinely no SMS provider to call —
-    // report the gap rather than silently substituting another channel.
+  if (!isRealSmsProviderConfigured() && isCrmFeatureLive('MISSED_CALL_TEXTBACK')) {
+    // Live mode requested but there's genuinely no SMS provider configured
+    // (AT_API_KEY/AT_USERNAME absent) — report the gap rather than silently
+    // substituting another channel.
     await prisma.callEvent.update({
       where: { id: call.id },
       data:  { textBackStatus: 'SKIPPED_NO_PROVIDER' },
@@ -81,7 +74,7 @@ async function processTextBack(callEventId: string): Promise<void> {
     return
   }
 
-  const result = await sendOrSimulate('OPERATIONAL', 'SMS', call.fromNumber, body, () => sendSMS(call.fromNumber, body))
+  const result = await sendOrSimulate('MISSED_CALL_TEXTBACK', 'SMS', call.fromNumber, body, () => sendSMS(call.fromNumber, body))
 
   await prisma.callEvent.update({
     where: { id: call.id },

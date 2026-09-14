@@ -142,6 +142,18 @@ export async function logBotMessage(opts: {
  * Returns false if the patient has explicitly opted out.
  */
 export async function hasOutboundConsent(patientId: string): Promise<boolean> {
+  // ConsentLog (CRM automation's append-only per-channel record) wins when
+  // present, so a WhatsApp STOP logged there isn't shadowed by a stale or
+  // opposite PatientConsent row (the two used to be written independently —
+  // see consent-log.service.ts header). Falls back to legacy PatientConsent
+  // only when ConsentLog has no WhatsApp rows yet for this patient, which
+  // preserves the existing default-opted-in behavior for outbound sends.
+  const latestLog = await prisma.consentLog.findFirst({
+    where:   { patientId, channel: 'WHATSAPP' },
+    orderBy: { createdAt: 'desc' },
+  })
+  if (latestLog) return latestLog.status === 'OPT_IN'
+
   const record = await prisma.patientConsent.findFirst({
     where:   { patientId, consentType: 'BOT_COMMUNICATION' },
     orderBy: { grantedAt: 'desc' },

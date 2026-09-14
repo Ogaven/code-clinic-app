@@ -6,7 +6,10 @@
 // Patient CRM screens.
 
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pencil, Loader2, CheckCircle2, AlertCircle, Zap, GitBranch, Star, X } from 'lucide-react'
+import {
+  Plus, Trash2, Pencil, Loader2, CheckCircle2, AlertCircle, Zap, GitBranch, Star, X,
+  RefreshCw, Send, Eye, Users, Clock, Phone, DollarSign,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const API = '/api-proxy'
@@ -55,11 +58,12 @@ interface ReviewConfig {
 // for these (they're server env vars, set deliberately by an operator, not
 // something this UI can flip).
 const FEATURE_LABELS: Record<string, string> = {
-  OPERATIONAL:    'Operational Leads',
-  MARKETING:      'Marketing',
-  BACKLOG:        'Backlog Re-engagement',
-  WAITLIST:       'Waitlist Notifications',
-  REVIEW_REQUEST: 'Review Requests',
+  OPERATIONAL:           'Operational Leads',
+  MARKETING:             'Marketing',
+  BACKLOG:               'Backlog Re-engagement',
+  WAITLIST:              'Waitlist Notifications',
+  REVIEW_REQUEST:        'Review Requests',
+  MISSED_CALL_TEXTBACK:  'Missed-Call Text-Back',
 }
 
 function AutomationModeStatus() {
@@ -111,8 +115,13 @@ function Toast({ toast }: { toast: { msg: string; ok: boolean } | null }) {
   )
 }
 
+const TAB_LABEL: Record<string, string> = {
+  routing: 'Routing Rules', sequences: 'Sequences', review: 'Review Requests',
+  backlog: 'Backlog Re-engagement', reporting: 'Reporting',
+}
+
 export default function CrmAutomationSettingsPage() {
-  const [tab, setTab] = useState<'routing' | 'sequences' | 'review'>('routing')
+  const [tab, setTab] = useState<'routing' | 'sequences' | 'review' | 'backlog' | 'reporting'>('routing')
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   function showToast(msg: string, ok = true) { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500) }
 
@@ -121,17 +130,17 @@ export default function CrmAutomationSettingsPage() {
       <Toast toast={toast} />
       <div>
         <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center gap-2"><Zap size={20} className="text-cyan-500" /> CRM Automation Settings</h1>
-        <p className="text-xs text-gray-400 mt-0.5">Lead owner routing, multi-touch sequences, and post-visit review requests</p>
+        <p className="text-xs text-gray-400 mt-0.5">Lead owner routing, multi-touch sequences, post-visit review requests, backlog re-engagement, and reporting</p>
       </div>
 
       <AutomationModeStatus />
 
-      <div className="flex gap-1.5 bg-gray-100 dark:bg-white/5 rounded-2xl p-1.5 w-fit">
-        {(['routing', 'sequences', 'review'] as const).map(t => (
+      <div className="flex flex-wrap gap-1.5 bg-gray-100 dark:bg-white/5 rounded-2xl p-1.5 w-fit">
+        {(['routing', 'sequences', 'review', 'backlog', 'reporting'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={cn('px-4 py-2 rounded-xl text-sm font-bold transition-colors',
               tab === t ? 'bg-white dark:bg-white/10 text-gray-800 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
-            {t === 'routing' ? 'Routing Rules' : t === 'sequences' ? 'Sequences' : 'Review Requests'}
+            {TAB_LABEL[t]}
           </button>
         ))}
       </div>
@@ -139,6 +148,8 @@ export default function CrmAutomationSettingsPage() {
       {tab === 'routing' && <RoutingRulesPanel showToast={showToast} />}
       {tab === 'sequences' && <SequencesPanel showToast={showToast} />}
       {tab === 'review' && <ReviewConfigPanel showToast={showToast} />}
+      {tab === 'backlog' && <BacklogPanel showToast={showToast} />}
+      {tab === 'reporting' && <ReportingPanel />}
     </div>
   )
 }
@@ -610,6 +621,318 @@ function ReviewConfigPanel({ showToast }: { showToast: (m: string, ok?: boolean)
       <button onClick={save} disabled={saving} className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-60">
         {saving ? 'Saving…' : 'Save Settings'}
       </button>
+    </div>
+  )
+}
+
+// ── Backlog Re-engagement (Part Q) ───────────────────────────────────────
+interface BacklogRun { id: string; status: string; leadCount: number; approvedBy: string | null; approvedAt: string | null; createdAt: string }
+interface BacklogPreview { totalTagged: number; eligibleToSend: number; blockedReasons: Record<string, number> }
+
+function BacklogPanel({ showToast }: { showToast: (m: string, ok?: boolean) => void }) {
+  const [runs, setRuns] = useState<BacklogRun[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [preview, setPreview] = useState<Record<string, BacklogPreview>>({})
+  const [backlogLive, setBacklogLive] = useState(false)
+
+  function load() {
+    setLoading(true)
+    Promise.all([
+      fetch(`${API}/crm-automation/backlog/runs`, { headers: authHeaders() }).then(r => r.ok ? r.json() : []),
+      fetch(`${API}/crm-automation/automation-status`, { headers: authHeaders() }).then(r => r.ok ? r.json() : null),
+    ]).then(([r, status]) => {
+      setRuns(Array.isArray(r) ? r : [])
+      setBacklogLive(!!status?.features?.BACKLOG)
+    }).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  async function tagBacklog() {
+    setBusy('tag')
+    try {
+      const r = await fetch(`${API}/crm-automation/backlog/tag`, { method: 'POST', headers: authHeaders() })
+      const d = await r.json()
+      if (r.ok) { showToast(`Tagged ${d.leadCount} leads as backlog`); load() }
+      else showToast(d.error || 'Failed to tag backlog', false)
+    } catch { showToast('Network error', false) }
+    setBusy(null)
+  }
+
+  async function previewRun(runId: string) {
+    setBusy(`preview-${runId}`)
+    try {
+      const r = await fetch(`${API}/crm-automation/backlog/${runId}/preview`, { headers: authHeaders() })
+      if (r.ok) { const d = await r.json(); setPreview(p => ({ ...p, [runId]: d })) }
+      else showToast('Failed to load preview', false)
+    } catch { showToast('Network error', false) }
+    setBusy(null)
+  }
+
+  async function executeRun(runId: string) {
+    if (!confirm(backlogLive
+      ? `Execute backlog campaign ${runId}? This sends real re-engagement messages to consented, eligible leads.`
+      : `Execute backlog campaign ${runId}? CRM_BACKLOG_REENGAGEMENT_LIVE is currently OFF, so this will be a dry run — no real messages will be sent.`)) return
+    setBusy(`execute-${runId}`)
+    try {
+      const r = await fetch(`${API}/crm-automation/backlog/${runId}/execute`, { method: 'POST', headers: authHeaders() })
+      const d = await r.json()
+      if (r.ok) { showToast(`${d.anyDryRun ? 'Dry-run complete' : 'Campaign executed'} — sent ${d.sent}, skipped (no consent) ${d.skippedNoConsent}`); load() }
+      else showToast(d.error || 'Failed to execute campaign', false)
+    } catch { showToast('Network error', false) }
+    setBusy(null)
+  }
+
+  async function sweepNoResponse() {
+    if (!confirm('Move all backlog leads with no response since the campaign to Lost (backlog_no_response)?')) return
+    setBusy('sweep')
+    try {
+      const r = await fetch(`${API}/crm-automation/backlog/sweep-no-response`, { method: 'POST', headers: authHeaders() })
+      const d = await r.json()
+      if (r.ok) showToast(`Moved ${d.movedToLost} leads to Lost (no response)`)
+      else showToast(d.error || 'Failed to sweep', false)
+    } catch { showToast('Network error', false) }
+    setBusy(null)
+  }
+
+  const STATUS_STYLE: Record<string, string> = {
+    NOT_STARTED: 'bg-gray-100 text-gray-500', TAGGED: 'bg-amber-100 text-amber-700',
+    CAMPAIGN_SENT: 'bg-cyan-100 text-cyan-700', COMPLETED: 'bg-emerald-100 text-emerald-700',
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 rounded-2xl p-3 text-xs text-blue-700 dark:text-blue-300">
+        One-time triage for the legacy "New" lead backlog. Steps run in order: tag, preview (who's actually eligible given consent), execute (marketing consent required — {backlogLive ? <strong>CRM_BACKLOG_REENGAGEMENT_LIVE is ON, execute sends for real</strong> : <strong>CRM_BACKLOG_REENGAGEMENT_LIVE is OFF, execute stays a dry run</strong>}), then sweep non-responders to Lost.
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button onClick={tagBacklog} disabled={busy === 'tag'} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-60 transition-colors">
+          {busy === 'tag' ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Tag New Leads as Backlog
+        </button>
+        <button onClick={sweepNoResponse} disabled={busy === 'sweep'} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-gray-600 dark:text-white/70 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 disabled:opacity-60 transition-colors">
+          {busy === 'sweep' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Sweep No-Response → Lost
+        </button>
+      </div>
+
+      {loading ? <div className="flex justify-center py-10"><Loader2 className="animate-spin text-gray-400" /></div> : (
+        <div className="space-y-2">
+          {runs.length === 0 && <p className="text-sm text-gray-400 text-center py-8">No backlog runs yet.</p>}
+          {runs.map(run => (
+            <div key={run.id} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-bold text-sm text-gray-800 dark:text-white">{run.leadCount} leads <span className="text-gray-400 font-normal text-xs">— run {run.id.slice(0, 8)}</span></p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Created {new Date(run.createdAt).toLocaleString()}{run.approvedAt && ` · Approved ${new Date(run.approvedAt).toLocaleString()}`}</p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span className={cn('px-2.5 py-1 rounded-lg text-xs font-bold', STATUS_STYLE[run.status] ?? 'bg-gray-100 text-gray-500')}>{run.status}</span>
+                  <button onClick={() => previewRun(run.id)} disabled={busy === `preview-${run.id}`}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-cyan-600 hover:bg-cyan-50 dark:hover:bg-cyan-900/20" title="Preview eligibility">
+                    <Eye size={14} />
+                  </button>
+                  {run.status === 'TAGGED' && (
+                    <button onClick={() => executeRun(run.id)} disabled={busy === `execute-${run.id}`}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" title="Execute campaign">
+                      <Send size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {preview[run.id] && (
+                <div className="text-xs text-gray-500 dark:text-white/50 bg-gray-50 dark:bg-white/5 rounded-xl p-2.5">
+                  {preview[run.id].totalTagged} tagged · {preview[run.id].eligibleToSend} eligible to send
+                  {Object.keys(preview[run.id].blockedReasons).length > 0 && (
+                    <> · blocked: {Object.entries(preview[run.id].blockedReasons).map(([reason, count]) => `${reason} (${count})`).join(', ')}</>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Reporting (Part R) ────────────────────────────────────────────────────
+const REPORT_TABS = [
+  { key: 'leaderboard',  label: 'Response-Time Leaderboard', icon: Users,      path: 'response-time-leaderboard' },
+  { key: 'conversion',   label: 'Stage Conversion',          icon: GitBranch,  path: 'stage-conversion-rates' },
+  { key: 'stale',        label: 'Stale Leads',               icon: Clock,      path: 'stale-leads' },
+  { key: 'cold',         label: 'Weekly Cold Leads',         icon: AlertCircle,path: 'weekly-cold-leads' },
+  { key: 'sequences',    label: 'Sequence Performance',      icon: Zap,        path: 'sequence-performance' },
+  { key: 'ar',           label: 'AR Aging',                  icon: DollarSign, path: 'aging-receivables' },
+  { key: 'calls',        label: 'Call Performance',          icon: Phone,      path: 'call-performance' },
+] as const
+
+function pct(n: number) { return `${(n * 100).toFixed(1)}%` }
+function ugx(n: number) { return `UGX ${n.toLocaleString('en-UG')}` }
+
+function ReportingPanel() {
+  const [sub, setSub] = useState<typeof REPORT_TABS[number]['key']>('leaderboard')
+  const [data, setData] = useState<Record<string, any>>({})
+  const [loading, setLoading] = useState<Record<string, 'loading' | 'ok' | 'forbidden' | 'error'>>({})
+
+  function loadSub(key: typeof REPORT_TABS[number]['key']) {
+    if (loading[key] === 'loading' || loading[key] === 'ok') return
+    const tab = REPORT_TABS.find(t => t.key === key)!
+    setLoading(l => ({ ...l, [key]: 'loading' }))
+    fetch(`${API}/crm-automation/reports/${tab.path}`, { headers: authHeaders() })
+      .then(r => {
+        if (r.status === 403) { setLoading(l => ({ ...l, [key]: 'forbidden' })); return null }
+        if (!r.ok) { setLoading(l => ({ ...l, [key]: 'error' })); return null }
+        return r.json()
+      })
+      .then(d => { if (d !== null && d !== undefined) { setData(v => ({ ...v, [key]: d })); setLoading(l => ({ ...l, [key]: 'ok' })) } })
+      .catch(() => setLoading(l => ({ ...l, [key]: 'error' })))
+  }
+  useEffect(() => { loadSub(sub) }, [sub])
+
+  const status = loading[sub]
+  const d = data[sub]
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-1.5">
+        {REPORT_TABS.map(t => (
+          <button key={t.key} onClick={() => setSub(t.key)}
+            className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors',
+              sub === t.key ? 'bg-cyan-600 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-600 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-white/15')}>
+            <t.icon size={13} /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {status === 'loading' && <div className="flex justify-center py-10"><Loader2 className="animate-spin text-gray-400" /></div>}
+      {status === 'forbidden' && <p className="text-sm text-gray-400 text-center py-10">Restricted to Accounts/Admin.</p>}
+      {status === 'error' && <p className="text-sm text-red-400 text-center py-10">Failed to load this report.</p>}
+
+      {status === 'ok' && sub === 'leaderboard' && (
+        <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-white/5 text-[10px] uppercase text-gray-400 font-black">
+              <tr><th className="text-left px-4 py-2.5">Owner</th><th className="text-right px-4 py-2.5">Leads</th><th className="text-right px-4 py-2.5">Avg (min)</th><th className="text-right px-4 py-2.5">Median (min)</th></tr>
+            </thead>
+            <tbody>
+              {(d ?? []).map((row: any) => (
+                <tr key={row.ownerId} className="border-t border-gray-100 dark:border-white/10">
+                  <td className="px-4 py-2.5 font-semibold text-gray-700 dark:text-white/80">{row.ownerName}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-500">{row.leadCount}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-500">{row.avgMinutes.toFixed(1)}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-500">{row.medianMinutes.toFixed(1)}</td>
+                </tr>
+              ))}
+              {(d ?? []).length === 0 && <tr><td colSpan={4} className="text-center py-8 text-gray-400">No leads with a logged first reply yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {status === 'ok' && sub === 'conversion' && d && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { label: 'New → Contacted', rate: d.newToContactedRate, n: d.totals.totalNew },
+            { label: 'Contacted → Qualified', rate: d.contactedToQualifiedRate, n: d.totals.contactedCount },
+            { label: 'Qualified → Converted', rate: d.qualifiedToConvertedRate, n: d.totals.qualifiedCount },
+          ].map(c => (
+            <div key={c.label} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
+              <p className="text-[10px] font-black uppercase text-gray-400">{c.label}</p>
+              <p className="text-2xl font-black text-gray-800 dark:text-white mt-1">{pct(c.rate)}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">of {c.n}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {status === 'ok' && sub === 'stale' && (
+        <div className="space-y-2">
+          {(d ?? []).length === 0 && <p className="text-sm text-gray-400 text-center py-8">No leads untouched past 24 hours.</p>}
+          {(d ?? []).map((grp: any) => (
+            <div key={grp.ownerId} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
+              <p className="font-bold text-sm text-gray-800 dark:text-white mb-2">{grp.ownerId === 'unassigned' ? 'Unassigned' : grp.ownerId} — {grp.count} stale</p>
+              <div className="space-y-1">
+                {grp.leads.map((l: any) => (
+                  <p key={l.id} className="text-xs text-gray-500 flex justify-between"><span>{l.name || l.phone}</span><span>{new Date(l.createdAt).toLocaleDateString()}</span></p>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {status === 'ok' && sub === 'cold' && (
+        <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-white/5 text-[10px] uppercase text-gray-400 font-black">
+              <tr><th className="text-left px-4 py-2.5">Lead</th><th className="text-left px-4 py-2.5">Source</th><th className="text-left px-4 py-2.5">Loss Reason</th><th className="text-right px-4 py-2.5">Moved to Lost</th></tr>
+            </thead>
+            <tbody>
+              {(d ?? []).map((row: any) => (
+                <tr key={row.id} className="border-t border-gray-100 dark:border-white/10">
+                  <td className="px-4 py-2.5 font-semibold text-gray-700 dark:text-white/80">{row.lead?.name || row.lead?.phone}</td>
+                  <td className="px-4 py-2.5 text-gray-500">{row.lead?.source}</td>
+                  <td className="px-4 py-2.5 text-gray-500">{row.lead?.lossReason ?? '—'}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-500">{new Date(row.changedAt).toLocaleDateString()}</td>
+                </tr>
+              ))}
+              {(d ?? []).length === 0 && <tr><td colSpan={4} className="text-center py-8 text-gray-400">No leads moved to Lost in the past 7 days.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {status === 'ok' && sub === 'sequences' && (
+        <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-white/5 text-[10px] uppercase text-gray-400 font-black">
+              <tr><th className="text-left px-4 py-2.5">Sequence</th><th className="text-left px-4 py-2.5">Entity</th><th className="text-right px-4 py-2.5">Enrolled</th><th className="text-right px-4 py-2.5">Response Rate</th><th className="text-right px-4 py-2.5">Booking Rate</th></tr>
+            </thead>
+            <tbody>
+              {(d ?? []).map((row: any) => (
+                <tr key={row.sequenceId} className="border-t border-gray-100 dark:border-white/10">
+                  <td className="px-4 py-2.5 font-semibold text-gray-700 dark:text-white/80">{row.name} <span className="text-gray-400 font-normal text-xs">({row.key})</span></td>
+                  <td className="px-4 py-2.5 text-gray-500">{row.entityType}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-500">{row.totalEnrollments}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-500">{pct(row.responseRate)}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-500">{pct(row.bookingRate)}</td>
+                </tr>
+              ))}
+              {(d ?? []).length === 0 && <tr><td colSpan={5} className="text-center py-8 text-gray-400">No sequences defined yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {status === 'ok' && sub === 'ar' && d && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {Object.entries(d).length === 0 && <p className="text-sm text-gray-400 col-span-full text-center py-8">No outstanding balances.</p>}
+          {Object.entries(d).map(([bucket, v]: [string, any]) => (
+            <div key={bucket} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
+              <p className="text-[10px] font-black uppercase text-gray-400">{bucket}</p>
+              <p className="text-xl font-black text-gray-800 dark:text-white mt-1">{ugx(v.totalOwedUGX)}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{v.count} patient(s)</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {status === 'ok' && sub === 'calls' && d && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Logged', v: d.totalLogged }, { label: 'Missed', v: d.missedCount },
+              { label: 'Answered', v: d.answeredCount }, { label: 'Answer Rate', v: pct(d.answerRate) },
+            ].map(c => (
+              <div key={c.label} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
+                <p className="text-[10px] font-black uppercase text-gray-400">{c.label}</p>
+                <p className="text-xl font-black text-gray-800 dark:text-white mt-1">{c.v}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400">{d.note}</p>
+        </div>
+      )}
     </div>
   )
 }

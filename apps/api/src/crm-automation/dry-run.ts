@@ -21,16 +21,23 @@
 // can never fire a real send no matter how the environment is configured.
 // ─────────────────────────────────────────────────────────────────────────
 
-export type CrmFeature = 'OPERATIONAL' | 'MARKETING' | 'BACKLOG' | 'WAITLIST' | 'REVIEW_REQUEST'
+export type CrmFeature = 'OPERATIONAL' | 'MARKETING' | 'BACKLOG' | 'WAITLIST' | 'REVIEW_REQUEST' | 'MISSED_CALL_TEXTBACK'
 
-export const CRM_FEATURES: CrmFeature[] = ['OPERATIONAL', 'MARKETING', 'BACKLOG', 'WAITLIST', 'REVIEW_REQUEST']
+export const CRM_FEATURES: CrmFeature[] = ['OPERATIONAL', 'MARKETING', 'BACKLOG', 'WAITLIST', 'REVIEW_REQUEST', 'MISSED_CALL_TEXTBACK']
 
 const FEATURE_ENV_VAR: Record<CrmFeature, string> = {
-  OPERATIONAL:    'CRM_OPERATIONAL_AUTOMATION_LIVE',
-  MARKETING:      'CRM_MARKETING_AUTOMATION_LIVE',
-  BACKLOG:        'CRM_BACKLOG_REENGAGEMENT_LIVE',
-  WAITLIST:       'CRM_WAITLIST_AUTOMATION_LIVE',
-  REVIEW_REQUEST: 'CRM_REVIEW_REQUEST_AUTOMATION_LIVE',
+  OPERATIONAL:           'CRM_OPERATIONAL_AUTOMATION_LIVE',
+  MARKETING:             'CRM_MARKETING_AUTOMATION_LIVE',
+  BACKLOG:               'CRM_BACKLOG_REENGAGEMENT_LIVE',
+  WAITLIST:              'CRM_WAITLIST_AUTOMATION_LIVE',
+  REVIEW_REQUEST:        'CRM_REVIEW_REQUEST_AUTOMATION_LIVE',
+  // Split out on its own (independent of OPERATIONAL, same as every other
+  // feature here) because this is the first CRM feature to gain a REAL
+  // carrier-SMS send path (Africa's Talking) rather than a WhatsApp/dry-run
+  // send, and OPERATIONAL is already live in production. Without a
+  // dedicated flag, wiring the real provider would silently start real
+  // sends the moment this deploys.
+  MISSED_CALL_TEXTBACK:  'CRM_MISSED_CALL_TEXTBACK_LIVE',
 }
 
 function isMasterLive(): boolean {

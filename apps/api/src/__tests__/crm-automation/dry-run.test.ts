@@ -107,9 +107,9 @@ describe('isCrmFeatureLive — per-feature independence (one feature enabled nev
 })
 
 describe('crmFeatureStatus() — Admin visibility snapshot', () => {
-  it('reports all five features off by default', () => {
+  it('reports all six features off by default', () => {
     expect(crmFeatureStatus()).toEqual({
-      OPERATIONAL: false, MARKETING: false, BACKLOG: false, WAITLIST: false, REVIEW_REQUEST: false,
+      OPERATIONAL: false, MARKETING: false, BACKLOG: false, WAITLIST: false, REVIEW_REQUEST: false, MISSED_CALL_TEXTBACK: false,
     })
   })
 
@@ -117,7 +117,7 @@ describe('crmFeatureStatus() — Admin visibility snapshot', () => {
     process.env.CRM_AUTOMATION_LIVE = 'true'
     process.env.CRM_OPERATIONAL_AUTOMATION_LIVE = 'true'
     expect(crmFeatureStatus()).toEqual({
-      OPERATIONAL: true, MARKETING: false, BACKLOG: false, WAITLIST: false, REVIEW_REQUEST: false,
+      OPERATIONAL: true, MARKETING: false, BACKLOG: false, WAITLIST: false, REVIEW_REQUEST: false, MISSED_CALL_TEXTBACK: false,
     })
   })
 })

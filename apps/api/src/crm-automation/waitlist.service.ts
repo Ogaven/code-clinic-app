@@ -42,14 +42,23 @@ function dateCompatible(entry: WaitlistEntry, slotStart: Date): boolean {
   return true
 }
 
-export async function notifyWaitlistForOpenSlot(cancelledAppointmentId: string, limit = 20): Promise<NotifyWaitlistResult> {
+interface WaitlistMatchResult {
+  matches: (WaitlistEntry & { patient: Patient })[]
+  targetingMode: 'MATCHED' | 'DISABLED_NO_SERVICE_CONTEXT' | 'DISABLED_NO_MATCH'
+}
+
+// Shared by notifyWaitlistForOpenSlot (real send) and previewWaitlistMatchesForSlot
+// (read-only) so the matching rules — exact service, hard provider-preference
+// filter, hard date-window filter, oldest-first — can never drift between what
+// staff preview and what actually gets contacted.
+async function matchWaitlistCandidatesForSlot(cancelledAppointmentId: string, limit: number): Promise<WaitlistMatchResult> {
   const cancelled = await prisma.appointment.findUnique({
     where:  { id: cancelledAppointmentId },
     select: { serviceId: true, doctorId: true, startAt: true },
   })
 
   if (!cancelled?.serviceId) {
-    return { eligibleCount: 0, notified: [], skipped: [], targetingMode: 'DISABLED_NO_SERVICE_CONTEXT' }
+    return { matches: [], targetingMode: 'DISABLED_NO_SERVICE_CONTEXT' }
   }
 
   const candidates = await prisma.waitlistEntry.findMany({
@@ -59,7 +68,7 @@ export async function notifyWaitlistForOpenSlot(cancelledAppointmentId: string, 
   })
 
   if (candidates.length === 0) {
-    return { eligibleCount: 0, notified: [], skipped: [], targetingMode: 'DISABLED_NO_MATCH' }
+    return { matches: [], targetingMode: 'DISABLED_NO_MATCH' }
   }
 
   // Prefer an exact same-provider match when at least one exists. Falling
@@ -75,12 +84,66 @@ export async function notifyWaitlistForOpenSlot(cancelledAppointmentId: string, 
   // slot outside the window they explicitly asked for.
   const compatible = pool.filter(entry => dateCompatible(entry, cancelled.startAt))
   if (compatible.length === 0) {
-    return { eligibleCount: 0, notified: [], skipped: [], targetingMode: 'DISABLED_NO_MATCH' }
+    return { matches: [], targetingMode: 'DISABLED_NO_MATCH' }
   }
 
   const top = compatible
     .sort((a, b) => a.requestedAt.getTime() - b.requestedAt.getTime())
     .slice(0, limit) as (WaitlistEntry & { patient: Patient })[]
+
+  return { matches: top, targetingMode: 'MATCHED' }
+}
+
+export interface WaitlistMatchPreviewEntry {
+  patientId: string
+  patientName: string
+  waitlistEntryId: string
+  channel: CommsChannel
+  wouldSend: boolean
+  blockedReason: string | null
+  requestedAt: Date
+}
+
+export interface PreviewWaitlistMatchesResult {
+  eligibleCount: number
+  matches: WaitlistMatchPreviewEntry[]
+  targetingMode: 'MATCHED' | 'DISABLED_NO_SERVICE_CONTEXT' | 'DISABLED_NO_MATCH'
+}
+
+// Read-only: runs the exact same matching + consent/channel checks as
+// notifyWaitlistForOpenSlot but never sends anything and never writes a
+// WaitlistNotification row. Lets staff see who would be contacted (and who
+// would be skipped, and why) before triggering a real notify.
+export async function previewWaitlistMatchesForSlot(cancelledAppointmentId: string, limit = 20): Promise<PreviewWaitlistMatchesResult> {
+  const { matches: top, targetingMode } = await matchWaitlistCandidatesForSlot(cancelledAppointmentId, limit)
+
+  const matches = await Promise.all(top.map(async (entry): Promise<WaitlistMatchPreviewEntry> => {
+    const patient = entry.patient
+    const channel: CommsChannel = patient.commsChannelPref ?? 'WHATSAPP'
+    let blockedReason: string | null = null
+    if (channel === 'EMAIL') blockedReason = 'email_channel_not_wired'
+    else if (!(await getChannelConsentStatus(patient.id, channel))) blockedReason = 'consent_declined'
+
+    return {
+      patientId:       patient.id,
+      patientName:     `${patient.firstName} ${patient.lastName}`.trim(),
+      waitlistEntryId: entry.id,
+      channel,
+      wouldSend:       blockedReason === null,
+      blockedReason,
+      requestedAt:     entry.requestedAt,
+    }
+  }))
+
+  return { eligibleCount: top.length, matches, targetingMode }
+}
+
+export async function notifyWaitlistForOpenSlot(cancelledAppointmentId: string, limit = 20): Promise<NotifyWaitlistResult> {
+  const { matches: top, targetingMode } = await matchWaitlistCandidatesForSlot(cancelledAppointmentId, limit)
+
+  if (targetingMode !== 'MATCHED') {
+    return { eligibleCount: 0, notified: [], skipped: [], targetingMode }
+  }
 
   const notified: NotifyWaitlistResult['notified'] = []
   const skipped: NotifyWaitlistResult['skipped'] = []

@@ -17,7 +17,7 @@ vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('../../ai-suite/whatsapp/whatsapp.service', () => ({ sendWhatsAppMessage }))
 vi.mock('../../ai-suite/sms/sms.service', () => ({ sendSMS: vi.fn().mockResolvedValue(undefined) }))
 
-import { notifyWaitlistForOpenSlot, createWaitlistEntry, markWaitlistEntryFulfilled } from '../../crm-automation/waitlist.service'
+import { notifyWaitlistForOpenSlot, createWaitlistEntry, markWaitlistEntryFulfilled, previewWaitlistMatchesForSlot } from '../../crm-automation/waitlist.service'
 
 function entry(overrides: Record<string, any> = {}) {
   return {
@@ -189,5 +189,48 @@ describe('WaitlistEntry CRUD — fulfillment idempotency', () => {
       where: { id: 'we-1' },
       data: { isActive: false, fulfilledAt: expect.any(Date) },
     })
+  })
+})
+
+describe('previewWaitlistMatchesForSlot — read-only, same matching rules as notify, never sends', () => {
+  it('reports the same matches notifyWaitlistForOpenSlot would notify, without sending or writing a notification row', async () => {
+    prismaMock.appointment.findUnique.mockResolvedValue({ serviceId: 'svc-1', doctorId: null, startAt: new Date('2026-02-01') })
+    prismaMock.waitlistEntry.findMany.mockResolvedValue([entry()])
+    prismaMock.consentLog.findFirst.mockResolvedValue({ status: 'OPT_IN' })
+
+    const result = await previewWaitlistMatchesForSlot('appt-1')
+
+    expect(result.targetingMode).toBe('MATCHED')
+    expect(result.eligibleCount).toBe(1)
+    expect(result.matches[0]).toMatchObject({ patientId: 'p-1', wouldSend: true, blockedReason: null })
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+    expect(prismaMock.waitlistNotification.create).not.toHaveBeenCalled()
+  })
+
+  it('flags a consent-declined match as wouldSend:false with the reason, still without sending', async () => {
+    prismaMock.appointment.findUnique.mockResolvedValue({ serviceId: 'svc-1', doctorId: null, startAt: new Date('2026-02-01') })
+    prismaMock.waitlistEntry.findMany.mockResolvedValue([entry()])
+    prismaMock.consentLog.findFirst.mockResolvedValue({ status: 'OPT_OUT' })
+
+    const result = await previewWaitlistMatchesForSlot('appt-1')
+
+    expect(result.matches[0]).toMatchObject({ wouldSend: false, blockedReason: 'consent_declined' })
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+  })
+
+  it('propagates DISABLED_NO_SERVICE_CONTEXT / DISABLED_NO_MATCH the same way notify does', async () => {
+    prismaMock.appointment.findUnique.mockResolvedValue({ serviceId: null, doctorId: null, startAt: new Date() })
+    const result = await previewWaitlistMatchesForSlot('appt-1')
+    expect(result.targetingMode).toBe('DISABLED_NO_SERVICE_CONTEXT')
+    expect(result.matches).toHaveLength(0)
+  })
+
+  it('an explicit preference for a different provider is still a hard exclusion in preview', async () => {
+    prismaMock.appointment.findUnique.mockResolvedValue({ serviceId: 'svc-1', doctorId: 'doc-A', startAt: new Date('2026-02-01') })
+    prismaMock.waitlistEntry.findMany.mockResolvedValue([
+      entry({ id: 'we-prefers-doc-b', preferredDoctorId: 'doc-B', patient: { id: 'p-1', firstName: 'PrefersB', phone: '+256700000001', commsChannelPref: null } }),
+    ])
+    const result = await previewWaitlistMatchesForSlot('appt-1')
+    expect(result.targetingMode).toBe('DISABLED_NO_MATCH')
   })
 })
