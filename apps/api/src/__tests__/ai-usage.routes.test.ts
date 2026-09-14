@@ -14,6 +14,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { adminOnly } from '../middleware/rbac'
 
+// Cold first import of meta-usage.routes.ts pulls in a fair amount of the
+// ai-suite module graph — comfortably past the 5s default under system load
+// (same rationale as dashboard-patient-overview.test.ts / push-subscription-ownership.test.ts).
+vi.setConfig({ testTimeout: 20000 })
+
 process.env.DATABASE_URL       ??= 'postgresql://test:test@localhost:5432/test'
 process.env.JWT_SECRET         ??= 'test-secret-at-least-32-characters-long'
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-at-least-32-chars'
