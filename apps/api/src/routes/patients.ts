@@ -14,6 +14,7 @@ import { logAudit } from '../services/audit.service'
 import { normalizePhone, phoneVariants } from '../utils/phone'
 import { createPatientWithBotConsent } from '../services/patient-consent.service'
 import { authenticatedDoctorId, requireDoctorPatientAccess } from '../lib/doctor-access'
+import { submitWalkInIntake } from '../services/previsit-intake.service'
 
 const createPatientSchema = z.object({
   firstName:          z.string().min(1),
@@ -313,29 +314,29 @@ router.post('/import-csv', requireAuth, async (req, res) => {
           continue
         }
 
-        const existing = await prisma.patient.findFirst({ where: { phone: { in: phoneVariants(normalizedPhone) } } })
-        if (existing) { skipped++; continue }
-
         let genderEnum: 'MALE' | 'FEMALE' | undefined
         if (r.gender?.toLowerCase().startsWith('m')) genderEnum = 'MALE'
         if (r.gender?.toLowerCase().startsWith('f')) genderEnum = 'FEMALE'
         const dobDate = r.dob ? parseDob(r.dob) ?? undefined : undefined
 
-        await prisma.patient.create({
-          data: {
-            firstName,
-            lastName:      (r.lastName || firstName).trim(),
-            phone:         normalizedPhone,
-            email:         r.email          || undefined,
-            gender:        genderEnum,
-            dob:           dobDate,
-            address:       r.address        || undefined,
-            referralSource: r.referralSource || undefined,
-            status:        'ACTIVE' as any,
-            importSource:  'CSV',
-          },
+        // Routed through the same advisory-lock-guarded find-or-create used by
+        // the QR walk-in intake, so a concurrent QR submit and CSV import for
+        // the same phone can't both pass a "not found" check and create two
+        // rows, and an existing record's real data is never silently
+        // overwritten by an imported row (only empty fields get filled in).
+        const { outcome } = await submitWalkInIntake(prisma, {
+          phone:     normalizedPhone,
+          firstName,
+          lastName:  (r.lastName || firstName).trim(),
+          email:     r.email || undefined,
+          gender:    genderEnum,
+          dob:       dobDate ? dobDate.toISOString() : undefined,
+          address:   r.address || undefined,
+          referralSource: r.referralSource || undefined,
+          importSource: 'CSV',
         })
-        created++
+        if (outcome === 'CREATED') created++
+        else skipped++
       } catch (err: any) {
         errors.push(`Row ${i + 1}: ${cleanError(err.message)}`)
         skipped++
@@ -431,36 +432,27 @@ router.post('/import-sheet', requireAuth, async (req, res) => {
         // parseDob returns null for invalid dates — never skip a row for bad DOB
         const dobDate = parseDob(dob) ?? undefined
 
-        const existing = await prisma.patient.findFirst({ where: { phone: { in: phoneVariants(normalizedPhone) } } })
-        if (existing) {
-          await prisma.patient.update({
-            where: { id: existing.id },
-            data: {
-              firstName,
-              lastName: lastName || existing.lastName,
-              email:   email    || existing.email   || undefined,
-              dob:     dobDate  ?? existing.dob     ?? undefined,
-              gender:  genderEnum                   ?? existing.gender ?? undefined,
-              address: address  || existing.address || undefined,
-            },
-          })
-          updated++
-        } else {
-          await prisma.patient.create({
-            data: {
-              firstName,
-              lastName: lastName || firstName,
-              phone:    normalizedPhone,
-              email:    email   || undefined,
-              dob:      dobDate,
-              gender:   genderEnum,
-              address:  address || undefined,
-              status:   'ACTIVE' as any,
-              importSource: 'SHEET',
-            },
-          })
-          created++
-        }
+        // Same advisory-lock-guarded find-or-create as the QR walk-in intake
+        // and CSV import — prevents a concurrent QR submit / CSV import for
+        // the same phone from creating a duplicate row, and never overwrites
+        // a real stored value on an existing patient (only fills fields that
+        // are currently empty; a genuine name/DOB mismatch is reported back
+        // as requiring manual review instead of being silently applied).
+        const { outcome, conflicts } = await submitWalkInIntake(prisma, {
+          phone: normalizedPhone,
+          firstName,
+          lastName: lastName || firstName,
+          email:    email || undefined,
+          dob:      dobDate ? dobDate.toISOString() : undefined,
+          gender:   genderEnum,
+          address:  address || undefined,
+          importSource: 'SHEET',
+        })
+        if (outcome === 'CREATED') created++
+        else if (outcome === 'REQUIRES_REVIEW') {
+          skipped++
+          errors.push(`Row ${i + 1}: existing patient's ${conflicts!.join('/')} differs from sheet data — left unchanged, requires manual review`)
+        } else updated++
       } catch (err: any) { errors.push(`Row ${i + 1}: ${cleanError(err.message)}`); skipped++ }
     }
     res.json({ created, updated, skipped, total: lines.length - 1, errors })

@@ -411,6 +411,20 @@ export default function TreatmentPipelineBoard({
     } catch { load() }
   }
 
+  // Marks an internal follow-up Completed/Dismissed (clears it from the
+  // due/upcoming/overdue queue) or wires up the reschedule modal for
+  // RESCHEDULED. Internal-only, audited server-side — never messages the patient.
+  async function resolveFollowUp(planId: string, resolution: 'COMPLETED' | 'DISMISSED') {
+    setPlans(prev => prev.map(p => p.id === planId ? { ...p, followUpAt: null } : p))
+    try {
+      await fetch(`${API}/pipeline/treatment/${planId}/follow-up/resolve`, {
+        method:  'POST',
+        headers: authH as any,
+        body:    JSON.stringify({ resolution }),
+      })
+    } catch { load() }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   // Real doctor names already present on the fetched plans — never a
@@ -711,6 +725,8 @@ export default function TreatmentPipelineBoard({
                         onMove={() => setMovePlan(plan)}
                         onToggleSelect={() => toggleSelect(plan.id)}
                         onOpenPatient={() => router.push(`${patientBasePath}/${plan.patientId}`)}
+                        onResolveFollowUp={resolution => resolveFollowUp(plan.id, resolution)}
+                        onRescheduleFollowUp={() => setFollowUpModal({ plan, pendingStatus: null })}
                       />
                     ))}
                     {hiddenCount > 0 && (
@@ -755,6 +771,8 @@ function PlanCard({
   onMove,
   onToggleSelect,
   onOpenPatient,
+  onResolveFollowUp,
+  onRescheduleFollowUp,
 }: {
   plan:           Plan
   dark:           boolean
@@ -765,8 +783,11 @@ function PlanCard({
   onMove:         () => void
   onToggleSelect: () => void
   onOpenPatient:  () => void
+  onResolveFollowUp:    (resolution: 'COMPLETED' | 'DISMISSED') => void
+  onRescheduleFollowUp: () => void
 }) {
   const [showHistory, setShowHistory] = useState(false)
+  const followUpDiff = followUpDiffDays(plan.followUpAt)
   const borderColor = urgencyBorderColor(plan.daysSince)
   const urgentText  = plan.daysSince > 14
     ? 'text-red-500'
@@ -856,6 +877,49 @@ function PlanCard({
           <span className="hidden sm:inline">Move</span>
         </button>
       </div>
+
+      {/* Internal follow-up badge + quick resolve actions — never shown to
+          the patient, mirrors the same urgency bucketing as the board's
+          follow-up filter and the backend alert scheduler. */}
+      {plan.followUpAt && followUpDiff !== null && (
+        <div className="flex items-center justify-between gap-1 pl-5 mt-1.5 pt-1.5 border-t border-gray-50 dark:border-white/5">
+          <span className={cn(
+            'text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1',
+            followUpDiff < 0 ? 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400'
+              : followUpDiff === 0 ? 'bg-amber-50 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400'
+              : 'bg-blue-50 text-blue-500 dark:bg-blue-400/10 dark:text-blue-400',
+          )}>
+            <CalendarClock size={9} />
+            {followUpDiff < 0 ? `Follow-up ${Math.abs(followUpDiff)}d overdue` : followUpDiff === 0 ? 'Follow-up due today' : `Follow-up in ${followUpDiff}d`}
+          </span>
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            <button
+              onClick={e => { e.stopPropagation(); onResolveFollowUp('COMPLETED') }}
+              onDragStart={e => e.stopPropagation()}
+              className="p-0.5 rounded text-gray-400 dark:text-white/40 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-400/10"
+              title="Mark follow-up complete"
+            >
+              <CheckCircle2 size={12} />
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); onRescheduleFollowUp() }}
+              onDragStart={e => e.stopPropagation()}
+              className="p-0.5 rounded text-gray-400 dark:text-white/40 hover:text-clinic-blue hover:bg-blue-50 dark:hover:bg-blue-400/10"
+              title="Reschedule follow-up"
+            >
+              <CalendarPlus size={12} />
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); onResolveFollowUp('DISMISSED') }}
+              onDragStart={e => e.stopPropagation()}
+              className="p-0.5 rounded text-gray-400 dark:text-white/40 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-400/10"
+              title="Dismiss follow-up"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stage history timeline */}
       {showHistory && (

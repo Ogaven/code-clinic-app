@@ -36,15 +36,18 @@ export interface WalkInIntakeInput {
   phone:              string
   firstName:          string
   lastName:           string
+  email?:             string | null
   dob?:               string | null
   gender?:            string | null
   address?:           string | null
   district?:          string | null
+  referralSource?:    string | null
   nextOfKinName?:     string | null
   nextOfKinPhone?:    string | null
   nextOfKinRelation?: string | null
   allergies?:         string | null
   medicalHistory?:    string | null
+  importSource?:      string | null
 }
 
 export interface WalkInIntakeResult {
@@ -101,15 +104,18 @@ export async function submitWalkInIntake(
           firstName: input.firstName,
           lastName:  input.lastName,
           phone:     normalizedPhone,
+          email:     input.email || undefined,
           dob:       input.dob ? new Date(input.dob) : undefined,
           gender:    input.gender || undefined,
           address:   input.address || undefined,
           district:  input.district || undefined,
+          referralSource:    input.referralSource || undefined,
           nextOfKinName:     input.nextOfKinName || undefined,
           nextOfKinPhone:    input.nextOfKinPhone || undefined,
           nextOfKinRelation: input.nextOfKinRelation || undefined,
           allergies:         input.allergies || undefined,
           medicalHistory:    input.medicalHistory || undefined,
+          importSource:      input.importSource || undefined,
         },
       })
       return { patient: created, outcome: 'CREATED' as const }
@@ -131,9 +137,11 @@ export async function submitWalkInIntake(
     const fillIn: Record<string, unknown> = {}
     if (isEmpty(existing.firstName) && !isEmpty(input.firstName)) fillIn.firstName = input.firstName
     if (isEmpty(existing.lastName)  && !isEmpty(input.lastName))  fillIn.lastName  = input.lastName
+    if (isEmpty(existing.email)     && !isEmpty(input.email))     fillIn.email     = input.email
     if (!existing.dob && input.dob && !Number.isNaN(new Date(input.dob).getTime())) fillIn.dob = new Date(input.dob)
     if (isEmpty(existing.gender)            && !isEmpty(input.gender))            fillIn.gender            = input.gender
     if (isEmpty(existing.address)           && !isEmpty(input.address))           fillIn.address           = input.address
+    if (isEmpty(existing.referralSource)    && !isEmpty(input.referralSource))    fillIn.referralSource    = input.referralSource
     if (isEmpty(existing.district)          && !isEmpty(input.district))          fillIn.district          = input.district
     if (isEmpty(existing.nextOfKinName)     && !isEmpty(input.nextOfKinName))     fillIn.nextOfKinName     = input.nextOfKinName
     if (isEmpty(existing.nextOfKinPhone)    && !isEmpty(input.nextOfKinPhone))    fillIn.nextOfKinPhone    = input.nextOfKinPhone

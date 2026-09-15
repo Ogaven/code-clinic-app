@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma'
 import { requireAuth } from '../middleware/auth'
-import { startOfKampalaDay, endOfKampalaDay, startOfKampalaWeek, startOfKampalaMonth, kampalaTodayRange } from '../utils/kampala-time'
+import { startOfKampalaDay, endOfKampalaDay, startOfKampalaWeek, startOfKampalaMonth, startOfNextKampalaMonth, kampalaTodayRange } from '../utils/kampala-time'
 import { getPatientActivitySummary, getAppointmentStatusBreakdown } from '../services/patient-analytics.service'
 
 const router = Router()
@@ -11,10 +11,9 @@ type PatientEntry = { name: string; service: string; date: string; value: number
 // GET /reports/case-acceptance?from=YYYY-MM-DD&to=YYYY-MM-DD&doctorId=...
 router.get('/case-acceptance', requireAuth, async (req, res) => {
   try {
-    const eatOffset  = 3 * 60 * 60 * 1000
-    const eatNow     = new Date(Date.now() + eatOffset)
-    const defaultFrom = new Date(Date.UTC(eatNow.getUTCFullYear(), eatNow.getUTCMonth(), 1))
-    const defaultTo   = new Date(Date.UTC(eatNow.getUTCFullYear(), eatNow.getUTCMonth() + 1, 0, 23, 59, 59, 999))
+    const now = new Date()
+    const defaultFrom = startOfKampalaMonth(now)
+    const defaultTo   = new Date(startOfNextKampalaMonth(now).getTime() - 1)
 
     const fromDate = req.query.from ? new Date((req.query.from as string) + 'T00:00:00.000Z') : defaultFrom
     const toDate   = req.query.to   ? new Date((req.query.to   as string) + 'T23:59:59.999Z') : defaultTo

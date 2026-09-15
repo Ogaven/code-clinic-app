@@ -732,12 +732,18 @@ export default function AnalyticsPage() {
             </div>
             {/* Calling has no message-volume data to chart (it isn't an aiConversation
                 channel) but its dormancy still needs to be visible here per the same
-                active/paused convention as the message channels above. */}
+                active/paused convention as the message channels above. Status is read
+                from the real computed channelStatus.CALLING, not hardcoded. */}
             <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-400 dark:text-white/30">
               <span className="text-base">📞</span>
               <span className="font-bold uppercase tracking-widest text-[10px]">Calling</span>
-              <span className="text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40">
-                Paused
+              <span className={cn(
+                'text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full',
+                data.channelStatus?.CALLING === 'ACTIVE'
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                  : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40',
+              )}>
+                {data.channelStatus?.CALLING === 'ACTIVE' ? 'Active' : 'Paused'}
               </span>
             </div>
           </section>

@@ -3,6 +3,18 @@ import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
 import { authenticatedDoctorId } from '../lib/doctor-access'
 import { checkAndConvertLeadOnTreatmentStart, checkAndConvertLeadsForPatients } from '../crm-automation/lead-patient-link.service'
+import { logAudit } from '../services/audit.service'
+
+// Mirrors clinical.ts's logActivity — writes to the patient's activity
+// timeline. Duplicated locally (rather than imported) since clinical.ts
+// doesn't export its copy; kept intentionally identical in shape.
+async function logPatientActivity(patientId: string, userId: string, userName: string, action: string) {
+  try {
+    await prisma.patientActivity.create({ data: { patientId, userId, userName, action } })
+  } catch (e) {
+    console.error('[Pipeline] activity log failed:', e)
+  }
+}
 
 const router = Router()
 
@@ -213,6 +225,7 @@ router.patch('/treatment/:id/stage', requireAuth, async (req, res) => {
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     const result = await prisma.treatmentPlan.updateMany({ where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) }, data: { stage } })
     if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: req.params.id, entityName: `Pipeline stage -> ${stage}`, req })
     res.json({ id: req.params.id, stage })
   } catch (e) {
     console.error('[Pipeline] stage update error:', e)
@@ -268,6 +281,7 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
       data:  { status, ...followUpData },
     })
     if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: req.params.id, entityName: `Status -> ${status}`, notes: followUpData.followUpAt ? `follow-up set: ${followUpData.followUpAt}` : undefined, req })
 
     // CRM Automation (Part N) — "treatment started" -> a QUALIFIED lead
     // matching this patient auto-converts. updateMany doesn't return the
@@ -304,10 +318,62 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
       data:  followUpData,
     })
     if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    logAudit({ userId: req.user!.id, actionType: 'UPDATE', entityType: 'TREATMENT_PLAN', entityId: req.params.id, entityName: 'Follow-up updated', notes: JSON.stringify(followUpData), req })
     res.json({ id: req.params.id, ...followUpData })
   } catch (e) {
     console.error('[Pipeline] follow-up update error:', e)
     res.status(500).json({ error: 'Failed to update follow-up' })
+  }
+})
+
+// POST /pipeline/treatment/:id/follow-up/resolve — mark an internal follow-up
+// as Completed or Dismissed (clearing it from the due/upcoming/overdue queue),
+// or Reschedule it to a new date. Distinct from PATCH /follow-up so the board
+// can offer an explicit "resolve" action with its own audit trail, separate
+// from a plain date edit. Internal-only — never messages the patient.
+router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) => {
+  try {
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
+    const { resolution, note, rescheduleTo } = req.body as { resolution: 'COMPLETED' | 'DISMISSED' | 'RESCHEDULED'; note?: string; rescheduleTo?: string }
+    if (!['COMPLETED', 'DISMISSED', 'RESCHEDULED'].includes(resolution)) {
+      res.status(400).json({ error: 'resolution must be COMPLETED, DISMISSED, or RESCHEDULED' }); return
+    }
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+
+    const plan = await prisma.treatmentPlan.findFirst({
+      where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
+      select: { id: true, patientId: true, toothNumber: true, followUpNote: true },
+    })
+    if (!plan) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+
+    let newFollowUpAt: Date | null = null
+    if (resolution === 'RESCHEDULED') {
+      if (!rescheduleTo) { res.status(400).json({ error: 'rescheduleTo is required when resolution is RESCHEDULED' }); return }
+      const d = new Date(rescheduleTo)
+      if (isNaN(d.getTime())) { res.status(400).json({ error: 'Invalid rescheduleTo date' }); return }
+      newFollowUpAt = d
+    }
+
+    // No dedicated resolution-history column on TreatmentPlan — the outcome
+    // is recorded durably in the audit log (below) and the patient activity
+    // timeline; the note field itself is prefixed with a short stamp so
+    // staff glancing at the plan still see the latest resolution inline.
+    const stamp = `[${resolution}${req.user!.firstName ? ` by ${req.user!.firstName} ${req.user!.lastName}` : ''} on ${new Date().toISOString().slice(0, 10)}]${note ? ` ${note}` : ''}`
+    const updatedNote = plan.followUpNote ? `${stamp}\n${plan.followUpNote}` : stamp
+
+    await prisma.treatmentPlan.update({
+      where: { id: plan.id },
+      data: { followUpAt: newFollowUpAt, followUpNote: updatedNote },
+    })
+
+    logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: plan.id, entityName: `Follow-up resolved: ${resolution}`, notes: note, req })
+    await logPatientActivity(plan.patientId, req.user!.id, `${req.user!.firstName} ${req.user!.lastName}`, `Treatment follow-up ${resolution.toLowerCase()}: ${plan.toothNumber || 'General'}${note ? ` — ${note}` : ''}`)
+
+    res.json({ id: plan.id, resolution, followUpAt: newFollowUpAt })
+  } catch (e) {
+    console.error('[Pipeline] follow-up resolve error:', e)
+    res.status(500).json({ error: 'Failed to resolve follow-up' })
   }
 })
 
