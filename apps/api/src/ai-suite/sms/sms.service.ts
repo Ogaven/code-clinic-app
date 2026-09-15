@@ -26,9 +26,34 @@ export function isRealSmsProviderConfigured(): boolean {
   return Boolean(process.env.AT_API_KEY && process.env.AT_USERNAME)
 }
 
+// SMS is not currently an active Code Clinic communication channel — only
+// WhatsApp, Instagram, Facebook, and Website Chat are. Credentials being
+// configured (isRealSmsProviderConfigured) is necessary but not sufficient:
+// this is the separate, deliberate "the business has actually turned SMS on"
+// switch, independent of any individual CRM feature flag (waitlist,
+// sequences, missed-call text-back). Without this, turning on e.g.
+// CRM_WAITLIST_AUTOMATION_LIVE for a patient whose commsChannelPref is SMS,
+// or activating a sequence with an SMS-channel touch, would silently start
+// sending real carrier SMS the moment credentials exist — which they already
+// do in production. This must stay false until Code Clinic has an actual
+// active SMS plan/service arrangement.
+export function isSmsChannelActive(): boolean {
+  return process.env.SMS_CHANNEL_ACTIVE === 'true'
+}
+
 // ── Send SMS ───────────────────────────────────────────────────────────────────
+// Falls back to the WhatsApp passthrough whenever real SMS isn't both
+// configured AND actively enabled — preserving WhatsApp as the working
+// channel rather than silently failing, per the same reasoning every other
+// send-capable path in this codebase already follows.
 
 export async function sendSMS(to: string, message: string): Promise<void> {
+  if (!isRealSmsProviderConfigured() || !isSmsChannelActive()) {
+    const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
+    await sendWhatsAppMessage(to, message)
+    return
+  }
+
   const client = await getAtSmsClient()
   if (!client) {
     const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
