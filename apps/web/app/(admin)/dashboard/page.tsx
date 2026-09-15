@@ -22,7 +22,7 @@ import InfoTooltip from '@/components/ui/InfoTooltip'
 //    the database and no Accounts API is touched. ──────────────────────────
 
 interface DashMetrics {
-  activeThisMonth: number; activeLastMonth: number
+  totalPatients: number
   newPatientsThisMonth: number; returningPatientsThisMonth: number
   lapsedCount: number
 }
@@ -226,11 +226,11 @@ export default function DashboardPage() {
   const [todayAppts, setTodayAppts] = useState<Appt[] | null>(null)
   const [upcoming, setUpcoming] = useState<Appt[] | null>(null)
   const [aiSnapshot, setAiSnapshot] = useState<AiSnapshot | null>(null)
-  const [totalPatients, setTotalPatients] = useState<number | null>(null)
   const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
   const [leads, setLeads] = useState<Lead[] | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null)
   const [referrals, setReferrals] = useState<ReferralStats | null>(null)
+  const [dashError, setDashError] = useState(false)
 
   useEffect(() => {
     setDark(applyTheme(readTheme()))
@@ -250,7 +250,7 @@ export default function DashboardPage() {
     const auth = { Authorization: `Bearer ${token}` }
 
     fetch('/api-proxy/clinical/analytics/dashboard', { headers: auth })
-      .then(r => r.json()).then(d => { if (d?.metrics) setDashData(d) }).catch(() => {})
+      .then(r => r.json()).then(d => { if (d?.metrics) setDashData(d); else setDashError(true) }).catch(() => setDashError(true))
 
     fetch('/api-proxy/clinical/analytics/dashboard/trend', { headers: auth })
       .then(r => r.ok ? r.json() : null).then(d => { if (d?.trends) setTrend(d.trends) }).catch(() => {})
@@ -276,9 +276,6 @@ export default function DashboardPage() {
 
     fetch('/api-proxy/ai-suite/snapshot', { headers: auth })
       .then(r => r.ok ? r.json() : null).then(d => { if (d) setAiSnapshot(d) }).catch(() => {})
-
-    fetch('/api-proxy/patients?limit=1', { headers: auth })
-      .then(r => r.ok ? r.json() : null).then(d => { if (d && typeof d.total === 'number') setTotalPatients(d.total) }).catch(() => {})
 
     Object.entries(CATEGORY_FILTERS).forEach(([key, filter]) => {
       const qs = filter ? `filter=${filter}&limit=3` : 'limit=3'
@@ -579,7 +576,12 @@ export default function DashboardPage() {
 
         {/* Patients Overview — real Total/Seen/Returning/New + real avatars */}
         <CompactCard title="Patients Overview" action={<Link href="/patients" className="text-[11px] font-bold text-clinic-blue hover:underline dark:text-cyan-400">View all patients</Link>}>
-          {!m ? (
+          {dashError ? (
+            <div className="flex h-32 flex-col items-center justify-center gap-1 rounded-xl bg-red-50 text-center dark:bg-red-400/10">
+              <p className="text-[11px] font-bold text-red-500 dark:text-red-400">Couldn&apos;t load patient metrics</p>
+              <p className="text-[10px] text-red-400 dark:text-red-400/70">Check your connection and reload the page.</p>
+            </div>
+          ) : !m ? (
             <div className="h-32 animate-pulse rounded-xl bg-gray-50 dark:bg-white/5" />
           ) : (() => {
             // "Seen" = distinct patients with a COMPLETED appointment this
@@ -593,7 +595,7 @@ export default function DashboardPage() {
             // delta is shown here rather than compare against the old
             // (differently-defined) activeLastMonth.
             const segs = [
-              { key: 'total', label: 'Total Patients', value: totalPatients, color: '#1A237E', trendKey: 'totalPatients' as const, tooltip: 'All patient profiles currently in Code Clinic.' },
+              { key: 'total', label: 'Total Patients', value: m.totalPatients, color: '#1A237E', trendKey: 'totalPatients' as const, tooltip: 'All patient profiles currently in Code Clinic.' },
               { key: 'seen', label: 'Patients Seen', value: m.newPatientsThisMonth + m.returningPatientsThisMonth, color: '#29ABE2', trendKey: 'patientsSeen' as const, tooltip: 'Unique patients who attended an appointment this month.' },
               { key: 'returning', label: 'Returning', value: m.returningPatientsThisMonth, color: '#10B981', trendKey: 'returningPatients' as const, tooltip: 'Patients seen this month who had visited Code Clinic before this month.' },
               { key: 'fresh', label: 'New Patients', value: m.newPatientsThisMonth, color: '#F59E0B', trendKey: 'newPatients' as const, tooltip: 'Patients seen this month whose first clinic visit was this month.' },
@@ -606,7 +608,7 @@ export default function DashboardPage() {
             // real, non-overlapping portions of the total patient base — the
             // remaining grey is patients not seen this month.
             const seenCount = m.newPatientsThisMonth + m.returningPatientsThisMonth
-            const barTotal = Math.max(totalPatients ?? seenCount, 1)
+            const barTotal = Math.max(m.totalPatients ?? seenCount, 1)
             return (
               <>
                 {/* Legend for the two-segment mix bar below — colored dots so the

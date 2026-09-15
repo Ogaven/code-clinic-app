@@ -603,8 +603,6 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
   try {
     const now          = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-    const startOfLast  = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const endOfLast    = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
 
     const weekStart = new Date(now)
     const dow = weekStart.getDay()
@@ -612,8 +610,6 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
     weekStart.setHours(0, 0, 0, 0)
 
     const [
-      activeThisMonthRows,
-      activeLastMonthRows,
       noShowWeek,
       totalWeekAppts,
       collectedThisMonth,
@@ -625,16 +621,6 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
       aiBooked,
       messagesSent,
     ] = await Promise.all([
-      prisma.appointment.findMany({
-        where:    { startAt: { gte: startOfMonth }, status: { notIn: ['CANCELLED'] } },
-        select:   { patientId: true },
-        distinct: ['patientId'],
-      }),
-      prisma.appointment.findMany({
-        where:    { startAt: { gte: startOfLast, lte: endOfLast }, status: { notIn: ['CANCELLED'] } },
-        select:   { patientId: true },
-        distinct: ['patientId'],
-      }),
       prisma.appointment.count({ where: { startAt: { gte: weekStart }, status: 'NO_SHOW' } }),
       prisma.appointment.count({ where: { startAt: { gte: weekStart } } }),
       prisma.payment.aggregate({ _sum: { amountUGX: true }, where: { paidAt: { gte: startOfMonth } } }),
@@ -705,8 +691,6 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
 
     res.json({
       metrics: {
-        activeThisMonth:           activeThisMonthRows.length,
-        activeLastMonth:           activeLastMonthRows.length,
         totalPatients,
         patientsSeenThisMonth,
         newPatientsThisMonth,

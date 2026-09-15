@@ -63,6 +63,12 @@ export function startOfPreviousKampalaMonth(date: Date = new Date()): Date {
   return kampalaMidnightUtc(year, month - 1, 1)
 }
 
+/** 1st of the next month 00:00 Kampala, relative to `date`. */
+export function startOfNextKampalaMonth(date: Date = new Date()): Date {
+  const { year, month } = kampalaParts(date)
+  return kampalaMidnightUtc(year, month + 1, 1)
+}
+
 export interface DateRange {
   start: Date
   end: Date

@@ -47,7 +47,7 @@ function fmtMins(m: number | null) {
 function fmtTime(dateStr?: string | null) {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleTimeString('en-GB', {
-    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi',
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala',
   })
 }
 
@@ -67,26 +67,37 @@ interface PatientRow {
 
 type Period = 'today' | 'week' | 'month'
 
+// Africa/Kampala is a fixed UTC+3 offset with no DST (same convention as
+// apps/api/src/utils/kampala-time.ts). Shifting the UTC clock by +3h and then
+// reading it back with getUTC*/toISOString gives Kampala wall-clock date
+// fields regardless of the browser's own local timezone — computing this with
+// plain local Date getters + toISOString() (UTC) mixed together is what
+// caused the previous day/week boundary to shift for viewers between
+// 00:00–03:00 Kampala time.
+function kampalaShiftedNow(): Date {
+  return new Date(Date.now() + 3 * 60 * 60 * 1000)
+}
+function isoFromKampalaShifted(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
 // Same Monday–Sunday current-week convention already used on the dashboard
 // (apps/web/app/(admin)/dashboard/page.tsx) — not re-derived differently here.
 function weekRange(): { start: string; end: string } {
-  const now = new Date()
-  const dow = now.getDay()
-  const monday = new Date(now); monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1))
-  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
-  return { start: iso(monday), end: iso(sunday) }
+  const k = kampalaShiftedNow()
+  const dow = k.getUTCDay()
+  const monday = new Date(k); monday.setUTCDate(k.getUTCDate() - (dow === 0 ? 6 : dow - 1))
+  const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate() + 6)
+  return { start: isoFromKampalaShifted(monday), end: isoFromKampalaShifted(sunday) }
 }
 function monthRange(): { start: string; end: string } {
-  const now = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth(), 1)
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
-  return { start: iso(start), end: iso(end) }
+  const k = kampalaShiftedNow()
+  const start = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), 1))
+  const end = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth() + 1, 0))
+  return { start: isoFromKampalaShifted(start), end: isoFromKampalaShifted(end) }
 }
 
 export default function PatientFlowReportPage() {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(() => isoFromKampalaShifted(kampalaShiftedNow()))
   const [period, setPeriod] = useState<Period>('today')
   const [rows, setRows] = useState<PatientRow[]>([])
   const [loading, setLoading] = useState(true)
