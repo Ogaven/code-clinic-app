@@ -1480,7 +1480,24 @@ async function alertStaffOfConcern(params: {
       }
     }
     if (!templateSent) {
-      alertMessageId = await sendWhatsAppMessage(staffNumber, alertText)
+      try {
+        alertMessageId = await sendWhatsAppMessage(staffNumber, alertText)
+      } catch (waErr: any) {
+        console.error('[Agent] WhatsApp send failed for clinical concern alert:', waErr.message)
+      }
+    }
+
+    // Always also send SMS — an independent channel from WhatsApp/Meta. WhatsApp's
+    // send API can report success while Meta silently fails real delivery later
+    // (confirmed only via an async webhook, e.g. billing/eligibility errors like
+    // 131042) — a clinical concern must not depend on a single channel that can
+    // look healthy while actually delivering nothing. Dynamic import avoids a
+    // circular dependency (sms.service → agent.service → sms.service).
+    try {
+      const { sendSMS } = await import('../sms/sms.service')
+      await sendSMS(staffNumber, alertText)
+    } catch (smsErr: any) {
+      console.error('[Agent] SMS fallback failed for clinical concern alert:', smsErr.message)
     }
 
     // 2. In-app notification for all active RECEPTIONIST + ADMIN users
