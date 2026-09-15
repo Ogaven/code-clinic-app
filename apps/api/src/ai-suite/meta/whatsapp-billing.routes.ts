@@ -14,9 +14,17 @@ import { getMetaBillingStatus } from '../../services/meta-billing.service'
 const router = Router()
 
 // GET /ai-suite/whatsapp-health — real delivery counts/rates, not billing.
-router.get('/whatsapp-health', requireAuth, async (_req, res) => {
+// Raw provider error codes/messages are diagnostic detail for Admin only —
+// Receptionist still gets the real status/counts, just not the technical
+// error payload, whether they view the page or call this endpoint directly.
+router.get('/whatsapp-health', requireAuth, async (req, res) => {
   try {
-    res.json(await getWhatsAppDeliveryHealth())
+    const health = await getWhatsAppDeliveryHealth()
+    if (req.user?.role !== 'ADMIN') {
+      const { latestError, failureCountByCode, ...rest } = health
+      return res.json(rest)
+    }
+    res.json(health)
   } catch (err: any) {
     console.error('[WhatsAppHealth]', err.message)
     res.status(500).json({ error: err.message })

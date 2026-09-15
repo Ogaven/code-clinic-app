@@ -19,7 +19,7 @@
 import { prisma } from '../lib/prisma'
 import { sendOrSimulate } from './dry-run'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
-import { sendSMS } from '../ai-suite/sms/sms.service'
+import { sendSMS, isSmsChannelActive } from '../ai-suite/sms/sms.service'
 import { getChannelConsentStatus } from './consent-log.service'
 import type { CommsChannel, WaitlistEntry, Patient } from '@prisma/client'
 
@@ -120,8 +120,15 @@ export async function previewWaitlistMatchesForSlot(cancelledAppointmentId: stri
   const matches = await Promise.all(top.map(async (entry): Promise<WaitlistMatchPreviewEntry> => {
     const patient = entry.patient
     const channel: CommsChannel = patient.commsChannelPref ?? 'WHATSAPP'
+    // SMS is a dormant Code Clinic patient channel (business policy) —
+    // sendSMS() itself would silently no-op (SMS_NOT_CONFIGURED) rather than
+    // send, so this must be reported as blocked here too, not surfaced as
+    // wouldSend:true. Kept in sync with notifyWaitlistForOpenSlot's identical
+    // check below — the whole point of Preview is that it can never drift
+    // from what a real notify would actually do.
     let blockedReason: string | null = null
     if (channel === 'EMAIL') blockedReason = 'email_channel_not_wired'
+    else if (channel === 'SMS' && !isSmsChannelActive()) blockedReason = 'sms_channel_paused'
     else if (!(await getChannelConsentStatus(patient.id, channel))) blockedReason = 'consent_declined'
 
     return {
@@ -153,6 +160,15 @@ export async function notifyWaitlistForOpenSlot(cancelledAppointmentId: string, 
     const channel: CommsChannel = patient.commsChannelPref ?? 'WHATSAPP'
     if (channel === 'EMAIL') {
       skipped.push({ patientId: patient.id, waitlistEntryId: entry.id, reason: 'email_channel_not_wired' })
+      continue
+    }
+    // SMS is a dormant Code Clinic patient channel — sendSMS() would return
+    // SMS_NOT_CONFIGURED and send nothing, so this must be a truthful skip,
+    // not a WaitlistNotification row falsely marked 'SENT' for a message
+    // that never went anywhere. See previewWaitlistMatchesForSlot's matching
+    // check above.
+    if (channel === 'SMS' && !isSmsChannelActive()) {
+      skipped.push({ patientId: patient.id, waitlistEntryId: entry.id, reason: 'sms_channel_paused' })
       continue
     }
 

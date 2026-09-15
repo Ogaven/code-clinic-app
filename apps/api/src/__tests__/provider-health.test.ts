@@ -72,12 +72,22 @@ describe('getWhatsAppDeliveryHealth — sent is never counted as delivered', () 
     expect(health.status).toBe('DOWN')
   })
 
-  it('classifies HEALTHY when the sample size is too small to judge, even with 100% failure', async () => {
+  // Regression: this used to classify HEALTHY below the minimum sample size,
+  // which meant a quiet window during a real outage (few/zero send attempts)
+  // was indistinguishable from genuinely healthy delivery. UNKNOWN means
+  // "not enough evidence either way" — never a stand-in for "fine."
+  it('classifies UNKNOWN (not HEALTHY) when the sample size is too small to judge, even with 100% failure', async () => {
     prismaMock.aiMessage.groupBy.mockResolvedValue([
       { status: 'failed', _count: { _all: 1 } },
     ])
     const health = await getWhatsAppDeliveryHealth()
-    expect(health.status).toBe('HEALTHY')
+    expect(health.status).toBe('UNKNOWN')
+  })
+
+  it('classifies UNKNOWN when there are zero send attempts at all in the last 24h', async () => {
+    prismaMock.aiMessage.groupBy.mockResolvedValue([])
+    const health = await getWhatsAppDeliveryHealth()
+    expect(health.status).toBe('UNKNOWN')
   })
 
   it('classifies DEGRADED at an elevated but not near-total failure rate', async () => {

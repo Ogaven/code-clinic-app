@@ -4,6 +4,8 @@ import { requireAuth } from '../../middleware/auth'
 import { prisma }    from '../../lib/prisma'
 import { isSmsChannelActive } from '../sms/sms.service'
 import { resolveAiUsageRange, type AiUsageRangeKey } from './meta-usage.routes'
+import { isCallingChannelActive } from '../../services/calling-channel.service'
+import { getWhatsAppDeliveryHealth } from '../../services/provider-health.service'
 
 const router = Router()
 
@@ -11,31 +13,50 @@ const CACHE_FILE  = '/tmp/codeclinic-channel-analytics.json'
 const CACHE_TTL   = 60 * 60 * 1000        // 1 hour
 const META_CACHE  = '/tmp/codeclinic-meta-usage.json'
 
-// A channel's presence in aiConversation data (or its message counts being
-// nonzero) is not the same question as whether it's currently an active
-// Code Clinic patient channel — that's a business decision, not a data
-// query. WhatsApp/Instagram/Facebook/Website Chat are fixed as active (no
-// toggle exists for them). SMS and Calling are genuinely derived from the
-// same real switches their own send paths check — isSmsChannelActive() is
-// the exact gate sendSMS() itself uses (sms.service.ts), and
-// calling_agents_enabled is the exact AppSetting the SIP voice pipeline
-// checks before answering (sip.service.ts / voice-channel.ts) — so this can
-// never silently drift from what the system is actually doing, and matches
-// the equivalent surface on the Admin CRM Automation page
-// (routes/crm-automation.ts's /automation-status).
-async function getPatientChannelStatus(): Promise<Record<string, 'ACTIVE' | 'PAUSED'>> {
-  const callingSetting = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
-  const callingActive  = callingSetting?.value !== 'false'
+export type ChannelStatus = 'ACTIVE' | 'DEGRADED' | 'ERROR' | 'CONFIG_REQUIRED' | 'PAUSED' | 'UNKNOWN'
+
+// Each channel's status is derived from the real signal that channel
+// actually has — never a hardcoded "Active":
+//  - WhatsApp reuses the same delivery-health classification already computed
+//    from real AiMessage/MetaDeliveryFailure rows for the Delivery Health card
+//    (provider-health.service.ts) — HEALTHY/DEGRADED/DOWN/UNKNOWN, so this can
+//    never say "Active" while deliveries are actually failing.
+//  - Facebook/Instagram read the exact access-token lookup their own send
+//    paths use (facebook.routes.ts: aiAgentConfig row, falling back to the
+//    env var) — no token means the channel genuinely cannot send, so it's
+//    reported CONFIG_REQUIRED rather than pretended-active.
+//  - Website Chat is first-party (talks directly to this API, no external
+//    provider to be down or unconfigured), so ACTIVE is a true statement, not
+//    an assumption.
+//  - SMS and Calling are the same real switches their own send paths check —
+//    isSmsChannelActive() is the exact gate sendSMS() uses (sms.service.ts),
+//    and isCallingChannelActive() is the exact fail-closed check the SIP
+//    voice pipeline uses (calling-channel.service.ts) — so this can never
+//    silently drift from what the system is actually doing.
+async function getPatientChannelStatus(): Promise<Record<string, ChannelStatus>> {
+  const [waHealth, agentConfig] = await Promise.all([
+    getWhatsAppDeliveryHealth(),
+    prisma.aiAgentConfig.findFirst(),
+  ])
+
+  const waStatus: ChannelStatus =
+    waHealth.status === 'HEALTHY'  ? 'ACTIVE' :
+    waHealth.status === 'DEGRADED' ? 'DEGRADED' :
+    waHealth.status === 'DOWN'     ? 'ERROR' :
+                                      'UNKNOWN'
+
+  const fbConfigured = !!(agentConfig?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN)
+  const igConfigured = !!(agentConfig?.instagramAccessToken    || process.env.INSTAGRAM_ACCESS_TOKEN)
 
   return {
-    WHATSAPP:          'ACTIVE',
+    WHATSAPP:          waStatus,
     WEBSITE:           'ACTIVE',
-    FACEBOOK:          'ACTIVE',
-    FACEBOOK_COMMENT:  'ACTIVE',
-    INSTAGRAM:         'ACTIVE',
-    INSTAGRAM_COMMENT: 'ACTIVE',
+    FACEBOOK:          fbConfigured ? 'ACTIVE' : 'CONFIG_REQUIRED',
+    FACEBOOK_COMMENT:  fbConfigured ? 'ACTIVE' : 'CONFIG_REQUIRED',
+    INSTAGRAM:         igConfigured ? 'ACTIVE' : 'CONFIG_REQUIRED',
+    INSTAGRAM_COMMENT: igConfigured ? 'ACTIVE' : 'CONFIG_REQUIRED',
     SMS:               isSmsChannelActive() ? 'ACTIVE' : 'PAUSED',
-    CALLING:           callingActive ? 'ACTIVE' : 'PAUSED',
+    CALLING:           (await isCallingChannelActive()) ? 'ACTIVE' : 'PAUSED',
   }
 }
 
@@ -67,7 +88,7 @@ interface OperationalVolume {
 
 interface Analytics {
   channels:      Record<string, ChannelData>
-  channelStatus: Record<string, 'ACTIVE' | 'PAUSED'>
+  channelStatus: Record<string, ChannelStatus>
   operational:   OperationalVolume
   range:         AiUsageRangeKey
   meta:          any
@@ -281,6 +302,15 @@ async function buildAnalytics(selectedRange: { start: Date; end: Date; range: Ai
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
+// meta (WABA usage/cost) and digitalocean (infra account balance) are
+// financial/provider-billing detail, same boundary as /ai-suite/meta-billing
+// and /ai-usage (both adminOnly) — the shared 30d file cache holds the full
+// payload for every role, so the redaction has to happen per-request on the
+// way out rather than by branching what gets cached.
+function forNonAdmin(data: Analytics): Analytics {
+  return { ...data, meta: null, digitalocean: { notConfigured: true } }
+}
+
 // GET /ai-suite/channel-analytics?range=today|7d|30d|month|prev_month (default 30d)
 // Only the default range is file-cached (matches the previous fixed-30d
 // behaviour) -- an explicitly chosen non-default range always computes fresh
@@ -289,15 +319,16 @@ router.get('/channel-analytics', requireAuth, async (req, res) => {
   try {
     const resolved = resolveAiUsageRange(req.query.range)
     const useCache = resolved.range === '30d'
+    const isAdmin = req.user?.role === 'ADMIN'
 
     if (useCache) {
       const cached = readCache(CACHE_FILE)
-      if (cached) return res.json(cached)
+      if (cached) return res.json(isAdmin ? cached : forNonAdmin(cached))
     }
 
     const data = await buildAnalytics(resolved)
     if (useCache) writeCache(CACHE_FILE, data)
-    res.json(data)
+    res.json(isAdmin ? data : forNonAdmin(data))
   } catch (err: any) {
     console.error('[ChannelAnalytics]', err.message)
     res.status(500).json({ error: err.message })
@@ -308,10 +339,11 @@ router.get('/channel-analytics', requireAuth, async (req, res) => {
 router.post('/channel-analytics/refresh', requireAuth, async (req, res) => {
   try {
     const resolved = resolveAiUsageRange(req.query.range)
+    const isAdmin = req.user?.role === 'ADMIN'
     try { fs.unlinkSync(CACHE_FILE) } catch {}
     const data = await buildAnalytics(resolved)
     if (resolved.range === '30d') writeCache(CACHE_FILE, data)
-    res.json(data)
+    res.json(isAdmin ? data : forNonAdmin(data))
   } catch (err: any) {
     res.status(500).json({ error: err.message })
   }

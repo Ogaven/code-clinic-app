@@ -235,9 +235,19 @@ router.get('/clinical', requireAuth, async (req, res) => {
     const cancelled         = statusBreakdown.buckets.cancelled
     const noShows           = statusBreakdown.buckets.noShow
     const rescheduled       = statusBreakdown.buckets.rescheduled
-    const totalSeen         = statusBreakdown.buckets.seen
+    // "attended appointments" (an appointment-count) is a different quantity
+    // from "Patients Seen" (a distinct-patient count) whenever any patient
+    // has more than one attended appointment in the period — a patient with
+    // two visits this week is one "Patient Seen" but two attended
+    // appointments. The Total Scheduled reconciliation below is an
+    // appointment-level equation, so it must use the appointment count;
+    // "Patients Seen" (below) must use the patient count so it reconciles
+    // exactly against New + Active, matching the same definition Dashboard
+    // uses (clinical.ts) via this same canonical service.
+    const appointmentsAttended = statusBreakdown.buckets.seen
     const newPatients       = activitySummary.newPatients
     const returningPatients = activitySummary.returningPatients
+    const totalSeen         = newPatients + returningPatients
     // Reviews/Recalls is a sub-classification WITHIN the seen population
     // (the original business definition), not a tag over every scheduled
     // appointment regardless of outcome — an appointment that was cancelled
@@ -249,10 +259,17 @@ router.get('/clinical', requireAuth, async (req, res) => {
     // totalScheduled above.
     const reviews           = appts.filter((a: any) => ATTENDED_STATUSES.includes(a.status) && isReview(a.service)).length
 
-    // Cancelled / No-show that haven't rebooked any future appointment
-    const dnAppts = appts.filter((a: any) => a.status === 'CANCELLED' || a.status === 'NO_SHOW')
-    const dnIds   = [...new Set(dnAppts.map((a: any) => a.patientId as string))]
-    const now     = new Date()
+    // Cancelled / No-show that haven't rebooked any future appointment, plus
+    // Pending appointments whose scheduled time has already passed without
+    // ever being confirmed or attended — staff never heard back and the slot
+    // has now lapsed, so it genuinely needs follow-up the same way a
+    // cancellation does. (Pending appointments still in the future are not
+    // "needing follow-up" yet — the confirmation workflow still has time to
+    // reach the patient normally.)
+    const dnAppts      = appts.filter((a: any) => a.status === 'CANCELLED' || a.status === 'NO_SHOW')
+    const dnIds        = [...new Set(dnAppts.map((a: any) => a.patientId as string))]
+    const now          = new Date()
+    const overduePendingAppts = appts.filter((a: any) => a.status === 'PENDING' && (a.startAt as Date) < now)
 
     const futureRows = dnIds.length
       ? await prisma.appointment.findMany({
@@ -270,8 +287,14 @@ router.get('/clinical', requireAuth, async (req, res) => {
     // is just Cancelled — see statusBreakdown.buckets.cancelled above).
     const hasRebooked = new Set((futureRows as any[]).map(a => a.patientId))
 
-    // Follow-up list: cancelled/no-show patients who haven't rebooked
-    const followUpAppts = dnAppts.filter((a: any) => !hasRebooked.has(a.patientId))
+    // Follow-up list: cancelled/no-show patients who haven't rebooked, plus
+    // overdue-pending patients. Each appointment lands in exactly one of
+    // these buckets (CANCELLED/NO_SHOW/PENDING are mutually exclusive
+    // AppointmentStatus values), so no appointment is listed twice.
+    const followUpAppts = [
+      ...dnAppts.filter((a: any) => !hasRebooked.has(a.patientId)),
+      ...overduePendingAppts,
+    ]
 
     // Check which appointments staff have manually "contacted"
     const followUpPatientIds = followUpAppts.map((a: any) => a.patientId)
@@ -310,7 +333,7 @@ router.get('/clinical', requireAuth, async (req, res) => {
 
     res.json({
       period:  { view, start: start.toISOString(), end: end.toISOString(), label },
-      metrics: { totalScheduled, totalSeen, newPatients, returningPatients,
+      metrics: { totalScheduled, appointmentsAttended, totalSeen, newPatients, returningPatients,
                  reviews, confirmed, pending, cancelled, rescheduled, noShows },
       followUpList,
     })

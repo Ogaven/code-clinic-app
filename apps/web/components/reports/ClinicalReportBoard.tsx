@@ -21,6 +21,7 @@ import StatusDrilldownModal from '@/components/reports/StatusDrilldownModal'
 
 interface Metrics {
   totalScheduled: number
+  appointmentsAttended: number
   totalSeen: number
   newPatients: number
   returningPatients: number
@@ -40,7 +41,7 @@ interface FollowUpEntry {
   originalDate: string
   service: string
   doctor: string
-  reason: 'CANCELLED' | 'NO_SHOW'
+  reason: 'CANCELLED' | 'NO_SHOW' | 'PENDING'
   daysSince: number
   followUpSent: boolean
   followUpSentAt: string | null
@@ -54,6 +55,10 @@ interface ClinicalReport {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function reasonLabel(reason: FollowUpEntry['reason']): string {
+  return reason === 'NO_SHOW' ? 'No Show' : reason === 'PENDING' ? 'Pending — Overdue' : 'Cancelled'
+}
 
 function todayStr() {
   const n = new Date()
@@ -177,7 +182,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
     const headers = ['Patient','Phone','Date','Service','Doctor','Reason','Days Since','Auto Follow-up Sent','Staff Contacted']
     const rows = data.followUpList.map(r => [
       r.patientName, r.phone, fmtDate(r.originalDate), r.service, r.doctor,
-      r.reason, String(r.daysSince), r.followUpSent ? 'Yes' : 'No',
+      reasonLabel(r.reason), String(r.daysSince), r.followUpSent ? 'Yes' : 'No',
       contacted[r.appointmentId] ? `Yes (${fmtDate(contacted[r.appointmentId])})` : 'No',
     ])
     const csv = [headers, ...rows].map(row => row.map(c => `"${c}"`).join(',')).join('\n')
@@ -255,7 +260,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
             fmtDate(r.originalDate),
             r.service,
             r.doctor,
-            r.reason === 'NO_SHOW' ? 'No Show' : 'Cancelled',
+            reasonLabel(r.reason),
             r.daysSince === 0 ? 'Today' : r.daysSince === 1 ? '1 day' : `${r.daysSince} days`,
             r.followUpSent ? `Yes (${r.followUpSentAt ? fmtDate(r.followUpSentAt) : ''})` : 'No',
           ].map(v => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(v), size: 18 })] })] })),
@@ -291,8 +296,8 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
       `✅ Total Scheduled: ${m.totalScheduled}`,
       `👁️ Patients Seen: ${m.totalSeen}`,
       `🆕 New Patients: ${m.newPatients}`,
-      `🔄 Returning: ${m.returningPatients}`,
-      `🔍 Reviews / Recalls: ${m.reviews}`,
+      `🔄 Active Patients: ${m.returningPatients}`,
+      `🔍 Reviews / Recalls: ${m.reviews} (informational — already included in Patients Seen)`,
       `✔️ Confirmed: ${m.confirmed}`,
       `⏳ Pending: ${m.pending}`,
       `❌ Cancelled: ${m.cancelled}`,
@@ -303,7 +308,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
     if (data.followUpList.length > 0) {
       lines.push('', '*Needs Follow-up:*')
       data.followUpList.forEach((r, i) => {
-        lines.push(`${i + 1}. ${r.patientName} — ${r.reason === 'NO_SHOW' ? 'No-Show' : 'Cancelled'} (${r.doctor}) — ${r.phone}`)
+        lines.push(`${i + 1}. ${r.patientName} — ${reasonLabel(r.reason)} (${r.doctor}) — ${r.phone}`)
       })
     }
     navigator.clipboard.writeText(lines.join('\n'))
@@ -324,12 +329,17 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
   // still drives the "Needs Follow-up" list below; it's just not surfaced
   // here as its own status-breakdown card, since that duplicated the
   // Cancelled concept.
-  const STATS: { label: string; value: number; color: string; Icon: any; status?: string }[] = !m ? [] : [
-    { label: 'Total Scheduled',             value: m.totalScheduled,          color: '#29ABE2', Icon: Calendar      },
-    { label: 'Patients Seen',               value: m.totalSeen,               color: '#10B981', Icon: UserCheck     },
-    { label: 'New Patients',                value: m.newPatients,             color: '#8B5CF6', Icon: UserPlus      },
-    { label: 'Returning',                   value: m.returningPatients,       color: '#3B82F6', Icon: Users         },
-    { label: 'Reviews / Recalls',           value: m.reviews,                 color: '#F59E0B', Icon: RotateCcw     },
+  const STATS: { label: string; value: number; color: string; Icon: any; status?: string; tooltip?: string }[] = !m ? [] : [
+    { label: 'Total Scheduled',             value: m.totalScheduled,          color: '#29ABE2', Icon: Calendar,
+      tooltip: 'Every appointment scheduled to start in this period, regardless of outcome.' },
+    { label: 'Patients Seen',               value: m.totalSeen,               color: '#10B981', Icon: UserCheck,
+      tooltip: 'Unique patients who attended at least one appointment in this period. Equals New Patients + Active Patients.' },
+    { label: 'New Patients',                value: m.newPatients,             color: '#8B5CF6', Icon: UserPlus,
+      tooltip: 'Patients whose very first attended visit at Code Clinic falls inside this period.' },
+    { label: 'Active Patients',             value: m.returningPatients,       color: '#3B82F6', Icon: Users,
+      tooltip: 'Existing Code Clinic patients (attended before this period) who attended again during this period.' },
+    { label: 'Reviews / Recalls',           value: m.reviews,                 color: '#F59E0B', Icon: RotateCcw,
+      tooltip: 'Informational only — attended visits in this period that were a recall/review/check-up. Already counted inside Patients Seen; not added on top.' },
     { label: 'Confirmed',                   value: m.confirmed,               color: '#14B8A6', Icon: CheckCircle2, status: 'CONFIRMED' },
     { label: 'Pending',                     value: m.pending,                 color: '#94A3B8', Icon: Clock,        status: 'PENDING'   },
     { label: 'Cancelled',                   value: m.cancelled,               color: '#EF4444', Icon: XCircle,      status: 'CANCELLED' },
@@ -488,10 +498,10 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
                   <div className="h-7 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-10" />
                 </div>
               ))
-            : STATS.map(({ label, value, color, Icon, status }, i) => (
+            : STATS.map(({ label, value, color, Icon, status, tooltip }, i) => (
                 <div key={i}
                   onClick={status ? () => setDrilldown({ label, status, color }) : undefined}
-                  title={status ? `View the ${value} appointment${value !== 1 ? 's' : ''} behind this number` : undefined}
+                  title={tooltip ?? (status ? `View the ${value} appointment${value !== 1 ? 's' : ''} behind this number` : undefined)}
                   className={`bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm hover:shadow-md transition-shadow ${status ? 'cursor-pointer hover:-translate-y-0.5 hover:border-gray-200 dark:hover:border-white/20' : ''}`}>
                   <div className="flex items-start justify-between mb-2 gap-1">
                     <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 leading-tight">{label}</p>
@@ -524,7 +534,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
             <div>
               <h2 className="text-base font-bold text-gray-800 dark:text-white">Needs Follow-up</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Cancelled / no-show patients with no future appointment booked
+                Cancelled / no-show patients with no future appointment booked, plus pending appointments whose time has already passed unconfirmed
               </p>
             </div>
             {!loading && data && data.followUpList.length > 0 && (
@@ -562,7 +572,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
                       <td colSpan={9} className="px-4 py-14 text-center">
                         <CheckCircle2 size={36} className="mx-auto mb-3 text-green-400 opacity-50" />
                         <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">All patients accounted for</p>
-                        <p className="text-xs text-gray-400 mt-1">No cancelled or no-show patients without a rebooked appointment</p>
+                        <p className="text-xs text-gray-400 mt-1">No cancelled, no-show, or overdue-pending patients need follow-up right now</p>
                       </td>
                     </tr>
                   ) : (
@@ -595,9 +605,11 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
                               r.reason === 'NO_SHOW'
                                 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                                : r.reason === 'PENDING'
+                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                                 : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                             }`}>
-                              {r.reason === 'NO_SHOW' ? 'No Show' : 'Cancelled'}
+                              {reasonLabel(r.reason)}
                             </span>
                           </td>
                           <td className="px-4 py-3">

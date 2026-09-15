@@ -10,7 +10,7 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList,
 } from 'recharts'
-import { cn, formatUGX, getGreeting } from '@/lib/utils'
+import { cn, formatUGX, getGreeting, kampalaMonthToDateLabel } from '@/lib/utils'
 import { readTheme, applyTheme } from '@/lib/theme'
 import Avatar from '@/components/ui/Avatar'
 import InfoTooltip from '@/components/ui/InfoTooltip'
@@ -609,11 +609,12 @@ export default function DashboardPage() {
             // last-month COMPLETED figure is returned by the API, so no
             // delta is shown here rather than compare against the old
             // (differently-defined) activeLastMonth.
+            const rangeLabel = kampalaMonthToDateLabel()
             const segs = [
-              { key: 'total', label: 'Total Patients', value: m.totalPatients, color: '#1A237E', trendKey: 'totalPatients' as const, tooltip: 'All patient profiles currently in Code Clinic.' },
-              { key: 'seen', label: 'Patients Seen', value: m.newPatientsThisMonth + m.returningPatientsThisMonth, color: '#29ABE2', trendKey: 'patientsSeen' as const, tooltip: 'Unique patients who attended an appointment this month.' },
-              { key: 'returning', label: 'Returning', value: m.returningPatientsThisMonth, color: '#10B981', trendKey: 'returningPatients' as const, tooltip: 'Patients seen this month who had visited Code Clinic before this month.' },
-              { key: 'fresh', label: 'New Patients', value: m.newPatientsThisMonth, color: '#F59E0B', trendKey: 'newPatients' as const, tooltip: 'Patients seen this month whose first clinic visit was this month.' },
+              { key: 'total', label: 'Total Patients', value: m.totalPatients, color: '#1A237E', trendKey: 'totalPatients' as const, tooltip: 'All patient records currently registered at Code Clinic.' },
+              { key: 'seen', label: 'Patients Seen', value: m.newPatientsThisMonth + m.returningPatientsThisMonth, color: '#29ABE2', trendKey: 'patientsSeen' as const, tooltip: `Unique patients who attended an appointment from ${rangeLabel}. Equals New Patients + Active Patients.` },
+              { key: 'returning', label: 'Active Patients', value: m.returningPatientsThisMonth, color: '#10B981', trendKey: 'returningPatients' as const, tooltip: `Existing Code Clinic patients who attended from ${rangeLabel}.` },
+              { key: 'fresh', label: 'New Patients', value: m.newPatientsThisMonth, color: '#F59E0B', trendKey: 'newPatients' as const, tooltip: `Patients attending Code Clinic for the first time, from ${rangeLabel}.` },
             ]
             // Seen = Returning + New exactly (the backend computes them as an
             // exhaustive split of the same completed-this-month set — see
@@ -627,9 +628,9 @@ export default function DashboardPage() {
             return (
               <>
                 {/* Legend for the two-segment mix bar below — colored dots so the
-                    Returning/New split isn't identifiable by position alone. */}
+                    Active/New split isn't identifiable by position alone. */}
                 <div className="flex items-center justify-between px-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-400 dark:text-white/30">
-                  <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: '#10B981' }} />Returning</span>
+                  <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: '#10B981' }} />Active</span>
                   <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: '#F59E0B' }} />New</span>
                 </div>
                 <div className="mt-1 flex h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">

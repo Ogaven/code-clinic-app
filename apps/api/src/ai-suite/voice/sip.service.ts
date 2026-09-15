@@ -13,6 +13,7 @@ import { createConvAISession, getOrCreateAgentId } from './elevenlabs-conv-ai.se
 import { prisma } from '../../lib/prisma'
 import { normalizePhone } from '../../utils/phone'
 import { recordMissedCall } from '../../crm-automation/missed-call.service'
+import { isCallingChannelActive } from '../../services/calling-channel.service'
 
 // ── drachtio-srf ──────────────────────────────────────────────────────────────
 // drachtio-srf connects to a drachtio-server process which handles SIP signaling.
@@ -568,8 +569,7 @@ export async function handleInboundCall(req: any, res: any): Promise<void> {
   const offerSdp = (req.body as string | undefined) ?? ''
   console.log(`[SIP] Offer SDP snippet: ${offerSdp.slice(0, 200).replace(/\r\n/g, ' | ')}`)
 
-  const agentSetting = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
-  if (agentSetting?.value === 'false') {
+  if (!(await isCallingChannelActive())) {
     console.log(`[SIP] Calling agents disabled — declining inbound call from ${callerNumber}`)
     recordMissedCall({
       provider:       'SIP_DRACHTIO',

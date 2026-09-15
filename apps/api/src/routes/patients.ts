@@ -563,8 +563,19 @@ router.get('/:id', requireAuth, async (req, res) => {
     })
     if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
     const avatarUrl = patient.avatarR2Key ? getPublicUrl(patient.avatarR2Key) : null
+    // medicalNotesEncrypted is deeper clinical content than allergies/
+    // medicalHistory (which front-desk legitimately needs for safety/intake)
+    // — every patient-profile UI already treats it as Doctor/Admin-only (it's
+    // never rendered on the Receptionist patient page), and the same field
+    // was already recognised as GDPR-sensitive when it was found leaking
+    // into the receptionist AI agent's output (see agent-tools.ts history).
+    // This endpoint was the one place that boundary wasn't enforced
+    // server-side — any authenticated role could read it directly from the
+    // API response even though no UI for their role displayed it.
+    const isClinicalRole = req.user!.role === 'ADMIN' || req.user!.role === 'DOCTOR'
     res.json({
       ...patient,
+      medicalNotesEncrypted: isClinicalRole ? patient.medicalNotesEncrypted : null,
       patientId: formatPatientId(patient.patientNumber),
       accountBalance: Number(patient.accountBalance),
       avatarUrl,

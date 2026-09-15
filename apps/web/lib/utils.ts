@@ -42,6 +42,17 @@ export function formatKampalaDate(date: Date): string {
   })
 }
 
+// "1 September to 15 September" style label for the current Kampala
+// month-to-date — used so Patient Overview tooltips (Admin + Receptionist)
+// state the real dates their figures cover instead of a static "this month".
+export function kampalaMonthToDateLabel(): string {
+  const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'long' })
+  const parts = fmt.formatToParts(new Date())
+  const day   = parts.find(p => p.type === 'day')?.value ?? ''
+  const month = parts.find(p => p.type === 'month')?.value ?? ''
+  return `1 ${month} to ${day} ${month}`
+}
+
 export function getGreeting(): string {
   const hour = new Date().toLocaleString('en-GB', {
     timeZone: 'Africa/Nairobi',

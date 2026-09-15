@@ -182,23 +182,27 @@ describe('GET /reports/clinical — status reconciliation', () => {
     const m = report.metrics
 
     expect(m.totalScheduled).toBe(7)
-    expect(m.totalSeen + m.confirmed + m.pending + m.cancelled + m.noShows + m.rescheduled).toBe(m.totalScheduled)
+    // Total Scheduled reconciles against the appointment-level "attended"
+    // bucket (appointmentsAttended), not the patient-level "Patients Seen"
+    // (totalSeen) — see the next describe block for why those two are not
+    // always the same number.
+    expect(m.appointmentsAttended + m.confirmed + m.pending + m.cancelled + m.noShows + m.rescheduled).toBe(m.totalScheduled)
     // Explicit check that the previously-separate "Cancelled & Not
     // Rescheduled" bucket is gone — Cancelled is just Cancelled now.
     expect(m).not.toHaveProperty('cancelledNotRescheduled')
     expect(m.cancelled).toBe(1)
   })
 
-  it('New + Returning equals Patients Seen for the same range', async () => {
+  it('New + Active equals Patients Seen for the same range', async () => {
     const newPatient = makePatient()
-    const returningPatient = makePatient()
+    const activePatient = makePatient()
 
-    // returningPatient has an attended visit well before the report range.
-    makeAppt(returningPatient.id, new Date('2026-01-10T12:00:00.000Z'), 'COMPLETED')
+    // activePatient has an attended visit well before the report range.
+    makeAppt(activePatient.id, new Date('2026-01-10T12:00:00.000Z'), 'COMPLETED')
 
     // Both patients are seen inside the reported range.
     makeAppt(newPatient.id, DAY_ANCHOR, 'COMPLETED')
-    makeAppt(returningPatient.id, DAY_ANCHOR, 'COMPLETED')
+    makeAppt(activePatient.id, DAY_ANCHOR, 'COMPLETED')
 
     const report = await callClinicalReport({ view: 'daily', date: '2026-09-14' })
     const m = report.metrics
@@ -207,6 +211,28 @@ describe('GET /reports/clinical — status reconciliation', () => {
     expect(m.newPatients).toBe(1)
     expect(m.returningPatients).toBe(1)
     expect(m.newPatients + m.returningPatients).toBe(m.totalSeen)
+  })
+
+  it('a patient with two attended visits in-range counts once in Patients Seen but twice in appointmentsAttended', async () => {
+    const busyPatient = makePatient()
+    // Prior visit before the range, so this patient is "Active" not "New".
+    makeAppt(busyPatient.id, new Date('2026-01-10T12:00:00.000Z'), 'COMPLETED')
+    // Two attended visits inside the same reported day.
+    makeAppt(busyPatient.id, DAY_ANCHOR, 'COMPLETED')
+    makeAppt(busyPatient.id, new Date('2026-09-14T15:00:00.000Z'), 'COMPLETED')
+
+    const report = await callClinicalReport({ view: 'daily', date: '2026-09-14' })
+    const m = report.metrics
+
+    // Appointment-level: two attended appointments.
+    expect(m.appointmentsAttended).toBe(2)
+    // Patient-level: one distinct patient, correctly bucketed as Active (not New).
+    expect(m.totalSeen).toBe(1)
+    expect(m.newPatients).toBe(0)
+    expect(m.returningPatients).toBe(1)
+    expect(m.newPatients + m.returningPatients).toBe(m.totalSeen)
+    // The two counts deliberately diverge here — that's the bug this test guards against.
+    expect(m.appointmentsAttended).not.toBe(m.totalSeen)
   })
 })
 

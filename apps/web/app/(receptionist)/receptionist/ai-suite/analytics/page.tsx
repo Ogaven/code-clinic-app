@@ -6,6 +6,17 @@ import { cn } from '@/lib/utils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type ChannelStatus = 'ACTIVE' | 'DEGRADED' | 'ERROR' | 'CONFIG_REQUIRED' | 'PAUSED' | 'UNKNOWN'
+
+const CHANNEL_STATUS_META: Record<ChannelStatus, { label: string; className: string }> = {
+  ACTIVE:          { label: 'Active',          className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  DEGRADED:        { label: 'Delivery Issues', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  ERROR:           { label: 'Down',            className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  CONFIG_REQUIRED: { label: 'Setup Needed',    className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  PAUSED:          { label: 'Paused',          className: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40' },
+  UNKNOWN:         { label: 'Status Unknown',  className: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40' },
+}
+
 interface DayPoint   { day: string; agent: number; user: number }
 interface MonthTotal { agent: number; user: number; total: number }
 interface ChannelData {
@@ -41,7 +52,7 @@ interface DoBalance {
 
 interface Analytics {
   channels: Record<string, ChannelData>
-  channelStatus?: Record<string, 'ACTIVE' | 'PAUSED'>
+  channelStatus?: Record<string, ChannelStatus>
   operational?: OperationalVolume
   range?: AiUsageRange
   meta: { uganda: WabaUsage; kenya: WabaUsage; cachedAt: string } | null
@@ -88,7 +99,7 @@ interface WhatsAppDeliveryHealth {
   lastFailedDeliveryAt: string | null
   latestError: { code: number; title: string; message: string | null; details: string | null; occurredAt: string } | null
   failureCountByCode: Record<string, number>
-  status: 'HEALTHY' | 'DEGRADED' | 'DOWN'
+  status: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN'
 }
 
 interface CreditLine {
@@ -158,7 +169,7 @@ function ChannelBarChart({ points }: { points: DayPoint[] }) {
 
 // ── Single channel card ────────────────────────────────────────────────────────
 
-function ChannelCard({ channel, data, status, rangeLabel }: { channel: string; data: ChannelData; status?: 'ACTIVE' | 'PAUSED'; rangeLabel?: string }) {
+function ChannelCard({ channel, data, status, rangeLabel }: { channel: string; data: ChannelData; status?: ChannelStatus; rangeLabel?: string }) {
   const meta = CHANNEL_META[channel] ?? { label: channel, icon: '📡' }
   const changeAmt = data.thisMonth.total - data.lastMonth.total
   const changePct = data.lastMonth.total
@@ -174,13 +185,17 @@ function ChannelCard({ channel, data, status, rangeLabel }: { channel: string; d
             <div className="flex items-center gap-1.5">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">{meta.label}</p>
               {status && (
-                <span className={cn(
-                  'text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full',
-                  status === 'ACTIVE'
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                    : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40',
-                )}>
-                  {status === 'ACTIVE' ? 'Active' : 'Paused'}
+                <span
+                  className={cn('text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full', CHANNEL_STATUS_META[status].className)}
+                  title={
+                    status === 'DEGRADED'        ? 'WhatsApp deliveries are failing more than usual right now.' :
+                    status === 'ERROR'           ? 'WhatsApp deliveries are failing — patients likely aren’t receiving messages on this channel.' :
+                    status === 'CONFIG_REQUIRED' ? 'This channel isn’t connected yet — it needs setup before patients can message through it.' :
+                    status === 'UNKNOWN'         ? 'Not enough recent activity to tell if this channel is working.' :
+                    undefined
+                  }
+                >
+                  {CHANNEL_STATUS_META[status].label}
                 </span>
               )}
             </div>
@@ -393,6 +408,9 @@ const HEALTH_STYLE: Record<WhatsAppDeliveryHealth['status'], { label: string; pi
   HEALTHY:  { label: 'Healthy',  pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', dot: 'bg-emerald-500' },
   DEGRADED: { label: 'Degraded', pill: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',       dot: 'bg-amber-500' },
   DOWN:     { label: 'Down',     pill: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',               dot: 'bg-red-500' },
+  // Too few send attempts in the last 24h to judge either way — deliberately
+  // distinct from HEALTHY so a quiet window can never read as "confirmed fine."
+  UNKNOWN:  { label: 'Unknown',  pill: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40',              dot: 'bg-gray-400' },
 }
 
 function fmtDateTime(iso: string | null): string {
@@ -412,7 +430,7 @@ function WhatsAppHealthWindowStat({ label, w }: { label: string; w: DeliveryWind
   )
 }
 
-function WhatsAppHealthCard({ data, loading }: { data: WhatsAppDeliveryHealth | null; loading: boolean }) {
+function WhatsAppHealthCard({ data, loading, isAdmin }: { data: WhatsAppDeliveryHealth | null; loading: boolean; isAdmin: boolean }) {
   return (
     <section>
       <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
@@ -450,14 +468,20 @@ function WhatsAppHealthCard({ data, loading }: { data: WhatsAppDeliveryHealth | 
               </div>
             </div>
 
-            {data.latestError && (
+            {!isAdmin && data.status !== 'HEALTHY' && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/20 rounded-xl text-[11px] text-amber-700 dark:text-amber-400">
+                Some WhatsApp messages aren't going through right now. This has been flagged for the clinic admin.
+              </div>
+            )}
+
+            {isAdmin && data.latestError && (
               <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-800/20 rounded-xl text-[11px] text-red-600 dark:text-red-400">
-                <span className="font-bold">Latest provider error</span> — #{data.latestError.code} {data.latestError.title}
+                <span className="font-bold">Latest provider error (admin)</span> — #{data.latestError.code} {data.latestError.title}
                 {data.latestError.details && <span className="block mt-1 text-red-500/80 dark:text-red-400/70">{data.latestError.details}</span>}
               </div>
             )}
 
-            {Object.keys(data.failureCountByCode).length > 0 && (
+            {isAdmin && Object.keys(data.failureCountByCode).length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {Object.entries(data.failureCountByCode).map(([code, count]) => (
                   <span key={code} className="text-[10px] px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-white/50">
@@ -466,7 +490,9 @@ function WhatsAppHealthCard({ data, loading }: { data: WhatsAppDeliveryHealth | 
                 ))}
               </div>
             )}
-            <p className="text-[9px] text-gray-300 dark:text-white/20">Failure counts are since delivery-failure tracking began (2026-09-15) — not backfilled from before instrumentation existed.</p>
+            {isAdmin && (
+              <p className="text-[9px] text-gray-300 dark:text-white/20">Failure counts are since delivery-failure tracking began (2026-09-15) — not backfilled from before instrumentation existed.</p>
+            )}
           </>
         )}
       </div>
@@ -808,7 +834,7 @@ export default function AnalyticsPage() {
           </section>
 
           {/* ── WhatsApp delivery health (real webhook-fed status, visible to all staff) ── */}
-          <WhatsAppHealthCard data={whatsappHealth} loading={whatsappHealthLoading} />
+          <WhatsAppHealthCard data={whatsappHealth} loading={whatsappHealthLoading} isAdmin={isAdmin} />
 
           {/* ── OpenAI token usage & cost (Admin only) ──── */}
           {isAdmin && (
@@ -844,7 +870,8 @@ export default function AnalyticsPage() {
             </section>
           )}
 
-          {/* ── DigitalOcean costs ─────────────────────── */}
+          {/* ── DigitalOcean costs (Admin only — infrastructure billing) ── */}
+          {isAdmin && (
           <section>
             <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
               <DollarSign size={10} /> Infrastructure (DigitalOcean)
@@ -883,6 +910,7 @@ export default function AnalyticsPage() {
               ) : null}
             </div>
           </section>
+          )}
         </>
       ) : null}
     </div>

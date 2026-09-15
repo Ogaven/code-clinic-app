@@ -27,6 +27,7 @@ import {
 } from '../crm-automation/reporting.service'
 import { isCrmAutomationLive, crmFeatureStatus } from '../crm-automation/dry-run'
 import { isSmsChannelActive } from '../ai-suite/sms/sms.service'
+import { isCallingChannelActive } from '../services/calling-channel.service'
 
 const router = Router()
 
@@ -427,9 +428,6 @@ router.post('/dispatch/run', requireAuth, adminOnly, async (_req: Request, res: 
 // the SIP voice pipeline itself checks before answering — so this can never
 // silently drift from what the system is actually doing.
 router.get('/automation-status', requireAuth, adminAndReceptionist, async (_req: Request, res: Response) => {
-  const callingSetting = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
-  const callingActive  = callingSetting?.value !== 'false'
-
   res.json({
     masterLive: isCrmAutomationLive(),
     features:   crmFeatureStatus(),
@@ -439,7 +437,7 @@ router.get('/automation-status', requireAuth, adminAndReceptionist, async (_req:
       FACEBOOK:     'ACTIVE',
       WEBSITE_CHAT: 'ACTIVE',
       SMS:          isSmsChannelActive() ? 'ACTIVE' : 'PAUSED',
-      CALLING:      callingActive ? 'ACTIVE' : 'PAUSED',
+      CALLING:      (await isCallingChannelActive()) ? 'ACTIVE' : 'PAUSED',
     },
   })
 })
