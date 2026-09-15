@@ -3,7 +3,7 @@
 import { Component, useEffect, useRef, useState } from 'react'
 import {
   Search, Plus, Phone, Mail, Calendar, ChevronRight, X, User, Users,
-  Upload, Download, FileText, ExternalLink,
+  Upload, Download, FileText, ExternalLink, QrCode,
   CheckCircle2, AlertCircle, Trash2,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -466,6 +466,13 @@ export default function PatientsPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Walk-In Intake QR */}
+              <Link href="/receptionist/patients/walk-in" title="Walk-In Intake QR"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-cyan-200 dark:border-cyan-800 text-cyan-700 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 transition-all">
+                <QrCode size={13} />
+                Walk-In QR
+              </Link>
 
               {/* Add patient */}
               <button onClick={() => setShowAdd(true)}

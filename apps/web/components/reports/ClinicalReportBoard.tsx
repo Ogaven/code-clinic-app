@@ -13,7 +13,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, RefreshCw, Download, Printer, MessageCircle, CheckCircle2,
   Calendar, ChevronLeft, ChevronRight, Users, UserCheck, UserPlus,
-  RotateCcw, Clock, XCircle, PhoneOff, CalendarX, FileText, Repeat2,
+  RotateCcw, Clock, XCircle, PhoneOff, FileText, Repeat2,
 } from 'lucide-react'
 import StatusDrilldownModal from '@/components/reports/StatusDrilldownModal'
 
@@ -30,7 +30,6 @@ interface Metrics {
   cancelled: number
   rescheduled: number
   noShows: number
-  cancelledNotRescheduled: number
 }
 
 interface FollowUpEntry {
@@ -88,14 +87,28 @@ function addMonths(monthStr: string, n: number): string {
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-GB', {
-    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi',
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala',
   })
+}
+
+// Kampala-local calendar-date string (YYYY-MM-DD) for a UTC instant — used
+// for the drilldown modal's startDate/endDate, which are plain calendar
+// dates handed to a downstream endpoint, not raw instants. Naive
+// `iso.slice(0, 10)` would read back the wrong day whenever the Kampala
+// midnight instant falls on the previous UTC calendar date (Kampala is
+// UTC+3, so e.g. 2026-09-14T00:00 Kampala is 2026-09-13T21:00 UTC).
+// `endExclusive` pulls back 1ms first so an exclusive end-of-range boundary
+// (the report period's `end`, which is the start of the *next* period)
+// resolves to the last inclusive day instead of the following one.
+function kampalaDateStr(iso: string, endExclusive = false): string {
+  const ms = new Date(iso).getTime() - (endExclusive ? 1 : 0)
+  return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
 }
 
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString('en-GB', {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-    hour12: true, timeZone: 'Africa/Nairobi',
+    hour12: true, timeZone: 'Africa/Kampala',
   })
 }
 
@@ -302,9 +315,15 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
   // `status` is only set for cards that map to exactly one real
   // AppointmentStatus enum value (packages/database/prisma/schema.prisma) —
   // those become click-to-drill-down. The others (Total Scheduled, Patients
-  // Seen, New/Returning, Reviews, Cancelled & Not Rescheduled) are computed
-  // aggregates across multiple statuses, not a single filterable value, so
-  // they stay display-only rather than drilling into a misleading subset.
+  // Seen, New/Returning, Reviews) are computed aggregates across multiple
+  // statuses, not a single filterable value, so they stay display-only
+  // rather than drilling into a misleading subset.
+  //
+  // Cancelled is just Cancelled — there is no separate "Cancelled & Not
+  // Rescheduled" reconciliation bucket. The has-this-patient-rebooked signal
+  // still drives the "Needs Follow-up" list below; it's just not surfaced
+  // here as its own status-breakdown card, since that duplicated the
+  // Cancelled concept.
   const STATS: { label: string; value: number; color: string; Icon: any; status?: string }[] = !m ? [] : [
     { label: 'Total Scheduled',             value: m.totalScheduled,          color: '#29ABE2', Icon: Calendar      },
     { label: 'Patients Seen',               value: m.totalSeen,               color: '#10B981', Icon: UserCheck     },
@@ -320,7 +339,6 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
     // in scheduling.ts already supports a comma-separated status list.
     { label: 'Rescheduled',                 value: m.rescheduled,             color: '#A855F7', Icon: Repeat2,      status: 'RESCHEDULED,CANCELLED_RESCHEDULED' },
     { label: 'No-Shows',                    value: m.noShows,                 color: '#F97316', Icon: PhoneOff,     status: 'NO_SHOW'   },
-    { label: 'Cancelled & Not Rescheduled', value: m.cancelledNotRescheduled, color: '#DC2626', Icon: CalendarX     },
   ]
 
   const weekEnd = weekStart ? addDays(weekStart, 6) : ''
@@ -464,7 +482,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
         {/* ── Metric cards ───────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {loading
-            ? Array.from({ length: 11 }).map((_, i) => (
+            ? Array.from({ length: 10 }).map((_, i) => (
                 <div key={i} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm">
                   <div className="h-2.5 bg-gray-100 dark:bg-white/10 rounded animate-pulse mb-3 w-16" />
                   <div className="h-7 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-10" />
@@ -494,8 +512,8 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
             label={drilldown.label}
             status={drilldown.status}
             color={drilldown.color}
-            startDate={data.period.start.slice(0, 10)}
-            endDate={data.period.end.slice(0, 10)}
+            startDate={kampalaDateStr(data.period.start)}
+            endDate={kampalaDateStr(data.period.end, true)}
             onClose={() => setDrilldown(null)}
           />
         )}

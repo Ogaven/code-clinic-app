@@ -13,6 +13,7 @@ import {
 import { cn, formatUGX, getGreeting } from '@/lib/utils'
 import { readTheme, applyTheme } from '@/lib/theme'
 import Avatar from '@/components/ui/Avatar'
+import InfoTooltip from '@/components/ui/InfoTooltip'
 
 // ── Everything below is real, live Code Clinic data reused from existing
 //    APIs — EXCEPT the Financial Snapshot, which uses explicitly
@@ -27,6 +28,15 @@ interface DashMetrics {
 }
 interface DashCharts { aiPerformance: { conversationsHandled: number; appointmentsBooked: number; messagesSent: number } }
 interface DashData { metrics: DashMetrics; charts: DashCharts }
+// GET /clinical/analytics/dashboard/trend — current Kampala month-to-date vs
+// the same number of days into the previous month, per Patients Overview
+// metric. percentChange is null (not Infinity/NaN) when there's no
+// meaningful previous-period baseline (e.g. previous value was 0).
+interface MetricTrend { current: number; previous: number; percentChange: number | null }
+interface DashTrend {
+  totalPatients: MetricTrend; patientsSeen: MetricTrend
+  newPatients: MetricTrend; returningPatients: MetricTrend
+}
 interface PipelineEntry { count: number; totalUGX: number }
 interface DentalData { pipeline: Record<string, PipelineEntry> }
 interface Appt {
@@ -210,6 +220,7 @@ export default function DashboardPage() {
   // everything else on the page uses Tailwind dark: classes as usual.
   const [dark, setDark] = useState(false)
   const [dashData, setDashData] = useState<DashData | null>(null)
+  const [trend, setTrend] = useState<DashTrend | null>(null)
   const [dentalData, setDentalData] = useState<DentalData | null>(null)
   const [weekAppts, setWeekAppts] = useState<Appt[] | null>(null)
   const [todayAppts, setTodayAppts] = useState<Appt[] | null>(null)
@@ -240,6 +251,9 @@ export default function DashboardPage() {
 
     fetch('/api-proxy/clinical/analytics/dashboard', { headers: auth })
       .then(r => r.json()).then(d => { if (d?.metrics) setDashData(d) }).catch(() => {})
+
+    fetch('/api-proxy/clinical/analytics/dashboard/trend', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d?.trends) setTrend(d.trends) }).catch(() => {})
 
     fetch('/api-proxy/clinical/analytics/dental-dashboard', { headers: auth })
       .then(r => r.json()).then(d => { if (d && !d.error) setDentalData(d) }).catch(() => {})
@@ -579,10 +593,10 @@ export default function DashboardPage() {
             // delta is shown here rather than compare against the old
             // (differently-defined) activeLastMonth.
             const segs = [
-              { key: 'total', label: 'Total Patients', value: totalPatients, color: '#1A237E', delta: null as number | null },
-              { key: 'seen', label: 'Patients Seen', value: m.newPatientsThisMonth + m.returningPatientsThisMonth, color: '#29ABE2', delta: null as number | null },
-              { key: 'returning', label: 'Returning', value: m.returningPatientsThisMonth, color: '#10B981', delta: null as number | null },
-              { key: 'fresh', label: 'New Patients', value: m.newPatientsThisMonth, color: '#F59E0B', delta: null as number | null },
+              { key: 'total', label: 'Total Patients', value: totalPatients, color: '#1A237E', trendKey: 'totalPatients' as const, tooltip: 'All patient profiles currently in Code Clinic.' },
+              { key: 'seen', label: 'Patients Seen', value: m.newPatientsThisMonth + m.returningPatientsThisMonth, color: '#29ABE2', trendKey: 'patientsSeen' as const, tooltip: 'Unique patients who attended an appointment this month.' },
+              { key: 'returning', label: 'Returning', value: m.returningPatientsThisMonth, color: '#10B981', trendKey: 'returningPatients' as const, tooltip: 'Patients seen this month who had visited Code Clinic before this month.' },
+              { key: 'fresh', label: 'New Patients', value: m.newPatientsThisMonth, color: '#F59E0B', trendKey: 'newPatients' as const, tooltip: 'Patients seen this month whose first clinic visit was this month.' },
             ]
             // Seen = Returning + New exactly (the backend computes them as an
             // exhaustive split of the same completed-this-month set — see
@@ -595,9 +609,11 @@ export default function DashboardPage() {
             const barTotal = Math.max(totalPatients ?? seenCount, 1)
             return (
               <>
+                {/* Legend for the two-segment mix bar below — colored dots so the
+                    Returning/New split isn't identifiable by position alone. */}
                 <div className="flex items-center justify-between px-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-400 dark:text-white/30">
-                  <span>Returning</span>
-                  <span>New</span>
+                  <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: '#10B981' }} />Returning</span>
+                  <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: '#F59E0B' }} />New</span>
                 </div>
                 <div className="mt-1 flex h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
                   <div style={{ width: `${(m.returningPatientsThisMonth / barTotal) * 100}%`, background: '#10B981' }} />
@@ -617,22 +633,35 @@ export default function DashboardPage() {
                           <span className="ml-auto grid h-5 w-5 flex-shrink-0 place-items-center rounded-full bg-gray-50 text-gray-400 dark:bg-white/5 dark:text-white/30"><ArrowUpRight size={10} /></span>
                         </div>
                         <p className="text-xl font-extrabold leading-tight text-clinic-navy dark:text-white">{s.value !== null ? s.value.toLocaleString() : '—'}</p>
-                        <p className="text-[9px] font-medium leading-tight text-gray-500 dark:text-slate-400">{s.label}</p>
-                        {s.delta !== null ? (
-                          <span className={cn('mt-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold', s.delta >= 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' : 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400')}>
-                            {s.delta >= 0 ? <TrendingUp size={9} /> : <TrendingDown size={9} />}{s.delta >= 0 ? '+' : ''}{s.delta}
-                          </span>
-                        ) : (
-                          // Dashed border deliberately distinguishes this from
-                          // the solid-fill badge above — visually "preview",
-                          // not a real figure. No number is shown/implied
-                          // because there's no real week-over-week comparison
-                          // source for this metric yet (would need a backend
-                          // addition — see /clinical/analytics/dashboard).
-                          <span title="Trend preview — real week-over-week comparison needs a backend addition, not implemented yet" className="mt-1 inline-flex items-center gap-0.5 rounded-full border border-dashed border-gray-300 px-1.5 py-0.5 text-[9px] font-bold text-gray-400 dark:border-white/15 dark:text-white/30">
-                            <TrendingUp size={9} />—
-                          </span>
-                        )}
+                        <p className="flex items-center gap-1 text-[9px] font-medium leading-tight text-gray-500 dark:text-slate-400">
+                          {s.label}
+                          <InfoTooltip text={s.tooltip} />
+                        </p>
+                        {(() => {
+                          // Real current-MTD-vs-same-day-last-month trend from
+                          // GET /clinical/analytics/dashboard/trend (Kampala
+                          // time, see kampala-time.ts). percentChange is null
+                          // (never Infinity/NaN) when the previous period had
+                          // no meaningful baseline — shown as "New" rather
+                          // than a bogus percentage.
+                          const t = trend?.[s.trendKey]
+                          if (!t) {
+                            return (
+                              <span className="mt-1 inline-flex items-center gap-0.5 rounded-full border border-dashed border-gray-300 px-1.5 py-0.5 text-[9px] font-bold text-gray-400 dark:border-white/15 dark:text-white/30">—</span>
+                            )
+                          }
+                          if (t.percentChange === null) {
+                            return (
+                              <span className="mt-1 inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-500 dark:bg-blue-400/10 dark:text-blue-400">New</span>
+                            )
+                          }
+                          const up = t.percentChange >= 0
+                          return (
+                            <span className={cn('mt-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold', up ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400' : 'bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-400')}>
+                              {up ? <TrendingUp size={9} /> : <TrendingDown size={9} />}{up ? '+' : ''}{t.percentChange}%
+                            </span>
+                          )
+                        })()}
                       </div>
                     )
                   })}

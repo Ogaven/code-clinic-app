@@ -345,6 +345,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
           onMarkAllRead={markAllRead}
           onOpenNotification={openNotification}
           onOpenHelp={() => setShowHelp(true)}
+          install={pwaInstall}
         />
       </div>
 

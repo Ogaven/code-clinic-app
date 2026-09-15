@@ -85,6 +85,7 @@ import { checkAndSendLeadNurtureMessages } from './ai-suite/scheduler/lead-nurtu
 import { updatePatientStatuses }           from './ai-suite/scheduler/patient-status.service'
 import { checkAndSendBirthdayAlerts }     from './ai-suite/scheduler/birthday.service'
 import { initializeSIP }                   from './ai-suite/voice/sip.service'
+import { checkAndSendTreatmentFollowUpAlerts } from './services/treatment-followup-alerts.service'
 
 // CRM Automation (feature/crm-tag-automation) — sequence-touch dispatch, Lead
 // SLA sweep, and the daily derived-tag job all follow the exact same
@@ -396,6 +397,12 @@ runStartup().then(() => {
   setInterval(() => {
     checkAndSendReactivationMessages().catch(err => console.error('[Reactivation] Scheduler error:', err))
   }, ONE_HOUR)
+  // Internal treatment follow-up / hold alerts (due-soon/due-today/overdue) —
+  // staff-only, no patient-facing message. Idempotent per (plan, alertType,
+  // Kampala day) so hourly ticks never double-fire.
+  setInterval(() => {
+    checkAndSendTreatmentFollowUpAlerts().catch(err => console.error('[TreatmentFollowUpAlert] Scheduler error:', err))
+  }, ONE_HOUR)
   // 24-hour follow-up for cancelled / no-show patients who haven't rebooked
   // DISABLED by Vine 2026-07-11 — sent unwanted messages; do not re-enable without explicit approval
   // setInterval(() => {
@@ -448,6 +455,7 @@ runStartup().then(() => {
     checkAndSendLeadNurtureMessages().catch(err => console.error('[LeadNurture] Initial run error:', err))
     updatePatientStatuses().catch(err => console.error('[PatientStatus] Initial run error:', err))
     checkAndSendBirthdayAlerts().catch(err => console.error('[Birthday] Initial run error:', err))
+    checkAndSendTreatmentFollowUpAlerts().catch(err => console.error('[TreatmentFollowUpAlert] Initial run error:', err))
   }, 2 * 60 * 1000)
 
   app.listen(PORT, () => {

@@ -14,7 +14,7 @@ import { usePwaInstall } from '@/lib/pwaInstall'
 
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Overview', '/admin/dashboard': 'Overview', '/scheduling': 'Appointments', '/appointments': 'Appointments',
-  '/patients': 'Patients', '/stocks': 'Stocks & Inventory', '/employees': 'Staff List', '/audit-log': 'Audit Log',
+  '/patients': 'Patients', '/patients/walk-in': 'Walk-In Intake', '/stocks': 'Stocks & Inventory', '/employees': 'Staff List', '/audit-log': 'Audit Log',
   '/admin/staff/permissions': 'Staff Permissions', '/admin/staff/attendance': 'Staff Attendance', '/accounts': 'Accounts', '/reports': 'Reports',
   '/reports/clinical': 'Daily / Weekly Reports', '/reports/patient-flow': 'Patient Live Flow',
   '/reports/case-acceptance': 'Case Acceptance', '/ai-suite': 'Agent Control', '/ai-suite/inbox': 'Conversations',
@@ -95,7 +95,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return <div className={cn('cc-admin-shell flex h-screen flex-col overflow-hidden', questrial.variable, dark ? 'bg-transparent' : 'bg-clinic-bg')}>
     <div className={isAdmin ? 'hidden xl:block' : ''}>
-      <TopBar title={title} user={user} theme={theme} onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }} />
+      <TopBar title={title} user={user} theme={theme} onThemeChange={(next, isDark) => { setTheme(next); setDark(isDark) }} install={pwaInstall} />
     </div>
     {isAdmin && (
       <MobileHeader

@@ -1,45 +1,34 @@
 #!/bin/bash
-# deploy-web.sh — Build web on the server and restart.
+# deploy-web.sh [target_sha] — deploys ONLY the web app, atomically.
 #
-# WHY SERVER BUILD: Windows can't create pnpm symlinks (EPERM), which breaks
-#   the Next.js standalone output. The server (Linux, Node 20, pnpm 10) builds
-#   cleanly. Source files are pushed first, then built in place.
+# The server now ALWAYS builds from git history (git fetch + checkout of
+# target_sha), never from files pushed over rsync/tar/scp. If your commit
+# isn't on origin, this fails fast instead of silently deploying something
+# nobody can reproduce — that gap (rsync shipping uncommitted local edits)
+# is exactly how production's working tree drifted from its own git history
+# before, and how the 2026-09-15 raw-HTML incident happened (a manual
+# rsync+build was interrupted before the static/public copy step, and
+# because production wasn't rebuilt from a validated release directory,
+# nothing caught it). Commit and push before running this. See DEPLOYMENT.md.
 #
-# NOTE: the rsync step below pushes whatever is in the LOCAL working directory,
-#   not what's committed to git — it will happily ship uncommitted or
-#   not-yet-pushed local edits. That already caused production's working tree
-#   to drift from its own git history once. Final production deployment for
-#   a reviewed release should use the git-based method instead (fetch, then
-#   `git merge --ff-only origin/main`, then build on the server), not this
-#   script, until it's redesigned to sync via git rather than rsync.
+# This script NEVER touches codeclinic-api. It builds a complete new release,
+# smoke-tests it on a scratch port before going live, then atomically swaps
+# it in with automatic rollback if the post-switch smoke test fails.
 #
 # Usage (from repo root, in Git Bash):
-#   bash deploy-web.sh
+#   bash deploy-web.sh              # deploys origin/main HEAD
+#   bash deploy-web.sh <sha>        # deploys a specific commit
 
 set -e
-
 SERVER=root@46.101.255.243
-REMOTE_WEB=/var/www/codeclinic/apps/web
-REMOTE_STANDALONE=$REMOTE_WEB/.next/standalone/apps/web
 
-echo '[deploy-web] Pushing changed source files to server...'
-rsync -az --exclude='.next' --exclude='node_modules' \
-  apps/web/ "$SERVER:$REMOTE_WEB/"
+git fetch origin --quiet
+TARGET_SHA="${1:-$(git rev-parse origin/main)}"
+git cat-file -e "$TARGET_SHA" 2>/dev/null || { echo "[deploy-web] ERROR: $TARGET_SHA not found — fetch or push first"; exit 1; }
 
-echo '[deploy-web] Building on server (Linux supports symlinks)...'
-ssh "$SERVER" "cd /var/www/codeclinic && NODE_OPTIONS='--max-old-space-size=1200' pnpm --filter web build"
+echo "[deploy-web] Deploying web @ $TARGET_SHA (API untouched)..."
+ssh "$SERVER" "cd /var/www/codeclinic && bash scripts/deploy/remote-release-web.sh $TARGET_SHA"
+RESULT=$?
 
-echo '[deploy-web] Copying static assets into standalone (Next.js does not do this automatically)...'
-ssh "$SERVER" "mkdir -p $REMOTE_STANDALONE/.next/static && cp -r $REMOTE_WEB/.next/static/. $REMOTE_STANDALONE/.next/static/"
-
-echo '[deploy-web] Copying public folder into standalone (Next.js does not do this automatically)...'
-ssh "$SERVER" "mkdir -p $REMOTE_STANDALONE/public && cp -r $REMOTE_WEB/public/. $REMOTE_STANDALONE/public/"
-
-echo '[deploy-web] Restarting web on server...'
-ssh "$SERVER" "pm2 restart codeclinic-web"
-
-echo '[deploy-web] Verifying...'
-sleep 5
-ssh "$SERVER" "pm2 list | grep -E 'codeclinic-web' && curl -sI http://localhost:3000/icons/whatsapp.png | head -1"
-
-echo '[deploy-web] Done.'
+echo "[deploy-web] Done (exit $RESULT)."
+exit $RESULT

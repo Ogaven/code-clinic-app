@@ -4,44 +4,124 @@ on:
   push:
     branches: [main]
 
-# Prevent concurrent deploys racing each other and corrupting the .next build
+# Prevent concurrent deploys racing each other. scripts/deploy also takes its
+# own server-side lock (.deploy.lock), so a manual deploy started from a dev
+# machine while this workflow is running will be safely rejected too, not
+# just workflow-vs-workflow races.
 concurrency:
   group: production-deploy
   cancel-in-progress: false
 
+env:
+  # NOTE 2026-09-15: this used to point at 165.22.81.15, which is not the
+  # host actually serving codeclinicemr.com (confirmed live at 46.101.255.243,
+  # which also self-identifies as such in its own APP_URL env var). If this
+  # ever needs to change again, verify against the live server first — don't
+  # just trust whatever's already here.
+  DEPLOY_HOST: 46.101.255.243
+  DEPLOY_USER: root
+
 jobs:
-  deploy:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      target_sha: ${{ steps.classify.outputs.target_sha }}
+      classification: ${{ steps.classify.outputs.classification }}
+      api_changed: ${{ steps.classify.outputs.api_changed }}
+      web_changed: ${{ steps.classify.outputs.web_changed }}
+      schema_changed: ${{ steps.classify.outputs.schema_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Classify changes (API_ONLY / WEB_ONLY / API_AND_WEB / NO_RUNTIME_CHANGE)
+        id: classify
+        env:
+          DEPLOY_SERVER: ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}
+        run: |
+          set -e
+          OUT=$(bash scripts/deploy/classify.sh) || { echo "$OUT"; echo "Classification failed — fail closed, nothing will deploy."; exit 1; }
+          echo "$OUT"
+          eval "$OUT"
+          echo "target_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "classification=$CLASSIFICATION" >> "$GITHUB_OUTPUT"
+          echo "api_changed=$API_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "web_changed=$WEB_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "schema_changed=$SCHEMA_CHANGED" >> "$GITHUB_OUTPUT"
+          if [ "$SCHEMA_CHANGED" = "true" ]; then
+            echo "::warning::Schema/migration files changed. This workflow will NOT run prisma migrate deploy/db push — apply migrations manually first (see DEPLOYMENT.md)."
+          fi
+
+  deploy-api:
+    needs: classify
+    if: needs.classify.outputs.api_changed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy API to server
-        uses: appleboy/ssh-action@v1.0.3
+      - uses: actions/checkout@v4
         with:
-          host: 165.22.81.15
-          username: root
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          command_timeout: 10m
-          script: |
-            export NVM_DIR=/root/.nvm
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd /var/www/codeclinic
-            git fetch origin
-            git reset --hard origin/main
-            cd apps/api && npm run build && pm2 restart 0
+          ref: ${{ needs.classify.outputs.target_sha }}
 
-      - name: Deploy Web to server (zero-downtime)
-        uses: appleboy/ssh-action@v1.0.3
+      - uses: pnpm/action-setup@v4
         with:
-          host: 165.22.81.15
-          username: root
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          # 20m: TypeScript check + pnpm build can exceed the default 10m timeout,
-          # killing the SSH mid-build and leaving a corrupt .next directory.
-          command_timeout: 20m
-          script: |
-            export NVM_DIR=/root/.nvm
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            cd /var/www/codeclinic
-            # Point elyrac to SSH so deploy-web.sh git pull works from CI
-            # (avoids HTTPS PAT auth failures in automated environments)
-            git remote set-url elyrac git@github.com:Ogaven/code-clinic-app.git
-            bash /var/www/codeclinic/deploy-web.sh
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build API (on the runner — the production droplet has 2GB RAM and OOMs on tsc)
+        run: NODE_OPTIONS='--max-old-space-size=3072' pnpm --filter api build
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Upload compiled dist as a new release
+        env:
+          TARGET_SHA: ${{ needs.classify.outputs.target_sha }}
+        run: |
+          RELEASE_NAME="${TARGET_SHA:0:12}-$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "RELEASE_NAME=$RELEASE_NAME" >> "$GITHUB_ENV"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p /var/www/codeclinic/apps/api/releases/$RELEASE_NAME"
+          (cd apps/api && tar -czf - dist) | ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /var/www/codeclinic/apps/api/releases/$RELEASE_NAME && tar -xzf -"
+          scp packages/database/prisma/schema.prisma "$DEPLOY_USER@$DEPLOY_HOST:/var/www/codeclinic/packages/database/prisma/schema.prisma"
+
+      - name: Release API (atomic swap + health check + auto-rollback)
+        env:
+          TARGET_SHA: ${{ needs.classify.outputs.target_sha }}
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /var/www/codeclinic && bash scripts/deploy/remote-release-api.sh $TARGET_SHA $RELEASE_NAME"
+
+  deploy-web:
+    needs: classify
+    if: needs.classify.outputs.web_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Release web (server-side build, pre-flight smoke test, atomic swap, post-switch smoke test, auto-rollback)
+        env:
+          TARGET_SHA: ${{ needs.classify.outputs.target_sha }}
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /var/www/codeclinic && bash scripts/deploy/remote-release-web.sh $TARGET_SHA"

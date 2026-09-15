@@ -4,7 +4,7 @@ import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Search, Plus, Phone, Mail, Calendar, ChevronLeft, ChevronRight,
   X, User, Upload, Download, ExternalLink, Camera, Users,
-  CheckCircle2, AlertCircle,
+  CheckCircle2, AlertCircle, QrCode,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -417,6 +417,11 @@ export default function PatientsPage() {
                     <Download size={13} />
                     Export
                   </button>
+                  <Link href="/patients/walk-in" title="Walk-In Intake QR"
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-cyan-200 dark:border-cyan-800 text-cyan-700 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 transition-all">
+                    <QrCode size={13} />
+                    Walk-In QR
+                  </Link>
                   <button onClick={() => setShowAdd(true)}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
                     style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>

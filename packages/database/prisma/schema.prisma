@@ -835,6 +835,29 @@ model Notification {
   @@map("notifications")
 }
 
+// One row per OpenAI Responses API call made by the Sarah agent, for real
+// token-usage/cost analytics (Analytics & Costs page). Never derived/estimated.
+model AiUsageLog {
+  id                String   @id @default(cuid())
+  conversationId    String?
+  conversation      AiConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  channel           String   // WHATSAPP | SMS | VOICE | WEBSITE | FACEBOOK | INSTAGRAM
+  model             String
+  inputTokens       Int      @default(0)
+  cachedInputTokens Int      @default(0)
+  outputTokens      Int      @default(0)
+  reasoningTokens   Int      @default(0)
+  totalTokens       Int      @default(0)
+  toolCallCount     Int      @default(0)
+  succeeded         Boolean  @default(true)
+  errorMessage      String?
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([channel, createdAt])
+  @@map("ai_usage_logs")
+}
+
 // One row per subscribed browser/device (a user can have several).
 model PushSubscription {
   id        String   @id @default(uuid())
@@ -962,10 +985,32 @@ model TreatmentPlan {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Internal treatment follow-up / hold scheduling (not shown to patient).
+  followUpAt     DateTime?
+  followUpReason String?
+  followUpNote   String?
+
+  followUpAlerts TreatmentFollowUpAlert[]
+
   @@index([patientId])
   @@index([doctorId])
   @@index([stage])
+  @@index([followUpAt])
   @@map("treatment_plans")
+}
+
+// Idempotency record for treatment follow-up reminders (due-soon/due-today/overdue),
+// one row per (plan, alertType, calendar day) so the scheduler never double-fires.
+model TreatmentFollowUpAlert {
+  id              String       @id @default(cuid())
+  treatmentPlanId String
+  treatmentPlan   TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+  alertType       String       // DUE_SOON | DUE_TODAY | OVERDUE
+  sentForDate     DateTime     // Kampala calendar day this alert covers, stored at 00:00
+  createdAt       DateTime     @default(now())
+
+  @@unique([treatmentPlanId, alertType, sentForDate])
+  @@map("treatment_follow_up_alerts")
 }
 
 model StaffAttendance {
@@ -1091,6 +1136,7 @@ model AiConversation {
   updatedAt         DateTime           @updatedAt
 
   messages     AiMessage[]
+  usageLogs    AiUsageLog[]
 
   @@index([phoneNumber])
   @@index([channel, status, phoneNumber])
