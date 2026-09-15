@@ -1160,6 +1160,30 @@ model AiMessage {
   @@map("ai_messages")
 }
 
+// Persists what the WhatsApp delivery-status webhook (whatsapp.routes.ts)
+// previously only console.error'd — real Meta error code/title/message per
+// failed delivery, so failure analytics (131042 billing-outage tracking,
+// etc.) are a live queryable metric instead of a one-time log grep. Purely
+// additive alongside AiMessage.status, which keeps recording sent/delivered/
+// read/failed exactly as before.
+model MetaDeliveryFailure {
+  id            String   @id @default(cuid())
+  wamid         String?
+  wabaId        String?
+  phoneNumberId String?
+  recipientId   String?
+  code          Int
+  title         String
+  message       String?
+  details       String?
+  occurredAt    DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([code, occurredAt])
+  @@index([occurredAt])
+  @@map("meta_delivery_failures")
+}
+
 model AiKnowledgeBase {
   id        String                      @id @default(cuid())
   title     String
