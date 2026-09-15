@@ -152,7 +152,7 @@ router.post('/meta-usage/refresh', requireAuth, async (_req, res) => {
 // admin-only per project policy — see the adminOnly guard below and the
 // matching role check on the Analytics & Costs page.
 
-type AiUsageRangeKey = 'today' | '7d' | '30d' | 'month' | 'prev_month'
+export type AiUsageRangeKey = 'today' | '7d' | '30d' | 'month' | 'prev_month'
 
 // Best-effort per-million-token USD pricing for the models this app
 // actually calls (see OPENAI_WEBSITE_MODEL / OPENAI_COMMENT_MODEL in

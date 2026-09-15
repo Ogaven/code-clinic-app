@@ -659,6 +659,28 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
     const returningPatientsThisMonth = returningIds.length
     const patientsSeenThisMonth      = newPatientsThisMonth + returningPatientsThisMonth
 
+    // Avatar preview samples for the Patients Overview card — pulled from the
+    // SAME canonical newIds/returningIds this endpoint already computed above,
+    // not a separately-defined "new"/"returning" query. Previously the
+    // frontend fetched these via GET /patients?filter=new_patient|returning,
+    // which uses a different rule (COMPLETED-only, rolling 30 days, no
+    // Kampala month boundary) — same headline number, different faces
+    // underneath it. Small `take` since this is just a 3-avatar preview.
+    const [newAvatarRows, returningAvatarRows] = await Promise.all([
+      newIds.length > 0
+        ? prisma.patient.findMany({ where: { id: { in: newIds } }, select: { id: true, firstName: true, lastName: true, avatarR2Key: true }, take: 3 })
+        : [],
+      returningIds.length > 0
+        ? prisma.patient.findMany({ where: { id: { in: returningIds } }, select: { id: true, firstName: true, lastName: true, avatarR2Key: true }, take: 3 })
+        : [],
+    ])
+    const toAvatar = (p: { id: string; firstName: string; lastName: string; avatarR2Key: string | null }) => ({
+      id: p.id, firstName: p.firstName, lastName: p.lastName,
+      avatarUrl: p.avatarR2Key ? getPublicUrl(p.avatarR2Key) : null,
+    })
+    const newAvatars       = newAvatarRows.map(toAvatar)
+    const returningAvatars = returningAvatarRows.map(toAvatar)
+
     // Referral source for truly new patients this month (same rule as
     // before: only non-imported patients whose first attended visit is in
     // range are eligible — splitNewAndReturning already enforces that for newIds).
@@ -704,6 +726,10 @@ router.get('/analytics/dashboard', requireAuth, async (_req, res) => {
         collectionRate,
         unscheduledTreatmentValue: unscheduledValue,
         lapsedCount,
+      },
+      avatars: {
+        new:       newAvatars,
+        returning: returningAvatars,
       },
       charts: {
         revenueTrend:    revenueTrendRaw.map(r => ({ month: r.month, revenue: Number(r.revenue) })),

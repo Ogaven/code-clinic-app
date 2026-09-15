@@ -936,6 +936,22 @@ function PlanCard({
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
             <span className="text-[10px] text-gray-400 dark:text-white/40">Current status: <span className="font-semibold text-blue-600 dark:text-cyan-400">{plan.status}</span></span>
           </div>
+          {plan.followUpAt && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+              <span className="text-[10px] text-gray-400 dark:text-white/40">Next follow-up: <span className="font-semibold text-gray-600 dark:text-white/70">{fmt(plan.followUpAt)}</span>{plan.followUpReason && <span> — {plan.followUpReason}</span>}</span>
+            </div>
+          )}
+          {/* Completed/Dismissed/Rescheduled resolutions are stamped onto this
+              note (see POST /pipeline/treatment/:id/follow-up/resolve) since
+              there's no separate resolution-history column — this is the only
+              place staff can see how/when a past follow-up was resolved. */}
+          {plan.followUpNote && (
+            <div className="flex items-start gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0 mt-1" />
+              <span className="text-[10px] text-gray-400 dark:text-white/40 whitespace-pre-line">Follow-up note: <span className="font-semibold text-gray-600 dark:text-white/70">{plan.followUpNote}</span></span>
+            </div>
+          )}
         </div>
       )}
     </div>

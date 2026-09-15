@@ -27,7 +27,8 @@ interface DashMetrics {
   lapsedCount: number
 }
 interface DashCharts { aiPerformance: { conversationsHandled: number; appointmentsBooked: number; messagesSent: number } }
-interface DashData { metrics: DashMetrics; charts: DashCharts }
+interface DashAvatars { new: MiniPatient[]; returning: MiniPatient[] }
+interface DashData { metrics: DashMetrics; charts: DashCharts; avatars?: DashAvatars }
 // GET /clinical/analytics/dashboard/trend — current Kampala month-to-date vs
 // the same number of days into the previous month, per Patients Overview
 // metric. percentChange is null (not Infinity/NaN) when there's no
@@ -88,7 +89,12 @@ const WEEK_STATUSES = [
 // patients with a COMPLETED appointment this month" (ACTIVE means the patient
 // record's stored status, a different concept) — see Patients Overview below,
 // which omits the avatar stack for that metric rather than show mismatched people.
-const CATEGORY_FILTERS = { total: '', returning: 'returning', fresh: 'new_patient' } as const
+// 'returning'/'fresh' avatars come from the dashboard endpoint's own
+// canonical newIds/returningIds (see the `avatars` effect below), not from
+// GET /patients?filter=... — that filter uses a different, non-canonical
+// new/returning rule (COMPLETED-only, rolling 30 days) that could show
+// different faces than the headline number right next to them.
+const CATEGORY_FILTERS = { total: '' } as const
 
 // ── Shared visual primitives ────────────────────────────────────────────
 
@@ -292,6 +298,15 @@ export default function DashboardPage() {
     fetch('/api-proxy/patients/referral-stats', { headers: auth })
       .then(r => r.ok ? r.json() : null).then(d => { if (d?.stats) setReferrals(d) }).catch(() => {})
   }, [])
+
+  // Returning/New avatar previews come from the dashboard endpoint's own
+  // canonical newIds/returningIds (see clinical.ts) rather than a separate
+  // /patients?filter=... call, so the faces shown always match the headline
+  // MTD number right next to them.
+  useEffect(() => {
+    if (!dashData?.avatars) return
+    setAvatars(prev => ({ ...prev, returning: dashData.avatars!.returning, fresh: dashData.avatars!.new }))
+  }, [dashData])
 
   const greeting = getGreeting()
   const name = user ? user.firstName : ''

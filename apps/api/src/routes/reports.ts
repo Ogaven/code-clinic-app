@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { prisma } from '../lib/prisma'
 import { requireAuth } from '../middleware/auth'
 import { startOfKampalaDay, endOfKampalaDay, startOfKampalaWeek, startOfKampalaMonth, startOfNextKampalaMonth, kampalaTodayRange } from '../utils/kampala-time'
-import { getPatientActivitySummary, getAppointmentStatusBreakdown } from '../services/patient-analytics.service'
+import { getPatientActivitySummary, getAppointmentStatusBreakdown, ATTENDED_STATUSES } from '../services/patient-analytics.service'
 
 const router = Router()
 
@@ -238,7 +238,16 @@ router.get('/clinical', requireAuth, async (req, res) => {
     const totalSeen         = statusBreakdown.buckets.seen
     const newPatients       = activitySummary.newPatients
     const returningPatients = activitySummary.returningPatients
-    const reviews           = appts.filter((a: any) => isReview(a.service)).length
+    // Reviews/Recalls is a sub-classification WITHIN the seen population
+    // (the original business definition), not a tag over every scheduled
+    // appointment regardless of outcome — an appointment that was cancelled
+    // or never attended was never actually "reviewed". Scoping to
+    // ATTENDED_STATUSES keeps this consistent with how "seen" is defined
+    // everywhere else (patient-analytics.service.ts) and keeps it a strict
+    // subset of totalSeen, never double-counted against the reconciled
+    // Confirmed/Pending/Cancelled/No-show/Seen buckets that sum to
+    // totalScheduled above.
+    const reviews           = appts.filter((a: any) => ATTENDED_STATUSES.includes(a.status) && isReview(a.service)).length
 
     // Cancelled / No-show that haven't rebooked any future appointment
     const dnAppts = appts.filter((a: any) => a.status === 'CANCELLED' || a.status === 'NO_SHOW')

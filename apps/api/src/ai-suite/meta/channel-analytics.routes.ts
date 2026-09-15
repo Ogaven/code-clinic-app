@@ -3,6 +3,7 @@ import fs            from 'fs'
 import { requireAuth } from '../../middleware/auth'
 import { prisma }    from '../../lib/prisma'
 import { isSmsChannelActive } from '../sms/sms.service'
+import { resolveAiUsageRange, type AiUsageRangeKey } from './meta-usage.routes'
 
 const router = Router()
 
@@ -42,7 +43,7 @@ async function getPatientChannelStatus(): Promise<Record<string, 'ACTIVE' | 'PAU
 
 interface DayPoint    { day: string; agent: number; user: number }
 interface MonthTotal  { agent: number; user: number; total: number }
-interface ChannelData { daily: DayPoint[]; thisMonth: MonthTotal; lastMonth: MonthTotal; allTimeConvs: number }
+interface ChannelData { daily: DayPoint[]; thisMonth: MonthTotal; lastMonth: MonthTotal; allTimeConvs: number; selected: MonthTotal }
 
 interface DoBalance {
   accountBalance:     string
@@ -51,9 +52,24 @@ interface DoBalance {
   generatedAt:        string
 }
 
+// Real counts for the operational features that live outside the AI
+// conversation/message tables (confirmations, follow-ups, escalations,
+// calling), for the same selected date range as the channel data above.
+// Each traces to an existing model already used by that feature's own
+// dedicated page/report -- this is a summary, not a new source of truth.
+interface OperationalVolume {
+  confirmationsSent: number  // aiScheduledMessage(templateType=APPOINTMENT_CONFIRMATION, sent=true)
+  followupsSent:     number  // aiScheduledMessage(templateType in FOLLOWUP/MISSED_APPOINTMENT, sent=true)
+  escalations:       number  // Escalation rows created in range
+  callEvents:        number  // CallEvent rows in range (provider is MOCK until a real telephony provider is wired up -- see schema.prisma)
+  totalInteractions: number  // sum of every message-channel's `selected.total` below -- one honest "AI interactions" figure, not invented
+}
+
 interface Analytics {
   channels:      Record<string, ChannelData>
   channelStatus: Record<string, 'ACTIVE' | 'PAUSED'>
+  operational:   OperationalVolume
+  range:         AiUsageRangeKey
   meta:          any
   digitalocean:  DoBalance | { notConfigured: true }
   cachedAt:      string
@@ -75,7 +91,7 @@ function writeCache(file: string, data: any) {
 
 // ── Channel analytics from DB ─────────────────────────────────────────────────
 
-async function fetchChannelData(): Promise<Record<string, ChannelData>> {
+async function fetchChannelData(selectedRange: { start: Date; end: Date }): Promise<Record<string, ChannelData>> {
   const now   = new Date()
   const yr    = now.getUTCFullYear()
   const mo    = now.getUTCMonth() + 1
@@ -85,7 +101,7 @@ async function fetchChannelData(): Promise<Record<string, ChannelData>> {
   const lastMonthStart = new Date(Date.UTC(prev.yr, prev.mo - 1, 1))
   const since30        = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
-  const [daily, thisMonthAgg, lastMonthAgg, allTimeConvs] = await Promise.all([
+  const [daily, thisMonthAgg, lastMonthAgg, allTimeConvs, selectedAgg] = await Promise.all([
     // Daily breakdown (last 30 days)
     prisma.$queryRaw<{ channel: string; day: string; agent_msgs: number; user_msgs: number }[]>`
       SELECT
@@ -129,6 +145,20 @@ async function fetchChannelData(): Promise<Record<string, ChannelData>> {
       by: ['channel'],
       _count: { id: true },
     }),
+
+    // Totals for the caller-selected date range (independent of the fixed
+    // this/last-month comparison above, which stays as-is so the existing
+    // %-change badge keeps its established meaning).
+    prisma.$queryRaw<{ channel: string; agent_msgs: number; user_msgs: number }[]>`
+      SELECT
+        c.channel,
+        SUM(CASE WHEN m.role = 'AGENT' THEN 1 ELSE 0 END)::int AS agent_msgs,
+        SUM(CASE WHEN m.role = 'USER'  THEN 1 ELSE 0 END)::int AS user_msgs
+      FROM ai_messages m
+      JOIN ai_conversations c ON c.id = m."conversationId"
+      WHERE m."createdAt" >= ${selectedRange.start} AND m."createdAt" < ${selectedRange.end}
+      GROUP BY c.channel
+    `,
   ])
 
   const channels: Record<string, ChannelData> = {}
@@ -144,6 +174,7 @@ async function fetchChannelData(): Promise<Record<string, ChannelData>> {
     const thisR = thisMonthAgg.find(r => r.channel === ch)
     const lastR = lastMonthAgg.find(r => r.channel === ch)
     const allR  = allTimeConvs.find(r => r.channel === ch)
+    const selR  = selectedAgg.find(r => r.channel === ch)
 
     channels[ch] = {
       daily:    dayPts,
@@ -158,10 +189,34 @@ async function fetchChannelData(): Promise<Record<string, ChannelData>> {
         total: (lastR?.agent_msgs ?? 0) + (lastR?.user_msgs ?? 0),
       },
       allTimeConvs: allR?._count.id ?? 0,
+      selected: {
+        agent: selR?.agent_msgs ?? 0,
+        user:  selR?.user_msgs  ?? 0,
+        total: (selR?.agent_msgs ?? 0) + (selR?.user_msgs ?? 0),
+      },
     }
   }
 
   return channels
+}
+
+// ── Operational volume (confirmations, follow-ups, escalations, calling) ──────
+
+async function fetchOperationalVolume(range: { start: Date; end: Date }, channels: Record<string, ChannelData>): Promise<OperationalVolume> {
+  const [confirmationsSent, followupsSent, escalations, callEvents] = await Promise.all([
+    prisma.aiScheduledMessage.count({
+      where: { templateType: 'APPOINTMENT_CONFIRMATION', sent: true, scheduledFor: { gte: range.start, lt: range.end } },
+    }),
+    prisma.aiScheduledMessage.count({
+      where: { templateType: { in: ['FOLLOWUP', 'MISSED_APPOINTMENT'] }, sent: true, scheduledFor: { gte: range.start, lt: range.end } },
+    }),
+    prisma.escalation.count({ where: { createdAt: { gte: range.start, lt: range.end } } }),
+    prisma.callEvent.count({ where: { occurredAt: { gte: range.start, lt: range.end } } }),
+  ])
+
+  const totalInteractions = Object.values(channels).reduce((sum, c) => sum + c.selected.total, 0)
+
+  return { confirmationsSent, followupsSent, escalations, callEvents, totalInteractions }
 }
 
 // ── DigitalOcean balance ──────────────────────────────────────────────────────
@@ -193,11 +248,13 @@ async function fetchDoBalance(): Promise<DoBalance | { notConfigured: true }> {
 
 // ── Build full analytics payload ──────────────────────────────────────────────
 
-async function buildAnalytics(): Promise<Analytics> {
+async function buildAnalytics(selectedRange: { start: Date; end: Date; range: AiUsageRangeKey }): Promise<Analytics> {
   const [channels, digitalocean] = await Promise.all([
-    fetchChannelData(),
+    fetchChannelData(selectedRange),
     fetchDoBalance(),
   ])
+
+  const operational = await fetchOperationalVolume(selectedRange, channels)
 
   // Reuse the existing meta-usage cache if fresh — no double-fetch
   let meta: any = null
@@ -219,19 +276,27 @@ async function buildAnalytics(): Promise<Analytics> {
 
   const channelStatus = await getPatientChannelStatus()
   const now = new Date().toISOString()
-  return { channels, channelStatus, meta, digitalocean, cachedAt: now }
+  return { channels, channelStatus, operational, range: selectedRange.range, meta, digitalocean, cachedAt: now }
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-// GET /ai-suite/channel-analytics
-router.get('/channel-analytics', requireAuth, async (_req, res) => {
+// GET /ai-suite/channel-analytics?range=today|7d|30d|month|prev_month (default 30d)
+// Only the default range is file-cached (matches the previous fixed-30d
+// behaviour) -- an explicitly chosen non-default range always computes fresh
+// so a stale cached window is never shown as if it were the requested one.
+router.get('/channel-analytics', requireAuth, async (req, res) => {
   try {
-    const cached = readCache(CACHE_FILE)
-    if (cached) return res.json(cached)
+    const resolved = resolveAiUsageRange(req.query.range)
+    const useCache = resolved.range === '30d'
 
-    const data = await buildAnalytics()
-    writeCache(CACHE_FILE, data)
+    if (useCache) {
+      const cached = readCache(CACHE_FILE)
+      if (cached) return res.json(cached)
+    }
+
+    const data = await buildAnalytics(resolved)
+    if (useCache) writeCache(CACHE_FILE, data)
     res.json(data)
   } catch (err: any) {
     console.error('[ChannelAnalytics]', err.message)
@@ -239,12 +304,13 @@ router.get('/channel-analytics', requireAuth, async (_req, res) => {
   }
 })
 
-// POST /ai-suite/channel-analytics/refresh
-router.post('/channel-analytics/refresh', requireAuth, async (_req, res) => {
+// POST /ai-suite/channel-analytics/refresh?range=...
+router.post('/channel-analytics/refresh', requireAuth, async (req, res) => {
   try {
+    const resolved = resolveAiUsageRange(req.query.range)
     try { fs.unlinkSync(CACHE_FILE) } catch {}
-    const data = await buildAnalytics()
-    writeCache(CACHE_FILE, data)
+    const data = await buildAnalytics(resolved)
+    if (resolved.range === '30d') writeCache(CACHE_FILE, data)
     res.json(data)
   } catch (err: any) {
     res.status(500).json({ error: err.message })

@@ -13,6 +13,15 @@ interface ChannelData {
   thisMonth: MonthTotal
   lastMonth: MonthTotal
   allTimeConvs: number
+  selected: MonthTotal
+}
+
+interface OperationalVolume {
+  confirmationsSent: number
+  followupsSent:     number
+  escalations:       number
+  callEvents:        number
+  totalInteractions: number
 }
 
 interface DataPoint  { start: number; end: number; volume: number; cost?: number }
@@ -33,6 +42,8 @@ interface DoBalance {
 interface Analytics {
   channels: Record<string, ChannelData>
   channelStatus?: Record<string, 'ACTIVE' | 'PAUSED'>
+  operational?: OperationalVolume
+  range?: AiUsageRange
   meta: { uganda: WabaUsage; kenya: WabaUsage; cachedAt: string } | null
   digitalocean: DoBalance | { notConfigured: true }
   cachedAt: string
@@ -147,7 +158,7 @@ function ChannelBarChart({ points }: { points: DayPoint[] }) {
 
 // ── Single channel card ────────────────────────────────────────────────────────
 
-function ChannelCard({ channel, data, status }: { channel: string; data: ChannelData; status?: 'ACTIVE' | 'PAUSED' }) {
+function ChannelCard({ channel, data, status, rangeLabel }: { channel: string; data: ChannelData; status?: 'ACTIVE' | 'PAUSED'; rangeLabel?: string }) {
   const meta = CHANNEL_META[channel] ?? { label: channel, icon: '📡' }
   const changeAmt = data.thisMonth.total - data.lastMonth.total
   const changePct = data.lastMonth.total
@@ -194,6 +205,13 @@ function ChannelCard({ channel, data, status }: { channel: string; data: Channel
         <span>User: <span className="font-bold text-gray-500 dark:text-white/40">{data.thisMonth.user.toLocaleString()}</span></span>
         <span>Last mo: <span className="font-bold text-gray-500 dark:text-white/40">{data.lastMonth.total.toLocaleString()}</span></span>
       </div>
+
+      {rangeLabel && (
+        <div className="pt-2 border-t border-gray-50 dark:border-white/5 text-[10px] text-gray-400 dark:text-white/30">
+          {rangeLabel}: <span className="font-bold text-gray-600 dark:text-white/60">{data.selected.total.toLocaleString()}</span> msgs
+          <span className="ml-2">({data.selected.agent.toLocaleString()} agent / {data.selected.user.toLocaleString()} user)</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -574,6 +592,7 @@ export default function AnalyticsPage() {
   const [loading, setLoading]       = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError]           = useState<string | null>(null)
+  const [channelRange, setChannelRange] = useState<AiUsageRange>('30d')
 
   // Provider billing/cost info is Admin-only — Receptionist (or anyone else)
   // viewing this same shared page must never see the OpenAI usage/cost
@@ -597,12 +616,12 @@ export default function AnalyticsPage() {
     return { Authorization: `Bearer ${t}` }
   }
 
-  async function load(force = false) {
+  async function load(force = false, range: AiUsageRange = channelRange) {
     force ? setRefreshing(true) : setLoading(true)
     setError(null)
     try {
       const ep = force ? `${API}/ai-suite/channel-analytics/refresh` : `${API}/ai-suite/channel-analytics`
-      const res = await fetch(ep, { method: force ? 'POST' : 'GET', headers: authH() })
+      const res = await fetch(`${ep}?range=${range}`, { method: force ? 'POST' : 'GET', headers: authH() })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setData(await res.json())
     } catch {
@@ -663,7 +682,6 @@ export default function AnalyticsPage() {
   }
 
   useEffect(() => {
-    load()
     loadWhatsappHealth()
     try {
       const stored = typeof window !== 'undefined' ? localStorage.getItem('cc_user') : null
@@ -672,7 +690,13 @@ export default function AnalyticsPage() {
     } catch {
       setIsAdmin(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    load(false, channelRange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelRange])
 
   useEffect(() => {
     if (isAdmin) {
@@ -717,14 +741,52 @@ export default function AnalyticsPage() {
         </div>
       ) : data ? (
         <>
+          {/* ── Operational volume (confirmations/follow-ups/escalations/calling) ── */}
+          {data.operational && (
+            <section>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
+                <ClipboardCheck size={10} /> Operational Volume ({AI_USAGE_RANGES.find(r => r.key === channelRange)?.label})
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                {[
+                  { label: 'AI Interactions', value: data.operational.totalInteractions, tooltip: 'Total agent + patient messages across every channel below, for the selected period.' },
+                  { label: 'Confirmations Sent', value: data.operational.confirmationsSent },
+                  { label: 'Follow-ups Sent', value: data.operational.followupsSent },
+                  { label: 'Escalations', value: data.operational.escalations },
+                  { label: 'Calls', value: data.operational.callEvents, tooltip: 'Calling runs on a mock provider today — see the Calling status below.' },
+                ].map(tile => (
+                  <div key={tile.label} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4" title={tile.tooltip}>
+                    <p className="text-2xl font-black text-gray-800 dark:text-white leading-none">{tile.value.toLocaleString()}</p>
+                    <p className="text-[10px] font-bold text-gray-400 dark:text-white/40 mt-1">{tile.label}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* ── Channel analytics ─────────────────────── */}
           <section>
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
-              <BarChart2 size={10} /> Messaging Channels (last 30 days)
-            </p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 flex items-center gap-2">
+                <BarChart2 size={10} /> Messaging Channels
+              </p>
+              <div className="flex gap-1">
+                {AI_USAGE_RANGES.map(r => (
+                  <button key={r.key} onClick={() => setChannelRange(r.key)}
+                    className={cn(
+                      'px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors',
+                      channelRange === r.key
+                        ? 'bg-cyan-500 text-white'
+                        : 'bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-white/40 hover:bg-gray-100 dark:hover:bg-white/10'
+                    )}>
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {CHANNEL_ORDER.map(ch => (
-                <ChannelCard key={ch} channel={ch} data={data.channels[ch]} status={data.channelStatus?.[ch]} />
+                <ChannelCard key={ch} channel={ch} data={data.channels[ch]} status={data.channelStatus?.[ch]} rangeLabel={AI_USAGE_RANGES.find(r => r.key === channelRange)?.label} />
               ))}
             </div>
             {/* Calling has no message-volume data to chart (it isn't an aiConversation
