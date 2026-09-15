@@ -83,14 +83,28 @@ prune_releases() {
     [ -L "$link" ] && keep_paths="$keep_paths $(readlink -f "$link")"
   done
   local candidates
-  candidates=$(find "$releases_dir" -mindepth 1 -maxdepth 1 -type d ! -name '.tmp-*' | sort -r)
+  # Two bugs fixed here, both silent (no error, just wrong behaviour):
+  #  1. Sorting by directory NAME (`sort -r`) is sorting by the git-SHA
+  #     prefix each release dir starts with -- effectively random relative
+  #     to actual creation time, not "newest first". Sort by real mtime
+  #     instead (-printf '%T@ %p' + sort -rn) so "beyond keep_n" actually
+  #     means "old", not "happens to have a low SHA byte".
+  #  2. `$dir` from `find` is relative to releases_dir as passed by the
+  #     caller (e.g. "apps/web/releases/xyz"), while `$kp` from
+  #     `readlink -f` on a symlink is always absolute -- these never
+  #     string-matched, so a protected release (including the one JUST
+  #     cut over to) could still be pruned. Resolve `$dir` with
+  #     `readlink -f` too before comparing so both sides are absolute.
+  candidates=$(find "$releases_dir" -mindepth 1 -maxdepth 1 -type d ! -name '.tmp-*' -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
   local i=0
   while IFS= read -r dir; do
     [ -z "$dir" ] && continue
     i=$((i + 1))
+    local dir_abs
+    dir_abs=$(readlink -f "$dir")
     local keep=0
     for kp in $keep_paths; do
-      [ "$dir" = "$kp" ] && keep=1
+      [ "$dir_abs" = "$kp" ] && keep=1
     done
     if [ "$i" -gt "$keep_n" ] && [ "$keep" -eq 0 ]; then
       log "Pruning old release: $dir"
