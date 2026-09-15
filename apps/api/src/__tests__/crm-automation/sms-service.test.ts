@@ -2,12 +2,15 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
-// sendSMS() used to be an unconditional WhatsApp passthrough. It now sends
-// real carrier SMS via Africa's Talking when AT_API_KEY/AT_USERNAME are
-// configured (as they are in production), falling back to WhatsApp only
-// when they're absent. The 'africastalking' SDK uses its own axios client,
-// not global fetch, so the global no-real-sends fetch guard does NOT catch
-// a real send here — this file mocks the SDK module directly instead.
+// SMS is a currently-dormant Code Clinic patient channel. sendSMS() must
+// NEVER silently become a WhatsApp send — a caller that asked for SMS and
+// can't get it needs SMS_NOT_CONFIGURED back, not a different channel's
+// message going out under an SMS label. Real carrier credentials being
+// present (as they genuinely are in production today) is NOT sufficient on
+// its own — SMS_CHANNEL_LIVE must also be explicitly 'true'. The
+// 'africastalking' SDK uses its own axios client, not global fetch, so the
+// global no-real-sends fetch guard does NOT catch a real send here — this
+// file mocks the SDK module directly instead.
 
 const { atSendMock, atInitMock, sendWhatsAppMessage } = vi.hoisted(() => {
   const atSendMock = vi.fn().mockResolvedValue({ SMSMessageData: { Recipients: [] } })
@@ -24,26 +27,30 @@ beforeEach(() => {
   delete process.env.AT_API_KEY
   delete process.env.AT_USERNAME
   delete process.env.AT_SENDER_ID
+  delete process.env.SMS_CHANNEL_LIVE
 })
 
-describe('sms.service — real Africa\'s Talking wiring', () => {
-  it('sends via Africa\'s Talking when AT_API_KEY/AT_USERNAME are configured', async () => {
-    process.env.AT_API_KEY  = 'test-key'
-    process.env.AT_USERNAME = 'test-user'
-    const { sendSMS, isRealSmsProviderConfigured } = await import('../../ai-suite/sms/sms.service')
+describe('sms.service — SMS channel dormancy + no silent WhatsApp fallback', () => {
+  it('sends via Africa\'s Talking when the channel is explicitly live AND credentials are configured', async () => {
+    process.env.AT_API_KEY      = 'test-key'
+    process.env.AT_USERNAME     = 'test-user'
+    process.env.SMS_CHANNEL_LIVE = 'true'
+    const { sendSMS, isSmsChannelActive } = await import('../../ai-suite/sms/sms.service')
 
-    expect(isRealSmsProviderConfigured()).toBe(true)
-    await sendSMS('+256700000001', 'hello')
+    expect(isSmsChannelActive()).toBe(true)
+    const result = await sendSMS('+256700000001', 'hello')
 
+    expect(result).toBe('SENT')
     expect(atInitMock).toHaveBeenCalledWith({ apiKey: 'test-key', username: 'test-user' })
     expect(atSendMock).toHaveBeenCalledWith({ to: ['+256700000001'], message: 'hello' })
     expect(sendWhatsAppMessage).not.toHaveBeenCalled()
   })
 
   it('includes AT_SENDER_ID as `from` when configured', async () => {
-    process.env.AT_API_KEY   = 'test-key'
-    process.env.AT_USERNAME  = 'test-user'
-    process.env.AT_SENDER_ID = 'CODECLINIC'
+    process.env.AT_API_KEY       = 'test-key'
+    process.env.AT_USERNAME      = 'test-user'
+    process.env.AT_SENDER_ID     = 'CODECLINIC'
+    process.env.SMS_CHANNEL_LIVE = 'true'
     const { sendSMS } = await import('../../ai-suite/sms/sms.service')
 
     await sendSMS('+256700000001', 'hello')
@@ -51,24 +58,56 @@ describe('sms.service — real Africa\'s Talking wiring', () => {
     expect(atSendMock).toHaveBeenCalledWith({ to: ['+256700000001'], message: 'hello', from: 'CODECLINIC' })
   })
 
-  it('falls back to the WhatsApp passthrough when AT credentials are absent', async () => {
-    const { sendSMS, isRealSmsProviderConfigured } = await import('../../ai-suite/sms/sms.service')
+  it('real credentials present but SMS_CHANNEL_LIVE not set -> SMS_NOT_CONFIGURED, no send on any channel (the exact production condition today)', async () => {
+    process.env.AT_API_KEY  = 'test-key'
+    process.env.AT_USERNAME = 'test-user'
+    // SMS_CHANNEL_LIVE deliberately left unset — mirrors production, which
+    // genuinely has AT_API_KEY/AT_USERNAME configured but the channel not
+    // yet turned on.
+    const { sendSMS, isSmsChannelActive, isRealSmsProviderConfigured } = await import('../../ai-suite/sms/sms.service')
 
-    expect(isRealSmsProviderConfigured()).toBe(false)
-    await sendSMS('+256700000001', 'hello')
+    expect(isRealSmsProviderConfigured()).toBe(true)
+    expect(isSmsChannelActive()).toBe(false)
+    const result = await sendSMS('+256700000001', 'hello')
 
+    expect(result).toBe('SMS_NOT_CONFIGURED')
     expect(atSendMock).not.toHaveBeenCalled()
-    expect(sendWhatsAppMessage).toHaveBeenCalledWith('+256700000001', 'hello')
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
   })
 
-  it('falls back when only one of the two required env vars is set', async () => {
-    process.env.AT_API_KEY = 'test-key' // AT_USERNAME deliberately left unset
-    const { sendSMS, isRealSmsProviderConfigured } = await import('../../ai-suite/sms/sms.service')
+  it('SMS_CHANNEL_LIVE=true but credentials absent -> SMS_NOT_CONFIGURED, no send on any channel', async () => {
+    process.env.SMS_CHANNEL_LIVE = 'true'
+    const { sendSMS, isSmsChannelActive } = await import('../../ai-suite/sms/sms.service')
 
-    expect(isRealSmsProviderConfigured()).toBe(false)
-    await sendSMS('+256700000001', 'hello')
+    expect(isSmsChannelActive()).toBe(false)
+    const result = await sendSMS('+256700000001', 'hello')
 
+    expect(result).toBe('SMS_NOT_CONFIGURED')
     expect(atSendMock).not.toHaveBeenCalled()
-    expect(sendWhatsAppMessage).toHaveBeenCalledWith('+256700000001', 'hello')
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+  })
+
+  it('neither configured -> SMS_NOT_CONFIGURED, no send on any channel', async () => {
+    const { sendSMS, isSmsChannelActive } = await import('../../ai-suite/sms/sms.service')
+
+    expect(isSmsChannelActive()).toBe(false)
+    const result = await sendSMS('+256700000001', 'hello')
+
+    expect(result).toBe('SMS_NOT_CONFIGURED')
+    expect(atSendMock).not.toHaveBeenCalled()
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+  })
+
+  it('only one of the two required credential env vars set (channel live) -> SMS_NOT_CONFIGURED', async () => {
+    process.env.AT_API_KEY       = 'test-key' // AT_USERNAME deliberately left unset
+    process.env.SMS_CHANNEL_LIVE = 'true'
+    const { sendSMS, isSmsChannelActive } = await import('../../ai-suite/sms/sms.service')
+
+    expect(isSmsChannelActive()).toBe(false)
+    const result = await sendSMS('+256700000001', 'hello')
+
+    expect(result).toBe('SMS_NOT_CONFIGURED')
+    expect(atSendMock).not.toHaveBeenCalled()
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
   })
 })

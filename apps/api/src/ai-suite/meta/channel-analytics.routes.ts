@@ -9,6 +9,25 @@ const CACHE_FILE  = '/tmp/codeclinic-channel-analytics.json'
 const CACHE_TTL   = 60 * 60 * 1000        // 1 hour
 const META_CACHE  = '/tmp/codeclinic-meta-usage.json'
 
+// A channel's presence in aiConversation data (or its message counts being
+// nonzero) is not the same question as whether it's currently an active
+// Code Clinic patient channel — that's a business decision, not a data
+// query. WhatsApp/Instagram/Facebook/Website Chat are active; SMS and
+// calling are deliberately paused (the underlying send paths remain in the
+// codebase — see sms.service.ts's SMS_CHANNEL_LIVE gate — but are dormant
+// today). Historical SMS/call records can still be reported on; they just
+// must never be presented as coming from a currently-active channel.
+const PATIENT_CHANNEL_STATUS: Record<string, 'ACTIVE' | 'PAUSED'> = {
+  WHATSAPP:           'ACTIVE',
+  WEBSITE:            'ACTIVE',
+  FACEBOOK:           'ACTIVE',
+  FACEBOOK_COMMENT:   'ACTIVE',
+  INSTAGRAM:          'ACTIVE',
+  INSTAGRAM_COMMENT:  'ACTIVE',
+  SMS:                'PAUSED',
+  CALLING:            'PAUSED',
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface DayPoint    { day: string; agent: number; user: number }
@@ -24,6 +43,7 @@ interface DoBalance {
 
 interface Analytics {
   channels:      Record<string, ChannelData>
+  channelStatus: Record<string, 'ACTIVE' | 'PAUSED'>
   meta:          any
   digitalocean:  DoBalance | { notConfigured: true }
   cachedAt:      string
@@ -188,7 +208,7 @@ async function buildAnalytics(): Promise<Analytics> {
   }
 
   const now = new Date().toISOString()
-  return { channels, meta, digitalocean, cachedAt: now }
+  return { channels, channelStatus: PATIENT_CHANNEL_STATUS, meta, digitalocean, cachedAt: now }
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────

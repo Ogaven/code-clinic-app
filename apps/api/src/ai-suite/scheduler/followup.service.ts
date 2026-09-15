@@ -13,7 +13,7 @@ let weekendReportSentOn: string | null = null
 // EAT hour helper (UTC+3)
 function eatHour(): number {
   return parseInt(
-    new Date().toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
+    new Date().toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Kampala' })
   )
 }
 
@@ -326,15 +326,15 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
   const counts = { sent: 0, skipped: 0 }
   const nowUTC  = new Date()
   const eatHourNow = parseInt(
-    nowUTC.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
+    nowUTC.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Kampala' })
   )
   if (!forceRun && (eatHourNow < 8 || eatHourNow >= 9)) return counts
 
-  const startOfToday     = new Date(nowUTC.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T00:00:00+03:00')
+  const startOfToday     = new Date(nowUTC.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' }) + 'T00:00:00+03:00')
   const yesterday        = new Date(nowUTC)
   yesterday.setDate(yesterday.getDate() - 1)
-  const startOfYesterday = new Date(yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T00:00:00+03:00')
-  const endOfYesterday   = new Date(yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T23:59:59+03:00')
+  const startOfYesterday = new Date(yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' }) + 'T00:00:00+03:00')
+  const endOfYesterday   = new Date(yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' }) + 'T23:59:59+03:00')
 
   // ── MISSED APPOINTMENTS ────────────────────────────────────────────────────
   let missedAppts: any[] = []
@@ -611,11 +611,11 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
 // TOMORROW with status SCHEDULED or CONFIRMED that haven't been sent a
 // confirmation request, and asks each patient to confirm via WhatsApp.
 
-export async function checkAndSendAppointmentConfirmations(forceRun = false): Promise<{ sent: number; skipped: number; outsideWindow: number }> {
-  const counts = { sent: 0, skipped: 0, outsideWindow: 0 }
+export async function checkAndSendAppointmentConfirmations(forceRun = false): Promise<{ sent: number; skipped: number; blockedTemplateRequired: number }> {
+  const counts = { sent: 0, skipped: 0, blockedTemplateRequired: 0 }
   const nowUTC     = new Date()
   const eatHourNow = parseInt(
-    nowUTC.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Nairobi' })
+    nowUTC.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Africa/Kampala' })
   )
   if (!forceRun && (eatHourNow < 9 || eatHourNow >= 10)) return counts
 
@@ -678,7 +678,7 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
       ? guardianTitle(patient.nextOfKinRelation, guardianFirstName)
       : minor ? 'there' : greetName
     const start        = new Date(appt.startAt)
-    const timeStr      = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).toLowerCase()
+    const timeStr      = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' }).toLowerCase()
     const msg          = minor
       ? `Hello ${addr}, this is Sarah from Code Clinic 😊 As ${greetName}'s ${relation}, just a reminder that ${greetName} has an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel.`
       : `Hello ${greetName}, this is Sarah from Code Clinic. You have an appointment tomorrow with Dr ${doctorFirst} at ${timeStr}. Please reply YES to confirm or NO to cancel. 😊`
@@ -692,17 +692,17 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     }
     const recipientPhone = confirmRouting.recipient.phone
 
-    // ── Template vs. free-text send ─────────────────────────────────────────
+    // ── Template vs. free-text send — FAIL CLOSED ───────────────────────────
     // Free-text WhatsApp sends are only guaranteed delivery within Meta's 24h
     // customer-service window (i.e. the patient messaged us in the last 24h).
-    // No Meta-APPROVED template dedicated to appointment confirmations is
-    // confirmed to exist anywhere in this codebase — WA_TEMPLATE_CONFIRMATION_NAME
-    // is optional and unset by default, same as the sibling WA_TEMPLATE_REMINDER_NAME
-    // used by reminder.service.ts. If it's configured (once a template is
-    // actually approved in Meta Business Manager), try it first; otherwise —
-    // or if the template call itself fails — fall back to free text, and flag
-    // explicitly whenever that fallback happens outside the safe window so
-    // staff can see potential delivery failures.
+    // Inside that window, the existing free-text confirmation workflow is
+    // used as before. Outside it, Meta requires an APPROVED template — if
+    // WA_TEMPLATE_CONFIRMATION_NAME isn't configured (as is the case in this
+    // environment today), NO SEND IS ATTEMPTED AT ALL: no free-text fallback,
+    // no silent "might work" attempt against Meta. The appointment is
+    // reported to the dashboard as needing template configuration instead of
+    // falsely appearing sendable (see ai-reports.ts's confirmation-report,
+    // which mirrors this exact same window+template check per appointment).
     const lastInbound = await prisma.aiMessage.findFirst({
       where: { conversation: { phoneNumber: patient.phone }, role: 'USER' },
       orderBy: { createdAt: 'desc' },
@@ -710,34 +710,27 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     const withinSessionWindow = !!lastInbound && (Date.now() - lastInbound.createdAt.getTime()) < 24 * 60 * 60 * 1000
     const templateName = process.env.WA_TEMPLATE_CONFIRMATION_NAME
 
+    if (!withinSessionWindow && !templateName) {
+      console.warn(`[ApptConfirmation] BLOCKED_TEMPLATE_REQUIRED for ${recipientPhone} — outside the 24h WhatsApp session window and no approved confirmation template configured (WA_TEMPLATE_CONFIRMATION_NAME). No send attempted.`)
+      counts.blockedTemplateRequired++
+      continue
+    }
+
     let msgId: string | undefined
-    let outsideWindowRisk = false
     try {
-      if (templateName) {
-        try {
-          msgId = await sendWhatsAppTemplate(recipientPhone, templateName, [addr, timeStr, `Dr ${doctorFirst}`], false)
-        } catch (templateErr: any) {
-          console.warn(`[ApptConfirmation] Template '${templateName}' failed for ${recipientPhone}, falling back to free text:`, templateErr?.message)
-          if (!withinSessionWindow) {
-            outsideWindowRisk = true
-            console.warn(`[ApptConfirmation] WARNING: free-text fallback to ${recipientPhone} is OUTSIDE the 24h Meta session window — Meta may reject this message.`)
-          }
-          msgId = await sendWhatsAppMessage(recipientPhone, msg, undefined, false)
-        }
-      } else {
-        if (!withinSessionWindow) {
-          outsideWindowRisk = true
-          console.warn(`[ApptConfirmation] WARNING: sending free-text to ${recipientPhone} OUTSIDE the 24h Meta session window — Meta may reject this message. No approved appointment-confirmation template is configured (set WA_TEMPLATE_CONFIRMATION_NAME once one is approved).`)
-        }
+      if (withinSessionWindow) {
         msgId = await sendWhatsAppMessage(recipientPhone, msg, undefined, false)
+      } else {
+        // Outside the window, only a template send is attempted — a failure
+        // here must NOT fall back to free text (that's exactly the send Meta
+        // is expected to reject outside the window).
+        msgId = await sendWhatsAppTemplate(recipientPhone, templateName!, [addr, timeStr, `Dr ${doctorFirst}`], false)
       }
     } catch (err: any) {
       console.error(`[ApptConfirmation] Send failed for ${recipientPhone}:`, err.message)
       counts.skipped++
       continue
     }
-
-    if (outsideWindowRisk) counts.outsideWindow++
 
     // Manually log the natural-language message to the conversation (rather
     // than relying on the template call's raw "[Template: name] params" log)
@@ -966,22 +959,22 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
 
 export async function checkAndSendWeekendReport(): Promise<void> {
   const now        = new Date()
-  const dayOfWeek  = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Africa/Nairobi' })
+  const dayOfWeek  = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Africa/Kampala' })
   const hour       = eatHour()
   if (dayOfWeek !== 'Monday' || hour < 8 || hour >= 9) return
 
-  const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
   if (weekendReportSentOn === todayStr) return
   weekendReportSentOn = todayStr
 
   // Weekend window: Saturday 00:00 to Sunday 23:59 EAT
   const satDate  = new Date(now); satDate.setDate(satDate.getDate() - 2)
   const sunDate  = new Date(now); sunDate.setDate(sunDate.getDate() - 1)
-  const satStart = new Date(satDate.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T00:00:00+03:00')
-  const sunEnd   = new Date(sunDate.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) + 'T23:59:59+03:00')
+  const satStart = new Date(satDate.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' }) + 'T00:00:00+03:00')
+  const sunEnd   = new Date(sunDate.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' }) + 'T23:59:59+03:00')
 
-  const satLabel = satDate.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
-  const sunLabel = sunDate.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Nairobi' })
+  const satLabel = satDate.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
+  const sunLabel = sunDate.toLocaleDateString('en-UG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Kampala' })
 
   console.log(`[WeekendReport] Generating report for ${satLabel} – ${sunLabel}`)
 

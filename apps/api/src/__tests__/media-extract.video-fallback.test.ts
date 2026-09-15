@@ -1,16 +1,22 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import fs from 'fs'
 import { extractFromVideo } from '../ai-suite/knowledge/media-extract.service'
 
-// This is a REAL (unmocked) test of extractFromVideo's ffmpeg-unavailable
-// path — not a simulation. In this offline/sandboxed environment,
-// ffmpeg-static's install-time binary download (see install.js — it fetches
-// a platform binary from GitHub releases on `pnpm install`) could not reach
-// the network, so no ffmpeg binary actually exists on disk here. That's
-// exactly the condition this test exercises and exactly why
-// extractFromVideo checks fs.existsSync() before ever touching the file
-// instead of assuming the npm package guarantees a working binary.
-describe('extractFromVideo when ffmpeg is unavailable (genuine environment condition, not mocked)', () => {
+// extractFromVideo checks fs.existsSync(ffmpegPath) before ever touching the
+// uploaded file, specifically so a missing/broken ffmpeg-static binary fails
+// clearly instead of crashing or hanging (see media-extract.service.ts ~128).
+// This test forces that exact condition deterministically via fs.existsSync
+// rather than depending on whether ffmpeg genuinely happens to be missing on
+// whatever machine runs the suite — a real ffmpeg install (as on this build
+// machine) must not flip this test to a false failure.
+describe('extractFromVideo when ffmpeg is unavailable (deterministically simulated)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('fails clearly and safely instead of crashing or hanging', async () => {
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false)
+
     await expect(extractFromVideo(Buffer.from('not a real video'), 'clip.mp4'))
       .rejects.toThrow('Video processing is not available on this server')
   })

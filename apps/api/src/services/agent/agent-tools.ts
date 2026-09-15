@@ -18,7 +18,12 @@ async function sendEmail(opts: { to: string; subject: string; text: string }) {
   } catch { /* non-blocking — email failure should not break agent */ }
 }
 
-async function sendSMS(to: string, message: string): Promise<void> {
+// Despite the historical name at its one call site below, this always sends
+// via WhatsApp — it never touches the real SMS provider (sms.service.ts).
+// Named honestly so nobody reading a call to this mistakes it for an actual
+// SMS send; WhatsApp must only be used when a workflow explicitly selected
+// WhatsApp, and this function only ever does that.
+async function sendWhatsAppConfirmation(to: string, message: string): Promise<void> {
   const { sendWhatsAppMessage } = await import('../../ai-suite/whatsapp/whatsapp.service')
   await sendWhatsAppMessage(to, message)
 }
@@ -528,8 +533,9 @@ async function handle_book_appointment(
     ctx.sendWhatsApp(patient.phone, confirmText).catch(() => { /* non-blocking */ })
   }
 
-  // Always send SMS confirmation
-  sendSMS(patient.phone, confirmText).catch(() => { /* non-blocking */ })
+  // Always send a WhatsApp confirmation (see sendWhatsAppConfirmation above —
+  // this is not an SMS send; SMS is a separate, currently-dormant channel)
+  sendWhatsAppConfirmation(patient.phone, confirmText).catch(() => { /* non-blocking */ })
 
   return {
     success: true,

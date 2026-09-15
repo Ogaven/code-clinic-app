@@ -25,7 +25,7 @@ import type { CommsChannel, WaitlistEntry, Patient } from '@prisma/client'
 
 async function sendViaChannel(channel: CommsChannel, to: string, body: string): Promise<void> {
   if (channel === 'WHATSAPP') return sendWhatsAppMessage(to, body).then(() => undefined)
-  if (channel === 'SMS') return sendSMS(to, body)
+  if (channel === 'SMS') return sendSMS(to, body).then(() => undefined)
   throw new Error(`Waitlist notification channel "${channel}" is not wired to a real send path yet`)
 }
 

@@ -32,6 +32,7 @@ interface DoBalance {
 
 interface Analytics {
   channels: Record<string, ChannelData>
+  channelStatus?: Record<string, 'ACTIVE' | 'PAUSED'>
   meta: { uganda: WabaUsage; kenya: WabaUsage; cachedAt: string } | null
   digitalocean: DoBalance | { notConfigured: true }
   cachedAt: string
@@ -106,7 +107,7 @@ function ChannelBarChart({ points }: { points: DayPoint[] }) {
 
 // ── Single channel card ────────────────────────────────────────────────────────
 
-function ChannelCard({ channel, data }: { channel: string; data: ChannelData }) {
+function ChannelCard({ channel, data, status }: { channel: string; data: ChannelData; status?: 'ACTIVE' | 'PAUSED' }) {
   const meta = CHANNEL_META[channel] ?? { label: channel, icon: '📡' }
   const changeAmt = data.thisMonth.total - data.lastMonth.total
   const changePct = data.lastMonth.total
@@ -119,7 +120,19 @@ function ChannelCard({ channel, data }: { channel: string; data: ChannelData }) 
         <div className="flex items-center gap-2">
           <span className="text-lg">{meta.icon}</span>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">{meta.label}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">{meta.label}</p>
+              {status && (
+                <span className={cn(
+                  'text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full',
+                  status === 'ACTIVE'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                    : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40',
+                )}>
+                  {status === 'ACTIVE' ? 'Active' : 'Paused'}
+                </span>
+              )}
+            </div>
             <p className="text-[10px] text-gray-300 dark:text-white/20">{data.allTimeConvs.toLocaleString()} convs all-time</p>
           </div>
         </div>
@@ -423,8 +436,18 @@ export default function AnalyticsPage() {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {CHANNEL_ORDER.map(ch => (
-                <ChannelCard key={ch} channel={ch} data={data.channels[ch]} />
+                <ChannelCard key={ch} channel={ch} data={data.channels[ch]} status={data.channelStatus?.[ch]} />
               ))}
+            </div>
+            {/* Calling has no message-volume data to chart (it isn't an aiConversation
+                channel) but its dormancy still needs to be visible here per the same
+                active/paused convention as the message channels above. */}
+            <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-400 dark:text-white/30">
+              <span className="text-base">📞</span>
+              <span className="font-bold uppercase tracking-widest text-[10px]">Calling</span>
+              <span className="text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40">
+                Paused
+              </span>
             </div>
           </section>
 

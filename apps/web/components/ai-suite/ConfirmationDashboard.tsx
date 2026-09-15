@@ -12,7 +12,7 @@ import {
 // (real tomorrow's-appointments + 30-day log) and, for roles allowed to
 // trigger sends, POST /ai-suite/trigger/confirmations.
 
-type ConfirmationStatus = 'NOT_SENT' | 'AWAITING_REPLY' | 'CONFIRMED' | 'CANCEL_REQUESTED' | 'RESCHEDULE_REQUESTED' | 'FAILED'
+type ConfirmationStatus = 'NOT_SENT' | 'AWAITING_REPLY' | 'CONFIRMED' | 'CANCEL_REQUESTED' | 'RESCHEDULE_REQUESTED' | 'FAILED' | 'TEMPLATE_REQUIRED'
 
 interface TomorrowAppt {
   id: string
@@ -50,6 +50,7 @@ const STATUS_STYLES: Record<ConfirmationStatus, string> = {
   CANCEL_REQUESTED:      'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
   RESCHEDULE_REQUESTED:  'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
   FAILED:                'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  TEMPLATE_REQUIRED:     'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
 }
 
 const STATUS_LABELS: Record<ConfirmationStatus, string> = {
@@ -59,6 +60,7 @@ const STATUS_LABELS: Record<ConfirmationStatus, string> = {
   CANCEL_REQUESTED:     'Cancel Requested',
   RESCHEDULE_REQUESTED: 'Reschedule Requested',
   FAILED:               'Failed',
+  TEMPLATE_REQUIRED:    'Template Required',
 }
 
 type Filter = 'ALL' | 'NOT_SENT' | 'AWAITING' | 'CONFIRMED' | 'NEEDS_ATTENTION' | 'FAILED'
@@ -107,7 +109,7 @@ export default function ConfirmationDashboard({
       if (!r.ok) throw new Error(body?.error || 'Failed')
       const parts = [`${body.sent} sent`]
       if (body.skipped) parts.push(`${body.skipped} skipped`)
-      if (body.outsideWindow) parts.push(`${body.outsideWindow} outside 24h window — verify delivery`)
+      if (body.blockedTemplateRequired) parts.push(`${body.blockedTemplateRequired} need an approved template — not sent`)
       setTriggerMsg({ type: 'success', text: `✅ Confirmation run complete — ${parts.join(', ')}` })
       setTimeout(load, 3000)
     } catch (e: any) {
@@ -121,11 +123,12 @@ export default function ConfirmationDashboard({
   const eligibleCount = data?.eligibleTomorrowCount ?? 0
 
   const stats = useMemo(() => ({
-    sent:      tomorrowAppts.filter(a => a.confirmationStatus !== 'NOT_SENT').length,
+    sent:      tomorrowAppts.filter(a => a.confirmationStatus !== 'NOT_SENT' && a.confirmationStatus !== 'TEMPLATE_REQUIRED').length,
     confirmed: tomorrowAppts.filter(a => a.confirmationStatus === 'CONFIRMED').length,
     awaiting:  tomorrowAppts.filter(a => a.confirmationStatus === 'AWAITING_REPLY').length,
     needsAttention: tomorrowAppts.filter(a => a.confirmationStatus === 'CANCEL_REQUESTED' || a.confirmationStatus === 'RESCHEDULE_REQUESTED').length,
     failed:    tomorrowAppts.filter(a => a.confirmationStatus === 'FAILED').length,
+    templateRequired: tomorrowAppts.filter(a => a.confirmationStatus === 'TEMPLATE_REQUIRED').length,
   }), [tomorrowAppts])
 
   const filteredAppts = useMemo(() => {

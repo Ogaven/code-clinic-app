@@ -195,16 +195,36 @@ router.get('/confirmation-report', requireAuth, clinicalStaff, async (req, res) 
       msgsByPhone.get(phone)!.push(m)
     }
 
+    // Mirrors checkAndSendAppointmentConfirmations' own fail-closed check
+    // exactly (followup.service.ts): a NOT_SENT appointment is only truly
+    // sendable if the patient messaged within the last 24h (free-text
+    // allowed) or an approved confirmation template is configured (template
+    // send allowed outside that window). Anything else is TEMPLATE_REQUIRED
+    // — reported honestly rather than appearing falsely sendable.
+    const windowCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const recentInboundMsgs = tPhones.length > 0 ? await prisma.aiMessage.findMany({
+      where: {
+        role:         'USER',
+        createdAt:    { gte: windowCutoff },
+        conversation: { phoneNumber: { in: tPhones } },
+      },
+      include: { conversation: { select: { phoneNumber: true } } },
+    }) : []
+    const withinWindowPhones = new Set(recentInboundMsgs.map(m => m.conversation.phoneNumber))
+    const templateConfigured = Boolean(process.env.WA_TEMPLATE_CONFIRMATION_NAME)
+
     let eligibleTomorrowCount = 0
     const tomorrowAppointments = tomorrowAppointmentsRaw.map(appt => {
       const scheduledMsg = confirmationByPatientId.get(appt.patientId)
 
       if (!scheduledMsg) {
-        eligibleTomorrowCount++
+        const phone    = appt.patient?.phone
+        const sendable = (!!phone && withinWindowPhones.has(phone)) || templateConfigured
+        if (sendable) eligibleTomorrowCount++
         return {
           id: appt.id, patient: appt.patient, doctor: appt.doctor, service: appt.service,
           startAt: appt.startAt, status: appt.status,
-          confirmationStatus: 'NOT_SENT' as const,
+          confirmationStatus: sendable ? ('NOT_SENT' as const) : ('TEMPLATE_REQUIRED' as const),
           confirmationSentAt: null, repliedAt: null, deliveryStatus: null,
         }
       }
@@ -265,8 +285,9 @@ router.post('/trigger/followups', requireAuth, adminAndReceptionist, async (_req
 
 // POST /ai-suite/trigger/confirmations — manually trigger confirmation run (bypasses time gate).
 // Awaited (not fire-and-forget) so the response can carry real counts — including
-// `outsideWindow`, the count of sends that fell back to free text outside Meta's
-// 24h session window — for the dashboard to surface to staff immediately.
+// `blockedTemplateRequired`, the count of appointments outside the 24h WhatsApp
+// session window with no approved confirmation template configured, for which
+// NO send was attempted at all (fail-closed — never a risky free-text fallback).
 router.post('/trigger/confirmations', requireAuth, adminAndReceptionist, async (_req, res) => {
   try {
     const result = await checkAndSendAppointmentConfirmations(true)

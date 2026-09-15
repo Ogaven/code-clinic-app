@@ -20,6 +20,11 @@ describe('env validation', () => {
     // Should not throw
     const { env } = await import('../lib/env')
     expect(env.DATABASE_URL).toBe('postgresql://localhost/test')
-    expect(env.JWT_EXPIRES_IN).toBe('15m') // default
+    // 12h is the deliberate, current policy (commit b966ac8, "12h JWT
+    // session" — extended from 15m specifically to prevent mid-shift expiry
+    // for clinic staff; cookie max-age and apiFetch's 401 auto-refresh were
+    // updated to match in the same change). Not a stale default — verify
+    // against that decision, not the pre-b966ac8 15m value.
+    expect(env.JWT_EXPIRES_IN).toBe('12h') // default
   })
 })
