@@ -3,6 +3,7 @@ import fs            from 'fs'
 import { requireAuth } from '../../middleware/auth'
 import { prisma }    from '../../lib/prisma'
 import { isSmsChannelActive } from '../sms/sms.service'
+import { isCallingChannelActive } from '../../services/calling-channel.service'
 
 const router = Router()
 
@@ -23,9 +24,6 @@ const META_CACHE  = '/tmp/codeclinic-meta-usage.json'
 // the equivalent surface on the Admin CRM Automation page
 // (routes/crm-automation.ts's /automation-status).
 async function getPatientChannelStatus(): Promise<Record<string, 'ACTIVE' | 'PAUSED'>> {
-  const callingSetting = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
-  const callingActive  = callingSetting?.value !== 'false'
-
   return {
     WHATSAPP:          'ACTIVE',
     WEBSITE:           'ACTIVE',
@@ -34,7 +32,7 @@ async function getPatientChannelStatus(): Promise<Record<string, 'ACTIVE' | 'PAU
     INSTAGRAM:         'ACTIVE',
     INSTAGRAM_COMMENT: 'ACTIVE',
     SMS:               isSmsChannelActive() ? 'ACTIVE' : 'PAUSED',
-    CALLING:           callingActive ? 'ACTIVE' : 'PAUSED',
+    CALLING:           (await isCallingChannelActive()) ? 'ACTIVE' : 'PAUSED',
   }
 }
 

@@ -77,7 +77,7 @@ interface WhatsAppDeliveryHealth {
   lastFailedDeliveryAt: string | null
   latestError: { code: number; title: string; message: string | null; details: string | null; occurredAt: string } | null
   failureCountByCode: Record<string, number>
-  status: 'HEALTHY' | 'DEGRADED' | 'DOWN'
+  status: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN'
 }
 
 interface CreditLine {
@@ -375,6 +375,9 @@ const HEALTH_STYLE: Record<WhatsAppDeliveryHealth['status'], { label: string; pi
   HEALTHY:  { label: 'Healthy',  pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', dot: 'bg-emerald-500' },
   DEGRADED: { label: 'Degraded', pill: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',       dot: 'bg-amber-500' },
   DOWN:     { label: 'Down',     pill: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',               dot: 'bg-red-500' },
+  // Too few send attempts in the last 24h to judge either way — deliberately
+  // distinct from HEALTHY so a quiet window can never read as "confirmed fine."
+  UNKNOWN:  { label: 'Unknown',  pill: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40',              dot: 'bg-gray-400' },
 }
 
 function fmtDateTime(iso: string | null): string {

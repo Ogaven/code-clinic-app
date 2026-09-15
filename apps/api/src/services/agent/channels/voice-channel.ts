@@ -4,6 +4,7 @@ import { uploadFile } from '../../storage/r2'
 import { transcribeAudio } from '../../knowledge/rag'
 import { prisma } from '../../../lib/prisma'
 import { makeOutboundCall, startBidirectionalVoiceCall, isSipConnected } from '../../../ai-suite/voice/sip.service'
+import { isCallingChannelActive } from '../../calling-channel.service'
 
 // ── TTS: Generate voice response ───────────────────────────────
 
@@ -91,8 +92,7 @@ export async function handleInboundCall(phoneNumber: string): Promise<string> {
 
 export async function triggerOutboundCall(queueItemId: string): Promise<void> {
   // ── Master calling-agents guard ───────────────────────────────────────────
-  const callingEnabled = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
-  if (callingEnabled?.value === 'false') {
+  if (!(await isCallingChannelActive())) {
     console.log(`[VOICE] Calling agents disabled — skipping queue item ${queueItemId}`)
     return
   }

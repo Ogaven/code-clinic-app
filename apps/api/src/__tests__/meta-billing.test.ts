@@ -122,12 +122,11 @@ describe('getMetaBillingStatus — no fabricated balances', () => {
     expect(status.recent131042Within24h).toBe(true)
   })
 
-  it('caches results and does not re-fetch within the TTL', async () => {
+  it('caches the slow Graph API fields and does not re-fetch within the TTL', async () => {
     process.env.WHATSAPP_TOKEN = 'test-token'
     const cached = {
-      billingStatus: 'HEALTHY', wabaAccountReviewStatus: 'APPROVED', creditLines: [],
-      creditLinesSource: 'UNAVAILABLE', creditLinesNote: 'cached', recent131042: false,
-      recent131042Within24h: false, adminActionUrl: null, fetchedAt: new Date().toISOString(),
+      wabaStatus: 'APPROVED', businessId: null, creditLines: [],
+      creditLinesSource: 'UNAVAILABLE', creditLinesNote: 'cached',
       graphApiError: null, cachedAt: new Date().toISOString(),
     }
     fsMock.readFileSync.mockReturnValue(JSON.stringify(cached))
@@ -136,6 +135,37 @@ describe('getMetaBillingStatus — no fabricated balances', () => {
     const status = await getMetaBillingStatus()
 
     expect(status.creditLinesNote).toBe('cached')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // Regression for a real production incident (2026-09-15): the whole
+  // response — including the 131042-recency check — used to be cached as
+  // one blob for CACHE_TTL_MS (6h). A fresh 131042 that landed after the
+  // cache was built kept being reported as billingStatus: 'HEALTHY' for
+  // hours, directly contradicting the (uncached) WhatsApp delivery-health
+  // card, which correctly showed DOWN from the same underlying failure.
+  it('reports ATTENTION_REQUIRED for a 131042 that landed AFTER a still-fresh Graph API cache was written, never serving the stale cached billingStatus', async () => {
+    process.env.WHATSAPP_TOKEN = 'test-token'
+    // A Graph API cache written before the failure — well within TTL, so it
+    // would normally be reused as-is for the slow fields.
+    const cachedBeforeFailure = {
+      wabaStatus: 'APPROVED', businessId: null, creditLines: [],
+      creditLinesSource: 'UNAVAILABLE', creditLinesNote: 'no business_id known yet',
+      graphApiError: null, cachedAt: new Date().toISOString(),
+    }
+    fsMock.readFileSync.mockReturnValue(JSON.stringify(cachedBeforeFailure))
+    // A 131042 that occurred AFTER the cache was written — must still be
+    // picked up, because recent-failure evidence is never itself cached.
+    prismaMock.metaDeliveryFailure.findFirst.mockResolvedValue({
+      code: 131042, details: null, occurredAt: new Date(Date.now() - 5 * 60 * 1000), // 5 min ago
+    })
+
+    const { getMetaBillingStatus } = await importFresh()
+    const status = await getMetaBillingStatus()
+
+    expect(status.billingStatus).toBe('ATTENTION_REQUIRED')
+    expect(status.recent131042Within24h).toBe(true)
+    // The slow Graph API fields still legitimately came from cache.
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
