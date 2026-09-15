@@ -8,6 +8,35 @@ Source documents:
 
 Most of this matrix reflects work already shipped in prior rounds of this workstream (Rounds 1–3, production since 2026-09-14) — those rows are marked LIVE with their original file citations. Rows touched or added in this release are marked accordingly in NOTES.
 
+## 2026-09-15 correction — active channels
+
+Code Clinic's only currently active patient-communication channels are
+**WhatsApp, Instagram, Facebook, and Website Chat**. SMS (Africa's Talking)
+and calling/telephony remain fully built but dormant — no active SMS
+service arrangement exists, and the AI voice receptionist is administratively
+paused (`calling_agents_enabled=false`).
+
+- `sendSMS()` now requires both AT credentials *and* an explicit
+  `SMS_CHANNEL_ACTIVE` flag (absent in production) before attempting a real
+  send — previously credentials alone were sufficient, which was a real gap
+  (waitlist/sequence touches configured for the SMS channel could have sent
+  real SMS the moment their own feature flag went live, independent of the
+  missed-call flag). Falls back to WhatsApp otherwise.
+- A separate `sendStaffSMS()` (internal staff paging, not a patient channel)
+  was added so this correction didn't silently break a concurrently-merged
+  fix routing staff safety alerts through Africa's Talking as a WhatsApp-
+  outage fallback (Meta billing issue, error 131042, discovered 2026-09-15).
+- `GET /crm-automation/automation-status` now reports live-derived
+  `channels` state (not hardcoded), consumed by a new Communication Channels
+  strip in the Admin UI.
+- **`CRM_WAITLIST_AUTOMATION_LIVE` is now LIVE** (activated 2026-09-15,
+  explicit operator confirmation) — its channel path defaults to WhatsApp,
+  is unaffected by the SMS pause, and had zero patients with an SMS channel
+  preference in production data.
+- `CRM_MISSED_CALL_TEXTBACK_LIVE` stays **BUILT_OFF / PAUSED** — calling is
+  a paused capability; engineering, tests, and SIP integration are all
+  preserved and untouched.
+
 ## Patient Tag Taxonomy
 
 | REQUIREMENT | SRC | STATUS | IMPLEMENTATION | TEST | PROD | NOTES |

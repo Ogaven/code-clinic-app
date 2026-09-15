@@ -2,6 +2,7 @@ import { Router }    from 'express'
 import fs            from 'fs'
 import { requireAuth } from '../../middleware/auth'
 import { prisma }    from '../../lib/prisma'
+import { isSmsChannelActive } from '../sms/sms.service'
 
 const router = Router()
 
@@ -12,20 +13,29 @@ const META_CACHE  = '/tmp/codeclinic-meta-usage.json'
 // A channel's presence in aiConversation data (or its message counts being
 // nonzero) is not the same question as whether it's currently an active
 // Code Clinic patient channel — that's a business decision, not a data
-// query. WhatsApp/Instagram/Facebook/Website Chat are active; SMS and
-// calling are deliberately paused (the underlying send paths remain in the
-// codebase — see sms.service.ts's SMS_CHANNEL_LIVE gate — but are dormant
-// today). Historical SMS/call records can still be reported on; they just
-// must never be presented as coming from a currently-active channel.
-const PATIENT_CHANNEL_STATUS: Record<string, 'ACTIVE' | 'PAUSED'> = {
-  WHATSAPP:           'ACTIVE',
-  WEBSITE:            'ACTIVE',
-  FACEBOOK:           'ACTIVE',
-  FACEBOOK_COMMENT:   'ACTIVE',
-  INSTAGRAM:          'ACTIVE',
-  INSTAGRAM_COMMENT:  'ACTIVE',
-  SMS:                'PAUSED',
-  CALLING:            'PAUSED',
+// query. WhatsApp/Instagram/Facebook/Website Chat are fixed as active (no
+// toggle exists for them). SMS and Calling are genuinely derived from the
+// same real switches their own send paths check — isSmsChannelActive() is
+// the exact gate sendSMS() itself uses (sms.service.ts), and
+// calling_agents_enabled is the exact AppSetting the SIP voice pipeline
+// checks before answering (sip.service.ts / voice-channel.ts) — so this can
+// never silently drift from what the system is actually doing, and matches
+// the equivalent surface on the Admin CRM Automation page
+// (routes/crm-automation.ts's /automation-status).
+async function getPatientChannelStatus(): Promise<Record<string, 'ACTIVE' | 'PAUSED'>> {
+  const callingSetting = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
+  const callingActive  = callingSetting?.value !== 'false'
+
+  return {
+    WHATSAPP:          'ACTIVE',
+    WEBSITE:           'ACTIVE',
+    FACEBOOK:          'ACTIVE',
+    FACEBOOK_COMMENT:  'ACTIVE',
+    INSTAGRAM:         'ACTIVE',
+    INSTAGRAM_COMMENT: 'ACTIVE',
+    SMS:               isSmsChannelActive() ? 'ACTIVE' : 'PAUSED',
+    CALLING:           callingActive ? 'ACTIVE' : 'PAUSED',
+  }
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -207,8 +217,9 @@ async function buildAnalytics(): Promise<Analytics> {
     }
   }
 
+  const channelStatus = await getPatientChannelStatus()
   const now = new Date().toISOString()
-  return { channels, channelStatus: PATIENT_CHANNEL_STATUS, meta, digitalocean, cachedAt: now }
+  return { channels, channelStatus, meta, digitalocean, cachedAt: now }
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────

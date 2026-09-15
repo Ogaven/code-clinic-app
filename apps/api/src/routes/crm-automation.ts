@@ -26,6 +26,7 @@ import {
   caseAcceptanceReport, sequencePerformanceReport, agingReceivablesReport, callPerformanceReport,
 } from '../crm-automation/reporting.service'
 import { isCrmAutomationLive, crmFeatureStatus } from '../crm-automation/dry-run'
+import { isSmsChannelActive } from '../ai-suite/sms/sms.service'
 
 const router = Router()
 
@@ -418,8 +419,29 @@ router.post('/dispatch/run', requireAuth, adminOnly, async (_req: Request, res: 
 // ── Automation mode status (Part 11 — Admin visibility) ───────────────────
 // Read-only booleans only, never raw env values/secrets. Backing the Admin
 // CRM Automation Settings page's "current mode" panel.
+// Communication channel status — WhatsApp/Instagram/Facebook/Website Chat are
+// Code Clinic's currently active patient-communication channels; SMS and
+// Calling are built but not currently in active business use. SMS is
+// genuinely derived (isSmsChannelActive() — the real gate sendSMS() checks,
+// not a guess); Calling reflects the real 'calling_agents_enabled' setting
+// the SIP voice pipeline itself checks before answering — so this can never
+// silently drift from what the system is actually doing.
 router.get('/automation-status', requireAuth, adminAndReceptionist, async (_req: Request, res: Response) => {
-  res.json({ masterLive: isCrmAutomationLive(), features: crmFeatureStatus() })
+  const callingSetting = await prisma.appSetting.findUnique({ where: { key: 'calling_agents_enabled' } })
+  const callingActive  = callingSetting?.value !== 'false'
+
+  res.json({
+    masterLive: isCrmAutomationLive(),
+    features:   crmFeatureStatus(),
+    channels: {
+      WHATSAPP:     'ACTIVE',
+      INSTAGRAM:    'ACTIVE',
+      FACEBOOK:     'ACTIVE',
+      WEBSITE_CHAT: 'ACTIVE',
+      SMS:          isSmsChannelActive() ? 'ACTIVE' : 'PAUSED',
+      CALLING:      callingActive ? 'ACTIVE' : 'PAUSED',
+    },
+  })
 })
 
 // ── Lead consent (release-blocker fix) ────────────────────────────────────

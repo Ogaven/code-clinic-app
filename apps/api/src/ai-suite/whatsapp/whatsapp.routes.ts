@@ -6,9 +6,51 @@ import { enqueueMessage } from './message-buffer'
 import { handleStaffReply, STAFF_NUMBER, type AlertMeta } from './staff-relay.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
+import { sendPushToUser } from '../../services/push.service'
 
 const router = Router()
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+// ── Staff-facing "your WhatsApp alerts are not being delivered" safeguard ────
+// Fires when Meta's delivery-status webhook reports a failed send to the staff
+// number, for ANY reason (billing, 24h window, bad number, outage). Uses two
+// channels that don't share a failure mode with WhatsApp itself: an in-app
+// notification (free, no external dependency) and a push notification (free,
+// VAPID-based). Also makes a best-effort real SMS attempt. Cooldown prevents
+// spamming staff / draining SMS balance for the same ongoing outage — one
+// alert per 30 minutes is enough to make sure it's never silent for weeks
+// again, without flooding staff while the underlying issue gets fixed.
+let lastDeliveryFailureAlertAt = 0
+const DELIVERY_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
+
+async function notifyStaffOfDeliveryFailure(code?: number, message?: string, details?: string): Promise<void> {
+  const now = Date.now()
+  if (now - lastDeliveryFailureAlertAt < DELIVERY_FAILURE_ALERT_COOLDOWN_MS) return
+  lastDeliveryFailureAlertAt = now
+
+  const title = '⚠️ Staff WhatsApp alerts are failing to deliver'
+  const body  = `Meta error #${code ?? '?'}: ${message ?? 'unknown'}${details ? ` — ${details}` : ''}. ` +
+    `Clinical concern / escalation alerts may not be reaching this WhatsApp number right now — check the AI Suite escalations page directly.`
+
+  try {
+    const staff = await prisma.user.findMany({ where: { role: { in: ['ADMIN', 'RECEPTIONIST'] }, isActive: true } })
+    await Promise.all(staff.map(async u => {
+      await prisma.notification.create({
+        data: { userId: u.id, type: 'SYSTEM', title, body, href: '/ai-suite/escalations' },
+      }).catch(() => {})
+      sendPushToUser(u.id, { title, body, url: '/ai-suite/escalations' }).catch(() => {})
+    }))
+  } catch (e: any) {
+    console.error('[WhatsApp] notifyStaffOfDeliveryFailure notification error:', e.message)
+  }
+
+  try {
+    const { sendStaffSMS } = await import('../sms/sms.service')
+    await sendStaffSMS(STAFF_NUMBER, `Code Clinic: ${title}. ${body}`)
+  } catch (e: any) {
+    console.error('[WhatsApp] notifyStaffOfDeliveryFailure SMS fallback error:', e.message)
+  }
+}
 
 // ── Log conversation + send reply without going through full processInbound ──────
 async function sendDirectReply(from: string, inboundText: string, reply: string, wamid: string): Promise<void> {
@@ -96,6 +138,27 @@ router.post('/webhook', async (req: Request, res: Response) => {
             prisma.aiMessage
               .updateMany({ where: { wamid: s.id }, data: { status: s.status } })
               .catch(() => {})
+
+            // A synchronous "accepted"/"sent" response from Meta's send API does NOT
+            // mean the message was delivered — real failures (wrong number, 24h window,
+            // billing/eligibility issues) only surface here, asynchronously. A staff
+            // alert whose send call "succeeded" but whose real delivery failed here
+            // went unnoticed for weeks in 2026-09 (Meta billing issue, error 131042)
+            // because nothing ever looked at this webhook's failures. Any failed send
+            // to the staff number is always worth surfacing loudly, regardless of
+            // which flow sent it.
+            if (s.status === 'failed') {
+              const err = s.errors?.[0]
+              console.error(
+                `[WhatsApp] DELIVERY FAILED to ${s.recipient_id}: #${err?.code ?? '?'} ${err?.message ?? err?.title ?? 'unknown error'}` +
+                (err?.error_data?.details ? ` — ${err.error_data.details}` : '')
+              )
+              const recipientDigits = s.recipient_id?.replace(/\D/g, '') ?? ''
+              const staffDigits     = STAFF_NUMBER.replace(/\D/g, '')
+              if (recipientDigits && staffDigits && recipientDigits === staffDigits) {
+                notifyStaffOfDeliveryFailure(err?.code, err?.message ?? err?.title, err?.error_data?.details).catch(() => {})
+              }
+            }
           }
         }
 
@@ -445,7 +508,7 @@ interface WhatsAppStatusUpdate {
   status:       string   // sent | delivered | read | failed
   timestamp:    string
   recipient_id: string
-  errors?:      Array<{ code: number; title: string }>
+  errors?:      Array<{ code: number; title: string; message?: string; error_data?: { details?: string } }>
 }
 
 interface WhatsAppWebhookPayload {

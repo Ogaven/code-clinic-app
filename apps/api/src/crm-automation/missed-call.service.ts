@@ -11,13 +11,15 @@
 //
 // Real Africa's Talking carrier SMS is now wired (ai-suite/sms/sms.service.ts,
 // isRealSmsProviderConfigured()) rather than the WhatsApp passthrough this
-// used to fall back to unconditionally. Actual sending still requires the
-// dedicated CRM_MISSED_CALL_TEXTBACK_LIVE flag (see dry-run.ts) — deploying
-// this code does not by itself start sending real SMS.
+// used to fall back to unconditionally. Actual sending still requires BOTH
+// the dedicated CRM_MISSED_CALL_TEXTBACK_LIVE flag (see dry-run.ts) AND SMS
+// being an active channel at all (isSmsChannelActive() — SMS is not, today;
+// only WhatsApp/Instagram/Facebook/Website Chat are) — deploying this code
+// does not by itself start sending real SMS.
 // ─────────────────────────────────────────────────────────────────────────
 import { prisma } from '../lib/prisma'
 import { sendOrSimulate, isCrmFeatureLive } from './dry-run'
-import { sendSMS, isRealSmsProviderConfigured } from '../ai-suite/sms/sms.service'
+import { sendSMS, isRealSmsProviderConfigured, isSmsChannelActive } from '../ai-suite/sms/sms.service'
 import { getChannelConsentStatus } from './consent-log.service'
 import { phoneVariants } from '../utils/phone'
 

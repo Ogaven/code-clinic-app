@@ -66,8 +66,13 @@ const FEATURE_LABELS: Record<string, string> = {
   MISSED_CALL_TEXTBACK:  'Missed-Call Text-Back',
 }
 
+const CHANNEL_LABELS: Record<string, string> = {
+  WHATSAPP: 'WhatsApp', INSTAGRAM: 'Instagram', FACEBOOK: 'Facebook',
+  WEBSITE_CHAT: 'Website Chat', SMS: 'SMS', CALLING: 'Calling',
+}
+
 function AutomationModeStatus() {
-  const [status, setStatus] = useState<{ masterLive: boolean; features: Record<string, boolean> } | null>(null)
+  const [status, setStatus] = useState<{ masterLive: boolean; features: Record<string, boolean>; channels: Record<string, 'ACTIVE' | 'PAUSED'> } | null>(null)
 
   useEffect(() => {
     fetch(`${API}/crm-automation/automation-status`, { headers: authHeaders() })
@@ -79,25 +84,46 @@ function AutomationModeStatus() {
   if (!status) return null
 
   return (
-    <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4">
-      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-2.5">Current Automation Mode</p>
-      <div className="flex flex-wrap gap-2">
-        {Object.entries(FEATURE_LABELS).map(([key, label]) => {
-          const live = status.features[key] === true
-          return (
-            <span key={key}
-              className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold',
-                live ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300'
-                     : 'bg-gray-100 text-gray-500 dark:bg-white/8 dark:text-white/50')}>
-              <span className={cn('w-1.5 h-1.5 rounded-full', live ? 'bg-emerald-500' : 'bg-gray-400')} />
-              {label}: {live ? 'LIVE' : 'OFF'}
-            </span>
-          )
-        })}
+    <div className="space-y-3">
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4">
+        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-2.5">Communication Channels</p>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(CHANNEL_LABELS).map(([key, label]) => {
+            const active = status.channels?.[key] === 'ACTIVE'
+            return (
+              <span key={key}
+                className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold',
+                  active ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300'
+                         : 'bg-amber-50 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300')}>
+                <span className={cn('w-1.5 h-1.5 rounded-full', active ? 'bg-emerald-500' : 'bg-amber-500')} />
+                {label}: {active ? 'ACTIVE' : 'PAUSED'}
+              </span>
+            )
+          })}
+        </div>
+        <p className="text-[11px] text-gray-400 dark:text-white/40 mt-2">SMS and Calling are built but not currently active Code Clinic channels — no patient communication goes out over either regardless of any feature flag below.</p>
       </div>
-      {!status.masterLive && (
-        <p className="text-[11px] text-gray-400 dark:text-white/40 mt-2">Master automation switch is off — every feature above is forced to dry-run regardless of its own setting.</p>
-      )}
+
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4">
+        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-2.5">Current Automation Mode</p>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(FEATURE_LABELS).map(([key, label]) => {
+            const live = status.features[key] === true
+            return (
+              <span key={key}
+                className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold',
+                  live ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300'
+                       : 'bg-gray-100 text-gray-500 dark:bg-white/8 dark:text-white/50')}>
+                <span className={cn('w-1.5 h-1.5 rounded-full', live ? 'bg-emerald-500' : 'bg-gray-400')} />
+                {label}: {live ? 'LIVE' : 'OFF'}
+              </span>
+            )
+          })}
+        </div>
+        {!status.masterLive && (
+          <p className="text-[11px] text-gray-400 dark:text-white/40 mt-2">Master automation switch is off — every feature above is forced to dry-run regardless of its own setting.</p>
+        )}
+      </div>
     </div>
   )
 }
@@ -919,6 +945,9 @@ function ReportingPanel() {
 
       {status === 'ok' && sub === 'calls' && d && (
         <div className="space-y-3">
+          <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-2xl p-3 text-xs text-amber-700 dark:text-amber-300">
+            Calling is currently a <strong>PAUSED</strong> Code Clinic channel — the figures below are real logged events, not fake data, but a meaningful share of "missed" calls here is unsolicited SIP scanner/probe traffic hitting the trunk, not real patients. No text-back or other patient communication fires from this data today.
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: 'Logged', v: d.totalLogged }, { label: 'Missed', v: d.missedCount },

@@ -1,53 +1,60 @@
 #!/bin/bash
-# deploy-api.sh — Build API locally and deploy compiled output to production.
+# deploy-api.sh [target_sha] — deploys ONLY the API, atomically.
 #
 # WHY LOCAL BUILD: The production server (46.101.255.243) has 2 GB RAM.
 # TypeScript (tsc) crashes with OOM on that machine. All API compilation
-# must happen here on the dev machine; only the compiled dist/ is sent.
+# happens here, on the machine running this script; only the compiled dist/
+# is uploaded.
+#
+# This script NEVER touches codeclinic-web. It uploads dist/ into a fresh,
+# uniquely-named release directory (never overwriting the live one), then
+# the remote script atomically swaps a symlink, restarts codeclinic-api,
+# health-checks it, and rolls back automatically on failure.
+#
+# Schema migrations remain an explicit, operator-controlled step (see
+# DEPLOYMENT.md) — this script regenerates the Prisma client to match
+# schema.prisma but never runs `prisma migrate deploy` or `db push`.
 #
 # Usage (from repo root, in Git Bash):
-#   bash deploy-api.sh
+#   bash deploy-api.sh              # deploys origin/main HEAD
+#   bash deploy-api.sh <sha>        # deploys a specific commit
 #
-# Prerequisites: pnpm installed locally, ssh key access to root@46.101.255.243
+# Prerequisites: pnpm installed locally, ssh key access to root@46.101.255.243,
+# local checkout clean and AT the target commit (never deploys uncommitted work).
 
 set -e
-
 SERVER=root@46.101.255.243
 REMOTE_DIR=/var/www/codeclinic
 
-echo '[deploy-api] Building API locally (tsc)...'
-# tsc requires extra heap on large codebases — 3 GB should be enough on any dev machine
+git fetch origin --quiet
+TARGET_SHA="${1:-$(git rev-parse origin/main)}"
+git cat-file -e "$TARGET_SHA" 2>/dev/null || { echo "[deploy-api] ERROR: $TARGET_SHA not found — fetch or push first"; exit 1; }
+
+CURRENT_SHA=$(git rev-parse HEAD)
+if [ "$CURRENT_SHA" != "$TARGET_SHA" ]; then
+  echo "[deploy-api] ERROR: local checkout is at $CURRENT_SHA but target is $TARGET_SHA."
+  echo "[deploy-api]        git checkout main && git pull, then retry — never build from a mismatched tree."
+  exit 1
+fi
+if [ -n "$(git status --porcelain)" ]; then
+  echo "[deploy-api] ERROR: uncommitted local changes present. Commit and push first — never deploy uncommitted work."
+  exit 1
+fi
+
+echo "[deploy-api] Building API locally (tsc) @ $TARGET_SHA..."
 NODE_OPTIONS='--max-old-space-size=3072' pnpm --filter api build
 
-echo '[deploy-api] Copying compiled dist/ to server...'
-# tar | ssh is used instead of scp -r because:
-#   1. scp on Windows Git Bash silently skips unchanged files (no fresh copy guarantee)
-#   2. scp can't create new nested subdirectories if the parent didn't exist before
-# tar creates the full directory tree atomically and correctly every time.
-ssh "$SERVER" "rm -rf $REMOTE_DIR/apps/api/dist"
-(cd apps/api && tar -czf - dist) | ssh "$SERVER" "cd $REMOTE_DIR/apps/api && tar -xzf -"
+RELEASE_NAME="${TARGET_SHA:0:12}-$(date -u +%Y%m%dT%H%M%SZ)"
+echo "[deploy-api] Uploading compiled dist as release $RELEASE_NAME..."
+ssh "$SERVER" "mkdir -p $REMOTE_DIR/apps/api/releases/$RELEASE_NAME"
+(cd apps/api && tar -czf - dist) | ssh "$SERVER" "cd $REMOTE_DIR/apps/api/releases/$RELEASE_NAME && tar -xzf -"
 
-# Schema migrations are an explicit, operator-controlled deploy step — this
-# script does not apply them. The API runtime does not mutate schema either
-# (the old automatic `prisma db push` at startup was removed). This step only
-# copies schema.prisma so `prisma generate` below produces a client matching
-# the schema this release expects; run `prisma migrate deploy` separately,
-# after a database backup, before restarting the API.
-echo '[deploy-api] Copying Prisma schema to server...'
+echo "[deploy-api] Copying Prisma schema to server (schema.prisma only — no migration is applied here)..."
 scp packages/database/prisma/schema.prisma "$SERVER:$REMOTE_DIR/packages/database/prisma/schema.prisma"
 
-# Regenerate Prisma client on the server so the runtime types match the new
-# schema. This only generates client code — it does not touch the database.
-# Without it, any newly added model fields cause "Unknown argument" Prisma
-# errors even after the real migration has been applied separately.
-echo '[deploy-api] Regenerating Prisma client on server...'
-ssh "$SERVER" "cd $REMOTE_DIR && packages/database/node_modules/.bin/prisma generate --schema=packages/database/prisma/schema.prisma"
+echo "[deploy-api] Deploying API @ $TARGET_SHA (web untouched)..."
+ssh "$SERVER" "cd $REMOTE_DIR && bash scripts/deploy/remote-release-api.sh $TARGET_SHA $RELEASE_NAME"
+RESULT=$?
 
-echo '[deploy-api] Restarting API on server...'
-ssh "$SERVER" "pm2 restart codeclinic-api"
-
-echo '[deploy-api] Verifying...'
-sleep 4
-ssh "$SERVER" "pm2 show codeclinic-api 2>&1 | grep -E 'status|uptime'"
-
-echo '[deploy-api] Done.'
+echo "[deploy-api] Done (exit $RESULT)."
+exit $RESULT

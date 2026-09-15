@@ -1,6 +1,7 @@
 import { prisma } from '../../../lib/prisma'
 import { phoneVariants } from '../../../utils/phone'
 import { sendPushToUser } from '../../push.service'
+import { sendStaffSMS } from '../../../ai-suite/sms/sms.service'
 
 // ── Emergency keyword detection ────────────────────────────────
 
@@ -83,20 +84,33 @@ export function getSafeEscalationResponse(channel: 'VOICE' | 'WHATSAPP'): string
   return "Let me connect you with our receptionist right away. Please hold for just a moment."
 }
 
-// ── Notify staff via WhatsApp ──────────────────────────────────
+// ── Notify staff via WhatsApp + SMS ─────────────────────────────
+//
+// WhatsApp's send API can report success (HTTP 200, message accepted) while
+// the message never actually reaches the recipient — Meta confirms real
+// delivery only later, asynchronously, via a webhook status callback. That
+// gap let staff alerts go undelivered for weeks in 2026-09 (Meta WhatsApp
+// Business account had unsettled billing — every send was accepted then
+// silently failed delivery, error 131042). SMS is a second, independently-
+// billed channel: if WhatsApp is down for any reason (billing, 24h window,
+// outage), SMS is not affected by the same failure and vice versa. Always
+// fire both for a real clinical/emergency alert — never rely on WhatsApp
+// alone for anything a real patient's safety depends on.
 
 export async function notifyJulian(patientPhone: string, patientMessage: string): Promise<void> {
   const staffPhone = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
+  const freeformBody =
+    `🚨 Code Clinic Alert — Patient needs your attention.\n\n` +
+    `📞 Phone: ${patientPhone}\n` +
+    `💬 Message: "${patientMessage.slice(0, 200)}"\n\n` +
+    `Please check the AI Suite inbox and follow up.`
+
   try {
     // Dynamic import avoids circular dependency (whatsapp.service → escalation → whatsapp.service)
     const { sendWhatsAppMessage, sendWhatsAppTemplate } = await import('../../../ai-suite/whatsapp/whatsapp.service')
     const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
-    const freeformBody =
-      `🚨 Code Clinic Alert — Patient needs your attention.\n\n` +
-      `📞 Phone: ${patientPhone}\n` +
-      `💬 Message: "${patientMessage.slice(0, 200)}"\n\n` +
-      `Please check the AI Suite inbox and follow up.`
 
+    let waSucceeded = false
     if (templateName) {
       const patient = await prisma.patient.findFirst({
         where: { phone: { in: phoneVariants(patientPhone) } },
@@ -105,14 +119,29 @@ export async function notifyJulian(patientPhone: string, patientMessage: string)
       const patientName = patient ? `${patient.firstName} ${patient.lastName}` : patientPhone
       try {
         await sendWhatsAppTemplate(staffPhone, templateName, [patientName, patientPhone, patientMessage.slice(0, 200)])
-        return
+        waSucceeded = true
       } catch (tmplErr: any) {
         console.warn('[Escalation] Template failed, falling back to freeform:', tmplErr.message)
       }
     }
-    await sendWhatsAppMessage(staffPhone, freeformBody)
-    console.log(`[Escalation] Staff notified about ${patientPhone}`)
+    if (!waSucceeded) {
+      try {
+        await sendWhatsAppMessage(staffPhone, freeformBody)
+        waSucceeded = true
+      } catch (waErr: any) {
+        console.error('[Escalation] WhatsApp send failed:', waErr.message)
+      }
+    }
+    if (waSucceeded) console.log(`[Escalation] Staff notified via WhatsApp about ${patientPhone}`)
   } catch (err: any) {
-    console.error('[Escalation] Failed to notify staff:', err.message)
+    console.error('[Escalation] WhatsApp notify path threw:', err.message)
+  }
+
+  // Always attempt SMS too — independent channel, doesn't share WhatsApp's failure modes.
+  try {
+    await sendStaffSMS(staffPhone, freeformBody)
+    console.log(`[Escalation] Staff notified via SMS about ${patientPhone}`)
+  } catch (smsErr: any) {
+    console.error('[Escalation] SMS fallback failed:', smsErr.message)
   }
 }
