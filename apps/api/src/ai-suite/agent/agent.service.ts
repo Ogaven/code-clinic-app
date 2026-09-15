@@ -1494,8 +1494,8 @@ async function alertStaffOfConcern(params: {
     // look healthy while actually delivering nothing. Dynamic import avoids a
     // circular dependency (sms.service → agent.service → sms.service).
     try {
-      const { sendSMS } = await import('../sms/sms.service')
-      await sendSMS(staffNumber, alertText)
+      const { sendStaffSMS } = await import('../sms/sms.service')
+      await sendStaffSMS(staffNumber, alertText)
     } catch (smsErr: any) {
       console.error('[Agent] SMS fallback failed for clinical concern alert:', smsErr.message)
     }

@@ -1,7 +1,7 @@
 import { prisma } from '../../../lib/prisma'
 import { phoneVariants } from '../../../utils/phone'
 import { sendPushToUser } from '../../push.service'
-import { sendSMS } from '../../../ai-suite/sms/sms.service'
+import { sendStaffSMS } from '../../../ai-suite/sms/sms.service'
 
 // ── Emergency keyword detection ────────────────────────────────
 
@@ -139,7 +139,7 @@ export async function notifyJulian(patientPhone: string, patientMessage: string)
 
   // Always attempt SMS too — independent channel, doesn't share WhatsApp's failure modes.
   try {
-    await sendSMS(staffPhone, freeformBody)
+    await sendStaffSMS(staffPhone, freeformBody)
     console.log(`[Escalation] Staff notified via SMS about ${patientPhone}`)
   } catch (smsErr: any) {
     console.error('[Escalation] SMS fallback failed:', smsErr.message)

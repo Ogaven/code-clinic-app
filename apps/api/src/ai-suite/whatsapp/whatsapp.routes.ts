@@ -45,8 +45,8 @@ async function notifyStaffOfDeliveryFailure(code?: number, message?: string, det
   }
 
   try {
-    const { sendSMS } = await import('../sms/sms.service')
-    await sendSMS(STAFF_NUMBER, `Code Clinic: ${title}. ${body}`)
+    const { sendStaffSMS } = await import('../sms/sms.service')
+    await sendStaffSMS(STAFF_NUMBER, `Code Clinic: ${title}. ${body}`)
   } catch (e: any) {
     console.error('[WhatsApp] notifyStaffOfDeliveryFailure SMS fallback error:', e.message)
   }

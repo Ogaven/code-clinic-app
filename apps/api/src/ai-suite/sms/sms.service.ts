@@ -68,6 +68,30 @@ export async function sendSMS(to: string, message: string): Promise<void> {
   })
 }
 
+// ── Send staff/internal alert SMS ───────────────────────────────────────────────
+// NOT the patient-communication-channel decision sendSMS() gates on. This is
+// for internal staff safety alerts (clinical concerns, escalations, "your
+// WhatsApp alerts aren't delivering") that need a delivery path independent
+// of WhatsApp's own failure modes — e.g. the 2026-09 Meta billing outage that
+// silently swallowed staff alerts for weeks. Requires only that Africa's
+// Talking credentials exist; does not require SMS_CHANNEL_ACTIVE, because
+// "has Code Clinic turned SMS on as a patient channel" is a different
+// question from "can we page a human when something needs attention."
+// Throws on failure (no WhatsApp fallback) — callers already try WhatsApp
+// first and are specifically trying an independent second channel here.
+export async function sendStaffSMS(to: string, message: string): Promise<void> {
+  const client = await getAtSmsClient()
+  if (!client) {
+    throw new Error("Africa's Talking not configured (AT_API_KEY/AT_USERNAME) — cannot send staff alert SMS")
+  }
+
+  await client.send({
+    to: [to],
+    message,
+    ...(process.env.AT_SENDER_ID ? { from: process.env.AT_SENDER_ID } : {}),
+  })
+}
+
 // ── Process inbound SMS from Africa's Talking ─────────────────────────────────
 
 export async function processInboundSMS(from: string, text: string): Promise<void> {
