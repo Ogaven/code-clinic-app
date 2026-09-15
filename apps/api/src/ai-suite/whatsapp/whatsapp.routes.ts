@@ -52,6 +52,35 @@ async function notifyStaffOfDeliveryFailure(code?: number, message?: string, det
   }
 }
 
+// ── Persist a real Meta delivery failure (extracted for direct unit testing) ─────
+export interface DeliveryFailureParams {
+  wamid: string | null
+  wabaId: string | null
+  phoneNumberId: string | null
+  recipientId: string | null
+  code: number
+  title: string
+  message: string | null
+  details: string | null
+  timestamp: string | undefined
+}
+
+export async function persistDeliveryFailure(params: DeliveryFailureParams): Promise<void> {
+  await prisma.metaDeliveryFailure.create({
+    data: {
+      wamid:         params.wamid,
+      wabaId:        params.wabaId,
+      phoneNumberId: params.phoneNumberId,
+      recipientId:   params.recipientId,
+      code:          params.code,
+      title:         params.title,
+      message:       params.message,
+      details:       params.details,
+      occurredAt:    params.timestamp ? new Date(Number(params.timestamp) * 1000) : new Date(),
+    },
+  })
+}
+
 // ── Log conversation + send reply without going through full processInbound ──────
 async function sendDirectReply(from: string, inboundText: string, reply: string, wamid: string): Promise<void> {
   // Normalize to E.164 — webhook delivers without '+', must match processInbound's convention
@@ -153,6 +182,24 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 `[WhatsApp] DELIVERY FAILED to ${s.recipient_id}: #${err?.code ?? '?'} ${err?.message ?? err?.title ?? 'unknown error'}` +
                 (err?.error_data?.details ? ` — ${err.error_data.details}` : '')
               )
+
+              // Persist what used to be console-only — turns 131042/billing tracking
+              // into a real, queryable, ongoing metric (Analytics & Costs) instead of
+              // a one-time log grep that doesn't survive log rotation.
+              if (err?.code) {
+                persistDeliveryFailure({
+                  wamid:         s.id ?? null,
+                  wabaId:        entry.id ?? null,
+                  phoneNumberId: phoneNumberId ?? null,
+                  recipientId:   s.recipient_id ?? null,
+                  code:          err.code,
+                  title:         err.title ?? err.message ?? 'Unknown error',
+                  message:       err.message ?? null,
+                  details:       err.error_data?.details ?? null,
+                  timestamp:     s.timestamp,
+                }).catch((e: any) => console.error('[WhatsApp] Failed to persist MetaDeliveryFailure:', e.message))
+              }
+
               const recipientDigits = s.recipient_id?.replace(/\D/g, '') ?? ''
               const staffDigits     = STAFF_NUMBER.replace(/\D/g, '')
               if (recipientDigits && staffDigits && recipientDigits === staffDigits) {

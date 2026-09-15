@@ -67,6 +67,7 @@ import connectionsRouter from './ai-suite/connections/connections.routes'
 import websiteRouter, { WIDGET_JS } from './ai-suite/website/website.routes'
 import metaUsageRouter          from './ai-suite/meta/meta-usage.routes'
 import channelAnalyticsRouter   from './ai-suite/meta/channel-analytics.routes'
+import whatsappBillingRouter    from './ai-suite/meta/whatsapp-billing.routes'
 
 // Schedulers
 // import { startScheduler } from './services/agent/scheduler' // disabled - tables not in schema
@@ -281,6 +282,7 @@ app.use('/ai-suite',              facebookRouter)
 app.use('/ai-suite/website',      websiteRouter)
 app.use('/ai-suite',              metaUsageRouter)
 app.use('/ai-suite',              channelAnalyticsRouter)
+app.use('/ai-suite',              whatsappBillingRouter)
 
 // ─── Chat widget ─────────────────────────────────────────────
 // Embeddable <script src="https://api.../widget.js"> snippet
