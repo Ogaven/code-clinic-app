@@ -116,6 +116,37 @@ function BotRow({ log }: { log: BotMessageLog }) {
   )
 }
 
+// ── Bot message card (phone) ──────────────────────────────────────────────────
+
+function BotCard({ log }: { log: BotMessageLog }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="px-4 py-3" onClick={() => setExpanded(e => !e)}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          {log.patient ? (
+            <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
+              {log.patient.firstName} {log.patient.lastName}
+              <span className="ml-1.5 text-[10px] font-normal text-gray-400">#{log.patient.patientNumber}</span>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 dark:text-gray-400">{log.recipientPhone}</div>
+          )}
+          <div className="text-[10px] text-gray-400">{eatTime(log.sentAt)}</div>
+        </div>
+        {expanded ? <ChevronUp size={14} className="mt-1 flex-shrink-0 text-gray-400" /> : <ChevronDown size={14} className="mt-1 flex-shrink-0 text-gray-400" />}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <TemplateBadge type={log.templateType} />
+        <DeliveryBadge status={log.deliveryStatus} />
+      </div>
+      <p className={`mt-2 text-sm text-gray-700 dark:text-gray-200 ${expanded ? 'whitespace-pre-wrap' : 'truncate'}`}>
+        {log.messageBody}
+      </p>
+    </div>
+  )
+}
+
 // ── Human-readable sentence builder ─────────────────────────────────────────
 
 function actorName(user: AuditLog['user']): string {
@@ -335,6 +366,60 @@ function LogRow({ log }: { log: AuditLog }) {
         </tr>
       )}
     </>
+  )
+}
+
+// ── Human action card (phone) ─────────────────────────────────────────────────
+
+function LogCard({ log }: { log: AuditLog }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasChanges = !!log.fieldChanges
+
+  let changes: { before: Record<string, unknown>; after: Record<string, unknown> } | null = null
+  if (hasChanges) {
+    try { changes = JSON.parse(log.fieldChanges!) } catch {}
+  }
+
+  return (
+    <div className="px-4 py-3" onClick={() => hasChanges && setExpanded(e => !e)}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Avatar user={log.user} />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium leading-tight text-gray-800 dark:text-gray-100">
+              {log.user ? `${log.user.firstName} ${log.user.lastName}` : 'System'}
+            </div>
+            <div className="text-[10px] text-gray-400">{eatTime(log.createdAt)}{log.user && ` · ${log.user.role}`}</div>
+          </div>
+        </div>
+        {hasChanges && (expanded
+          ? <ChevronUp size={14} className="mt-1 flex-shrink-0 text-gray-400" />
+          : <ChevronDown size={14} className="mt-1 flex-shrink-0 text-gray-400" />
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <EntityBadge type={log.entityType} />
+        <SeverityBadge severity={log.severity} />
+      </div>
+      <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">{buildSentence(log)}</p>
+      {log.ip && <p className="mt-0.5 text-[10px] text-gray-400">IP: {log.ip}</p>}
+      {expanded && changes && (
+        <div className="mt-3 grid grid-cols-1 gap-3 text-xs font-mono">
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-400">Before</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-red-50 p-2 text-red-700 dark:bg-red-900/20 dark:text-red-300">
+              {JSON.stringify(changes.before, null, 2)}
+            </pre>
+          </div>
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-400">After</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-green-50 p-2 text-green-700 dark:bg-green-900/20 dark:text-green-300">
+              {JSON.stringify(changes.after, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -576,7 +661,8 @@ export default function AuditLogPage() {
               <div className="py-16 text-center text-gray-400 text-sm">No bot messages found</div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                {/* Desktop/tablet — unchanged wide table */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750">
@@ -592,6 +678,10 @@ export default function AuditLogPage() {
                       {botData.logs.map(log => <BotRow key={log.id} log={log} />)}
                     </tbody>
                   </table>
+                </div>
+                {/* Phone — one card per message, no horizontal scroll */}
+                <div className="divide-y divide-gray-100 dark:divide-gray-700 md:hidden">
+                  {botData.logs.map(log => <BotCard key={log.id} log={log} />)}
                 </div>
                 {botData.pages > 1 && (
                   <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
@@ -724,7 +814,8 @@ export default function AuditLogPage() {
           <div className="py-16 text-center text-gray-400 text-sm">No audit logs found</div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* Desktop/tablet — unchanged wide table */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750">
@@ -739,6 +830,10 @@ export default function AuditLogPage() {
                   {data.logs.map(log => <LogRow key={log.id} log={log} />)}
                 </tbody>
               </table>
+            </div>
+            {/* Phone — one card per entry, no horizontal scroll */}
+            <div className="divide-y divide-gray-100 dark:divide-gray-700 md:hidden">
+              {data.logs.map(log => <LogCard key={log.id} log={log} />)}
             </div>
 
             {data.pages > 1 && (

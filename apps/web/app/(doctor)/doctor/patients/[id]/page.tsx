@@ -1232,7 +1232,7 @@ function BillingTab({ patient, token }: { patient: any; token: string | null }) 
           {totalOwed > 0 ? `Outstanding: ${formatUGX(totalOwed)}` : 'No outstanding balance'}
         </div>
       </div>
-      <div className="bg-white dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden">
+      <div className="bg-white dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10 overflow-x-auto">
         <table className="w-full text-left">
           <thead className="bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
             <tr>

@@ -21,13 +21,15 @@ interface MobileHeaderProps {
   /** Real patient-search endpoint already used by the desktop header for this role. */
   searchEndpoint: string
   onSelectPatient: (patientId: string) => void
+  /** Attached to the profile button so the account popover can anchor itself directly underneath it. */
+  profileButtonRef?: React.RefObject<HTMLButtonElement>
 }
 
 // Compact mobile top header — logo + search/notifications/profile only.
 // Deliberately does not render any desktop nav links (see MobileBottomNav
 // for primary navigation) so page content keeps maximum vertical space.
 export default function MobileHeader({
-  homeHref, notificationsHref, unread = 0, user, onProfileClick, searchEndpoint, onSelectPatient,
+  homeHref, notificationsHref, unread = 0, user, onProfileClick, searchEndpoint, onSelectPatient, profileButtonRef,
 }: MobileHeaderProps) {
   const router = useRouter()
   const [searchOpen, setSearchOpen] = useState(false)
@@ -63,6 +65,7 @@ export default function MobileHeader({
             )}
           </button>
           <button
+            ref={profileButtonRef}
             onClick={onProfileClick}
             aria-label="Profile"
             className="ml-0.5 grid h-10 w-10 place-items-center rounded-full active:opacity-80"

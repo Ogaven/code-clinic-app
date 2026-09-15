@@ -382,55 +382,100 @@ export default function AdminAppointmentsList({ userRole = 'ADMIN' }: { userRole
             <p className="text-sm text-gray-300 dark:text-white/20">Try adjusting your date range, status, or doctor filter</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px]">
-              <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#0a1f3a]/95 backdrop-blur-sm">
-                <tr className="border-b border-gray-100 dark:border-white/8">
-                  {['Date & Time', 'Status', 'Patient', 'Service', 'Doctor', 'Code', ''].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/30 uppercase tracking-wider whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {appts.map(a => (
-                  <tr key={a.id}
-                    onClick={() => setSelected(a)}
-                    className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/[0.03] cursor-pointer transition-colors">
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-white/80 whitespace-nowrap">
-                      <div className="font-semibold">{fmtDate(a.startAt)}</div>
-                      <div className="text-xs text-gray-400">{fmtTime(a.startAt)} – {fmtTime(a.endAt)}</div>
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={a.status} /></td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="font-semibold text-gray-800 dark:text-white flex items-center gap-1"><User size={12} className="text-gray-300" />{a.patient.firstName} {a.patient.lastName}</div>
-                      <div className="text-xs text-gray-400 flex items-center gap-1"><Phone size={10} />{a.patient.phone}</div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-white/60">{a.service.name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-white/60 whitespace-nowrap">Dr. {a.doctor.user.firstName} {a.doctor.user.lastName}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400 font-mono">{displayCode(a)}</td>
-                    <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
-                      <div className="relative inline-block">
-                        <button onClick={() => setMenuOpen(menuOpen === a.id ? null : a.id)}
-                          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400">
-                          <MoreHorizontal size={16} />
-                        </button>
-                        {menuOpen === a.id && (
-                          <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-[#111a35] border border-gray-100 dark:border-white/10 rounded-xl shadow-lg z-20 py-1">
-                            <button onClick={() => { setEditAppt(a); setMenuOpen(null) }}
-                              className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5">
-                              View / Edit
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </td>
+          <>
+            {/* Desktop/tablet — unchanged wide table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full min-w-[860px]">
+                <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#0a1f3a]/95 backdrop-blur-sm">
+                  <tr className="border-b border-gray-100 dark:border-white/8">
+                    {['Date & Time', 'Status', 'Patient', 'Service', 'Doctor', 'Code', ''].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-[11px] font-black text-gray-400 dark:text-white/30 uppercase tracking-wider whitespace-nowrap">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {appts.map(a => (
+                    <tr key={a.id}
+                      onClick={() => setSelected(a)}
+                      className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/[0.03] cursor-pointer transition-colors">
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-white/80 whitespace-nowrap">
+                        <div className="font-semibold">{fmtDate(a.startAt)}</div>
+                        <div className="text-xs text-gray-400">{fmtTime(a.startAt)} – {fmtTime(a.endAt)}</div>
+                      </td>
+                      <td className="px-4 py-3"><StatusBadge status={a.status} /></td>
+                      <td className="px-4 py-3 text-sm">
+                        <div className="font-semibold text-gray-800 dark:text-white flex items-center gap-1"><User size={12} className="text-gray-300" />{a.patient.firstName} {a.patient.lastName}</div>
+                        <div className="text-xs text-gray-400 flex items-center gap-1"><Phone size={10} />{a.patient.phone}</div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-white/60">{a.service.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-white/60 whitespace-nowrap">Dr. {a.doctor.user.firstName} {a.doctor.user.lastName}</td>
+                      <td className="px-4 py-3 text-xs text-gray-400 font-mono">{displayCode(a)}</td>
+                      <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                        <div className="relative inline-block">
+                          <button onClick={() => setMenuOpen(menuOpen === a.id ? null : a.id)}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400">
+                            <MoreHorizontal size={16} />
+                          </button>
+                          {menuOpen === a.id && (
+                            <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-[#111a35] border border-gray-100 dark:border-white/10 rounded-xl shadow-lg z-20 py-1">
+                              <button onClick={() => { setEditAppt(a); setMenuOpen(null) }}
+                                className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5">
+                                View / Edit
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Phone — one card per appointment, no horizontal scroll */}
+            <div className="md:hidden divide-y divide-gray-50 dark:divide-white/5">
+              {appts.map(a => (
+                <div key={a.id}
+                  onClick={() => setSelected(a)}
+                  className="flex items-start gap-3 px-4 py-3.5 active:bg-gray-50 dark:active:bg-white/[0.03]">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-gray-800 dark:text-white flex items-center gap-1 min-w-0">
+                        <User size={12} className="flex-shrink-0 text-gray-300" />
+                        <span className="truncate">{a.patient.firstName} {a.patient.lastName}</span>
+                      </span>
+                      <StatusBadge status={a.status} />
+                    </div>
+                    <div className="mt-1 text-xs text-gray-400 flex items-center gap-1">
+                      <Phone size={10} className="flex-shrink-0" />{a.patient.phone}
+                    </div>
+                    <div className="mt-2 text-sm text-gray-600 dark:text-white/60 truncate">{a.service.name}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-400">
+                      <span>{fmtDate(a.startAt)} · {fmtTime(a.startAt)}–{fmtTime(a.endAt)}</span>
+                      <span>Dr. {a.doctor.user.firstName} {a.doctor.user.lastName}</span>
+                      <span className="font-mono">{displayCode(a)}</span>
+                    </div>
+                  </div>
+                  <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
+                    <button onClick={() => setMenuOpen(menuOpen === a.id ? null : a.id)}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400">
+                      <MoreHorizontal size={16} />
+                    </button>
+                    {menuOpen === a.id && (
+                      <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-[#111a35] border border-gray-100 dark:border-white/10 rounded-xl shadow-lg z-20 py-1">
+                        <button onClick={() => { setEditAppt(a); setMenuOpen(null) }}
+                          className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/5">
+                          View / Edit
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
