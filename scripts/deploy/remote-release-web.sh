@@ -104,7 +104,7 @@ pm2 restart codeclinic-web --update-env >/dev/null
 sleep 4
 if bash scripts/deploy/smoke-test-web.sh 3000 "$RELEASE_DIR"; then
   log "Post-restart smoke test passed. Deployment SUCCESS."
-  prune_releases "$RELEASES_DIR" 3
+  prune_releases "$RELEASES_DIR" 3 "$WEB_DIR/current" "$WEB_DIR/previous"
   write_state web_sha "$ACTUAL_SHA" web_build_id "$BUILD_ID"
   echo "WEB_DEPLOY_RESULT=SUCCESS"
   echo "WEB_SHA=$ACTUAL_SHA"

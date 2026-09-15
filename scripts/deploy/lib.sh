@@ -66,13 +66,20 @@ write_state() {
   " "$@"
 }
 
-# Keep the newest N entries of releases_dir/*, always preserving whatever
-# `current` and `previous` symlinks point at regardless of age.
+# Keep the newest N entries of releases_dir/*, always preserving whatever the
+# given cutover/rollback symlinks point at regardless of age. Callers must
+# pass the FULL path to every symlink that might reference a release dir
+# (e.g. apps/web/current, apps/web/previous, apps/api/dist,
+# apps/api/previous_dist) — those symlinks live as siblings of releases_dir,
+# not inside it, and have different names per app, so they can't be derived
+# from releases_dir alone. A protect path that's missing or not a symlink is
+# silently skipped (nothing to protect).
 prune_releases() {
   local releases_dir="$1"
   local keep_n="${2:-3}"
+  shift 2
   local keep_paths=""
-  for link in "$releases_dir/current" "$releases_dir/previous"; do
+  for link in "$@"; do
     [ -L "$link" ] && keep_paths="$keep_paths $(readlink -f "$link")"
   done
   local candidates

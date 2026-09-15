@@ -66,7 +66,7 @@ done
 
 if [ "$health_ok" = "1" ]; then
   log "Health check passed. Deployment SUCCESS."
-  prune_releases "$RELEASES_DIR" 3
+  prune_releases "$RELEASES_DIR" 3 "$API_DIR/dist" "$API_DIR/previous_dist"
   write_state api_sha "$ACTUAL_SHA"
   echo "API_DEPLOY_RESULT=SUCCESS"
   echo "API_SHA=$ACTUAL_SHA"
