@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
-const { prismaMock, sendWhatsAppMessage } = vi.hoisted(() => ({
+const { prismaMock, sendWhatsAppMessage, sendSMS, isSmsChannelActive } = vi.hoisted(() => ({
   prismaMock: {
     appointment: { findUnique: vi.fn() },
     waitlistEntry: { findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -11,11 +11,13 @@ const { prismaMock, sendWhatsAppMessage } = vi.hoisted(() => ({
     patientConsent: { findFirst: vi.fn().mockResolvedValue(null) },
   },
   sendWhatsAppMessage: vi.fn().mockResolvedValue('wamid-1'),
+  sendSMS: vi.fn().mockResolvedValue('SENT'),
+  isSmsChannelActive: vi.fn().mockReturnValue(false), // mirrors production: SMS is a dormant channel
 }))
 
 vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('../../ai-suite/whatsapp/whatsapp.service', () => ({ sendWhatsAppMessage }))
-vi.mock('../../ai-suite/sms/sms.service', () => ({ sendSMS: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../ai-suite/sms/sms.service', () => ({ sendSMS, isSmsChannelActive }))
 
 import { notifyWaitlistForOpenSlot, createWaitlistEntry, markWaitlistEntryFulfilled, previewWaitlistMatchesForSlot } from '../../crm-automation/waitlist.service'
 
@@ -129,6 +131,25 @@ describe('notifyWaitlistForOpenSlot — explicit WaitlistEntry matching (release
     await notifyWaitlistForOpenSlot('appt-1')
     expect(sendWhatsAppMessage).not.toHaveBeenCalled()
   })
+
+  // Regression: sendSMS() silently no-ops (SMS_NOT_CONFIGURED) when SMS is a
+  // dormant channel — without this explicit skip, an SMS-preference
+  // patient's WaitlistNotification would be written as status:'SENT' for a
+  // message that never actually went anywhere.
+  it('skips (truthfully, not marked SENT) a patient whose channel preference is SMS while SMS is paused', async () => {
+    isSmsChannelActive.mockReturnValue(false)
+    prismaMock.appointment.findUnique.mockResolvedValue({ serviceId: 'svc-1', doctorId: null, startAt: new Date() })
+    prismaMock.waitlistEntry.findMany.mockResolvedValue([
+      entry({ patient: { id: 'p-1', firstName: 'Jo', phone: '+256700000001', commsChannelPref: 'SMS' } }),
+    ])
+
+    const result = await notifyWaitlistForOpenSlot('appt-1')
+
+    expect(result.notified).toHaveLength(0)
+    expect(result.skipped[0].reason).toBe('sms_channel_paused')
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(prismaMock.waitlistNotification.create).not.toHaveBeenCalled()
+  })
 })
 
 describe('notifyWaitlistForOpenSlot — CRM_WAITLIST_AUTOMATION_LIVE feature flag (release-blocker fix — per-feature gating)', () => {
@@ -205,6 +226,24 @@ describe('previewWaitlistMatchesForSlot — read-only, same matching rules as no
     expect(result.matches[0]).toMatchObject({ patientId: 'p-1', wouldSend: true, blockedReason: null })
     expect(sendWhatsAppMessage).not.toHaveBeenCalled()
     expect(prismaMock.waitlistNotification.create).not.toHaveBeenCalled()
+  })
+
+  // Regression: previewWaitlistMatchesForSlot has its own independent
+  // channel-eligibility check from notifyWaitlistForOpenSlot — this proves
+  // they stay in sync for SMS specifically, the same way the EMAIL case
+  // already does, so Preview can't tell staff "would send" for a channel
+  // that is actually dormant.
+  it('flags an SMS-preference match as wouldSend:false while SMS is paused, matching what notify would actually do', async () => {
+    isSmsChannelActive.mockReturnValue(false)
+    prismaMock.appointment.findUnique.mockResolvedValue({ serviceId: 'svc-1', doctorId: null, startAt: new Date('2026-02-01') })
+    prismaMock.waitlistEntry.findMany.mockResolvedValue([
+      entry({ patient: { id: 'p-1', firstName: 'Jo', phone: '+256700000001', commsChannelPref: 'SMS' } }),
+    ])
+
+    const result = await previewWaitlistMatchesForSlot('appt-1')
+
+    expect(result.matches[0]).toMatchObject({ wouldSend: false, blockedReason: 'sms_channel_paused' })
+    expect(sendSMS).not.toHaveBeenCalled()
   })
 
   it('flags a consent-declined match as wouldSend:false with the reason, still without sending', async () => {

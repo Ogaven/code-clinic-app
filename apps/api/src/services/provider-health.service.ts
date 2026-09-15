@@ -9,7 +9,7 @@ import { prisma } from '../lib/prisma'
 import { staleLeadsByOwner } from '../crm-automation/reporting.service'
 import { startOfKampalaDay, startOfKampalaMonth } from '../utils/kampala-time'
 
-export type WhatsAppHealthStatus = 'HEALTHY' | 'DEGRADED' | 'DOWN'
+export type WhatsAppHealthStatus = 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN'
 
 export interface DeliveryWindow {
   attempted: number
@@ -61,12 +61,17 @@ async function computeWindow(since: Date, until?: Date): Promise<DeliveryWindow>
 }
 
 // DOWN if near-total failure over a meaningful sample in the last 24h; DEGRADED
-// if meaningfully elevated; HEALTHY otherwise. Thresholds are deliberately
-// simple and documented rather than tuned — this is a status indicator, not
-// an SLA. Below the minimum sample size, we don't classify DOWN/DEGRADED off
-// noise (e.g. a single failed send isn't "the channel is down").
+// if meaningfully elevated; HEALTHY only when a meaningful sample shows real
+// positive evidence of working delivery. Thresholds are deliberately simple
+// and documented rather than tuned — this is a status indicator, not an SLA.
+// Below the minimum sample size there isn't enough real delivery evidence
+// either way — UNKNOWN, never HEALTHY. Silence must never be reported as
+// health: a quiet overnight window during an active outage (few or zero send
+// attempts) previously classified as HEALTHY purely because the sample was
+// too small to judge, which is indistinguishable in the UI from "genuinely
+// delivering fine" — exactly the false-positive this exists to prevent.
 function classify(last24h: DeliveryWindow): WhatsAppHealthStatus {
-  if (last24h.attempted < 3) return 'HEALTHY'
+  if (last24h.attempted < 3) return 'UNKNOWN'
   if (last24h.failureRate >= 90) return 'DOWN'
   if (last24h.failureRate >= 20) return 'DEGRADED'
   return 'HEALTHY'

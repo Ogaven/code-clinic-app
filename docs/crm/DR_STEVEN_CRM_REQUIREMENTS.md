@@ -21,7 +21,13 @@ paused (`calling_agents_enabled=false`).
   send — previously credentials alone were sufficient, which was a real gap
   (waitlist/sequence touches configured for the SMS channel could have sent
   real SMS the moment their own feature flag went live, independent of the
-  missed-call flag). Falls back to WhatsApp otherwise.
+  missed-call flag). **Superseded same-day by `78d12ef`**: the channel-off
+  path no longer falls back to WhatsApp — it returns `SMS_NOT_CONFIGURED`
+  and sends nothing on any channel (`sms-service.test.ts` covers this). This
+  paragraph originally said "falls back to WhatsApp otherwise," describing
+  the state as of `ee44adb`; that behavior was removed four commits later in
+  the same closure pass and the doc was never updated to match — corrected
+  here rather than left stale.
 - A separate `sendStaffSMS()` (internal staff paging, not a patient channel)
   was added so this correction didn't silently break a concurrently-merged
   fix routing staff safety alerts through Africa's Talking as a WhatsApp-
