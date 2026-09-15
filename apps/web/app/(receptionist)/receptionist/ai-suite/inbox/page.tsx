@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import NextImage from 'next/image'
 import {
   Search, Send, Paperclip, Smile, X, Loader2,
   MessageSquare, Instagram, Facebook, Globe, Bot, UserCheck,
   Image as ImageIcon, FileText, Music, Video as VideoIcon, Check, CheckCheck,
-  ChevronLeft, Plus, Archive, ArchiveRestore, Trash2, MoreVertical,
+  ChevronLeft, ChevronRight, Plus, Archive, ArchiveRestore, Trash2, MoreVertical,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -685,7 +685,7 @@ function CommentThread({ conv, onRefresh }: { conv: PostConv; onRefresh: () => v
 }
 
 // ── Post-grouped comment view ──────────────────────────────────────────────────
-function CommentPostView({ channel, accent }: { channel: 'FB_COMMENTS' | 'IG_COMMENTS'; accent: string }) {
+function CommentPostView({ channel, accent, onMobileBack }: { channel: 'FB_COMMENTS' | 'IG_COMMENTS'; accent: string; onMobileBack?: () => void }) {
   const apiChannel = channel === 'FB_COMMENTS' ? 'facebook_comment' : 'instagram_comment'
   const [posts,      setPosts]     = useState<PostThread[]>([])
   const [loading,    setLoading]   = useState(true)
@@ -722,6 +722,11 @@ function CommentPostView({ channel, accent }: { channel: 'FB_COMMENTS' | 'IG_COM
     <div className="flex flex-col h-full bg-white">
       <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ background: HEADER_BG[channel] }}>
         <div className="flex items-center gap-2">
+          {onMobileBack && (
+            <button onClick={onMobileBack} aria-label="Back to channels" className="md:hidden -ml-1 mr-0.5 text-white/70 hover:text-white">
+              <ChevronLeft size={18} />
+            </button>
+          )}
           <ChIcon size={16} className="text-white" />
           <span className="text-sm font-bold text-white">{ch.label}</span>
         </div>
@@ -813,8 +818,12 @@ function CommentPostView({ channel, accent }: { channel: 'FB_COMMENTS' | 'IG_COM
 // ── Main page ──────────────────────────────────────────────────────────────────
 function InboxPage() {
   const [dark, setDark] = useState(false)
+  const router      = useRouter()
+  const pathname    = usePathname()
   const searchParams = useSearchParams()
   const phoneParam   = searchParams.get('phone')
+  const channelParam = searchParams.get('channel')
+  const convParam    = searchParams.get('conv')
   // Optional ?channel=<apiVal> deep link (e.g. from the Receptionist dashboard's
   // AI Suite Activity tiles) — maps CHANNELS[].apiVal back to its ChannelKey.
   // Falls back to WHATSAPP, same as before, if absent/unrecognised.
@@ -830,6 +839,11 @@ function InboxPage() {
   const [loadingM,   setLoadingM]   = useState(false)
   const [search,     setSearch]     = useState('')
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
+  // Mobile-only "Screen A" gate: on phone, Conversations opens on a vertical
+  // channel list first, not straight into a channel's conversation list.
+  // Starts true only when arriving via a real ?channel= deep link (e.g. a
+  // dashboard tile) — otherwise the phone always lands on Screen A.
+  const [channelPicked, setChannelPicked] = useState(() => !!searchParams.get('channel'))
 
   const msgsEnd        = useRef<HTMLDivElement>(null)
   const pollConv       = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -994,6 +1008,38 @@ function InboxPage() {
     if (match) selectConv(match)
   }, [convs, phoneParam])
 
+  // Same pattern as the phoneParam deep-link above, for ?conv=<id> — this is
+  // also how a browser/phone "forward" navigation (after having gone back)
+  // re-opens a chat once `convs` has (re)loaded.
+  useEffect(() => {
+    if (!convParam || sel || convs.length === 0) return
+    const match = convs.find(c => c.id === convParam)
+    if (match) { setSel(match); setMobileView('chat') }
+  }, [convs, convParam])
+
+  // Reconciles local screen state FROM the URL — this is what makes the
+  // phone/browser back button step chat -> list -> channels correctly.
+  // Selecting a channel or a conversation (pickChannel/selectConv below)
+  // pushes a new URL entry; this effect only ever reacts to that (or to the
+  // user pressing back/forward), it never itself pushes a URL.
+  useEffect(() => {
+    const key = CHANNELS.find(c => c.apiVal === channelParam)?.key
+    setChannelPicked(!!key)
+    if (key) setChannel(key)
+    if (!convParam) { setSel(null); setMobileView('list') }
+  }, [channelParam, convParam])
+
+  function pickChannel(key: ChannelKey) {
+    setChannel(key); setChannelPicked(true); setMobileView('list')
+    const apiVal = CHANNELS.find(c => c.key === key)!.apiVal
+    router.push(`${pathname}?channel=${apiVal}`)
+  }
+
+  function goToChannels() {
+    setChannelPicked(false); setSel(null); setMobileView('list')
+    router.push(pathname)
+  }
+
   function handleMessagesScroll(e: React.UIEvent<HTMLDivElement>) {
     const el = e.currentTarget
     isNearBottom.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 100
@@ -1008,6 +1054,8 @@ function InboxPage() {
 
   function selectConv(conv: Conversation) {
     setSel(conv); setMobileView('chat')
+    const apiVal = CHANNELS.find(c => c.key === channel)!.apiVal
+    router.push(`${pathname}?channel=${apiVal}&conv=${conv.id}`)
   }
 
   const filtered = convs.filter(c => {
@@ -1028,7 +1076,12 @@ function InboxPage() {
   const WaConvList = (
     <div className="flex flex-col h-full bg-white">
       <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ background: '#075E54' }}>
-        <span className="text-sm font-bold text-white">WhatsApp</span>
+        <span className="flex items-center gap-1.5">
+          <button onClick={goToChannels} aria-label="Back to channels" className="md:hidden -ml-1.5 text-white/70 hover:text-white">
+            <ChevronLeft size={18} />
+          </button>
+          <span className="text-sm font-bold text-white">WhatsApp</span>
+        </span>
         <div className="flex items-center gap-3">
           <span className="text-xs text-white/60">{filtered.length} chats</span>
           <button onClick={() => setShowNewChat(true)}
@@ -1112,7 +1165,7 @@ function InboxPage() {
   const WaChatPanel = sel ? (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ background: '#075E54' }}>
-        <button onClick={() => { setSel(null); setMobileView('list') }} className="md:hidden text-white/70 hover:text-white mr-1">
+        <button onClick={() => router.back()} className="md:hidden text-white/70 hover:text-white mr-1">
           <ChevronLeft size={20} />
         </button>
         {/* No online/last-seen indicator — WhatsApp's Business API does not expose
@@ -1202,6 +1255,9 @@ function InboxPage() {
       <div className="flex items-center justify-between px-4 py-3 flex-shrink-0"
         style={{ background: HEADER_BG[channel] }}>
         <div className="flex items-center gap-2">
+          <button onClick={goToChannels} aria-label="Back to channels" className="md:hidden -ml-1.5 mr-0.5 text-white/70 hover:text-white">
+            <ChevronLeft size={18} />
+          </button>
           <ChIcon size={16} className="text-white" />
           <span className="text-sm font-bold text-white">{ch.label}</span>
         </div>
@@ -1280,7 +1336,7 @@ function InboxPage() {
   const LightChatPanel = sel ? (
     <div className="flex flex-col h-full bg-gray-50">
       <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 bg-white border-b border-gray-100 shadow-sm">
-        <button onClick={() => { setSel(null); setMobileView('list') }} className="md:hidden text-gray-500 hover:text-gray-700 mr-1">
+        <button onClick={() => router.back()} className="md:hidden text-gray-500 hover:text-gray-700 mr-1">
           <ChevronLeft size={20} />
         </button>
         <Avatar name={convLabel(sel, channel)} size={40} pictureUrl={sel.profilePictureUrl} />
@@ -1358,12 +1414,14 @@ function InboxPage() {
 
   return (
     <div className="conversations-ui flex flex-col h-full overflow-hidden bg-white dark:bg-[#08162f]">
-      {/* Channel tab bar */}
-      <div className="flex-shrink-0 flex items-center gap-0.5 border-b border-gray-200 bg-white px-2 py-1.5">
+      {/* Channel tab bar — desktop/tablet only (md+). On phone, Screen A
+          below is the channel picker instead of a horizontal icon row, so
+          there is never a sideways-scrolling nav on narrow viewports. */}
+      <div className="hidden md:flex flex-shrink-0 items-center gap-0.5 border-b border-gray-200 bg-white px-2 py-1.5 dark:border-white/10 dark:bg-[#08162f]">
         {CHANNELS.map(c => {
           const active = channel === c.key
           return (
-            <button key={c.key} onClick={() => { setChannel(c.key); setMobileView('list') }}
+            <button key={c.key} onClick={() => pickChannel(c.key)}
               className={cn('flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all',
                 active ? 'font-semibold' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:hover:bg-white/5')}
               style={active ? { color: c.color, backgroundColor: c.color + '12' } : undefined}>
@@ -1384,10 +1442,42 @@ function InboxPage() {
         })}
       </div>
 
-      {/* Split pane */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Screen A (phone only) — vertical channel list, no horizontal icon
+          row. Hidden once a channel is picked, and never rendered at md+
+          (the tab bar above covers that width instead). */}
+      {!channelPicked && (
+        <div className="flex-1 overflow-y-auto md:hidden">
+          <div className="border-b border-gray-100 px-4 py-3 dark:border-white/10">
+            <h1 className="text-base font-bold text-gray-800 dark:text-white">Conversations</h1>
+          </div>
+          {CHANNELS.map(c => (
+            <button
+              key={c.key}
+              onClick={() => pickChannel(c.key)}
+              className="flex w-full items-center gap-3 border-b border-gray-100 px-4 py-3.5 text-left transition-colors hover:bg-gray-50 dark:border-white/8 dark:hover:bg-white/5"
+            >
+              <span className="grid h-11 w-11 flex-shrink-0 place-items-center overflow-hidden rounded-full bg-gray-50 dark:bg-white/5">
+                <NextImage
+                  src={c.imgSrc}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className={cn('object-contain', c.key === 'INSTAGRAM' ? 'rounded-full' : 'mix-blend-multiply dark:mix-blend-normal')}
+                />
+              </span>
+              <span className="flex-1 text-sm font-semibold text-gray-800 dark:text-white">{c.label}</span>
+              <ChevronRight size={18} className="flex-shrink-0 text-gray-300 dark:text-slate-600" aria-hidden />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Split pane / comments — on phone, only shown once a channel is
+          picked (Screens B/C); always shown at md+ since the tab bar above
+          already picks the channel there. */}
+      <div className={cn('flex-1 overflow-hidden', channelPicked ? 'flex' : 'hidden md:flex')}>
         {(channel === 'FB_COMMENTS' || channel === 'IG_COMMENTS') ? (
-          <CommentPostView channel={channel as 'FB_COMMENTS' | 'IG_COMMENTS'} accent={accent} />
+          <CommentPostView channel={channel as 'FB_COMMENTS' | 'IG_COMMENTS'} accent={accent} onMobileBack={goToChannels} />
         ) : (
           <>
             <div ref={listPanelRef} className={cn(

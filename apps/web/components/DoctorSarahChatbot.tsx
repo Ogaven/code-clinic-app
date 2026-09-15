@@ -41,7 +41,13 @@ export default function DoctorSarahChatbot() {
   }, [])
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 640)
+    // 1280px matches the `xl:` breakpoint the rest of this mobile redesign
+    // uses (MobileHeader/MobileBottomNav switch at xl:) — was previously
+    // 640px, which meant tablets (768-1180px wide) got the bottom nav's
+    // mobile treatment but this chatbot's old small desktop floating panel,
+    // an inconsistent experience at exactly the tablet sizes this app is
+    // tested at.
+    const check = () => setIsMobile(window.innerWidth < 1280)
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
@@ -137,21 +143,24 @@ export default function DoctorSarahChatbot() {
     } finally { setTyping(false) }
   }
 
-  // Desktop wrapper style (fixed, draggable)
+  // Base anchor is responsive (clears the mobile bottom nav below xl,
+  // matches the old desktop position at xl+); drag delta applied via
+  // `transform` on top so dragging still works at either breakpoint.
+  const wrapClass = 'fixed z-[9999] right-6 bottom-[calc(88px+env(safe-area-inset-bottom))] xl:bottom-6'
   const wrapStyle: React.CSSProperties = {
-    position: 'fixed',
-    right: `${-pos.x + 24}px`,
-    bottom: `${-pos.y + 24}px`,
-    zIndex: 9999,
+    transform: `translate(${-pos.x}px, ${-pos.y}px)`,
     cursor: dragging ? 'grabbing' : 'grab',
     userSelect: 'none',
-    transition: dragging ? 'none' : 'right 0.2s, bottom 0.2s',
+    transition: dragging ? 'none' : 'transform 0.2s',
   }
 
   // ── Mobile full-screen overlay ─────────────────────────────────────────────
   if (isMobile && open && !minimised) {
     return (
-      <div className="fixed inset-0 z-[9999] flex flex-col"
+      // z-[10050]: must sit above MobileBottomNav's z-[10000] — matches the
+      // Admin/Receptionist mobile Sarah panels, which use the same value for
+      // the same reason.
+      <div className="fixed inset-0 z-[10050] flex flex-col"
         style={{ background: 'linear-gradient(145deg,#0d1b6e,#1A237E)' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10"
@@ -230,7 +239,7 @@ export default function DoctorSarahChatbot() {
 
   // ── Desktop floating chatbot ───────────────────────────────────────────────
   return (
-    <div ref={bubbleRef} style={wrapStyle} onMouseDown={onMouseDown} onTouchStart={onTouchStart}>
+    <div ref={bubbleRef} className={wrapClass} style={wrapStyle} onMouseDown={onMouseDown} onTouchStart={onTouchStart}>
 
       {/* Chat panel */}
       {open && !minimised && (
@@ -345,6 +354,8 @@ export default function DoctorSarahChatbot() {
 
       {/* Bubble — bounces when chat is closed */}
       <div onClick={handleBubbleClick}
+        role="button" tabIndex={0} aria-label={open ? 'Close Sarah AI assistant' : 'Open Sarah AI assistant'}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBubbleClick() } }}
         className={`relative w-14 h-14 rounded-full shadow-2xl overflow-hidden border-2 border-white/40 hover:scale-110 transition-transform ${!open ? 'animate-bounce' : ''}`}
         style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
         <Image src="/sarah.jpg" alt="Sarah" fill style={{ objectFit: 'cover', objectPosition: 'center top' }} />

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import DoctorTopBar from '@/components/layout/DoctorTopBar'
 import DoctorChatbot from '@/components/DoctorSarahChatbot'
@@ -27,6 +27,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [user, setUser] = useState<any>(null)
   const [permsMap, setPermsMap] = useState<Record<string, boolean>>({})
   const [profileOpen, setProfileOpen] = useState(false)
+  const profileBtnRef = useRef<HTMLButtonElement>(null)
   // Mounted here (always-on for the session), not inside MobileProfileSheet
   // (which only mounts when opened) — beforeinstallprompt fires once, early,
   // and a listener attached late would miss it.
@@ -85,6 +86,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           onProfileClick={() => setProfileOpen(true)}
           searchEndpoint="/api-proxy/patients"
           onSelectPatient={id => router.push(`/doctor/patients/${id}`)}
+          profileButtonRef={profileBtnRef}
         />
       )}
       <main className="mx-auto w-full max-w-[1600px] px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-8">
@@ -100,6 +102,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           onClose={() => setProfileOpen(false)}
           onSignOut={signOut}
           install={pwaInstall}
+          anchorRef={profileBtnRef}
         />
       )}
       <DoctorChatbot />

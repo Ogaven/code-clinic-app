@@ -6,7 +6,7 @@ import { AppTheme, applyTheme, readTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 import { questrial } from '../fonts/questrial'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import MobileHeader from '@/components/mobile/MobileHeader'
 import MobileBottomNav from '@/components/mobile/MobileBottomNav'
 import MobileProfileSheet from '@/components/mobile/MobileProfileSheet'
@@ -32,6 +32,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [theme, setTheme] = useState<AppTheme>('system')
   const [dark, setDark] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const profileBtnRef = useRef<HTMLButtonElement>(null)
   // Mounted here (always-on for the session), not inside MobileProfileSheet
   // (which only mounts when opened) — beforeinstallprompt fires once, early,
   // and a listener attached late would miss it.
@@ -105,6 +106,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         onProfileClick={() => setProfileOpen(true)}
         searchEndpoint="/api-proxy/patients"
         onSelectPatient={id => router.push(`/patients/${id}`)}
+        profileButtonRef={profileBtnRef}
       />
     )}
     <main className={cn('flex-1 overflow-y-auto p-4 lg:p-6', isAdmin && 'pb-24 xl:pb-6')}>{children}</main>
@@ -118,6 +120,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         onClose={() => setProfileOpen(false)}
         onSignOut={signOut}
         install={pwaInstall}
+        anchorRef={profileBtnRef}
       />
     )}
     <SarahChatbot />

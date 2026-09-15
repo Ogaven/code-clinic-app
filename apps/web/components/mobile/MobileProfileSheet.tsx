@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { User, Palette, Download, LogOut, X, Sun, Moon, Monitor, Check } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
@@ -30,19 +30,35 @@ interface MobileProfileSheetProps {
   onSignOut: () => void
   // Lifted from a hook call here to a persistent, always-mounted ancestor
   // (the role layout) — beforeinstallprompt fires once, early, and this
-  // sheet only mounts when the user opens it. If the hook lived here, its
+  // menu only mounts when the user opens it. If the hook lived here, its
   // listener would attach too late to ever catch a real browser event that
   // already fired before the user's first tap on the profile avatar.
   install: PwaInstallState
+  // Bounding-rect source for anchoring this as a small popover directly
+  // under the header's profile avatar — a normal mobile account menu, not a
+  // sheet that covers most of the phone. Mirrors the desktop ProfileMenu's
+  // small-anchored-dropdown pattern.
+  anchorRef: React.RefObject<HTMLButtonElement>
 }
 
-export default function MobileProfileSheet({ user, theme, onThemeChange, profileHref, onClose, onSignOut, install }: MobileProfileSheetProps) {
+export default function MobileProfileSheet({ user, theme, onThemeChange, profileHref, onClose, onSignOut, install, anchorRef }: MobileProfileSheetProps) {
   const router = useRouter()
-  const sheetRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const [showInstallHelp, setShowInstallHelp] = useState(false)
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+
+  useLayoutEffect(() => {
+    function place() {
+      const rect = anchorRef.current?.getBoundingClientRect()
+      if (rect) setPos({ top: rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right) })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [anchorRef])
 
   useEffect(() => {
-    sheetRef.current?.focus()
+    menuRef.current?.focus()
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -66,67 +82,65 @@ export default function MobileProfileSheet({ user, theme, onThemeChange, profile
   const showInstall = !install.isStandalone && (install.canInstallNative || install.isIOS)
 
   return (
-    <div className="xl:hidden fixed inset-0 z-[150] flex items-end justify-center bg-slate-950/45 backdrop-blur-sm sm:items-center" onMouseDown={onClose}>
+    <div className="xl:hidden fixed inset-0 z-[150]" onMouseDown={onClose}>
       <div
-        ref={sheetRef}
+        ref={menuRef}
         tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Profile"
-        className="w-full max-w-sm overflow-hidden rounded-t-[28px] border-t border-gray-200/70 bg-white shadow-2xl outline-none animate-fade-in dark:border-white/10 dark:bg-[#0a1730] sm:rounded-[28px] sm:border"
-        style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))', maxHeight: '85vh', overflowY: 'auto' }}
+        role="menu"
+        aria-label="Account menu"
+        className="absolute w-[264px] max-w-[calc(100vw-16px)] overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-2xl outline-none animate-fade-in dark:border-white/10 dark:bg-[#0a1730]"
+        style={{ top: pos?.top ?? 64, right: pos?.right ?? 8, visibility: pos ? 'visible' : 'hidden' }}
         onMouseDown={e => e.stopPropagation()}
       >
-        <div className="relative flex items-center justify-center border-b border-gray-100 px-5 py-4 dark:border-white/8">
-          <span className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-gray-200 dark:bg-white/15 sm:hidden" aria-hidden />
-          <button onClick={onClose} aria-label="Close" className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10">
-            <X size={16} />
+        <div className="flex items-center gap-2.5 border-b border-gray-100 px-3.5 py-3 dark:border-white/8">
+          {user.avatarUrl ? (
+            <img src={user.avatarUrl} alt="" className="h-9 w-9 flex-shrink-0 rounded-full object-cover" />
+          ) : (
+            <span className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-gradient-to-br from-clinic-navy to-clinic-blue text-xs font-bold text-white">{initials}</span>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{user.firstName} {user.lastName}</p>
+            <p className="truncate text-[11px] text-gray-400 dark:text-slate-500">
+              {roleLabels[user.role] || user.role}{user.email ? ` · ${user.email}` : ''}
+            </p>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10">
+            <X size={14} />
           </button>
         </div>
 
-        <div className="flex flex-col items-center gap-2 px-6 py-5 text-center">
-          {user.avatarUrl ? (
-            <img src={user.avatarUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
-          ) : (
-            <span className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-clinic-navy to-clinic-blue text-lg font-bold text-white">{initials}</span>
-          )}
-          <p className="text-base font-bold text-gray-900 dark:text-white">{user.firstName} {user.lastName}</p>
-          <p className="text-xs font-semibold text-cyan-600 dark:text-cyan-400">{roleLabels[user.role] || user.role}</p>
-          {user.email && <p className="text-xs text-gray-400 dark:text-slate-500">{user.email}</p>}
+        <div className="py-1">
+          <MenuRow icon={User} label="My Profile" onClick={() => navigate(profileHref)} />
         </div>
 
-        <div className="space-y-1 px-3 pb-2">
-          <SheetButton icon={User} label="My Profile" onClick={() => navigate(profileHref)} />
-        </div>
-
-        <div className="border-t border-gray-100 px-3 py-3 dark:border-white/8">
-          <p className="flex items-center gap-1.5 px-2 pb-2 text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-slate-500">
-            <Palette size={12} /> Appearance
+        <div className="border-t border-gray-100 px-3.5 py-2 dark:border-white/8">
+          <p className="flex items-center gap-1.5 pb-1.5 text-[9px] font-bold uppercase tracking-wide text-gray-400 dark:text-slate-500">
+            <Palette size={11} /> Appearance
           </p>
-          <div className="grid grid-cols-3 gap-1.5 px-1">
+          <div className="grid grid-cols-3 gap-1">
             {([['light', Sun], ['dark', Moon], ['system', Monitor]] as const).map(([value, Icon]) => (
               <button
                 key={value}
                 onClick={() => chooseTheme(value)}
                 className={cn(
-                  'flex flex-col items-center gap-1 rounded-xl py-2.5 text-[11px] font-semibold capitalize text-gray-500 dark:text-slate-400',
+                  'flex flex-col items-center gap-0.5 rounded-lg py-1.5 text-[10px] font-semibold capitalize text-gray-500 dark:text-slate-400',
                   theme === value ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300' : 'hover:bg-gray-50 dark:hover:bg-white/5',
                 )}
               >
-                <span className="relative"><Icon size={17} />{theme === value && <Check size={9} className="absolute -right-2.5 -top-1" />}</span>
+                <span className="relative"><Icon size={14} />{theme === value && <Check size={8} className="absolute -right-2 -top-1" />}</span>
                 {value}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="border-t border-gray-100 px-3 py-3 dark:border-white/8">
-          <NotificationSettingsRow />
+        <div className="border-t border-gray-100 py-1 dark:border-white/8">
+          <NotificationSettingsRow variant="menu" />
         </div>
 
-        <div className="space-y-1 border-t border-gray-100 px-3 py-2 dark:border-white/8">
+        <div className="border-t border-gray-100 py-1 dark:border-white/8">
           {showInstall && (
-            <SheetButton
+            <MenuRow
               icon={Download}
               label="Install App"
               onClick={async () => {
@@ -135,7 +149,7 @@ export default function MobileProfileSheet({ user, theme, onThemeChange, profile
               }}
             />
           )}
-          <SheetButton icon={LogOut} label="Sign Out" tone="danger" onClick={onSignOut} />
+          <MenuRow icon={LogOut} label="Sign Out" tone="danger" onClick={onSignOut} />
         </div>
       </div>
 
@@ -144,16 +158,17 @@ export default function MobileProfileSheet({ user, theme, onThemeChange, profile
   )
 }
 
-function SheetButton({ icon: Icon, label, onClick, tone }: { icon: any; label: string; onClick: () => void; tone?: 'danger' }) {
+function MenuRow({ icon: Icon, label, onClick, tone }: { icon: any; label: string; onClick: () => void; tone?: 'danger' }) {
   return (
     <button
       onClick={onClick}
+      role="menuitem"
       className={cn(
-        'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition-colors',
+        'flex w-full items-center gap-2.5 px-3.5 py-2 text-[13px] font-semibold transition-colors',
         tone === 'danger' ? 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10' : 'text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10',
       )}
     >
-      <Icon size={17} /> {label}
+      <Icon size={15} /> {label}
     </button>
   )
 }

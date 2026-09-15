@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { HelpCircle, X, Send, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AppTheme, applyTheme, readTheme } from '@/lib/theme'
@@ -183,6 +183,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
   const [notifPerm, setNotifPerm] = useState<string>('default')
   const [notifications, setNotifications] = useState<any[]>([])
   const [profileOpen, setProfileOpen] = useState(false)
+  const profileBtnRef = useRef<HTMLButtonElement>(null)
   // Mounted here (always-on for the session), not inside MobileProfileSheet
   // (which only mounts when opened) — beforeinstallprompt fires once, early,
   // and a listener attached late would miss it.
@@ -359,6 +360,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
           onProfileClick={() => setProfileOpen(true)}
           searchEndpoint="/api-proxy/patients"
           onSelectPatient={id => router.push(`/receptionist/patients/${id}`)}
+          profileButtonRef={profileBtnRef}
         />
       )}
 
@@ -384,6 +386,7 @@ export default function ReceptionistLayout({ children }: { children: React.React
           onClose={() => setProfileOpen(false)}
           onSignOut={signOut}
           install={pwaInstall}
+          anchorRef={profileBtnRef}
         />
       )}
 

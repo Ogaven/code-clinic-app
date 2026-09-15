@@ -147,22 +147,136 @@ export default function SarahChatbot() {
   }
 
   return (
+    <>
+    {/* Mobile chat panel is a sibling, NOT a descendant of the draggable
+        bubble wrapper below: that wrapper has an inline `transform` for
+        drag offset, and a `transform` on any ancestor makes it the
+        containing block for `position: fixed` descendants — a real CSS
+        gotcha that silently confines a "full-screen fixed" panel to the
+        wrapper's own tiny bounding box instead of the viewport (found and
+        fixed in the Admin variant of this component first; same fix
+        applied here). */}
+    {chatOpen && !chatMin && (
+      <div
+        className="xl:hidden fixed z-[10050] flex flex-col overflow-hidden rounded-t-3xl shadow-2xl animate-fade-in-up"
+        style={{
+          left: 0, right: 0, bottom: 0,
+          top: 'calc(56px + env(safe-area-inset-top))',
+          background: 'linear-gradient(165deg, #0c1e50, #1a3a8f)',
+          cursor: 'default',
+        }}
+        onMouseDown={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-white/10"
+          style={{ background: 'rgba(255,255,255,0.07)' }}>
+          <div className="flex items-center gap-3">
+            <div className="relative w-9 h-9 rounded-full overflow-hidden border-2 border-white/30">
+              <Image src="/sarah.jpg" alt="Sarah" fill style={{ objectFit: 'cover', objectPosition: 'center top' }} />
+            </div>
+            <div>
+              <p className="text-white text-sm font-bold">Sarah</p>
+              <div className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot" />
+                <p className="text-[10px] text-emerald-300">AI Assistant · Online</p>
+              </div>
+            </div>
+          </div>
+          <button onClick={() => setChatOpen(false)} aria-label="Close" className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors">
+            <X size={16} color="rgba(255,255,255,0.8)" />
+          </button>
+        </div>
+
+        {/* Messages — fills remaining space */}
+        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          {msgs.map((m, i) => (
+            <div key={i} className={`flex ${m.from === 'user' ? 'justify-end' : 'items-start gap-2'}`}>
+              {m.from === 'sarah' && (
+                <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-white/20">
+                  <Image src="/sarah.jpg" alt="Sarah" width={28} height={28} style={{ objectFit: 'cover', objectPosition: 'center top' }} />
+                </div>
+              )}
+              <div className="max-w-[80%]">
+                <div className="rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-line"
+                  style={{
+                    background: m.from === 'sarah' ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg,#29ABE2,#1A237E)',
+                    color: 'white',
+                    borderRadius: m.from === 'sarah' ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
+                  }}>
+                  {m.text}
+                </div>
+                <p className="text-[9px] text-blue-300/40 mt-1 px-1">{m.time}</p>
+              </div>
+            </div>
+          ))}
+          {typing && (
+            <div className="flex items-start gap-2">
+              <div className="w-7 h-7 rounded-full overflow-hidden border border-white/20">
+                <Image src="/sarah.jpg" alt="" width={28} height={28} style={{ objectFit: 'cover', objectPosition: 'center top' }} />
+              </div>
+              <div className="rounded-2xl px-4 py-3" style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '4px 16px 16px 16px' }}>
+                <div className="flex gap-1 items-center h-3">
+                  {[0,1,2].map(j => <span key={j} className="w-1.5 h-1.5 rounded-full bg-blue-300 animate-bounce" style={{ animationDelay: `${j*0.15}s` }} />)}
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEnd} />
+        </div>
+
+        {/* Quick chips */}
+        <div className="flex-shrink-0 px-4 pb-2 flex flex-wrap gap-1.5">
+          {quickChips.map(q => (
+            <button key={q} onClick={() => sendChat(q)}
+              className="text-[11px] font-medium px-2.5 py-1.5 rounded-full transition-all hover:bg-white/20"
+              style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.15)' }}>
+              {q}
+            </button>
+          ))}
+        </div>
+
+        {/* Composer — pinned above the safe-area, always visible above the keyboard */}
+        <div className="flex-shrink-0 flex items-center gap-2 px-4 py-3 border-t border-white/10"
+          style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
+          <input
+            value={chatInput}
+            onChange={e => setChatInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChat()}
+            placeholder={recording ? '🎙 Listening...' : 'Ask Sarah anything...'}
+            className="flex-1 text-sm py-2.5 px-3.5 rounded-xl outline-none placeholder-blue-300/50 text-white"
+            style={{ background: 'rgba(255,255,255,0.08)', border: `1px solid ${recording ? 'rgba(236,72,153,0.5)' : 'rgba(255,255,255,0.14)'}` }}
+            onMouseDown={e => e.stopPropagation()}
+          />
+          <button onClick={toggleRecording} aria-label="Voice input"
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+            style={{ background: recording ? 'rgba(236,72,153,0.4)' : 'rgba(255,255,255,0.1)', border: `1px solid ${recording ? 'rgba(236,72,153,0.5)' : 'rgba(255,255,255,0.15)'}` }}>
+            {recording ? <MicOff size={16} color="#EC4899" className="animate-pulse" /> : <Mic size={16} color="rgba(255,255,255,0.7)" />}
+          </button>
+          <button onClick={() => sendChat()} aria-label="Send"
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+            style={{ background: 'linear-gradient(135deg,#29ABE2,#1A237E)' }}>
+            <Send size={16} color="white" />
+          </button>
+        </div>
+      </div>
+    )}
     <div
       ref={bubbleRef}
+      // Base anchor is responsive (clears the mobile bottom nav below xl,
+      // matches the old desktop position at xl+); drag delta applied via
+      // `transform` on top so dragging still works at either breakpoint.
+      className="fixed z-[9999] right-6 bottom-[calc(88px+env(safe-area-inset-bottom))] xl:bottom-6"
       style={{
-        position: 'fixed',
-        right: `${-chatPos.x + 24}px`,
-        bottom: `${-chatPos.y + 24}px`,
-        zIndex: 9999,
+        transform: `translate(${-chatPos.x}px, ${-chatPos.y}px)`,
         cursor: dragging ? 'grabbing' : 'grab',
         userSelect: 'none',
-        transition: dragging ? 'none' : 'right 0.2s, bottom 0.2s',
+        transition: dragging ? 'none' : 'transform 0.2s',
       }}
       onMouseDown={onBubbleMouseDown}
     >
-      {/* Chat panel */}
+      {/* Chat panel — desktop/tablet only (xl+); unchanged small floating panel */}
       {chatOpen && !chatMin && (
-        <div className="mb-4 rounded-3xl shadow-2xl overflow-hidden animate-slide-right"
+        <div className="mb-4 hidden xl:block rounded-3xl shadow-2xl overflow-hidden animate-slide-right"
           style={{ width: 360, background: 'linear-gradient(165deg, #0c1e50, #1a3a8f)', border: '1px solid rgba(255,255,255,0.12)', cursor: 'default' }}
           onMouseDown={e => e.stopPropagation()}>
 
@@ -264,9 +378,9 @@ export default function SarahChatbot() {
         </div>
       )}
 
-      {/* Minimised bar */}
+      {/* Minimised bar — desktop/tablet only; mobile's full-screen panel has no minimise affordance (just Close) */}
       {chatOpen && chatMin && (
-        <div className="mb-4 flex items-center gap-3 px-4 py-2.5 rounded-2xl shadow-xl cursor-pointer"
+        <div className="mb-4 hidden xl:flex items-center gap-3 px-4 py-2.5 rounded-2xl shadow-xl cursor-pointer"
           style={{ background: 'linear-gradient(135deg, #0c1e50, #1a3a8f)', border: '1px solid rgba(255,255,255,0.15)' }}
           onClick={() => setChatMin(false)} onMouseDown={e => e.stopPropagation()}>
           <div className="relative w-7 h-7 rounded-full overflow-hidden border border-white/30">
@@ -277,10 +391,14 @@ export default function SarahChatbot() {
         </div>
       )}
 
-      {/* Floating bubble */}
+      {/* Floating bubble — hidden on mobile while the full-screen panel is open */}
       <div
         onClick={() => { if (!hasMoved) setChatOpen(o => !o) }}
-        className={`select-none cursor-pointer ${!dragging && !chatOpen ? 'animate-float' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-label={chatOpen ? 'Close Sarah AI assistant' : 'Open Sarah AI assistant'}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setChatOpen(o => !o) } }}
+        className={`select-none cursor-pointer ${!dragging && !chatOpen ? 'animate-float' : ''} ${chatOpen && !chatMin ? 'xl:block hidden' : ''}`}
         style={{ position: 'relative', width: 64, height: 64 }}
       >
         <div className="absolute rounded-full animate-pulse pointer-events-none"
@@ -292,5 +410,6 @@ export default function SarahChatbot() {
           style={{ bottom: 2, right: 2, width: 14, height: 14, borderRadius: '50%', background: '#34D399', border: '2.5px solid white', display: 'block' }} />
       </div>
     </div>
+    </>
   )
 }

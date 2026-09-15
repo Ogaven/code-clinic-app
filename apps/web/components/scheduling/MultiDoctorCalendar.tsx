@@ -631,6 +631,15 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
   const closedDays = new Set(workingHours?.filter(w => !w.isOpen).map(w => w.dayOfWeek) ?? [])
   const [closedToast, setClosedToast] = useState(false)
 
+  // Mobile shows one day at a time (picked from a day strip) instead of
+  // squeezing all 6 columns into a phone-width grid.
+  const [mobileDay, setMobileDay] = useState<Date>(() => weekDates.find(d => sameDay(d, today)) ?? weekDates[0])
+  useEffect(() => {
+    if (!weekDates.some(d => sameDay(d, mobileDay))) {
+      setMobileDay(weekDates.find(d => sameDay(d, today)) ?? weekDates[0])
+    }
+  }, [weekDates])
+
   function handleClick(date: Date, slot: string) {
     if (!onBookSlot) return
     if (closedDays.has(date.getDay())) {
@@ -644,6 +653,76 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
     onBookSlot('', d)
   }
 
+  const renderDayHeaders = (dates: Date[]) => (
+    <div className="flex sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-white/10 shadow-sm">
+      <div className="flex-shrink-0 border-r border-gray-100 dark:border-white/10" style={{ width: TIME_W }} />
+      {dates.map((date) => {
+        const isToday  = sameDay(date, today)
+        const dayCount = appointments.filter((a) => sameDay(new Date(a.startAt), date) && a.status !== 'CANCELLED').length
+        const isClosed = closedDays.has(date.getDay())
+        return (
+          <div key={date.toISOString()} className={cn('flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 text-center', isClosed && 'bg-red-50/60 dark:bg-red-900/10')}>
+            <div className={cn('text-[11px] font-semibold uppercase flex items-center justify-center gap-1', isToday ? 'text-clinic-blue' : isClosed ? 'text-red-400' : 'text-gray-400')}>
+              {date.toLocaleDateString('en-GB', { weekday: 'short' })}
+              {isClosed && <span className="text-[9px] font-bold text-red-500 bg-red-100 dark:bg-red-900/30 px-1 py-0.5 rounded-full">CLOSED</span>}
+            </div>
+            <div className={cn(
+              'text-lg font-bold mx-auto w-9 h-9 flex items-center justify-center rounded-full mt-0.5',
+              isToday ? 'bg-clinic-navy text-white' : isClosed ? 'text-red-400 opacity-60' : 'text-clinic-navy dark:text-white',
+            )}>
+              {date.getDate()}
+            </div>
+            {dayCount > 0 && !isClosed && (
+              <div className="text-[10px] font-semibold text-clinic-blue">{dayCount} apt</div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  const renderGridBody = (dates: Date[]) => (
+    <div className="flex" style={{ height: `${timeSlots.length * SLOT_HEIGHT}px` }}>
+      <TimeCol width={TIME_W} />
+      {dates.map((date) => {
+        const isToday  = sameDay(date, today)
+        const dayAppts = appointments.filter((a) => sameDay(new Date(a.startAt), date))
+        const isClosed = closedDays.has(date.getDay())
+        return (
+          <div key={date.toISOString()}
+            className={cn('flex-1 min-w-[100px] border-r border-gray-100 dark:border-white/10 relative', isToday && 'bg-blue-50/15 dark:bg-blue-900/10')}
+            style={{ height: `${timeSlots.length * SLOT_HEIGHT}px` }}>
+            {timeSlots.map((slot, i) => (
+              <div key={slot}
+                className={`absolute left-0 right-0 transition-colors group${onBookSlot && !isClosed ? ' hover:bg-blue-50/40 cursor-pointer' : ''}`}
+                style={{ top: `${i * SLOT_HEIGHT}px`, height: `${SLOT_HEIGHT}px`, borderBottom: '1px solid #F5F5F7' }}
+                onClick={() => handleClick(date, slot)}>
+                {onBookSlot && !isClosed && (
+                  <span className="absolute inset-0 flex items-center justify-center text-[10px] text-clinic-blue opacity-0 group-hover:opacity-100 font-semibold pointer-events-none">
+                    + Book
+                  </span>
+                )}
+              </div>
+            ))}
+            {groupOverlapping(dayAppts).map((a) => (
+              <ApptBlock key={a.id} appt={a} colIndex={a.colIndex} totalCols={a.totalCols} onClick={() => onClickAppointment?.(a)} />
+            ))}
+            {isToday && <NowLine />}
+            {isClosed && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none"
+                style={{ background: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(239,68,68,0.04) 10px, rgba(239,68,68,0.04) 20px)' }}>
+                <div className="flex flex-col items-center gap-1 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl px-4 py-2 shadow-sm">
+                  <span className="text-lg">🚫</span>
+                  <span className="text-xs font-bold text-red-500">Closed</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+
   return (
     <div className="flex-1 overflow-auto min-h-0">
       {closedToast && (
@@ -651,72 +730,34 @@ function WeekView({ weekDates, appointments, onBookSlot, onClickAppointment, wor
           🚫 This day is closed
         </div>
       )}
-      {/* Day headers */}
-      <div className="flex sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-white/10 shadow-sm">
-        <div className="flex-shrink-0 border-r border-gray-100 dark:border-white/10" style={{ width: TIME_W }} />
-        {weekDates.map((date) => {
-          const isToday  = sameDay(date, today)
-          const dayCount = appointments.filter((a) => sameDay(new Date(a.startAt), date) && a.status !== 'CANCELLED').length
-          const isClosed = closedDays.has(date.getDay())
-          return (
-            <div key={date.toISOString()} className={cn('flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-100 dark:border-white/10 text-center', isClosed && 'bg-red-50/60 dark:bg-red-900/10')}>
-              <div className={cn('text-[11px] font-semibold uppercase flex items-center justify-center gap-1', isToday ? 'text-clinic-blue' : isClosed ? 'text-red-400' : 'text-gray-400')}>
-                {date.toLocaleDateString('en-GB', { weekday: 'short' })}
-                {isClosed && <span className="text-[9px] font-bold text-red-500 bg-red-100 dark:bg-red-900/30 px-1 py-0.5 rounded-full">CLOSED</span>}
-              </div>
-              <div className={cn(
-                'text-lg font-bold mx-auto w-9 h-9 flex items-center justify-center rounded-full mt-0.5',
-                isToday ? 'bg-clinic-navy text-white' : isClosed ? 'text-red-400 opacity-60' : 'text-clinic-navy dark:text-white',
-              )}>
-                {date.getDate()}
-              </div>
-              {dayCount > 0 && !isClosed && (
-                <div className="text-[10px] font-semibold text-clinic-blue">{dayCount} apt</div>
-              )}
-            </div>
-          )
-        })}
+
+      {/* Desktop: full 6-day grid, unchanged */}
+      <div className="hidden xl:block">
+        {renderDayHeaders(weekDates)}
+        {renderGridBody(weekDates)}
       </div>
 
-      {/* Grid body */}
-      <div className="flex" style={{ height: `${timeSlots.length * SLOT_HEIGHT}px` }}>
-        <TimeCol width={TIME_W} />
-        {weekDates.map((date) => {
-          const isToday  = sameDay(date, today)
-          const dayAppts = appointments.filter((a) => sameDay(new Date(a.startAt), date))
-          const isClosed = closedDays.has(date.getDay())
-          return (
-            <div key={date.toISOString()}
-              className={cn('flex-1 min-w-[100px] border-r border-gray-100 dark:border-white/10 relative', isToday && 'bg-blue-50/15 dark:bg-blue-900/10')}
-              style={{ height: `${timeSlots.length * SLOT_HEIGHT}px` }}>
-              {timeSlots.map((slot, i) => (
-                <div key={slot}
-                  className={`absolute left-0 right-0 transition-colors group${onBookSlot && !isClosed ? ' hover:bg-blue-50/40 cursor-pointer' : ''}`}
-                  style={{ top: `${i * SLOT_HEIGHT}px`, height: `${SLOT_HEIGHT}px`, borderBottom: '1px solid #F5F5F7' }}
-                  onClick={() => handleClick(date, slot)}>
-                  {onBookSlot && !isClosed && (
-                    <span className="absolute inset-0 flex items-center justify-center text-[10px] text-clinic-blue opacity-0 group-hover:opacity-100 font-semibold pointer-events-none">
-                      + Book
-                    </span>
-                  )}
-                </div>
-              ))}
-              {groupOverlapping(dayAppts).map((a) => (
-                <ApptBlock key={a.id} appt={a} colIndex={a.colIndex} totalCols={a.totalCols} onClick={() => onClickAppointment?.(a)} />
-              ))}
-              {isToday && <NowLine />}
-              {isClosed && (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none"
-                  style={{ background: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(239,68,68,0.04) 10px, rgba(239,68,68,0.04) 20px)' }}>
-                  <div className="flex flex-col items-center gap-1 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-xl px-4 py-2 shadow-sm">
-                    <span className="text-lg">🚫</span>
-                    <span className="text-xs font-bold text-red-500">Closed</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
+      {/* Mobile: day strip + single-day timeline */}
+      <div className="xl:hidden">
+        <div className="flex-shrink-0 flex gap-1.5 border-b border-gray-100 bg-white px-2 py-2 dark:border-white/10 dark:bg-gray-900 sticky top-0 z-30">
+          {weekDates.map((date) => {
+            const isToday    = sameDay(date, today)
+            const isSelected = sameDay(date, mobileDay)
+            const isClosed   = closedDays.has(date.getDay())
+            return (
+              <button key={date.toISOString()} onClick={() => setMobileDay(date)}
+                className={cn(
+                  'flex-1 flex flex-col items-center gap-0.5 rounded-xl py-1.5 transition-colors',
+                  isSelected ? 'bg-clinic-navy text-white' : isClosed ? 'text-red-400' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10',
+                )}>
+                <span className="text-[9px] font-semibold uppercase">{date.toLocaleDateString('en-GB', { weekday: 'short' }).slice(0, 2)}</span>
+                <span className={cn('text-sm font-bold', isToday && !isSelected && 'text-clinic-blue')}>{date.getDate()}</span>
+              </button>
+            )
+          })}
+        </div>
+        {renderDayHeaders([mobileDay])}
+        {renderGridBody([mobileDay])}
       </div>
     </div>
   )
@@ -735,15 +776,18 @@ function MonthView({ year, month, appointments, onDateClick, workingHours }: {
   const closedDays = new Set(workingHours?.filter(w => !w.isOpen).map(w => w.dayOfWeek) ?? [])
 
   return (
-    <div className="flex-1 overflow-auto min-h-0 p-3">
-      <div className="grid grid-cols-7 gap-1 mb-1">
+    <div className="flex-1 overflow-auto min-h-0 p-1.5 sm:p-3">
+      <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1">
         {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d) => (
-          <div key={d} className={cn('text-center text-xs font-bold py-1', d === 'Sun' ? 'text-red-300' : 'text-gray-400')}>{d}</div>
+          <div key={d} className={cn('text-center text-[10px] sm:text-xs font-bold py-1', d === 'Sun' ? 'text-red-300' : 'text-gray-400')}>
+            <span className="sm:hidden">{d.slice(0, 1)}</span>
+            <span className="hidden sm:inline">{d}</span>
+          </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
         {grid.flat().map((date, i) => {
-          if (!date) return <div key={`e${i}`} className="rounded-xl bg-gray-50/50 dark:bg-white/3 min-h-[90px]" />
+          if (!date) return <div key={`e${i}`} className="rounded-xl bg-gray-50/50 dark:bg-white/3 min-h-[64px] sm:min-h-[90px]" />
           const isToday   = sameDay(date, today)
           const inMonth   = date.getMonth() === month
           const dayAppts  = appointments.filter((a) => sameDay(new Date(a.startAt), date))
@@ -752,22 +796,23 @@ function MonthView({ year, month, appointments, onDateClick, workingHours }: {
             <div key={date.toISOString()}
               onClick={() => onDateClick(date)}
               className={cn(
-                'rounded-xl p-2 min-h-[90px] cursor-pointer transition-all border relative overflow-hidden',
+                'rounded-xl p-1 sm:p-2 min-h-[64px] sm:min-h-[90px] cursor-pointer transition-all border relative overflow-hidden',
                 isToday   ? 'bg-blue-50 dark:bg-blue-900/20 border-clinic-blue/30 shadow-sm' :
                 !inMonth  ? 'bg-gray-50/50 dark:bg-white/3 border-gray-100 dark:border-white/5 opacity-40' :
                 isClosed  ? 'bg-red-50/40 dark:bg-red-900/10 border-red-100 dark:border-red-800/20' :
                 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 hover:border-clinic-blue/30 hover:shadow-sm',
               )}>
               <div className={cn(
-                'text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full mb-1.5',
+                'text-xs sm:text-sm font-bold w-5 h-5 sm:w-7 sm:h-7 flex items-center justify-center rounded-full mb-1 sm:mb-1.5',
                 isToday ? 'bg-clinic-navy text-white' : isClosed ? 'text-red-400' : 'text-gray-700 dark:text-gray-300',
               )}>
                 {date.getDate()}
               </div>
               {dayAppts.map((a) => (
-                <div key={a.id} className="text-[10px] font-medium truncate px-1.5 py-0.5 rounded-md mb-0.5"
+                <div key={a.id} className="text-[9px] sm:text-[10px] font-medium truncate px-1 sm:px-1.5 py-0.5 rounded-md mb-0.5"
                   style={{ background: a.service.colour + '22', color: a.service.colour }}>
-                  {a.patient.firstName} · {a.service.name.split(' ')[0]}
+                  <span className="sm:hidden">{a.patient.firstName}</span>
+                  <span className="hidden sm:inline">{a.patient.firstName} · {a.service.name.split(' ')[0]}</span>
                 </div>
               ))}
               {isClosed && (
@@ -792,6 +837,12 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   const [view,        setView]        = useState<ViewMode>('doctors')
   const [date,        setDate]        = useState(new Date())
   const [columns,     setColumns]     = useState<DoctorCol[]>([])
+  // Doctors view shows every doctor as a fixed-width column side by side —
+  // fine on desktop, but N columns cannot fit a 360-430px phone without
+  // horizontal scrolling. On mobile we instead show one doctor's schedule
+  // at a time (same per-column rendering as desktop, just filtered to a
+  // single doctor) with a selector to switch between them.
+  const [mobileDoctorId, setMobileDoctorId] = useState<string | null>(null)
   const [weekAppts,   setWeekAppts]   = useState<Appointment[]>([])
   const [monthAppts,  setMonthAppts]  = useState<Appointment[]>([])
   const [loading,     setLoading]     = useState(true)
@@ -830,6 +881,17 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
         return ai - bi
       })
     : columns
+
+  // Keep the mobile doctor selection valid as the real column list loads/
+  // changes — auto-pick the first doctor once loaded, and fall back to the
+  // first doctor if the previously-selected one is no longer present
+  // (e.g. deactivated) rather than silently showing an empty column.
+  useEffect(() => {
+    if (orderedColumns.length === 0) return
+    if (!mobileDoctorId || !orderedColumns.some(c => c.doctor.id === mobileDoctorId)) {
+      setMobileDoctorId(orderedColumns[0].doctor.id)
+    }
+  }, [orderedColumns, mobileDoctorId])
 
   function handleReorderColumns(newOrder: string[]) {
     setColumnOrder(newOrder)
@@ -1218,26 +1280,25 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-white/10">
-        {/* Nav */}
-        <div className="flex items-center gap-1">
+      {/* Toolbar — wraps to 2 rows below sm (640px) so it never overflows on
+          narrow phones; a single row (unchanged) from sm upward. */}
+      <div className="flex-shrink-0 flex flex-wrap items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-white/10">
+        {/* Nav + Title — full width on mobile so the rest wraps to its own row */}
+        <div className="flex w-full items-center gap-1 sm:w-auto sm:flex-1">
           <button onClick={navPrev}
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+            className="w-8 h-8 flex-shrink-0 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
             <ChevronLeft size={15} />
           </button>
           <button onClick={() => setDate(new Date())}
-            className="px-3 h-8 rounded-xl text-xs font-semibold text-clinic-navy dark:text-white bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 transition-colors">
+            className="px-3 h-8 flex-shrink-0 rounded-xl text-xs font-semibold text-clinic-navy dark:text-white bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 transition-colors">
             Today
           </button>
           <button onClick={navNext}
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+            className="w-8 h-8 flex-shrink-0 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
             <ChevronRight size={15} />
           </button>
+          <span className="text-sm font-bold text-clinic-navy dark:text-white flex-1 min-w-0 truncate">{title}</span>
         </div>
-
-        {/* Title */}
-        <span className="text-sm font-bold text-clinic-navy dark:text-white flex-1 truncate">{title}</span>
 
         {/* Refresh */}
         {lastFetched && (
@@ -1314,24 +1375,61 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
 
       {/* Calendar views */}
       {view === 'doctors' && (
-        <DoctorsView
-          columns={orderedColumns}
-          dateStr={toDateStr(date)}
-          onBookSlot={onBookSlot}
-          onClickAppointment={handleApptClick}
-          onBlockClick={(doctorId, blockId) => setRemoveBlock({ doctorId, blockId })}
-          onSlotDragStart={handleSlotDragStart}
-          onSlotDragMove={handleSlotDragMove}
-          dragOverlay={dragOverlay}
-          workingHours={workingHours}
-          resizing={resizing}
-          onApptResizeStart={handleResizeStart}
-          onApptResizeTouchStart={handleResizeTouchStart}
-          onApptDrop={handleApptDrop}
-          onReorderColumns={handleReorderColumns}
-          columnWidths={columnWidths}
-          onToggleWide={handleToggleWide}
-        />
+        <>
+          {/* Mobile-only doctor selector — a plain <select> can never cause
+              horizontal overflow, unlike a pill/tab row would. Desktop keeps
+              the full side-by-side multi-doctor grid below (xl:flex). */}
+          {orderedColumns.length > 1 && (
+            <div className="flex-shrink-0 border-b border-gray-100 bg-white px-4 py-2 dark:border-white/10 dark:bg-gray-900 xl:hidden">
+              <select
+                value={mobileDoctorId ?? ''}
+                onChange={e => setMobileDoctorId(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-clinic-navy dark:border-white/10 dark:bg-white/5 dark:text-white"
+              >
+                {orderedColumns.map(({ doctor }) => (
+                  <option key={doctor.id} value={doctor.id}>Dr. {doctor.firstName} {doctor.lastName}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="hidden min-h-0 flex-1 xl:flex xl:flex-col">
+            <DoctorsView
+              columns={orderedColumns}
+              dateStr={toDateStr(date)}
+              onBookSlot={onBookSlot}
+              onClickAppointment={handleApptClick}
+              onBlockClick={(doctorId, blockId) => setRemoveBlock({ doctorId, blockId })}
+              onSlotDragStart={handleSlotDragStart}
+              onSlotDragMove={handleSlotDragMove}
+              dragOverlay={dragOverlay}
+              workingHours={workingHours}
+              resizing={resizing}
+              onApptResizeStart={handleResizeStart}
+              onApptResizeTouchStart={handleResizeTouchStart}
+              onApptDrop={handleApptDrop}
+              onReorderColumns={handleReorderColumns}
+              columnWidths={columnWidths}
+              onToggleWide={handleToggleWide}
+            />
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col xl:hidden">
+            <DoctorsView
+              columns={orderedColumns.filter(c => c.doctor.id === mobileDoctorId)}
+              dateStr={toDateStr(date)}
+              onBookSlot={onBookSlot}
+              onClickAppointment={handleApptClick}
+              onBlockClick={(doctorId, blockId) => setRemoveBlock({ doctorId, blockId })}
+              onSlotDragStart={handleSlotDragStart}
+              onSlotDragMove={handleSlotDragMove}
+              dragOverlay={dragOverlay}
+              workingHours={workingHours}
+              resizing={resizing}
+              onApptResizeStart={handleResizeStart}
+              onApptResizeTouchStart={handleResizeTouchStart}
+              onApptDrop={handleApptDrop}
+            />
+          </div>
+        </>
       )}
       {view === 'week' && (
         <WeekView

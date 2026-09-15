@@ -176,7 +176,7 @@ export default function VoiceStudioPage() {
             : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-900/20 text-red-500 ml-auto">ELEVENLABS_API_KEY not set</span>
           }
         </h2>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="text-xs font-bold text-gray-500 dark:text-white/50 uppercase tracking-wide mb-1.5 block">Persona Name</label>
             <input value={personaName} onChange={e => setPersonaName(e.target.value)} disabled={!isAdmin}
