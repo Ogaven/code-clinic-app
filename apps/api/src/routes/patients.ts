@@ -573,6 +573,23 @@ router.get('/:id', requireAuth, async (req, res) => {
     // server-side — any authenticated role could read it directly from the
     // API response even though no UI for their role displayed it.
     const isClinicalRole = req.user!.role === 'ADMIN' || req.user!.role === 'DOCTOR'
+    // Read-audit only the genuinely sensitive case — a clinical role actually
+    // receiving real medicalNotesEncrypted content — not every profile open.
+    // Reception opens this same route dozens of times a day for ordinary
+    // front-desk work with the field already redacted above; auditing that
+    // traffic would bury the signal this exists to capture. Never logs the
+    // note content itself, only who/what/when it was viewed.
+    if (isClinicalRole && patient.medicalNotesEncrypted) {
+      await logAudit({
+        userId: req.user!.id,
+        actionType: 'VIEW_SENSITIVE',
+        entityType: 'PATIENT',
+        entityId: patient.id,
+        entityName: `${patient.firstName} ${patient.lastName}`,
+        notes: 'Viewed clinical notes (medicalNotesEncrypted) via patient profile',
+        req,
+      })
+    }
     res.json({
       ...patient,
       medicalNotesEncrypted: isClinicalRole ? patient.medicalNotesEncrypted : null,

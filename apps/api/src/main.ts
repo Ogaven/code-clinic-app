@@ -164,7 +164,7 @@ app.get('/health', async (_req, res) => {
     service: 'CodeClinic API',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
-    timezone: 'Africa/Nairobi',
+    timezone: process.env.TZ,
     uptime: uptimeSeconds,
     db:     { status: dbOk   ? 'ok' : 'error' },
     redis:  { status: redisOk ? 'ok' : 'noop' },
@@ -473,7 +473,7 @@ runStartup().then(() => {
     logger.info({
       port: PORT,
       env: process.env.NODE_ENV || 'development',
-      timezone: 'Africa/Nairobi',
+      timezone: process.env.TZ,
     }, 'CodeClinic API started')
   })
 })
