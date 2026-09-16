@@ -458,6 +458,15 @@ runStartup().then(() => {
     updatePatientStatuses().catch(err => console.error('[PatientStatus] Initial run error:', err))
     checkAndSendBirthdayAlerts().catch(err => console.error('[Birthday] Initial run error:', err))
     checkAndSendTreatmentFollowUpAlerts().catch(err => console.error('[TreatmentFollowUpAlert] Initial run error:', err))
+    // Daily derived-tag job has a 24h setInterval below with no initial kick
+    // of its own — on a host that restarts more often than once every 24h
+    // (routine deploys), the timer resets every restart and can go
+    // indefinitely without ever firing once. Every other CRM scheduler here
+    // gets an initial run in this same block; this one was the one exception,
+    // and production data confirms the consequence: recallStatus/
+    // balanceStatus/lifecycleStage/valueTier had never been derived for any
+    // of 4,620 patients.
+    runDailyPatientTagDerivation().catch(err => console.error('[CrmPatientTagDerivation] Initial run error:', err))
   }, 2 * 60 * 1000)
 
   app.listen(PORT, () => {
