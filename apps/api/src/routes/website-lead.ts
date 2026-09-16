@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma'
-import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../ai-suite/whatsapp/whatsapp.service'
 import { normalizePhone, phoneVariants } from '../utils/phone'
 
 const router = Router()
@@ -72,12 +72,28 @@ router.post('/', async (req, res) => {
 
     console.log('[WebsiteLead] Sarah texted', normalized, 'from website popup')
 
-    // FIX 2 — Alert staff immediately
-    const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+    // FIX 2 — Alert staff immediately. Template-first (bypasses the 24h
+    // session window), freeform only if the template itself fails to send —
+    // same pattern as escalation.ts's notifyJulian().
+    const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
     const staffAlert = `🔔 New Lead from Website\nName: ${name}\nPhone: ${normalized}\nReply to them directly on WhatsApp if they left a number, or call them back.`
-    sendWhatsAppMessage(staffNumber, staffAlert, '').catch((e: any) =>
-      console.error('[WebsiteLead] Staff alert failed:', e?.message)
-    )
+    const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
+    ;(async () => {
+      let sent = false
+      if (templateName) {
+        try {
+          await sendWhatsAppTemplate(staffNumber, templateName, [name, normalized, 'New lead enquiry submitted on the website'])
+          sent = true
+        } catch (e: any) {
+          console.warn('[WebsiteLead] Template failed, falling back to freeform:', e?.message)
+        }
+      }
+      if (!sent) {
+        await sendWhatsAppMessage(staffNumber, staffAlert, '').catch((e: any) =>
+          console.error('[WebsiteLead] Staff alert failed:', e?.message)
+        )
+      }
+    })()
 
   } catch (err: any) {
     console.error('[WebsiteLead] Error:', err?.message || JSON.stringify(err) || 'unknown error')

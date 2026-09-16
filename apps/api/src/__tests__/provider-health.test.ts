@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterAll } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
@@ -27,7 +27,7 @@ const { prismaMock, staleLeadsByOwnerMock } = vi.hoisted(() => ({
 vi.mock('../lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('../crm-automation/reporting.service', () => ({ staleLeadsByOwner: staleLeadsByOwnerMock }))
 
-import { getWhatsAppDeliveryHealth, getCrmReadinessSummary } from '../services/provider-health.service'
+import { getWhatsAppDeliveryHealth, getStaffEscalationHealth, getCrmReadinessSummary } from '../services/provider-health.service'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -121,6 +121,73 @@ describe('getWhatsAppDeliveryHealth — sent is never counted as delivered', () 
     expect(health.failureCountByCode['131042']).toBe(1057)
     expect(health.failureCountByCode['131047']).toBe(4115)
     expect(health.failureCountByCode['131026']).toBe(358)
+  })
+})
+
+describe('Patient vs staff WhatsApp health are computed from disjoint data', () => {
+  const ORIGINAL_STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER
+
+  beforeEach(() => {
+    process.env.STAFF_WHATSAPP_NUMBER = '+256394836298'
+  })
+
+  afterAll(() => {
+    if (ORIGINAL_STAFF_NUMBER === undefined) delete process.env.STAFF_WHATSAPP_NUMBER
+    else process.env.STAFF_WHATSAPP_NUMBER = ORIGINAL_STAFF_NUMBER
+  })
+
+  // Regression: staff escalation sends (clinical concerns, guardian-routing
+  // warnings, new-lead alerts) are logged into AiConversation/AiMessage under
+  // the staff number's own "conversation" exactly like a real patient thread.
+  // Without excluding that number, a burst of failed staff alerts silently
+  // drags down the PATIENT-facing WhatsApp health status even when real
+  // patient delivery is completely fine.
+  it('getWhatsAppDeliveryHealth excludes the staff escalation number from every aggregation window', async () => {
+    await getWhatsAppDeliveryHealth()
+
+    const calls = prismaMock.aiMessage.groupBy.mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    for (const [args] of calls) {
+      expect(args.where.conversation).toEqual({ phoneNumber: { notIn: expect.arrayContaining(['+256394836298']) } })
+    }
+
+    expect(prismaMock.metaDeliveryFailure.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { recipientId: { notIn: expect.arrayContaining(['+256394836298']) } } })
+    )
+    expect(prismaMock.metaDeliveryFailure.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { recipientId: { notIn: expect.arrayContaining(['+256394836298']) } } })
+    )
+  })
+
+  it('getStaffEscalationHealth queries ONLY the staff escalation number, the exact inverse filter', async () => {
+    await getStaffEscalationHealth()
+
+    const calls = prismaMock.aiMessage.groupBy.mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    for (const [args] of calls) {
+      expect(args.where.conversation).toEqual({ phoneNumber: { in: expect.arrayContaining(['+256394836298']) } })
+    }
+  })
+
+  it('a burst of failed staff-alert sends does not affect patient health status', async () => {
+    // aiMessage.groupBy is shared by both functions in this mock; the real
+    // regression this guards is the WHERE clause tested above, not the
+    // numbers themselves — but confirm the two calls genuinely produce
+    // independent DeliveryWindow objects (not the same shared reference).
+    prismaMock.aiMessage.groupBy.mockResolvedValue([{ status: 'failed', _count: { _all: 50 } }])
+    const patient = await getWhatsAppDeliveryHealth()
+    const staff = await getStaffEscalationHealth()
+    expect(patient.today).not.toBe(staff.last30Days)
+  })
+
+  it('getStaffEscalationHealth classifies status from a 30-day window (staff volume is naturally low)', async () => {
+    prismaMock.aiMessage.groupBy.mockResolvedValue([
+      { status: 'delivered', _count: { _all: 9 } },
+      { status: 'failed',    _count: { _all: 1 } },
+    ])
+    const staff = await getStaffEscalationHealth()
+    expect(staff.last30Days.attempted).toBe(10)
+    expect(staff.status).toBe('HEALTHY') // 10% failure rate, below the 20% DEGRADED threshold
   })
 })
 

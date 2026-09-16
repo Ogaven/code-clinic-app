@@ -5,7 +5,7 @@ import { getGreetingName, guardianTitle, isMinor, normalizeRelation } from '../.
 import { resolveOutboundRecipient, alertStaffMinorNoGuardian, hasOutboundConsent } from './guardian-routing.service'
 import { kampalaTomorrowRange } from '../../utils/kampala-time'
 
-const ADMIN_WHATSAPP = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+const ADMIN_WHATSAPP = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
 
 // Dedup flag: reset each deploy/restart (acceptable for a weekly report)
 let weekendReportSentOn: string | null = null

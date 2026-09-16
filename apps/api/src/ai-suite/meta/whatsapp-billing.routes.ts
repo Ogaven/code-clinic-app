@@ -8,7 +8,7 @@
 import { Router } from 'express'
 import { requireAuth } from '../../middleware/auth'
 import { adminOnly } from '../../middleware/rbac'
-import { getWhatsAppDeliveryHealth, getCrmReadinessSummary } from '../../services/provider-health.service'
+import { getWhatsAppDeliveryHealth, getStaffEscalationHealth, getCrmReadinessSummary } from '../../services/provider-health.service'
 import { getMetaBillingStatus } from '../../services/meta-billing.service'
 
 const router = Router()
@@ -19,12 +19,16 @@ const router = Router()
 // error payload, whether they view the page or call this endpoint directly.
 router.get('/whatsapp-health', requireAuth, async (req, res) => {
   try {
-    const health = await getWhatsAppDeliveryHealth()
+    const [health, staffEscalation] = await Promise.all([
+      getWhatsAppDeliveryHealth(),
+      getStaffEscalationHealth(),
+    ])
     if (req.user?.role !== 'ADMIN') {
       const { latestError, failureCountByCode, ...rest } = health
-      return res.json(rest)
+      const { latestError: staffLatestError, ...staffRest } = staffEscalation
+      return res.json({ ...rest, staffEscalation: staffRest })
     }
-    res.json(health)
+    res.json({ ...health, staffEscalation })
   } catch (err: any) {
     console.error('[WhatsAppHealth]', err.message)
     res.status(500).json({ error: err.message })

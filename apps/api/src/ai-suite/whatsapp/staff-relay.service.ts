@@ -5,7 +5,7 @@ import { sendWhatsAppMessage } from './whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { phoneVariants } from '../../utils/phone'
 
-export const STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+export const STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
 
 export interface AlertMeta {
   alertMessageId: string | null

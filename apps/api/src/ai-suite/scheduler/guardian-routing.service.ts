@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma'
 import { getGreetingName, isMinor } from '../../utils/nameHelper'
-import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 
 export type PatientForRouting = {
   id: string
@@ -105,11 +105,30 @@ export async function alertStaffMinorNoGuardian(
   patientFullName: string,
   messageType: string,
 ): Promise<void> {
-  const staffNum = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+  const staffNum = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
+  const reason = `${messageType} could not be sent — no guardian contact on file, please add guardian info and follow up manually`
   const msg = `⚠️ ${patientFullName} is a minor with no guardian contact on file — a ${messageType} could not be sent. Please add guardian info and follow up manually.`
-  await sendWhatsAppMessage(staffNum, msg).catch((err: Error) => {
-    console.error(`[GuardianRouting] Staff alert failed for ${patientFullName}:`, err.message)
-  })
+
+  // Template-first, freeform fallback only on failure — same pattern as
+  // escalation.ts's notifyJulian(). This alert fires every time a scheduled
+  // job hits the same still-unfixed patient (by design, see the comment
+  // above this function), so a high-volume free-form path here is exactly
+  // what was driving repeated 24h-window failures to the staff number.
+  const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
+  let sent = false
+  if (templateName) {
+    try {
+      await sendWhatsAppTemplate(staffNum, templateName, [patientFullName, 'minor — no guardian phone on file', reason])
+      sent = true
+    } catch (err: any) {
+      console.warn(`[GuardianRouting] Template failed for ${patientFullName}, falling back to freeform:`, err.message)
+    }
+  }
+  if (!sent) {
+    await sendWhatsAppMessage(staffNum, msg).catch((err: Error) => {
+      console.error(`[GuardianRouting] Staff alert failed for ${patientFullName}:`, err.message)
+    })
+  }
 }
 
 /**

@@ -293,7 +293,7 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
         contactEvidence: { channel: 'WHATSAPP', source: 'INBOUND_MESSAGE' },
       })
       // Alert staff for EVERY lead message so they can follow up in real-time
-      const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+      const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
       const preview     = text.slice(0, 200)
       sendWhatsAppMessage(
         staffNumber,

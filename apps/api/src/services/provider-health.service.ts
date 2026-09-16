@@ -36,11 +36,29 @@ function emptyWindow(): DeliveryWindow {
   return { attempted: 0, delivered: 0, read: 0, failed: 0, pending: 0, deliveryRate: 0, failureRate: 0 }
 }
 
-async function computeWindow(since: Date, until?: Date): Promise<DeliveryWindow> {
+// Internal staff escalation sends (clinical-concern alerts, guardian-routing
+// warnings, new-lead notifications) are logged into AiConversation/AiMessage
+// under the staff number's own "conversation" exactly like a real patient
+// thread (see whatsapp.service.ts's logAgentMessageToConversation, called by
+// sendWhatsAppMessage for ANY recipient). Without excluding that phone
+// number here, a burst of failed staff alerts silently drags down the
+// PATIENT-facing WhatsApp health status even when real patient delivery is
+// completely fine -- this is the exact contamination bug that produced
+// misleading "WhatsApp DOWN" readings while patient messages were sending
+// normally. See getStaffEscalationHealth() below for the separate, correct
+// staff-alert-only metric.
+function staffPhoneNumbers(): string[] {
+  const raw = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
+  const digits = raw.replace(/\D/g, '')
+  return [raw, `+${digits}`, digits]
+}
+
+async function computeWindow(since: Date, until: Date | undefined, scope: 'PATIENT' | 'STAFF'): Promise<DeliveryWindow> {
   const where = {
     role: 'AGENT' as const,
     wamid: { not: null },
     createdAt: until ? { gte: since, lt: until } : { gte: since },
+    conversation: { phoneNumber: scope === 'STAFF' ? { in: staffPhoneNumbers() } : { notIn: staffPhoneNumbers() } },
   }
   const grouped = await prisma.aiMessage.groupBy({ by: ['status'], where, _count: { _all: true } })
 
@@ -70,10 +88,10 @@ async function computeWindow(since: Date, until?: Date): Promise<DeliveryWindow>
 // attempts) previously classified as HEALTHY purely because the sample was
 // too small to judge, which is indistinguishable in the UI from "genuinely
 // delivering fine" — exactly the false-positive this exists to prevent.
-function classify(last24h: DeliveryWindow): WhatsAppHealthStatus {
-  if (last24h.attempted < 3) return 'UNKNOWN'
-  if (last24h.failureRate >= 90) return 'DOWN'
-  if (last24h.failureRate >= 20) return 'DEGRADED'
+function classify(window: DeliveryWindow): WhatsAppHealthStatus {
+  if (window.attempted < 3) return 'UNKNOWN'
+  if (window.failureRate >= 90) return 'DOWN'
+  if (window.failureRate >= 20) return 'DEGRADED'
   return 'HEALTHY'
 }
 
@@ -83,16 +101,17 @@ export async function getWhatsAppDeliveryHealth(): Promise<WhatsAppDeliveryHealt
   const monthStart = startOfKampalaMonth(now)
   const last30      = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
   const last24h      = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  const notStaff = { conversation: { phoneNumber: { notIn: staffPhoneNumbers() } } }
 
   const [today, thisMonth, last30Days, last24hWindow, lastSuccess, lastFailed, latestFailure, failuresByCode] = await Promise.all([
-    computeWindow(dayStart),
-    computeWindow(monthStart),
-    computeWindow(last30),
-    computeWindow(last24h),
-    prisma.aiMessage.findFirst({ where: { status: { in: ['delivered', 'read'] } }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
-    prisma.aiMessage.findFirst({ where: { status: 'failed' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
-    prisma.metaDeliveryFailure.findFirst({ orderBy: { occurredAt: 'desc' } }),
-    prisma.metaDeliveryFailure.groupBy({ by: ['code'], _count: { _all: true } }),
+    computeWindow(dayStart, undefined, 'PATIENT'),
+    computeWindow(monthStart, undefined, 'PATIENT'),
+    computeWindow(last30, undefined, 'PATIENT'),
+    computeWindow(last24h, undefined, 'PATIENT'),
+    prisma.aiMessage.findFirst({ where: { status: { in: ['delivered', 'read'] }, ...notStaff }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+    prisma.aiMessage.findFirst({ where: { status: 'failed', ...notStaff }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+    prisma.metaDeliveryFailure.findFirst({ where: { recipientId: { notIn: staffPhoneNumbers() } }, orderBy: { occurredAt: 'desc' } }),
+    prisma.metaDeliveryFailure.groupBy({ by: ['code'], where: { recipientId: { notIn: staffPhoneNumbers() } }, _count: { _all: true } }),
   ])
 
   const failureCountByCode: Record<string, number> = {}
@@ -113,6 +132,54 @@ export async function getWhatsAppDeliveryHealth(): Promise<WhatsAppDeliveryHealt
     } : null,
     failureCountByCode,
     status: classify(last24hWindow),
+  }
+}
+
+// ── Staff escalation delivery health (separate from patient health above) ─────
+// Deliberately the mirror image of getWhatsAppDeliveryHealth: same AiMessage/
+// MetaDeliveryFailure data, but scoped to ONLY the staff escalation number so
+// a burst of failed staff alerts is visible as its own concrete status rather
+// than silently blended into (or entirely absent from) patient health.
+
+export interface StaffEscalationHealth {
+  last30Days: DeliveryWindow
+  lastAttemptAt:            string | null
+  lastSuccessfulDeliveryAt: string | null
+  lastFailedDeliveryAt:     string | null
+  latestError: { code: number; title: string; message: string | null; details: string | null; occurredAt: string } | null
+  status: WhatsAppHealthStatus
+}
+
+export async function getStaffEscalationHealth(): Promise<StaffEscalationHealth> {
+  const now = new Date()
+  const last30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const isStaff = { conversation: { phoneNumber: { in: staffPhoneNumbers() } } }
+
+  const [last30Days, lastAttempt, lastSuccess, lastFailed, latestFailure] = await Promise.all([
+    computeWindow(last30, undefined, 'STAFF'),
+    prisma.aiMessage.findFirst({ where: { role: 'AGENT', wamid: { not: null }, ...isStaff }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+    prisma.aiMessage.findFirst({ where: { status: { in: ['delivered', 'read'] }, ...isStaff }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+    prisma.aiMessage.findFirst({ where: { status: 'failed', ...isStaff }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+    prisma.metaDeliveryFailure.findFirst({ where: { recipientId: { in: staffPhoneNumbers() } }, orderBy: { occurredAt: 'desc' } }),
+  ])
+
+  return {
+    last30Days,
+    lastAttemptAt:            lastAttempt?.createdAt.toISOString() ?? null,
+    lastSuccessfulDeliveryAt: lastSuccess?.createdAt.toISOString() ?? null,
+    lastFailedDeliveryAt:     lastFailed?.createdAt.toISOString() ?? null,
+    latestError: latestFailure ? {
+      code:       latestFailure.code,
+      title:      latestFailure.title,
+      message:    latestFailure.message,
+      details:    latestFailure.details,
+      occurredAt: latestFailure.occurredAt.toISOString(),
+    } : null,
+    // Staff volume is naturally low (escalations, not routine traffic), so
+    // classify() is applied to a 30-day window here rather than the 24h
+    // window used for patient health -- a 24h window would sit at UNKNOWN
+    // (sample too small) on most quiet days even when everything is fine.
+    status: classify(last30Days),
   }
 }
 

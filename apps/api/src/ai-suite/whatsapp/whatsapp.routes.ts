@@ -20,15 +20,32 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 // spamming staff / draining SMS balance for the same ongoing outage — one
 // alert per 30 minutes is enough to make sure it's never silent for weeks
 // again, without flooding staff while the underlying issue gets fixed.
+//
+// The cooldown is checked against the Notification table itself (title +
+// createdAt), not just the in-memory timestamp below -- an in-memory-only
+// cooldown resets to zero on every process restart/deploy, so a burst of
+// failures shortly after a restart would defeat it and re-spam the bell with
+// near-identical alerts for the SAME still-unresolved incident. The in-memory
+// check stays as a same-process fast path to skip the DB round trip on the
+// (common) case of many failures arriving within seconds of each other.
 let lastDeliveryFailureAlertAt = 0
 const DELIVERY_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
+const DELIVERY_FAILURE_ALERT_TITLE = '⚠️ Staff WhatsApp alerts are failing to deliver'
 
-async function notifyStaffOfDeliveryFailure(code?: number, message?: string, details?: string): Promise<void> {
+export async function notifyStaffOfDeliveryFailure(code?: number, message?: string, details?: string): Promise<void> {
   const now = Date.now()
   if (now - lastDeliveryFailureAlertAt < DELIVERY_FAILURE_ALERT_COOLDOWN_MS) return
+
+  const cooldownStart = new Date(now - DELIVERY_FAILURE_ALERT_COOLDOWN_MS)
+  const recent = await prisma.notification.findFirst({
+    where: { type: 'SYSTEM', title: DELIVERY_FAILURE_ALERT_TITLE, createdAt: { gte: cooldownStart } },
+    select: { id: true },
+  }).catch(() => null)
+  if (recent) { lastDeliveryFailureAlertAt = now; return }
+
   lastDeliveryFailureAlertAt = now
 
-  const title = '⚠️ Staff WhatsApp alerts are failing to deliver'
+  const title = DELIVERY_FAILURE_ALERT_TITLE
   const body  = `Meta error #${code ?? '?'}: ${message ?? 'unknown'}${details ? ` — ${details}` : ''}. ` +
     `Clinical concern / escalation alerts may not be reaching this WhatsApp number right now — check the AI Suite escalations page directly.`
 

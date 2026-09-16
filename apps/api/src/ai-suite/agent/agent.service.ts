@@ -1467,7 +1467,7 @@ async function alertStaffOfConcern(params: {
       `Reply to this message with guidance and I'll relay it to the patient in my voice, or say "continue" to fast-track a booking.`
 
     // 1. WhatsApp to clinic front desk — template preferred, freeform fallback on any failure
-    const staffNumber  = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+    const staffNumber  = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
     const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
     let alertMessageId: string | null = null
     let templateSent = false
@@ -2366,7 +2366,7 @@ async function executeV2Tool(
           .then(staff => Promise.all(staff.map(u => prisma.notification.create({
             data: { userId: u.id, type: 'APPOINTMENT', title: 'New Booking via WhatsApp (V2)', body: `${pName} booked ${appt.service.name} with ${docName} on ${dateStr} at ${timeStr}`, href: '/receptionist/scheduling' },
           })))).catch((e: any) => console.error('[V2] In-app notification failed:', e?.message))
-        const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+        const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
         sendWhatsAppMessage(staffNumber, `📋 New booking: ${pName} — ${appt.service.name} on ${dateStr} at ${timeStr} with ${docName}`).catch((e: any) => console.error('[V2] Staff WhatsApp notification failed:', e?.message))
         const drFirst     = appt.doctor.user.firstName
         const pendingConf = isClinicOpenNow()
@@ -2790,7 +2790,7 @@ export async function getAgentReplyV2OpenAI(
     }
 
     if (/talk to|speak to|speak with|talk with|call me|ring me|real person|human|julian|receptionist/i.test(latestMessage)) {
-      const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256763430276'
+      const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
       sendWhatsAppMessage(
         staffNumber,
         `👤 Patient requesting human\nPhone: ${from}\nMessage: "${latestMessage.slice(0, 200)}"\n\nPlease follow up via the AI Suite inbox.`

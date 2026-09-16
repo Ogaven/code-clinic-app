@@ -93,6 +93,15 @@ interface DeliveryWindow {
   attempted: number; delivered: number; read: number; failed: number; pending: number
   deliveryRate: number; failureRate: number
 }
+interface StaffEscalationHealth {
+  last30Days: DeliveryWindow
+  lastAttemptAt: string | null
+  lastSuccessfulDeliveryAt: string | null
+  lastFailedDeliveryAt: string | null
+  latestError: { code: number; title: string; message: string | null; details: string | null; occurredAt: string } | null
+  status: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN'
+}
+
 interface WhatsAppDeliveryHealth {
   today: DeliveryWindow; thisMonth: DeliveryWindow; last30Days: DeliveryWindow
   lastSuccessfulDeliveryAt: string | null
@@ -100,6 +109,7 @@ interface WhatsAppDeliveryHealth {
   latestError: { code: number; title: string; message: string | null; details: string | null; occurredAt: string } | null
   failureCountByCode: Record<string, number>
   status: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN'
+  staffEscalation?: StaffEscalationHealth
 }
 
 interface CreditLine {
@@ -434,7 +444,7 @@ function WhatsAppHealthCard({ data, loading, isAdmin }: { data: WhatsAppDelivery
   return (
     <section>
       <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
-        <HeartPulse size={10} /> WhatsApp — Delivery Health
+        <HeartPulse size={10} /> WhatsApp — Patient Messaging Health
       </p>
       <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
         {loading || !data ? (
@@ -492,6 +502,44 @@ function WhatsAppHealthCard({ data, loading, isAdmin }: { data: WhatsAppDelivery
             )}
             {isAdmin && (
               <p className="text-[9px] text-gray-300 dark:text-white/20">Failure counts are since delivery-failure tracking began (2026-09-15) — not backfilled from before instrumentation existed.</p>
+            )}
+
+            {/* ── Staff Escalation Alerts — a SEPARATE status from patient
+                messaging above. Deliveries to the internal staff escalation
+                number (clinical concerns, guardian-routing warnings, new-lead
+                notifications) are tracked independently so a burst of staff
+                alert failures is visible on its own, and never silently
+                blended into — or hidden from — the patient health status
+                above. */}
+            {data.staffEscalation && (
+              <div className="pt-4 border-t border-gray-100 dark:border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Staff Escalation Alerts</p>
+                  <span className={cn('flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold', HEALTH_STYLE[data.staffEscalation.status].pill)}>
+                    <span className={cn('w-1.5 h-1.5 rounded-full', HEALTH_STYLE[data.staffEscalation.status].dot)} />
+                    {HEALTH_STYLE[data.staffEscalation.status].label}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-[11px]">
+                  <div className="p-2.5 bg-gray-50 dark:bg-white/5 rounded-xl">
+                    <p className="text-gray-400 dark:text-white/40 text-[10px]">Last attempt</p>
+                    <p className="font-bold text-gray-700 dark:text-white/80 mt-0.5">{fmtDateTime(data.staffEscalation.lastAttemptAt)}</p>
+                  </div>
+                  <div className="p-2.5 bg-gray-50 dark:bg-white/5 rounded-xl">
+                    <p className="text-gray-400 dark:text-white/40 text-[10px]">Last successful delivery</p>
+                    <p className="font-bold text-gray-700 dark:text-white/80 mt-0.5">{fmtDateTime(data.staffEscalation.lastSuccessfulDeliveryAt)}</p>
+                  </div>
+                  <div className="p-2.5 bg-gray-50 dark:bg-white/5 rounded-xl">
+                    <p className="text-gray-400 dark:text-white/40 text-[10px]">Last failure</p>
+                    <p className="font-bold text-gray-700 dark:text-white/80 mt-0.5">{fmtDateTime(data.staffEscalation.lastFailedDeliveryAt)}</p>
+                  </div>
+                </div>
+                {isAdmin && data.staffEscalation.latestError && (
+                  <div className="p-2.5 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-800/20 rounded-xl text-[11px] text-red-600 dark:text-red-400">
+                    <span className="font-bold">Latest error (admin)</span> — #{data.staffEscalation.latestError.code} {data.staffEscalation.latestError.title}
+                  </div>
+                )}
+              </div>
             )}
           </>
         )}
