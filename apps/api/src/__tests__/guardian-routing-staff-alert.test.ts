@@ -74,4 +74,27 @@ describe('alertStaffMinorNoGuardian — template-first, freeform only as a fallb
 
     await expect(alertStaffMinorNoGuardian('Abubakra Zoya', 'reactivation reminder')).resolves.toBeUndefined()
   })
+
+  // Regression: the approved cc_staff_concern template's real Meta-approved
+  // body text is "Name: {{1}} / Phone: {{2}} / Message: {{3}}" -- {{2}} MUST
+  // be a real phone number, never a description string, or the delivered
+  // WhatsApp message literally reads "Phone: minor — no guardian phone on
+  // file" to staff. Confirmed via a live read-only Graph API template fetch
+  // during the 2026-09-16 investigation.
+  it('maps the patient phone number to the template Phone field ({{2}}), never a description string', async () => {
+    await alertStaffMinorNoGuardian('Okullo Amara', 'reactivation reminder', '+256700123456')
+
+    expect(sendWhatsAppTemplateMock).toHaveBeenCalledWith(
+      '+256394836298',
+      'cc_staff_concern',
+      ['Okullo Amara', '+256700123456', expect.any(String)]
+    )
+  })
+
+  it('uses an honest "N/A" placeholder for the Phone field when no phone was passed, never a mislabelled description', async () => {
+    await alertStaffMinorNoGuardian('Jireh Asiel', 'reactivation reminder')
+
+    const [, , params] = sendWhatsAppTemplateMock.mock.calls[0]
+    expect(params[1]).toBe('N/A')
+  })
 })

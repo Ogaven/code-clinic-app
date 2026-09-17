@@ -110,7 +110,7 @@ export async function checkAndSendCancelledFollowups(): Promise<void> {
     const routing = await resolveOutboundRecipient(patient, name)
     if (!routing.ok) {
       console.warn(`[CancelledFollowup] Skipping ${patient.firstName} — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${patient.firstName}`, 'cancelled-appointment follow-up')
+      await alertStaffMinorNoGuardian(`${patient.firstName}`, 'cancelled-appointment follow-up', patient.phone)
       continue
     }
     const recipientPhone = routing.recipient.phone
