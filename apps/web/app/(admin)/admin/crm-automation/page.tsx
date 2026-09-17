@@ -792,7 +792,7 @@ const REPORT_TABS = [
   { key: 'calls',        label: 'Call Performance',          icon: Phone,      path: 'call-performance' },
 ] as const
 
-function pct(n: number) { return `${(n * 100).toFixed(1)}%` }
+function pct(n: number | null) { return n == null ? '—' : `${(n * 100).toFixed(1)}%` }
 function ugx(n: number) { return `UGX ${n.toLocaleString('en-UG')}` }
 
 function ReportingPanel() {
@@ -856,7 +856,9 @@ function ReportingPanel() {
       )}
 
       {status === 'ok' && sub === 'conversion' && d && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 dark:text-white/60">{d.note} {d.leadsWithoutStageHistory} leads have no recorded stage history.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
             { label: 'New → Contacted', rate: d.newToContactedRate, n: d.totals.totalNew },
             { label: 'Contacted → Qualified', rate: d.contactedToQualifiedRate, n: d.totals.contactedCount },
@@ -865,9 +867,10 @@ function ReportingPanel() {
             <div key={c.label} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
               <p className="text-[10px] font-black uppercase text-gray-400">{c.label}</p>
               <p className="text-2xl font-black text-gray-800 dark:text-white mt-1">{pct(c.rate)}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">of {c.n}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{c.n > 0 ? `of ${c.n} leads` : 'No eligible leads yet'}</p>
             </div>
           ))}
+          </div>
         </div>
       )}
 

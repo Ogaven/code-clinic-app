@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly, clinicalStaff, adminAndReceptionist, accountsOrAdmin } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
+import { requireDoctorPatientAccess } from '../lib/doctor-access'
 import { applyPatientTagUpdate, runDailyPatientTagDerivation, type PatientTagUpdateInput } from '../crm-automation/patient-tags.service'
 import { recordConsent, getConsentHistory, type ConsentSource, type ConsentStatus } from '../crm-automation/consent-log.service'
 import { assignCollectionsOwner, listCollectionsCases } from '../crm-automation/collections.service'
@@ -30,6 +31,12 @@ import { isSmsChannelActive } from '../ai-suite/sms/sms.service'
 import { isCallingChannelActive } from '../services/calling-channel.service'
 
 const router = Router()
+const doctorPatientGuard = requireDoctorPatientAccess(prisma)
+// Apply after authentication on patient routes only: other :id routes refer
+// to leads, sequences, or routing rules, not patients.
+function scopedPatientAccess(req: Request, res: Response, next: import('express').NextFunction) {
+  return doctorPatientGuard(req, res, next, req.params.id)
+}
 
 // Fields that carry financial information — Part V: "Do not expose all
 // financial tags to every role." DOCTOR sees clinical/lifecycle/risk tags
@@ -40,11 +47,12 @@ function stripFinancialFieldsForRole(patient: Record<string, any>, role: string)
   if (role === 'ADMIN' || role === 'ACCOUNTS') return patient
   const copy = { ...patient }
   for (const field of FINANCIAL_TAG_FIELDS) delete copy[field]
+  if (role === 'RECEPTIONIST') delete copy.riskFlags
   return copy
 }
 
 // ── Patient CRM tags (Part A/U) ─────────────────────────────────────────────
-router.get('/patients/:id/tags', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+router.get('/patients/:id/tags', requireAuth, clinicalStaff, scopedPatientAccess, async (req: Request, res: Response) => {
   const patient = await prisma.patient.findUnique({
     where: { id: req.params.id },
     select: {
@@ -60,9 +68,12 @@ router.get('/patients/:id/tags', requireAuth, clinicalStaff, async (req: Request
   res.json(stripFinancialFieldsForRole(patient, req.user!.role))
 })
 
-router.patch('/patients/:id/tags', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+router.patch('/patients/:id/tags', requireAuth, clinicalStaff, scopedPatientAccess, async (req: Request, res: Response) => {
   try {
     const body = req.body as PatientTagUpdateInput
+    if (req.user!.role === 'RECEPTIONIST' && Object.prototype.hasOwnProperty.call(body, 'riskFlags')) {
+      return res.status(403).json({ error: 'Receptionist cannot set clinical risk flags' })
+    }
     if (req.user!.role === 'DOCTOR') {
       for (const field of Object.keys(body)) {
         if (FINANCIAL_TAG_FIELDS.has(field)) {
@@ -83,12 +94,12 @@ router.post('/tags/derive-run', requireAuth, adminOnly, async (_req: Request, re
 })
 
 // ── Consent log (Part I) ─────────────────────────────────────────────────
-router.get('/patients/:id/consent', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+router.get('/patients/:id/consent', requireAuth, clinicalStaff, scopedPatientAccess, async (req: Request, res: Response) => {
   const channel = req.query.channel as any
   res.json(await getConsentHistory(req.params.id, channel))
 })
 
-router.post('/patients/:id/consent', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+router.post('/patients/:id/consent', requireAuth, clinicalStaff, scopedPatientAccess, async (req: Request, res: Response) => {
   const { channel, status, source, metadata } = req.body as { channel: string; status: ConsentStatus; source: ConsentSource; metadata?: Record<string, unknown> }
   if (!channel || !status || !source) return res.status(400).json({ error: 'channel, status, and source are required' })
   const record = await recordConsent({ patientId: req.params.id, channel: channel as any, status, source, changedBy: req.user!.id, metadata })
