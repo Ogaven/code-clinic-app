@@ -40,18 +40,29 @@ export async function responseTimeLeaderboard() {
 
 // ── (2) Stage conversion rates ───────────────────────────────────────────
 export async function stageConversionRates() {
-  const [totalNew, contactedCount, qualifiedCount, convertedCount] = await Promise.all([
+  // Count leads, not history rows: reopening a lead and reaching a stage
+  // again must not inflate conversion. Each conditional rate uses only leads
+  // with evidence of both milestones; direct conversions don't manufacture
+  // an earlier contact or qualification.
+  const reached = (toStage: string) => ({ stageHistory: { some: { toStage } } })
+  const [totalNew, contactedCount, qualifiedCount, convertedCount, qualifiedFromContactedCount, convertedFromQualifiedCount, leadsWithoutStageHistory] = await Promise.all([
     prisma.lead.count(),
-    prisma.leadStageHistory.count({ where: { toStage: 'CONTACTED' } }),
-    prisma.leadStageHistory.count({ where: { toStage: 'QUALIFIED' } }),
-    prisma.leadStageHistory.count({ where: { toStage: 'CONVERTED' } }),
+    prisma.lead.count({ where: reached('CONTACTED') }),
+    prisma.lead.count({ where: reached('QUALIFIED') }),
+    prisma.lead.count({ where: reached('CONVERTED') }),
+    prisma.lead.count({ where: { AND: [reached('CONTACTED'), reached('QUALIFIED')] } }),
+    prisma.lead.count({ where: { AND: [reached('QUALIFIED'), reached('CONVERTED')] } }),
+    prisma.lead.count({ where: { stageHistory: { none: {} } } }),
   ])
 
   return {
-    newToContactedRate:      totalNew > 0 ? contactedCount / totalNew : 0,
-    contactedToQualifiedRate: contactedCount > 0 ? qualifiedCount / contactedCount : 0,
-    qualifiedToConvertedRate: qualifiedCount > 0 ? convertedCount / qualifiedCount : 0,
+    newToContactedRate:      totalNew > 0 ? contactedCount / totalNew : null,
+    contactedToQualifiedRate: contactedCount > 0 ? qualifiedFromContactedCount / contactedCount : null,
+    qualifiedToConvertedRate: qualifiedCount > 0 ? convertedFromQualifiedCount / qualifiedCount : null,
     totals: { totalNew, contactedCount, qualifiedCount, convertedCount },
+    cohorts: { qualifiedFromContactedCount, convertedFromQualifiedCount },
+    leadsWithoutStageHistory,
+    note: 'Lifetime rates count distinct leads with recorded stage history. Each later-stage rate counts leads with both recorded milestones. Missing history is not inferred. Converted can mean patient conversion, appointment booking, or treatment start; it does not prove attendance, treatment acceptance, or payment.',
   }
 }
 

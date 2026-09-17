@@ -40,7 +40,7 @@ jobs:
       DATABASE_URL:       postgresql://postgres:testpass@localhost:5432/codeclinic_test
       JWT_SECRET:         test-jwt-secret-minimum-32-characters-long
       JWT_REFRESH_SECRET: test-refresh-secret-minimum-32-characters
-      JWT_EXPIRES_IN:     15m
+      JWT_EXPIRES_IN:     12h
       NODE_ENV:           test
       APP_URL:            http://localhost:3000
 
