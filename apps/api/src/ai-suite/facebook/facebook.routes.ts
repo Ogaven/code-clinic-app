@@ -5,6 +5,8 @@ import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 import { maybeNotifyStaff } from '../whatsapp/whatsapp.service'
 import { findOrCreateLeadForChannel } from '../../crm-automation/lead-intake.service'
+import { normalizePhone } from '../../utils/phone'
+import { checkMetaWebhookSignature } from '../../lib/webhook-signature'
 
 const router = Router()
 
@@ -106,6 +108,13 @@ router.get('/facebook/webhook', (req, res) => {
 
 // POST /ai-suite/facebook/webhook — receive Messenger messages
 router.post('/facebook/webhook', async (req, res) => {
+  // See lib/webhook-signature.ts — rejects only once a real app secret is
+  // configured; today this only logs a warning and never blocks live traffic.
+  if (checkMetaWebhookSignature(req, ['FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'Facebook') === 'REJECTED') {
+    res.sendStatus(403)
+    return
+  }
+
   res.sendStatus(200) // Acknowledge immediately so Meta doesn't retry
 
   try {
@@ -144,6 +153,13 @@ router.get('/instagram/webhook', (req, res) => {
 
 // POST /ai-suite/instagram/webhook
 router.post('/instagram/webhook', async (req, res) => {
+  // See lib/webhook-signature.ts — rejects only once a real app secret is
+  // configured; today this only logs a warning and never blocks live traffic.
+  if (checkMetaWebhookSignature(req, ['INSTAGRAM_APP_SECRET', 'FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'Instagram') === 'REJECTED') {
+    res.sendStatus(403)
+    return
+  }
+
   res.sendStatus(200)
 
   try {
@@ -508,6 +524,82 @@ export async function sendSocialReply(
     console.error(`[${channel}] Failed to send reply:`, await res.text())
   } else {
     console.log(`[${channel}] Reply sent to ${recipientId}`)
+  }
+}
+
+// ── Meta Lead Ads (native Instant Forms) ───────────────────────────────────
+// Distinct from Messenger DMs/comments above and from Click-to-WhatsApp ads
+// (which just open a WhatsApp conversation — already covered by the
+// WhatsApp intake path). This is Meta's dedicated "leadgen" webhook field,
+// fired when someone submits a native Lead Ad / Instant Form.
+//
+// As of the 2026-09-16 lead-engine audit this was NOT implemented at all —
+// confirmed both by a repo-wide grep (zero "leadgen" references anywhere)
+// and by calling Meta's own /{app-id}/subscriptions endpoint directly, which
+// showed the "page" object subscribed only to `messages` and `feed`, never
+// `leadgen`. This function is the receiving half of that gap.
+//
+// IMPORTANT — genuinely blocked on an external permission, not a code issue:
+// the leadgen webhook payload never contains the actual answers, only a
+// `leadgen_id`; the real field data must be fetched via a follow-up
+// GET /{leadgen_id} call, which requires the page token to carry the
+// `leads_retrieval` (and typically `pages_manage_ads`) permission. A
+// read-only check against the current FACEBOOK_PAGE_ACCESS_TOKEN during
+// this audit got back Meta error #200 "Requires pages_manage_ads permission"
+// on the simpler /me/leadgen_forms call — so this fetch WILL fail until that
+// permission is granted to the page token via Meta Business Suite. Left
+// wired (not stubbed out) so it starts working the moment that's fixed,
+// rather than needing a second deploy.
+export async function processLeadAdSubmission(leadgenId: string): Promise<void> {
+  try {
+    const config = await prisma.aiAgentConfig.findFirst()
+    const token = config?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || null
+    if (!token) {
+      console.error('[LeadAds] No Facebook Page access token configured — cannot fetch lead', leadgenId)
+      return
+    }
+
+    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${leadgenId}?fields=field_data,ad_id,form_id,created_time&access_token=${token}`
+    const res = await fetch(url)
+    if (!res.ok) {
+      console.error(`[LeadAds] Failed to fetch lead ${leadgenId} (likely missing leads_retrieval permission on the page token):`, await res.text())
+      return
+    }
+    const data = await res.json() as { field_data?: { name: string; values: string[] }[]; ad_id?: string; form_id?: string }
+
+    const fields: Record<string, string> = {}
+    for (const f of data.field_data ?? []) fields[f.name] = f.values?.[0] ?? ''
+
+    const rawPhone = fields.phone_number || fields.phone || null
+    const email    = fields.email || null
+    const fullName = fields.full_name || [fields.first_name, fields.last_name].filter(Boolean).join(' ') || null
+
+    if (!rawPhone && !email) {
+      console.warn(`[LeadAds] Lead ${leadgenId} has no phone or email in field_data — cannot create a lead`)
+      return
+    }
+
+    const normalizedPhone = rawPhone ? normalizePhone(rawPhone) : null
+
+    await findOrCreateLeadForChannel({
+      where: normalizedPhone
+        ? { phone: normalizedPhone, status: { notIn: ['CONVERTED', 'LOST'] } }
+        : { email: email!, status: { notIn: ['CONVERTED', 'LOST'] } },
+      createData: {
+        name:   fullName,
+        phone:  normalizedPhone,
+        email:  email || null,
+        source: 'FACEBOOK_LEAD_AD',
+        status: 'NEW',
+        stage:  'NEW',
+        notes:  `Meta Lead Ad submission (form ${data.form_id ?? 'unknown'})`,
+      },
+      onExistingMessage: `Resubmitted Meta Lead Ad (form ${data.form_id ?? 'unknown'})`,
+      intakeOptions: { skipAcknowledgement: true }, // no live agent conversation exists yet to skip a duplicate ack for
+      contactEvidence: { channel: normalizedPhone ? 'WHATSAPP' : 'EMAIL', source: 'WEB_FORM' },
+    })
+  } catch (e: any) {
+    console.error('[LeadAds] Processing error:', e?.message)
   }
 }
 
