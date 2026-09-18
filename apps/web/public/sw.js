@@ -122,14 +122,21 @@ self.addEventListener('push', (e) => {
 })
 
 // Browsers occasionally rotate/invalidate a push subscription (expiry, key
-// rotation). Re-subscribe immediately so the device keeps receiving push --
-// the backend row is stale until the user's next "Enable Notifications"
-// click or app session re-syncs it, a bounded, self-healing gap.
+// rotation). Re-subscribe immediately, then tell any open tab so it can
+// persist the new endpoint/keys to the backend (the service worker itself
+// has no access to localStorage/the auth token, so it can't call the
+// authenticated /push/subscribe endpoint directly). If no tab is open right
+// now, AuthSessionBootstrap's resync-on-load call picks up the rotated
+// subscription the next time the app is opened — bounded, self-healing gap.
 self.addEventListener('pushsubscriptionchange', (e) => {
   const oldKey = e.oldSubscription && e.oldSubscription.options && e.oldSubscription.options.applicationServerKey
   if (!oldKey) return
   e.waitUntil(
-    self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: oldKey }).catch(() => {})
+    self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: oldKey })
+      .then((sub) => self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+        for (const c of cs) c.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED', subscription: sub.toJSON() })
+      }))
+      .catch(() => {})
   )
 })
 

@@ -17,6 +17,42 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray
 }
 
+// Shared with subscribeToPush() and resyncPushSubscription() — the one place
+// that actually POSTs a subscription to the backend, so both call sites can't drift.
+async function persistSubscription(sub: PushSubscription): Promise<boolean> {
+  const token = localStorage.getItem('cc_token')
+  if (!token) return false
+  const subJson = sub.toJSON()
+  try {
+    const res = await fetch('/api-proxy/push/subscribe', {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ endpoint: subJson.endpoint, keys: subJson.keys }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+// Browsers can rotate a push subscription's keys at any time (expiry, the
+// pushsubscriptionchange event) with no user action involved. Previously the
+// only way the backend's PushSubscription row got refreshed was the user
+// manually re-clicking "Enable Notifications", so a device could silently
+// stop receiving escalations after any browser-driven rotation. This runs on
+// every app load (see AuthSessionBootstrap) and whenever the service worker
+// reports a rotation while a tab is open — cheap and idempotent (upsert by
+// endpoint), so calling it opportunistically is safe.
+export async function resyncPushSubscription(): Promise<void> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+  try {
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
+    if (sub) await persistSubscription(sub)
+  } catch {}
+}
+
 export async function subscribeToPush(): Promise<SubscribeResult> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
     return { ok: false, reason: 'unsupported' }
@@ -45,13 +81,8 @@ export async function subscribeToPush(): Promise<SubscribeResult> {
       })
     }
 
-    const subJson = sub.toJSON()
-    const res = await fetch('/api-proxy/push/subscribe', {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ endpoint: subJson.endpoint, keys: subJson.keys }),
-    })
-    if (!res.ok) return { ok: false, reason: 'error', detail: `save failed: ${res.status}` }
+    const saved = await persistSubscription(sub)
+    if (!saved) return { ok: false, reason: 'error', detail: 'save failed' }
 
     return { ok: true }
   } catch (e: any) {

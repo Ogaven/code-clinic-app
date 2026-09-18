@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import OfflineBanner from '@/components/OfflineBanner'
+import AuthSessionBootstrap from '@/components/AuthSessionBootstrap'
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         }} />
       </head>
       <body className="min-h-screen bg-clinic-bg font-sans antialiased transition-colors duration-300">
+        <AuthSessionBootstrap />
         <OfflineBanner />
         {children}
       </body>
