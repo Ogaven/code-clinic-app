@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { normalizePhone } from '../utils/phone'
 import { findOrCreateLeadForChannel } from '../crm-automation/lead-intake.service'
+import { prisma } from '../lib/prisma'
 
 const router = Router()
 
@@ -76,10 +77,22 @@ router.post('/', async (req, res) => {
     const resultTitle = pick(body, ['result.title', 'result.band', 'result_title'])
     const scoreRaw     = pick(body, ['result.score', 'score'])
     const quizName      = pick(body, ['quiz.name', 'quiz_name', 'funnel_name'])
+    // Best-effort — ScoreApp's actual submission-id field is unverified (see
+    // file header); when present it becomes the idempotency key below, when
+    // absent this degrades gracefully to the existing phone/email dedup only.
+    const submissionId = pick(body, ['submission_id', 'response_id', 'id', 'submission.id'])
 
     if (!rawPhone && !email) {
       console.warn('[ScoreApp] Submission has no phone or email — cannot create a lead. Raw keys:', Object.keys(body || {}))
       return
+    }
+
+    if (submissionId) {
+      const alreadyProcessed = await prisma.lead.findFirst({ where: { source: 'SCOREAPP', externalSubmissionId: submissionId } })
+      if (alreadyProcessed) {
+        console.log(`[ScoreApp] submission_id=${submissionId} already processed (lead ${alreadyProcessed.id}) — skipping duplicate webhook delivery`)
+        return
+      }
     }
 
     const normalizedPhone = rawPhone ? normalizePhone(rawPhone) : null
@@ -98,6 +111,9 @@ router.post('/', async (req, res) => {
         stage:       'NEW',
         score:       Number.isFinite(score) ? Math.round(score as number) : 0,
         notes:       `ScoreApp submission${quizName ? `: ${quizName}` : ''}${resultTitle ? ` — Result: ${resultTitle}` : ''}`,
+        provider:             'SCOREAPP',
+        formId:               quizName,
+        externalSubmissionId: submissionId,
       },
       onExistingMessage: `Retook ScoreApp quiz${quizName ? `: ${quizName}` : ''}${resultTitle ? ` — Result: ${resultTitle}` : ''}`,
       intakeOptions: { skipAcknowledgement: true }, // no verified real-time channel to acknowledge on yet

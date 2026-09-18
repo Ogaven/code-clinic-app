@@ -552,6 +552,19 @@ export async function sendSocialReply(
 // rather than needing a second deploy.
 export async function processLeadAdSubmission(leadgenId: string): Promise<void> {
   try {
+    // Idempotency: Meta delivers webhooks at-least-once, so the exact same
+    // leadgen_id can arrive twice. Checked FIRST, before spending a Graph API
+    // call on a submission we've already processed — externalSubmissionId is
+    // the durable identity key for "have we already handled this exact
+    // submission" (phone/email dedup further below still protects a second
+    // lead row from being created, but would otherwise misfile a redelivery
+    // as a genuine "resubmitted the form" event).
+    const alreadyProcessed = await prisma.lead.findFirst({ where: { source: 'FACEBOOK_LEAD_AD', externalSubmissionId: leadgenId } })
+    if (alreadyProcessed) {
+      console.log(`[LeadAds] leadgen_id=${leadgenId} already processed (lead ${alreadyProcessed.id}) — skipping duplicate webhook delivery`)
+      return
+    }
+
     const config = await prisma.aiAgentConfig.findFirst()
     const token = config?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || null
     if (!token) {
@@ -593,6 +606,10 @@ export async function processLeadAdSubmission(leadgenId: string): Promise<void> 
         status: 'NEW',
         stage:  'NEW',
         notes:  `Meta Lead Ad submission (form ${data.form_id ?? 'unknown'})`,
+        provider:             'META_LEAD_ADS',
+        formId:               data.form_id ?? null,
+        adId:                 data.ad_id ?? null,
+        externalSubmissionId: leadgenId,
       },
       onExistingMessage: `Resubmitted Meta Lead Ad (form ${data.form_id ?? 'unknown'})`,
       intakeOptions: { skipAcknowledgement: true }, // no live agent conversation exists yet to skip a duplicate ack for

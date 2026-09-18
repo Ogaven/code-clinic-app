@@ -8,8 +8,12 @@ import type { Server } from 'node:http'
 // (same "credential presence != feature live" principle used elsewhere in
 // this codebase) and must never accept a request with the wrong secret.
 
-const { findOrCreateLeadForChannel } = vi.hoisted(() => ({ findOrCreateLeadForChannel: vi.fn() }))
+const { findOrCreateLeadForChannel, prismaMock } = vi.hoisted(() => ({
+  findOrCreateLeadForChannel: vi.fn(),
+  prismaMock: { lead: { findFirst: vi.fn() } },
+}))
 vi.mock('../../crm-automation/lead-intake.service', () => ({ findOrCreateLeadForChannel }))
+vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
 
 import router from '../../routes/scoreapp-webhook'
 
@@ -24,7 +28,11 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(e => e ? reject(e) : resolve())) })
 
 const ORIGINAL_SECRET = process.env.SCOREAPP_WEBHOOK_SECRET
-beforeEach(() => { vi.clearAllMocks(); findOrCreateLeadForChannel.mockResolvedValue({ lead: { id: 'lead-1' }, isNew: true }) })
+beforeEach(() => {
+  vi.clearAllMocks()
+  findOrCreateLeadForChannel.mockResolvedValue({ lead: { id: 'lead-1' }, isNew: true })
+  prismaMock.lead.findFirst.mockResolvedValue(null)
+})
 afterEach(() => { process.env.SCOREAPP_WEBHOOK_SECRET = ORIGINAL_SECRET })
 
 async function post(body: object, secretHeader?: string) {
@@ -76,5 +84,34 @@ describe('POST /webhooks/scoreapp — accepted submissions', () => {
     expect(res.status).toBe(200) // still acknowledges (2xx) so ScoreApp doesn't retry forever
     await new Promise(r => setTimeout(r, 20))
     expect(findOrCreateLeadForChannel).not.toHaveBeenCalled()
+  })
+
+  it('stamps provider/formId/externalSubmissionId attribution onto createData when a submission id is present', async () => {
+    await post({
+      contact: { phone: '0700000000' }, quiz: { name: 'Smile Assessment' }, submission_id: 'sub-123',
+    }, 'correct-secret')
+
+    await vi.waitFor(() => expect(findOrCreateLeadForChannel).toHaveBeenCalled())
+    const call = findOrCreateLeadForChannel.mock.calls[0][0]
+    expect(call.createData.provider).toBe('SCOREAPP')
+    expect(call.createData.externalSubmissionId).toBe('sub-123')
+  })
+
+  it('skips processing entirely when the same submission_id was already processed (duplicate webhook delivery)', async () => {
+    prismaMock.lead.findFirst.mockResolvedValue({ id: 'existing-lead' })
+    const res = await post({ contact: { phone: '0700000000' }, submission_id: 'sub-123' }, 'correct-secret')
+
+    expect(res.status).toBe(200)
+    await new Promise(r => setTimeout(r, 20))
+    expect(prismaMock.lead.findFirst).toHaveBeenCalledWith({ where: { source: 'SCOREAPP', externalSubmissionId: 'sub-123' } })
+    expect(findOrCreateLeadForChannel).not.toHaveBeenCalled()
+  })
+
+  it('degrades gracefully to phone/email-only dedup when no submission id is present in the payload', async () => {
+    await post({ contact: { phone: '0700000000' } }, 'correct-secret')
+
+    await vi.waitFor(() => expect(findOrCreateLeadForChannel).toHaveBeenCalled())
+    expect(prismaMock.lead.findFirst).not.toHaveBeenCalled()
+    expect(findOrCreateLeadForChannel.mock.calls[0][0].createData.externalSubmissionId).toBeNull()
   })
 })

@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // covers the code path assuming a token that DOES have it.
 
 const { prismaMock, findOrCreateLeadForChannel } = vi.hoisted(() => ({
-  prismaMock: { aiAgentConfig: { findFirst: vi.fn() } },
+  prismaMock: { aiAgentConfig: { findFirst: vi.fn() }, lead: { findFirst: vi.fn() } },
   findOrCreateLeadForChannel: vi.fn(),
 }))
 vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
@@ -27,6 +27,7 @@ const originalFetch = global.fetch
 beforeEach(() => {
   vi.clearAllMocks()
   prismaMock.aiAgentConfig.findFirst.mockResolvedValue(null)
+  prismaMock.lead.findFirst.mockResolvedValue(null)
   process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'test-page-token'
 })
 afterEach(() => { global.fetch = originalFetch })
@@ -55,6 +56,21 @@ describe('processLeadAdSubmission', () => {
     expect(call.createData.name).toBe('Jane Doe')
     expect(call.createData.phone).toBe('+256700000000')
     expect(call.createData.notes).toContain('form-1')
+    expect(call.createData.provider).toBe('META_LEAD_ADS')
+    expect(call.createData.formId).toBe('form-1')
+    expect(call.createData.adId).toBe('ad-1')
+    expect(call.createData.externalSubmissionId).toBe('leadgen-123')
+  })
+
+  it('skips processing when this exact leadgen_id was already processed (Meta redelivers webhooks at-least-once)', async () => {
+    prismaMock.lead.findFirst.mockResolvedValue({ id: 'existing-lead' })
+    global.fetch = vi.fn() as any // must never even be called — dedupe happens before the Graph API fetch
+
+    await processLeadAdSubmission('leadgen-123')
+
+    expect(prismaMock.lead.findFirst).toHaveBeenCalledWith({ where: { source: 'FACEBOOK_LEAD_AD', externalSubmissionId: 'leadgen-123' } })
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(findOrCreateLeadForChannel).not.toHaveBeenCalled()
   })
 
   it('never creates a lead when the Graph API call fails (e.g. missing leads_retrieval permission)', async () => {

@@ -586,17 +586,45 @@ model Lead {
   backlogNoResponse Boolean    @default(false)
   backlogCampaignAt DateTime?
 
+  // ── Acquisition attribution (additive, immutable first-touch) ──
+  // Written ONLY at lead-creation time by the intake path (lead-intake.
+  // service.ts / attribution.service.ts) — never touched by PATCH
+  // /crm/leads/:id or any later update path, so first-touch attribution can
+  // never be silently overwritten by a later edit. `source` (above) stays
+  // the existing coarse channel bucket (WHATSAPP/FACEBOOK/WEBSITE/...);
+  // `provider` distinguishes the specific ingestion mechanism within that
+  // bucket where more than one exists (e.g. FACEBOOK source via a page
+  // message vs. via a Lead Ads form). `createdAt` (above, already
+  // immutable — @default(now()), no updatedAt-style touch) IS this lead's
+  // first-touch timestamp; no separate timestamp field is added to avoid
+  // two sources of truth for the same fact.
+  provider              String?  // e.g. META_LEAD_ADS, META_MESSAGE, SCOREAPP, WEBSITE_FORM, WEBSITE_CHAT, QR, MANUAL
+  campaignId            String?  // ad platform's campaign id, where available
+  campaignName          String?
+  adId                  String?
+  adsetId               String?
+  formId                String?  // Meta leadgen form id / ScoreApp quiz id / website form id
+  landingPageUrl        String?
+  externalSubmissionId  String?  // durable id from the source system (Meta leadgen_id, ScoreApp submission id, etc.) — idempotency key
+  utmSource             String?
+  utmMedium             String?
+  utmCampaign           String?
+  utmContent            String?
+  utmTerm               String?
+
   nurtureLogs         NurtureLog[]
   stageHistory        LeadStageHistory[]
   slaEvents           LeadSlaEvent[]
   sequenceEnrollments SequenceEnrollment[]
   consentLogs         LeadConsentLog[]
 
+  @@unique([source, externalSubmissionId])
   @@index([source])
   @@index([status])
   @@index([assignedTo])
   @@index([firstReplyAt])
   @@index([createdAt])
+  @@index([campaignId])
   @@map("leads")
 }
 

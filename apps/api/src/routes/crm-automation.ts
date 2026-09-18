@@ -28,6 +28,7 @@ import {
 } from '../crm-automation/reporting.service'
 import { buildNeedsAttentionQueue } from '../crm-automation/needs-attention.service'
 import { buildOwnershipAudit } from '../crm-automation/ownership-audit.service'
+import { buildAcquisitionRevenueReport, acquisitionRevenueByDimension, unattributedRevenueSummary } from '../crm-automation/revenue-attribution.service'
 import { isCrmAutomationLive, crmFeatureStatus } from '../crm-automation/dry-run'
 import { isSmsChannelActive } from '../ai-suite/sms/sms.service'
 import { isCallingChannelActive } from '../services/calling-channel.service'
@@ -436,6 +437,32 @@ router.get('/reports/case-acceptance',            requireAuth, clinicalStaff,   
 router.get('/reports/sequence-performance',       requireAuth, adminAndReceptionist, async (_req, res) => res.json(await sequencePerformanceReport()))
 router.get('/reports/aging-receivables',          requireAuth, accountsOrAdmin,      async (_req, res) => res.json(await agingReceivablesReport()))
 router.get('/reports/call-performance',           requireAuth, adminAndReceptionist, async (_req, res) => res.json(await callPerformanceReport()))
+
+// ── Acquisition-to-revenue attribution (Phase 5) — accountsOrAdmin, same
+// gate as aging-receivables: this exposes real collected-revenue figures,
+// not just lead-pipeline counts. See revenue-attribution.service.ts for the
+// single-linking-lead attribution rule and why ambiguous patients are
+// excluded rather than guessed at.
+router.get('/reports/acquisition-revenue', requireAuth, accountsOrAdmin, async (req: Request, res: Response) => {
+  const { source, campaignId, ownerId, dateFrom, dateTo } = req.query as Record<string, string | undefined>
+  res.json(await buildAcquisitionRevenueReport({
+    source, campaignId, ownerId,
+    dateFrom: dateFrom ? new Date(dateFrom) : undefined,
+    dateTo:   dateTo ? new Date(dateTo) : undefined,
+  }))
+})
+
+router.get('/reports/acquisition-revenue-by/:dimension', requireAuth, accountsOrAdmin, async (req: Request, res: Response) => {
+  const dimension = req.params.dimension
+  if (!['source', 'campaignId', 'ownerId'].includes(dimension)) {
+    return res.status(400).json({ error: 'dimension must be one of: source, campaignId, ownerId' })
+  }
+  res.json(await acquisitionRevenueByDimension(dimension as 'source' | 'campaignId' | 'ownerId'))
+})
+
+router.get('/reports/unattributed-revenue', requireAuth, accountsOrAdmin, async (_req: Request, res: Response) => {
+  res.json(await unattributedRevenueSummary())
+})
 
 // ── Manual dispatcher triggers (testing/admin only — the real triggers are
 // the setInterval schedulers wired in main.ts) ────────────────────────────
