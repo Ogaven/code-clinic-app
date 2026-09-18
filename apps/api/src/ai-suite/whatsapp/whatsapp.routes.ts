@@ -11,51 +11,67 @@ import { sendPushToUser } from '../../services/push.service'
 const router = Router()
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-// ── Staff-facing "your WhatsApp alerts are not being delivered" safeguard ────
+// ── Provider-health safeguard: "your WhatsApp alerts are not being delivered" ──
 // Fires when Meta's delivery-status webhook reports a failed send to the staff
 // number, for ANY reason (billing, 24h window, bad number, outage). Uses two
 // channels that don't share a failure mode with WhatsApp itself: an in-app
 // notification (free, no external dependency) and a push notification (free,
-// VAPID-based). Also makes a best-effort real SMS attempt. Cooldown prevents
-// spamming staff / draining SMS balance for the same ongoing outage — one
-// alert per 30 minutes is enough to make sure it's never silent for weeks
-// again, without flooding staff while the underlying issue gets fixed.
+// VAPID-based). Also makes a best-effort real SMS attempt.
 //
-// The cooldown is checked against the Notification table itself (title +
-// createdAt), not just the in-memory timestamp below -- an in-memory-only
-// cooldown resets to zero on every process restart/deploy, so a burst of
-// failures shortly after a restart would defeat it and re-spam the bell with
-// near-identical alerts for the SAME still-unresolved incident. The in-memory
-// check stays as a same-process fast path to skip the DB round trip on the
-// (common) case of many failures arriving within seconds of each other.
-let lastDeliveryFailureAlertAt = 0
+// Audience + type: ADMIN only, type 'PROVIDER_HEALTH' (not 'SYSTEM'/reception).
+// This used to go to every RECEPTIONIST too under the generic 'SYSTEM' type,
+// which meant Meta infrastructure noise sat in the exact same bell/feed
+// reception staff use for real patient escalations — repeated billing
+// failures could crowd those out. Only admins can actually act on a Meta
+// billing/eligibility problem (see meta-billing.service.ts, the linked
+// /ai-suite/analytics page is gated `isAdmin`), so only admins need to be
+// paged for it; reception's feed is now unaffected by this entirely.
+//
+// Dedup: keyed per Meta error CODE, not a single global cooldown. A 131042
+// (billing) and a later 131047 (re-engagement window) are different incidents
+// an admin needs to know about separately — collapsing them under one
+// constant title (the old behavior) meant the second, genuinely different,
+// error silently never got surfaced if it arrived inside the first one's
+// cooldown window. The DB check (title + createdAt) survives a process
+// restart, since an in-memory-only cooldown resets to zero on every deploy
+// and a burst of failures shortly after would defeat it. The in-memory map
+// stays as a same-process fast path per code to skip the DB round trip for
+// the (common) case of many failures for the same code arriving in seconds.
+const lastDeliveryFailureAlertAtByCode = new Map<number | 'unknown', number>()
 const DELIVERY_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
-const DELIVERY_FAILURE_ALERT_TITLE = '⚠️ Staff WhatsApp alerts are failing to deliver'
+const DELIVERY_FAILURE_ALERT_TITLE_BASE = '⚠️ Staff WhatsApp alerts are failing to deliver'
+const PROVIDER_HEALTH_HREF = '/ai-suite/analytics'
+
+function deliveryFailureAlertTitle(code?: number): string {
+  return `${DELIVERY_FAILURE_ALERT_TITLE_BASE} (#${code ?? 'unknown'})`
+}
 
 export async function notifyStaffOfDeliveryFailure(code?: number, message?: string, details?: string): Promise<void> {
+  const codeKey = code ?? 'unknown'
   const now = Date.now()
-  if (now - lastDeliveryFailureAlertAt < DELIVERY_FAILURE_ALERT_COOLDOWN_MS) return
+  const lastAt = lastDeliveryFailureAlertAtByCode.get(codeKey) ?? 0
+  if (now - lastAt < DELIVERY_FAILURE_ALERT_COOLDOWN_MS) return
 
+  const title = deliveryFailureAlertTitle(code)
   const cooldownStart = new Date(now - DELIVERY_FAILURE_ALERT_COOLDOWN_MS)
   const recent = await prisma.notification.findFirst({
-    where: { type: 'SYSTEM', title: DELIVERY_FAILURE_ALERT_TITLE, createdAt: { gte: cooldownStart } },
+    where: { type: 'PROVIDER_HEALTH', title, createdAt: { gte: cooldownStart } },
     select: { id: true },
   }).catch(() => null)
-  if (recent) { lastDeliveryFailureAlertAt = now; return }
+  if (recent) { lastDeliveryFailureAlertAtByCode.set(codeKey, now); return }
 
-  lastDeliveryFailureAlertAt = now
+  lastDeliveryFailureAlertAtByCode.set(codeKey, now)
 
-  const title = DELIVERY_FAILURE_ALERT_TITLE
-  const body  = `Meta error #${code ?? '?'}: ${message ?? 'unknown'}${details ? ` — ${details}` : ''}. ` +
-    `Clinical concern / escalation alerts may not be reaching this WhatsApp number right now — check the AI Suite escalations page directly.`
+  const body = `Meta error #${code ?? '?'}: ${message ?? 'unknown'}${details ? ` — ${details}` : ''}. ` +
+    `Clinical concern / escalation alerts may not be reaching this WhatsApp number right now — check WhatsApp Health in AI Suite Analytics.`
 
   try {
-    const staff = await prisma.user.findMany({ where: { role: { in: ['ADMIN', 'RECEPTIONIST'] }, isActive: true } })
-    await Promise.all(staff.map(async u => {
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN', isActive: true } })
+    await Promise.all(admins.map(async u => {
       await prisma.notification.create({
-        data: { userId: u.id, type: 'SYSTEM', title, body, href: '/ai-suite/escalations' },
+        data: { userId: u.id, type: 'PROVIDER_HEALTH', title, body, href: PROVIDER_HEALTH_HREF },
       }).catch(() => {})
-      sendPushToUser(u.id, { title, body, url: '/ai-suite/escalations' }).catch(() => {})
+      sendPushToUser(u.id, { title, body, url: PROVIDER_HEALTH_HREF }).catch(() => {})
     }))
   } catch (e: any) {
     console.error('[WhatsApp] notifyStaffOfDeliveryFailure notification error:', e.message)

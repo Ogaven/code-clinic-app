@@ -823,7 +823,7 @@ model SupportTicket {
 model Notification {
   id        String   @id @default(uuid())
   userId    String   // recipient user ID
-  type      String   // ESCALATION | APPOINTMENT | CONFIRMATION | MESSAGE | SYSTEM
+  type      String   // ESCALATION | APPOINTMENT | CONFIRMATION | MESSAGE | SYSTEM | PROVIDER_HEALTH
   title     String
   body      String
   isRead    Boolean  @default(false)
