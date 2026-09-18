@@ -4,6 +4,11 @@ import { requireAuth } from '../middleware/auth'
 import { adminAndReceptionist } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { sendWhatsAppMessage, sendWhatsAppMessageDirect, sendWhatsAppTemplate } from '../ai-suite/whatsapp/whatsapp.service'
+import { getPatientsSeen, splitNewAndReturning, type Range } from '../services/patient-analytics.service'
+import {
+  kampalaTodayRange, kampalaWeekToDateRange, kampalaMonthToDateRange,
+  startOfKampalaDay, endOfKampalaDay,
+} from '../utils/kampala-time'
 
 // Kenya WABA has no billing block and APPROVED templates — use it for all birthday sends
 const KENYA_PHONE_NUMBER_ID = '1163288503545718'
@@ -13,31 +18,101 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 const router = Router()
 
+// Full label set — still used to render/count LEGACY status-coded segments
+// (already-scheduled Campaign rows, and the separate templates.ts send flow,
+// which has its own independent segment list and is unaffected by this
+// redesign). segmentWhere() below must keep understanding every one of these
+// so an already-scheduled campaign fires correctly at its scheduled time.
 const SEGMENT_LABELS: Record<string, string> = {
   ALL:           'All Patients',
   NEW_LEAD:      'New Lead',
   UPCOMING:      'Upcoming',
-  ACTIVE:        'Active',
+  ACTIVE:        'Active Patients',
   DUE_RECALL:    'Due Recall',
   LAPSED:        'Lapsed',
   DORMANT:       'Dormant',
   BALANCE_OWING: 'Balance Owing',
+  NEW:           'New Patients',
 }
 
-const VALID_SEGMENTS = ['ALL', 'NEW_LEAD', 'UPCOMING', 'ACTIVE', 'DUE_RECALL', 'LAPSED', 'DORMANT', 'BALANCE_OWING']
+// The audience selector for NEW broadcasts (POST /whatsapp/broadcast and its
+// GET /segment-count preview) is deliberately narrowed to these three, per
+// clinic feedback that the full 8-option status list didn't map to how staff
+// actually think about who to message. ACTIVE keeps its existing, already-
+// established definition (patient.status, computed by patient-status.service
+// — a completed appointment within the last 90 days) unchanged; NEW is a
+// different kind of segment entirely — see newPatientIdsForSpec() below.
+export const BROADCAST_SEGMENTS = ['ALL', 'ACTIVE', 'NEW']
 
-function segmentWhere(segment: string): any {
+export type RangePreset = 'today' | 'week' | 'month' | 'custom'
+
+export interface SegmentSpec {
+  segment: string // 'ALL' | 'ACTIVE' | 'NEW' | any legacy PatientStatus code
+  preset?: RangePreset
+  from?: string // custom range only, YYYY-MM-DD
+  to?: string
+}
+
+// Campaign.targetSegment is `String? // JSON string` in schema — legacy rows
+// store a bare segment code ("ACTIVE"), which isn't valid JSON, so JSON.parse
+// throws and we fall back to treating the whole string as the segment code.
+// Only the new NEW+range case actually needs the JSON encoding.
+export function parseTargetSegment(raw: string | null | undefined): SegmentSpec {
+  if (!raw) return { segment: 'ALL' }
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && typeof parsed.segment === 'string') return parsed
+  } catch {}
+  return { segment: raw }
+}
+
+export function encodeTargetSegment(spec: SegmentSpec): string {
+  return spec.segment === 'NEW' ? JSON.stringify(spec) : spec.segment
+}
+
+export function resolveRange(spec: SegmentSpec): Range {
+  const preset = spec.preset || 'today'
+  if (preset === 'today') return kampalaTodayRange()
+  if (preset === 'week')  return kampalaWeekToDateRange()
+  if (preset === 'month') return kampalaMonthToDateRange()
+  // custom
+  const start = spec.from ? startOfKampalaDay(new Date(spec.from)) : startOfKampalaDay()
+  const end   = spec.to   ? endOfKampalaDay(new Date(spec.to))     : endOfKampalaDay()
+  return { start, end }
+}
+
+// "New Patients" reuses patient-analytics.service's canonical "new" definition
+// (first-ever ATTENDED appointment falls inside the range; imported patients
+// with no known prior visit are excluded) — the same definition Dashboard and
+// Daily/Weekly Reports already use — rather than inventing a campaign-local
+// one, or reusing the time-agnostic NEW_LEAD status (which has no concept of
+// "this week" / "this month" at all).
+export async function newPatientIdsForSpec(spec: SegmentSpec): Promise<string[]> {
+  const range = resolveRange(spec)
+  const seen = await getPatientsSeen(range)
+  const { newIds } = await splitNewAndReturning(seen.patientIds, range.start)
+  return newIds
+}
+
+export function segmentWhere(segment: string): any {
   const where: any = { phone: { not: '' } }
   if (segment !== 'ALL') where.status = segment
   return where
 }
 
-async function runBroadcast(campaignId: string, segment: string, message: string) {
+async function patientsForSpec(spec: SegmentSpec): Promise<Array<{ id: string; phone: string }>> {
+  if (spec.segment === 'NEW') {
+    const ids = await newPatientIdsForSpec(spec)
+    if (ids.length === 0) return []
+    return prisma.patient.findMany({ where: { id: { in: ids }, phone: { not: '' } }, select: { id: true, phone: true } })
+  }
+  return prisma.patient.findMany({ where: segmentWhere(spec.segment), select: { id: true, phone: true } })
+}
+
+async function runBroadcast(campaignId: string, targetSegmentRaw: string, message: string) {
   try {
-    const patients = await prisma.patient.findMany({
-      where: segmentWhere(segment),
-      select: { id: true, phone: true },
-    })
+    const spec = parseTargetSegment(targetSegmentRaw)
+    const patients = await patientsForSpec(spec)
 
     const sentAt = new Date()
     let sent = 0
@@ -94,11 +169,25 @@ router.get('/', requireAuth, adminAndReceptionist, async (_req, res) => {
 })
 
 // GET /campaigns/segment-count?segment=ACTIVE
+// GET /campaigns/segment-count?segment=NEW&preset=week
+// GET /campaigns/segment-count?segment=NEW&preset=custom&from=2026-09-01&to=2026-09-18
 router.get('/segment-count', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const segment = (req.query.segment as string) || 'ALL'
-    if (!VALID_SEGMENTS.includes(segment)) {
+    if (!BROADCAST_SEGMENTS.includes(segment)) {
       res.status(400).json({ error: 'Invalid segment' }); return
+    }
+    if (segment === 'NEW') {
+      const spec: SegmentSpec = {
+        segment: 'NEW',
+        preset: (req.query.preset as RangePreset) || 'today',
+        from:   req.query.from as string | undefined,
+        to:     req.query.to as string | undefined,
+      }
+      const ids = await newPatientIdsForSpec(spec)
+      const count = ids.length === 0 ? 0 : await prisma.patient.count({ where: { id: { in: ids }, phone: { not: '' } } })
+      res.json({ count })
+      return
     }
     const count = await prisma.patient.count({ where: segmentWhere(segment) })
     res.json({ count })
@@ -111,14 +200,20 @@ router.get('/segment-count', requireAuth, adminAndReceptionist, async (req, res)
 // POST /campaigns/whatsapp/broadcast
 router.post('/whatsapp/broadcast', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
-    const { segment, message, scheduleAt } = req.body
+    const { segment, message, scheduleAt, preset, from, to } = req.body
 
-    if (!segment || !VALID_SEGMENTS.includes(segment)) {
+    if (!segment || !BROADCAST_SEGMENTS.includes(segment)) {
       res.status(400).json({ error: 'Invalid segment' }); return
     }
     if (!message || typeof message !== 'string' || !message.trim()) {
       res.status(400).json({ error: 'Message is required' }); return
     }
+    if (segment === 'NEW' && preset === 'custom' && (!from || !to)) {
+      res.status(400).json({ error: 'Custom range requires from and to' }); return
+    }
+
+    const spec: SegmentSpec = segment === 'NEW' ? { segment: 'NEW', preset: preset || 'today', from, to } : { segment }
+    const encodedSegment = encodeTargetSegment(spec)
 
     const scheduledAt = scheduleAt ? new Date(scheduleAt) : null
     const isFuture    = scheduledAt && scheduledAt > new Date()
@@ -129,7 +224,7 @@ router.post('/whatsapp/broadcast', requireAuth, adminAndReceptionist, async (req
         name:            `${SEGMENT_LABELS[segment] || segment} — ${new Date().toLocaleDateString('en-GB')}`,
         channel:         'WHATSAPP',
         messageTemplate: message.trim(),
-        targetSegment:   segment,
+        targetSegment:   encodedSegment,
         scheduledAt:     scheduledAt ?? undefined,
         status:          isFuture ? 'SCHEDULED' : 'SENDING',
         sentCount:       0,
@@ -137,7 +232,7 @@ router.post('/whatsapp/broadcast', requireAuth, adminAndReceptionist, async (req
     })
 
     if (!isFuture) {
-      runBroadcast(campaign.id, segment, message.trim()).catch(() => {})
+      runBroadcast(campaign.id, encodedSegment, message.trim()).catch(() => {})
     }
 
     res.json({ success: true, campaignId: campaign.id, status: campaign.status })
