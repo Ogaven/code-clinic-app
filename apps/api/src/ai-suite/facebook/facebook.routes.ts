@@ -81,10 +81,18 @@ async function fetchFbUserInfo(
   try {
     const url = `https://graph.facebook.com/${GRAPH_VERSION}/${psid}?fields=name,profile_pic&access_token=${token}`
     const res  = await fetch(url)
-    if (!res.ok) return { name: null, pictureUrl: null }
     const data = await res.json() as any
+    if (!res.ok) {
+      // Was previously swallowed entirely — no way to tell "Meta rejected this
+      // (e.g. pages_messaging still in Standard Access)" from "no token" from
+      // "PSID not reachable" without this. Logged, not thrown: a missing name/
+      // pic must never block the DM itself from being processed.
+      console.error(`[Facebook] Profile fetch failed for PSID ${psid}:`, JSON.stringify(data?.error ?? data))
+      return { name: null, pictureUrl: null }
+    }
     return { name: data.name ?? null, pictureUrl: data.profile_pic ?? null }
-  } catch {
+  } catch (err: any) {
+    console.error(`[Facebook] Profile fetch error for PSID ${psid}:`, err?.message)
     return { name: null, pictureUrl: null }
   }
 }

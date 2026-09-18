@@ -1672,7 +1672,7 @@ function formatDobAge(dob: string) {
   const years  = Math.floor(totalMonths / 12)
   const months = totalMonths % 12
   const agePart = totalMonths < 12 ? `${totalMonths} mo` : (years < 3 && months > 0 ? `${years} yr ${months} mo` : `${years} yrs`)
-  return `${birth.toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })} (${agePart})`
+  return `${birth.toLocaleDateString('en-GB', { timeZone: 'UTC' })} (${agePart})`
 }
 
 function OverviewTab({ patient, onSwitchTab, token, onUpdate }: { patient: any; onSwitchTab: (tab: ActiveTab) => void; token: string | null; onUpdate: () => void }) {

@@ -1409,14 +1409,22 @@ function ActivityTab({ patientId, token }: { patientId: string; token: string | 
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────
 
+// TIMEZONE: dob is stored as UTC-midnight for its calendar date, so it must be
+// read via UTC accessors (recovers the exact digits staff entered) — local/
+// browser-ambient accessors shift the displayed day on machines set to a
+// timezone west of UTC. "Now" is read explicitly in Africa/Kampala.
 function formatDobAge(dob: string) {
   const birth = new Date(dob)
   const now   = new Date()
-  const totalMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth()) - (now.getDate() < birth.getDate() ? 1 : 0)
+  const nowY = parseInt(now.toLocaleDateString('en-US', { year: 'numeric', timeZone: 'Africa/Kampala' }))
+  const nowM = parseInt(now.toLocaleDateString('en-US', { month: 'numeric', timeZone: 'Africa/Kampala' })) - 1
+  const nowD = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: 'Africa/Kampala' }))
+  const bY = birth.getUTCFullYear(), bM = birth.getUTCMonth(), bD = birth.getUTCDate()
+  const totalMonths = (nowY - bY) * 12 + (nowM - bM) - (nowD < bD ? 1 : 0)
   const years  = Math.floor(totalMonths / 12)
   const months = totalMonths % 12
   const agePart = totalMonths < 12 ? `${totalMonths} mo` : (years < 3 && months > 0 ? `${years} yr ${months} mo` : `${years} yrs`)
-  return `${birth.toLocaleDateString('en-GB')} (${agePart})`
+  return `${birth.toLocaleDateString('en-GB', { timeZone: 'UTC' })} (${agePart})`
 }
 
 function OverviewTab({ patient, onSwitchTab, token }: { patient: any; onSwitchTab: (tab: ActiveTab) => void; token: string | null }) {
