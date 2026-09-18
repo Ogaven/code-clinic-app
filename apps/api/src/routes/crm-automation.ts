@@ -26,6 +26,8 @@ import {
   responseTimeLeaderboard, stageConversionRates, staleLeadsByOwner, weeklyColdLeadsDigest,
   caseAcceptanceReport, sequencePerformanceReport, agingReceivablesReport, callPerformanceReport,
 } from '../crm-automation/reporting.service'
+import { buildNeedsAttentionQueue } from '../crm-automation/needs-attention.service'
+import { buildOwnershipAudit } from '../crm-automation/ownership-audit.service'
 import { isCrmAutomationLive, crmFeatureStatus } from '../crm-automation/dry-run'
 import { isSmsChannelActive } from '../ai-suite/sms/sms.service'
 import { isCallingChannelActive } from '../services/calling-channel.service'
@@ -406,6 +408,23 @@ router.post('/backlog/sweep-no-response', requireAuth, adminOnly, async (_req: R
 
 router.get('/backlog/runs', requireAuth, adminOnly, async (_req: Request, res: Response) => {
   res.json(await prisma.backlogCampaignRun.findMany({ orderBy: { createdAt: 'desc' } }))
+})
+
+// ── Ownership audit (read-only preview — see ownership-audit.service.ts) ──
+// adminOnly — same gate as routing-rules config, which this reads alongside
+// current owner distribution. Never mutates anything; backfillPreview is a
+// simulation, not an executable action.
+router.get('/ownership-audit', requireAuth, adminOnly, async (_req: Request, res: Response) => {
+  res.json(await buildOwnershipAudit())
+})
+
+// ── Needs Attention (unified operational queue) ──────────────────────────
+// ?ownerId scopes lead-based categories to one CRM lead owner (Lead.
+// assignedTo); appointment/patient-based categories stay clinic-wide
+// regardless — see needs-attention.service.ts header for why.
+router.get('/needs-attention', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const ownerId = typeof req.query.ownerId === 'string' && req.query.ownerId ? req.query.ownerId : undefined
+  res.json(await buildNeedsAttentionQueue({ ownerId }))
 })
 
 // ── Reporting (Part R) ────────────────────────────────────────────────────

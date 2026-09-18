@@ -1,7 +1,11 @@
 'use client'
 
 import LeadsPipeline from '@/components/leads/LeadsPipeline'
+import NeedsAttentionPanel from '@/components/leads/NeedsAttentionPanel'
 
 export default function LeadsPage() {
-  return <LeadsPipeline inboxPath="/receptionist/ai-suite/inbox" />
+  return <>
+    <NeedsAttentionPanel />
+    <LeadsPipeline inboxPath="/receptionist/ai-suite/inbox" />
+  </>
 }
