@@ -153,6 +153,56 @@ export async function agingReceivablesReport() {
   return buckets
 }
 
+// ── (9) Lead source performance — Leads/Qualified/Converted/Lost by source ──
+// Deliberately does not include "Booked" or any revenue figure: this repo has
+// no Lead-stage evidence of booking distinct from CONVERTED (see
+// lead-stage.service.ts — QUALIFIED->CONVERTED already covers appointment
+// booking and treatment-start triggers, so a separate "booked" lead-stage
+// count would just restate convertedCount under a different label). Revenue
+// by source is handled separately by acquisitionRevenueByDimension(), which
+// applies the stricter single-lead attribution rule — mixing that into this
+// lead-only view would blur two different levels of evidence together.
+export async function sourcePerformance() {
+  const reached = (toStage: string) => ({ stageHistory: { some: { toStage } } })
+  const sources = await prisma.lead.findMany({ distinct: ['source'], select: { source: true } })
+
+  const rows = await Promise.all(sources.map(async ({ source }) => {
+    const [leadCount, qualifiedCount, convertedCount, lostCount] = await Promise.all([
+      prisma.lead.count({ where: { source } }),
+      prisma.lead.count({ where: { source, ...reached('QUALIFIED') } }),
+      prisma.lead.count({ where: { source, ...reached('CONVERTED') } }),
+      prisma.lead.count({ where: { source, status: 'LOST' } }),
+    ])
+    return { source, leadCount, qualifiedCount, convertedCount, lostCount }
+  }))
+
+  return {
+    sources: rows.sort((a, b) => b.leadCount - a.leadCount),
+    note: 'Counts are lifetime, distinct leads (qualified/converted use recorded stage history, not current status, so a lead that reached a stage and later moved on is still counted). No revenue or "booked" figure is included here — see the Revenue workspace for attributed revenue by source.',
+  }
+}
+
+// ── (10) Lost reasons — current LOST leads grouped by their recorded reason ─
+// Free-text grouping, not an invented taxonomy: Lead.lossReason has no enum
+// (see schema.prisma), so this reports exactly what staff typed, verbatim.
+export async function lostReasonsBreakdown() {
+  const lost = await prisma.lead.findMany({
+    where:  { status: 'LOST' },
+    select: { lossReason: true },
+  })
+  const counts = new Map<string, number>()
+  for (const { lossReason } of lost) {
+    const key = (lossReason || '').trim() || 'Not specified'
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  return {
+    totalLost: lost.length,
+    reasons: [...counts.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count),
+  }
+}
+
 // ── (8) Call performance — answer rate, abandoned count ──────────────────
 // Limited by what's actually logged today: CallEvent only records calls this
 // workstream's missed-call intake sees (status MISSED). Answered-call volume

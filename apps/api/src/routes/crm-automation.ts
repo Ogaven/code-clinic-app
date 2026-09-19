@@ -25,8 +25,10 @@ import { createWaitlistEntry, listWaitlistEntries, pauseOrRemoveWaitlistEntry, m
 import {
   responseTimeLeaderboard, stageConversionRates, staleLeadsByOwner, weeklyColdLeadsDigest,
   caseAcceptanceReport, sequencePerformanceReport, agingReceivablesReport, callPerformanceReport,
+  sourcePerformance, lostReasonsBreakdown,
 } from '../crm-automation/reporting.service'
 import { buildNeedsAttentionQueue } from '../crm-automation/needs-attention.service'
+import { buildLeadFollowUpSummary, completeLeadFollowUp } from '../crm-automation/lead-followups.service'
 import { buildOwnershipAudit } from '../crm-automation/ownership-audit.service'
 import { buildAcquisitionRevenueReport, acquisitionRevenueByDimension, unattributedRevenueSummary } from '../crm-automation/revenue-attribution.service'
 import { isCrmAutomationLive, crmFeatureStatus } from '../crm-automation/dry-run'
@@ -437,6 +439,22 @@ router.get('/reports/case-acceptance',            requireAuth, clinicalStaff,   
 router.get('/reports/sequence-performance',       requireAuth, adminAndReceptionist, async (_req, res) => res.json(await sequencePerformanceReport()))
 router.get('/reports/aging-receivables',          requireAuth, accountsOrAdmin,      async (_req, res) => res.json(await agingReceivablesReport()))
 router.get('/reports/call-performance',           requireAuth, adminAndReceptionist, async (_req, res) => res.json(await callPerformanceReport()))
+router.get('/reports/source-performance',         requireAuth, adminAndReceptionist, async (_req, res) => res.json(await sourcePerformance()))
+router.get('/reports/lost-reasons',               requireAuth, adminAndReceptionist, async (_req, res) => res.json(await lostReasonsBreakdown()))
+
+// ── Lead follow-ups (Task model, entityType='LEAD') ──────────────────────
+router.get('/follow-ups', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const ownerId = typeof req.query.ownerId === 'string' && req.query.ownerId ? req.query.ownerId : undefined
+  res.json(await buildLeadFollowUpSummary({ ownerId }))
+})
+
+router.post('/follow-ups/:id/complete', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  try {
+    res.json(await completeLeadFollowUp(req.params.id))
+  } catch (e: any) {
+    res.status(404).json({ error: e.message || 'Follow-up task not found' })
+  }
+})
 
 // ── Acquisition-to-revenue attribution (Phase 5) — accountsOrAdmin, same
 // gate as aging-receivables: this exposes real collected-revenue figures,
