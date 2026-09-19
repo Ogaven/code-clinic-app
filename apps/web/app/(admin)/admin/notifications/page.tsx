@@ -13,16 +13,23 @@ function timeAgo(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
+// PROVIDER_HEALTH (Meta/WhatsApp delivery-infrastructure incidents) is
+// deliberately muted/slate, not red/urgent — it must never visually compete
+// with ESCALATION (real patient concerns) for staff attention. It's also
+// ADMIN-only (see whatsapp.routes.ts notifyStaffOfDeliveryFailure), so it
+// only ever appears in this admin feed, never reception's.
 const TYPE_COLORS: Record<string, string> = {
-  ESCALATION:   'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-  APPOINTMENT:  'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  CONFIRMATION: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-  MESSAGE:      'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-  SYSTEM:       'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400',
+  ESCALATION:      'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  APPOINTMENT:     'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  CONFIRMATION:    'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  MESSAGE:         'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+  SYSTEM:          'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400',
+  PROVIDER_HEALTH: 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-500',
 }
 
 const TYPE_EMOJI: Record<string, string> = {
   ESCALATION: '🚨', APPOINTMENT: '📅', CONFIRMATION: '✅', MESSAGE: '💬', SYSTEM: '⚙️',
+  PROVIDER_HEALTH: '📡',
 }
 
 export default function AdminNotificationsPage() {

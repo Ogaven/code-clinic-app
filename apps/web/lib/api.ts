@@ -4,9 +4,23 @@ const API_URL = '/api-proxy'
 
 // Cookie helpers — keep cc_token in sync as a regular (non-HttpOnly) cookie so that
 // Next.js middleware can read it server-side to guard protected routes.
+//
+// IMPORTANT: this cookie's max-age must NOT track the JWT's own expiry
+// (JWT_EXPIRES_IN, currently 12h). The middleware only checks the cookie's
+// *presence* — it never verifies the token's signature or exp — so once this
+// cookie is gone the middleware redirects to /login at the edge, before any
+// client JS (and the silent-refresh logic below, or the 30d httpOnly
+// refreshToken cookie it relies on) ever gets a chance to run. Previously
+// this was set to the same 43200s (12h) as the access token, so the cookie
+// vanished at the exact moment the token expired — every overnight session
+// hit a hard logout even though a valid refresh token existed the whole
+// time. Match the refresh token's 30-day lifetime instead: an expired JWT
+// sitting in this cookie is harmless (the API still rejects it and the
+// client refreshes), but a MISSING cookie is what forces the login screen.
+const AUTH_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 export function setAuthCookie(token: string) {
   if (typeof document === 'undefined') return
-  document.cookie = `cc_token=${token}; path=/; SameSite=Lax; max-age=43200`
+  document.cookie = `cc_token=${token}; path=/; SameSite=Lax; max-age=${AUTH_COOKIE_MAX_AGE_SECONDS}`
 }
 export function clearAuthCookie() {
   if (typeof document === 'undefined') return
@@ -18,7 +32,7 @@ export const getApiUrl = () => API_URL
 // ── Auto-refresh logic ────────────────────────────────────────
 let _refreshing: Promise<string | null> | null = null
 
-async function refreshToken(): Promise<string | null> {
+export async function refreshToken(): Promise<string | null> {
   if (_refreshing) return _refreshing
   _refreshing = (async () => {
     try {

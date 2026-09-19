@@ -370,7 +370,7 @@ export default function TimelineTab({ patientId }: { patientId: string }) {
       </div>
 
       {/* ── Financial summary ── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/10 rounded-xl p-4">
           <p className="text-xs text-slate-500 mb-1">Total Billed</p>
           <p className="text-sm font-bold text-slate-800 dark:text-white">{fmtUGX(financial.totalBilled)}</p>

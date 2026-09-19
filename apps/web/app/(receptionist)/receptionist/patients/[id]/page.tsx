@@ -14,6 +14,7 @@ import TimelineTab from '@/components/patients/TimelineTab'
 import GuardianSection from '@/components/patients/GuardianSection'
 import RecentAiConversation from '@/components/patients/RecentAiConversation'
 import CrmTagsTab from '@/components/patients/CrmTagsTab'
+import { formatDob, ageFromDob } from '@/lib/dob'
 
 const toProperCase = (str: string) => str.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 
@@ -226,14 +227,22 @@ function OverviewTab({ patient, onRefresh, token }: { patient: any; onRefresh: (
 
   const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
 
+  // TIMEZONE: dob is stored as UTC-midnight for its calendar date, so it must be
+  // read via UTC accessors (recovers the exact digits staff entered) — local/
+  // browser-ambient accessors shift the displayed day on machines set to a
+  // timezone west of UTC. "Now" is read explicitly in Africa/Kampala.
   function formatDobAge(dob: string) {
     const birth = new Date(dob)
     const now   = new Date()
-    const totalMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth()) - (now.getDate() < birth.getDate() ? 1 : 0)
+    const nowY = parseInt(now.toLocaleDateString('en-US', { year: 'numeric', timeZone: 'Africa/Kampala' }))
+    const nowM = parseInt(now.toLocaleDateString('en-US', { month: 'numeric', timeZone: 'Africa/Kampala' })) - 1
+    const nowD = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: 'Africa/Kampala' }))
+    const bY = birth.getUTCFullYear(), bM = birth.getUTCMonth(), bD = birth.getUTCDate()
+    const totalMonths = (nowY - bY) * 12 + (nowM - bM) - (nowD < bD ? 1 : 0)
     const years  = Math.floor(totalMonths / 12)
     const months = totalMonths % 12
     const agePart = totalMonths < 12 ? `${totalMonths} mo` : (years < 3 && months > 0 ? `${years} yr ${months} mo` : `${years} yrs`)
-    return `${birth.toLocaleDateString('en-GB')} (${agePart})`
+    return `${birth.toLocaleDateString('en-GB', { timeZone: 'UTC' })} (${agePart})`
   }
 
   return (
@@ -1433,7 +1442,7 @@ export default function PatientDetailPage() {
   const handlePrint = async () => {
     if (!patient) return
     const name   = `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'Patient'
-    const dob    = patient.dob ? new Date(patient.dob).toLocaleDateString('en-GB') : 'N/A'
+    const dob    = formatDob(patient.dob)
     const phone  = patient.phone || 'N/A'
     const origin = window.location.origin
     const token  = localStorage.getItem('cc_token')
@@ -1562,7 +1571,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 
   const initials   = `${patient.firstName?.[0] || ''}${patient.lastName?.[0] || ''}`
   const avatarBg   = avatarColor(`${patient.firstName}${patient.lastName}`)
-  const age        = patient.dob ? new Date().getFullYear() - new Date(patient.dob).getFullYear() : null
+  const age        = ageFromDob(patient.dob)
 
   return (
     <div className="flex flex-col h-full">
@@ -1615,22 +1624,24 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
             </p>
           </div>
 
-          {/* Print Notes */}
-          <button onClick={handlePrint}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-white/70 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex-shrink-0">
-            <Printer size={14} /> Print
+          {/* Print Notes — icon-only on mobile, same actions reachable at every width */}
+          <button onClick={handlePrint} aria-label="Print"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-white/70 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex-shrink-0">
+            <Printer size={14} /> <span className="hidden sm:inline">Print</span>
           </button>
           <button
             onClick={() => { setMergeOpen(true); setMergeSearch(''); setMergeResults([]); setMergeSource(null); setMergeError('') }}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all flex-shrink-0">
-            Merge…
+            aria-label="Merge patient"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-sm font-semibold text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all flex-shrink-0">
+            <span className="sm:hidden">Merge</span><span className="hidden sm:inline">Merge…</span>
           </button>
           {/* Quick action: book appointment */}
           <button
             onClick={() => router.push('/receptionist/appointments')}
-            className="hidden sm:flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white flex-shrink-0 hover:-translate-y-0.5 transition-all"
+            aria-label="Book appointment"
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-sm font-bold text-white flex-shrink-0 hover:-translate-y-0.5 transition-all"
             style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-            <Plus size={14} /> Book
+            <Plus size={14} /> <span className="hidden sm:inline">Book</span>
           </button>
         </div>
 
@@ -1652,8 +1663,10 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
         </div>
       </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto p-5">
+      {/* Tab content — pb-24 clears the fixed mobile bottom nav (MobileBottomNav
+          is z-[10000]); the OUTER <main> already has its own pb-24, but it
+          never applies here since this inner region does its own scrolling. */}
+      <div className="flex-1 overflow-y-auto p-5 pb-24 xl:pb-5">
         {tab === 'overview'     && <OverviewTab patient={patient} onRefresh={fetchPatient} token={token} />}
         {tab === 'appointments' && <AppointmentsTab patientId={id} />}
         {tab === 'dental'       && <DentalChartTab patientId={id} />}

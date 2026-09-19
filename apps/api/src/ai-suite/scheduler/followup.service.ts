@@ -189,7 +189,7 @@ export async function checkAndSendFollowups(): Promise<void> {
     const routing = await resolveOutboundRecipient(patient, greetName)
     if (!routing.ok) {
       console.warn(`[Followup] Skipping ${patient.firstName} — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'post-visit follow-up')
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'post-visit follow-up', patient.phone)
       continue
     }
     const recipientPhone = routing.recipient.phone
@@ -397,7 +397,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     const missedRouting = await resolveOutboundRecipient(patient, greetName)
     if (!missedRouting.ok) {
       console.warn(`[PostApptFollowup] Skipping ${patient.firstName} (missed) — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'missed-appointment follow-up')
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'missed-appointment follow-up', patient.phone)
       continue
     }
     const recipientPhone = missedRouting.recipient.phone
@@ -487,7 +487,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
         : `Hello ${greetName2}, just checking in 😊 How are you doing? Feel free to reply anytime!`
       const nudgeRouting = await resolveOutboundRecipient(patient, getGreetingName(patient))
       if (!nudgeRouting.ok) {
-        await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'follow-up nudge')
+        await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'follow-up nudge', patient.phone)
         continue
       }
       const recipientPhoneNudge = nudgeRouting.recipient.phone
@@ -539,7 +539,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     const stage1Routing = await resolveOutboundRecipient(patient, greetName)
     if (!stage1Routing.ok) {
       console.warn(`[PostApptFollowup] Skipping ${patient.firstName} (stage 1) — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'post-appointment follow-up')
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'post-appointment follow-up', patient.phone)
       continue
     }
     const recipientPhone = stage1Routing.recipient.phone
@@ -686,7 +686,7 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
     const confirmRouting = await resolveOutboundRecipient(patient, greetName)
     if (!confirmRouting.ok) {
       console.warn(`[ApptConfirmation] Skipping ${patient.firstName} — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'appointment confirmation')
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'appointment confirmation', patient.phone)
       counts.skipped++
       continue
     }
@@ -829,7 +829,7 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
     const missedCallRouting = await resolveOutboundRecipient(patient, firstName)
     if (!missedCallRouting.ok) {
       console.warn(`[MissedCallFollowup] Skipping ${patient.firstName} — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'missed-call follow-up')
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'missed-call follow-up', patient.phone)
       continue
     }
     const addr           = missedCallRouting.recipient.isGuardian
@@ -917,7 +917,7 @@ export async function checkAndSendReactivationMessages(): Promise<void> {
     const reactivationRouting = await resolveOutboundRecipient(patient, firstName)
     if (!reactivationRouting.ok) {
       console.warn(`[Reactivation] Skipping ${patient.firstName} — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'reactivation message')
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'reactivation message', patient.phone)
       continue
     }
     const addr           = reactivationRouting.recipient.isGuardian

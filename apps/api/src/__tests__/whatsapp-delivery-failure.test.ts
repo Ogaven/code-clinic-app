@@ -36,7 +36,7 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks()
   prismaMock.notification.findFirst.mockResolvedValue(null)
-  prismaMock.user.findMany.mockResolvedValue([{ id: 'u-admin', role: 'ADMIN' }, { id: 'u-front', role: 'RECEPTIONIST' }])
+  prismaMock.user.findMany.mockResolvedValue([{ id: 'u-admin', role: 'ADMIN' }])
 })
 
 describe('persistDeliveryFailure — real Meta error detail, additive to AiMessage.status', () => {
@@ -103,13 +103,18 @@ describe('notifyStaffOfDeliveryFailure — dedup survives a process restart', ()
     vi.useRealTimers()
   })
 
-  it('creates a fresh notification for a genuinely new incident (no recent DB record)', async () => {
+  it('creates a fresh notification for a genuinely new incident (no recent DB record), addressed to ADMIN only', async () => {
     prismaMock.notification.findFirst.mockResolvedValue(null)
     const notify = await freshNotify()
     await notify(131047, 'Re-engagement message', 'more than 24 hours have passed')
-    expect(prismaMock.notification.create).toHaveBeenCalledTimes(2) // one per staff user (ADMIN + RECEPTIONIST)
+    expect(prismaMock.notification.create).toHaveBeenCalledTimes(1) // ADMIN only — reception's feed is no longer touched
     expect(prismaMock.notification.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ title: expect.stringContaining('Staff WhatsApp alerts are failing to deliver') }) })
+      expect.objectContaining({ data: expect.objectContaining({
+        userId: 'u-admin',
+        type: 'PROVIDER_HEALTH',
+        title: expect.stringContaining('Staff WhatsApp alerts are failing to deliver'),
+        href: '/ai-suite/analytics',
+      }) })
     )
   })
 
@@ -129,17 +134,17 @@ describe('notifyStaffOfDeliveryFailure — dedup survives a process restart', ()
     prismaMock.notification.findFirst.mockResolvedValue(null)
     const notify = await freshNotify()
     await notify(131047, 'Re-engagement message', 'first incident')
-    expect(prismaMock.notification.create).toHaveBeenCalledTimes(2)
+    expect(prismaMock.notification.create).toHaveBeenCalledTimes(1)
 
     vi.clearAllMocks()
     prismaMock.notification.findFirst.mockResolvedValue(null)
     vi.setSystemTime(new Date('2026-09-16T01:00:00.000Z')) // +60 min, past the 30-min cooldown
 
     await notify(131047, 'Re-engagement message', 'second, later incident')
-    expect(prismaMock.notification.create).toHaveBeenCalledTimes(2)
+    expect(prismaMock.notification.create).toHaveBeenCalledTimes(1)
   })
 
-  it('does not repeat-notify for rapid-fire failures within the same cooldown window (in-memory fast path, no DB round trip)', async () => {
+  it('does not repeat-notify for rapid-fire failures of the SAME code within the same cooldown window (in-memory fast path, no DB round trip)', async () => {
     prismaMock.notification.findFirst.mockResolvedValue(null)
     const notify = await freshNotify()
     await notify(131047, 'first', 'first')
@@ -152,5 +157,26 @@ describe('notifyStaffOfDeliveryFailure — dedup survives a process restart', ()
     expect(prismaMock.notification.create).not.toHaveBeenCalled()
     // The in-memory fast path should skip the DB round trip entirely for this case.
     expect(prismaMock.notification.findFirst).not.toHaveBeenCalled()
+  })
+
+  it('a DIFFERENT error code is never suppressed by another code\'s active cooldown — distinct incidents, distinct alerts', async () => {
+    // Regression guard: the old single global cooldown collapsed a billing
+    // error (131042) and a later, unrelated re-engagement-window error
+    // (131047) into "the same incident," so the second one silently never
+    // reached an admin if it arrived inside the first one's 30-minute window.
+    prismaMock.notification.findFirst.mockResolvedValue(null)
+    const notify = await freshNotify()
+    await notify(131042, 'Business eligibility payment issue', 'unsettled payments')
+    expect(prismaMock.notification.create).toHaveBeenCalledTimes(1)
+
+    vi.clearAllMocks()
+    prismaMock.notification.findFirst.mockResolvedValue(null)
+    vi.setSystemTime(new Date('2026-09-16T00:05:00.000Z')) // +5 min — still inside 131042's cooldown
+
+    await notify(131047, 'Re-engagement message', 'more than 24 hours have passed')
+    expect(prismaMock.notification.create).toHaveBeenCalledTimes(1)
+    expect(prismaMock.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ title: expect.stringContaining('#131047') }) })
+    )
   })
 })

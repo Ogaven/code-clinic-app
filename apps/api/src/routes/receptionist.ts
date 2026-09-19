@@ -178,12 +178,32 @@ router.post('/escalations/:id/resolve', requireAuth, async (req, res) => {
   }
 })
 
+// Legacy delivery-failure notifications created before the PROVIDER_HEALTH
+// migration (see whatsapp.routes.ts notifyStaffOfDeliveryFailure) — type
+// SYSTEM, sent to ADMIN+RECEPTIONIST, one per ~30min for as long as Meta's
+// billing issue persisted. That's since been narrowed to ADMIN-only,
+// PROVIDER_HEALTH-typed, per-error-code deduped notifications, but the old
+// rows are still sitting in the DB (never deleted — diagnostic history is
+// preserved in MetaDeliveryFailure and here) and were flooding the ordinary
+// feed for anyone who hadn't cleared them. Hide them from the LIST (and
+// therefore the unread count derived from it) without ever touching the
+// rows themselves — a targeted filter on this exact, superseded title/type
+// combination the current code path can never produce again.
+export const LEGACY_DELIVERY_FAILURE_TITLE_PREFIX = '⚠️ Staff WhatsApp alerts are failing to deliver'
+
+export function notificationFeedWhere(userId: string) {
+  return {
+    userId,
+    NOT: { type: 'SYSTEM', title: { startsWith: LEGACY_DELIVERY_FAILURE_TITLE_PREFIX } },
+  }
+}
+
 // ─── GET /receptionist/notifications ─────────────────────────
 router.get('/notifications', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id
     const notifications = await (prisma as any).notification.findMany({
-      where: { userId },
+      where: notificationFeedWhere(userId),
       orderBy: { createdAt: 'desc' },
       take: 50,
     })

@@ -85,8 +85,9 @@ export async function checkAndSendTreatmentFollowUpAlerts(): Promise<void> {
       const patientName = `${plan.patient.firstName} ${plan.patient.lastName}`.trim()
       const label = ALERT_LABEL[alertType]
       const title = `Follow-up ${label}: ${patientName}`
+      const dueDateStr = plan.followUpAt.toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })
       const reasonSuffix = plan.followUpReason ? ` — ${plan.followUpReason}` : ''
-      const body = `${patientName}'s treatment follow-up is ${label}${reasonSuffix}`
+      const body = `${patientName}'s treatment follow-up (${plan.stage}, ${plan.status}) is ${label} (${dueDateStr})${reasonSuffix}`
       const href = `/patients/${plan.patientId}`
 
       const recipientIds = new Set<string>(staff.map(u => u.id))

@@ -53,7 +53,7 @@ const STATUS_BADGES: Record<string, { label: string; pill: string }> = {
 // local/browser-ambient accessors, which previously caused DOB/age to
 // display a calendar day early on machines set to a timezone west of UTC.
 function formatDob(dob: string) {
-  return new Date(dob).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })
+  return new Date(dob).toLocaleDateString('en-GB', { timeZone: 'UTC' })
 }
 function ageFromDob(dob: string) {
   const kampalaYear = parseInt(new Date().toLocaleDateString('en-US', { year: 'numeric', timeZone: 'Africa/Kampala' }))

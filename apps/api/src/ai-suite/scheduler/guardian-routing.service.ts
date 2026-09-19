@@ -104,6 +104,7 @@ export async function resolveOutboundRecipient(
 export async function alertStaffMinorNoGuardian(
   patientFullName: string,
   messageType: string,
+  patientPhone?: string,
 ): Promise<void> {
   const staffNum = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
   const reason = `${messageType} could not be sent — no guardian contact on file, please add guardian info and follow up manually`
@@ -114,11 +115,19 @@ export async function alertStaffMinorNoGuardian(
   // job hits the same still-unfixed patient (by design, see the comment
   // above this function), so a high-volume free-form path here is exactly
   // what was driving repeated 24h-window failures to the staff number.
+  //
+  // The approved cc_staff_concern template's {{2}} placeholder is literally
+  // "Phone:" in its Meta-approved body text -- it must be the patient's real
+  // phone number, not a description string, or the delivered message reads
+  // "Phone: minor — no guardian phone on file" to staff. patientPhone is
+  // optional only because a small number of call sites don't have it handy;
+  // when absent, "N/A" is an honest placeholder rather than a fabricated
+  // or mislabelled value.
   const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
   let sent = false
   if (templateName) {
     try {
-      await sendWhatsAppTemplate(staffNum, templateName, [patientFullName, 'minor — no guardian phone on file', reason])
+      await sendWhatsAppTemplate(staffNum, templateName, [patientFullName, patientPhone || 'N/A', reason])
       sent = true
     } catch (err: any) {
       console.warn(`[GuardianRouting] Template failed for ${patientFullName}, falling back to freeform:`, err.message)

@@ -1672,7 +1672,7 @@ function formatDobAge(dob: string) {
   const years  = Math.floor(totalMonths / 12)
   const months = totalMonths % 12
   const agePart = totalMonths < 12 ? `${totalMonths} mo` : (years < 3 && months > 0 ? `${years} yr ${months} mo` : `${years} yrs`)
-  return `${birth.toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })} (${agePart})`
+  return `${birth.toLocaleDateString('en-GB', { timeZone: 'UTC' })} (${agePart})`
 }
 
 function OverviewTab({ patient, onSwitchTab, token, onUpdate }: { patient: any; onSwitchTab: (tab: ActiveTab) => void; token: string | null; onUpdate: () => void }) {
@@ -2271,10 +2271,27 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
         </div>
       </div>
 
-      {/* Body: sidebar + content */}
+      {/* Body: sidebar (desktop) + horizontal tabs (mobile) + content */}
+      {/* Mobile tab bar */}
+      <div className="md:hidden overflow-x-auto bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 -mb-2">
+        <div className="flex p-1 gap-1 min-w-max">
+          {tabs.map(({ key, label, icon: Icon }) => (
+            <button key={key} onClick={() => switchTab(key)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors',
+                activeTab === key
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10'
+              )}>
+              <Icon size={13} /> {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex gap-4 min-h-[70vh]">
-        {/* Sidebar */}
-        <div className="w-48 flex-shrink-0">
+        {/* Sidebar — desktop only */}
+        <div className="hidden md:block w-48 flex-shrink-0">
           <nav className="bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 p-2 space-y-0.5 sticky top-4">
             {tabs.map(({ key, label, icon: Icon }) => (
               <button key={key} onClick={() => switchTab(key)}
@@ -2292,7 +2309,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 
         {/* Content */}
         <div className="flex-1 bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10 overflow-hidden">
-          <div className={cn('p-6 h-full', activeTab === 'dental' || activeTab === 'perio' ? 'p-0' : '')}>
+          <div className={cn('p-4 md:p-6 h-full', activeTab === 'dental' || activeTab === 'perio' ? 'p-0 md:p-0' : '')}>
             {renderTab()}
           </div>
         </div>

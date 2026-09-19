@@ -93,6 +93,7 @@ function makePlan(overrides: Partial<any> = {}) {
     patientId: overrides.patientId ?? 'patient_1',
     patient: { firstName: 'Jane', lastName: 'Doe' },
     doctor: overrides.doctor ?? null,
+    stage: overrides.stage ?? 'Consulted',
     status: overrides.status ?? 'On Hold',
     followUpAt: overrides.followUpAt ?? null,
     followUpReason: overrides.followUpReason ?? null,

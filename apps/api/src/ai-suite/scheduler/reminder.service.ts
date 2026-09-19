@@ -61,7 +61,7 @@ export async function checkAndSendReminders(): Promise<void> {
     const routing   = await resolveOutboundRecipient(patient, greetName)
     if (!routing.ok) {
       console.warn(`[Reminder] Skipping ${patient.firstName} — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'reminder')
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'reminder', patient.phone)
       continue
     }
     const { phone: recipientPhone, name: recipientName, isGuardian } = routing.recipient
@@ -201,7 +201,7 @@ export async function checkAndSendReminders(): Promise<void> {
     const routing1h  = await resolveOutboundRecipient(pat1h, name1h)
     if (!routing1h.ok) {
       console.warn(`[Reminder 1h] Skipping ${pat1h.firstName} — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${pat1h.firstName} ${pat1h.lastName}`, '1-hour reminder')
+      await alertStaffMinorNoGuardian(`${pat1h.firstName} ${pat1h.lastName}`, '1-hour reminder', pat1h.phone)
       continue
     }
     const { phone: recipientPhone1h, name: addr1h, isGuardian: isGuardian1h } = routing1h.recipient
@@ -465,7 +465,7 @@ export async function checkAndSendSameDayReminders(): Promise<void> {
     const routing   = await resolveOutboundRecipient(patient, greetName)
     if (!routing.ok) {
       console.warn(`[SameDayReminder] Skipping ${patient.firstName} — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'same-day reminder')
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'same-day reminder', patient.phone)
       continue
     }
     const { phone: recipientPhone, name: recipientName, isGuardian } = routing.recipient

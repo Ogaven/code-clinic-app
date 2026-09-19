@@ -12,18 +12,18 @@
 
 import type { LucideIcon } from 'lucide-react'
 import {
-  LayoutDashboard, Users, CalendarDays, Sparkles, Stethoscope, MoreHorizontal,
+  Users, CalendarDays, Sparkles, MoreHorizontal,
   UsersRound, ShieldCheck, ClipboardList, Wallet, Receipt, Boxes, Target,
-  Megaphone, Handshake, FileBarChart, BookOpen, PhoneCall, Mic, Settings, Zap, Bell,
+  Megaphone, Handshake, FileBarChart, BookOpen, PhoneCall, Mic, Zap, Settings,
   MessageSquare, AlertTriangle, CalendarClock, BadgeCheck, LineChart, Bot, ScrollText,
 } from 'lucide-react'
 
 // A primary tab either navigates directly (`link`) or opens a compact mobile
 // menu/sheet of sub-destinations (`menu`) — e.g. ADMIN's "Reports" tab opens
 // a sheet rather than navigating, since there is no single "/reports" page
-// that covers Case Acceptance + Staff together. RECEPTIONIST/DOCTOR keep
-// their existing plain-link tabs (`type: 'link'` on every primary entry)
-// unchanged this pass — only ADMIN's primary tabs use `menu`.
+// that covers Case Acceptance + Staff together. RECEPTIONIST's "AI Suite",
+// "CRM" and "Reports" tabs and DOCTOR's "AI Suite" tab use the same pattern,
+// for the same reason.
 export interface LinkTab {
   type: 'link'
   key: string
@@ -164,62 +164,90 @@ const ADMIN_NAV: MobileNavConfig = {
   more: [],
 }
 
+// Reworked per clinic feedback: reception's bottom nav previously buried Live
+// Flow, CRM and Reports behind a catch-all "More" sheet, and staff couldn't
+// get to them in one tap. Home is intentionally dropped from the primary bar
+// (matches ADMIN_NAV's convention — the MobileHeader logo is Home); the
+// dashboard route itself still exists for anyone linking to it directly.
+// 6 primary destinations, following ADMIN_NAV's "menu tab per group" pattern
+// so nothing needs a "More" sheet at all (`more: []`) — CRM/Reports/AI Suite
+// sub-pages that used to live in `more` now live inside their own tab's menu.
 // Matches middleware.ts ROUTE_FEATURE exactly: '/receptionist/scheduling' -> 'appointments'
 // (canonical key post scheduling/appointments merge — see middleware.ts).
 const RECEPTIONIST_NAV: MobileNavConfig = {
   primary: [
-    { type: 'link', key: 'home',        label: 'Home',         href: '/receptionist/dashboard',      icon: LayoutDashboard },
-    { type: 'link', key: 'patients',    label: 'Patients',     href: '/receptionist/patients',       icon: Users,      permKey: 'patients' },
-    { type: 'link', key: 'appointments',label: 'Appointments', href: '/receptionist/scheduling',     icon: CalendarDays, permKey: 'appointments' },
-    { type: 'link', key: 'ai-suite',    label: 'AI Suite',     href: '/receptionist/ai-suite/inbox', icon: Sparkles,   permKey: 'aiSuiteInbox' },
+    { type: 'link', key: 'patients',    label: 'Patients',     href: '/receptionist/patients',   icon: Users,        permKey: 'patients' },
+    { type: 'link', key: 'appointments',label: 'Appointments', shortLabel: 'Appts', href: '/receptionist/scheduling', icon: CalendarDays, permKey: 'appointments' },
+    { type: 'link', key: 'live-flow',   label: 'Live Flow',    href: '/receptionist/flow',       icon: Zap,          permKey: 'liveFlow' },
+    {
+      type: 'menu', key: 'ai-suite', label: 'AI Suite', icon: Sparkles, permKey: 'aiSuiteInbox',
+      sections: [{
+        heading: 'AI Suite',
+        items: [
+          { label: 'Conversations',        href: '/receptionist/ai-suite/inbox',                 icon: MessageSquare, permKey: 'aiSuiteInbox' },
+          { label: 'Escalations',          href: '/receptionist/ai-suite/escalations',            icon: AlertTriangle, permKey: 'aiSuiteInbox' },
+          { label: 'Follow-up Dashboard',  href: '/receptionist/ai-suite/followup-dashboard',     icon: CalendarClock, permKey: 'aiSuiteFollowup' },
+          { label: 'Confirmation Dashboard', href: '/receptionist/ai-suite/confirmation-dashboard', icon: BadgeCheck,  permKey: 'aiSuiteConfirmation' },
+          { label: 'Knowledge Base',        href: '/receptionist/ai-suite/knowledge',              icon: BookOpen,     permKey: 'knowledgeBase' },
+          { label: 'Call Logs',            href: '/receptionist/ai-suite/calls',                  icon: PhoneCall,    permKey: 'callLogs' },
+          { label: 'Voice Studio',          href: '/receptionist/ai-suite/voice-studio',           icon: Mic,          permKey: 'voiceStudio' },
+        ],
+      }],
+    },
+    {
+      type: 'menu', key: 'crm', label: 'CRM', icon: Handshake,
+      sections: [{
+        heading: 'CRM',
+        items: [
+          { label: 'Treatment Pipeline', href: '/receptionist/treatment-pipeline', icon: Target,    permKey: 'treatmentPipeline' },
+          { label: 'Leads',              href: '/receptionist/leads',             icon: Target,    permKey: 'leads' },
+          { label: 'Referrals',          href: '/receptionist/referrals',         icon: Handshake, permKey: 'referrals' },
+          { label: 'Campaigns',          href: '/receptionist/campaigns',         icon: Megaphone, permKey: 'campaigns' },
+        ],
+      }],
+    },
+    {
+      type: 'menu', key: 'reports', label: 'Reports', icon: FileBarChart, permKey: 'reports',
+      sections: [{
+        heading: 'Reports',
+        items: [
+          { label: 'Case Acceptance',   href: '/receptionist/reports?tab=case-acceptance', icon: FileBarChart, permKey: 'reports' },
+          { label: 'Patient Live Flow', href: '/receptionist/reports?tab=flow',            icon: FileBarChart, permKey: 'reports' },
+          { label: 'Daily / Weekly',    href: '/receptionist/reports?tab=clinical',        icon: FileBarChart, permKey: 'reports' },
+        ],
+      }],
+    },
   ],
-  more: [
-    { heading: 'Clinic', items: [
-      { label: 'Live Flow', href: '/receptionist/flow', icon: Zap, permKey: 'liveFlow' },
-    ] },
-    { heading: 'CRM', items: [
-      { label: 'Treatment Pipeline', href: '/receptionist/treatment-pipeline', icon: Target,    permKey: 'treatmentPipeline' },
-      { label: 'Leads',              href: '/receptionist/leads',             icon: Target,    permKey: 'leads' },
-      { label: 'Referrals',          href: '/receptionist/referrals',         icon: Handshake, permKey: 'referrals' },
-      { label: 'Campaigns',          href: '/receptionist/campaigns',         icon: Megaphone, permKey: 'campaigns' },
-    ] },
-    { heading: 'Reports', items: [
-      { label: 'Case Acceptance',   href: '/receptionist/reports?tab=case-acceptance', icon: FileBarChart, permKey: 'reports' },
-      { label: 'Patient Live Flow', href: '/receptionist/reports?tab=flow',            icon: FileBarChart, permKey: 'reports' },
-      { label: 'Daily / Weekly',    href: '/receptionist/reports?tab=clinical',        icon: FileBarChart, permKey: 'reports' },
-    ] },
-    { heading: 'AI Suite', items: [
-      { label: 'Knowledge Base', href: '/receptionist/ai-suite/knowledge',      icon: BookOpen, permKey: 'knowledgeBase' },
-      { label: 'Call Logs',      href: '/receptionist/ai-suite/calls',          icon: PhoneCall, permKey: 'callLogs' },
-      { label: 'Voice Studio',   href: '/receptionist/ai-suite/voice-studio',   icon: Mic,       permKey: 'voiceStudio' },
-    ] },
-    { heading: 'General', items: [
-      { label: 'Settings', href: '/receptionist/settings', icon: Settings },
-    ] },
-  ],
+  more: [],
 }
 
+// Doctor gets its own 5-tab set — never inherits Reception/Admin's nav.
+// "My Patients" is a label-only change (same /doctor/patients route); "AI
+// Suite" replaces the old "Treatments" primary tab (doctor's real AI Suite
+// pages — follow-up/confirmation dashboards, knowledge base — were
+// previously buried in More, which contradicted having an AI Suite tab at
+// all). "Reports" points at the one real doctor reports page that exists
+// today (treatment-pipeline) — there is no general /doctor/reports index to
+// link to instead.
 const DOCTOR_NAV: MobileNavConfig = {
   primary: [
-    { type: 'link', key: 'home',        label: 'Home',         href: '/doctor/dashboard',                  icon: LayoutDashboard },
-    { type: 'link', key: 'patients',    label: 'Patients',     href: '/doctor/patients',                   icon: Users,        permKey: 'patients' },
-    { type: 'link', key: 'appointments',label: 'Appointments', href: '/doctor/schedule',                   icon: CalendarDays, permKey: 'appointments' },
-    { type: 'link', key: 'treatments',  label: 'Treatments',   href: '/doctor/reports/treatment-pipeline', icon: Stethoscope },
+    { type: 'link', key: 'patients',    label: 'My Patients',  href: '/doctor/patients', icon: Users,        permKey: 'patients' },
+    { type: 'link', key: 'appointments',label: 'Appointments', shortLabel: 'Appts', href: '/doctor/schedule', icon: CalendarDays, permKey: 'appointments' },
+    { type: 'link', key: 'live-flow',   label: 'Live Flow',    href: '/doctor/flow',     icon: Zap,          permKey: 'liveFlow' },
+    {
+      type: 'menu', key: 'ai-suite', label: 'AI Suite', icon: Sparkles,
+      sections: [{
+        heading: 'AI Suite',
+        items: [
+          { label: 'Follow-up Dashboard',    href: '/doctor/ai-suite/followup-dashboard',     icon: CalendarClock, permKey: 'aiSuiteFollowup' },
+          { label: 'Confirmation Dashboard', href: '/doctor/ai-suite/confirmation-dashboard', icon: BadgeCheck,    permKey: 'aiSuiteConfirmation' },
+          { label: 'Knowledge Base',         href: '/doctor/ai-suite/knowledge',              icon: BookOpen,      permKey: 'knowledgeBase' },
+        ],
+      }],
+    },
+    { type: 'link', key: 'reports', label: 'Reports', href: '/doctor/reports/treatment-pipeline', icon: FileBarChart },
   ],
-  more: [
-    { heading: 'Clinic', items: [
-      { label: 'Live Flow', href: '/doctor/flow', icon: Zap, permKey: 'liveFlow' },
-    ] },
-    { heading: 'AI Suite', items: [
-      { label: 'Follow-up Dashboard',     href: '/doctor/ai-suite/followup-dashboard',     icon: FileBarChart, permKey: 'aiSuiteFollowup' },
-      { label: 'Confirmation Dashboard',  href: '/doctor/ai-suite/confirmation-dashboard', icon: FileBarChart, permKey: 'aiSuiteConfirmation' },
-      { label: 'Knowledge Base',          href: '/doctor/ai-suite/knowledge',              icon: BookOpen,     permKey: 'knowledgeBase' },
-    ] },
-    { heading: 'General', items: [
-      { label: 'Notifications', href: '/doctor/notifications', icon: Bell },
-      { label: 'Settings',      href: '/doctor/settings',      icon: Settings },
-    ] },
-  ],
+  more: [],
 }
 
 export type MobileRole = 'ADMIN' | 'RECEPTIONIST' | 'DOCTOR'

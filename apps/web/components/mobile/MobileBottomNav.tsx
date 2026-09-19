@@ -28,13 +28,13 @@ interface MobileBottomNavProps {
 // squeeze the desktop floating pill nav down — this is its own component,
 // only ever rendered below the xl breakpoint (see role layout.tsx files).
 //
-// ADMIN has no "Home" tab and no "More" button: the Code Clinic logo in
-// MobileHeader is the Home control, and every former "More" destination now
-// lives behind one of the 6 primary tabs' own menu (see lib/mobileNav.ts,
-// where ADMIN_NAV sets `more: []`). RECEPTIONIST/DOCTOR are unchanged this
-// pass — they still have a Home tab, plain link tabs, and a "More" button
-// for their existing `more` sections, which this component keeps rendering
-// exactly as before whenever `nav.more.length > 0`.
+// None of the three roles has a "Home" tab or a "More" button: the Code
+// Clinic logo in MobileHeader is the Home control, and every destination that
+// used to live behind a catch-all "More" sheet now lives behind one of the
+// primary tabs' own menu (see lib/mobileNav.ts, where every role's `more` is
+// `[]`). The legacy MoreSheet below is kept only so a future role/config with
+// a non-empty `more` array still renders correctly — `showMoreButton` is
+// false for all current roles.
 export default function MobileBottomNav({ role, perms, accent = '#1A237E' }: MobileBottomNavProps) {
   const pathname = usePathname()
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null)
