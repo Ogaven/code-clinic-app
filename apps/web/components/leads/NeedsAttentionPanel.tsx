@@ -68,7 +68,7 @@ function itemAge(item: AttentionItem): string {
 
 // Scoped to ADMIN/RECEPTIONIST leads pages only — reads GET
 // /crm-automation/needs-attention, gated adminAndReceptionist server-side.
-export default function NeedsAttentionPanel({ ownerId, onSelectLead }: { ownerId?: string | null; onSelectLead?: (leadId: string) => void }) {
+export default function NeedsAttentionPanel({ ownerId, onSelectLead, emptyState }: { ownerId?: string | null; onSelectLead?: (leadId: string) => void; emptyState?: React.ReactNode }) {
   const [data,    setData]    = useState<AttentionResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -95,7 +95,7 @@ export default function NeedsAttentionPanel({ ownerId, onSelectLead }: { ownerId
   if (loading && !data) {
     return <div className="rounded-2xl border border-gray-200 dark:border-white/10 p-4 text-sm text-gray-400 dark:text-white/40">Loading needs-attention queue…</div>
   }
-  if (!data || data.totalItems === 0) return null
+  if (!data || data.totalItems === 0) return emptyState ?? null
 
   const active = data.categories.filter(c => c.count > 0)
 

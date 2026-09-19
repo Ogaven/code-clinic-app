@@ -23,6 +23,8 @@ const pageTitles: Record<string, string> = {
   '/ai-suite/confirmation-dashboard': 'Confirmations', '/ai-suite/analytics': 'Analytics & Costs', '/campaigns': 'Campaigns',
   '/leads': 'Leads', '/quiz-funnels': 'Quiz Funnels', '/treatment-pipeline': 'Treatment Pipeline', '/referrals': 'Referrals', '/settings': 'Settings',
   '/profile': 'My Profile',
+  '/crm': 'CRM', '/crm/needs-attention': 'Needs Attention', '/crm/follow-ups': 'Follow-ups',
+  '/crm/sources': 'Sources & Campaigns', '/crm/revenue': 'Revenue', '/crm/reports': 'CRM Reports',
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

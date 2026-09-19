@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus, Search, RefreshCw, UserCheck, Trash2, X, CheckCircle2, AlertCircle,
   Phone, Mail, MessageSquare, ExternalLink, Clock, Tag,
@@ -171,7 +171,7 @@ function findMatchedConversation(lead: Lead, conversations: ConversationSummary[
 // record already used for currentUserId — DELETE /crm/leads/:id is
 // ADMIN-only server-side (apps/api/src/routes/crm.ts), so hiding the button
 // for non-admins is purely supplementary, not the real enforcement.
-export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
+export default function LeadsPipeline({ inboxPath, initialLeadId }: { inboxPath: string; initialLeadId?: string | null }) {
   const API   = '/api-proxy'
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
@@ -225,6 +225,18 @@ export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
   }, [srcFilter, search, token]) // eslint-disable-line
 
   useEffect(() => { load() }, [load])
+
+  // Deep-link support: CRM Dashboard / Needs Attention / Follow-ups pages
+  // link here with ?open=<leadId> so staff land straight in the drawer
+  // instead of having to search the board manually. Opens once per id (not
+  // on every `leads` refetch) so a manual close isn't immediately reopened
+  // by the next poll/refresh.
+  const openedInitialLeadRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!initialLeadId || openedInitialLeadRef.current === initialLeadId) return
+    const match = leads.find(l => l.id === initialLeadId)
+    if (match) { setViewLead(match); openedInitialLeadRef.current = initialLeadId }
+  }, [initialLeadId, leads])
 
   // Real conversations, for the deterministic Lead -> Conversation matching
   // above. Same endpoint already used by the AI Suite inbox — no new backend

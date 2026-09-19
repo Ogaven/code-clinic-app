@@ -49,7 +49,13 @@ const NAV: NavLink[] = [
       { label: 'Voice Studio', href: '/ai-suite/voice-studio' }, { label: 'Analytics & Costs', href: '/ai-suite/analytics' },
     ] },
   ] },
-  { label: 'CRM', children: [{ label: 'Leads', href: '/leads' }, { label: 'Campaigns', href: '/campaigns' }, { label: 'Referrals', href: '/referrals' }] },
+  { label: 'CRM', children: [
+    { label: 'Dashboard', href: '/crm' }, { label: 'Leads (Pipeline)', href: '/leads' },
+    { label: 'Needs Attention', href: '/crm/needs-attention' }, { label: 'Follow-ups', href: '/crm/follow-ups' },
+    { label: 'Sources & Campaigns', href: '/crm/sources' }, { label: 'Campaigns', href: '/campaigns' },
+    { label: 'Referrals', href: '/referrals' }, { label: 'Revenue', href: '/crm/revenue' },
+    { label: 'Reports', href: '/crm/reports' },
+  ] },
   { label: 'Reports', children: [
     { label: 'Case Acceptance', href: '/reports/case-acceptance' }, { label: 'Patient Live Flow', href: '/reports/patient-flow' },
     { label: 'Daily / Weekly Reports', href: '/reports/clinical' },
