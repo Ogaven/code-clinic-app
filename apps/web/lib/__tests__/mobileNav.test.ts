@@ -42,6 +42,15 @@ describe('getMobileNav — role-aware navigation + RBAC', () => {
     )
   })
 
+  it('RECEPTIONIST has 6 primary destinations — Patients, Appointments, Live Flow, AI Suite, CRM, Reports — no Home, no More', () => {
+    const nav = getMobileNav('RECEPTIONIST', {})
+    expect(nav.primary.map(t => t.key)).toEqual(
+      ['patients', 'appointments', 'live-flow', 'ai-suite', 'crm', 'reports'],
+    )
+    expect(nav.primary.find(t => t.key === 'home')).toBeUndefined()
+    expect(nav.more).toEqual([])
+  })
+
   it('RECEPTIONIST hides a primary tab when its real middleware-enforced permission key is denied', () => {
     // /receptionist/scheduling is gated by the canonical 'appointments' key in
     // middleware.ts's ROUTE_FEATURE table (post scheduling/appointments merge —
@@ -50,30 +59,43 @@ describe('getMobileNav — role-aware navigation + RBAC', () => {
     // user via the middleware redirect.
     const nav = getMobileNav('RECEPTIONIST', { appointments: false })
     expect(nav.primary.find(t => t.key === 'appointments')).toBeUndefined()
-    expect(nav.primary.find(t => t.key === 'home')).toBeDefined() // no permKey — never hidden
+    expect(nav.primary.find(t => t.key === 'crm')).toBeDefined() // no top-level permKey — never hidden by a single denial
   })
 
-  it('RECEPTIONIST keeps a primary tab whose permission key is simply absent (default-allow)', () => {
-    const nav = getMobileNav('RECEPTIONIST', {})
-    expect(nav.primary.map(t => t.key)).toEqual(['home', 'patients', 'appointments', 'ai-suite'])
-  })
-
-  it('RECEPTIONIST "More" sections disappear entirely once every item inside is denied', () => {
+  it('RECEPTIONIST "Live Flow" primary tab disappears when its permission is denied', () => {
     const nav = getMobileNav('RECEPTIONIST', { liveFlow: false })
-    expect(nav.more.find(s => s.heading === 'Clinic')).toBeUndefined()
+    expect(nav.primary.find(t => t.key === 'live-flow')).toBeUndefined()
   })
 
-  it('RECEPTIONIST "More" keeps a section if at least one item inside remains authorized', () => {
+  it('RECEPTIONIST "CRM" menu tab keeps a section if at least one item inside remains authorized', () => {
     const nav = getMobileNav('RECEPTIONIST', { leads: false, referrals: false, campaigns: false })
-    const crm = nav.more.find(s => s.heading === 'CRM')
-    expect(crm).toBeDefined()
-    expect(crm!.items.map(i => i.label)).toEqual(['Treatment Pipeline'])
+    const crmTab = nav.primary.find(t => t.key === 'crm')
+    expect(crmTab?.type).toBe('menu')
+    if (crmTab?.type !== 'menu') throw new Error('unreachable')
+    expect(crmTab.sections[0].items.map(i => i.label)).toEqual(['Treatment Pipeline'])
   })
 
-  it('DOCTOR primary tabs use Treatments instead of AI Suite, matching the real doctor route tree', () => {
+  it('RECEPTIONIST "CRM" menu tab disappears entirely once every item inside is denied', () => {
+    const nav = getMobileNav('RECEPTIONIST', {
+      treatmentPipeline: false, leads: false, referrals: false, campaigns: false,
+    })
+    expect(nav.primary.find(t => t.key === 'crm')).toBeUndefined()
+  })
+
+  it('DOCTOR has 5 primary destinations — My Patients, Appointments, Live Flow, AI Suite, Reports — no Home, no CRM', () => {
     const nav = getMobileNav('DOCTOR', {})
-    expect(nav.primary.map(t => t.key)).toEqual(['home', 'patients', 'appointments', 'treatments'])
-    expect(nav.primary.find(t => t.key === 'ai-suite')).toBeUndefined()
+    expect(nav.primary.map(t => t.key)).toEqual(
+      ['patients', 'appointments', 'live-flow', 'ai-suite', 'reports'],
+    )
+    expect(nav.primary.find(t => t.key === 'patients')?.label).toBe('My Patients')
+    expect(nav.primary.find(t => t.key === 'crm')).toBeUndefined()
+    expect(nav.more).toEqual([])
+  })
+
+  it('DOCTOR never inherits Reception/Admin nav items (no Treatment Pipeline/Leads/Campaigns tab)', () => {
+    const nav = getMobileNav('DOCTOR', {})
+    expect(nav.primary.find(t => t.key === 'crm')).toBeUndefined()
+    expect(nav.primary.find(t => t.key === 'treatments')).toBeUndefined()
   })
 
   it('DOCTOR hides Appointments when the real "appointments" permission key is denied', () => {
