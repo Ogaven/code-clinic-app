@@ -128,9 +128,17 @@ export default function CampaignsPage() {
         }
       }
       const r = await fetch(`${API}/campaigns/segment-count?${params.toString()}`, { headers: authH as any })
-      const d = await r.json()
-      setSegCount(typeof d.count === 'number' ? d.count : null)
-    } catch { setSegCount(null) }
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || typeof d.count !== 'number') {
+        setSegCount(null)
+        showToast(d.error || 'Could not load recipient count for this audience — try again.', 'err')
+      } else {
+        setSegCount(d.count)
+      }
+    } catch {
+      setSegCount(null)
+      showToast('Could not load recipient count — check your connection and try again.', 'err')
+    }
     setCountLoading(false)
   }
 
