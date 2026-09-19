@@ -922,10 +922,17 @@ export default function MultiDoctorCalendar({ onBookSlot, onClickAppointment }: 
   } | null>(null)
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
 
-  // Internal appointment click — shows popup and forwards to external handler if provided
+  // Internal appointment click — only falls back to this component's own
+  // popup (ApptDetailModal, hardcoded to /doctor/patients/:id) when no
+  // external handler is wired, i.e. Doctor's own schedule page. Reception
+  // and Admin both pass onClickAppointment to open their own role-correct
+  // AppointmentModal -- previously this ALSO opened ApptDetailModal at the
+  // same time, and whichever of the two overlapping z-50 dialogs painted on
+  // top could send Reception/Admin to the Doctor-only patient route, which
+  // middleware.ts then bounced back to their dashboard.
   function handleApptClick(appt: Appointment) {
+    if (onClickAppointment) { onClickAppointment(appt); return }
     setSelectedAppt(appt)
-    onClickAppointment?.(appt)
   }
 
   useEffect(() => { dateRef.current = date }, [date])

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useRef } from 'react'
 import {
   ArrowLeft, User, Calendar, FileText, Activity, DollarSign, Folder,
@@ -1411,11 +1411,18 @@ function ActivityTab({ patientId }: { patientId: string }) {
 export default function PatientDetailPage() {
   const params  = useParams()
   const router  = useRouter()
+  const searchParams = useSearchParams()
   const id      = params.id as string
 
   const [patient, setPatient]       = useState<any>(null)
   const [loading, setLoading]       = useState(true)
-  const [tab, setTab]               = useState<Tab>('timeline')
+  // Deep-link support (e.g. the scheduling calendar's "View Chart" link,
+  // ?tab=dental) — mirrors the Admin patient profile page's pattern.
+  const [tab, setTab]               = useState<Tab>(() => {
+    const tp = searchParams.get('tab') as Tab | null
+    const valid: Tab[] = ['overview', 'appointments', 'dental', 'perio', 'treatment', 'notes', 'billing', 'documents', 'activity', 'timeline', 'crm']
+    return tp && valid.includes(tp) ? tp : 'timeline'
+  })
   const [toast, setToast]           = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [localAvatar, setLocalAvatar] = useState<string | null>(null)
   const [uploading, setUploading]   = useState(false)
