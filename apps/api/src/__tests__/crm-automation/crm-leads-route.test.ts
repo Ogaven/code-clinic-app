@@ -8,23 +8,23 @@ import type { Server } from 'node:http'
 // — which is why production leads reached CONTACTED with zero
 // LeadStageHistory rows. Both routes must now go through the stage service.
 
-const { prismaMock, transitionLeadStage, convertLeadOnBooking } = vi.hoisted(() => ({
+const { prismaMock, transitionLeadStage, convertLeadOnBooking, findOrCreateLeadForChannel, handleNewLeadCreated } = vi.hoisted(() => ({
   prismaMock: {
-    lead: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    lead: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), findMany: vi.fn(), create: vi.fn() },
     user: { findUnique: vi.fn() },
     patient: { findFirst: vi.fn(), create: vi.fn() },
   },
   transitionLeadStage: vi.fn(),
   convertLeadOnBooking: vi.fn(),
+  findOrCreateLeadForChannel: vi.fn(),
+  handleNewLeadCreated: vi.fn(),
 }))
 vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('../../middleware/auth', () => ({
   requireAuth: (req: any, _res: any, next: any) => { req.user = { id: 'staff-1', role: 'RECEPTIONIST' }; next() },
 }))
 vi.mock('../../crm-automation/lead-stage.service', () => ({ transitionLeadStage, convertLeadOnBooking }))
-vi.mock('../../crm-automation/lead-intake.service', () => ({
-  findOrCreateLeadForChannel: vi.fn(), handleNewLeadCreated: vi.fn(),
-}))
+vi.mock('../../crm-automation/lead-intake.service', () => ({ findOrCreateLeadForChannel, handleNewLeadCreated }))
 
 import router from '../../routes/crm'
 
@@ -78,6 +78,36 @@ describe('PATCH /crm/leads/:id — status changes route through transitionLeadSt
     expect(res.status).toBe(200)
     expect(transitionLeadStage).not.toHaveBeenCalled()
     expect(prismaMock.lead.update).toHaveBeenCalledWith({ where: { id: 'lead-1' }, data: { assignedTo: 'user-2' } })
+  })
+})
+
+describe('POST /crm/leads — every new lead is born NEW regardless of client input', () => {
+  it('ignores a client-supplied status when creating a lead without a phone', async () => {
+    prismaMock.lead.create.mockResolvedValue({ id: 'lead-2', status: 'NEW', stage: 'NEW' })
+    handleNewLeadCreated.mockResolvedValue(undefined)
+
+    const res = await fetch(`${origin}/leads`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'WALKIN', name: 'Jane Doe', status: 'CONVERTED' }),
+    })
+
+    expect(res.status).toBe(201)
+    expect(prismaMock.lead.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: 'NEW', stage: 'NEW' }),
+    })
+  })
+
+  it('ignores a client-supplied status when creating/finding a lead by phone', async () => {
+    findOrCreateLeadForChannel.mockResolvedValue({ lead: { id: 'lead-3', status: 'NEW' } })
+
+    const res = await fetch(`${origin}/leads`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'WALKIN', phone: '+256700000000', status: 'QUALIFIED' }),
+    })
+
+    expect(res.status).toBe(201)
+    const call = findOrCreateLeadForChannel.mock.calls[0][0]
+    expect(call.createData).toEqual(expect.objectContaining({ status: 'NEW', stage: 'NEW' }))
   })
 })
 

@@ -46,16 +46,22 @@ router.get('/leads', requireAuth, adminAndReceptionist, async (req: Request, res
 })
 
 router.post('/leads', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
-  const { name, phone, email, source, status, notes, lastMessage } = req.body
+  const { name, phone, email, source, notes, lastMessage } = req.body
   if (!source) return res.status(400).json({ error: 'Source is required' })
   try {
+    // Every lead is born NEW. Same rule as PATCH above: status has exactly one
+    // legitimate write path (transitionLeadStage), so a client-supplied status
+    // here is ignored rather than trusted — otherwise a lead could exist as
+    // CONVERTED/QUALIFIED/LOST with zero LeadStageHistory. A caller that wants
+    // a different stage right after creation should PATCH it, which already
+    // goes through transitionLeadStage and records the history.
     const createData = {
       name:        name        || null,
       phone:       phone       || null,
       email:       email       || null,
       source:      source,
-      status:      status      || 'NEW',
-      stage:       status      || 'NEW',
+      status:      'NEW',
+      stage:       'NEW',
       notes:       notes       || null,
       lastMessage: lastMessage || null,
     }
