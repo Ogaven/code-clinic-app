@@ -354,7 +354,7 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
   }
 
   return (
-    <div className={cn('fixed bottom-0 left-0 right-0 z-[60] lg:static lg:flex-shrink-0 px-3 py-2 border-t', dark ? 'border-white/8' : 'border-gray-100')}
+    <div className={cn('fixed bottom-0 left-0 right-0 z-[60] md:static md:flex-shrink-0 px-3 py-2 border-t', dark ? 'border-white/8' : 'border-gray-100')}
       style={{ background: dark ? '#1F2C34' : '#f0f2f5', paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}>
       <div className="flex items-center gap-2">
         <div className="relative">

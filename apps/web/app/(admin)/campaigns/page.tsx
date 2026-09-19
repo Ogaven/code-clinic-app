@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react'
 import { Megaphone, Send, Clock, Users, CheckCircle2, AlertCircle, RefreshCw, X, Eye, BookOpen, Plus, Pencil, Trash2, Cake, Sparkles } from 'lucide-react'
 
+// Full legacy list — used ONLY by the "Send Template" modal below (tmplSegment),
+// which posts to the separate /templates/:id/send endpoint (its own segment
+// logic in templates.ts, untouched by this redesign). Keeping this list
+// intact here preserves that flow exactly as it worked before.
 const SEGMENTS = [
   { value: 'ALL',           label: 'All Patients' },
   { value: 'NEW_LEAD',      label: 'New Patient' },
@@ -14,6 +18,25 @@ const SEGMENTS = [
   { value: 'BALANCE_OWING', label: 'Balance Owing' },
 ]
 
+// The redesigned WhatsApp Broadcast audience selector — per clinic feedback,
+// the full 8-option status list didn't map to how staff actually think about
+// who to message. ACTIVE keeps its existing definition (a completed
+// appointment within the last 90 days, computed server-side); NEW is a
+// separate "first attended appointment in a time range" concept and gets its
+// own preset/custom-range picker (see NEW_PRESETS below).
+const BROADCAST_SEGMENTS = [
+  { value: 'ALL',    label: 'All Patients' },
+  { value: 'ACTIVE', label: 'Active Patients' },
+  { value: 'NEW',    label: 'New Patients' },
+]
+
+const NEW_PRESETS: { value: 'today' | 'week' | 'month' | 'custom'; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'week',  label: 'This Week' },
+  { value: 'month', label: 'This Month' },
+  { value: 'custom', label: 'Custom' },
+]
+
 const SEGMENT_COLORS: Record<string, string> = {
   ALL:           'bg-blue-100 text-blue-700',
   NEW_LEAD:      'bg-gray-100 text-gray-600',
@@ -23,6 +46,7 @@ const SEGMENT_COLORS: Record<string, string> = {
   LAPSED:        'bg-orange-100 text-orange-700',
   DORMANT:       'bg-red-100 text-red-700',
   BALANCE_OWING: 'bg-rose-100 text-rose-700',
+  NEW:           'bg-cyan-100 text-cyan-700',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -47,6 +71,9 @@ export default function CampaignsPage() {
   const authH = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
   const [segment,      setSegment]      = useState('ALL')
+  const [newPreset,    setNewPreset]    = useState<'today' | 'week' | 'month' | 'custom'>('today')
+  const [newFrom,      setNewFrom]      = useState('')
+  const [newTo,        setNewTo]        = useState('')
   const [segCount,     setSegCount]     = useState<number | null>(null)
   const [countLoading, setCountLoading] = useState(false)
   const [message,      setMessage]      = useState('')
@@ -88,11 +115,19 @@ export default function CampaignsPage() {
     setTimeout(() => setToast(null), 4000)
   }
 
-  const fetchCount = async (seg: string) => {
+  const fetchCount = async (seg: string, opts?: { preset?: string; from?: string; to?: string }) => {
     setCountLoading(true)
     setSegCount(null)
     try {
-      const r = await fetch(`${API}/campaigns/segment-count?segment=${seg}`, { headers: authH as any })
+      const params = new URLSearchParams({ segment: seg })
+      if (seg === 'NEW') {
+        params.set('preset', opts?.preset || newPreset)
+        if ((opts?.preset || newPreset) === 'custom') {
+          params.set('from', opts?.from ?? newFrom)
+          params.set('to',   opts?.to   ?? newTo)
+        }
+      }
+      const r = await fetch(`${API}/campaigns/segment-count?${params.toString()}`, { headers: authH as any })
       const d = await r.json()
       setSegCount(typeof d.count === 'number' ? d.count : null)
     } catch { setSegCount(null) }
@@ -249,10 +284,27 @@ export default function CampaignsPage() {
 
   const handleSegment = (seg: string) => {
     setSegment(seg)
-    fetchCount(seg)
+    if (seg === 'NEW') {
+      setNewPreset('today'); setNewFrom(''); setNewTo('')
+      fetchCount(seg, { preset: 'today' })
+    } else {
+      fetchCount(seg)
+    }
+  }
+
+  const handleNewPreset = (preset: 'today' | 'week' | 'month' | 'custom') => {
+    setNewPreset(preset)
+    if (preset !== 'custom') fetchCount('NEW', { preset })
+    // custom: wait for both from/to before counting (see handleCustomRangeChange)
+  }
+
+  const handleCustomRangeChange = (from: string, to: string) => {
+    setNewFrom(from); setNewTo(to)
+    if (from && to) fetchCount('NEW', { preset: 'custom', from, to })
   }
 
   const canSend = message.trim().length > 0 && (scheduleType === 'now' || !!scheduleAt)
+    && (segment !== 'NEW' || newPreset !== 'custom' || (!!newFrom && !!newTo))
 
   const handleSend = async () => {
     if (!canSend || sending) return
@@ -260,6 +312,10 @@ export default function CampaignsPage() {
     setShowPreview(false)
     try {
       const body: any = { segment, message: message.trim() }
+      if (segment === 'NEW') {
+        body.preset = newPreset
+        if (newPreset === 'custom') { body.from = newFrom; body.to = newTo }
+      }
       if (scheduleType === 'later' && scheduleAt) body.scheduleAt = scheduleAt
       const r = await fetch(`${API}/campaigns/whatsapp/broadcast`, {
         method:  'POST',
@@ -277,7 +333,9 @@ export default function CampaignsPage() {
     setSending(false)
   }
 
-  const segLabel = SEGMENTS.find(s => s.value === segment)?.label || segment
+  const newPresetLabel = NEW_PRESETS.find(p => p.value === newPreset)?.label || ''
+  const segLabel = (BROADCAST_SEGMENTS.find(s => s.value === segment)?.label || segment)
+    + (segment === 'NEW' ? ` (${newPreset === 'custom' ? `${newFrom} → ${newTo}` : newPresetLabel})` : '')
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -659,10 +717,41 @@ export default function CampaignsPage() {
                 onChange={e => handleSegment(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               >
-                {SEGMENTS.map(s => (
+                {BROADCAST_SEGMENTS.map(s => (
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
               </select>
+
+              {segment === 'NEW' && (
+                <div className="mt-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">First visit</p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {NEW_PRESETS.map(p => (
+                      <button key={p.value} onClick={() => handleNewPreset(p.value)}
+                        className={`py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                          newPreset === p.value
+                            ? 'border-transparent text-white'
+                            : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        }`}
+                        style={newPreset === p.value ? { background: 'linear-gradient(135deg,#1A237E,#29ABE2)' } : {}}>
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  {newPreset === 'custom' && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <input type="date" value={newFrom} max={newTo || undefined}
+                        onChange={e => handleCustomRangeChange(e.target.value, newTo)}
+                        className="flex-1 px-2.5 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                      <span className="text-xs text-gray-400">→</span>
+                      <input type="date" value={newTo} min={newFrom || undefined}
+                        onChange={e => handleCustomRangeChange(newFrom, e.target.value)}
+                        className="flex-1 px-2.5 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="mt-2 h-6 flex items-center">
                 {countLoading ? (
                   <span className="text-xs text-gray-400 flex items-center gap-1.5">
@@ -785,7 +874,25 @@ export default function CampaignsPage() {
                   </thead>
                   <tbody>
                     {campaigns.map((c: any) => {
-                      const segInfo = SEGMENTS.find(s => s.value === c.targetSegment)
+                      // targetSegment is a legacy plain status code ("ACTIVE") for
+                      // everything except NEW+range broadcasts, which encode as
+                      // JSON (see encodeTargetSegment in campaigns.ts) — parse
+                      // defensively so old and new campaigns both render correctly.
+                      let segCode = c.targetSegment || 'ALL'
+                      let segSuffix = ''
+                      try {
+                        const parsed = JSON.parse(c.targetSegment)
+                        if (parsed && typeof parsed === 'object' && typeof parsed.segment === 'string') {
+                          segCode = parsed.segment
+                          if (segCode === 'NEW') {
+                            const label = NEW_PRESETS.find(p => p.value === parsed.preset)?.label
+                            segSuffix = parsed.preset === 'custom'
+                              ? ` (${parsed.from} → ${parsed.to})`
+                              : label ? ` (${label})` : ''
+                          }
+                        }
+                      } catch {}
+                      const segInfo = BROADCAST_SEGMENTS.find(s => s.value === segCode) || SEGMENTS.find(s => s.value === segCode)
                       const created = new Date(c.createdAt)
                       return (
                         <tr key={c.id}
@@ -799,8 +906,8 @@ export default function CampaignsPage() {
                             </p>
                           </td>
                           <td className="px-5 py-3.5">
-                            <span className={`inline-flex items-center text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${SEGMENT_COLORS[c.targetSegment || 'ALL'] || 'bg-gray-100 text-gray-600'}`}>
-                              {segInfo?.label || c.targetSegment || 'All'}
+                            <span className={`inline-flex items-center text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${SEGMENT_COLORS[segCode] || 'bg-gray-100 text-gray-600'}`}>
+                              {(segInfo?.label || segCode) + segSuffix}
                             </span>
                           </td>
                           <td className="px-5 py-3.5 max-w-[220px]">

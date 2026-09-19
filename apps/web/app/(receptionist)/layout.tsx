@@ -12,6 +12,7 @@ import MobileHeader from '@/components/mobile/MobileHeader'
 import MobileBottomNav from '@/components/mobile/MobileBottomNav'
 import MobileProfileSheet from '@/components/mobile/MobileProfileSheet'
 import { usePwaInstall } from '@/lib/pwaInstall'
+import { refreshToken } from '@/lib/api'
 
 async function fetchLivePerms(token: string): Promise<Record<string, boolean>> {
   try {
@@ -207,16 +208,8 @@ export default function ReceptionistLayout({ children }: { children: React.React
     setUser(u)
     const tok = localStorage.getItem('cc_token') || ''
     // Refresh token at mount so cookie has latest permissions for middleware enforcement
-    fetch('/api-proxy/auth/refresh', { method: 'POST', credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(refreshData => {
-        const activeTok = refreshData?.accessToken ?? tok
-        if (refreshData?.accessToken) {
-          localStorage.setItem('cc_token', refreshData.accessToken)
-          document.cookie = `cc_token=${refreshData.accessToken}; path=/; SameSite=Lax; max-age=43200`
-        }
-        return fetchLivePerms(activeTok)
-      })
+    refreshToken()
+      .then(fresh => fetchLivePerms(fresh ?? tok))
       .then(p => setPermsMap(p))
       .catch(() => fetchLivePerms(tok).then(p => setPermsMap(p)))
     refreshAvatar(u)

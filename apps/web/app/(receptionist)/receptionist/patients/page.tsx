@@ -9,6 +9,7 @@ import {
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { formatDob, ageFromDob } from '@/lib/dob'
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: any) { super(props); this.state = { hasError: false } }
@@ -263,7 +264,7 @@ export default function PatientsPage() {
     const headers = ['First Name', 'Last Name', 'Phone', 'Email', 'Gender', 'Date of Birth', 'Appointments', 'Registered']
     const rows = filtered.map(p => [
       p.firstName, p.lastName, p.phone, p.email || '', p.gender || '',
-      p.dob ? new Date(p.dob).toLocaleDateString('en-GB') : '',
+      p.dob ? formatDob(p.dob) : '',
       p._count?.appointments || 0,
       new Date(p.createdAt).toLocaleDateString('en-GB'),
     ])
@@ -283,7 +284,7 @@ export default function PatientsPage() {
     const headers = ['First Name', 'Last Name', 'Phone', 'Email', 'Gender', 'Date of Birth', 'Appointments', 'Registered']
     const rows = filtered.map(p => [
       p.firstName, p.lastName, p.phone, p.email || '', p.gender || '',
-      p.dob ? new Date(p.dob).toLocaleDateString('en-GB') : '',
+      p.dob ? formatDob(p.dob) : '',
       p._count?.appointments || 0,
       new Date(p.createdAt).toLocaleDateString('en-GB'),
     ])
@@ -704,7 +705,7 @@ export default function PatientsPage() {
                   <div>
                     <h2 className="text-lg font-black text-gray-800 dark:text-white">{selected.firstName} {selected.lastName}</h2>
                     <p className="text-sm text-gray-400 dark:text-white/40">
-                      {selected.gender || 'N/A'} · {selected.dob ? new Date().getFullYear() - new Date(selected.dob).getFullYear() + ' yrs' : 'Age N/A'}
+                      {selected.gender || 'N/A'} · {ageFromDob(selected.dob) !== null ? `${ageFromDob(selected.dob)} yrs` : 'Age N/A'}
                     </p>
                   </div>
                 </div>

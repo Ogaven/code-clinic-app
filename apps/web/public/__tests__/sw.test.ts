@@ -38,6 +38,24 @@ describe('sw.js — notification click routing never trusts an arbitrary payload
   })
 })
 
+describe('sw.js — pushsubscriptionchange persists the rotated subscription', () => {
+  // Regression guard: a browser-driven key rotation used to just re-subscribe
+  // locally and stop there, leaving the backend's PushSubscription row
+  // pointed at a dead endpoint until the user manually re-enabled
+  // notifications. The handler must now hand the new subscription to any
+  // open tab so it can be persisted via the authenticated /push/subscribe
+  // call (the service worker itself has no access to the auth token).
+  it('re-subscribes and posts the new subscription to open clients', () => {
+    const handlerStart = swSource.indexOf("addEventListener('pushsubscriptionchange'")
+    expect(handlerStart).toBeGreaterThan(-1)
+    const handlerSlice = swSource.slice(handlerStart, handlerStart + 700)
+    expect(handlerSlice).toMatch(/pushManager\.subscribe\(/)
+    expect(handlerSlice).toContain('clients.matchAll(')
+    expect(handlerSlice).toContain("type: 'PUSH_SUBSCRIPTION_CHANGED'")
+    expect(handlerSlice).toContain('postMessage(')
+  })
+})
+
 // Mirrors sw.js's safeNotificationUrl() verbatim — keep in sync if that
 // function ever changes.
 function safeNotificationUrl(rawUrl: unknown, origin: string): string {
