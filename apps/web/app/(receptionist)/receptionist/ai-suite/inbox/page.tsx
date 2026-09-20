@@ -353,8 +353,15 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
     }
   }
 
+  // z-[10001]: above MobileBottomNav's z-[10000] (components/mobile/MobileBottomNav.tsx)
+  // -- both are `fixed bottom-0` on phone-width viewports, so without this the
+  // persistent tab bar rendered over and completely hid the composer's input/send
+  // button. The composer's opaque background fully covers the tab bar while a
+  // conversation is open, matching the standard "composer wins over the nav while
+  // actively chatting" pattern (the thread's own back button already replaces the
+  // tab bar for navigation at this depth).
   return (
-    <div className={cn('fixed bottom-0 left-0 right-0 z-[60] md:static md:flex-shrink-0 px-3 py-2 border-t', dark ? 'border-white/8' : 'border-gray-100')}
+    <div className={cn('fixed bottom-0 left-0 right-0 z-[10001] md:static md:z-auto md:flex-shrink-0 px-3 py-2 border-t', dark ? 'border-white/8' : 'border-gray-100')}
       style={{ background: dark ? '#1F2C34' : '#f0f2f5', paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}>
       <div className="flex items-center gap-2">
         <div className="relative">

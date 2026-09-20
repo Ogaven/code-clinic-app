@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { X, Phone, Clock, Stethoscope, User, Check, XCircle, AlertTriangle, Loader2, ExternalLink, Edit2, Save, CalendarDays, RotateCcw, PhoneCall, Trash2 } from 'lucide-react'
 import { cn, formatPhone, formatUGX } from '@/lib/utils'
+import { patientProfileBase } from '@/lib/patientRoutes'
 import Avatar from '@/components/ui/Avatar'
 
 interface Appointment {
@@ -58,6 +59,7 @@ const STATUS_NEXT: Record<string, { status: string; label: string; colour: strin
 }
 
 export default function AppointmentModal({ appointment, onClose, onStatusChange, onBookFollowUp, userRole = 'ADMIN', autoEdit, canDelete = false, onDeleted }: Props) {
+  const patientBase = patientProfileBase(userRole)
   const [loading,      setLoading]      = useState<string | null>(null)
   const [editMode,     setEditMode]     = useState(false)
   const [doctors,      setDoctors]      = useState<any[]>([])
@@ -227,11 +229,11 @@ export default function AppointmentModal({ appointment, onClose, onStatusChange,
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-semibold text-clinic-navy dark:text-white">{appointment.patient.firstName} {appointment.patient.lastName}</p>
-                  <Link href={`/patients/${appointment.patient.id}?tab=dental`} onClick={onClose}
+                  <Link href={`${patientBase}/${appointment.patient.id}?tab=dental`} onClick={onClose}
                     className="flex items-center gap-1 text-[10px] font-bold text-clinic-blue hover:underline">
                     <ExternalLink size={10} /> View Chart
                   </Link>
-                  <Link href={`/patients/${appointment.patient.id}`} onClick={onClose}
+                  <Link href={`${patientBase}/${appointment.patient.id}`} onClick={onClose}
                     className="flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:underline">
                     Full Profile
                   </Link>
