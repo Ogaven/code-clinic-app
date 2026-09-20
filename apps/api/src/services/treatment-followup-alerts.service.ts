@@ -39,17 +39,26 @@ const ALERT_LABEL: Record<FollowUpAlertType, string> = {
   OVERDUE:   'overdue',
 }
 
-// Runs periodically (registered in main.ts). Queries every TreatmentPlan with
-// a non-null followUpAt (regardless of status — a follow-up date matters
-// wherever it's set, though "On Hold" is the primary use case per the task),
-// buckets it against Kampala "today", and fires at most one alert per
-// (plan, alertType) per Kampala calendar day.
+// Statuses a treatment plan can carry (pipeline.ts VALID_STATUSES) that mean
+// there is nothing left for staff to act on -- a followUpAt left over from
+// before the plan reached one of these is not a live commitment anymore.
+// Planned/In Progress/On Hold all remain actionable (a due-soon/overdue
+// follow-up on any of them is still real work staff need to see, not just
+// the On Hold case this scheduler originally targeted).
+const NON_ACTIONABLE_STATUSES = ['Completed', 'Cancelled', 'Declined']
+
+// Runs periodically (registered in main.ts). Queries every ACTIONABLE
+// TreatmentPlan with a non-null followUpAt -- followUpAt is the only field
+// in the domain model that represents a genuine staff-set due date; there is
+// no separate "treatment due date" to consume, and none is inferred from
+// dateAdded/createdAt. Buckets it against Kampala "today", and fires at most
+// one alert per (plan, alertType) per Kampala calendar day.
 export async function checkAndSendTreatmentFollowUpAlerts(): Promise<void> {
   try {
     const today = startOfKampalaDay()
 
     const plans = await prisma.treatmentPlan.findMany({
-      where: { followUpAt: { not: null } },
+      where: { followUpAt: { not: null }, status: { notIn: NON_ACTIONABLE_STATUSES } },
       include: {
         patient: { select: { firstName: true, lastName: true } },
         doctor:  { include: { user: { select: { id: true } } } },
@@ -90,6 +99,12 @@ export async function checkAndSendTreatmentFollowUpAlerts(): Promise<void> {
       const body = `${patientName}'s treatment follow-up (${plan.stage}, ${plan.status}) is ${label} (${dueDateStr})${reasonSuffix}`
       const href = `/patients/${plan.patientId}`
 
+      // Full clinical detail (stage/status/reason) is fine in the in-app
+      // notification centre, which only the authenticated staff member ever
+      // sees. A push notification can surface on a locked device screen, so
+      // its body stays generic -- patient name + due/overdue only.
+      const pushBody = `Tap to view ${patientName}'s treatment follow-up details.`
+
       const recipientIds = new Set<string>(staff.map(u => u.id))
       if (plan.doctor?.user?.id) recipientIds.add(plan.doctor.user.id)
 
@@ -102,7 +117,7 @@ export async function checkAndSendTreatmentFollowUpAlerts(): Promise<void> {
           console.error('[TreatmentFollowUpAlert] Notification create failed:', e?.message)
           return
         }
-        sendPushToUser(userId, { title, body, url: href }).catch(() => {})
+        sendPushToUser(userId, { title, body: pushBody, url: href }).catch(() => {})
       }))
     }
   } catch (e: any) {

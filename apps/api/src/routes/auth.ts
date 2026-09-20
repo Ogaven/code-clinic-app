@@ -58,7 +58,16 @@ function setRefreshCookie(res: any, token: string) {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000,
-    path: '/auth/refresh',
+    // NOT '/auth/refresh': the browser never talks to this API origin
+    // directly, only through the web app's same-origin proxy at
+    // /api-proxy/* (apps/web/app/api-proxy/[...path]/route.ts), so every
+    // request the browser actually makes is to /api-proxy/auth/refresh.
+    // A cookie scoped to /auth/refresh never matches that path, so the
+    // browser silently drops it and every refresh attempt 401s with "No
+    // refresh token" -- staff get hard-logged-out once the access token
+    // expires even though a valid refresh token exists. Scope to '/' so
+    // it's actually sent back on the path the browser really requests.
+    path: '/',
   })
 }
 
@@ -305,10 +314,10 @@ router.post('/logout', requireAuth, async (req, res) => {
       }
     }
     logAudit({ userId: req.user!.id, actionType: 'LOGOUT', entityType: 'STAFF', entityId: req.user!.id, entityName: `${req.user!.firstName} ${req.user!.lastName}`, req })
-    res.clearCookie('refreshToken', { path: '/auth/refresh' })
+    res.clearCookie('refreshToken', { path: '/' })
     res.json({ message: 'Logged out' })
   } catch {
-    res.clearCookie('refreshToken', { path: '/auth/refresh' })
+    res.clearCookie('refreshToken', { path: '/' })
     res.json({ message: 'Logged out' })
   }
 })
