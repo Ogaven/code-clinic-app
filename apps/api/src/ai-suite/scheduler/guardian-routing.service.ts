@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma'
 import { getGreetingName, isMinor } from '../../utils/nameHelper'
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
+import { isWithinStaffSessionWindow, notifyStaffInApp } from '../../services/agent/guards/escalation'
 
 export type PatientForRouting = {
   id: string
@@ -110,11 +111,20 @@ export async function alertStaffMinorNoGuardian(
   const reason = `${messageType} could not be sent — no guardian contact on file, please add guardian info and follow up manually`
   const msg = `⚠️ ${patientFullName} is a minor with no guardian contact on file — a ${messageType} could not be sent. Please add guardian info and follow up manually.`
 
-  // Template-first, freeform fallback only on failure — same pattern as
-  // escalation.ts's notifyJulian(). This alert fires every time a scheduled
-  // job hits the same still-unfixed patient (by design, see the comment
-  // above this function), so a high-volume free-form path here is exactly
-  // what was driving repeated 24h-window failures to the staff number.
+  // Template-first, freeform fallback ONLY inside the 24h session window --
+  // same fail-closed architecture as escalation.ts's notifyJulian() and
+  // followup.service.ts's patient-confirmation gating. This alert fires
+  // every time a scheduled job hits the same still-unfixed patient (by
+  // design, see the comment above this function), so it was the single
+  // highest-volume source of real Meta #131047 "re-engagement message"
+  // failures against the staff number: it used to fall back to a free-form
+  // send unconditionally whenever no template was configured, or whenever a
+  // configured template's send itself failed for ANY reason -- exactly the
+  // send shape Meta rejects outside the window. Outside the window with no
+  // template configured, no send is attempted at all (would only produce
+  // another #131047); if WhatsApp doesn't succeed, the in-app notification
+  // centre + push is a guaranteed fallback that doesn't depend on Meta's
+  // account health or the session window.
   //
   // The approved cc_staff_concern template's {{2}} placeholder is literally
   // "Phone:" in its Meta-approved body text -- it must be the patient's real
@@ -124,19 +134,41 @@ export async function alertStaffMinorNoGuardian(
   // when absent, "N/A" is an honest placeholder rather than a fabricated
   // or mislabelled value.
   const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
+  const withinWindow = await isWithinStaffSessionWindow(staffNum)
   let sent = false
   if (templateName) {
     try {
       await sendWhatsAppTemplate(staffNum, templateName, [patientFullName, patientPhone || 'N/A', reason])
       sent = true
     } catch (err: any) {
-      console.warn(`[GuardianRouting] Template failed for ${patientFullName}, falling back to freeform:`, err.message)
+      console.warn(`[GuardianRouting] Template failed for ${patientFullName}:`, err.message)
+      if (withinWindow) {
+        try {
+          await sendWhatsAppMessage(staffNum, msg)
+          sent = true
+        } catch (waErr: any) {
+          console.error(`[GuardianRouting] Freeform fallback failed for ${patientFullName}:`, waErr.message)
+        }
+      }
     }
-  }
-  if (!sent) {
-    await sendWhatsAppMessage(staffNum, msg).catch((err: Error) => {
+  } else if (withinWindow) {
+    try {
+      await sendWhatsAppMessage(staffNum, msg)
+      sent = true
+    } catch (err: any) {
       console.error(`[GuardianRouting] Staff alert failed for ${patientFullName}:`, err.message)
-    })
+    }
+  } else {
+    console.warn(`[GuardianRouting] BLOCKED_TEMPLATE_REQUIRED for ${patientFullName} — outside the 24h WhatsApp session window and no WA_TEMPLATE_STAFF_ALERT_NAME configured. No freeform send attempted.`)
+  }
+
+  if (!sent) {
+    await notifyStaffInApp({
+      title:    '⚠️ Guardian Contact Missing — Action Needed',
+      body:     msg,
+      pushBody: `${patientFullName} needs guardian info added — tap to view.`,
+      href:     role => role === 'RECEPTIONIST' ? `/receptionist/patients?search=${encodeURIComponent(patientFullName)}` : `/patients?search=${encodeURIComponent(patientFullName)}`,
+    }).catch((e: any) => console.error('[GuardianRouting] In-app fallback failed:', e?.message))
   }
 }
 

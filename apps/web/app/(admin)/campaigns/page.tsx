@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Megaphone, Send, Clock, Users, CheckCircle2, AlertCircle, RefreshCw, X, Eye, BookOpen, Plus, Pencil, Trash2, Cake, Sparkles } from 'lucide-react'
+import { buildSegmentCountParams } from '@/lib/campaignSegmentParams'
 
 // Full legacy list — used ONLY by the "Send Template" modal below (tmplSegment),
 // which posts to the separate /templates/:id/send endpoint (its own segment
@@ -119,14 +120,7 @@ export default function CampaignsPage() {
     setCountLoading(true)
     setSegCount(null)
     try {
-      const params = new URLSearchParams({ segment: seg })
-      if (seg === 'NEW') {
-        params.set('preset', opts?.preset || newPreset)
-        if ((opts?.preset || newPreset) === 'custom') {
-          params.set('from', opts?.from ?? newFrom)
-          params.set('to',   opts?.to   ?? newTo)
-        }
-      }
+      const params = buildSegmentCountParams(seg, opts?.preset || newPreset, opts?.from ?? newFrom, opts?.to ?? newTo)
       const r = await fetch(`${API}/campaigns/segment-count?${params.toString()}`, { headers: authH as any })
       const d = await r.json().catch(() => ({}))
       if (!r.ok || typeof d.count !== 'number') {

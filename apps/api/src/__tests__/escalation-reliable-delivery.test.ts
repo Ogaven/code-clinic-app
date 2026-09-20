@@ -169,13 +169,15 @@ describe('notifyJulian — fail-closed WhatsApp window gating + guaranteed deliv
     expect(sendStaffSMSMock).toHaveBeenCalledTimes(1)
   })
 
-  it('creates an in-app notification + push fallback for every RECEPTIONIST/ADMIN user when BOTH WhatsApp and SMS fail', async () => {
+  it('creates an in-app notification + push fallback for every RECEPTIONIST/ADMIN user when BOTH WhatsApp and SMS fail, and never a DOCTOR', async () => {
+    store.users.set('doctor_1', { id: 'doctor_1', role: 'DOCTOR', isActive: true })
     setStaffLastInbound(48) // WhatsApp blocked by the window gate
     sendStaffSMSMock.mockRejectedValueOnce(new Error("Africa's Talking not configured"))
     await notifyJulian('+256700111222', 'my tooth hurts')
 
     expect(store.notifications).toHaveLength(2)
     const recipientIds = store.notifications.map(n => n.userId)
+    expect(recipientIds).not.toContain('doctor_1')
     expect(recipientIds.sort()).toEqual(['admin_1', 'reception_1'])
     expect(pushMock).toHaveBeenCalledTimes(2)
   })
@@ -213,6 +215,30 @@ describe('createEscalation — persists independent of WhatsApp, and redacts the
     expect(store.notifications).toHaveLength(2)
     expect(sendWhatsAppMessageMock).not.toHaveBeenCalled()
     expect(sendStaffSMSMock).not.toHaveBeenCalled()
+  })
+
+  // Role-targeting matrix: AI escalations (a patient WhatsApp/voice
+  // conversation needing human follow-up -- booking, complaints, distress)
+  // are an operational front-desk triage function, not a clinical one --
+  // reception/admin make first contact and decide whether a doctor needs to
+  // be looped in separately; createEscalation has no doctorId/patient-doctor
+  // concept in its params at all, unlike treatment-followup-alerts.service.ts
+  // (which explicitly adds the assigned doctor -- see its own test "notifies
+  // the assigned doctor in addition to reception/admin when the plan has a
+  // doctor"). Structurally confirmed elsewhere in the app: there is no
+  // /doctor/.../escalations page, no Escalations destination in DOCTOR_NAV
+  // (mobileNav.ts), and no doctor entry in middleware.ts's escalations route
+  // guard -- this is a deliberate, existing product decision, not something
+  // invented for this fix. A DOCTOR user present in the staff table must
+  // never receive a general AI escalation.
+  it('never notifies a DOCTOR user for a general AI escalation, even when one exists and is active', async () => {
+    store.users.set('doctor_1', { id: 'doctor_1', role: 'DOCTOR', isActive: true })
+
+    await createEscalation({ phoneNumber: '+256700111222', channel: 'WHATSAPP', reason: 'Patient wants to reschedule' })
+
+    const recipientIds = store.notifications.map(n => n.userId)
+    expect(recipientIds).not.toContain('doctor_1')
+    expect(recipientIds.sort()).toEqual(['admin_1', 'reception_1'])
   })
 
   it('keeps the full escalation reason in the in-app notification body but never in the push body (no clinical/complaint detail on a locked screen)', async () => {
