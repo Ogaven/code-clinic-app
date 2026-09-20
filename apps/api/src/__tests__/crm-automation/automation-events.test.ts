@@ -134,14 +134,42 @@ describe('enrollEntityInSequence — duplicate + conflict protection (Part D)', 
 })
 
 describe('exitActiveEnrollments (Part D exit conditions)', () => {
-  it('marks every active enrollment exited and cancels pending touches', async () => {
+  it('marks every active enrollment exited and cancels pending touches when no scope is given', async () => {
     prismaMock.sequenceEnrollment.findMany.mockResolvedValueOnce([{ id: 'enr-1' }, { id: 'enr-2' }])
     const count = await exitActiveEnrollments('PATIENT', 'p-1', 'EXITED_REPLY', 'patient replied')
     expect(count).toBe(2)
+    expect(prismaMock.sequenceEnrollment.findMany).toHaveBeenCalledWith({
+      where: { patientId: 'p-1', status: 'ACTIVE' },
+    })
     expect(prismaMock.sequenceEnrollment.update).toHaveBeenCalledTimes(2)
     expect(prismaMock.scheduledTouch.updateMany).toHaveBeenCalledWith({
       where: { enrollmentId: 'enr-1', status: 'PENDING' },
       data: { status: 'CANCELLED' },
+    })
+  })
+
+  it('narrows to the given conflictGroup only, leaving unrelated active enrollments untouched (Milestone D scoped exit)', async () => {
+    prismaMock.sequenceEnrollment.findMany.mockResolvedValueOnce([{ id: 'enr-recall' }])
+    const count = await exitActiveEnrollments('PATIENT', 'p-1', 'EXITED_BOOKED', 'appointment_booked', { conflictGroup: 'PATIENT_RECALL' })
+    expect(count).toBe(1)
+    expect(prismaMock.sequenceEnrollment.findMany).toHaveBeenCalledWith({
+      where: { patientId: 'p-1', status: 'ACTIVE', sequence: { conflictGroup: 'PATIENT_RECALL' } },
+    })
+  })
+
+  it('narrows to the given channel only (consent opt-out scoped exit)', async () => {
+    prismaMock.sequenceEnrollment.findMany.mockResolvedValueOnce([])
+    await exitActiveEnrollments('PATIENT', 'p-1', 'STOPPED', 'consent_opt_out', { channel: 'WHATSAPP' })
+    expect(prismaMock.sequenceEnrollment.findMany).toHaveBeenCalledWith({
+      where: { patientId: 'p-1', status: 'ACTIVE', sequence: { channel: 'WHATSAPP' } },
+    })
+  })
+
+  it('LEAD exits still use leadId, unaffected by the new scope parameter being optional', async () => {
+    prismaMock.sequenceEnrollment.findMany.mockResolvedValueOnce([])
+    await exitActiveEnrollments('LEAD', 'lead-1', 'EXITED_BOOKED', 'converted')
+    expect(prismaMock.sequenceEnrollment.findMany).toHaveBeenCalledWith({
+      where: { leadId: 'lead-1', status: 'ACTIVE' },
     })
   })
 })

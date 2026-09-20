@@ -8,6 +8,7 @@ import { hasOutboundConsent } from '../scheduler/guardian-routing.service'
 import { classifyConfirmationReply, findPendingConfirmation, applyConfirmationReply } from './confirmation-reply.service'
 import { sendPushToUser } from '../../services/push.service'
 import { findOrCreateLeadForChannel } from '../../crm-automation/lead-intake.service'
+import { exitActiveEnrollments } from '../../crm-automation/automation-events.service'
 
 // ── Whole-word/phrase matching for reminder-reply intent detection ────────────
 // A real appointment was auto-cancelled (2026-08-24, Auntie Loy) because her
@@ -202,6 +203,17 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
     const patient = await prisma.patient.findFirst({
       where: { phone: { in: phoneVariants(from) } },
     })
+
+    // CRM Automation (Part D) — any real inbound message from a known patient
+    // is evidence they're reachable and engaged; stop every active CRM
+    // sequence (recall reminders, treatment follow-up, etc.) the same way a
+    // staff-logged lead reply exits all of a LEAD's active enrollments in
+    // lead-stage.service.ts. Fire-and-forget: never blocks or affects the
+    // AI agent's own reply to this same message.
+    if (patient) {
+      exitActiveEnrollments('PATIENT', patient.id, 'EXITED_REPLY', 'inbound_whatsapp_reply')
+        .catch((e: any) => console.error('[CrmAutomation] exitActiveEnrollments(inbound reply) failed:', e?.message))
+    }
 
     // ── 1b. Opt-out / opt-in detection ──────────────────────────────────────
     // Check before anything else so STOP is honoured even in human-takeover convos.

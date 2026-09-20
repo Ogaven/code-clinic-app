@@ -12,7 +12,7 @@ import { requireDoctorPatientAccess } from '../lib/doctor-access'
 import { applyPatientTagUpdate, runDailyPatientTagDerivation, type PatientTagUpdateInput } from '../crm-automation/patient-tags.service'
 import { recordConsent, getConsentHistory, type ConsentSource, type ConsentStatus } from '../crm-automation/consent-log.service'
 import { assignCollectionsOwner, listCollectionsCases } from '../crm-automation/collections.service'
-import { enrollEntityInSequence } from '../crm-automation/automation-events.service'
+import { enrollEntityInSequence, exitActiveEnrollments } from '../crm-automation/automation-events.service'
 import { processDueScheduledTouches } from '../crm-automation/sequence-dispatcher'
 import { checkLeadSlas } from '../crm-automation/lead-sla.service'
 import { logHumanReply, applyQualifyingIntent, markLeadLostManually, sweepStaleContactedLeads, convertLeadOnBooking } from '../crm-automation/lead-stage.service'
@@ -67,6 +67,9 @@ router.get('/patients/:id/tags', requireAuth, clinicalStaff, scopedPatientAccess
       balanceAgingBucket: true, valueTier: true, riskFlags: true, crmReferralSource: true,
       crmReferredByPatientId: true, commsChannelPref: true, languagePref: true, waitlistAvailable: true,
       negativeExperience: true, tagsUpdatedAt: true, tagsUpdatedBy: true, accountBalance: true,
+      // Minimal fields only (name, not phone/DOB/balance/etc.) — the picker
+      // itself never needs more than this to display who is currently linked.
+      crmReferredByPatient: { select: { id: true, firstName: true, lastName: true } },
     },
   })
   if (!patient) return res.status(404).json({ error: 'Patient not found' })
@@ -96,6 +99,17 @@ router.patch('/patients/:id/tags', requireAuth, clinicalStaff, scopedPatientAcce
 router.post('/tags/derive-run', requireAuth, adminOnly, async (_req: Request, res: Response) => {
   const result = await runDailyPatientTagDerivation()
   res.json(result)
+})
+
+// Part D — "staff/manual resolution": lets a clinician/receptionist who has
+// personally handled a patient (called them, resolved the balance in person,
+// etc.) stop the automated sequence without waiting for a matching system
+// event. conflictGroup is optional — omitted stops every active enrollment
+// for this patient, exactly like a manual lead-lost override does for leads.
+router.post('/patients/:id/resolve-sequence', requireAuth, clinicalStaff, scopedPatientAccess, async (req: Request, res: Response) => {
+  const { conflictGroup } = req.body as { conflictGroup?: string }
+  const stopped = await exitActiveEnrollments('PATIENT', req.params.id, 'STOPPED', 'manual_staff_resolution', conflictGroup ? { conflictGroup } : undefined)
+  res.json({ stopped })
 })
 
 // ── Consent log (Part I) ─────────────────────────────────────────────────

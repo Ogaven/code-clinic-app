@@ -193,14 +193,32 @@ export async function reprocessUnprocessedEvents(limit = 100): Promise<number> {
 // so a patient/lead never gets a message after the exit condition fires.
 export type ExitStatus = 'EXITED_REPLY' | 'EXITED_BOOKED' | 'EXITED_TAG_CHANGE' | 'STOPPED'
 
+// Optional narrowing so an exit condition can stop only the sequence(s) it
+// actually applies to (see sequence-groups.ts) instead of every active
+// enrollment the entity happens to hold. Omitted entirely by every existing
+// LEAD call site, which keeps their original "exit everything" behavior.
+export interface ExitScope {
+  conflictGroup?: string
+  channel?: string // e.g. exit only sequences that actually send on the channel a patient just opted out of
+}
+
 export async function exitActiveEnrollments(
   entityType: EntityType,
   entityId: string,
   status: ExitStatus,
-  detail?: string
+  detail?: string,
+  scope?: ExitScope
 ): Promise<number> {
   const entityFilter = entityType === 'PATIENT' ? { patientId: entityId } : { leadId: entityId }
-  const active = await prisma.sequenceEnrollment.findMany({ where: { ...entityFilter, status: 'ACTIVE' } })
+  const active = await prisma.sequenceEnrollment.findMany({
+    where: {
+      ...entityFilter,
+      status: 'ACTIVE',
+      ...(scope?.conflictGroup || scope?.channel
+        ? { sequence: { ...(scope.conflictGroup ? { conflictGroup: scope.conflictGroup } : {}), ...(scope.channel ? { channel: scope.channel } : {}) } }
+        : {}),
+    },
+  })
 
   for (const enr of active) {
     await prisma.sequenceEnrollment.update({

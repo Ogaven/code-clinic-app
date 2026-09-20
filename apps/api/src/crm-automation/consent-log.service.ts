@@ -13,6 +13,7 @@
 import { prisma } from '../lib/prisma'
 import type { CommsChannel } from '@prisma/client'
 import { hasOutboundConsent } from '../ai-suite/scheduler/guardian-routing.service'
+import { exitActiveEnrollments } from './automation-events.service'
 
 export type ConsentStatus = 'OPT_IN' | 'OPT_OUT'
 export type ConsentSource = 'PATIENT_REQUEST' | 'STAFF_ENTRY' | 'INBOUND_KEYWORD' | 'REGISTRATION_DEFAULT' | 'IMPORT'
@@ -27,7 +28,7 @@ export interface RecordConsentParams {
 }
 
 export async function recordConsent(params: RecordConsentParams) {
-  return prisma.consentLog.create({
+  const record = await prisma.consentLog.create({
     data: {
       patientId: params.patientId,
       channel:   params.channel,
@@ -37,6 +38,18 @@ export async function recordConsent(params: RecordConsentParams) {
       metadata:  params.metadata ? JSON.stringify(params.metadata) : null,
     },
   })
+
+  // Part D — an opt-out makes further messaging on that channel invalid, not
+  // just the next touch (the dispatcher already SKIPs individual touches on
+  // no-consent, but leaving the enrollment ACTIVE forever would hide that
+  // this patient is functionally done with the sequence). Scoped to the
+  // channel they actually opted out of — a WhatsApp opt-out shouldn't touch
+  // a hypothetical SMS-only sequence, and vice versa.
+  if (params.status === 'OPT_OUT') {
+    await exitActiveEnrollments('PATIENT', params.patientId, 'STOPPED', 'consent_opt_out', { channel: params.channel })
+  }
+
+  return record
 }
 
 // Latest logged event per channel wins. If no channel-specific event has

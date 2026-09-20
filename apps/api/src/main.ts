@@ -96,6 +96,7 @@ import { processDueScheduledTouches }      from './crm-automation/sequence-dispa
 import { checkLeadSlas }                   from './crm-automation/lead-sla.service'
 import { sweepStaleContactedLeads }        from './crm-automation/lead-stage.service'
 import { runDailyPatientTagDerivation }    from './crm-automation/patient-tags.service'
+import { ensureDefaultCrmSequences }       from './crm-automation/seed-default-sequences'
 import { processDueReviewRequests }        from './crm-automation/review-request.service'
 
 // Lock process timezone to EAT (UTC+3) — must be set before any Date operations.
@@ -475,6 +476,10 @@ runStartup().then(() => {
     // balanceStatus/lifecycleStage/valueTier had never been derived for any
     // of 4,620 patients.
     runDailyPatientTagDerivation().catch(err => console.error('[CrmPatientTagDerivation] Initial run error:', err))
+    // Idempotent upsert-by-key, DRAFT status only — creates the recall/
+    // treatment-follow-up sequence templates if they don't exist yet.
+    // Never enrolls or sends anything by itself; see seed-default-sequences.ts.
+    ensureDefaultCrmSequences().catch(err => console.error('[CrmDefaultSequences] Initial run error:', err))
   }, 2 * 60 * 1000)
 
   app.listen(PORT, () => {

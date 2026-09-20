@@ -21,6 +21,8 @@ import { recordVisitFlag } from '../crm-automation/patient-tags.service'
 import { notifyWaitlistForOpenSlot } from '../crm-automation/waitlist.service'
 import { scheduleReviewRequest } from '../crm-automation/review-request.service'
 import { checkAndConvertLeadOnBooking } from '../crm-automation/lead-patient-link.service'
+import { exitActiveEnrollments } from '../crm-automation/automation-events.service'
+import { PATIENT_RECALL_CONFLICT_GROUP } from '../crm-automation/sequence-groups'
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
@@ -310,6 +312,12 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
 
   // CRM Automation (Part N) — a QUALIFIED lead matching this patient auto-converts.
   checkAndConvertLeadOnBooking(appointment.patient).catch((e: any) => console.error('[CrmAutomation] checkAndConvertLeadOnBooking failed:', e?.message))
+
+  // CRM Automation (Part D) — booking any appointment means the recall
+  // reminder sequence has done its job; stop it specifically (not any
+  // unrelated active enrollment, e.g. a separate treatment-follow-up one).
+  exitActiveEnrollments('PATIENT', patientId, 'EXITED_BOOKED', 'appointment_booked', { conflictGroup: PATIENT_RECALL_CONFLICT_GROUP })
+    .catch((e: any) => console.error('[CrmAutomation] exitActiveEnrollments(recall, booked) failed:', e?.message))
 
   logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'APPOINTMENT', entityId: appointment.id, entityName: `${appointment.patient.firstName} ${appointment.patient.lastName} — ${appointment.service.name}`, req })
   res.status(201).json({ ...appointment, service: { ...appointment.service, priceUGX: Number(appointment.service.priceUGX) } })

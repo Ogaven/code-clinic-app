@@ -5,6 +5,7 @@ const { prismaMock, staleLeadsByOwnerMock } = vi.hoisted(() => ({
     lead: { findMany: vi.fn() },
     appointment: { findMany: vi.fn() },
     patient: { findMany: vi.fn() },
+    collectionsCase: { findMany: vi.fn() },
   },
   staleLeadsByOwnerMock: vi.fn(),
 }))
@@ -18,6 +19,7 @@ beforeEach(() => {
   prismaMock.lead.findMany.mockResolvedValue([])
   prismaMock.appointment.findMany.mockResolvedValue([])
   prismaMock.patient.findMany.mockResolvedValue([])
+  prismaMock.collectionsCase.findMany.mockResolvedValue([])
   staleLeadsByOwnerMock.mockResolvedValue([])
 })
 
@@ -27,9 +29,79 @@ describe('buildNeedsAttentionQueue', () => {
     expect(result.categories.map(c => c.key)).toEqual([
       'UNANSWERED_NEW', 'OVERDUE_FOLLOWUP', 'STALE_UNTOUCHED', 'QUALIFIED_UNBOOKED',
       'UNASSIGNED', 'NO_SHOW', 'CANCELLED_UNREBOOKED', 'TREATMENT_OPPORTUNITY',
+      'RECALL_OVERDUE_90', 'RECALL_OVERDUE_180', 'TREATMENT_INCOMPLETE', 'COLLECTIONS_FOLLOWUP', 'REPEATED_NO_SHOW',
     ])
     expect(result.totalItems).toBe(0)
     expect(result.ownerId).toBeNull()
+  })
+
+  it('does not expose raw "SLA" jargon in any category label (Part 13 — plain clinic language)', async () => {
+    const result = await buildNeedsAttentionQueue()
+    for (const category of result.categories) {
+      expect(category.label.toUpperCase()).not.toContain('SLA')
+    }
+  })
+
+  it('surfaces recall-overdue-90 and recall-overdue-180 patients (Milestone E — never hidden only inside the Tags page)', async () => {
+    prismaMock.patient.findMany
+      .mockResolvedValueOnce([]) // TREATMENT_OPPORTUNITY (PROPOSED)
+      .mockResolvedValueOnce([{ id: 'p-90', firstName: 'A', lastName: 'B', phone: '1' }]) // RECALL_OVERDUE_90
+      .mockResolvedValueOnce([{ id: 'p-180', firstName: 'C', lastName: 'D', phone: '2' }]) // RECALL_OVERDUE_180
+
+    const result = await buildNeedsAttentionQueue()
+
+    expect(result.categories.find(c => c.key === 'RECALL_OVERDUE_90')!.count).toBe(1)
+    expect(result.categories.find(c => c.key === 'RECALL_OVERDUE_180')!.count).toBe(1)
+    expect(prismaMock.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ recallStatus: 'OVERDUE_90', isActive: true }) })
+    )
+    expect(prismaMock.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ recallStatus: 'OVERDUE_180_PLUS', isActive: true }) })
+    )
+  })
+
+  it('surfaces open/in-progress collections cases distinctly from a treatment-incomplete-alone patient', async () => {
+    prismaMock.collectionsCase.findMany.mockResolvedValueOnce([
+      { id: 'case-1', patientId: 'p-owing', status: 'OPEN', ownerId: null, createdAt: new Date(), patient: { firstName: 'E', lastName: 'F', phone: '3' } },
+    ])
+    prismaMock.patient.findMany
+      .mockResolvedValueOnce([]) // TREATMENT_OPPORTUNITY
+      .mockResolvedValueOnce([]) // RECALL_OVERDUE_90
+      .mockResolvedValueOnce([]) // RECALL_OVERDUE_180
+      .mockResolvedValueOnce([{ id: 'p-incomplete', firstName: 'G', lastName: 'H', phone: '4' }]) // TREATMENT_INCOMPLETE
+
+    const result = await buildNeedsAttentionQueue()
+
+    expect(result.categories.find(c => c.key === 'COLLECTIONS_FOLLOWUP')!.count).toBe(1)
+    expect(result.categories.find(c => c.key === 'TREATMENT_INCOMPLETE')!.count).toBe(1)
+    // Two distinct patients (p-owing via the collections case, p-incomplete
+    // directly) must both count toward the dedup total, not be conflated.
+    expect(result.totalItems).toBe(2)
+  })
+
+  it('surfaces patients with 2+ no-shows or late-cancels as REPEATED_NO_SHOW', async () => {
+    prismaMock.patient.findMany
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'p-repeat', firstName: 'I', lastName: 'J', phone: '5', noShowCount: 3, lateCancelCount: 0 }])
+
+    const result = await buildNeedsAttentionQueue()
+    expect(result.categories.find(c => c.key === 'REPEATED_NO_SHOW')!.count).toBe(1)
+  })
+
+  it('dedupes the headline total across CLINIC_WIDE categories by real person, not raw row id, when the same patient appears in two of them', async () => {
+    // Same patient id appearing both as a plain recall-overdue-90 row AND as
+    // a repeated-no-show row must only count once toward totalItems.
+    prismaMock.patient.findMany
+      .mockResolvedValueOnce([]) // TREATMENT_OPPORTUNITY
+      .mockResolvedValueOnce([{ id: 'p-both', firstName: 'K', lastName: 'L', phone: '6' }]) // RECALL_OVERDUE_90
+      .mockResolvedValueOnce([]) // RECALL_OVERDUE_180
+      .mockResolvedValueOnce([]) // TREATMENT_INCOMPLETE
+      .mockResolvedValueOnce([{ id: 'p-both', firstName: 'K', lastName: 'L', phone: '6', noShowCount: 2, lateCancelCount: 0 }]) // REPEATED_NO_SHOW
+
+    const result = await buildNeedsAttentionQueue()
+    expect(result.categories.find(c => c.key === 'RECALL_OVERDUE_90')!.count).toBe(1)
+    expect(result.categories.find(c => c.key === 'REPEATED_NO_SHOW')!.count).toBe(1)
+    expect(result.totalItems).toBe(1)
   })
 
   it('scopes lead-based categories to ownerId via Lead.assignedTo, and skips UNASSIGNED entirely when an owner is given', async () => {
