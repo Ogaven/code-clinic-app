@@ -115,6 +115,20 @@ export default function TopBar({ title, user, theme, onThemeChange, install }: T
     return () => clearInterval(timer)
   }, [])
 
+  // Reconnect/foreground resync — force an immediate refresh instead of
+  // waiting up to 30s for the next poll after the tab/device comes back.
+  useEffect(() => {
+    const onWake = () => { if (document.visibilityState === 'visible') fetchNotifications() }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('online', onWake)
+    window.addEventListener('focus', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('online', onWake)
+      window.removeEventListener('focus', onWake)
+    }
+  }, [])
+
   async function fetchNotifications() {
     const token = localStorage.getItem('cc_token')
     if (!token) return

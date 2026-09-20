@@ -221,6 +221,24 @@ export default function ReceptionistLayout({ children }: { children: React.React
     return () => clearInterval(t)
   }, [])
 
+  // Reconnect/foreground resync — the 10s poll above only catches missed
+  // notifications on its own schedule, which can leave the badge stale for
+  // up to 10s (or longer if the device was actually offline) after coming
+  // back. Force an immediate refresh the moment the tab is foregrounded or
+  // the browser regains connectivity, same trigger AuthSessionBootstrap
+  // already uses to resync the push subscription.
+  useEffect(() => {
+    const onWake = () => { if (document.visibilityState === 'visible') fetchUnread() }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('online', onWake)
+    window.addEventListener('focus', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('online', onWake)
+      window.removeEventListener('focus', onWake)
+    }
+  }, [])
+
   useEffect(() => {
     const onAvatar = (e: Event) => setUser((prev: any) => prev ? { ...prev, avatarUrl: (e as CustomEvent).detail } : prev)
     const onProfile = (e: Event) => setUser((prev: any) => prev ? { ...prev, ...(e as CustomEvent).detail } : prev)

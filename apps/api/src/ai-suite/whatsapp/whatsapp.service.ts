@@ -1,7 +1,7 @@
 import { getAgentReplyV2OpenAI } from '../agent/agent.service'
 import { isAgentEnabled, takeoverConversation } from '../takeover/takeover.service'
 import { setBookingState } from '../booking/booking.state'
-import { createEscalation, notifyJulian } from '../../services/agent/guards/escalation'
+import { createEscalation, notifyJulian, isWithinStaffSessionWindow, notifyStaffInApp } from '../../services/agent/guards/escalation'
 import { prisma } from '../../lib/prisma'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { hasOutboundConsent } from '../scheduler/guardian-routing.service'
@@ -292,13 +292,39 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
         // The lead just messaged us on WhatsApp — real operational contact-origin evidence.
         contactEvidence: { channel: 'WHATSAPP', source: 'INBOUND_MESSAGE' },
       })
-      // Alert staff for EVERY lead message so they can follow up in real-time
-      const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
-      const preview     = text.slice(0, 200)
-      sendWhatsAppMessage(
-        staffNumber,
-        `🔔 Lead enquiry\nPhone: ${from}\nMessage: "${preview}"${text.length > 200 ? '…' : ''}\n\nPlease follow up in the AI Suite inbox.`
-      ).catch((e: any) => console.error('[Lead] Staff alert failed:', e?.message))
+      // Alert staff for EVERY lead message so they can follow up in real-time.
+      // This is the highest-volume staff WhatsApp send in the app (fires per
+      // lead message) and previously had no template/window guard at all --
+      // exactly the shape of send Meta rejects with #131047 outside the 24h
+      // customer-service window. Fail closed on WhatsApp outside the window
+      // (no WA_TEMPLATE_STAFF_ALERT_NAME configured) rather than attempting a
+      // doomed freeform send, and always fall back to the in-app notification
+      // centre + push so the lead alert is never silently lost.
+      ;(async () => {
+        const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
+        const preview      = text.slice(0, 200)
+        const leadBody      = `🔔 Lead enquiry\nPhone: ${from}\nMessage: "${preview}"${text.length > 200 ? '…' : ''}\n\nPlease follow up in the AI Suite inbox.`
+        let waSucceeded = false
+        try {
+          const withinWindow = await isWithinStaffSessionWindow(staffNumber)
+          if (withinWindow) {
+            await sendWhatsAppMessage(staffNumber, leadBody)
+            waSucceeded = true
+          } else {
+            console.warn('[Lead] BLOCKED_TEMPLATE_REQUIRED — outside the 24h WhatsApp session window and no WA_TEMPLATE_STAFF_ALERT_NAME configured. No freeform send attempted.')
+          }
+        } catch (e: any) {
+          console.error('[Lead] Staff WhatsApp alert failed:', e?.message)
+        }
+        if (!waSucceeded) {
+          await notifyStaffInApp({
+            title:    '🔔 New Lead Enquiry',
+            body:     leadBody,
+            pushBody: 'A new lead messaged in — tap to view.',
+            href:     role => role === 'RECEPTIONIST' ? `/receptionist/ai-suite/inbox?phone=${encodeURIComponent(from)}` : `/ai-suite/inbox?phone=${encodeURIComponent(from)}`,
+          }).catch((e: any) => console.error('[Lead] In-app fallback failed:', e?.message))
+        }
+      })()
     }
 
     // ── 3. Save inbound message before calling the agent ─────────────────────
