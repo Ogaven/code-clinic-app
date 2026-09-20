@@ -37,7 +37,29 @@ export default function DoctorTopBar({ user, theme, onTheme, install }: { user: 
   const [notifications, setNotifications] = useState<any[]>([]), [unread, setUnread] = useState(0)
   useEffect(() => { setMenuOpen(false); setProfileOpen(false); setNotifOpen(false) }, [pathname])
   useEffect(() => { if (searchOpen) setTimeout(() => input.current?.focus(), 30) }, [searchOpen])
-  useEffect(() => { const load = async () => { const token = localStorage.getItem('cc_token'); if (!token) return; const r = await fetch('/api-proxy/receptionist/notifications', { headers: { Authorization: `Bearer ${token}` } }).catch(() => null); if (!r?.ok) return; const d = await r.json(); setNotifications(d.notifications || []); setUnread(d.unread || 0) }; load(); const timer = setInterval(load, 30000); return () => clearInterval(timer) }, [])
+  async function loadNotifications() {
+    const token = localStorage.getItem('cc_token')
+    if (!token) return
+    const r = await fetch('/api-proxy/receptionist/notifications', { headers: { Authorization: `Bearer ${token}` } }).catch(() => null)
+    if (!r?.ok) return
+    const d = await r.json()
+    setNotifications(d.notifications || [])
+    setUnread(d.unread || 0)
+  }
+  useEffect(() => { loadNotifications(); const timer = setInterval(loadNotifications, 30000); return () => clearInterval(timer) }, [])
+  // Reconnect/foreground resync — force an immediate refresh instead of
+  // waiting up to 30s for the next poll after the tab/device comes back.
+  useEffect(() => {
+    const onWake = () => { if (document.visibilityState === 'visible') loadNotifications() }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('online', onWake)
+    window.addEventListener('focus', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('online', onWake)
+      window.removeEventListener('focus', onWake)
+    }
+  }, [])
 
   async function search(value: string) {
     setQuery(value); if (value.trim().length < 2) { setResults([]); return }

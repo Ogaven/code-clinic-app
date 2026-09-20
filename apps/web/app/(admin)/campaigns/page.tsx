@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Megaphone, Send, Clock, Users, CheckCircle2, AlertCircle, RefreshCw, X, Eye, BookOpen, Plus, Pencil, Trash2, Cake, Sparkles } from 'lucide-react'
+import { buildSegmentCountParams } from '@/lib/campaignSegmentParams'
 
 // Full legacy list — used ONLY by the "Send Template" modal below (tmplSegment),
 // which posts to the separate /templates/:id/send endpoint (its own segment
@@ -119,14 +120,7 @@ export default function CampaignsPage() {
     setCountLoading(true)
     setSegCount(null)
     try {
-      const params = new URLSearchParams({ segment: seg })
-      if (seg === 'NEW') {
-        params.set('preset', opts?.preset || newPreset)
-        if ((opts?.preset || newPreset) === 'custom') {
-          params.set('from', opts?.from ?? newFrom)
-          params.set('to',   opts?.to   ?? newTo)
-        }
-      }
+      const params = buildSegmentCountParams(seg, opts?.preset || newPreset, opts?.from ?? newFrom, opts?.to ?? newTo)
       const r = await fetch(`${API}/campaigns/segment-count?${params.toString()}`, { headers: authH as any })
       const d = await r.json().catch(() => ({}))
       if (!r.ok || typeof d.count !== 'number') {
@@ -747,14 +741,19 @@ export default function CampaignsPage() {
                     ))}
                   </div>
                   {newPreset === 'custom' && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <input type="date" value={newFrom} max={newTo || undefined}
-                        onChange={e => handleCustomRangeChange(e.target.value, newTo)}
-                        className="flex-1 px-2.5 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
-                      <span className="text-xs text-gray-400">→</span>
-                      <input type="date" value={newTo} min={newFrom || undefined}
-                        onChange={e => handleCustomRangeChange(newFrom, e.target.value)}
-                        className="flex-1 px-2.5 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <label className="block">
+                        <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">From</span>
+                        <input type="date" value={newFrom} max={newTo || undefined}
+                          onChange={e => handleCustomRangeChange(e.target.value, newTo)}
+                          className="w-full px-2.5 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                      </label>
+                      <label className="block">
+                        <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">To</span>
+                        <input type="date" value={newTo} min={newFrom || undefined}
+                          onChange={e => handleCustomRangeChange(newFrom, e.target.value)}
+                          className="w-full px-2.5 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                      </label>
                     </div>
                   )}
                 </div>
