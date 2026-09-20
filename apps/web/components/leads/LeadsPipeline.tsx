@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus, Search, RefreshCw, UserCheck, Trash2, X, CheckCircle2, AlertCircle,
   Phone, Mail, MessageSquare, ExternalLink, Clock, Tag,
@@ -48,7 +48,7 @@ interface StaffMember {
 }
 
 // ── Constants ────────────────────────────────────────────────────
-const SOURCES = ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'WEBSITE', 'QUIZ', 'WALKIN', 'OTHER'] as const
+const SOURCES = ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'WEBSITE', 'QUIZ', 'SCOREAPP', 'FACEBOOK_LEAD_AD', 'WALKIN', 'OTHER'] as const
 const STATUSES = ['NEW', 'CONTACTED', 'QUALIFIED', 'CONVERTED', 'LOST'] as const
 
 const SOURCE_STYLE: Record<string, string> = {
@@ -57,12 +57,14 @@ const SOURCE_STYLE: Record<string, string> = {
   INSTAGRAM: 'bg-pink-100 text-pink-700 dark:bg-pink-400/15 dark:text-pink-300',
   WEBSITE:   'bg-purple-100 text-purple-700 dark:bg-purple-400/15 dark:text-purple-300',
   QUIZ:      'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-400/15 dark:text-fuchsia-300',
+  SCOREAPP:  'bg-orange-100 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300',
+  FACEBOOK_LEAD_AD: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-400/15 dark:text-indigo-300',
   WALKIN:    'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300',
   OTHER:     'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60',
 }
 const SOURCE_LABEL: Record<string, string> = {
   WHATSAPP: 'WhatsApp', FACEBOOK: 'Facebook', INSTAGRAM: 'Instagram', WEBSITE: 'Website',
-  QUIZ: 'Quiz', WALKIN: 'Walk-in', OTHER: 'Other',
+  QUIZ: 'Quiz', SCOREAPP: 'ScoreApp', FACEBOOK_LEAD_AD: 'FB Lead Ad', WALKIN: 'Walk-in', OTHER: 'Other',
 }
 const STATUS_STYLE: Record<string, string> = {
   NEW:       'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/60',
@@ -169,7 +171,7 @@ function findMatchedConversation(lead: Lead, conversations: ConversationSummary[
 // record already used for currentUserId — DELETE /crm/leads/:id is
 // ADMIN-only server-side (apps/api/src/routes/crm.ts), so hiding the button
 // for non-admins is purely supplementary, not the real enforcement.
-export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
+export default function LeadsPipeline({ inboxPath, initialLeadId }: { inboxPath: string; initialLeadId?: string | null }) {
   const API   = '/api-proxy'
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
@@ -201,6 +203,10 @@ export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
   const [deleting,   setDeleting]   = useState<Lead | null>(null)
   const [viewLead,   setViewLead]   = useState<Lead | null>(null)
   const [busy,       setBusy]       = useState(false)
+  const [qualifying, setQualifying] = useState<Lead | null>(null)
+  const [qualifyIntent, setQualifyIntent] = useState('')
+  const [losing,     setLosing]     = useState<Lead | null>(null)
+  const [lostReason, setLostReason] = useState('')
 
   // Add form
   const [form, setForm] = useState({ name: '', phone: '', email: '', source: 'WALKIN', notes: '' })
@@ -219,6 +225,18 @@ export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
   }, [srcFilter, search, token]) // eslint-disable-line
 
   useEffect(() => { load() }, [load])
+
+  // Deep-link support: CRM Dashboard / Needs Attention / Follow-ups pages
+  // link here with ?open=<leadId> so staff land straight in the drawer
+  // instead of having to search the board manually. Opens once per id (not
+  // on every `leads` refetch) so a manual close isn't immediately reopened
+  // by the next poll/refresh.
+  const openedInitialLeadRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!initialLeadId || openedInitialLeadRef.current === initialLeadId) return
+    const match = leads.find(l => l.id === initialLeadId)
+    if (match) { setViewLead(match); openedInitialLeadRef.current = initialLeadId }
+  }, [initialLeadId, leads])
 
   // Real conversations, for the deterministic Lead -> Conversation matching
   // above. Same endpoint already used by the AI Suite inbox — no new backend
@@ -262,14 +280,54 @@ export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
     setBusy(false)
   }
 
-  async function updateStatus(lead: Lead, status: string) {
+  // Pipeline stage actions — each calls the dedicated crm-automation endpoint
+  // (never a raw PATCH {status}) so LeadStageHistory, SLA cancellation, and
+  // the LOST-reason requirement are always enforced server-side.
+  async function logReply(lead: Lead) {
+    setBusy(true)
     try {
-      await fetch(`${API}/crm/leads/${lead.id}`, {
-        method: 'PATCH', headers: authH as any,
-        body: JSON.stringify({ status }),
+      const r = await fetch(`${API}/crm-automation/leads/${lead.id}/log-human-reply`, { method: 'POST', headers: authH as any })
+      const d = await r.json()
+      if (!r.ok) { showToast(d.error || 'Failed to log reply', false); return }
+      setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, ...d } : l))
+      setViewLead(v => v ? { ...v, ...d } : v)
+      showToast(d.status === 'CONTACTED' ? 'Reply logged — lead moved to Contacted' : 'Reply logged (lead stays New — you are not its assigned owner)')
+    } catch { showToast('Network error', false) }
+    setBusy(false)
+  }
+
+  async function submitQualify() {
+    if (!qualifying || !qualifyIntent) return
+    setBusy(true)
+    try {
+      const r = await fetch(`${API}/crm-automation/leads/${qualifying.id}/qualify`, {
+        method: 'POST', headers: authH as any, body: JSON.stringify({ intent: qualifyIntent }),
       })
-      setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, status } : l))
-    } catch { showToast('Update failed', false) }
+      const d = await r.json()
+      if (!r.ok) { showToast(d.error || 'Failed to qualify lead', false); return }
+      setLeads(ls => ls.map(l => l.id === qualifying.id ? { ...l, ...d } : l))
+      setViewLead(v => v ? { ...v, ...d } : v)
+      showToast('Lead marked Qualified')
+      setQualifying(null); setQualifyIntent('')
+    } catch { showToast('Network error', false) }
+    setBusy(false)
+  }
+
+  async function submitLost() {
+    if (!losing || !lostReason.trim()) return
+    setBusy(true)
+    try {
+      const r = await fetch(`${API}/crm-automation/leads/${losing.id}/lost`, {
+        method: 'POST', headers: authH as any, body: JSON.stringify({ reason: lostReason.trim() }),
+      })
+      const d = await r.json()
+      if (!r.ok) { showToast(d.error || 'Failed to mark lead lost', false); return }
+      setLeads(ls => ls.map(l => l.id === losing.id ? { ...l, ...d } : l))
+      setViewLead(v => v ? { ...v, ...d } : v)
+      showToast('Lead marked Lost')
+      setLosing(null); setLostReason('')
+    } catch { showToast('Network error', false) }
+    setBusy(false)
   }
 
   async function assignLead(lead: Lead, assignedTo: string | null) {
@@ -633,6 +691,69 @@ export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
         </div>
       )}
 
+      {/* ── Mark Qualified modal ──────────────────────────────── */}
+      {qualifying && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setQualifying(null)}>
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-100 dark:bg-cyan-400/15 flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 size={18} className="text-cyan-600 dark:text-cyan-300" />
+              </div>
+              <h2 className="text-base font-bold text-gray-800 dark:text-white">Mark Qualified</h2>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-white/60 mb-4 leading-relaxed">
+              What signal did <strong>{qualifying.name || qualifying.phone || 'this lead'}</strong> give? This is only allowed while the lead has replied within the last 48 hours.
+            </p>
+            <select value={qualifyIntent} onChange={e => setQualifyIntent(e.target.value)} className={inputCls + ' mb-6'}>
+              <option value="" className="dark:bg-[#152040]">Select a reason…</option>
+              <option value="asked_pricing" className="dark:bg-[#152040]">Asked about pricing</option>
+              <option value="wants_appointment" className="dark:bg-[#152040]">Wants an appointment</option>
+              <option value="asked_availability" className="dark:bg-[#152040]">Asked about availability</option>
+              <option value="other" className="dark:bg-[#152040]">Other qualifying signal</option>
+            </select>
+            <div className="flex gap-3">
+              <button onClick={() => setQualifying(null)} disabled={busy}
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={submitQualify} disabled={busy || !qualifyIntent}
+                className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 transition-colors disabled:opacity-60">
+                {busy ? 'Saving…' : 'Mark Qualified'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Mark Lost modal ───────────────────────────────────── */}
+      {losing && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setLosing(null)}>
+          <div className="bg-white dark:bg-[#152040] rounded-3xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-red-100 dark:bg-red-400/15 flex items-center justify-center flex-shrink-0">
+                <X size={18} className="text-red-600 dark:text-red-300" />
+              </div>
+              <h2 className="text-base font-bold text-gray-800 dark:text-white">Mark Lost</h2>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-white/60 mb-4 leading-relaxed">
+              A reason is required for <strong>{losing.name || losing.phone || 'this lead'}</strong>.
+            </p>
+            <textarea value={lostReason} onChange={e => setLostReason(e.target.value)} rows={3}
+              className={inputCls + ' mb-6'} placeholder="e.g. Went with another clinic, unreachable, not interested…" />
+            <div className="flex gap-3">
+              <button onClick={() => setLosing(null)} disabled={busy}
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-bold text-gray-600 dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={submitLost} disabled={busy || !lostReason.trim()}
+                className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60">
+                {busy ? 'Saving…' : 'Mark Lost'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Lead detail drawer ────────────────────────────────── */}
       {viewLead && (() => {
         const matched = findMatchedConversation(viewLead, conversations)
@@ -668,15 +789,13 @@ export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
                   <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-bold', SOURCE_STYLE[viewLead.source] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60')}>
                     {SOURCE_LABEL[viewLead.source] ?? viewLead.source}
                   </span>
-                  <select
-                    value={viewLead.status}
-                    onChange={e => { updateStatus(viewLead, e.target.value); setViewLead({ ...viewLead, status: e.target.value }) }}
-                    disabled={viewLead.status === 'CONVERTED'}
-                    className={cn('text-[11px] font-bold px-2.5 py-1 rounded-full border-0 cursor-pointer outline-none',
-                      STATUS_STYLE[viewLead.status] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60',
-                      viewLead.status === 'CONVERTED' && 'cursor-not-allowed opacity-80')}>
-                    {STATUSES.map(s => <option key={s} value={s} className="dark:bg-[#152040]">{STAGE_LABEL[s]}</option>)}
-                  </select>
+                  {/* Read-only — stage only ever changes through the dedicated
+                      Pipeline Actions below, each backed by its own audited
+                      transition (never a free-form status write, which used
+                      to silently skip LeadStageHistory). */}
+                  <span className={cn('text-[11px] font-bold px-2.5 py-1 rounded-full', STATUS_STYLE[viewLead.status] ?? 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60')}>
+                    {STAGE_LABEL[viewLead.status] ?? viewLead.status}
+                  </span>
                 </div>
 
                 {/* Assignment */}
@@ -776,6 +895,38 @@ export default function LeadsPipeline({ inboxPath }: { inboxPath: string }) {
                     <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-300 flex-shrink-0" />
                     <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold">Converted to a patient record</p>
                   </div>
+                )}
+
+                {/* Pipeline actions — one button per real transition, each
+                    calling its own dedicated crm-automation endpoint. This is
+                    the only way a lead's stage should move; there is no
+                    free-form "set status to anything" control left in this
+                    UI (see the read-only badge above). */}
+                {(viewLead.status === 'NEW' || viewLead.status === 'CONTACTED') && (
+                  <div className="flex gap-2">
+                    {viewLead.status === 'NEW' && (
+                      <button onClick={() => logReply(viewLead)} disabled={busy}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-400/15 dark:text-blue-300 dark:hover:bg-blue-400/25 transition-colors disabled:opacity-60">
+                        <MessageSquare size={14} /> Log Reply
+                      </button>
+                    )}
+                    {viewLead.status === 'CONTACTED' && (
+                      <button onClick={() => { setQualifying(viewLead); setQualifyIntent('') }} disabled={busy}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-cyan-50 text-cyan-700 hover:bg-cyan-100 dark:bg-cyan-400/15 dark:text-cyan-300 dark:hover:bg-cyan-400/25 transition-colors disabled:opacity-60">
+                        <CheckCircle2 size={14} /> Mark Qualified
+                      </button>
+                    )}
+                    <button onClick={() => { setLosing(viewLead); setLostReason('') }} disabled={busy}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-400/15 dark:text-red-300 dark:hover:bg-red-400/25 transition-colors disabled:opacity-60">
+                      <X size={14} /> Mark Lost
+                    </button>
+                  </div>
+                )}
+                {viewLead.status === 'QUALIFIED' && (
+                  <button onClick={() => { setLosing(viewLead); setLostReason('') }} disabled={busy}
+                    className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-400/15 dark:text-red-300 dark:hover:bg-red-400/25 transition-colors disabled:opacity-60">
+                    <X size={14} /> Mark Lost
+                  </button>
                 )}
 
                 {/* Quick actions — delete is ADMIN-only: DELETE /crm/leads/:id

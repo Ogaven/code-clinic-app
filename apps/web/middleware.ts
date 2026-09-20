@@ -51,6 +51,10 @@ const ROUTE_FEATURE: Array<[string, string]> = [
   ['/receptionist/appointments',                             'appointments'],
   ['/receptionist/patients',                                 'patients'],
   ['/receptionist/leads',                                    'leads'],
+  // CRM shell (Dashboard/Needs Attention/Follow-ups/Sources) rides the same
+  // 'leads' permission — see ReceptionistTopBar.tsx/mobileNav.ts for why no
+  // new permission key was invented for it.
+  ['/receptionist/crm',                                      'leads'],
   ['/receptionist/flow',                                     'liveFlow'],
   ['/receptionist/ai-suite/inbox',                           'aiSuiteInbox'],
   ['/receptionist/ai-suite/escalations',                     'aiSuiteInbox'],

@@ -190,6 +190,23 @@ describe('markLeadLostManually — ANY -> LOST (Part N)', () => {
       expect.objectContaining({ data: expect.objectContaining({ toStage: 'LOST', trigger: 'MANUAL', reason: 'went with a competitor' }) })
     )
   })
+
+  // Regression: PATCH /crm/leads/:id used to write LOST via raw
+  // transitionLeadStage(), which never calls exitActiveEnrollments() —
+  // an active nurture sequence kept running past the lead's terminal state.
+  // markLeadLostManually() is the canonical wrapper the route now dispatches
+  // to, and this proves it actually exits any active enrollment.
+  it('exits active sequence enrollments (STOPPED) before writing LOST', async () => {
+    prismaMock.lead.findUniqueOrThrow.mockResolvedValueOnce({ id: 'lead-1', status: 'QUALIFIED', lossReason: null })
+    prismaMock.lead.update.mockResolvedValueOnce({ id: 'lead-1', status: 'LOST' })
+    prismaMock.sequenceEnrollment.findMany.mockResolvedValueOnce([{ id: 'enr-1' }])
+
+    await markLeadLostManually('lead-1', 'owner-1', 'went with a competitor')
+
+    expect(prismaMock.sequenceEnrollment.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'enr-1' }, data: expect.objectContaining({ status: 'STOPPED' }) })
+    )
+  })
 })
 
 describe('convertLeadOnBooking — QUALIFIED -> CONVERTED (Part N)', () => {
@@ -201,6 +218,22 @@ describe('convertLeadOnBooking — QUALIFIED -> CONVERTED (Part N)', () => {
 
     expect(prismaMock.leadStageHistory.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ toStage: 'CONVERTED', trigger: 'AUTOMATION' }) })
+    )
+  })
+
+  // Regression: PATCH /crm/leads/:id used to write CONVERTED via raw
+  // transitionLeadStage(), which never calls exitActiveEnrollments(). The
+  // route now dispatches to convertLeadOnBooking() — this proves the
+  // wrapper it dispatches to actually exits any active enrollment.
+  it('exits active sequence enrollments (EXITED_BOOKED) before writing CONVERTED', async () => {
+    prismaMock.lead.findUniqueOrThrow.mockResolvedValueOnce({ id: 'lead-1', status: 'QUALIFIED', lossReason: null })
+    prismaMock.lead.update.mockResolvedValueOnce({ id: 'lead-1', status: 'CONVERTED' })
+    prismaMock.sequenceEnrollment.findMany.mockResolvedValueOnce([{ id: 'enr-2' }])
+
+    await convertLeadOnBooking('lead-1')
+
+    expect(prismaMock.sequenceEnrollment.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'enr-2' }, data: expect.objectContaining({ status: 'EXITED_BOOKED' }) })
     )
   })
 })

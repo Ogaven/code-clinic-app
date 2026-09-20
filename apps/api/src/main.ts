@@ -39,6 +39,7 @@ import previsitRouter from './routes/previsit'
 import quickbooksRouter from './routes/quickbooks'
 import stocksRouter from './routes/stocks'
 import webhooksRouter from './routes/webhooks'
+import scoreappWebhookRouter from './routes/scoreapp-webhook'
 import auditRouter from './routes/audit'
 import aiReportsRouter from './routes/ai-reports'
 import permissionsRouter from './routes/permissions'
@@ -137,7 +138,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }))
 app.use(cookieParser())
-app.use(express.json({ limit: '10mb' }))
+// `verify` stashes the exact raw request bytes on req.rawBody — needed by
+// webhook-signature.ts to compute Meta's X-Hub-Signature-256 HMAC, which
+// must be checked against the literal bytes Meta sent, not a
+// JSON.stringify(req.body) re-serialization (not guaranteed byte-identical).
+app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { (req as express.Request & { rawBody?: Buffer }).rawBody = buf } }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 app.use(generalLimiter)
 
@@ -223,6 +228,9 @@ app.use('/reports',      reportsRouter)
 // GET  /webhooks/facebook — Meta webhook verification
 // POST /webhooks/facebook — Facebook Messenger events
 app.use('/webhooks', webhooksRouter)
+// POST /webhooks/scoreapp — third-party ScoreApp quiz submissions (fails
+// closed until SCOREAPP_WEBHOOK_SECRET is configured — see the route file)
+app.use('/webhooks/scoreapp', scoreappWebhookRouter)
 
 // ─── AI Suite ─────────────────────────────────────────────────
 // WhatsApp webhook: GET /ai-suite/webhook  POST /ai-suite/webhook
