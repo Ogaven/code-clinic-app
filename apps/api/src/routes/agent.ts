@@ -11,7 +11,6 @@ import { runAgent } from '../services/agent/unified-agent'
 // import { runReminderJob, runFollowupJob, runDebtJob, processQueue } from '../services/agent/scheduler' // disabled
 import { prisma } from '../lib/prisma'
 import { normalizePhone, phoneVariants } from '../utils/phone'
-import { checkAfricasTalkingWebhookAuth } from '../lib/at-webhook-auth'
 
 const router = Router()
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -20,15 +19,11 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 // WHATSAPP
 // ════════════════════════════════════════════
 
-// POST /agent/whatsapp/webhook — Africa's Talking webhook
+// POST /agent/whatsapp/webhook — Africa's Talking webhook (legacy/dormant;
+// the active WhatsApp architecture is Meta/WhatsApp Business Cloud, see
+// ai-suite/whatsapp/whatsapp.routes.ts. No auth gate here — AT is not the
+// active channel and is not being configured as a production requirement.
 router.post('/whatsapp/webhook', async (req, res) => {
-  // See lib/at-webhook-auth.ts — rejects only once AT_WEBHOOK_SECRET is
-  // configured; today (unconfigured) this only logs a warning and never
-  // blocks live patient traffic.
-  if (checkAfricasTalkingWebhookAuth(req) === 'REJECTED') {
-    res.sendStatus(403)
-    return
-  }
   try {
     res.status(200).json({ received: true })
     const body      = req.body
