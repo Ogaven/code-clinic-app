@@ -13,20 +13,9 @@
 // any new follow-up task type.
 // ─────────────────────────────────────────────────────────────────────────
 import { prisma } from '../lib/prisma'
+import { startOfKampalaDay, endOfKampalaDay } from '../utils/kampala-time'
 
 const LEAD_TASK = { entityType: 'LEAD' } as const
-
-function startOfToday(): Date {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
-function startOfTomorrow(): Date {
-  const d = startOfToday()
-  d.setDate(d.getDate() + 1)
-  return d
-}
 
 export interface LeadFollowUpItem {
   id: string
@@ -75,8 +64,10 @@ export interface LeadFollowUpOptions {
 
 export async function buildLeadFollowUpSummary(options: LeadFollowUpOptions = {}): Promise<LeadFollowUpSummary> {
   const ownerFilter = options.ownerId ? { assignedToId: options.ownerId } : {}
-  const today = startOfToday()
-  const tomorrow = startOfTomorrow()
+  // Africa/Kampala day boundaries, not the host process's local time — see
+  // utils/kampala-time.ts. endOfKampalaDay(today) === start of tomorrow.
+  const today = startOfKampalaDay()
+  const tomorrow = endOfKampalaDay()
 
   const [dueTodayRaw, overdueRaw, upcomingRaw, completedRaw] = await Promise.all([
     prisma.task.findMany({

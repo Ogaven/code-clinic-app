@@ -4,7 +4,13 @@ import { requireRole, adminAndReceptionist } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { phoneVariants } from '../utils/phone'
 import { findOrCreateLeadForChannel, handleNewLeadCreated } from '../crm-automation/lead-intake.service'
-import { transitionLeadStage, convertLeadOnBooking } from '../crm-automation/lead-stage.service'
+import {
+  transitionLeadStage,
+  convertLeadOnBooking,
+  logHumanReply,
+  applyQualifyingIntent,
+  markLeadLostManually,
+} from '../crm-automation/lead-stage.service'
 
 const router = Router()
 
@@ -109,13 +115,50 @@ router.get('/leads/:id', requireAuth, adminAndReceptionist, async (req: Request,
 // records LeadStageHistory, enforces the LOST-reason requirement, and emits
 // automation events. Writing `status` directly here used to silently bypass
 // all of that (confirmed in production: leads reached CONTACTED with zero
-// LeadStageHistory rows). A caller that wants to change stage is now routed
-// through the same service every other stage-change entry point uses.
+// LeadStageHistory rows).
+//
+// A generic `status` in the PATCH body is NOT passed straight to
+// transitionLeadStage() any more either — that let this route bypass the
+// canonical business-rule wrappers every dedicated stage-change endpoint
+// uses (POST .../log-human-reply, .../qualify, .../lost, .../converted):
+// LOST/CONVERTED via raw transitionLeadStage() skipped exitActiveEnrollments()
+// (an active nurture sequence kept running past a lead's terminal state), and
+// QUALIFIED skipped applyQualifyingIntent()'s 48h-reply/CONTACTED
+// precondition. Dispatching to the same wrapper functions here closes that
+// without creating a second copy of the business logic. NEW (or any other
+// stage without a canonical wrapper) still falls through to
+// transitionLeadStage() directly — it remains the single write path either
+// way, so LeadStageHistory is always recorded.
 router.patch('/leads/:id', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
-  const { status, score, notes, name, phone, email, lastMessage, convertedToPatientId, assignedTo, reason } = req.body
+  const { status, score, notes, name, phone, email, lastMessage, convertedToPatientId, assignedTo, reason, intent } = req.body
   try {
     if (status !== undefined) {
-      await transitionLeadStage(req.params.id, status, { changedBy: req.user!.id, trigger: 'MANUAL', reason })
+      // Stage-transition failures here are always business-rule violations
+      // (missing reason/intent, wrong current stage, reply window expired),
+      // never a server fault — always a 400, matching every dedicated
+      // stage-change endpoint's error handling.
+      try {
+        switch (status) {
+          case 'CONTACTED':
+            await logHumanReply(req.params.id, req.user!.id)
+            break
+          case 'QUALIFIED':
+            if (!intent) return res.status(400).json({ error: 'intent is required to move a lead to QUALIFIED (e.g. "asked_pricing", "wants_appointment")' })
+            await applyQualifyingIntent(req.params.id, req.user!.id, intent)
+            break
+          case 'LOST':
+            if (!reason) return res.status(400).json({ error: 'A loss reason is required whenever a lead moves to LOST' })
+            await markLeadLostManually(req.params.id, req.user!.id, reason)
+            break
+          case 'CONVERTED':
+            await convertLeadOnBooking(req.params.id)
+            break
+          default:
+            await transitionLeadStage(req.params.id, status, { changedBy: req.user!.id, trigger: 'MANUAL', reason })
+        }
+      } catch (stageError: any) {
+        return res.status(400).json({ error: stageError.message || 'Failed to change lead stage' })
+      }
     }
 
     const data: any = {}
@@ -144,7 +187,7 @@ router.patch('/leads/:id', requireAuth, adminAndReceptionist, async (req: Reques
       : await prisma.lead.findUniqueOrThrow({ where: { id: req.params.id } })
     res.json(lead)
   } catch (e: any) {
-    res.status(e.message?.includes('required') ? 400 : 500).json({ error: e.message || 'Failed to update lead' })
+    res.status(500).json({ error: e.message || 'Failed to update lead' })
   }
 })
 

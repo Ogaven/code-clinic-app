@@ -84,4 +84,50 @@ describe('buildNeedsAttentionQueue', () => {
       expect.objectContaining({ where: { treatmentPlanStatus: 'PROPOSED' } })
     )
   })
+
+  // Regression: totalItems used to be a flat sum of category.count, but the
+  // LEAD_OWNER categories are not mutually exclusive — the same lead can
+  // legitimately sit in UNANSWERED_NEW, OVERDUE_FOLLOWUP, STALE_UNTOUCHED,
+  // and UNASSIGNED simultaneously, inflating the headline dashboard/panel
+  // number well past how many distinct leads actually need action.
+  it('the headline total counts a lead once even when it appears in all four overlapping LEAD_OWNER categories, while every per-category count stays unchanged', async () => {
+    const overlapLead = { id: 'lead-x', name: 'Overlap Lead', phone: '+256700000000', source: 'WHATSAPP', assignedTo: null, createdAt: new Date() }
+    prismaMock.lead.findMany
+      .mockResolvedValueOnce([overlapLead]) // UNANSWERED_NEW
+      .mockResolvedValueOnce([{ ...overlapLead, slaState: 'STALE_24H' }]) // OVERDUE_FOLLOWUP
+      .mockResolvedValueOnce([]) // QUALIFIED_UNBOOKED
+      .mockResolvedValueOnce([overlapLead]) // UNASSIGNED
+    staleLeadsByOwnerMock.mockResolvedValue([{ ownerId: null, count: 1, leads: [overlapLead] }]) // STALE_UNTOUCHED
+
+    const result = await buildNeedsAttentionQueue()
+
+    expect(result.categories.find(c => c.key === 'UNANSWERED_NEW')!.count).toBe(1)
+    expect(result.categories.find(c => c.key === 'OVERDUE_FOLLOWUP')!.count).toBe(1)
+    expect(result.categories.find(c => c.key === 'STALE_UNTOUCHED')!.count).toBe(1)
+    expect(result.categories.find(c => c.key === 'QUALIFIED_UNBOOKED')!.count).toBe(0)
+    expect(result.categories.find(c => c.key === 'UNASSIGNED')!.count).toBe(1)
+    // Flat sum of the above would be 4 (one lead counted once per category
+    // it appears in) — the distinct headline total must be 1.
+    expect(result.totalItems).toBe(1)
+  })
+
+  it('adds CLINIC_WIDE categories (no-shows, unrebooked cancellations, treatment opportunities) on top of the distinct lead count, without deduplicating them against leads or each other', async () => {
+    const leadA = { id: 'lead-a', name: 'A', phone: '1', source: 'WHATSAPP', assignedTo: null, createdAt: new Date() }
+    const leadB = { id: 'lead-b', name: 'B', phone: '2', source: 'WHATSAPP', assignedTo: null, createdAt: new Date() }
+    prismaMock.lead.findMany
+      .mockResolvedValueOnce([leadA]) // UNANSWERED_NEW
+      .mockResolvedValueOnce([]) // OVERDUE_FOLLOWUP
+      .mockResolvedValueOnce([]) // QUALIFIED_UNBOOKED
+      .mockResolvedValueOnce([leadB]) // UNASSIGNED — distinct from leadA
+    prismaMock.appointment.findMany
+      .mockResolvedValueOnce([{ id: 'appt-1', patientId: 'p1', startAt: new Date(), patient: {} }]) // NO_SHOW
+      .mockResolvedValueOnce([{ id: 'appt-2', patientId: 'p2', startAt: new Date(), patient: {} }]) // CANCELLED
+      .mockResolvedValueOnce([]) // rebooked check — p2 not rebooked
+    prismaMock.patient.findMany.mockResolvedValueOnce([{ id: 'p3', firstName: 'C', lastName: 'D', phone: '3', updatedAt: new Date() }])
+
+    const result = await buildNeedsAttentionQueue()
+
+    // 2 distinct leads + 1 no-show + 1 unrebooked cancellation + 1 treatment opportunity
+    expect(result.totalItems).toBe(5)
+  })
 })

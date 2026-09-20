@@ -129,10 +129,27 @@ export async function buildNeedsAttentionQueue(options: NeedsAttentionOptions = 
     { key: 'TREATMENT_OPPORTUNITY', label: 'Proposed treatment awaiting decision',  scope: 'CLINIC_WIDE',  count: treatmentOpportunities.length,  items: treatmentOpportunities },
   ]
 
+  // The five LEAD_OWNER categories are not mutually exclusive — a single new,
+  // unassigned lead that's also past its SLA can legitimately appear in
+  // UNANSWERED_NEW, OVERDUE_FOLLOWUP, STALE_UNTOUCHED, and UNASSIGNED all at
+  // once. A flat sum of category.count therefore over-counts how many
+  // distinct leads actually need action, which is what the headline number
+  // is supposed to answer. The CLINIC_WIDE categories (no-shows, cancelled
+  // appointments, treatment opportunities) key on Appointment/Patient rows,
+  // not Lead rows, and their statuses are mutually exclusive by construction
+  // (an appointment can't be both NO_SHOW and CANCELLED), so they never
+  // double-count against each other or against a lead and are simply added
+  // on top. Per-category counts below are UNCHANGED — only this headline
+  // total is deduplicated.
+  const distinctLeadIds = new Set(
+    categories.filter(c => c.scope === 'LEAD_OWNER').flatMap(c => c.items.map(item => item.id as string))
+  )
+  const clinicWideCount = categories.filter(c => c.scope === 'CLINIC_WIDE').reduce((sum, c) => sum + c.count, 0)
+
   return {
     generatedAt: new Date().toISOString(),
     ownerId,
-    totalItems: categories.reduce((sum, c) => sum + c.count, 0),
+    totalItems: distinctLeadIds.size + clinicWideCount,
     categories,
   }
 }
