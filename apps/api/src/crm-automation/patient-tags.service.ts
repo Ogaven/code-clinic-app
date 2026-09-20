@@ -14,6 +14,7 @@
 import { prisma } from '../lib/prisma'
 import type { Patient, Prisma } from '@prisma/client'
 import { emitAutomationEvent, exitActiveEnrollments } from './automation-events.service'
+import { PATIENT_RECALL_CONFLICT_GROUP, PATIENT_TREATMENT_FOLLOWUP_CONFLICT_GROUP } from './sequence-groups'
 
 // Fields whose change is meaningful enough to drive automation (Part B's
 // worked examples: recall_status -> overdue_30, treatment_plan_status ->
@@ -62,10 +63,26 @@ export async function applyPatientTagUpdate(
 ): Promise<Patient> {
   const before = await prisma.patient.findUniqueOrThrow({ where: { id: patientId } })
 
+  // Referral relationship consistency: a "Referred By" patient link only
+  // means something while the source is actually PATIENT_REFERRAL. If the
+  // caller is changing the source away from that (and didn't also supply a
+  // new crmReferredByPatientId in the same request), clear the stale link
+  // rather than leaving a dangling relationship the UI would otherwise have
+  // to explain away. Never runs when crmReferralSource isn't part of this
+  // update at all, so plain edits to other fields are unaffected.
+  const effectiveUpdates: PatientTagUpdateInput = { ...updates }
+  if (
+    'crmReferralSource' in effectiveUpdates &&
+    effectiveUpdates.crmReferralSource !== 'PATIENT_REFERRAL' &&
+    !('crmReferredByPatientId' in effectiveUpdates)
+  ) {
+    effectiveUpdates.crmReferredByPatientId = null
+  }
+
   const updated = await prisma.patient.update({
     where: { id: patientId },
     data: {
-      ...(updates as Prisma.PatientUpdateInput),
+      ...(effectiveUpdates as Prisma.PatientUpdateInput),
       tagsUpdatedAt: new Date(),
       tagsUpdatedBy: actorUserId,
     },
@@ -97,6 +114,24 @@ export async function applyPatientTagUpdate(
   // treatment is INCOMPLETE, or a decline is logged).
   if (updated.balanceStatus === 'OWING' && updated.treatmentPlanStatus === 'INCOMPLETE') {
     await exitActiveEnrollments('PATIENT', patientId, 'EXITED_TAG_CHANGE', 'moved_to_collections')
+  }
+
+  // Part D — recall condition resolved (a completed appointment moved the
+  // patient off DUE/OVERDUE_* back to NOT_DUE) stops the recall reminder
+  // sequence specifically, without touching any unrelated active enrollment
+  // (e.g. a separate treatment-follow-up sequence) the patient may also hold.
+  if (before.recallStatus !== 'NOT_DUE' && updated.recallStatus === 'NOT_DUE') {
+    await exitActiveEnrollments('PATIENT', patientId, 'EXITED_TAG_CHANGE', 'recall_resolved', {
+      conflictGroup: PATIENT_RECALL_CONFLICT_GROUP,
+    })
+  }
+
+  // Part D — treatment issue resolved (no longer INCOMPLETE, whichever way it
+  // resolved) stops the treatment-follow-up sequence specifically.
+  if (before.treatmentPlanStatus === 'INCOMPLETE' && updated.treatmentPlanStatus !== 'INCOMPLETE') {
+    await exitActiveEnrollments('PATIENT', patientId, 'EXITED_TAG_CHANGE', 'treatment_resolved', {
+      conflictGroup: PATIENT_TREATMENT_FOLLOWUP_CONFLICT_GROUP,
+    })
   }
 
   return updated
@@ -151,6 +186,50 @@ export async function recordVisitFlag(patientId: string, flag: 'NO_SHOW' | 'LATE
   })
 }
 
+// ── Treatment-plan-status derivation (Part C) ───────────────────────────────
+// Patient.treatmentPlanStatus (the CRM tag) used to be 100% staff-entered.
+// It is derived here from TreatmentPlan.stage — the SAME canonical pipeline
+// column the Treatment Pipeline board and Case Acceptance report already
+// read (see routes/pipeline.ts's VALID_STAGES) — never a second source of
+// truth. 'Follow-up Due' is reused as-is: it is already the pipeline's own
+// designated "this plan needs follow-up" marker, so it maps directly to the
+// CRM tag's INCOMPLETE value instead of this file inventing a new staleness
+// heuristic. A patient can have multiple plans; the most actionable one wins
+// (INCOMPLETE > PROPOSED > ACCEPTED > DECLINED > NONE) so a single stalled
+// plan is never hidden behind an unrelated accepted one.
+const TREATMENT_INCOMPLETE_STAGE = 'Follow-up Due'
+const TREATMENT_PROPOSED_STAGES = ['Consulted', 'Treatment Presented']
+const TREATMENT_ACCEPTED_STAGES = ['Accepted & Scheduled', 'Accepted & Unscheduled', 'Completed']
+const TREATMENT_DECLINED_STAGES = ['Declined']
+
+export function deriveTreatmentPlanStatusFromStages(stages: string[]): string {
+  if (stages.length === 0) return 'NONE'
+  if (stages.includes(TREATMENT_INCOMPLETE_STAGE)) return 'INCOMPLETE'
+  if (stages.some(s => TREATMENT_PROPOSED_STAGES.includes(s))) return 'PROPOSED'
+  if (stages.some(s => TREATMENT_ACCEPTED_STAGES.includes(s))) return 'ACCEPTED'
+  if (stages.every(s => TREATMENT_DECLINED_STAGES.includes(s))) return 'DECLINED'
+  return 'NONE'
+}
+
+// Called synchronously (fire-and-forget from the route's perspective) right
+// after any TreatmentPlan stage/status write in routes/pipeline.ts, and as a
+// nightly safety net in runDailyPatientTagDerivation below for any plan
+// change that reaches TreatmentPlan through a path that doesn't call this
+// directly. Writes through applyPatientTagUpdate like every other tag, so it
+// emits treatment_plan_status_changed and the INCOMPLETE-resolved exit above
+// exactly like a manual edit would.
+export async function syncTreatmentPlanStatusFromPipeline(patientId: string): Promise<void> {
+  const [plans, patient] = await Promise.all([
+    prisma.treatmentPlan.findMany({ where: { patientId }, select: { stage: true } }),
+    prisma.patient.findUnique({ where: { id: patientId }, select: { treatmentPlanStatus: true } }),
+  ])
+  if (!patient) return
+  const newStatus = deriveTreatmentPlanStatusFromStages(plans.map(p => p.stage))
+  if (newStatus !== patient.treatmentPlanStatus) {
+    await applyPatientTagUpdate(patientId, { treatmentPlanStatus: newStatus as any }, null)
+  }
+}
+
 // ── Daily derived-tag job (Part A time-derived fields) ──────────────────────
 // Recomputes recallStatus, balanceStatus/balanceAgingBucket, lifecycleStage
 // and valueTier from data that already exists elsewhere in the schema
@@ -197,6 +276,7 @@ export async function runDailyPatientTagDerivation(): Promise<{ scanned: number;
       id: true, createdAt: true, accountBalance: true, recallInterval: true,
       recallStatus: true, balanceStatus: true, balanceAgingBucket: true,
       lifecycleStage: true, valueTier: true, treatmentTypes: true,
+      treatmentPlanStatus: true,
     },
   })
 
@@ -213,6 +293,12 @@ export async function runDailyPatientTagDerivation(): Promise<{ scanned: number;
       orderBy: { createdAt: 'asc' },
       select:  { createdAt: true },
     })
+    // Safety-net catch-all — the real-time trigger is routes/pipeline.ts
+    // calling syncTreatmentPlanStatusFromPipeline() directly on every stage/
+    // status write. This only catches a plan that changed through some other
+    // path, mirroring how recall/balance already have both a real-time
+    // trigger elsewhere AND this nightly recomputation.
+    const plans = await prisma.treatmentPlan.findMany({ where: { patientId: p.id }, select: { stage: true } })
 
     const newRecallStatus = computeRecallStatus(p.recallInterval, lastCompleted?.startAt ?? null, now)
     const newBalanceStatus = p.accountBalance > 0 ? 'OWING' : 'CURRENT'
@@ -220,6 +306,7 @@ export async function runDailyPatientTagDerivation(): Promise<{ scanned: number;
     const daysSinceCreated = Math.floor((now.getTime() - p.createdAt.getTime()) / 86_400_000)
     const newLifecycleStage = daysSinceCreated <= 90 ? 'NEW' : 'ESTABLISHED'
     const newValueTier = p.treatmentTypes.some(t => t === 'ORTHO' || t === 'IMPLANT') ? 'HIGH_VALUE' : 'STANDARD'
+    const newTreatmentPlanStatus = deriveTreatmentPlanStatusFromStages(plans.map(pl => pl.stage))
 
     const updates: PatientTagUpdateInput = {}
     if (newRecallStatus !== p.recallStatus) updates.recallStatus = newRecallStatus as any
@@ -227,6 +314,7 @@ export async function runDailyPatientTagDerivation(): Promise<{ scanned: number;
     if (newBalanceAgingBucket !== p.balanceAgingBucket) updates.balanceAgingBucket = newBalanceAgingBucket
     if (newLifecycleStage !== p.lifecycleStage) updates.lifecycleStage = newLifecycleStage as any
     if (newValueTier !== p.valueTier) updates.valueTier = newValueTier as any
+    if (newTreatmentPlanStatus !== p.treatmentPlanStatus) updates.treatmentPlanStatus = newTreatmentPlanStatus as any
 
     if (Object.keys(updates).length > 0) {
       await applyPatientTagUpdate(p.id, updates, null)

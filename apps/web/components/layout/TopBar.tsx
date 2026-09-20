@@ -54,7 +54,7 @@ const NAV: NavLink[] = [
     { label: 'Needs Attention', href: '/crm/needs-attention' }, { label: 'Follow-ups', href: '/crm/follow-ups' },
     { label: 'Sources & Campaigns', href: '/crm/sources' }, { label: 'Campaigns', href: '/campaigns' },
     { label: 'Referrals', href: '/referrals' }, { label: 'Revenue', href: '/crm/revenue' },
-    { label: 'Reports', href: '/crm/reports' },
+    { label: 'Collections', href: '/crm/collections' }, { label: 'Reports', href: '/crm/reports' },
   ] },
   { label: 'Reports', children: [
     { label: 'Case Acceptance', href: '/reports/case-acceptance' }, { label: 'Patient Live Flow', href: '/reports/patient-flow' },

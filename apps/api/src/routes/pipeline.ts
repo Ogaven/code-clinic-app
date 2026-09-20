@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
 import { authenticatedDoctorId } from '../lib/doctor-access'
 import { checkAndConvertLeadOnTreatmentStart, checkAndConvertLeadsForPatients } from '../crm-automation/lead-patient-link.service'
+import { syncTreatmentPlanStatusFromPipeline } from '../crm-automation/patient-tags.service'
 import { logAudit } from '../services/audit.service'
 
 // Mirrors clinical.ts's logActivity — writes to the patient's activity
@@ -226,6 +227,14 @@ router.patch('/treatment/:id/stage', requireAuth, async (req, res) => {
     const result = await prisma.treatmentPlan.updateMany({ where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) }, data: { stage } })
     if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: req.params.id, entityName: `Pipeline stage -> ${stage}`, req })
+
+    // CRM Automation (Part C) — re-derive the patient's treatmentPlanStatus
+    // CRM tag from the canonical pipeline stage (never a second source of
+    // truth). Fire-and-forget: never blocks or fails the stage-update response.
+    prisma.treatmentPlan.findUnique({ where: { id: req.params.id }, select: { patientId: true } })
+      .then(plan => plan && syncTreatmentPlanStatusFromPipeline(plan.patientId))
+      .catch((e: any) => console.error('[CrmAutomation] syncTreatmentPlanStatusFromPipeline failed:', e?.message))
+
     res.json({ id: req.params.id, stage })
   } catch (e) {
     console.error('[Pipeline] stage update error:', e)
@@ -292,6 +301,12 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
         .then(plan => plan && checkAndConvertLeadOnTreatmentStart(plan.patient))
         .catch((e: any) => console.error('[CrmAutomation] checkAndConvertLeadOnTreatmentStart failed:', e?.message))
     }
+
+    // CRM Automation (Part C) — re-derive the patient's treatmentPlanStatus
+    // CRM tag from the canonical pipeline status on every status write.
+    prisma.treatmentPlan.findUnique({ where: { id: req.params.id }, select: { patientId: true } })
+      .then(plan => plan && syncTreatmentPlanStatusFromPipeline(plan.patientId))
+      .catch((e: any) => console.error('[CrmAutomation] syncTreatmentPlanStatusFromPipeline failed:', e?.message))
 
     res.json({ id: req.params.id, status, ...followUpData })
   } catch (e) {
@@ -403,6 +418,16 @@ router.patch('/treatment/bulk-status', requireAuth, async (req, res) => {
         })
       : []
 
+    // CRM Automation (Part C) — every bulk status change needs its affected
+    // patients' treatmentPlanStatus CRM tag re-derived, not just the
+    // "In Progress" lead-conversion case above. Fetched once regardless of
+    // `status`, before the write, same distinct-patientId shape as above.
+    const affectedPatientIdsForSync = await prisma.treatmentPlan.findMany({
+      where:  { id: { in: ids }, ...(doctorId ? { doctorId } : {}) },
+      select: { patientId: true },
+      distinct: ['patientId'],
+    })
+
     const result = await prisma.treatmentPlan.updateMany({
       where: { id: { in: ids }, ...(doctorId ? { doctorId } : {}) },
       data:  { status },
@@ -411,6 +436,11 @@ router.patch('/treatment/bulk-status', requireAuth, async (req, res) => {
     if (affectedPatients.length > 0) {
       checkAndConvertLeadsForPatients(affectedPatients.map(p => p.patient))
         .catch((e: any) => console.error('[CrmAutomation] bulk checkAndConvertLeadsForPatients failed:', e?.message))
+    }
+
+    for (const { patientId } of affectedPatientIdsForSync) {
+      syncTreatmentPlanStatusFromPipeline(patientId)
+        .catch((e: any) => console.error('[CrmAutomation] bulk syncTreatmentPlanStatusFromPipeline failed:', e?.message))
     }
 
     res.json({ updated: result.count })
@@ -433,10 +463,24 @@ router.patch('/treatment/bulk', requireAuth, async (req, res) => {
     if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
     const doctorId = await authenticatedDoctorId(prisma, req.user!)
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+
+    // CRM Automation (Part C) — fetched before the write, same shape as bulk-status.
+    const affectedPatientIdsForSync = await prisma.treatmentPlan.findMany({
+      where:  { id: { in: ids }, ...(doctorId ? { doctorId } : {}) },
+      select: { patientId: true },
+      distinct: ['patientId'],
+    })
+
     const result = await prisma.treatmentPlan.updateMany({
       where: { id: { in: ids }, ...(doctorId ? { doctorId } : {}) },
       data:  { stage },
     })
+
+    for (const { patientId } of affectedPatientIdsForSync) {
+      syncTreatmentPlanStatusFromPipeline(patientId)
+        .catch((e: any) => console.error('[CrmAutomation] bulk syncTreatmentPlanStatusFromPipeline failed:', e?.message))
+    }
+
     res.json({ updated: result.count })
   } catch (e) {
     console.error('[Pipeline] bulk stage update error:', e)

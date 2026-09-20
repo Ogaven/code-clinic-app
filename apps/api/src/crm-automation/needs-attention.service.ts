@@ -56,6 +56,11 @@ export async function buildNeedsAttentionQueue(options: NeedsAttentionOptions = 
     recentNoShows,
     recentCancellations,
     treatmentOpportunities,
+    recallOverdue90,
+    recallOverdue180,
+    treatmentIncomplete,
+    collectionsFollowUp,
+    repeatedNoShows,
   ] = await Promise.all([
     // New lead, zero human reply yet — the very first thing anyone should act on.
     prisma.lead.findMany({
@@ -101,6 +106,35 @@ export async function buildNeedsAttentionQueue(options: NeedsAttentionOptions = 
       select: { id: true, firstName: true, lastName: true, phone: true, updatedAt: true },
       orderBy: { updatedAt: 'asc' },
     }),
+    // ── Patient CRM tag/state categories (Part C/E) — direct reads of the
+    // same recallStatus/treatmentPlanStatus/CollectionsCase/noShowCount
+    // fields the Tags tab already shows, surfaced here so they are never
+    // "hidden only inside a Tags page" per the doctor's spec.
+    prisma.patient.findMany({
+      where:  { recallStatus: 'OVERDUE_90', isActive: true },
+      select: { id: true, firstName: true, lastName: true, phone: true, tagsUpdatedAt: true },
+      orderBy: { tagsUpdatedAt: 'asc' },
+    }),
+    prisma.patient.findMany({
+      where:  { recallStatus: 'OVERDUE_180_PLUS', isActive: true },
+      select: { id: true, firstName: true, lastName: true, phone: true, tagsUpdatedAt: true },
+      orderBy: { tagsUpdatedAt: 'asc' },
+    }),
+    prisma.patient.findMany({
+      where:  { treatmentPlanStatus: 'INCOMPLETE', isActive: true },
+      select: { id: true, firstName: true, lastName: true, phone: true, tagsUpdatedAt: true },
+      orderBy: { tagsUpdatedAt: 'asc' },
+    }),
+    prisma.collectionsCase.findMany({
+      where:   { status: { in: ['OPEN', 'IN_PROGRESS'] } },
+      select:  { id: true, patientId: true, status: true, ownerId: true, createdAt: true, patient: { select: { firstName: true, lastName: true, phone: true } } },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.patient.findMany({
+      where:  { isActive: true, OR: [{ noShowCount: { gte: 2 } }, { lateCancelCount: { gte: 2 } }] },
+      select: { id: true, firstName: true, lastName: true, phone: true, noShowCount: true, lateCancelCount: true, updatedAt: true },
+      orderBy: { updatedAt: 'desc' },
+    }),
   ])
 
   // A cancellation only "needs attention" if the patient hasn't already been
@@ -120,13 +154,20 @@ export async function buildNeedsAttentionQueue(options: NeedsAttentionOptions = 
 
   const categories: NeedsAttentionCategory[] = [
     { key: 'UNANSWERED_NEW',       label: 'New leads with no reply yet',            scope: 'LEAD_OWNER',   count: unansweredNew.length,           items: unansweredNew },
-    { key: 'OVERDUE_FOLLOWUP',     label: 'Overdue follow-ups (SLA breached)',      scope: 'LEAD_OWNER',   count: overdueFollowUps.length,        items: overdueFollowUps },
+    // Plain clinic language, not developer/technical jargon — Part 13.
+    { key: 'OVERDUE_FOLLOWUP',     label: 'Leads waiting too long for a reply',     scope: 'LEAD_OWNER',   count: overdueFollowUps.length,        items: overdueFollowUps },
     { key: 'STALE_UNTOUCHED',      label: 'Untouched 24h+, no human reply',         scope: 'LEAD_OWNER',   count: staleItems.length,              items: staleItems },
     { key: 'QUALIFIED_UNBOOKED',   label: 'Qualified but not yet booked',           scope: 'LEAD_OWNER',   count: qualifiedUnbooked.length,       items: qualifiedUnbooked },
     { key: 'UNASSIGNED',           label: 'Unassigned leads',                       scope: 'LEAD_OWNER',   count: unassigned.length,              items: unassigned },
     { key: 'NO_SHOW',              label: 'Recent no-shows',                        scope: 'CLINIC_WIDE',  count: recentNoShows.length,           items: recentNoShows },
     { key: 'CANCELLED_UNREBOOKED', label: 'Cancelled and not yet rebooked',         scope: 'CLINIC_WIDE',  count: unrebookedCancellations.length, items: unrebookedCancellations },
     { key: 'TREATMENT_OPPORTUNITY', label: 'Proposed treatment awaiting decision',  scope: 'CLINIC_WIDE',  count: treatmentOpportunities.length,  items: treatmentOpportunities },
+    // ── Patient CRM tag/state categories (Part E) ──────────────────────────
+    { key: 'RECALL_OVERDUE_90',    label: 'Recall overdue 90+ days',                scope: 'CLINIC_WIDE',  count: recallOverdue90.length,         items: recallOverdue90 },
+    { key: 'RECALL_OVERDUE_180',   label: 'Recall overdue 180+ days (dormant)',     scope: 'CLINIC_WIDE',  count: recallOverdue180.length,        items: recallOverdue180 },
+    { key: 'TREATMENT_INCOMPLETE', label: 'Treatment follow-up required',           scope: 'CLINIC_WIDE',  count: treatmentIncomplete.length,     items: treatmentIncomplete },
+    { key: 'COLLECTIONS_FOLLOWUP', label: 'Collections follow-up',                  scope: 'CLINIC_WIDE',  count: collectionsFollowUp.length,     items: collectionsFollowUp },
+    { key: 'REPEATED_NO_SHOW',     label: 'Repeated no-show / late-cancel',         scope: 'CLINIC_WIDE',  count: repeatedNoShows.length,          items: repeatedNoShows },
   ]
 
   // The five LEAD_OWNER categories are not mutually exclusive — a single new,
@@ -134,22 +175,31 @@ export async function buildNeedsAttentionQueue(options: NeedsAttentionOptions = 
   // UNANSWERED_NEW, OVERDUE_FOLLOWUP, STALE_UNTOUCHED, and UNASSIGNED all at
   // once. A flat sum of category.count therefore over-counts how many
   // distinct leads actually need action, which is what the headline number
-  // is supposed to answer. The CLINIC_WIDE categories (no-shows, cancelled
-  // appointments, treatment opportunities) key on Appointment/Patient rows,
-  // not Lead rows, and their statuses are mutually exclusive by construction
-  // (an appointment can't be both NO_SHOW and CANCELLED), so they never
-  // double-count against each other or against a lead and are simply added
-  // on top. Per-category counts below are UNCHANGED — only this headline
-  // total is deduplicated.
+  // is supposed to answer — deduplicated by lead id below.
+  //
+  // The CLINIC_WIDE categories are ALSO not mutually exclusive once the
+  // patient-tag categories (recall/treatment/collections/repeat no-show)
+  // sit alongside the original appointment-keyed ones (no-show/cancelled) —
+  // a single patient can genuinely be both recall-overdue and a repeated
+  // no-show at once. Deduplicated by "patientId if present, else id" below:
+  // appointment-keyed items (no-show/cancelled) carry a patientId field
+  // distinct from their own row id; patient-keyed items (recall/treatment/
+  // repeat no-show) and collections-case items resolve to the same real
+  // person either way. Per-category counts above are UNCHANGED — only this
+  // headline total is deduplicated.
   const distinctLeadIds = new Set(
     categories.filter(c => c.scope === 'LEAD_OWNER').flatMap(c => c.items.map(item => item.id as string))
   )
-  const clinicWideCount = categories.filter(c => c.scope === 'CLINIC_WIDE').reduce((sum, c) => sum + c.count, 0)
+  const distinctClinicPeopleIds = new Set(
+    categories.filter(c => c.scope === 'CLINIC_WIDE').flatMap(c =>
+      c.items.map(item => ((item as any).patientId ?? item.id) as string)
+    )
+  )
 
   return {
     generatedAt: new Date().toISOString(),
     ownerId,
-    totalItems: distinctLeadIds.size + clinicWideCount,
+    totalItems: distinctLeadIds.size + distinctClinicPeopleIds.size,
     categories,
   }
 }

@@ -803,6 +803,7 @@ const REPORT_TABS = [
   { key: 'conversion',   label: 'Stage Conversion',          icon: GitBranch,  path: 'stage-conversion-rates' },
   { key: 'stale',        label: 'Stale Leads',               icon: Clock,      path: 'stale-leads' },
   { key: 'cold',         label: 'Weekly Cold Leads',         icon: AlertCircle,path: 'weekly-cold-leads' },
+  { key: 'caseAcceptance', label: 'Case Acceptance (CRM Tags)', icon: CheckCircle2, path: 'case-acceptance' },
   { key: 'sequences',    label: 'Sequence Performance',      icon: Zap,        path: 'sequence-performance' },
   { key: 'ar',           label: 'AR Aging',                  icon: DollarSign, path: 'aging-receivables' },
   { key: 'calls',        label: 'Call Performance',          icon: Phone,      path: 'call-performance' },
@@ -924,6 +925,27 @@ function ReportingPanel() {
               {(d ?? []).length === 0 && <tr><td colSpan={4} className="text-center py-8 text-gray-400">No leads moved to Lost in the past 7 days.</td></tr>}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {status === 'ok' && sub === 'caseAcceptance' && d && (
+        <div className="space-y-3">
+          <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-2xl p-3 text-xs text-amber-700 dark:text-amber-300">
+            This counts patients by their current CRM tag (treatmentPlanStatus). It answers "how many patients right now are Proposed/Accepted/etc." — a different question from the per-doctor, date-ranged <strong>Case Acceptance Rate</strong> report under Reports → Case Acceptance, which counts individual treatment plans over time. Both are real, neither is wrong; they measure different things.
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {Object.entries(d.counts as Record<string, number>).map(([status, count]) => (
+              <div key={status} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
+                <p className="text-[10px] font-black uppercase text-gray-400">{status}</p>
+                <p className="text-xl font-black text-gray-800 dark:text-white mt-1">{count}</p>
+              </div>
+            ))}
+          </div>
+          <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
+            <p className="text-[10px] font-black uppercase text-gray-400">Acceptance Rate</p>
+            <p className="text-xl font-black text-gray-800 dark:text-white mt-1">{pct(d.acceptanceRate)}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Accepted ÷ (Proposed + Accepted + Declined + Incomplete)</p>
+          </div>
         </div>
       )}
 

@@ -224,8 +224,8 @@ export default function CrmDashboard({ leadsHref, followUpsHref, needsAttentionH
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Response / SLA */}
-        <Card title="Response &amp; SLA">
+        {/* Response performance — plain clinic language, not technical "SLA" jargon */}
+        <Card title="Response Performance">
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded-xl bg-gray-50 dark:bg-white/5 px-3 py-2">
               <span className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-white/60"><Clock size={13} /> Avg First Response</span>

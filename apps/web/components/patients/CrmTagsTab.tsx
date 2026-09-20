@@ -8,9 +8,9 @@
 // the server-side role stripping (DOCTOR never sees financial tags) surfaces
 // here with zero extra client-side logic.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cn, formatUGX } from '@/lib/utils'
-import { Loader2, Save, Sparkles, UserCog } from 'lucide-react'
+import { Loader2, Save, Sparkles, UserCog, Search, X, ShieldCheck } from 'lucide-react'
 
 interface CrmTags {
   id: string
@@ -31,6 +31,7 @@ interface CrmTags {
   riskFlags: string[]
   crmReferralSource: string | null
   crmReferredByPatientId: string | null
+  crmReferredByPatient?: { id: string; firstName: string; lastName: string } | null
   commsChannelPref: string | null
   languagePref: string | null
   waitlistAvailable: boolean
@@ -38,6 +39,80 @@ interface CrmTags {
   tagsUpdatedAt: string | null
   tagsUpdatedBy: string | null
   accountBalance?: number
+}
+
+interface PatientSearchResult { id: string; firstName: string; lastName: string; patientNumber?: number }
+
+// Searchable "Referred By" patient picker — reuses the existing patient
+// search endpoint (GET /patients?q=) rather than a new one, and renders only
+// name + patient number, never phone/DOB/balance/other patient data.
+function ReferredByPicker({
+  patientId, currentId, currentLabel, token, onChange,
+}: {
+  patientId: string; currentId: string | null; currentLabel: string | null; token: string | null
+  onChange: (id: string | null, label: string | null) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<PatientSearchResult[]>([])
+  const [open, setOpen] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (query.trim().length < 2) { setResults([]); return }
+    debounceRef.current = setTimeout(() => {
+      setSearching(true)
+      fetch(`/api-proxy/patients?q=${encodeURIComponent(query.trim())}&limit=8`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : { data: [] })
+        .then(d => setResults((Array.isArray(d) ? d : d.data || []).filter((p: PatientSearchResult) => p.id !== patientId)))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false))
+    }, 300)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [query, token, patientId])
+
+  if (currentId && !open) {
+    return (
+      <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5">
+        <span className="text-sm text-slate-700 dark:text-white/80">{currentLabel || 'Selected patient'}</span>
+        <button type="button" onClick={() => { onChange(null, null); setOpen(true) }} className="text-slate-400 hover:text-red-500" title="Remove">
+          <X size={14} />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          placeholder="Search patient by name…"
+          className="w-full text-sm pl-8 pr-2 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 dark:bg-white/5 dark:text-white"
+        />
+      </div>
+      {open && query.trim().length >= 2 && (
+        <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#152040] shadow-lg">
+          {searching && <div className="px-3 py-2 text-xs text-slate-400">Searching…</div>}
+          {!searching && results.length === 0 && <div className="px-3 py-2 text-xs text-slate-400">No matching patients</div>}
+          {!searching && results.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => { onChange(p.id, `${p.firstName} ${p.lastName}`); setQuery(''); setOpen(false) }}
+              className="w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-white/80 hover:bg-slate-50 dark:hover:bg-white/10"
+            >
+              {p.firstName} {p.lastName}{p.patientNumber ? ` (CC-${p.patientNumber})` : ''}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 const TREATMENT_TYPES = ['CLEANING', 'FILLING', 'CROWN', 'ROOT_CANAL', 'EXTRACTION', 'ORTHO', 'IMPLANT', 'WHITENING', 'DENTURE']
@@ -98,12 +173,56 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+interface ConsentLogEntry { id: string; channel: string; status: 'OPT_IN' | 'OPT_OUT'; source: string; createdAt: string }
+
+// Read-only audit trail — the backend (ConsentLog, append-only, per-channel,
+// timestamped) already existed; this is the missing staff-facing screen for
+// it, mirroring the gap this milestone also closed for Collections.
+function ConsentHistorySection({ patientId, token }: { patientId: string; token: string | null }) {
+  const [entries, setEntries] = useState<ConsentLogEntry[] | null>(null)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open || entries !== null) return
+    fetch(`/api-proxy/crm-automation/patients/${patientId}/consent`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(setEntries)
+      .catch(() => setEntries([]))
+  }, [open, entries, patientId, token])
+
+  return (
+    <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl p-4">
+      <button type="button" onClick={() => setOpen(v => !v)} className="w-full flex items-center justify-between text-left">
+        <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-white/50">
+          <ShieldCheck size={13} /> Consent History
+        </span>
+        <span className="text-xs text-slate-400">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-1.5">
+          {entries === null && <p className="text-xs text-slate-400">Loading…</p>}
+          {entries !== null && entries.length === 0 && <p className="text-xs text-slate-400">No consent events logged for this patient yet.</p>}
+          {entries?.map(e => (
+            <div key={e.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-50 dark:border-white/5 last:border-0">
+              <span className={cn('font-semibold', e.status === 'OPT_IN' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500')}>
+                {e.status === 'OPT_IN' ? 'Opted in' : 'Opted out'} — {label(e.channel)}
+              </span>
+              <span className="text-slate-400">{label(e.source)} · {new Date(e.createdAt).toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CrmTagsTab({ patientId, token }: { patientId: string; token: string | null }) {
   const [tags, setTags] = useState<CrmTags | null>(null)
   const [draft, setDraft] = useState<Partial<CrmTags>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [pickedReferrerLabel, setPickedReferrerLabel] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -275,13 +394,42 @@ export default function CrmTagsTab({ patientId, token }: { patientId: string; to
             <p className="text-xs text-slate-500 mb-1">Referral Source</p>
             <select
               value={draft.crmReferralSource ?? tags.crmReferralSource ?? ''}
-              onChange={e => setDraft(d => ({ ...d, crmReferralSource: (e.target.value || null) as any }))}
+              onChange={e => {
+                const next = (e.target.value || null) as any
+                setDraft(d => ({
+                  ...d,
+                  crmReferralSource: next,
+                  // Referral source changed away from Patient Referral — the
+                  // "Referred By" link no longer means anything, so clear it
+                  // in the same edit rather than leaving a stale relationship.
+                  ...(next !== 'PATIENT_REFERRAL' ? { crmReferredByPatientId: null } : {}),
+                }))
+              }}
               className="w-full text-sm px-2 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 dark:bg-white/5 dark:text-white"
             >
               <option value="">Not set</option>
               {REFERRAL_SOURCES.map(s => <option key={s} value={s}>{label(s)}</option>)}
             </select>
           </div>
+          {(draft.crmReferralSource ?? tags.crmReferralSource) === 'PATIENT_REFERRAL' && (
+            <div>
+              <p className="text-xs text-slate-500 mb-1">Referred By</p>
+              <ReferredByPicker
+                patientId={patientId}
+                token={token}
+                currentId={draft.crmReferredByPatientId !== undefined ? draft.crmReferredByPatientId : tags.crmReferredByPatientId}
+                currentLabel={
+                  draft.crmReferredByPatientId !== undefined
+                    ? pickedReferrerLabel
+                    : (tags.crmReferredByPatient ? `${tags.crmReferredByPatient.firstName} ${tags.crmReferredByPatient.lastName}` : null)
+                }
+                onChange={(id, referrerLabel) => {
+                  setPickedReferrerLabel(referrerLabel)
+                  setDraft(d => ({ ...d, crmReferredByPatientId: id }))
+                }}
+              />
+            </div>
+          )}
           <div>
             <p className="text-xs text-slate-500 mb-1">Preferred Channel</p>
             <select
@@ -321,6 +469,8 @@ export default function CrmTagsTab({ patientId, token }: { patientId: string; to
           </label>
         </div>
       </Section>
+
+      <ConsentHistorySection patientId={patientId} token={token} />
 
       <div className="flex justify-end gap-2 sticky bottom-0 bg-gradient-to-t from-white dark:from-[#0b1220] pt-2">
         {hasDraft && (

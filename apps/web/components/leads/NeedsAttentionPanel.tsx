@@ -43,6 +43,11 @@ const CATEGORY_TONE: Record<string, string> = {
   NO_SHOW:               'bg-orange-50 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300',
   CANCELLED_UNREBOOKED:  'bg-purple-50 text-purple-700 dark:bg-purple-400/15 dark:text-purple-300',
   TREATMENT_OPPORTUNITY: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300',
+  RECALL_OVERDUE_90:     'bg-amber-50 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300',
+  RECALL_OVERDUE_180:    'bg-red-50 text-red-600 dark:bg-red-400/15 dark:text-red-300',
+  TREATMENT_INCOMPLETE:  'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300',
+  COLLECTIONS_FOLLOWUP:  'bg-rose-50 text-rose-700 dark:bg-rose-400/15 dark:text-rose-300',
+  REPEATED_NO_SHOW:      'bg-orange-50 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300',
 }
 
 function itemLabel(item: AttentionItem): string {
