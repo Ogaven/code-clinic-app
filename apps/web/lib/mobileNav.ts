@@ -138,9 +138,15 @@ const ADMIN_NAV: MobileNavConfig = {
       sections: [{
         heading: 'CRM',
         items: [
-          { label: 'Leads',     href: '/leads',     icon: Target },
-          { label: 'Campaigns', href: '/campaigns', icon: Megaphone },
-          { label: 'Referrals', href: '/referrals',  icon: Handshake },
+          { label: 'Dashboard',      href: '/crm',                    icon: LineChart },
+          { label: 'Leads',          href: '/leads',                  icon: Target },
+          { label: 'Needs Attention', href: '/crm/needs-attention',   icon: AlertTriangle },
+          { label: 'Follow-ups',     href: '/crm/follow-ups',         icon: CalendarClock },
+          { label: 'Sources',       href: '/crm/sources',             icon: Megaphone },
+          { label: 'Campaigns',     href: '/campaigns',               icon: Megaphone },
+          { label: 'Referrals',     href: '/referrals',               icon: Handshake },
+          { label: 'Revenue',       href: '/crm/revenue',             icon: Wallet },
+          { label: 'Reports',       href: '/crm/reports',             icon: FileBarChart },
         ],
       }],
     },
@@ -199,8 +205,15 @@ const RECEPTIONIST_NAV: MobileNavConfig = {
       sections: [{
         heading: 'CRM',
         items: [
+          // Dashboard/Needs Attention/Follow-ups/Sources ride the existing
+          // 'leads' permission — see the matching comment in
+          // ReceptionistTopBar.tsx for why no new permission key was added.
+          { label: 'Dashboard',          href: '/receptionist/crm',                icon: LineChart, permKey: 'leads' },
           { label: 'Treatment Pipeline', href: '/receptionist/treatment-pipeline', icon: Target,    permKey: 'treatmentPipeline' },
           { label: 'Leads',              href: '/receptionist/leads',             icon: Target,    permKey: 'leads' },
+          { label: 'Needs Attention',    href: '/receptionist/crm/needs-attention', icon: AlertTriangle, permKey: 'leads' },
+          { label: 'Follow-ups',         href: '/receptionist/crm/follow-ups',    icon: CalendarClock, permKey: 'leads' },
+          { label: 'Sources',            href: '/receptionist/crm/sources',       icon: Megaphone, permKey: 'leads' },
           { label: 'Referrals',          href: '/receptionist/referrals',         icon: Handshake, permKey: 'referrals' },
           { label: 'Campaigns',          href: '/receptionist/campaigns',         icon: Megaphone, permKey: 'campaigns' },
         ],

@@ -19,7 +19,10 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 // WHATSAPP
 // ════════════════════════════════════════════
 
-// POST /agent/whatsapp/webhook — Africa's Talking webhook (no auth)
+// POST /agent/whatsapp/webhook — Africa's Talking webhook (legacy/dormant;
+// the active WhatsApp architecture is Meta/WhatsApp Business Cloud, see
+// ai-suite/whatsapp/whatsapp.routes.ts. No auth gate here — AT is not the
+// active channel and is not being configured as a production requirement.
 router.post('/whatsapp/webhook', async (req, res) => {
   try {
     res.status(200).json({ received: true })
@@ -66,12 +69,14 @@ router.post('/whatsapp/webhook', async (req, res) => {
       return
     }
 
-    // ── Log full payload so we can see exactly what AT sends for each type ───
-    console.log('[AT Webhook] Received:', JSON.stringify(body, null, 2))
-
     const rawFrom   = body.from    || body.data?.from    || body.phoneNumber
     const rawText   = body.text    || body.data?.text    || body.body?.message || body.message
     const mediaType = body.messageType || body.data?.messageType || ''
+
+    // Never log the full raw payload — it carries patient message content,
+    // phone numbers, and names. A structural summary is enough to debug
+    // delivery/routing issues without writing patient data to application logs.
+    console.log(`[AT Webhook] Received: hasFrom=${!!rawFrom} hasText=${!!rawText} messageType=${mediaType || 'none'}`)
     // gatewayId is the actual Meta wamid — use it for dedup so AT and Cloud API
     // webhooks for the same message collapse to one processing call in the buffer.
     const msgId     = body.gatewayId || body.id || body.messageId || body.data?.id || ''
@@ -187,7 +192,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
     }
 
     if (!rawFrom || !text) {
-      console.warn('[WHATSAPP WEBHOOK] Missing from or text:', body)
+      console.warn(`[WHATSAPP WEBHOOK] Missing from or text — hasFrom=${!!rawFrom} hasText=${!!text} messageType=${mediaType || 'none'}`)
       return
     }
     // Normalise AT phone (e.g. "256741087667") to E.164 (+256741087667)

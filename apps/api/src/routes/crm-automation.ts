@@ -25,7 +25,12 @@ import { createWaitlistEntry, listWaitlistEntries, pauseOrRemoveWaitlistEntry, m
 import {
   responseTimeLeaderboard, stageConversionRates, staleLeadsByOwner, weeklyColdLeadsDigest,
   caseAcceptanceReport, sequencePerformanceReport, agingReceivablesReport, callPerformanceReport,
+  sourcePerformance, lostReasonsBreakdown,
 } from '../crm-automation/reporting.service'
+import { buildNeedsAttentionQueue } from '../crm-automation/needs-attention.service'
+import { buildLeadFollowUpSummary, completeLeadFollowUp } from '../crm-automation/lead-followups.service'
+import { buildOwnershipAudit } from '../crm-automation/ownership-audit.service'
+import { buildAcquisitionRevenueReport, acquisitionRevenueByDimension, unattributedRevenueSummary } from '../crm-automation/revenue-attribution.service'
 import { isCrmAutomationLive, crmFeatureStatus } from '../crm-automation/dry-run'
 import { isSmsChannelActive } from '../ai-suite/sms/sms.service'
 import { isCallingChannelActive } from '../services/calling-channel.service'
@@ -408,6 +413,23 @@ router.get('/backlog/runs', requireAuth, adminOnly, async (_req: Request, res: R
   res.json(await prisma.backlogCampaignRun.findMany({ orderBy: { createdAt: 'desc' } }))
 })
 
+// ── Ownership audit (read-only preview — see ownership-audit.service.ts) ──
+// adminOnly — same gate as routing-rules config, which this reads alongside
+// current owner distribution. Never mutates anything; backfillPreview is a
+// simulation, not an executable action.
+router.get('/ownership-audit', requireAuth, adminOnly, async (_req: Request, res: Response) => {
+  res.json(await buildOwnershipAudit())
+})
+
+// ── Needs Attention (unified operational queue) ──────────────────────────
+// ?ownerId scopes lead-based categories to one CRM lead owner (Lead.
+// assignedTo); appointment/patient-based categories stay clinic-wide
+// regardless — see needs-attention.service.ts header for why.
+router.get('/needs-attention', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const ownerId = typeof req.query.ownerId === 'string' && req.query.ownerId ? req.query.ownerId : undefined
+  res.json(await buildNeedsAttentionQueue({ ownerId }))
+})
+
 // ── Reporting (Part R) ────────────────────────────────────────────────────
 router.get('/reports/response-time-leaderboard', requireAuth, adminAndReceptionist, async (_req, res) => res.json(await responseTimeLeaderboard()))
 router.get('/reports/stage-conversion-rates',     requireAuth, adminAndReceptionist, async (_req, res) => res.json(await stageConversionRates()))
@@ -417,6 +439,48 @@ router.get('/reports/case-acceptance',            requireAuth, clinicalStaff,   
 router.get('/reports/sequence-performance',       requireAuth, adminAndReceptionist, async (_req, res) => res.json(await sequencePerformanceReport()))
 router.get('/reports/aging-receivables',          requireAuth, accountsOrAdmin,      async (_req, res) => res.json(await agingReceivablesReport()))
 router.get('/reports/call-performance',           requireAuth, adminAndReceptionist, async (_req, res) => res.json(await callPerformanceReport()))
+router.get('/reports/source-performance',         requireAuth, adminAndReceptionist, async (_req, res) => res.json(await sourcePerformance()))
+router.get('/reports/lost-reasons',               requireAuth, adminAndReceptionist, async (_req, res) => res.json(await lostReasonsBreakdown()))
+
+// ── Lead follow-ups (Task model, entityType='LEAD') ──────────────────────
+router.get('/follow-ups', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const ownerId = typeof req.query.ownerId === 'string' && req.query.ownerId ? req.query.ownerId : undefined
+  res.json(await buildLeadFollowUpSummary({ ownerId }))
+})
+
+router.post('/follow-ups/:id/complete', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  try {
+    res.json(await completeLeadFollowUp(req.params.id))
+  } catch (e: any) {
+    res.status(404).json({ error: e.message || 'Follow-up task not found' })
+  }
+})
+
+// ── Acquisition-to-revenue attribution (Phase 5) — accountsOrAdmin, same
+// gate as aging-receivables: this exposes real collected-revenue figures,
+// not just lead-pipeline counts. See revenue-attribution.service.ts for the
+// single-linking-lead attribution rule and why ambiguous patients are
+// excluded rather than guessed at.
+router.get('/reports/acquisition-revenue', requireAuth, accountsOrAdmin, async (req: Request, res: Response) => {
+  const { source, campaignId, ownerId, dateFrom, dateTo } = req.query as Record<string, string | undefined>
+  res.json(await buildAcquisitionRevenueReport({
+    source, campaignId, ownerId,
+    dateFrom: dateFrom ? new Date(dateFrom) : undefined,
+    dateTo:   dateTo ? new Date(dateTo) : undefined,
+  }))
+})
+
+router.get('/reports/acquisition-revenue-by/:dimension', requireAuth, accountsOrAdmin, async (req: Request, res: Response) => {
+  const dimension = req.params.dimension
+  if (!['source', 'campaignId', 'ownerId'].includes(dimension)) {
+    return res.status(400).json({ error: 'dimension must be one of: source, campaignId, ownerId' })
+  }
+  res.json(await acquisitionRevenueByDimension(dimension as 'source' | 'campaignId' | 'ownerId'))
+})
+
+router.get('/reports/unattributed-revenue', requireAuth, accountsOrAdmin, async (_req: Request, res: Response) => {
+  res.json(await unattributedRevenueSummary())
+})
 
 // ── Manual dispatcher triggers (testing/admin only — the real triggers are
 // the setInterval schedulers wired in main.ts) ────────────────────────────

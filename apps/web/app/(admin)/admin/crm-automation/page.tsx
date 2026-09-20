@@ -5,7 +5,8 @@
 // additive: it does not touch the existing Leads pipeline, Campaigns, or
 // Patient CRM screens.
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Plus, Trash2, Pencil, Loader2, CheckCircle2, AlertCircle, Zap, GitBranch, Star, X,
   RefreshCw, Send, Eye, Users, Clock, Phone, DollarSign,
@@ -146,8 +147,23 @@ const TAB_LABEL: Record<string, string> = {
   backlog: 'Backlog Re-engagement', reporting: 'Reporting',
 }
 
+type CrmAutomationTab = 'routing' | 'sequences' | 'review' | 'backlog' | 'reporting'
+const VALID_TABS: CrmAutomationTab[] = ['routing', 'sequences', 'review', 'backlog', 'reporting']
+
 export default function CrmAutomationSettingsPage() {
-  const [tab, setTab] = useState<'routing' | 'sequences' | 'review' | 'backlog' | 'reporting'>('routing')
+  return (
+    <Suspense>
+      <CrmAutomationSettingsContent />
+    </Suspense>
+  )
+}
+
+function CrmAutomationSettingsContent() {
+  // The new CRM Reports page (/crm/reports) deep-links here with ?tab=reporting
+  // rather than duplicating this panel — reuse, not a second reporting UI.
+  const requestedTab = useSearchParams().get('tab')
+  const initialTab = VALID_TABS.includes(requestedTab as CrmAutomationTab) ? (requestedTab as CrmAutomationTab) : 'routing'
+  const [tab, setTab] = useState<CrmAutomationTab>(initialTab)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   function showToast(msg: string, ok = true) { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500) }
 

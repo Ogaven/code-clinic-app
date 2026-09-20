@@ -7,6 +7,7 @@ import { handleStaffReply, STAFF_NUMBER, type AlertMeta } from './staff-relay.se
 import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 import { sendPushToUser } from '../../services/push.service'
+import { checkMetaWebhookSignature } from '../../lib/webhook-signature'
 
 const router = Router()
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -175,7 +176,22 @@ router.get('/webhook', (req, res) => {
 
 // ── POST /ai-suite/webhook — inbound messages from Meta ──────────────────────────
 router.post('/webhook', async (req: Request, res: Response) => {
-  console.log('[WEBHOOK RECEIVED]', JSON.stringify(req.body, null, 2))
+  // See lib/webhook-signature.ts — rejects only once a real app secret is
+  // configured; today (no WHATSAPP_APP_SECRET set) this only logs a warning
+  // and never blocks live patient traffic.
+  if (checkMetaWebhookSignature(req, ['WHATSAPP_APP_SECRET', 'META_APP_SECRET'], 'WhatsApp') === 'REJECTED') {
+    res.sendStatus(403)
+    return
+  }
+
+  // Never log the full raw payload — it carries patient message content,
+  // phone numbers, and names. A structural summary is enough to debug
+  // delivery/routing issues without writing patient data to application logs.
+  const bodyForLog = req.body as WhatsAppWebhookPayload
+  const entryCount = bodyForLog?.entry?.length ?? 0
+  const messageCount = (bodyForLog?.entry ?? []).reduce((n, e) => n + (e.changes ?? []).reduce((m, c) => m + (c.value?.messages?.length ?? 0), 0), 0)
+  const statusCount = (bodyForLog?.entry ?? []).reduce((n, e) => n + (e.changes ?? []).reduce((m, c) => m + (c.value?.statuses?.length ?? 0), 0), 0)
+  console.log(`[WEBHOOK RECEIVED] object=${bodyForLog?.object} entries=${entryCount} messages=${messageCount} statuses=${statusCount}`)
 
   // Always acknowledge immediately so Meta doesn't retry
   res.sendStatus(200)

@@ -1,5 +1,6 @@
 import { Router } from 'express'
-import { processSocialMessage, processComment } from '../ai-suite/facebook/facebook.routes'
+import { processSocialMessage, processComment, processLeadAdSubmission } from '../ai-suite/facebook/facebook.routes'
+import { checkMetaWebhookSignature } from '../lib/webhook-signature'
 
 const router = Router()
 
@@ -19,6 +20,14 @@ router.get('/facebook', (req, res) => {
 
 // POST /webhooks/facebook — receive Facebook Messenger events from Meta
 router.post('/facebook', async (req, res) => {
+  // See lib/webhook-signature.ts — rejects only once a real app secret is
+  // configured; today (no FACEBOOK_APP_SECRET set) this only logs a warning
+  // and never blocks live traffic.
+  if (checkMetaWebhookSignature(req, ['FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'Facebook') === 'REJECTED') {
+    res.sendStatus(403)
+    return
+  }
+
   res.sendStatus(200) // Acknowledge immediately so Meta doesn't retry
 
   try {
@@ -35,9 +44,24 @@ router.post('/facebook', async (req, res) => {
         console.log(`[Webhooks] Facebook message from ${senderId}: ${text}`)
         await processSocialMessage(senderId, text, 'FACEBOOK')
       }
-      // Page feed comments
+      // Page feed comments + native Lead Ads (leadgen) submissions
       for (const change of entry.changes ?? []) {
         console.log(`[Webhooks] FB change: field=${change.field} item=${change.value?.item} verb=${change.value?.verb} from=${change.value?.from?.id}`)
+
+        // Meta Lead Ads / Instant Forms — the webhook payload never carries
+        // the actual answers, only a leadgen_id; processLeadAdSubmission
+        // fetches the real field_data via a follow-up Graph API call. See
+        // that function for the current external permission blocker
+        // (leads_retrieval) confirmed during the 2026-09-16 lead-engine audit.
+        if (change.field === 'leadgen') {
+          const leadgenId = change.value?.leadgen_id
+          if (leadgenId) {
+            console.log(`[Webhooks] Facebook Lead Ad submission, leadgen_id=${leadgenId}`)
+            await processLeadAdSubmission(String(leadgenId))
+          }
+          continue
+        }
+
         if (change.field !== 'feed') continue
         const v = change.value
         if (v?.item !== 'comment' || v?.verb !== 'add' || !v?.message) continue

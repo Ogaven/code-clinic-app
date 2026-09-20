@@ -77,8 +77,18 @@ const NAV: NavLink[] = [
     { label: 'Settings', href: '/receptionist/ai-suite/settings' },
   ] },
   { label: 'CRM', children: [
+    // Dashboard/Needs Attention/Follow-ups/Sources are new CRM-shell
+    // destinations gated on the existing 'leads' permission — there is no
+    // separate permission for them in the Staff Permissions registry, and
+    // tying them to 'leads' (rather than inventing a new key nothing can
+    // grant/revoke yet) keeps them consistent with the one real toggle that
+    // already governs whether this receptionist works leads at all.
+    { label: 'Dashboard', href: '/receptionist/crm', permKey: 'leads' },
     { label: 'Treatment Pipeline', href: '/receptionist/treatment-pipeline', permKey: 'treatmentPipeline' },
-    { label: 'Leads', href: '/receptionist/leads', permKey: 'leads' },
+    { label: 'Leads (Pipeline)', href: '/receptionist/leads', permKey: 'leads' },
+    { label: 'Needs Attention', href: '/receptionist/crm/needs-attention', permKey: 'leads' },
+    { label: 'Follow-ups', href: '/receptionist/crm/follow-ups', permKey: 'leads' },
+    { label: 'Sources & Campaigns', href: '/receptionist/crm/sources', permKey: 'leads' },
     { label: 'Referrals', href: '/receptionist/referrals', permKey: 'referrals' },
     // Backend (campaigns.ts) is requireAuth-only on every route — Receptionist
     // is already fully authorized for broadcast/template/birthday sends, same
