@@ -47,6 +47,18 @@ describe('ageFromDob', () => {
   it('returns null for a missing dob', () => {
     expect(ageFromDob(null)).toBeNull()
   })
+
+  it('leap-day dob: does not advance age until Mar 1 in a non-leap year (Feb 29 never occurs)', () => {
+    vi.setSystemTime(new Date('2027-02-28T12:00:00.000Z')) // 2027 is not a leap year
+    expect(ageFromDob('2000-02-29T00:00:00.000Z')).toBe(26)
+    vi.setSystemTime(new Date('2027-03-01T12:00:00.000Z'))
+    expect(ageFromDob('2000-02-29T00:00:00.000Z')).toBe(27)
+  })
+
+  it('leap-day dob: advances exactly on Feb 29 in a leap year', () => {
+    vi.setSystemTime(new Date('2028-02-29T12:00:00.000Z')) // 2028 is a leap year
+    expect(ageFromDob('2000-02-29T00:00:00.000Z')).toBe(28)
+  })
 })
 
 describe('kampalaToday', () => {

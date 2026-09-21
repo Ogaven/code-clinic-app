@@ -67,7 +67,7 @@ router.get('/:apptId', async (req, res) => {
         patient: {
           select: {
             id: true, firstName: true, lastName: true, phone: true,
-            dob: true, gender: true, address: true, district: true,
+            dob: true, gender: true, email: true, address: true, district: true, referralSource: true,
             nextOfKinName: true, nextOfKinPhone: true, nextOfKinRelation: true,
             allergies: true, medicalHistory: true,
           },
@@ -94,11 +94,18 @@ async function notifyWalkInStaff(patientName: string, outcome: IntakeOutcome) {
         : outcome === 'CREATED'
           ? `${patientName} registered as a new patient via the walk-in QR intake form.`
           : `${patientName} (existing patient) checked in via the walk-in QR intake form.`
+    // Push body stays generic — the patient's name only appears in the
+    // in-app Notification row (requires an authenticated session to view),
+    // never in the OS-level push body, which can be read off a lock screen.
+    const pushBody =
+      outcome === 'REQUIRES_REVIEW'
+        ? 'A walk-in form needs review before the visit — tap to view.'
+        : 'A new walk-in patient checked in — tap to view.'
 
     await Promise.all(staff.map(async u => {
       const href = u.role === 'RECEPTIONIST' ? '/receptionist/patients/walk-in' : '/patients/walk-in'
       await prisma.notification.create({ data: { userId: u.id, type: 'SYSTEM', title, body, href, isRead: false } })
-      sendPushToUser(u.id, { title, body, url: href }).catch(() => {})
+      sendPushToUser(u.id, { title, body: pushBody, url: href }).catch(() => {})
     }))
   } catch (e: any) {
     console.warn('[PreVisit] Walk-in staff notification failed:', e.message)
@@ -110,7 +117,7 @@ router.post('/submit', async (req, res) => {
   const {
     apptId, phone,
     firstName, lastName, dob, gender,
-    address, district,
+    email, address, district, referralSource,
     nextOfKinName, nextOfKinPhone, nextOfKinRelation,
     allergies, medicalHistory,
     chiefComplaint, currentMedications,
@@ -118,6 +125,9 @@ router.post('/submit', async (req, res) => {
 
   if (!phone || !firstName || !lastName) {
     res.status(400).json({ error: 'Name and phone are required' }); return
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: 'Invalid email address' }); return
   }
 
   try {
@@ -128,7 +138,7 @@ router.post('/submit', async (req, res) => {
     // only fill in currently-empty fields; a real conflict on name/DOB is
     // flagged REQUIRES_REVIEW rather than silently overwritten.
     const { patient, outcome, conflicts } = await submitWalkInIntake(prisma, {
-      phone, firstName, lastName, dob, gender, address, district,
+      phone, firstName, lastName, dob, gender, email, address, district, referralSource,
       nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory,
     })
 

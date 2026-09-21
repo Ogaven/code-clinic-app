@@ -5,8 +5,10 @@ import { useSearchParams } from 'next/navigation'
 import { CheckCircle2, AlertCircle, Loader2, Stethoscope } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Suspense } from 'react'
+import { REFERRAL_SOURCES } from '@/components/patients/PatientFormFields'
 
 const CONDITIONS = ['Diabetes', 'Hypertension', 'Ulcers', 'Asthma', 'Heart Disease', 'HIV/AIDS']
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function PreVisitForm() {
   const params   = useSearchParams()
@@ -20,9 +22,9 @@ function PreVisitForm() {
   const [saving, setSaving]   = useState(false)
 
   const [form, setForm] = useState({
-    firstName: '', lastName: '', phone: phone || '',
+    firstName: '', lastName: '', phone: phone || '', email: '',
     dob: '', gender: 'FEMALE',
-    address: '', district: '',
+    address: '', district: '', referralSource: '',
     nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '',
     allergies: '',
     medicalHistory: [] as string[],
@@ -42,10 +44,12 @@ function PreVisitForm() {
             firstName: data.patient?.firstName || '',
             lastName:  data.patient?.lastName  || '',
             phone:     data.patient?.phone     || phone || '',
+            email:     data.patient?.email     || '',
             dob:       data.patient?.dob ? data.patient.dob.slice(0, 10) : '',
             gender:    data.patient?.gender    || 'FEMALE',
             address:   data.patient?.address   || '',
             district:  data.patient?.district  || '',
+            referralSource: data.patient?.referralSource || '',
             nextOfKinName:     data.patient?.nextOfKinName     || '',
             nextOfKinPhone:    data.patient?.nextOfKinPhone    || '',
             nextOfKinRelation: data.patient?.nextOfKinRelation || '',
@@ -73,6 +77,9 @@ function PreVisitForm() {
     e.preventDefault()
     if (!form.firstName || !form.lastName || !form.phone) {
       setError('Name and phone number are required.'); return
+    }
+    if (form.email && !EMAIL_RE.test(form.email)) {
+      setError('Please enter a valid email address.'); return
     }
     setSaving(true); setError('')
     try {
@@ -158,6 +165,10 @@ function PreVisitForm() {
               <label className={labelCls}>Phone Number *</label>
               <input required value={form.phone} onChange={e => setForm(f => ({...f, phone: e.target.value}))} className={inputCls} placeholder="e.g. +256700000000" />
             </div>
+            <div>
+              <label className={labelCls}>Email address</label>
+              <input type="email" value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} className={inputCls} placeholder="e.g. jane@example.com" />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Gender</label>
@@ -181,6 +192,15 @@ function PreVisitForm() {
                 <label className={labelCls}>District</label>
                 <input value={form.district} onChange={e => setForm(f => ({...f, district: e.target.value}))} className={inputCls} placeholder="e.g. Kampala" />
               </div>
+            </div>
+            <div>
+              <label className={labelCls}>How did you get to know about us?</label>
+              <select value={form.referralSource} onChange={e => setForm(f => ({...f, referralSource: e.target.value}))} className={inputCls}>
+                <option value="">Select...</option>
+                {REFERRAL_SOURCES.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
             </div>
           </div>
 

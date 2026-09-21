@@ -1,6 +1,8 @@
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 import { STAFF_NUMBER } from '../whatsapp/staff-relay.service'
 import { prisma } from '../../lib/prisma'
+import { startOfKampalaDay, kampalaMonthDay } from '../../utils/kampala-time'
+import { isKampalaBirthdayToday, kampalaAgeTurningToday } from '../../utils/birthday-match'
 
 // Runs once daily. Finds patients whose birthday is today and sends a WhatsApp
 // staff alert listing them with a link to the Campaigns Birthdays tab.
@@ -14,13 +16,12 @@ import { prisma } from '../../lib/prisma'
 // early": for the ~3-hour window each day when Kampala's calendar date has
 // already advanced but UTC's has not (Kampala 00:00-02:59, since Kampala is
 // UTC+3), a UTC-effective now.getDate() would report the PREVIOUS day.
-// Fixed by reading Uganda's real calendar day explicitly via
-// timeZone: 'Africa/Kampala', immune to server/container ambient timezone.
+// Fixed by reading Uganda's real calendar day explicitly via the shared
+// kampala-time helper, immune to server/container ambient timezone.
 export async function checkAndSendBirthdayAlerts(): Promise<void> {
   const now        = new Date()
-  const todayMonth = parseInt(now.toLocaleDateString('en-US', { month: 'numeric', timeZone: 'Africa/Kampala' }))
-  const todayDay   = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: 'Africa/Kampala' }))
-  const todayStart = new Date(`${now.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })}T00:00:00+03:00`)
+  const { month: todayMonth, day: todayDay } = kampalaMonthDay(now)
+  const todayStart = startOfKampalaDay(now)
 
   // Dedup: only send one staff alert per calendar day
   const alreadyAlerted = await prisma.botMessageLog.findFirst({
@@ -51,13 +52,18 @@ export async function checkAndSendBirthdayAlerts(): Promise<void> {
     ORDER BY "firstName"
   `
 
-  if (patients.length === 0) {
+  // Defense-in-depth: re-check the exact inclusion rule in JS (real dob AND
+  // month match AND day match, no fallback field) before this list ever
+  // reaches a WhatsApp message.
+  const todaysBirthdays = patients.filter(p => isKampalaBirthdayToday(p.dob, now))
+
+  if (todaysBirthdays.length === 0) {
     console.log('[Birthday] No birthdays today')
     return
   }
 
-  const nameList = patients.map(p => {
-    const age  = now.getFullYear() - new Date(p.dob).getFullYear()
+  const nameList = todaysBirthdays.map(p => {
+    const age = kampalaAgeTurningToday(p.dob, now)
     return `• ${p.firstName} ${p.lastName} (turns ${age})`
   }).join('\n')
 
@@ -75,5 +81,5 @@ export async function checkAndSendBirthdayAlerts(): Promise<void> {
     },
   })
 
-  console.log(`[Birthday] Staff alert sent — ${patients.length} birthday patient(s)`)
+  console.log(`[Birthday] Staff alert sent — ${todaysBirthdays.length} birthday patient(s)`)
 }

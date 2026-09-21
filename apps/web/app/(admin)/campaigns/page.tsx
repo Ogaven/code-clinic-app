@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Megaphone, Send, Clock, Users, CheckCircle2, AlertCircle, RefreshCw, X, Eye, BookOpen, Plus, Pencil, Trash2, Cake, Sparkles } from 'lucide-react'
 import { buildSegmentCountParams } from '@/lib/campaignSegmentParams'
+import { ageFromDob } from '@/lib/dob'
 
 // Full legacy list — used ONLY by the "Send Template" modal below (tmplSegment),
 // which posts to the separate /templates/:id/send endpoint (its own segment
@@ -615,7 +616,7 @@ export default function CampaignsPage() {
             <div>
               <h2 className="font-bold text-[15px]" style={{ color: '#1A237E' }}>Birthdays Today</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })}
               </p>
             </div>
             <button onClick={fetchBirthdayPatients}
@@ -637,11 +638,10 @@ export default function CampaignsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {bdPatients.map((p: any) => {
-                // Kampala year for "now", UTC year for dob — see patients/page.tsx's
-                // ageFromDob() note: dob is stored as UTC-midnight for its calendar
-                // date, so local/browser-ambient accessors here previously risked a
-                // day/year-boundary mismatch depending on the browser's timezone.
-                const age      = p.dob ? parseInt(new Date().toLocaleDateString('en-US', { year: 'numeric', timeZone: 'Africa/Kampala' })) - new Date(p.dob).getUTCFullYear() : null
+                // Every patient in bdPatients matches today's Kampala month+day
+                // (enforced server-side), so ageFromDob's current-Kampala-age is
+                // exactly "the age they're turning today" — see lib/dob.ts.
+                const age      = ageFromDob(p.dob)
                 const isSent   = bdSent.has(p.id)
                 const msg      = bdMessages[p.id] ?? ''
                 const genBusy  = bdGenerating[p.id] ?? false

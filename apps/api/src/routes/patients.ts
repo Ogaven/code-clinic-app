@@ -61,7 +61,7 @@ const MONTH_MAP: Record<string, string> = {
   jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
 }
 
-function parseDob(raw: string): Date | null {
+export function parseDob(raw: string): Date | null {
   const s = raw?.trim()
   if (!s) return null
 
@@ -113,9 +113,23 @@ function parseDob(raw: string): Date | null {
     }
   }
 
-  // Last resort: native parse (handles many locale-specific formats)
+  // Last resort: native parse (handles many locale-specific formats, e.g.
+  // "15 June 1990"). V8's legacy non-ISO parser interprets a bare date-only
+  // string as LOCAL midnight in the process's timezone — and main.ts pins
+  // process.env.TZ to Africa/Kampala (UTC+3) — so d.getTime() here is really
+  // "1990-06-15 00:00 Kampala", whose UTC instant is 1990-06-14T21:00:00Z.
+  // Every other branch above stores dob as UTC midnight of the intended
+  // calendar date, so returning `d` as-is would silently roll this one
+  // format's dob back a day (exactly the birthday-off-by-one bug class).
+  // Fix: read the calendar date back out via LOCAL getters (which correctly
+  // reflect the Kampala-local date V8 just parsed), then re-anchor it as UTC
+  // midnight of that same calendar date, matching every other branch's
+  // storage convention.
   const d = new Date(s)
-  if (!isNaN(d.getTime()) && d.getFullYear() > 1900 && d.getFullYear() < 2100) return d
+  if (!isNaN(d.getTime())) {
+    const normalized = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+    if (normalized.getUTCFullYear() > 1900 && normalized.getUTCFullYear() < 2100) return normalized
+  }
 
   return null
 }
