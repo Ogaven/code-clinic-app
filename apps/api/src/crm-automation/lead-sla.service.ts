@@ -33,7 +33,11 @@ const TWENTY_FOUR_HR_MS = 24 * 60 * 60 * 1000
 
 const OPEN_LEAD_STATUSES = { notIn: ['CONVERTED', 'LOST'] }
 
-async function notifyUser(userId: string, title: string, body: string, href: string | null): Promise<void> {
+// `body` (shown only in the in-app, authenticated Notification list) may
+// contain the lead's name/phone; `pushBody` (shown in the OS-level push,
+// readable off a lock screen) must stay generic — defaults to `body` only
+// when the caller has nothing patient-identifying to redact.
+async function notifyUser(userId: string, title: string, body: string, href: string | null, pushBody: string = body): Promise<void> {
   // In-app notification row is always created — it's internal, not an
   // external "real send", and staff need to see SLA state while testing.
   await prisma.notification.create({ data: { userId, type: 'ESCALATION', title, body, href: href ?? undefined } })
@@ -41,7 +45,7 @@ async function notifyUser(userId: string, title: string, body: string, href: str
   // ("push notification to real staff" is explicitly listed as prohibited
   // during development/testing).
   if (isCrmFeatureLive('OPERATIONAL')) {
-    const payload: PushPayload = { title, body, url: href ?? undefined }
+    const payload: PushPayload = { title, body: pushBody, url: href ?? undefined }
     await sendPushToUser(userId, payload)
   }
 }
@@ -68,7 +72,7 @@ export async function checkLeadSlas(): Promise<{ escalated15: number; warm30: nu
     const teamLeads = await findTeamLeadIds()
     const recipients = new Set([lead.assignedTo, ...teamLeads].filter(Boolean) as string[])
     for (const userId of recipients) {
-      await notifyUser(userId, 'Lead needs a reply', `${lead.name || lead.phone || 'A lead'} has had no reply in 15 minutes.`, '/leads')
+      await notifyUser(userId, 'Lead needs a reply', `${lead.name || lead.phone || 'A lead'} has had no reply in 15 minutes.`, '/leads', 'A lead has had no reply in 15 minutes — tap to view.')
     }
     await prisma.lead.update({ where: { id: lead.id }, data: { slaState: 'ESCALATED_15' } })
     await prisma.leadSlaEvent.create({ data: { leadId: lead.id, type: 'ESCALATION_15' } })
@@ -122,7 +126,7 @@ export async function checkLeadSlas(): Promise<{ escalated15: number; warm30: nu
   for (const lead of needsStale) {
     const admins = await findTeamLeadIds()
     for (const userId of admins) {
-      await notifyUser(userId, 'Lead is stale (24h)', `${lead.name || lead.phone || 'A lead'} has gone 24 hours with no human reply.`, '/leads')
+      await notifyUser(userId, 'Lead is stale (24h)', `${lead.name || lead.phone || 'A lead'} has gone 24 hours with no human reply.`, '/leads', 'A lead has gone 24 hours with no human reply — tap to view.')
     }
     await prisma.lead.update({ where: { id: lead.id }, data: { slaState: 'STALE_24H' } })
     await prisma.leadSlaEvent.create({ data: { leadId: lead.id, type: 'STALE_24H' } })

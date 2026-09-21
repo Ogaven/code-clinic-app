@@ -7,8 +7,9 @@ import { sendWhatsAppMessage, sendWhatsAppMessageDirect, sendWhatsAppTemplate } 
 import { getPatientsSeen, splitNewAndReturning, type Range } from '../services/patient-analytics.service'
 import {
   kampalaTodayRange, kampalaWeekToDateRange, kampalaMonthToDateRange, kampalaYearToDateRange,
-  startOfKampalaDay, endOfKampalaDay,
+  startOfKampalaDay, endOfKampalaDay, kampalaMonthDay,
 } from '../utils/kampala-time'
+import { isKampalaBirthdayToday, kampalaAgeTurningToday } from '../utils/birthday-match'
 import { getChannelConsentStatus } from '../crm-automation/consent-log.service'
 
 // Kenya WABA has no billing block and APPROVED templates — use it for all birthday sends
@@ -385,11 +386,9 @@ router.post('/whatsapp/broadcast', requireAuth, adminAndReceptionist, async (req
 // explanation of why this was previously showing birthdays a day early.
 router.get('/birthdays/today', requireAuth, adminAndReceptionist, async (_req, res) => {
   try {
-    const now        = new Date()
-    const todayMonth = parseInt(now.toLocaleDateString('en-US', { month: 'numeric', timeZone: 'Africa/Kampala' }))
-    const todayDay   = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: 'Africa/Kampala' }))
-
-    const todayStart = new Date(`${now.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })}T00:00:00+03:00`)
+    const now = new Date()
+    const { month: todayMonth, day: todayDay } = kampalaMonthDay(now)
+    const todayStart = startOfKampalaDay(now)
 
     const patients = await prisma.$queryRaw<Array<{
       id:        string
@@ -408,13 +407,18 @@ router.get('/birthdays/today', requireAuth, adminAndReceptionist, async (_req, r
       ORDER BY "firstName"
     `
 
+    // Defense-in-depth: re-check the exact inclusion rule in JS (real dob AND
+    // month match AND day match, no fallback field) so a patient can never
+    // reach this response by any path other than a genuine dob match.
+    const todaysBirthdays = patients.filter(p => isKampalaBirthdayToday(p.dob, now))
+
     const sentLogs = await prisma.botMessageLog.findMany({
       where: { templateType: 'BIRTHDAY', sentAt: { gte: todayStart } },
       select: { recipientPhone: true },
     })
     const sentPhones = new Set(sentLogs.map(l => l.recipientPhone))
 
-    res.json(patients.map(p => ({
+    res.json(todaysBirthdays.map(p => ({
       id:        p.id,
       firstName: p.firstName,
       lastName:  p.lastName,
@@ -441,11 +445,7 @@ router.post('/birthdays/:patientId/generate', requireAuth, adminAndReceptionist,
     })
     if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
 
-    // Kampala year for "now", UTC year for dob (dob is stored as UTC-midnight
-    // for its calendar date, so .getUTCFullYear() recovers the exact year
-    // originally entered, immune to server/browser ambient timezone).
-    const kampalaYear = parseInt(new Date().toLocaleDateString('en-US', { year: 'numeric', timeZone: 'Africa/Kampala' }))
-    const age    = patient.dob ? kampalaYear - new Date(patient.dob).getUTCFullYear() : null
+    const age    = patient.dob ? kampalaAgeTurningToday(patient.dob) : null
     const ageStr = age ? ` who is turning ${age} today` : ''
     const styleLine = styleHint?.trim()
       ? `\nStyle/tone guidance from staff: "${styleHint.trim()}"`
@@ -490,8 +490,7 @@ router.post('/birthdays/:patientId/send', requireAuth, adminAndReceptionist, asy
     })
     if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
 
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
+    const todayStart = startOfKampalaDay()
 
     const alreadySent = await prisma.botMessageLog.findFirst({
       where: { recipientPhone: patient.phone, templateType: 'BIRTHDAY', sentAt: { gte: todayStart } },

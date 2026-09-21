@@ -113,4 +113,48 @@ describe('submitWalkInIntake', () => {
     // But the genuinely-empty address field is safe to fill in.
     expect(patients[0].address).toBe('Ntinda')
   })
+
+  // Milestone: URGENT HOTFIX — Walk-in Intake. email/referralSource were
+  // already part of WalkInIntakeInput and the fill-in-if-empty logic before
+  // this milestone — only the form and route needed to actually pass them
+  // through. These tests lock in that the service-layer contract already
+  // works correctly for both new fields.
+  it('stores email and referralSource on a brand-new walk-in patient', async () => {
+    const prisma: any = makeFakePrisma()
+    await submitWalkInIntake(prisma, {
+      phone: '0772000010', firstName: 'Peter', lastName: 'Ochieng',
+      email: 'peter@example.com', referralSource: 'Facebook',
+    })
+    expect(patients[0].email).toBe('peter@example.com')
+    expect(patients[0].referralSource).toBe('Facebook')
+  })
+
+  it('fills in email and referralSource on an existing patient when currently empty', async () => {
+    const prisma: any = makeFakePrisma()
+    await submitWalkInIntake(prisma, { phone: '0772000011', firstName: 'Mary', lastName: 'Nabirye' })
+    expect(patients[0].email).toBeUndefined()
+
+    await submitWalkInIntake(prisma, {
+      phone: '0772000011', firstName: 'Mary', lastName: 'Nabirye',
+      email: 'mary@example.com', referralSource: 'Walk-in',
+    })
+    expect(patients[0].email).toBe('mary@example.com')
+    expect(patients[0].referralSource).toBe('Walk-in')
+  })
+
+  it('never overwrites an existing email/referralSource with a differing submitted value', async () => {
+    const prisma: any = makeFakePrisma()
+    await submitWalkInIntake(prisma, {
+      phone: '0772000012', firstName: 'Sarah', lastName: 'Kintu',
+      email: 'sarah@example.com', referralSource: 'Instagram',
+    })
+
+    await submitWalkInIntake(prisma, {
+      phone: '0772000012', firstName: 'Sarah', lastName: 'Kintu',
+      email: 'different@example.com', referralSource: 'Google Search',
+    })
+
+    expect(patients[0].email).toBe('sarah@example.com')
+    expect(patients[0].referralSource).toBe('Instagram')
+  })
 })

@@ -24,6 +24,8 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('default')
   const [subscribed, setSubscribed] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [isIOS, setIsIOS] = useState(false)
+  const [isStandalone, setIsStandalone] = useState(false)
 
   useEffect(() => {
     const hasNotificationApi = typeof window !== 'undefined' && 'Notification' in window
@@ -31,6 +33,14 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
     setSupported(hasNotificationApi && hasPushApi)
     if (hasNotificationApi) setPermission(Notification.permission)
     isPushSubscribed().then(setSubscribed)
+
+    // iPadOS reports itself as "MacIntel" but is touch-only, unlike a real Mac.
+    const ua = navigator.userAgent
+    setIsIOS(/iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+    setIsStandalone(
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as unknown as { standalone?: boolean }).standalone === true
+    )
   }, [])
 
   async function enable() {
@@ -48,7 +58,7 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
     setBusy(false)
   }
 
-  const rowState = getNotificationRowState({ supported, permission, subscribed })
+  const rowState = getNotificationRowState({ supported, permission, subscribed, isIOS, isStandalone })
   const compact = variant === 'menu'
   const iconSize = compact ? 15 : 17
 
@@ -65,7 +75,12 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
   return (
     <div>
       <p className={headingCls}><Bell size={compact ? 13 : 12} /> Notifications</p>
-      {rowState === 'unsupported' ? (
+      {rowState === 'ios-needs-install' ? (
+        <div className={cn(staticCls, 'bg-gray-50 dark:bg-white/5')}>
+          <BellOff size={iconSize} className="flex-shrink-0" />
+          <span>{compact ? 'Add to Home Screen to enable' : 'On iPhone/iPad: tap Share → Add to Home Screen, then open Code Clinic from there to enable notifications.'}</span>
+        </div>
+      ) : rowState === 'unsupported' ? (
         <div className={staticCls}>
           <BellOff size={iconSize} /> Not supported on this browser
         </div>

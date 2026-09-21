@@ -98,7 +98,9 @@ export async function handleNewLeadCreated(
     const body  = `${lead.name || lead.phone || 'A new lead'} via ${lead.source}`
     await prisma.notification.create({ data: { userId: ownerId, type: 'MESSAGE', title, body, href: '/leads' } })
     if (isCrmFeatureLive('OPERATIONAL')) {
-      await sendPushToUser(ownerId, { title, body, url: '/leads' })
+      // Push body stays generic — the lead's name/phone only appears in the
+      // in-app Notification row, never in the OS-level push body.
+      await sendPushToUser(ownerId, { title, body: `A new lead came in via ${lead.source} — tap to view.`, url: '/leads' })
     }
   }
 

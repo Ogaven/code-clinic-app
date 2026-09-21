@@ -30,6 +30,22 @@ export function startOfKampalaDay(date: Date = new Date()): Date {
   return kampalaMidnightUtc(year, month, day)
 }
 
+/**
+ * Calendar month (1-12) and day (1-31) for `date` as observed in Kampala.
+ * Use this for "is it their birthday" comparisons instead of hand-rolling
+ * `toLocaleDateString(..., { timeZone: 'Africa/Kampala' })` inline — that
+ * pattern has drifted/duplicated across the birthday code paths before.
+ */
+export function kampalaMonthDay(date: Date = new Date()): { month: number; day: number } {
+  const { month, day } = kampalaParts(date)
+  return { month: month + 1, day }
+}
+
+/** Calendar year for `date` as observed in Kampala. */
+export function kampalaYear(date: Date = new Date()): number {
+  return kampalaParts(date).year
+}
+
 /** Start of the next Kampala calendar day after the one containing `date`. */
 export function endOfKampalaDay(date: Date = new Date()): Date {
   const start = startOfKampalaDay(date)

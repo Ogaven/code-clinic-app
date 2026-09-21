@@ -47,6 +47,7 @@ import reportsRouter from './routes/reports'
 import templatesRouter from './routes/templates'
 import sponsorsRouter from './routes/sponsors'
 import pushRouter from './routes/push'
+import { isPushConfigured } from './services/push.service'
 import quizFunnelsRouter from './routes/quiz-funnels'
 import attendanceRouter from './routes/attendance'
 
@@ -158,7 +159,11 @@ app.get('/health', async (_req, res) => {
 
   // Probe optional services
   const emailOk   = !!(process.env.SMTP_HOST || process.env.SENDGRID_API_KEY)
-  const pushOk    = !!(process.env.FCM_SERVER_KEY || process.env.ONESIGNAL_APP_ID)
+  // Web Push (VAPID) is the only push implementation this app has — not
+  // FCM/OneSignal, which were never wired up. isPushConfigured() checks the
+  // real VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY/VAPID_SUBJECT trio without ever
+  // exposing their values.
+  const pushOk    = isPushConfigured()
   const storageOk = !!(process.env.R2_BUCKET && process.env.R2_ACCOUNT_ID)
   const redisOk   = !!(process.env.REDIS_URL)
 

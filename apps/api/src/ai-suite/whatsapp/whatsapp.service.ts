@@ -785,6 +785,9 @@ export async function maybeNotifyStaff(
     })
     const title = `New ${channelLabel} message`
     const body  = `Message from ${displayName !== phone ? displayName : phone} via ${channelLabel}`
+    // Push body stays generic — the patient's name/phone only appears in the
+    // in-app Notification row, never in the OS-level push body.
+    const pushBody = `You have a new ${channelLabel} message — tap to view.`
 
     await Promise.all(
       staff.map(async u => {
@@ -794,7 +797,7 @@ export async function maybeNotifyStaff(
         await prisma.notification.create({
           data: { userId: u.id, type: 'MESSAGE', title, body, href, isRead: false },
         })
-        sendPushToUser(u.id, { title, body, url: href }).catch(() => {})
+        sendPushToUser(u.id, { title, body: pushBody, url: href }).catch(() => {})
       })
     )
   } catch (e: any) {
