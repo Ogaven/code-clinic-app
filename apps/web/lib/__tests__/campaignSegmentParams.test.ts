@@ -74,3 +74,41 @@ describe('buildSegmentCountParams — New Patients date-range request shape', ()
     expect(params.get('to')).toBe('')
   })
 })
+
+// Milestone: CRM operational functionality closure — Issue Three. The
+// registered-date ("date added") filter is a separate concept from NEW's
+// own preset/from/to, and — unlike it — must combine with ANY segment.
+describe('buildSegmentCountParams — registered-date filter, combinable with ANY segment', () => {
+  it('ALL with a registered-date preset carries registeredPreset (previously impossible — date filter was NEW-only)', () => {
+    const params = buildSegmentCountParams('ALL', undefined, undefined, undefined, 'month')
+    expect(params.get('segment')).toBe('ALL')
+    expect(params.get('registeredPreset')).toBe('month')
+    expect(params.has('preset')).toBe(false) // NEW's own preset field must stay untouched
+  })
+
+  it('ACTIVE combines with a registered-date preset too', () => {
+    const params = buildSegmentCountParams('ACTIVE', undefined, undefined, undefined, 'year')
+    expect(params.get('segment')).toBe('ACTIVE')
+    expect(params.get('registeredPreset')).toBe('year')
+  })
+
+  it('NEW can carry BOTH its own preset AND a registered-date preset simultaneously, as two distinct fields', () => {
+    const params = buildSegmentCountParams('NEW', 'week', undefined, undefined, 'month')
+    expect(params.get('preset')).toBe('week')
+    expect(params.get('registeredPreset')).toBe('month')
+  })
+
+  it('a custom registered range carries registeredFrom/registeredTo', () => {
+    const params = buildSegmentCountParams('ALL', undefined, undefined, undefined, 'custom', '2026-01-01', '2026-01-31')
+    expect(params.get('registeredPreset')).toBe('custom')
+    expect(params.get('registeredFrom')).toBe('2026-01-01')
+    expect(params.get('registeredTo')).toBe('2026-01-31')
+  })
+
+  it('omitting registeredPreset entirely never adds any registered* param (default/no-filter case unchanged)', () => {
+    const params = buildSegmentCountParams('ALL')
+    expect(params.has('registeredPreset')).toBe(false)
+    expect(params.has('registeredFrom')).toBe(false)
+    expect(params.has('registeredTo')).toBe(false)
+  })
+})

@@ -51,8 +51,16 @@ export default function GrowthCrmCard() {
           <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><UserCheck size={12} /> Converted <span className="text-blue-200/60">(all time)</span></span>
           <span className="text-sm font-bold text-white">{convertedLeads ?? '—'}</span>
         </div>
+        {/* Labelled "Source Recorded", NOT "Referral Patients" — this counts
+            every patient with ANY non-empty legacy intake referralSource
+            value (Google, Walk-in, Instagram, etc), a much broader
+            acquisition metric than genuine patient-referred-a-patient
+            tracking (see /crm/referrals, a deliberately different and
+            smaller number — Patient.crmReferralSource === 'PATIENT_
+            REFERRAL'). See dashboard/page.tsx's matching card for the full
+            rationale. */}
         <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Share2 size={12} /> Referral Patients <span className="text-blue-200/60">(all time)</span></span>
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Share2 size={12} /> Source Recorded <span className="text-blue-200/60">(all time)</span></span>
           <span className="text-sm font-bold text-white">{referralPatients ?? '—'}</span>
         </div>
         <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">

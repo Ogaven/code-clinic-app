@@ -57,6 +57,12 @@ export function startOfKampalaMonth(date: Date = new Date()): Date {
   return kampalaMidnightUtc(year, month, 1)
 }
 
+/** Jan 1st 00:00 Kampala of the year containing `date`. */
+export function startOfKampalaYear(date: Date = new Date()): Date {
+  const { year } = kampalaParts(date)
+  return kampalaMidnightUtc(year, 0, 1)
+}
+
 /** 1st of the previous month 00:00 Kampala, relative to `date`. */
 export function startOfPreviousKampalaMonth(date: Date = new Date()): Date {
   const { year, month } = kampalaParts(date)
@@ -95,6 +101,11 @@ export function kampalaPreviousWeekToDateRange(date: Date = new Date()): DateRan
 /** [1st of month 00:00, now] in Kampala time — "month to date". */
 export function kampalaMonthToDateRange(date: Date = new Date()): DateRange {
   return { start: startOfKampalaMonth(date), end: date }
+}
+
+/** [Jan 1st 00:00, now] in Kampala time — "year to date". */
+export function kampalaYearToDateRange(date: Date = new Date()): DateRange {
+  return { start: startOfKampalaYear(date), end: date }
 }
 
 /**

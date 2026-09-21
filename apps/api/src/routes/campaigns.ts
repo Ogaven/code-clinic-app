@@ -6,9 +6,10 @@ import { prisma } from '../lib/prisma'
 import { sendWhatsAppMessage, sendWhatsAppMessageDirect, sendWhatsAppTemplate } from '../ai-suite/whatsapp/whatsapp.service'
 import { getPatientsSeen, splitNewAndReturning, type Range } from '../services/patient-analytics.service'
 import {
-  kampalaTodayRange, kampalaWeekToDateRange, kampalaMonthToDateRange,
+  kampalaTodayRange, kampalaWeekToDateRange, kampalaMonthToDateRange, kampalaYearToDateRange,
   startOfKampalaDay, endOfKampalaDay,
 } from '../utils/kampala-time'
+import { getChannelConsentStatus } from '../crm-automation/consent-log.service'
 
 // Kenya WABA has no billing block and APPROVED templates — use it for all birthday sends
 const KENYA_PHONE_NUMBER_ID = '1163288503545718'
@@ -44,13 +45,21 @@ const SEGMENT_LABELS: Record<string, string> = {
 // different kind of segment entirely — see newPatientIdsForSpec() below.
 export const BROADCAST_SEGMENTS = ['ALL', 'ACTIVE', 'NEW']
 
-export type RangePreset = 'today' | 'week' | 'month' | 'custom'
+export type RangePreset = 'today' | 'week' | 'month' | 'year' | 'custom'
 
 export interface SegmentSpec {
   segment: string // 'ALL' | 'ACTIVE' | 'NEW' | any legacy PatientStatus code
   preset?: RangePreset
   from?: string // custom range only, YYYY-MM-DD
   to?: string
+  // Date-added ("registered") filter on Patient.createdAt — combinable with
+  // ANY segment (ALL/ACTIVE/NEW alike), unlike `preset`/`from`/`to` above,
+  // which is NEW's own "first attended appointment" date concept and only
+  // ever applies to that one segment. Deliberately separate fields/names so
+  // the two date concepts can never be silently conflated.
+  registeredPreset?: RangePreset
+  registeredFrom?: string
+  registeredTo?: string
 }
 
 // Campaign.targetSegment is `String? // JSON string` in schema — legacy rows
@@ -67,18 +76,36 @@ export function parseTargetSegment(raw: string | null | undefined): SegmentSpec 
 }
 
 export function encodeTargetSegment(spec: SegmentSpec): string {
-  return spec.segment === 'NEW' ? JSON.stringify(spec) : spec.segment
+  // Must JSON-encode whenever ANY range info needs to survive a scheduled
+  // campaign's create-now/fire-later round trip — not just NEW's own
+  // preset/from/to, but also the registered-date filter, which (unlike
+  // NEW's date concept) can be set on ANY segment.
+  return spec.segment === 'NEW' || spec.registeredPreset ? JSON.stringify(spec) : spec.segment
+}
+
+function resolvePresetRange(preset: RangePreset | undefined, from?: string, to?: string): Range {
+  const p = preset || 'today'
+  if (p === 'today') return kampalaTodayRange()
+  if (p === 'week')  return kampalaWeekToDateRange()
+  if (p === 'month') return kampalaMonthToDateRange()
+  if (p === 'year')  return kampalaYearToDateRange()
+  // custom
+  const start = from ? startOfKampalaDay(new Date(from)) : startOfKampalaDay()
+  const end   = to   ? endOfKampalaDay(new Date(to))     : endOfKampalaDay()
+  return { start, end }
 }
 
 export function resolveRange(spec: SegmentSpec): Range {
-  const preset = spec.preset || 'today'
-  if (preset === 'today') return kampalaTodayRange()
-  if (preset === 'week')  return kampalaWeekToDateRange()
-  if (preset === 'month') return kampalaMonthToDateRange()
-  // custom
-  const start = spec.from ? startOfKampalaDay(new Date(spec.from)) : startOfKampalaDay()
-  const end   = spec.to   ? endOfKampalaDay(new Date(spec.to))     : endOfKampalaDay()
-  return { start, end }
+  return resolvePresetRange(spec.preset, spec.from, spec.to)
+}
+
+// The "date added" filter — Patient.createdAt — separate from resolveRange
+// above (NEW's own "first attended appointment" concept). Returns null when
+// no registered-date filter was requested, so callers can tell "no filter"
+// apart from "filtered to a range" without a magic sentinel range.
+export function resolveRegisteredRange(spec: SegmentSpec): Range | null {
+  if (!spec.registeredPreset) return null
+  return resolvePresetRange(spec.registeredPreset, spec.registeredFrom, spec.registeredTo)
 }
 
 // "New Patients" reuses patient-analytics.service's canonical "new" definition
@@ -94,48 +121,114 @@ export async function newPatientIdsForSpec(spec: SegmentSpec): Promise<string[]>
   return newIds
 }
 
-export function segmentWhere(segment: string): any {
+export function segmentWhere(segment: string, registeredRange?: Range | null): any {
   const where: any = { phone: { not: '' } }
   if (segment !== 'ALL') where.status = segment
+  if (registeredRange) where.createdAt = { gte: registeredRange.start, lt: registeredRange.end }
   return where
 }
 
 async function patientsForSpec(spec: SegmentSpec): Promise<Array<{ id: string; phone: string }>> {
+  const registeredRange = resolveRegisteredRange(spec)
   if (spec.segment === 'NEW') {
     const ids = await newPatientIdsForSpec(spec)
     if (ids.length === 0) return []
-    return prisma.patient.findMany({ where: { id: { in: ids }, phone: { not: '' } }, select: { id: true, phone: true } })
+    const where: any = { id: { in: ids }, phone: { not: '' } }
+    if (registeredRange) where.createdAt = { gte: registeredRange.start, lt: registeredRange.end }
+    return prisma.patient.findMany({ where, select: { id: true, phone: true } })
   }
-  return prisma.patient.findMany({ where: segmentWhere(spec.segment), select: { id: true, phone: true } })
+  return prisma.patient.findMany({ where: segmentWhere(spec.segment, registeredRange), select: { id: true, phone: true } })
 }
 
-async function runBroadcast(campaignId: string, targetSegmentRaw: string, message: string) {
+// Free-text WhatsApp sends only deliver within Meta's 24h customer-service
+// window (the patient messaged us in the last 24h). Outside it, Meta
+// requires an APPROVED template — mirrors the exact fail-closed pattern
+// already used by ai-suite/scheduler/followup.service.ts and
+// crm-automation/sequence-dispatcher.ts: no env var configured = no
+// template approved yet = that recipient is skipped, never sent free-form.
+async function isWithinWhatsAppSessionWindow(phone: string): Promise<boolean> {
+  const lastInbound = await prisma.aiMessage.findFirst({
+    where: { conversation: { phoneNumber: phone }, role: 'USER' },
+    orderBy: { createdAt: 'desc' },
+  })
+  return !!lastInbound && (Date.now() - lastInbound.createdAt.getTime()) < 24 * 60 * 60 * 1000
+}
+
+// NOTE on why this does NOT route through crm-automation/dry-run.ts's
+// sendOrSimulate/CrmFeature gate: that master switch (CRM_AUTOMATION_LIVE +
+// CRM_MARKETING_AUTOMATION_LIVE) is OFF in production today (verified
+// 2026-09-21) — wiring campaigns through it would silently turn every real
+// broadcast into a no-op dry run the moment this deploys, breaking a
+// capability the clinic actively uses. Test-time safety instead comes from
+// mocking sendWhatsAppMessage/sendWhatsAppTemplate directly, the same
+// pattern every other test in this codebase already uses.
+export async function runBroadcast(campaignId: string, targetSegmentRaw: string, message: string) {
   try {
     const spec = parseTargetSegment(targetSegmentRaw)
     const patients = await patientsForSpec(spec)
 
+    // Duplicate-send prevention — never re-send this campaign to a patient
+    // NurtureLog already has a row for (idempotent against a retry/re-fire
+    // of the same campaign, e.g. runScheduledCampaigns firing twice on a
+    // slow tick).
+    const alreadyLogged = patients.length
+      ? await prisma.nurtureLog.findMany({
+          where:  { campaignId, patientId: { in: patients.map(p => p.id) } },
+          select: { patientId: true },
+        })
+      : []
+    const alreadyLoggedIds = new Set(alreadyLogged.map(l => l.patientId))
+    const candidates = patients.filter(p => !alreadyLoggedIds.has(p.id))
+
+    const templateName = process.env.WA_TEMPLATE_CAMPAIGN_BROADCAST_NAME
     const sentAt = new Date()
     let sent = 0
+    const logs: Array<{ patientId: string; campaignId: string; channel: string; message: string; status: string; sentAt?: Date }> = []
 
-    for (let i = 0; i < patients.length; i++) {
-      await sendWhatsAppMessage(patients[i].phone, message)
+    for (let i = 0; i < candidates.length; i++) {
+      const patient = candidates[i]
+
+      // Operational default-opt-in-with-fallback — the same consent
+      // standard already applied to every other broad-audience send in
+      // this codebase (reminders, follow-ups); see consent-log.service.ts's
+      // compliance note for why the stricter hasExplicitOptIn gate is
+      // deliberately reserved for the newer marketing-sequence engine
+      // rather than imposed retroactively here.
+      const consented = await getChannelConsentStatus(patient.id, 'WHATSAPP')
+      if (!consented) {
+        logs.push({ patientId: patient.id, campaignId, channel: 'WHATSAPP', message, status: 'SKIPPED_CONSENT' })
+        continue
+      }
+
+      const withinWindow = await isWithinWhatsAppSessionWindow(patient.phone)
+      if (!withinWindow && !templateName) {
+        logs.push({ patientId: patient.id, campaignId, channel: 'WHATSAPP', message, status: 'SKIPPED_TEMPLATE_REQUIRED' })
+        continue
+      }
+
+      try {
+        if (withinWindow) {
+          await sendWhatsAppMessage(patient.phone, message)
+        } else {
+          // Outside the window, only a template send is attempted — never
+          // fall back to free text, which Meta would reject anyway.
+          await sendWhatsAppTemplate(patient.phone, templateName!, [message], false)
+        }
+      } catch (sendErr: any) {
+        logs.push({ patientId: patient.id, campaignId, channel: 'WHATSAPP', message, status: `FAILED: ${sendErr?.message || 'send_failed'}` })
+        continue
+      }
+
+      logs.push({ patientId: patient.id, campaignId, channel: 'WHATSAPP', message, status: 'SENT', sentAt })
       sent++
-      if (i < patients.length - 1) {
+
+      if (i < candidates.length - 1) {
         await new Promise(r => setTimeout(r, 300))
       }
     }
 
-    if (patients.length > 0) {
-      await prisma.nurtureLog.createMany({
-        data: patients.map(p => ({
-          patientId:  p.id,
-          campaignId,
-          channel:    'WHATSAPP',
-          message,
-          status:     'SENT',
-          sentAt,
-        })),
-      })
+    if (logs.length > 0) {
+      await prisma.nurtureLog.createMany({ data: logs })
     }
 
     await prisma.campaign.update({
@@ -143,7 +236,7 @@ async function runBroadcast(campaignId: string, targetSegmentRaw: string, messag
       data:  { status: 'SENT', sentCount: sent },
     })
 
-    console.log(`[Campaign] Broadcast ${campaignId} complete — ${sent}/${patients.length} sent`)
+    console.log(`[Campaign] Broadcast ${campaignId} complete — ${sent} sent, ${logs.length - sent} skipped/failed, ${patients.length - candidates.length} already logged`)
   } catch (err) {
     console.error(`[Campaign] Broadcast error for ${campaignId}:`, err)
     await prisma.campaign.update({
@@ -168,28 +261,63 @@ router.get('/', requireAuth, adminAndReceptionist, async (_req, res) => {
   }
 })
 
+// Shared by GET /segment-count and POST /whatsapp/broadcast so the preview
+// count and the actual send resolve the identical registered-date filter —
+// never two independently-maintained readings of the same query params.
+function readRegisteredRangeParams(source: Record<string, any>): Pick<SegmentSpec, 'registeredPreset' | 'registeredFrom' | 'registeredTo'> {
+  const registeredPreset = source.registeredPreset as RangePreset | undefined
+  if (!registeredPreset) return {}
+  return {
+    registeredPreset,
+    registeredFrom: source.registeredFrom as string | undefined,
+    registeredTo:   source.registeredTo as string | undefined,
+  }
+}
+
+function validateCustomRange(preset: RangePreset | undefined, from: unknown, to: unknown): string | null {
+  if (preset !== 'custom') return null
+  if (!from || !to) return 'Custom range requires from and to'
+  if (Number.isNaN(new Date(from as string).getTime()) || Number.isNaN(new Date(to as string).getTime())) return 'Custom range dates are invalid'
+  if (new Date(from as string) > new Date(to as string)) return 'Custom range "from" must not be after "to"'
+  return null
+}
+
 // GET /campaigns/segment-count?segment=ACTIVE
 // GET /campaigns/segment-count?segment=NEW&preset=week
 // GET /campaigns/segment-count?segment=NEW&preset=custom&from=2026-09-01&to=2026-09-18
+// GET /campaigns/segment-count?segment=ACTIVE&registeredPreset=year   (date-added filter, combinable with ANY segment)
 router.get('/segment-count', requireAuth, adminAndReceptionist, async (req, res) => {
   try {
     const segment = (req.query.segment as string) || 'ALL'
     if (!BROADCAST_SEGMENTS.includes(segment)) {
       res.status(400).json({ error: 'Invalid segment' }); return
     }
+
+    const registeredParams = readRegisteredRangeParams(req.query)
+    const registeredError = validateCustomRange(registeredParams.registeredPreset, registeredParams.registeredFrom, registeredParams.registeredTo)
+    if (registeredError) { res.status(400).json({ error: registeredError }); return }
+
     if (segment === 'NEW') {
+      const newError = validateCustomRange(req.query.preset as RangePreset | undefined, req.query.from, req.query.to)
+      if (newError) { res.status(400).json({ error: newError }); return }
+
       const spec: SegmentSpec = {
         segment: 'NEW',
         preset: (req.query.preset as RangePreset) || 'today',
         from:   req.query.from as string | undefined,
         to:     req.query.to as string | undefined,
+        ...registeredParams,
       }
+      const registeredRange = resolveRegisteredRange(spec)
       const ids = await newPatientIdsForSpec(spec)
-      const count = ids.length === 0 ? 0 : await prisma.patient.count({ where: { id: { in: ids }, phone: { not: '' } } })
+      const where: any = { id: { in: ids }, phone: { not: '' } }
+      if (registeredRange) where.createdAt = { gte: registeredRange.start, lt: registeredRange.end }
+      const count = ids.length === 0 ? 0 : await prisma.patient.count({ where })
       res.json({ count })
       return
     }
-    const count = await prisma.patient.count({ where: segmentWhere(segment) })
+    const registeredRange = resolveRegisteredRange({ segment, ...registeredParams })
+    const count = await prisma.patient.count({ where: segmentWhere(segment, registeredRange) })
     res.json({ count })
   } catch (e) {
     console.error(e)
@@ -208,11 +336,17 @@ router.post('/whatsapp/broadcast', requireAuth, adminAndReceptionist, async (req
     if (!message || typeof message !== 'string' || !message.trim()) {
       res.status(400).json({ error: 'Message is required' }); return
     }
-    if (segment === 'NEW' && preset === 'custom' && (!from || !to)) {
-      res.status(400).json({ error: 'Custom range requires from and to' }); return
-    }
+    const newRangeError = segment === 'NEW' ? validateCustomRange(preset, from, to) : null
+    if (newRangeError) { res.status(400).json({ error: newRangeError }); return }
 
-    const spec: SegmentSpec = segment === 'NEW' ? { segment: 'NEW', preset: preset || 'today', from, to } : { segment }
+    const registeredParams = readRegisteredRangeParams(req.body)
+    const registeredError = validateCustomRange(registeredParams.registeredPreset, registeredParams.registeredFrom, registeredParams.registeredTo)
+    if (registeredError) { res.status(400).json({ error: registeredError }); return }
+
+    const spec: SegmentSpec = {
+      ...(segment === 'NEW' ? { segment: 'NEW' as const, preset: preset || 'today', from, to } : { segment }),
+      ...registeredParams,
+    }
     const encodedSegment = encodeTargetSegment(spec)
 
     const scheduledAt = scheduleAt ? new Date(scheduleAt) : null

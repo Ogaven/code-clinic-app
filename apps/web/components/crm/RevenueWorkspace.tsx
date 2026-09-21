@@ -72,6 +72,22 @@ export default function RevenueWorkspace() {
         <p className="text-sm text-gray-400 dark:text-white/40">Unavailable.</p>
       ) : (
         <>
+          {/* Root cause of a genuinely-zero Total Collected: this report
+              reads ONLY the local Code Clinic invoices/payments tables
+              (Accounts module) — the same tables the Accounts dashboard
+              itself reads. If the clinic's real payment activity is
+              recorded in QuickBooks instead, it has not been synced back
+              into these local tables (that sync is currently one-way,
+              local -> QuickBooks only), so it is invisible here. This is
+              not a query bug — say so honestly rather than showing a
+              silent, unexplained zero. */}
+          {summary.totalCollectedUGX === 0 && (
+            <div className="flex items-start gap-2 rounded-2xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/10 p-4 text-xs text-amber-800 dark:text-amber-300">
+              <Info size={14} className="mt-0.5 flex-shrink-0" />
+              <span>Total Collected is UGX 0 because no payments exist yet in Code Clinic's own Accounts records. If the clinic records payments in QuickBooks instead, that activity is not reflected here — QuickBooks sync is currently one-way (Code Clinic → QuickBooks only), so this report cannot show it without a separate two-way sync.</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
               <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50"><Wallet size={12} /> Total Collected</p>

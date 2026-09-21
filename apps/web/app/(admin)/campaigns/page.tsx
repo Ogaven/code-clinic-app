@@ -31,10 +31,24 @@ const BROADCAST_SEGMENTS = [
   { value: 'NEW',    label: 'New Patients' },
 ]
 
-const NEW_PRESETS: { value: 'today' | 'week' | 'month' | 'custom'; label: string }[] = [
+const NEW_PRESETS: { value: 'today' | 'week' | 'month' | 'year' | 'custom'; label: string }[] = [
   { value: 'today', label: 'Today' },
   { value: 'week',  label: 'This Week' },
   { value: 'month', label: 'This Month' },
+  { value: 'year',  label: 'This Year' },
+  { value: 'custom', label: 'Custom' },
+]
+
+// "Date Added" — a SEPARATE date concept from NEW's "first visit" above
+// (Patient.createdAt vs. first attended appointment). Combinable with ANY
+// segment (All/Active/New alike), which is why it lives outside the
+// `segment === 'NEW'` block below. 'any' means "no filter" — the default.
+const REGISTERED_PRESETS: { value: 'any' | 'today' | 'week' | 'month' | 'year' | 'custom'; label: string }[] = [
+  { value: 'any',   label: 'Any time' },
+  { value: 'today', label: 'Today' },
+  { value: 'week',  label: 'This Week' },
+  { value: 'month', label: 'This Month' },
+  { value: 'year',  label: 'This Year' },
   { value: 'custom', label: 'Custom' },
 ]
 
@@ -72,9 +86,12 @@ export default function CampaignsPage() {
   const authH = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
   const [segment,      setSegment]      = useState('ALL')
-  const [newPreset,    setNewPreset]    = useState<'today' | 'week' | 'month' | 'custom'>('today')
+  const [newPreset,    setNewPreset]    = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('today')
   const [newFrom,      setNewFrom]      = useState('')
   const [newTo,        setNewTo]        = useState('')
+  const [registeredPreset, setRegisteredPreset] = useState<'any' | 'today' | 'week' | 'month' | 'year' | 'custom'>('any')
+  const [registeredFrom,   setRegisteredFrom]   = useState('')
+  const [registeredTo,     setRegisteredTo]     = useState('')
   const [segCount,     setSegCount]     = useState<number | null>(null)
   const [countLoading, setCountLoading] = useState(false)
   const [message,      setMessage]      = useState('')
@@ -116,11 +133,17 @@ export default function CampaignsPage() {
     setTimeout(() => setToast(null), 4000)
   }
 
-  const fetchCount = async (seg: string, opts?: { preset?: string; from?: string; to?: string }) => {
+  const fetchCount = async (seg: string, opts?: { preset?: string; from?: string; to?: string; registeredPreset?: string; registeredFrom?: string; registeredTo?: string }) => {
     setCountLoading(true)
     setSegCount(null)
     try {
-      const params = buildSegmentCountParams(seg, opts?.preset || newPreset, opts?.from ?? newFrom, opts?.to ?? newTo)
+      const effRegisteredPreset = opts?.registeredPreset ?? registeredPreset
+      const params = buildSegmentCountParams(
+        seg, opts?.preset || newPreset, opts?.from ?? newFrom, opts?.to ?? newTo,
+        effRegisteredPreset === 'any' ? undefined : effRegisteredPreset,
+        opts?.registeredFrom ?? registeredFrom,
+        opts?.registeredTo ?? registeredTo,
+      )
       const r = await fetch(`${API}/campaigns/segment-count?${params.toString()}`, { headers: authH as any })
       const d = await r.json().catch(() => ({}))
       if (!r.ok || typeof d.count !== 'number') {
@@ -294,7 +317,7 @@ export default function CampaignsPage() {
     }
   }
 
-  const handleNewPreset = (preset: 'today' | 'week' | 'month' | 'custom') => {
+  const handleNewPreset = (preset: 'today' | 'week' | 'month' | 'year' | 'custom') => {
     setNewPreset(preset)
     if (preset !== 'custom') fetchCount('NEW', { preset })
     // custom: wait for both from/to before counting (see handleCustomRangeChange)
@@ -305,8 +328,22 @@ export default function CampaignsPage() {
     if (from && to) fetchCount('NEW', { preset: 'custom', from, to })
   }
 
+  // "Date Added" filter — independent of segment/NEW's own date concept,
+  // so it never resets when the segment or NEW's own preset changes.
+  const handleRegisteredPreset = (preset: 'any' | 'today' | 'week' | 'month' | 'year' | 'custom') => {
+    setRegisteredPreset(preset)
+    if (preset !== 'custom') fetchCount(segment, { registeredPreset: preset })
+    // custom: wait for both from/to before counting (see handleRegisteredCustomRangeChange)
+  }
+
+  const handleRegisteredCustomRangeChange = (from: string, to: string) => {
+    setRegisteredFrom(from); setRegisteredTo(to)
+    if (from && to) fetchCount(segment, { registeredPreset: 'custom', registeredFrom: from, registeredTo: to })
+  }
+
   const canSend = message.trim().length > 0 && (scheduleType === 'now' || !!scheduleAt)
     && (segment !== 'NEW' || newPreset !== 'custom' || (!!newFrom && !!newTo))
+    && (registeredPreset !== 'custom' || (!!registeredFrom && !!registeredTo))
 
   const handleSend = async () => {
     if (!canSend || sending) return
@@ -317,6 +354,10 @@ export default function CampaignsPage() {
       if (segment === 'NEW') {
         body.preset = newPreset
         if (newPreset === 'custom') { body.from = newFrom; body.to = newTo }
+      }
+      if (registeredPreset !== 'any') {
+        body.registeredPreset = registeredPreset
+        if (registeredPreset === 'custom') { body.registeredFrom = registeredFrom; body.registeredTo = registeredTo }
       }
       if (scheduleType === 'later' && scheduleAt) body.scheduleAt = scheduleAt
       const r = await fetch(`${API}/campaigns/whatsapp/broadcast`, {
@@ -336,8 +377,10 @@ export default function CampaignsPage() {
   }
 
   const newPresetLabel = NEW_PRESETS.find(p => p.value === newPreset)?.label || ''
+  const registeredPresetLabel = REGISTERED_PRESETS.find(p => p.value === registeredPreset)?.label || ''
   const segLabel = (BROADCAST_SEGMENTS.find(s => s.value === segment)?.label || segment)
     + (segment === 'NEW' ? ` (${newPreset === 'custom' ? `${newFrom} → ${newTo}` : newPresetLabel})` : '')
+    + (registeredPreset !== 'any' ? ` · Added: ${registeredPreset === 'custom' ? `${registeredFrom} → ${registeredTo}` : registeredPresetLabel}` : '')
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -758,6 +801,40 @@ export default function CampaignsPage() {
                   )}
                 </div>
               )}
+
+              {/* Date Added — independent of segment, combinable with All/Active/New alike */}
+              <div className="mt-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Date Added</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {REGISTERED_PRESETS.map(p => (
+                    <button key={p.value} onClick={() => handleRegisteredPreset(p.value)}
+                      className={`py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                        registeredPreset === p.value
+                          ? 'border-transparent text-white'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      }`}
+                      style={registeredPreset === p.value ? { background: 'linear-gradient(135deg,#1A237E,#29ABE2)' } : {}}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                {registeredPreset === 'custom' && (
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <label className="block">
+                      <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">From</span>
+                      <input type="date" value={registeredFrom} max={registeredTo || undefined}
+                        onChange={e => handleRegisteredCustomRangeChange(e.target.value, registeredTo)}
+                        className="w-full px-2.5 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                    </label>
+                    <label className="block">
+                      <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">To</span>
+                      <input type="date" value={registeredTo} min={registeredFrom || undefined}
+                        onChange={e => handleRegisteredCustomRangeChange(registeredFrom, e.target.value)}
+                        className="w-full px-2.5 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                    </label>
+                  </div>
+                )}
+              </div>
 
               <div className="mt-2 h-6 flex items-center">
                 {countLoading ? (
