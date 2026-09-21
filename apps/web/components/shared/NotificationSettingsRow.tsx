@@ -26,6 +26,8 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
   const [busy, setBusy] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
 
   useEffect(() => {
     const hasNotificationApi = typeof window !== 'undefined' && 'Notification' in window
@@ -41,7 +43,26 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
       window.matchMedia('(display-mode: standalone)').matches ||
       (navigator as unknown as { standalone?: boolean }).standalone === true
     )
+    try {
+      const u = JSON.parse(localStorage.getItem('cc_user') || '{}')
+      setIsAdmin(u.role === 'ADMIN')
+    } catch { setIsAdmin(false) }
   }, [])
+
+  async function sendTest() {
+    setTestStatus('sending')
+    try {
+      const token = localStorage.getItem('cc_token')
+      const res = await fetch('/api-proxy/push/test', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setTestStatus(res.ok ? 'sent' : 'error')
+    } catch {
+      setTestStatus('error')
+    }
+    setTimeout(() => setTestStatus('idle'), 4000)
+  }
 
   async function enable() {
     setBusy(true)
@@ -90,9 +111,20 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
           <span>{compact ? 'Notifications blocked' : 'Blocked — enable notifications for Code Clinic in your browser settings to turn this back on.'}</span>
         </div>
       ) : rowState === 'subscribed' ? (
-        <button onClick={disable} disabled={busy} className={buttonCls}>
-          <BellRing size={iconSize} className="text-emerald-500" /> {compact ? 'Notifications enabled' : 'Notifications enabled — tap to disable'}
-        </button>
+        <>
+          <button onClick={disable} disabled={busy} className={buttonCls}>
+            <BellRing size={iconSize} className="text-emerald-500" /> {compact ? 'Notifications enabled' : 'Notifications enabled — tap to disable'}
+          </button>
+          {isAdmin && (
+            <button onClick={sendTest} disabled={testStatus === 'sending'} className={buttonCls}>
+              <Bell size={iconSize} />
+              {testStatus === 'sending' ? 'Sending test…'
+                : testStatus === 'sent' ? 'Test sent — check your device'
+                : testStatus === 'error' ? 'Test failed — try again'
+                : 'Send test notification'}
+            </button>
+          )}
+        </>
       ) : (
         <button onClick={enable} disabled={busy} className={buttonCls}>
           <Bell size={iconSize} /> {compact ? 'Enable Notifications' : 'Enable notifications'}
