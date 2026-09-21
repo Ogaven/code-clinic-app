@@ -68,7 +68,11 @@ describe('getMobileNav — role-aware navigation + RBAC', () => {
   })
 
   it('RECEPTIONIST "CRM" menu tab keeps a section if at least one item inside remains authorized', () => {
-    const nav = getMobileNav('RECEPTIONIST', { leads: false, referrals: false, campaigns: false })
+    // 'patients' also denied here so this test isolates exactly what it says:
+    // Leads/Referrals/Campaigns denied leaves only Treatment Pipeline. The
+    // Patient Engagement drill-down (permKey 'patients') is a separate concern,
+    // covered by its own tests below.
+    const nav = getMobileNav('RECEPTIONIST', { leads: false, referrals: false, campaigns: false, patients: false })
     const crmTab = nav.primary.find(t => t.key === 'crm')
     expect(crmTab?.type).toBe('menu')
     if (crmTab?.type !== 'menu') throw new Error('unreachable')
@@ -77,9 +81,28 @@ describe('getMobileNav — role-aware navigation + RBAC', () => {
 
   it('RECEPTIONIST "CRM" menu tab disappears entirely once every item inside is denied', () => {
     const nav = getMobileNav('RECEPTIONIST', {
-      treatmentPipeline: false, leads: false, referrals: false, campaigns: false,
+      treatmentPipeline: false, leads: false, referrals: false, campaigns: false, patients: false,
     })
     expect(nav.primary.find(t => t.key === 'crm')).toBeUndefined()
+  })
+
+  it('RECEPTIONIST "CRM" menu keeps a Patient Engagement drill-down, gated on \'patients\' not \'leads\'', () => {
+    const nav = getMobileNav('RECEPTIONIST', { leads: false, referrals: false, campaigns: false, treatmentPipeline: false })
+    const crmTab = nav.primary.find(t => t.key === 'crm')
+    expect(crmTab?.type).toBe('menu')
+    if (crmTab?.type !== 'menu') throw new Error('unreachable')
+    const patientEngagement = crmTab.sections[0].items.find(i => i.label === 'Patient Engagement')
+    expect(patientEngagement).toBeDefined()
+    expect(patientEngagement?.children?.[0].items.map(i => i.label)).toEqual(
+      ['Recall', 'Treatment Follow-up', 'Reactivation', 'Waitlist'],
+    )
+  })
+
+  it('RECEPTIONIST "CRM" menu Patient Engagement drill-down disappears when \'patients\' is denied', () => {
+    const nav = getMobileNav('RECEPTIONIST', { patients: false, leads: false, referrals: false, campaigns: false })
+    const crmTab = nav.primary.find(t => t.key === 'crm')
+    if (crmTab?.type !== 'menu') throw new Error('unreachable')
+    expect(crmTab.sections[0].items.find(i => i.label === 'Patient Engagement')).toBeUndefined()
   })
 
   it('DOCTOR has 5 primary destinations — My Patients, Appointments, Live Flow, AI Suite, Reports — no Home, no CRM', () => {

@@ -77,24 +77,34 @@ const NAV: NavLink[] = [
     { label: 'Settings', href: '/receptionist/ai-suite/settings' },
   ] },
   { label: 'CRM', children: [
-    // Dashboard/Needs Attention/Follow-ups/Sources are new CRM-shell
-    // destinations gated on the existing 'leads' permission — there is no
-    // separate permission for them in the Staff Permissions registry, and
-    // tying them to 'leads' (rather than inventing a new key nothing can
-    // grant/revoke yet) keeps them consistent with the one real toggle that
-    // already governs whether this receptionist works leads at all.
+    // Dashboard/Needs Attention/Sources are CRM-shell destinations gated on
+    // the existing 'leads' permission — there is no separate permission for
+    // them in the Staff Permissions registry, and tying them to 'leads'
+    // (rather than inventing a new key nothing can grant/revoke yet) keeps
+    // them consistent with the one real toggle that already governs whether
+    // this receptionist works leads at all.
     { label: 'Dashboard', href: '/receptionist/crm', permKey: 'leads' },
     { label: 'Treatment Pipeline', href: '/receptionist/treatment-pipeline', permKey: 'treatmentPipeline' },
-    { label: 'Leads (Pipeline)', href: '/receptionist/leads', permKey: 'leads' },
-    { label: 'Needs Attention', href: '/receptionist/crm/needs-attention', permKey: 'leads' },
-    { label: 'Follow-ups', href: '/receptionist/crm/follow-ups', permKey: 'leads' },
-    { label: 'Sources & Campaigns', href: '/receptionist/crm/sources', permKey: 'leads' },
-    { label: 'Referrals', href: '/receptionist/referrals', permKey: 'referrals' },
-    // Backend (campaigns.ts) is requireAuth-only on every route — Receptionist
-    // is already fully authorized for broadcast/template/birthday sends, same
-    // as Admin. Reused as-is rather than inventing a restriction that doesn't
-    // exist server-side.
-    { label: 'Campaigns', href: '/receptionist/campaigns', permKey: 'campaigns' },
+    { label: 'Leads', href: '/receptionist/leads', permKey: 'leads', children: [
+      { label: 'Pipeline', href: '/receptionist/leads', permKey: 'leads' },
+      { label: 'Needs Attention', href: '/receptionist/crm/needs-attention', permKey: 'leads' },
+      { label: 'Sources', href: '/receptionist/crm/sources', permKey: 'leads' },
+      { label: 'Campaigns', href: '/receptionist/campaigns', permKey: 'campaigns' },
+      { label: 'Referrals', href: '/receptionist/crm/referrals', permKey: 'referrals' },
+      { label: 'Reports', href: '/receptionist/crm/reports', permKey: 'leads' },
+    ] },
+    // Existing-patient lifecycle CRM — gated on 'patients' (the same
+    // permission that already governs viewing patient records), not 'leads'.
+    // No Revenue/Collections here: those stay Admin/Accounts only, same as
+    // the backend's accountsOrAdmin gate.
+    // No Reviews here — GET/POST /crm-automation/review-config are both
+    // adminOnly server-side, so a Receptionist nav entry would just 403.
+    { label: 'Patient Engagement', href: '/receptionist/crm/recall', permKey: 'patients', children: [
+      { label: 'Recall', href: '/receptionist/crm/recall', permKey: 'patients' },
+      { label: 'Treatment Follow-up', href: '/receptionist/crm/treatment-followup', permKey: 'patients' },
+      { label: 'Reactivation', href: '/receptionist/crm/reactivation', permKey: 'patients' },
+      { label: 'Waitlist', href: '/waitlist', permKey: 'patients' },
+    ] },
   ] },
   { label: 'Reports', children: [
     { label: 'Case Acceptance', href: '/receptionist/reports?tab=case-acceptance', permKey: 'reports' },

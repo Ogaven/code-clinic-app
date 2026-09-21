@@ -222,3 +222,173 @@ export async function callPerformanceReport() {
     note: 'Only calls seen by the missed-call intake are logged here — no generic answered-call telephony integration exists yet.',
   }
 }
+
+// ── (11) Campaign performance — Leads/Qualified/Converted by campaign,
+// plus attributed revenue reusing the existing single-clean-lead rule ──────
+// Mirrors sourcePerformance()'s shape exactly, grouped by campaignId instead
+// of source, and folds in acquisitionRevenueByDimension('campaignId') so
+// this is one real report instead of two the UI would have to stitch
+// together. Leads with no campaignId (the vast majority — most leads aren't
+// tied to a paid campaign) are excluded, not lumped into a fake "none" row.
+export async function campaignPerformance() {
+  const { acquisitionRevenueByDimension } = await import('./revenue-attribution.service')
+  const reached = (toStage: string) => ({ stageHistory: { some: { toStage } } })
+
+  const campaigns = await prisma.lead.findMany({
+    where: { campaignId: { not: null } },
+    distinct: ['campaignId'],
+    select: { campaignId: true, campaignName: true },
+  })
+
+  const [rows, revenue] = await Promise.all([
+    Promise.all(campaigns.map(async ({ campaignId, campaignName }) => {
+      const [leadCount, qualifiedCount, convertedCount, lostCount] = await Promise.all([
+        prisma.lead.count({ where: { campaignId } }),
+        prisma.lead.count({ where: { campaignId, ...reached('QUALIFIED') } }),
+        prisma.lead.count({ where: { campaignId, ...reached('CONVERTED') } }),
+        prisma.lead.count({ where: { campaignId, status: 'LOST' } }),
+      ])
+      return { campaignId, campaignName, leadCount, qualifiedCount, convertedCount, lostCount }
+    })),
+    acquisitionRevenueByDimension('campaignId'),
+  ])
+
+  const revenueByCampaign = new Map(revenue.buckets.map(b => [b.key, b.collectedUGX]))
+
+  return {
+    campaigns: rows
+      .map(r => ({ ...r, collectedUGX: revenueByCampaign.get(r.campaignId!) ?? 0 }))
+      .sort((a, b) => b.leadCount - a.leadCount),
+    note: 'Only leads tagged with a campaignId are included. Revenue uses the same single-clean-lead attribution rule as the Revenue workspace — see its note for what is excluded and why.',
+  }
+}
+
+// ── (12) Lead trend — leads received per day over a window ────────────────
+// Bucketed in JS from raw createdAt timestamps (not a DB-specific date-trunc
+// function) to stay portable across the SQLite dev / Postgres prod split
+// already used elsewhere in this codebase's scheduler code.
+function dayKey(d: Date): string { return d.toISOString().slice(0, 10) }
+
+function buildDaySeries(days: number, timestamps: Date[]): Array<{ date: string; count: number }> {
+  const counts = new Map<string, number>()
+  for (const ts of timestamps) {
+    const key = dayKey(ts)
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  const series: Array<{ date: string; count: number }> = []
+  const now = new Date()
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 86_400_000)
+    const key = dayKey(d)
+    series.push({ date: key, count: counts.get(key) ?? 0 })
+  }
+  return series
+}
+
+export async function leadTrend(days = 30) {
+  const since = new Date(Date.now() - days * 86_400_000)
+  const leads = await prisma.lead.findMany({ where: { createdAt: { gte: since } }, select: { createdAt: true } })
+  return { days, series: buildDaySeries(days, leads.map(l => l.createdAt)) }
+}
+
+// ── (13) Conversion trend — CONVERTED transitions per day over a window ───
+// Uses LeadStageHistory.changedAt (the actual moment a lead converted), not
+// Lead.updatedAt, which could have moved for unrelated reasons since.
+export async function conversionTrend(days = 30) {
+  const since = new Date(Date.now() - days * 86_400_000)
+  const conversions = await prisma.leadStageHistory.findMany({
+    where:  { toStage: 'CONVERTED', changedAt: { gte: since } },
+    select: { changedAt: true },
+  })
+  return { days, series: buildDaySeries(days, conversions.map(c => c.changedAt)) }
+}
+
+// ── (14) Revenue trend — total collected UGX per month ─────────────────────
+// Deliberately NOT lead-attributed per month: the conservative single-clean-
+// lead attribution rule (revenue-attribution.service.ts) has no natural
+// monthly bucketing of its own, and approximating one would risk implying
+// every payment came from a CRM lead, which this codebase explicitly never
+// claims. This is real total collected revenue (Payment.amountUGX), labelled
+// as such — the snapshot Attributed/Unattributed split lives separately on
+// the Revenue workspace, unchanged.
+export async function revenueTrend(months = 6) {
+  const since = new Date()
+  since.setMonth(since.getMonth() - (months - 1))
+  since.setDate(1); since.setHours(0, 0, 0, 0)
+
+  const payments = await prisma.payment.findMany({ where: { paidAt: { gte: since } }, select: { paidAt: true, amountUGX: true } })
+
+  const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  const totals = new Map<string, number>()
+  for (const p of payments) totals.set(monthKey(p.paidAt), (totals.get(monthKey(p.paidAt)) ?? 0) + p.amountUGX)
+
+  const series: Array<{ month: string; collectedUGX: number }> = []
+  const cursor = new Date(since)
+  for (let i = 0; i < months; i++) {
+    const key = monthKey(cursor)
+    series.push({ month: key, collectedUGX: totals.get(key) ?? 0 })
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+  return { months, series, note: 'Total collected revenue (all patients), not scoped to CRM-attributed leads specifically — see the Revenue workspace for the attributed/unattributed split.' }
+}
+
+// ── (15) CRM Insights — deterministic, plain-language readouts of real
+// metrics already computed elsewhere in this file/module. Never a
+// prediction/forecast dressed up as one: every line here is a fact about
+// data that already exists, computed the same way the underlying report
+// computes it. If a genuine trend projection is ever added, it must be
+// labelled "Projection"/"Estimate" explicitly — this function does not do
+// that today because there isn't yet enough history to defend one.
+export interface CrmInsight { text: string; tone: 'info' | 'warning' | 'positive' }
+
+export async function crmInsights(): Promise<CrmInsight[]> {
+  const [needsAttentionMod, sourcePerf, conversion, weeklyCold] = await Promise.all([
+    import('./needs-attention.service'),
+    sourcePerformance(),
+    stageConversionRates(),
+    weeklyColdLeadsDigest(),
+  ])
+  const attention = await needsAttentionMod.buildNeedsAttentionQueue()
+
+  const insights: CrmInsight[] = []
+
+  const unansweredCount = attention.categories.find(c => c.key === 'UNANSWERED_NEW')?.count ?? 0
+  if (unansweredCount > 0) {
+    insights.push({ text: `${unansweredCount} lead${unansweredCount === 1 ? ' is' : 's are'} waiting for a first response.`, tone: unansweredCount > 5 ? 'warning' : 'info' })
+  }
+
+  const overdueCount = attention.categories.find(c => c.key === 'OVERDUE_FOLLOWUP')?.count ?? 0
+  if (overdueCount > 0) {
+    insights.push({ text: `${overdueCount} follow-up${overdueCount === 1 ? ' is' : 's are'} overdue.`, tone: 'warning' })
+  }
+
+  if (sourcePerf.sources.length > 0) {
+    const top = [...sourcePerf.sources].sort((a, b) => b.leadCount - a.leadCount)[0]
+    if (top.leadCount > 0) {
+      insights.push({ text: `${SOURCE_LABELS[top.source] ?? top.source} generated the most enquiries (${top.leadCount} leads).`, tone: 'info' })
+      const noConversions = sourcePerf.sources.filter(s => s.leadCount >= 5 && s.convertedCount === 0)
+      for (const s of noConversions) {
+        insights.push({ text: `${SOURCE_LABELS[s.source] ?? s.source} generated ${s.leadCount} leads with no recorded conversions yet.`, tone: 'warning' })
+      }
+    }
+  }
+
+  if (conversion.totals.totalNew > 0 && conversion.newToContactedRate != null) {
+    insights.push({ text: `Contact rate is ${(conversion.newToContactedRate * 100).toFixed(0)}% of all-time leads.`, tone: 'info' })
+  }
+
+  if (weeklyCold.length > 0) {
+    insights.push({ text: `${weeklyCold.length} lead${weeklyCold.length === 1 ? ' was' : 's were'} moved to Lost in the past 7 days.`, tone: weeklyCold.length > 3 ? 'warning' : 'info' })
+  }
+
+  if (insights.length === 0) {
+    insights.push({ text: 'No leads currently need attention — the pipeline is clear.', tone: 'positive' })
+  }
+
+  return insights
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  WHATSAPP: 'WhatsApp', FACEBOOK: 'Facebook', INSTAGRAM: 'Instagram', WEBSITE: 'Website',
+  WALKIN: 'Walk-in', QUIZ: 'Internal Quiz', SCOREAPP: 'ScoreApp', OTHER: 'Other',
+}

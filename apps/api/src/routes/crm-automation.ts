@@ -25,9 +25,13 @@ import { createWaitlistEntry, listWaitlistEntries, pauseOrRemoveWaitlistEntry, m
 import {
   responseTimeLeaderboard, stageConversionRates, staleLeadsByOwner, weeklyColdLeadsDigest,
   caseAcceptanceReport, sequencePerformanceReport, agingReceivablesReport, callPerformanceReport,
-  sourcePerformance, lostReasonsBreakdown,
+  sourcePerformance, lostReasonsBreakdown, campaignPerformance, leadTrend, conversionTrend,
+  revenueTrend, crmInsights,
 } from '../crm-automation/reporting.service'
 import { buildNeedsAttentionQueue } from '../crm-automation/needs-attention.service'
+import { recallOverview, treatmentFollowUpList, assignTreatmentFollowUpOwner, reactivationCandidates } from '../crm-automation/patient-engagement.service'
+import { sourceReadiness } from '../crm-automation/source-readiness.service'
+import { listPatientReferrals } from '../crm-automation/referrals.service'
 import { buildLeadFollowUpSummary, completeLeadFollowUp } from '../crm-automation/lead-followups.service'
 import { buildOwnershipAudit } from '../crm-automation/ownership-audit.service'
 import { buildAcquisitionRevenueReport, acquisitionRevenueByDimension, unattributedRevenueSummary } from '../crm-automation/revenue-attribution.service'
@@ -455,6 +459,47 @@ router.get('/reports/aging-receivables',          requireAuth, accountsOrAdmin, 
 router.get('/reports/call-performance',           requireAuth, adminAndReceptionist, async (_req, res) => res.json(await callPerformanceReport()))
 router.get('/reports/source-performance',         requireAuth, adminAndReceptionist, async (_req, res) => res.json(await sourcePerformance()))
 router.get('/reports/lost-reasons',               requireAuth, adminAndReceptionist, async (_req, res) => res.json(await lostReasonsBreakdown()))
+router.get('/reports/campaign-performance',       requireAuth, adminAndReceptionist, async (_req, res) => res.json(await campaignPerformance()))
+router.get('/reports/lead-trend',                 requireAuth, adminAndReceptionist, async (req, res) => {
+  const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 180)
+  res.json(await leadTrend(days))
+})
+router.get('/reports/conversion-trend',           requireAuth, adminAndReceptionist, async (req, res) => {
+  const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 180)
+  res.json(await conversionTrend(days))
+})
+router.get('/reports/revenue-trend',              requireAuth, accountsOrAdmin,      async (req, res) => {
+  const months = Math.min(Math.max(Number(req.query.months) || 6, 1), 24)
+  res.json(await revenueTrend(months))
+})
+router.get('/insights',                           requireAuth, adminAndReceptionist, async (_req, res) => res.json(await crmInsights()))
+
+// ── Patient Engagement (Product Experience Closure, Part 13) ─────────────
+// Existing-patient lifecycle views — Recall/Treatment Follow-up/
+// Reactivation. Reads only; never enrols or activates any sequence.
+router.get('/patient-engagement/recall', requireAuth, clinicalStaff, async (_req: Request, res: Response) => {
+  res.json(await recallOverview())
+})
+router.get('/patient-engagement/treatment-followup', requireAuth, clinicalStaff, async (_req: Request, res: Response) => {
+  res.json(await treatmentFollowUpList())
+})
+router.post('/patient-engagement/treatment-followup/:patientId/assign', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  await assignTreatmentFollowUpOwner(req.params.patientId, req.body.ownerId ?? null)
+  res.json({ success: true })
+})
+router.get('/patient-engagement/reactivation', requireAuth, clinicalStaff, async (_req: Request, res: Response) => {
+  res.json(await reactivationCandidates())
+})
+
+// ── Lead source integration readiness (Part 12) ───────────────────────────
+router.get('/source-readiness', requireAuth, adminAndReceptionist, async (_req: Request, res: Response) => {
+  res.json(await sourceReadiness())
+})
+
+// ── Patient referrals (Part 17 — reuses the prior milestone's data) ──────
+router.get('/referrals', requireAuth, clinicalStaff, async (_req: Request, res: Response) => {
+  res.json(await listPatientReferrals())
+})
 
 // ── Lead follow-ups (Task model, entityType='LEAD') ──────────────────────
 router.get('/follow-ups', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {

@@ -391,7 +391,7 @@ export default function CaseAcceptancePage() {
               </div>
               <div>
                 <h1 className="text-lg font-black text-gray-800 dark:text-white leading-none">Case Acceptance Rate</h1>
-                <p className="text-xs text-gray-400 mt-0.5">Treatment plans presented vs. accepted, per doctor, over time. (For a live snapshot of patients by CRM status instead, see CRM Automation Settings → Reporting → Case Acceptance.)</p>
+                <p className="text-xs text-gray-400 mt-0.5">Treatment plans presented vs. accepted, per doctor, over time. (For a live snapshot of patients by CRM status instead, see CRM → Leads → Reports → Case Acceptance.)</p>
               </div>
             </div>
           </div>
