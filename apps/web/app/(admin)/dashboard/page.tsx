@@ -563,9 +563,20 @@ export default function DashboardPage() {
             {/* referral-stats' `.count` (used here) is the all-time patient
                 count per source — the endpoint also returns a `.thisMonth`
                 field that this card deliberately does NOT use, so the label
-                must say which one this is. */}
+                must say which one this is.
+                Labelled "Source Recorded", NOT "Referral Patients": this
+                counts every patient with ANY non-empty legacy intake
+                referralSource value (Google, Walk-in, Instagram, etc — see
+                GET /patients/referral-stats), which is a much broader
+                acquisition-channel metric than genuine patient-referred-a-
+                patient tracking. That narrower metric lives on
+                /crm/referrals (Patient.crmReferralSource === 'PATIENT_
+                REFERRAL' + crmReferredByPatientId) and is a DIFFERENT,
+                deliberately much smaller number — the two must never share
+                a label, or they read as disagreeing when they're actually
+                just measuring different things. */}
             <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Share2 size={12} /> Referral Patients <span className="text-blue-200/60">(all time)</span></span>
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Share2 size={12} /> Source Recorded <span className="text-blue-200/60">(all time)</span></span>
               <span className="text-sm font-bold text-white">{referralPatients ?? '—'}</span>
             </div>
             {/* GET /campaigns has no complete/aggregate source (confirmed: no

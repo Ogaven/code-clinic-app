@@ -8,6 +8,7 @@ const { prismaMock } = vi.hoisted(() => ({
       findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
       findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn(),
     },
     leadStageHistory: { create: vi.fn() },
     automationEvent: { create: vi.fn().mockResolvedValue({ id: 'evt' }), update: vi.fn() },
@@ -28,6 +29,7 @@ import {
   markLeadLostManually,
   convertLeadOnBooking,
   sweepStaleContactedLeads,
+  advanceLeadOnHumanReply,
 } from '../../crm-automation/lead-stage.service'
 
 beforeEach(() => {
@@ -112,6 +114,75 @@ describe('logHumanReply — STAFF outbound reply, NEW -> CONTACTED (Part N)', ()
     expect(prismaMock.leadSlaEvent.create).toHaveBeenCalledWith({ data: { leadId: 'lead-1', type: 'SLA_CANCELLED' } })
     expect(prismaMock.sequenceEnrollment.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'enr-1' }, data: expect.objectContaining({ status: 'EXITED_REPLY' }) })
+    )
+  })
+})
+
+// ── Milestone: CRM operational functionality closure — root-cause fix for
+// "345 leads stuck in New". advanceLeadOnHumanReply is the missing
+// connection between the REAL staff-reply send path (human-takeover
+// message send) and logHumanReply, which previously was only reachable via
+// a separate manual "Log Reply" button nobody was clicking.
+describe('advanceLeadOnHumanReply — wiring the real staff-reply send path to the stage engine', () => {
+  it('finds the lead by phone and advances NEW -> CONTACTED when the sender is the assigned owner', async () => {
+    prismaMock.lead.findFirst.mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1' })
+    // logHumanReply's own lookup + its internal transitionLeadStage lookup
+    prismaMock.lead.findUniqueOrThrow
+      .mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1', firstReplyAt: null, firstHumanReplyAt: null, lossReason: null })
+      .mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', lossReason: null })
+    prismaMock.lead.update
+      .mockResolvedValueOnce({ id: 'lead-1' })
+      .mockResolvedValueOnce({ id: 'lead-1', status: 'CONTACTED' })
+
+    await advanceLeadOnHumanReply('+256700000001', 'owner-1')
+
+    expect(prismaMock.leadStageHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ toStage: 'CONTACTED', reason: 'first_human_reply_by_assigned_owner' }) })
+    )
+  })
+
+  it('looks up the lead using every historical phone format (phoneVariants), never a raw string compare', async () => {
+    prismaMock.lead.findFirst.mockResolvedValueOnce(null)
+    await advanceLeadOnHumanReply('0700000001', 'owner-1')
+    expect(prismaMock.lead.findFirst).toHaveBeenCalledWith({
+      where:   { phone: { in: ['+256700000001', '256700000001', '0700000001'] }, status: { notIn: ['CONVERTED', 'LOST'] } },
+      orderBy: { updatedAt: 'desc' },
+    })
+  })
+
+  it('excludes CONVERTED/LOST leads from the match — never resurrects a closed lead', async () => {
+    prismaMock.lead.findFirst.mockResolvedValueOnce(null)
+    await advanceLeadOnHumanReply('+256700000001', 'owner-1')
+    const where = prismaMock.lead.findFirst.mock.calls[0][0].where
+    expect(where.status).toEqual({ notIn: ['CONVERTED', 'LOST'] })
+  })
+
+  it('does nothing (no throw) when no lead matches the phone number', async () => {
+    prismaMock.lead.findFirst.mockResolvedValueOnce(null)
+    await expect(advanceLeadOnHumanReply('+256700000099', 'owner-1')).resolves.toBeUndefined()
+    expect(prismaMock.lead.findUniqueOrThrow).not.toHaveBeenCalled()
+  })
+
+  it('does nothing when the phone number cannot be resolved to any variant', async () => {
+    await advanceLeadOnHumanReply('', 'owner-1')
+    expect(prismaMock.lead.findFirst).not.toHaveBeenCalled()
+  })
+
+  it('never throws even if the lookup itself fails — must never block the real message send', async () => {
+    prismaMock.lead.findFirst.mockRejectedValueOnce(new Error('db blip'))
+    await expect(advanceLeadOnHumanReply('+256700000001', 'owner-1')).resolves.toBeUndefined()
+  })
+
+  it('still stamps reply data (via logHumanReply) even when the sender is NOT the assigned owner, but does not change stage', async () => {
+    prismaMock.lead.findFirst.mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1' })
+    prismaMock.lead.findUniqueOrThrow.mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1', firstReplyAt: null, firstHumanReplyAt: null, lossReason: null })
+    prismaMock.lead.update.mockResolvedValueOnce({ id: 'lead-1' })
+
+    await advanceLeadOnHumanReply('+256700000001', 'a-different-staff-member')
+
+    expect(prismaMock.leadStageHistory.create).not.toHaveBeenCalled()
+    expect(prismaMock.lead.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ firstReplyAt: expect.any(Date) }) })
     )
   })
 })

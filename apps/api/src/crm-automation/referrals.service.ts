@@ -17,6 +17,7 @@
 // referral relationships." Only real, unambiguous fields are reported.
 // ─────────────────────────────────────────────────────────────────────────
 import { prisma } from '../lib/prisma'
+import { startOfKampalaMonth } from '../utils/kampala-time'
 
 export interface ReferralRow {
   referredPatientId: string
@@ -28,7 +29,19 @@ export interface ReferralRow {
   treatmentPlanStatus: string
 }
 
-export async function listPatientReferrals(): Promise<{ referrals: ReferralRow[]; topReferrers: Array<{ patientId: string; name: string; count: number }> }> {
+// Derived entirely from the same `referrals` rows above — no extra query,
+// no new field. "Converted" reuses the same treatmentPlanStatus:'ACCEPTED'
+// value the rest of the CRM already treats as the real conversion signal
+// (see patient-tags.service.ts's deriveTreatmentPlanStatusFromStages) —
+// never a second, referral-local definition of "converted".
+export interface ReferralSummary {
+  totalReferred: number
+  uniqueReferrers: number
+  newThisMonth: number
+  convertedTreatment: number
+}
+
+export async function listPatientReferrals(): Promise<{ referrals: ReferralRow[]; topReferrers: Array<{ patientId: string; name: string; count: number }>; summary: ReferralSummary }> {
   const referred = await prisma.patient.findMany({
     where:  { crmReferralSource: 'PATIENT_REFERRAL', crmReferredByPatientId: { not: null } },
     select: {
@@ -59,5 +72,13 @@ export async function listPatientReferrals(): Promise<{ referrals: ReferralRow[]
     .map(([patientId, v]) => ({ patientId, name: v.name, count: v.count }))
     .sort((a, b) => b.count - a.count)
 
-  return { referrals, topReferrers }
+  const monthStart = startOfKampalaMonth()
+  const summary: ReferralSummary = {
+    totalReferred:      referrals.length,
+    uniqueReferrers:    countByReferrer.size,
+    newThisMonth:       referrals.filter(r => r.referredAt && r.referredAt >= monthStart).length,
+    convertedTreatment: referrals.filter(r => r.treatmentPlanStatus === 'ACCEPTED').length,
+  }
+
+  return { referrals, topReferrers, summary }
 }

@@ -3,14 +3,10 @@
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import LeadsPipeline from '@/components/leads/LeadsPipeline'
-import NeedsAttentionPanel from '@/components/leads/NeedsAttentionPanel'
 
 function LeadsPageContent() {
   const openLeadId = useSearchParams().get('open')
-  return <>
-    <NeedsAttentionPanel />
-    <LeadsPipeline inboxPath="/ai-suite/inbox" initialLeadId={openLeadId} />
-  </>
+  return <LeadsPipeline inboxPath="/ai-suite/inbox" initialLeadId={openLeadId} />
 }
 
 export default function LeadsPage() {

@@ -8,6 +8,7 @@ import { prisma } from '../lib/prisma'
 import type { Lead } from '@prisma/client'
 import { emitAutomationEvent, exitActiveEnrollments } from './automation-events.service'
 import { cancelSlaOnHumanReply } from './lead-sla.service'
+import { phoneVariants } from '../utils/phone'
 
 const FORTY_EIGHT_HR_MS = 48 * 60 * 60 * 1000
 
@@ -98,6 +99,34 @@ export async function logHumanReply(leadId: string, byUserId: string): Promise<L
   }
 
   return updated
+}
+
+// ── Automatic wiring: NEW -> CONTACTED from a REAL staff reply ─────────────
+// The root cause of "345 leads stuck in New": logHumanReply() above was only
+// ever called from a separate, easy-to-miss "Log Reply" button on the Leads
+// pipeline page — never from the actual place staff reply to a lead (the
+// human-takeover message-send route). This is the missing connection.
+//
+// AiConversation has no leadId column, so the match is by phone — the same
+// phoneVariants() utility already used everywhere else for phone matching
+// (crm.ts search, lead-patient-link.service.ts). Deliberately excludes
+// CONVERTED/LOST leads: a phone number matching a long-closed lead should
+// never resurrect it or stamp fresh reply data on it. Never throws — a
+// lookup/match failure here must never block the underlying message send
+// (callers should treat this as fire-and-forget).
+export async function advanceLeadOnHumanReply(phoneNumber: string, byUserId: string): Promise<void> {
+  try {
+    const variants = phoneVariants(phoneNumber)
+    if (variants.length === 0) return
+    const lead = await prisma.lead.findFirst({
+      where:   { phone: { in: variants }, status: { notIn: ['CONVERTED', 'LOST'] } },
+      orderBy: { updatedAt: 'desc' },
+    })
+    if (!lead) return
+    await logHumanReply(lead.id, byUserId)
+  } catch (err) {
+    console.error('[LeadStage] advanceLeadOnHumanReply failed (non-fatal):', err)
+  }
 }
 
 // Records an inbound message from the lead without necessarily being "the"

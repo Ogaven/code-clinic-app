@@ -428,6 +428,20 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
     }
     // WEBSITE: no external delivery — message is visible in the widget on next poll
 
+    // A successfully-created staff reply is exactly the "first human reply"
+    // event the lead pipeline's NEW -> CONTACTED automation is meant to fire
+    // on — see lead-stage.service.ts's advanceLeadOnHumanReply for why this
+    // was previously never wired to the real send path. Own try/catch here
+    // (in addition to that function's internal one) so that by this point
+    // the real message has already gone out — a failure in this step must
+    // never turn an actually-successful send into a false failure response.
+    try {
+      const { advanceLeadOnHumanReply } = await import('../../crm-automation/lead-stage.service')
+      await advanceLeadOnHumanReply(conversation.phoneNumber, req.user!.id)
+    } catch (err: any) {
+      console.error('[Takeover] advanceLeadOnHumanReply failed (non-fatal, message already sent):', err?.message)
+    }
+
     res.json({ success: true })
   } catch (err: any) {
     console.error('[Takeover] send error:', err.message)

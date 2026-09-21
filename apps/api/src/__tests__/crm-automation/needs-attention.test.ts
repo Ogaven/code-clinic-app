@@ -5,6 +5,8 @@ const { prismaMock, staleLeadsByOwnerMock } = vi.hoisted(() => ({
     lead: { findMany: vi.fn() },
     appointment: { findMany: vi.fn() },
     patient: { findMany: vi.fn() },
+    aiConversation: { findMany: vi.fn() },
+    user: { findMany: vi.fn() },
   },
   staleLeadsByOwnerMock: vi.fn(),
 }))
@@ -18,6 +20,8 @@ beforeEach(() => {
   prismaMock.lead.findMany.mockResolvedValue([])
   prismaMock.appointment.findMany.mockResolvedValue([])
   prismaMock.patient.findMany.mockResolvedValue([])
+  prismaMock.aiConversation.findMany.mockResolvedValue([])
+  prismaMock.user.findMany.mockResolvedValue([])
   staleLeadsByOwnerMock.mockResolvedValue([])
 })
 
@@ -136,5 +140,103 @@ describe('buildNeedsAttentionQueue (Product Experience Closure — rescoped to L
     expect(prismaMock.patient.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { treatmentPlanStatus: 'PROPOSED' } })
     )
+  })
+})
+
+// ── Milestone: CRM operational functionality closure — Needs Attention
+// redesign into a real work queue (Open Chat / View Patient / unique-people
+// count). These prove the backend enrichment the new UI depends on.
+describe('buildNeedsAttentionQueue — enrichment for the work-queue redesign', () => {
+  it('every category carries its entityKind (LEAD/APPOINTMENT/PATIENT) so the frontend never has to guess how to link an item', async () => {
+    const result = await buildNeedsAttentionQueue()
+    const byKey = new Map(result.categories.map(c => [c.key, c.entityKind]))
+    expect(byKey.get('UNANSWERED_NEW')).toBe('LEAD')
+    expect(byKey.get('UNASSIGNED')).toBe('LEAD')
+    expect(byKey.get('NO_SHOW')).toBe('APPOINTMENT')
+    expect(byKey.get('CANCELLED_UNREBOOKED')).toBe('APPOINTMENT')
+    expect(byKey.get('TREATMENT_OPPORTUNITY')).toBe('PATIENT')
+  })
+
+  it('marks hasConversation true only when a real AiConversation exists for that phone (any historical format) — never fabricated', async () => {
+    prismaMock.lead.findMany
+      .mockResolvedValueOnce([{ id: 'lead-1', name: 'A', phone: '0700000001', source: 'WHATSAPP', assignedTo: null, createdAt: new Date() }]) // UNANSWERED_NEW
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]) // OVERDUE_FOLLOWUP, QUALIFIED_UNBOOKED, UNASSIGNED
+    prismaMock.aiConversation.findMany.mockResolvedValueOnce([{ phoneNumber: '+256700000001' }]) // stored in a different historical format
+
+    const result = await buildNeedsAttentionQueue()
+
+    const item = result.categories.find(c => c.key === 'UNANSWERED_NEW')!.items[0] as any
+    expect(item.hasConversation).toBe(true)
+  })
+
+  it('marks hasConversation false when no conversation exists for the phone — never pretends one exists', async () => {
+    prismaMock.lead.findMany
+      .mockResolvedValueOnce([{ id: 'lead-1', name: 'A', phone: '+256700000009', source: 'WHATSAPP', assignedTo: null, createdAt: new Date() }])
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([])
+    prismaMock.aiConversation.findMany.mockResolvedValueOnce([]) // no matching conversation at all
+
+    const result = await buildNeedsAttentionQueue()
+
+    const item = result.categories.find(c => c.key === 'UNANSWERED_NEW')!.items[0] as any
+    expect(item.hasConversation).toBe(false)
+  })
+
+  it('resolves ownerName from Lead.assignedTo via a single batched User lookup', async () => {
+    prismaMock.lead.findMany
+      .mockResolvedValueOnce([{ id: 'lead-1', name: 'A', phone: '+256700000001', source: 'WHATSAPP', assignedTo: 'user-1', createdAt: new Date() }])
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([])
+    prismaMock.user.findMany.mockResolvedValueOnce([{ id: 'user-1', firstName: 'Jo', lastName: 'Doe' }])
+
+    const result = await buildNeedsAttentionQueue()
+
+    const item = result.categories.find(c => c.key === 'UNANSWERED_NEW')!.items[0] as any
+    expect(item.ownerName).toBe('Jo Doe')
+    expect(prismaMock.user.findMany).toHaveBeenCalledWith({ where: { id: { in: ['user-1'] } }, select: { id: true, firstName: true, lastName: true } })
+  })
+
+  it('gives APPOINTMENT items a patientId distinct from their own appointment id, for correct View Patient linking', async () => {
+    prismaMock.appointment.findMany
+      .mockResolvedValueOnce([{ id: 'appt-1', patientId: 'patient-1', startAt: new Date(), patient: { firstName: 'A', lastName: 'B', phone: '+256700000001' } }])
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([])
+
+    const result = await buildNeedsAttentionQueue()
+
+    const item = result.categories.find(c => c.key === 'NO_SHOW')!.items[0] as any
+    expect(item.id).toBe('appt-1')
+    expect(item.patientId).toBe('patient-1')
+  })
+
+  it('gives TREATMENT_OPPORTUNITY items a patientId equal to their own id (already a patient)', async () => {
+    prismaMock.patient.findMany.mockResolvedValueOnce([{ id: 'patient-9', firstName: 'A', lastName: 'B', phone: '+256700000001', updatedAt: new Date() }])
+
+    const result = await buildNeedsAttentionQueue()
+
+    const item = result.categories.find(c => c.key === 'TREATMENT_OPPORTUNITY')!.items[0] as any
+    expect(item.patientId).toBe('patient-9')
+  })
+
+  it('distinctPeopleCount counts a patient with both a no-show AND a proposed treatment only once', async () => {
+    prismaMock.appointment.findMany
+      .mockResolvedValueOnce([{ id: 'appt-1', patientId: 'patient-1', startAt: new Date(), patient: { firstName: 'A', lastName: 'B', phone: '+256700000001' } }])
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([])
+    prismaMock.patient.findMany.mockResolvedValueOnce([{ id: 'patient-1', firstName: 'A', lastName: 'B', phone: '+256700000001', updatedAt: new Date() }])
+
+    const result = await buildNeedsAttentionQueue()
+
+    expect(result.categories.find(c => c.key === 'NO_SHOW')!.count).toBe(1)
+    expect(result.categories.find(c => c.key === 'TREATMENT_OPPORTUNITY')!.count).toBe(1)
+    expect(result.distinctPeopleCount).toBe(1) // same patient, two categories -> one person
+  })
+
+  it('distinctPeopleCount includes leads too (not lead-only like distinctLeadCount, not patient-only)', async () => {
+    prismaMock.lead.findMany
+      .mockResolvedValueOnce([{ id: 'lead-1', name: 'A', phone: '+256700000001', source: 'WHATSAPP', assignedTo: null, createdAt: new Date() }])
+      .mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([])
+    prismaMock.patient.findMany.mockResolvedValueOnce([{ id: 'patient-1', firstName: 'A', lastName: 'B', phone: '+256700000002', updatedAt: new Date() }])
+
+    const result = await buildNeedsAttentionQueue()
+
+    expect(result.distinctLeadCount).toBe(1)
+    expect(result.distinctPeopleCount).toBe(2) // 1 lead + 1 unrelated patient
   })
 })

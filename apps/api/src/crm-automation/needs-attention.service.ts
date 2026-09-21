@@ -27,6 +27,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { prisma } from '../lib/prisma'
 import { staleLeadsByOwner } from './reporting.service'
+import { phoneVariants } from '../utils/phone'
 
 const OPEN_LEAD_STATUSES = { notIn: ['CONVERTED', 'LOST'] }
 const RECENT_APPOINTMENT_WINDOW_DAYS = 14
@@ -39,10 +40,13 @@ export interface NeedsAttentionOptions {
   ownerId?: string
 }
 
+export type NeedsAttentionEntityKind = 'LEAD' | 'APPOINTMENT' | 'PATIENT'
+
 export interface NeedsAttentionCategory {
   key: string
   label: string
   scope: 'LEAD_OWNER' | 'CLINIC_WIDE'
+  entityKind: NeedsAttentionEntityKind
   count: number
   items: Array<Record<string, unknown>>
 }
@@ -55,6 +59,11 @@ export interface NeedsAttentionResult {
   // target is still exactly ONE lead needing attention. See the dedup note
   // below the categories array for how this is computed.
   distinctLeadCount: number
+  // Unique PEOPLE needing attention across every category, leads AND
+  // patients alike (a patient with both a recent no-show and a proposed
+  // treatment still counts once). Distinct from distinctLeadCount, which is
+  // deliberately scoped to leads only — see the dedup note below.
+  distinctPeopleCount: number
   // Back-compat alias, identical value to distinctLeadCount. Older callers
   // (the dashboard KPI tile, the panel's header badge) read this name —
   // kept so nothing has to touch every call site to get the fixed
@@ -62,6 +71,19 @@ export interface NeedsAttentionResult {
   // means.
   totalItems: number
   categories: NeedsAttentionCategory[]
+}
+
+const CATEGORY_ENTITY_KIND: Record<string, NeedsAttentionEntityKind> = {
+  UNANSWERED_NEW: 'LEAD', OVERDUE_FOLLOWUP: 'LEAD', STALE_UNTOUCHED: 'LEAD',
+  QUALIFIED_UNBOOKED: 'LEAD', UNASSIGNED: 'LEAD',
+  NO_SHOW: 'APPOINTMENT', CANCELLED_UNREBOOKED: 'APPOINTMENT',
+  TREATMENT_OPPORTUNITY: 'PATIENT',
+}
+
+function itemPhone(item: Record<string, unknown>): string | null {
+  if (typeof item.phone === 'string') return item.phone
+  const patient = item.patient as { phone?: string } | undefined
+  return patient?.phone ?? null
 }
 
 export async function buildNeedsAttentionQueue(options: NeedsAttentionOptions = {}): Promise<NeedsAttentionResult> {
@@ -141,15 +163,60 @@ export async function buildNeedsAttentionQueue(options: NeedsAttentionOptions = 
   const staleItems = staleForOwner.flatMap(group => group.leads)
 
   const categories: NeedsAttentionCategory[] = [
-    { key: 'UNANSWERED_NEW',       label: 'New leads with no reply yet',            scope: 'LEAD_OWNER',   count: unansweredNew.length,           items: unansweredNew },
-    { key: 'OVERDUE_FOLLOWUP',     label: 'Overdue follow-ups',                     scope: 'LEAD_OWNER',   count: overdueFollowUps.length,        items: overdueFollowUps },
-    { key: 'STALE_UNTOUCHED',      label: 'Leads waiting too long for a response',  scope: 'LEAD_OWNER',   count: staleItems.length,              items: staleItems },
-    { key: 'QUALIFIED_UNBOOKED',   label: 'Qualified but not yet booked',           scope: 'LEAD_OWNER',   count: qualifiedUnbooked.length,       items: qualifiedUnbooked },
-    { key: 'UNASSIGNED',           label: 'Unassigned leads',                       scope: 'LEAD_OWNER',   count: unassigned.length,              items: unassigned },
-    { key: 'NO_SHOW',              label: 'Recent no-shows',                        scope: 'CLINIC_WIDE',  count: recentNoShows.length,           items: recentNoShows },
-    { key: 'CANCELLED_UNREBOOKED', label: 'Cancelled and not yet rebooked',         scope: 'CLINIC_WIDE',  count: unrebookedCancellations.length, items: unrebookedCancellations },
-    { key: 'TREATMENT_OPPORTUNITY', label: 'Proposed treatment awaiting decision',  scope: 'CLINIC_WIDE',  count: treatmentOpportunities.length,  items: treatmentOpportunities },
+    { key: 'UNANSWERED_NEW',       label: 'New leads with no reply yet',            scope: 'LEAD_OWNER',   entityKind: 'LEAD',        count: unansweredNew.length,           items: unansweredNew },
+    { key: 'OVERDUE_FOLLOWUP',     label: 'Overdue follow-ups',                     scope: 'LEAD_OWNER',   entityKind: 'LEAD',        count: overdueFollowUps.length,        items: overdueFollowUps },
+    { key: 'STALE_UNTOUCHED',      label: 'Leads waiting too long for a response',  scope: 'LEAD_OWNER',   entityKind: 'LEAD',        count: staleItems.length,              items: staleItems },
+    { key: 'QUALIFIED_UNBOOKED',   label: 'Qualified but not yet booked',           scope: 'LEAD_OWNER',   entityKind: 'LEAD',        count: qualifiedUnbooked.length,       items: qualifiedUnbooked },
+    { key: 'UNASSIGNED',           label: 'Unassigned leads',                       scope: 'LEAD_OWNER',   entityKind: 'LEAD',        count: unassigned.length,              items: unassigned },
+    { key: 'NO_SHOW',              label: 'Recent no-shows',                        scope: 'CLINIC_WIDE',  entityKind: 'APPOINTMENT', count: recentNoShows.length,           items: recentNoShows },
+    { key: 'CANCELLED_UNREBOOKED', label: 'Cancelled and not yet rebooked',         scope: 'CLINIC_WIDE',  entityKind: 'APPOINTMENT', count: unrebookedCancellations.length, items: unrebookedCancellations },
+    { key: 'TREATMENT_OPPORTUNITY', label: 'Proposed treatment awaiting decision',  scope: 'CLINIC_WIDE',  entityKind: 'PATIENT',     count: treatmentOpportunities.length,  items: treatmentOpportunities },
   ]
+
+  // ── Enrichment — one batched query each across every item (never
+  // per-item), so the queue stays cheap no matter how many items it holds.
+  // 1. hasConversation: does a real AiConversation already exist for this
+  //    phone? Drives whether the frontend may offer "Open Chat" — it must
+  //    never show that action, or invent a conversation, when none exists.
+  // 2. ownerName: resolves Lead.assignedTo (a bare User.id) to a display
+  //    name for LEAD_OWNER categories.
+  // 3. patientId: a normalized id every APPOINTMENT/PATIENT item can be
+  //    linked to a patient profile with (appointments store it separately
+  //    from their own `id`; TREATMENT_OPPORTUNITY's `id` already IS the
+  //    patient id).
+  const allPhones = categories.flatMap(c => c.items.map(itemPhone)).filter((p): p is string => !!p)
+  const allPhoneVariants = [...new Set(allPhones.flatMap(p => phoneVariants(p)))]
+  const conversationsWithPhone = allPhoneVariants.length
+    ? await prisma.aiConversation.findMany({
+        where:  { phoneNumber: { in: allPhoneVariants } },
+        select: { phoneNumber: true },
+      })
+    : []
+  const phonesWithConversation = new Set(conversationsWithPhone.map(c => c.phoneNumber))
+  const hasConversationForPhone = (phone: string | null): boolean =>
+    !!phone && phoneVariants(phone).some(v => phonesWithConversation.has(v))
+
+  const ownerIds = [...new Set(
+    categories.filter(c => c.scope === 'LEAD_OWNER')
+      .flatMap(c => c.items.map(item => item.assignedTo as string | null))
+      .filter((id): id is string => !!id)
+  )]
+  const owners = ownerIds.length
+    ? await prisma.user.findMany({ where: { id: { in: ownerIds } }, select: { id: true, firstName: true, lastName: true } })
+    : []
+  const ownerNameById = new Map(owners.map(o => [o.id, `${o.firstName} ${o.lastName}`.trim()]))
+
+  for (const category of categories) {
+    category.items = category.items.map(item => ({
+      ...item,
+      hasConversation: hasConversationForPhone(itemPhone(item)),
+      ownerName: item.assignedTo ? ownerNameById.get(item.assignedTo as string) ?? null : null,
+      patientId:
+        category.entityKind === 'PATIENT'     ? (item.id as string) :
+        category.entityKind === 'APPOINTMENT' ? (item.patientId as string) :
+        null,
+    }))
+  }
 
   // The five LEAD_OWNER categories are not mutually exclusive — a single new,
   // unassigned lead that's also past its response target can legitimately
@@ -166,10 +233,21 @@ export async function buildNeedsAttentionQueue(options: NeedsAttentionOptions = 
     categories.filter(c => c.scope === 'LEAD_OWNER').flatMap(c => c.items.map(item => item.id as string))
   ).size
 
+  // True unique-PEOPLE count across every category — leads counted by lead
+  // id, appointments/patients counted by patientId (never by appointment
+  // id, which would double-count the same patient's two separate no-shows
+  // as two different "people").
+  const distinctPeopleCount = new Set(
+    categories.flatMap(c => c.items.map(item =>
+      c.entityKind === 'LEAD' ? (item.id as string) : (item.patientId as string)
+    ))
+  ).size
+
   return {
     generatedAt: new Date().toISOString(),
     ownerId,
     distinctLeadCount,
+    distinctPeopleCount,
     totalItems: distinctLeadCount,
     categories,
   }
