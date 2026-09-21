@@ -15,8 +15,9 @@ import { sendOrSimulate } from './dry-run'
 import { getChannelConsentStatus, hasExplicitOptIn } from './consent-log.service'
 import { decideLeadSend, isAllowed } from './lead-consent.service'
 import { reprocessUnprocessedEvents } from './automation-events.service'
-import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../ai-suite/whatsapp/whatsapp.service'
 import { sendSMS } from '../ai-suite/sms/sms.service'
+import { resolveMetaTemplateSlot } from './sequence-meta-templates'
 import type { ScheduledTouch, SequenceEnrollment, SequenceTouchTemplate, SequenceDefinition, Patient } from '@prisma/client'
 
 type DueTouch = ScheduledTouch & {
@@ -33,6 +34,20 @@ async function sendViaChannel(channel: string, to: string, body: string): Promis
   if (channel === 'WHATSAPP') { await sendWhatsAppMessage(to, body); return }
   if (channel === 'SMS')      { await sendSMS(to, body); return }
   throw new Error(`[CrmAutomation] Channel "${channel}" has no real send path wired for sequence touches yet`)
+}
+
+// Fail-closed Meta template gating for the 3 patient sequences in
+// sequence-meta-templates.ts (recall/treatment follow-up). Free-text
+// WhatsApp sends only deliver within Meta's 24h customer-service window
+// (i.e. the patient messaged us in the last 24h). Outside it, Meta requires
+// an APPROVED template — mirrors the exact fail-closed pattern already used
+// by ai-suite/scheduler/followup.service.ts's appointment-confirmation send.
+async function isWithinWhatsAppSessionWindow(phone: string): Promise<boolean> {
+  const lastInbound = await prisma.aiMessage.findFirst({
+    where: { conversation: { phoneNumber: phone }, role: 'USER' },
+    orderBy: { createdAt: 'desc' },
+  })
+  return !!lastInbound && (Date.now() - lastInbound.createdAt.getTime()) < 24 * 60 * 60 * 1000
 }
 
 async function resolveRecipient(touch: DueTouch): Promise<{ to: string; firstName: string; lastName: string } | null> {
@@ -118,12 +133,36 @@ export async function processDueScheduledTouches(limit = 200): Promise<{ process
 
     const body = renderTemplate(touch.touchTemplate.messageTemplate, recipient.firstName, recipient.lastName)
 
+    // Meta template fail-closed gate — only applies to touches mapped in
+    // sequence-meta-templates.ts. Every other sequence/channel is completely
+    // unaffected and keeps sending free-text exactly as before.
+    let realSend = () => sendViaChannel(channel, recipient.to, body)
+    if (channel === 'WHATSAPP' && touch.patientId) {
+      const metaSlot = resolveMetaTemplateSlot(touch.touchTemplate.sequence.key, touch.touchTemplate.order)
+      if (metaSlot) {
+        const withinWindow = await isWithinWhatsAppSessionWindow(recipient.to)
+        if (!withinWindow) {
+          const templateName = process.env[metaSlot.envVar]
+          if (!templateName) {
+            console.warn(`[CrmAutomation] BLOCKED_TEMPLATE_REQUIRED for touch ${touch.id} (${touch.touchTemplate.sequence.key} order ${touch.touchTemplate.order}) — outside the 24h WhatsApp session window and ${metaSlot.envVar} not configured. No free-text fallback attempted.`)
+            await prisma.scheduledTouch.update({
+              where: { id: touch.id },
+              data:  { status: 'SKIPPED', resultDetail: 'blocked_template_required' },
+            })
+            skipped++
+            continue
+          }
+          // Outside the window, only a template send is attempted — never
+          // fall back to free text, which Meta would reject anyway.
+          realSend = () => sendWhatsAppTemplate(recipient.to, templateName, [recipient.firstName], false)
+        }
+      }
+    }
+
     let result
     try {
       const feature = touch.touchTemplate.sequence.isMarketing ? 'MARKETING' : 'OPERATIONAL'
-      result = await sendOrSimulate(feature, channel as 'SMS' | 'WHATSAPP' | 'EMAIL', recipient.to, body, () =>
-        sendViaChannel(channel, recipient.to, body)
-      )
+      result = await sendOrSimulate(feature, channel as 'SMS' | 'WHATSAPP' | 'EMAIL', recipient.to, body, realSend)
     } catch (err: any) {
       await prisma.scheduledTouch.update({
         where: { id: touch.id },

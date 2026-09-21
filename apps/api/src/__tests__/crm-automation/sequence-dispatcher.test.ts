@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
-const { prismaMock, sendWhatsAppMessage, getChannelConsentStatus, hasExplicitOptIn } = vi.hoisted(() => ({
+const { prismaMock, sendWhatsAppMessage, sendWhatsAppTemplate, getChannelConsentStatus, hasExplicitOptIn } = vi.hoisted(() => ({
   prismaMock: {
     scheduledTouch: { findMany: vi.fn(), update: vi.fn(), count: vi.fn().mockResolvedValue(0) },
     sequenceEnrollment: { update: vi.fn() },
@@ -10,14 +10,16 @@ const { prismaMock, sendWhatsAppMessage, getChannelConsentStatus, hasExplicitOpt
     nurtureLog: { create: vi.fn() },
     automationEvent: { findMany: vi.fn().mockResolvedValue([]) },
     leadConsentLog: { findFirst: vi.fn() },
+    aiMessage: { findFirst: vi.fn().mockResolvedValue(null) },
   },
   sendWhatsAppMessage: vi.fn().mockResolvedValue('wamid-1'),
+  sendWhatsAppTemplate: vi.fn().mockResolvedValue('wamid-template-1'),
   getChannelConsentStatus: vi.fn().mockResolvedValue(true),
   hasExplicitOptIn: vi.fn().mockResolvedValue(false),
 }))
 
 vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
-vi.mock('../../ai-suite/whatsapp/whatsapp.service', () => ({ sendWhatsAppMessage }))
+vi.mock('../../ai-suite/whatsapp/whatsapp.service', () => ({ sendWhatsAppMessage, sendWhatsAppTemplate }))
 vi.mock('../../ai-suite/sms/sms.service', () => ({ sendSMS: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../crm-automation/consent-log.service', () => ({ getChannelConsentStatus, hasExplicitOptIn }))
 
@@ -27,10 +29,13 @@ beforeEach(() => {
   vi.clearAllMocks()
   process.env.NODE_ENV = 'test'
   delete process.env.CRM_AUTOMATION_LIVE
+  delete process.env.WA_TEMPLATE_RECALL_DUE_D0
+  delete process.env.WA_TEMPLATE_RECALL_DUE_D5
   getChannelConsentStatus.mockResolvedValue(true)
   hasExplicitOptIn.mockResolvedValue(false)
   prismaMock.scheduledTouch.count.mockResolvedValue(0)
   prismaMock.leadConsentLog.findFirst.mockResolvedValue(null)
+  prismaMock.aiMessage.findFirst.mockResolvedValue(null)
 })
 
 function leadTouch(overrides: Record<string, any> = {}) {
@@ -214,5 +219,87 @@ describe('processDueScheduledTouches — completion', () => {
       where: { id: 'enr-1' },
       data: { status: 'COMPLETED', exitedAt: expect.any(Date) },
     })
+  })
+})
+
+// ── Milestone: Meta WhatsApp template fail-closed gate (patient sequence
+// content/activation pass) — scoped to the 3 sequences in
+// sequence-meta-templates.ts. A touch mapped there must never attempt a
+// free-text send once it's outside the 24h session window unless its
+// approved-template env var is configured; every other sequence is
+// completely unaffected by this gate.
+describe('processDueScheduledTouches — Meta template fail-closed gate (recall/treatment sequences)', () => {
+  function mappedTouch(overrides: Record<string, any> = {}) {
+    return dueTouch({
+      touchTemplate: {
+        channel: 'WHATSAPP',
+        order: 0,
+        messageTemplate: 'Good morning {firstName} 😊',
+        sequence: { key: 'recall_due_reminder', isMarketing: false },
+      },
+      ...overrides,
+    })
+  }
+
+  it('blocks the touch (no send attempted on any path) when outside the 24h window and no template env var is configured', async () => {
+    prismaMock.aiMessage.findFirst.mockResolvedValue(null) // no inbound ever -> outside window
+    prismaMock.scheduledTouch.findMany.mockResolvedValue([mappedTouch()])
+
+    const result = await processDueScheduledTouches()
+
+    expect(result.skipped).toBe(1)
+    expect(result.dryRun).toBe(0)
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+    expect(sendWhatsAppTemplate).not.toHaveBeenCalled()
+    expect(prismaMock.scheduledTouch.update).toHaveBeenCalledWith({
+      where: { id: 't-1' },
+      data: { status: 'SKIPPED', resultDetail: 'blocked_template_required' },
+    })
+  })
+
+  it('does not block when a recent inbound message puts the patient back inside the 24h session window', async () => {
+    prismaMock.aiMessage.findFirst.mockResolvedValue({ createdAt: new Date(Date.now() - 60 * 60 * 1000) }) // 1h ago
+    prismaMock.scheduledTouch.findMany.mockResolvedValue([mappedTouch()])
+
+    const result = await processDueScheduledTouches()
+
+    expect(result.skipped).toBe(0)
+    expect(result.dryRun).toBe(1) // proceeds to the normal dry-run-gated send path, not blocked
+  })
+
+  it('does not block outside the window once the matching template env var is configured', async () => {
+    process.env.WA_TEMPLATE_RECALL_DUE_D0 = 'cc_recall_due_d0'
+    prismaMock.aiMessage.findFirst.mockResolvedValue(null)
+    prismaMock.scheduledTouch.findMany.mockResolvedValue([mappedTouch()])
+
+    const result = await processDueScheduledTouches()
+
+    expect(result.skipped).toBe(0)
+    expect(result.dryRun).toBe(1)
+  })
+
+  it('never applies the gate to a sequence not in the Meta template map — unaffected, unblocked, unrelated functionality untouched', async () => {
+    prismaMock.aiMessage.findFirst.mockResolvedValue(null) // outside window, but irrelevant here
+    prismaMock.scheduledTouch.findMany.mockResolvedValue([
+      dueTouch({ touchTemplate: { channel: 'WHATSAPP', order: 0, messageTemplate: 'Hi {firstName}!', sequence: { key: 'some_other_sequence', isMarketing: false } } }),
+    ])
+
+    const result = await processDueScheduledTouches()
+
+    expect(result.skipped).toBe(0)
+    expect(result.dryRun).toBe(1)
+  })
+
+  it('never applies the gate to a SMS touch, even for a mapped sequence key', async () => {
+    prismaMock.aiMessage.findFirst.mockResolvedValue(null)
+    prismaMock.scheduledTouch.findMany.mockResolvedValue([
+      mappedTouch({ touchTemplate: { channel: 'SMS', order: 0, messageTemplate: 'Hi {firstName}!', sequence: { key: 'recall_due_reminder', isMarketing: false } } }),
+    ])
+
+    const result = await processDueScheduledTouches()
+
+    expect(result.skipped).toBe(0)
+    expect(result.dryRun).toBe(1)
+    expect(prismaMock.aiMessage.findFirst).not.toHaveBeenCalled()
   })
 })
