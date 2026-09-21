@@ -6,10 +6,10 @@
 // Patient CRM screens.
 
 import { Suspense, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus, Trash2, Pencil, Loader2, CheckCircle2, AlertCircle, Zap, GitBranch, Star, X,
-  RefreshCw, Send, Eye, Users, Clock, Phone, DollarSign,
+  RefreshCw, Send, Eye,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -144,11 +144,15 @@ function Toast({ toast }: { toast: { msg: string; ok: boolean } | null }) {
 
 const TAB_LABEL: Record<string, string> = {
   routing: 'Routing Rules', sequences: 'Sequences', review: 'Review Requests',
-  backlog: 'Backlog Re-engagement', reporting: 'Reporting',
+  backlog: 'Backlog Re-engagement',
 }
 
-type CrmAutomationTab = 'routing' | 'sequences' | 'review' | 'backlog' | 'reporting'
-const VALID_TABS: CrmAutomationTab[] = ['routing', 'sequences', 'review', 'backlog', 'reporting']
+// Business reporting moved to /crm/reports (Product Experience Closure) —
+// this page is Settings/configuration only now, not a reporting destination.
+// 'reporting' is still accepted as a legacy query param and redirected below
+// so any bookmarked ?tab=reporting link still lands somewhere useful.
+type CrmAutomationTab = 'routing' | 'sequences' | 'review' | 'backlog'
+const VALID_TABS: CrmAutomationTab[] = ['routing', 'sequences', 'review', 'backlog']
 
 export default function CrmAutomationSettingsPage() {
   return (
@@ -159,26 +163,33 @@ export default function CrmAutomationSettingsPage() {
 }
 
 function CrmAutomationSettingsContent() {
-  // The new CRM Reports page (/crm/reports) deep-links here with ?tab=reporting
-  // rather than duplicating this panel — reuse, not a second reporting UI.
+  const router = useRouter()
+  // Legacy bookmarks/links to ?tab=reporting now go to the real business
+  // Reports destination instead of silently falling back to 'routing'.
   const requestedTab = useSearchParams().get('tab')
+  useEffect(() => {
+    if (requestedTab === 'reporting') router.replace('/crm/reports')
+  }, [requestedTab, router])
+
   const initialTab = VALID_TABS.includes(requestedTab as CrmAutomationTab) ? (requestedTab as CrmAutomationTab) : 'routing'
   const [tab, setTab] = useState<CrmAutomationTab>(initialTab)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   function showToast(msg: string, ok = true) { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500) }
 
+  if (requestedTab === 'reporting') return null
+
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
       <Toast toast={toast} />
       <div>
-        <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center gap-2"><Zap size={20} className="text-cyan-500" /> CRM Automation Settings</h1>
-        <p className="text-xs text-gray-400 mt-0.5">Lead owner routing, multi-touch sequences, post-visit review requests, backlog re-engagement, and reporting</p>
+        <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center gap-2"><Zap size={20} className="text-cyan-500" /> CRM Settings</h1>
+        <p className="text-xs text-gray-400 mt-0.5">Lead owner routing, multi-touch sequences, post-visit review requests, and backlog re-engagement. For business reports, see CRM → Leads → Reports.</p>
       </div>
 
       <AutomationModeStatus />
 
       <div className="flex flex-wrap gap-1.5 bg-gray-100 dark:bg-white/5 rounded-2xl p-1.5 w-fit">
-        {(['routing', 'sequences', 'review', 'backlog', 'reporting'] as const).map(t => (
+        {(['routing', 'sequences', 'review', 'backlog'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={cn('px-4 py-2 rounded-xl text-sm font-bold transition-colors',
               tab === t ? 'bg-white dark:bg-white/10 text-gray-800 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
@@ -191,7 +202,6 @@ function CrmAutomationSettingsContent() {
       {tab === 'sequences' && <SequencesPanel showToast={showToast} />}
       {tab === 'review' && <ReviewConfigPanel showToast={showToast} />}
       {tab === 'backlog' && <BacklogPanel showToast={showToast} />}
-      {tab === 'reporting' && <ReportingPanel />}
     </div>
   )
 }
@@ -791,216 +801,6 @@ function BacklogPanel({ showToast }: { showToast: (m: string, ok?: boolean) => v
               )}
             </div>
           ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Reporting (Part R) ────────────────────────────────────────────────────
-const REPORT_TABS = [
-  { key: 'leaderboard',  label: 'Response-Time Leaderboard', icon: Users,      path: 'response-time-leaderboard' },
-  { key: 'conversion',   label: 'Stage Conversion',          icon: GitBranch,  path: 'stage-conversion-rates' },
-  { key: 'stale',        label: 'Stale Leads',               icon: Clock,      path: 'stale-leads' },
-  { key: 'cold',         label: 'Weekly Cold Leads',         icon: AlertCircle,path: 'weekly-cold-leads' },
-  { key: 'caseAcceptance', label: 'Case Acceptance (CRM Tags)', icon: CheckCircle2, path: 'case-acceptance' },
-  { key: 'sequences',    label: 'Sequence Performance',      icon: Zap,        path: 'sequence-performance' },
-  { key: 'ar',           label: 'AR Aging',                  icon: DollarSign, path: 'aging-receivables' },
-  { key: 'calls',        label: 'Call Performance',          icon: Phone,      path: 'call-performance' },
-] as const
-
-function pct(n: number | null) { return n == null ? '—' : `${(n * 100).toFixed(1)}%` }
-function ugx(n: number) { return `UGX ${n.toLocaleString('en-UG')}` }
-
-function ReportingPanel() {
-  const [sub, setSub] = useState<typeof REPORT_TABS[number]['key']>('leaderboard')
-  const [data, setData] = useState<Record<string, any>>({})
-  const [loading, setLoading] = useState<Record<string, 'loading' | 'ok' | 'forbidden' | 'error'>>({})
-
-  function loadSub(key: typeof REPORT_TABS[number]['key']) {
-    if (loading[key] === 'loading' || loading[key] === 'ok') return
-    const tab = REPORT_TABS.find(t => t.key === key)!
-    setLoading(l => ({ ...l, [key]: 'loading' }))
-    fetch(`${API}/crm-automation/reports/${tab.path}`, { headers: authHeaders() })
-      .then(r => {
-        if (r.status === 403) { setLoading(l => ({ ...l, [key]: 'forbidden' })); return null }
-        if (!r.ok) { setLoading(l => ({ ...l, [key]: 'error' })); return null }
-        return r.json()
-      })
-      .then(d => { if (d !== null && d !== undefined) { setData(v => ({ ...v, [key]: d })); setLoading(l => ({ ...l, [key]: 'ok' })) } })
-      .catch(() => setLoading(l => ({ ...l, [key]: 'error' })))
-  }
-  useEffect(() => { loadSub(sub) }, [sub])
-
-  const status = loading[sub]
-  const d = data[sub]
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5">
-        {REPORT_TABS.map(t => (
-          <button key={t.key} onClick={() => setSub(t.key)}
-            className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors',
-              sub === t.key ? 'bg-cyan-600 text-white' : 'bg-gray-100 dark:bg-white/8 text-gray-600 dark:text-white/60 hover:bg-gray-200 dark:hover:bg-white/15')}>
-            <t.icon size={13} /> {t.label}
-          </button>
-        ))}
-      </div>
-
-      {status === 'loading' && <div className="flex justify-center py-10"><Loader2 className="animate-spin text-gray-400" /></div>}
-      {status === 'forbidden' && <p className="text-sm text-gray-400 text-center py-10">Restricted to Accounts/Admin.</p>}
-      {status === 'error' && <p className="text-sm text-red-400 text-center py-10">Failed to load this report.</p>}
-
-      {status === 'ok' && sub === 'leaderboard' && (
-        <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-white/5 text-[10px] uppercase text-gray-400 font-black">
-              <tr><th className="text-left px-4 py-2.5">Owner</th><th className="text-right px-4 py-2.5">Leads</th><th className="text-right px-4 py-2.5">Avg (min)</th><th className="text-right px-4 py-2.5">Median (min)</th></tr>
-            </thead>
-            <tbody>
-              {(d ?? []).map((row: any) => (
-                <tr key={row.ownerId} className="border-t border-gray-100 dark:border-white/10">
-                  <td className="px-4 py-2.5 font-semibold text-gray-700 dark:text-white/80">{row.ownerName}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-500">{row.leadCount}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-500">{row.avgMinutes.toFixed(1)}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-500">{row.medianMinutes.toFixed(1)}</td>
-                </tr>
-              ))}
-              {(d ?? []).length === 0 && <tr><td colSpan={4} className="text-center py-8 text-gray-400">No leads with a logged first reply yet.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {status === 'ok' && sub === 'conversion' && d && (
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500 dark:text-white/60">{d.note} {d.leadsWithoutStageHistory} leads have no recorded stage history.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            { label: 'New → Contacted', rate: d.newToContactedRate, n: d.totals.totalNew },
-            { label: 'Contacted → Qualified', rate: d.contactedToQualifiedRate, n: d.totals.contactedCount },
-            { label: 'Qualified → Converted', rate: d.qualifiedToConvertedRate, n: d.totals.qualifiedCount },
-          ].map(c => (
-            <div key={c.label} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
-              <p className="text-[10px] font-black uppercase text-gray-400">{c.label}</p>
-              <p className="text-2xl font-black text-gray-800 dark:text-white mt-1">{pct(c.rate)}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">{c.n > 0 ? `of ${c.n} leads` : 'No eligible leads yet'}</p>
-            </div>
-          ))}
-          </div>
-        </div>
-      )}
-
-      {status === 'ok' && sub === 'stale' && (
-        <div className="space-y-2">
-          {(d ?? []).length === 0 && <p className="text-sm text-gray-400 text-center py-8">No leads untouched past 24 hours.</p>}
-          {(d ?? []).map((grp: any) => (
-            <div key={grp.ownerId} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
-              <p className="font-bold text-sm text-gray-800 dark:text-white mb-2">{grp.ownerId === 'unassigned' ? 'Unassigned' : grp.ownerId} — {grp.count} stale</p>
-              <div className="space-y-1">
-                {grp.leads.map((l: any) => (
-                  <p key={l.id} className="text-xs text-gray-500 flex justify-between"><span>{l.name || l.phone}</span><span>{new Date(l.createdAt).toLocaleDateString()}</span></p>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {status === 'ok' && sub === 'cold' && (
-        <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-white/5 text-[10px] uppercase text-gray-400 font-black">
-              <tr><th className="text-left px-4 py-2.5">Lead</th><th className="text-left px-4 py-2.5">Source</th><th className="text-left px-4 py-2.5">Loss Reason</th><th className="text-right px-4 py-2.5">Moved to Lost</th></tr>
-            </thead>
-            <tbody>
-              {(d ?? []).map((row: any) => (
-                <tr key={row.id} className="border-t border-gray-100 dark:border-white/10">
-                  <td className="px-4 py-2.5 font-semibold text-gray-700 dark:text-white/80">{row.lead?.name || row.lead?.phone}</td>
-                  <td className="px-4 py-2.5 text-gray-500">{row.lead?.source}</td>
-                  <td className="px-4 py-2.5 text-gray-500">{row.lead?.lossReason ?? '—'}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-500">{new Date(row.changedAt).toLocaleDateString()}</td>
-                </tr>
-              ))}
-              {(d ?? []).length === 0 && <tr><td colSpan={4} className="text-center py-8 text-gray-400">No leads moved to Lost in the past 7 days.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {status === 'ok' && sub === 'caseAcceptance' && d && (
-        <div className="space-y-3">
-          <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-2xl p-3 text-xs text-amber-700 dark:text-amber-300">
-            This counts patients by their current CRM tag (treatmentPlanStatus). It answers "how many patients right now are Proposed/Accepted/etc." — a different question from the per-doctor, date-ranged <strong>Case Acceptance Rate</strong> report under Reports → Case Acceptance, which counts individual treatment plans over time. Both are real, neither is wrong; they measure different things.
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {Object.entries(d.counts as Record<string, number>).map(([status, count]) => (
-              <div key={status} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
-                <p className="text-[10px] font-black uppercase text-gray-400">{status}</p>
-                <p className="text-xl font-black text-gray-800 dark:text-white mt-1">{count}</p>
-              </div>
-            ))}
-          </div>
-          <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
-            <p className="text-[10px] font-black uppercase text-gray-400">Acceptance Rate</p>
-            <p className="text-xl font-black text-gray-800 dark:text-white mt-1">{pct(d.acceptanceRate)}</p>
-            <p className="text-[11px] text-gray-400 mt-0.5">Accepted ÷ (Proposed + Accepted + Declined + Incomplete)</p>
-          </div>
-        </div>
-      )}
-
-      {status === 'ok' && sub === 'sequences' && (
-        <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-white/5 text-[10px] uppercase text-gray-400 font-black">
-              <tr><th className="text-left px-4 py-2.5">Sequence</th><th className="text-left px-4 py-2.5">Entity</th><th className="text-right px-4 py-2.5">Enrolled</th><th className="text-right px-4 py-2.5">Response Rate</th><th className="text-right px-4 py-2.5">Booking Rate</th></tr>
-            </thead>
-            <tbody>
-              {(d ?? []).map((row: any) => (
-                <tr key={row.sequenceId} className="border-t border-gray-100 dark:border-white/10">
-                  <td className="px-4 py-2.5 font-semibold text-gray-700 dark:text-white/80">{row.name} <span className="text-gray-400 font-normal text-xs">({row.key})</span></td>
-                  <td className="px-4 py-2.5 text-gray-500">{row.entityType}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-500">{row.totalEnrollments}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-500">{pct(row.responseRate)}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-500">{pct(row.bookingRate)}</td>
-                </tr>
-              ))}
-              {(d ?? []).length === 0 && <tr><td colSpan={5} className="text-center py-8 text-gray-400">No sequences defined yet.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {status === 'ok' && sub === 'ar' && d && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {Object.entries(d).length === 0 && <p className="text-sm text-gray-400 col-span-full text-center py-8">No outstanding balances.</p>}
-          {Object.entries(d).map(([bucket, v]: [string, any]) => (
-            <div key={bucket} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
-              <p className="text-[10px] font-black uppercase text-gray-400">{bucket}</p>
-              <p className="text-xl font-black text-gray-800 dark:text-white mt-1">{ugx(v.totalOwedUGX)}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">{v.count} patient(s)</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {status === 'ok' && sub === 'calls' && d && (
-        <div className="space-y-3">
-          <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-2xl p-3 text-xs text-amber-700 dark:text-amber-300">
-            Calling is currently a <strong>PAUSED</strong> Code Clinic channel — the figures below are real logged events, not fake data, but a meaningful share of "missed" calls here is unsolicited SIP scanner/probe traffic hitting the trunk, not real patients. No text-back or other patient communication fires from this data today.
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: 'Logged', v: d.totalLogged }, { label: 'Missed', v: d.missedCount },
-              { label: 'Answered', v: d.answeredCount }, { label: 'Answer Rate', v: pct(d.answerRate) },
-            ].map(c => (
-              <div key={c.label} className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-4">
-                <p className="text-[10px] font-black uppercase text-gray-400">{c.label}</p>
-                <p className="text-xl font-black text-gray-800 dark:text-white mt-1">{c.v}</p>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-gray-400">{d.note}</p>
         </div>
       )}
     </div>

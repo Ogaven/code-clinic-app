@@ -138,15 +138,37 @@ const ADMIN_NAV: MobileNavConfig = {
       sections: [{
         heading: 'CRM',
         items: [
-          { label: 'Dashboard',      href: '/crm',                    icon: LineChart },
-          { label: 'Leads',          href: '/leads',                  icon: Target },
-          { label: 'Needs Attention', href: '/crm/needs-attention',   icon: AlertTriangle },
-          { label: 'Follow-ups',     href: '/crm/follow-ups',         icon: CalendarClock },
-          { label: 'Sources',       href: '/crm/sources',             icon: Megaphone },
-          { label: 'Campaigns',     href: '/campaigns',               icon: Megaphone },
-          { label: 'Referrals',     href: '/referrals',               icon: Handshake },
-          { label: 'Revenue',       href: '/crm/revenue',             icon: Wallet },
-          { label: 'Reports',       href: '/crm/reports',             icon: FileBarChart },
+          { label: 'Dashboard', href: '/crm', icon: LineChart },
+          {
+            label: 'Leads', href: '#', icon: Target,
+            children: [{
+              heading: 'Leads',
+              items: [
+                { label: 'Pipeline',        href: '/leads',                  icon: Target },
+                { label: 'Needs Attention', href: '/crm/needs-attention',    icon: AlertTriangle },
+                { label: 'Sources',         href: '/crm/sources',            icon: Megaphone },
+                { label: 'Campaigns',       href: '/campaigns',              icon: Megaphone },
+                { label: 'Referrals',       href: '/crm/referrals',          icon: Handshake },
+                { label: 'Revenue',         href: '/crm/revenue',            icon: Wallet },
+                { label: 'Reports',         href: '/crm/reports',            icon: FileBarChart },
+              ],
+            }],
+          },
+          {
+            label: 'Patient Engagement', href: '#', icon: UsersRound,
+            children: [{
+              heading: 'Patient Engagement',
+              items: [
+                { label: 'Recall',             href: '/crm/recall',             icon: CalendarClock },
+                { label: 'Treatment Follow-up', href: '/crm/treatment-followup', icon: ClipboardList },
+                { label: 'Reactivation',        href: '/crm/reactivation',       icon: AlertTriangle },
+                { label: 'Waitlist',            href: '/waitlist',               icon: CalendarDays },
+                { label: 'Reviews',             href: '/crm/reviews',            icon: BadgeCheck },
+                { label: 'Collections',         href: '/crm/collections',        icon: Wallet },
+              ],
+            }],
+          },
+          { label: 'Settings', href: '/admin/crm-automation', icon: Settings },
         ],
       }],
     },
@@ -205,17 +227,40 @@ const RECEPTIONIST_NAV: MobileNavConfig = {
       sections: [{
         heading: 'CRM',
         items: [
-          // Dashboard/Needs Attention/Follow-ups/Sources ride the existing
-          // 'leads' permission — see the matching comment in
-          // ReceptionistTopBar.tsx for why no new permission key was added.
+          // Dashboard/Needs Attention/Sources ride the existing 'leads'
+          // permission — see the matching comment in ReceptionistTopBar.tsx
+          // for why no new permission key was added. Patient Engagement
+          // items ride 'patients' instead — they concern existing patients,
+          // not leads, and no Revenue/Collections/Settings here (Admin/
+          // Accounts only, matching the backend's accountsOrAdmin gate).
           { label: 'Dashboard',          href: '/receptionist/crm',                icon: LineChart, permKey: 'leads' },
           { label: 'Treatment Pipeline', href: '/receptionist/treatment-pipeline', icon: Target,    permKey: 'treatmentPipeline' },
-          { label: 'Leads',              href: '/receptionist/leads',             icon: Target,    permKey: 'leads' },
-          { label: 'Needs Attention',    href: '/receptionist/crm/needs-attention', icon: AlertTriangle, permKey: 'leads' },
-          { label: 'Follow-ups',         href: '/receptionist/crm/follow-ups',    icon: CalendarClock, permKey: 'leads' },
-          { label: 'Sources',            href: '/receptionist/crm/sources',       icon: Megaphone, permKey: 'leads' },
-          { label: 'Referrals',          href: '/receptionist/referrals',         icon: Handshake, permKey: 'referrals' },
-          { label: 'Campaigns',          href: '/receptionist/campaigns',         icon: Megaphone, permKey: 'campaigns' },
+          {
+            label: 'Leads', href: '#', icon: Target, permKey: 'leads',
+            children: [{
+              heading: 'Leads',
+              items: [
+                { label: 'Pipeline',        href: '/receptionist/leads',              icon: Target,        permKey: 'leads' },
+                { label: 'Needs Attention', href: '/receptionist/crm/needs-attention', icon: AlertTriangle, permKey: 'leads' },
+                { label: 'Sources',         href: '/receptionist/crm/sources',        icon: Megaphone,     permKey: 'leads' },
+                { label: 'Campaigns',       href: '/receptionist/campaigns',          icon: Megaphone,     permKey: 'campaigns' },
+                { label: 'Referrals',       href: '/receptionist/crm/referrals',      icon: Handshake,     permKey: 'referrals' },
+                { label: 'Reports',         href: '/receptionist/crm/reports',        icon: FileBarChart,  permKey: 'leads' },
+              ],
+            }],
+          },
+          {
+            label: 'Patient Engagement', href: '#', icon: UsersRound, permKey: 'patients',
+            children: [{
+              heading: 'Patient Engagement',
+              items: [
+                { label: 'Recall',             href: '/receptionist/crm/recall',             icon: CalendarClock, permKey: 'patients' },
+                { label: 'Treatment Follow-up', href: '/receptionist/crm/treatment-followup', icon: ClipboardList, permKey: 'patients' },
+                { label: 'Reactivation',        href: '/receptionist/crm/reactivation',       icon: AlertTriangle, permKey: 'patients' },
+                { label: 'Waitlist',            href: '/waitlist',                            icon: CalendarDays,  permKey: 'patients' },
+              ],
+            }],
+          },
         ],
       }],
     },
