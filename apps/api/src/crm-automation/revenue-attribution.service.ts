@@ -234,6 +234,46 @@ export async function acquisitionRevenueByDimension(dimension: 'source' | 'campa
   return { buckets: buckets.sort((a, b) => b.collectedUGX - a.collectedUGX), ambiguousPatientCount }
 }
 
+export interface ClinicRevenueSummary {
+  invoicedUGX: number
+  collectedUGX: number
+  outstandingUGX: number
+  invoiceCount: number
+  unpaidInvoiceCount: number
+  note: string
+}
+
+// Clinic-wide Invoiced/Collected/Outstanding, independent of lead
+// attribution — every real Invoice/Payment row counts here, including the
+// large majority of patients with no Lead link at all (walk-ins,
+// referrals, historical/imported patients), so this never goes blank just
+// because a patient's acquisition source wasn't a tracked Lead. Collected
+// reads the local Payment table only — if the clinic's real payment
+// activity is recorded in QuickBooks instead, that has not been synced
+// back into this table (sync is one-way, Code Clinic -> QuickBooks), so it
+// is honestly not reflected here rather than guessed at.
+export async function clinicRevenueSummary(): Promise<ClinicRevenueSummary> {
+  const [invoicedAgg, collectedAgg, outstandingAgg, invoiceCount, unpaidInvoiceCount] = await Promise.all([
+    prisma.invoice.aggregate({ _sum: { totalUGX: true }, where: { status: { not: 'CANCELLED' } } }),
+    prisma.payment.aggregate({ _sum: { amountUGX: true } }),
+    prisma.invoice.aggregate({ _sum: { totalUGX: true }, _count: true, where: { status: { in: ['UNPAID', 'SENT', 'PARTIAL', 'OVERDUE'] } } }),
+    prisma.invoice.count({ where: { status: { not: 'CANCELLED' } } }),
+    prisma.invoice.count({ where: { status: { in: ['UNPAID', 'SENT', 'PARTIAL', 'OVERDUE'] } } }),
+  ])
+
+  return {
+    invoicedUGX: invoicedAgg._sum.totalUGX ?? 0,
+    collectedUGX: collectedAgg._sum.amountUGX ?? 0,
+    outstandingUGX: outstandingAgg._sum.totalUGX ?? 0,
+    invoiceCount,
+    unpaidInvoiceCount,
+    note:
+      'Invoiced and Outstanding cover every active invoice, regardless of whether the patient came from a tracked lead. ' +
+      'Collected reads only Code Clinic\'s own Payment records — if payments are recorded in QuickBooks instead, that ' +
+      'activity is not synced back into this app and will not appear here.',
+  }
+}
+
 export interface UnattributedRevenueSummary {
   totalCollectedUGX: number
   attributedToLeadUGX: number

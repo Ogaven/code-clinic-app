@@ -4,6 +4,14 @@ import { useEffect, useState } from 'react'
 import { Wallet, Info } from 'lucide-react'
 import { formatUGX } from '@/lib/utils'
 
+interface ClinicSummary {
+  invoicedUGX: number
+  collectedUGX: number
+  outstandingUGX: number
+  invoiceCount: number
+  unpaidInvoiceCount: number
+  note: string
+}
 interface UnattributedSummary {
   totalCollectedUGX: number
   attributedToLeadUGX: number
@@ -34,6 +42,7 @@ const SOURCE_LABEL: Record<string, string> = {
 // surfaced verbatim below — this is not decorative copy, it's the honesty
 // contract for every number on this page.
 export default function RevenueWorkspace() {
+  const [clinicSummary, setClinicSummary] = useState<ClinicSummary | null>(null)
   const [summary, setSummary] = useState<UnattributedSummary | null>(null)
   const [buckets, setBuckets] = useState<Bucket[] | null>(null)
   const [bucketNote, setBucketNote] = useState('')
@@ -44,10 +53,12 @@ export default function RevenueWorkspace() {
     const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
     const authH = { Authorization: `Bearer ${token}` }
     Promise.all([
+      fetch('/api-proxy/crm-automation/reports/clinic-revenue-summary', { headers: authH }),
       fetch('/api-proxy/crm-automation/reports/unattributed-revenue', { headers: authH }),
       fetch('/api-proxy/crm-automation/reports/acquisition-revenue-by/source', { headers: authH }),
-    ]).then(async ([sumRes, bucketRes]) => {
-      if (sumRes.status === 403 || bucketRes.status === 403) { setForbidden(true); return }
+    ]).then(async ([clinicRes, sumRes, bucketRes]) => {
+      if (clinicRes.status === 403 || sumRes.status === 403 || bucketRes.status === 403) { setForbidden(true); return }
+      if (clinicRes.ok) setClinicSummary(await clinicRes.json())
       if (sumRes.ok) setSummary(await sumRes.json())
       if (bucketRes.ok) { const d = await bucketRes.json(); setBuckets(d.buckets); setBucketNote(`${d.ambiguousPatientCount} patient(s) linked from more than one lead are excluded from every bucket below.`) }
     }).catch(() => {}).finally(() => setLoading(false))
@@ -63,15 +74,36 @@ export default function RevenueWorkspace() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-extrabold text-gray-800 dark:text-white">Revenue</h1>
-        <p className="text-sm text-gray-500 dark:text-white/50">Only revenue with a single, unambiguous lead-to-patient link is attributed. Everything else is reported honestly as unattributed or ambiguous — never guessed.</p>
+        <p className="text-sm text-gray-500 dark:text-white/50">Clinic-wide Invoiced/Collected/Outstanding below covers every patient. The lead-attribution breakdown further down only covers revenue with a single, unambiguous lead-to-patient link — everything else is reported honestly as unattributed or ambiguous, never guessed.</p>
       </div>
 
       {loading ? (
         <p className="text-sm text-gray-400 dark:text-white/40">Loading…</p>
-      ) : !summary ? (
-        <p className="text-sm text-gray-400 dark:text-white/40">Unavailable.</p>
       ) : (
         <>
+          {clinicSummary && (
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50 mb-2">Clinic-Wide (all patients)</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50">Invoiced</p>
+                  <p className="mt-1 text-2xl font-extrabold text-gray-800 dark:text-white">{formatUGX(clinicSummary.invoicedUGX)}</p>
+                  <p className="mt-0.5 text-[11px] text-gray-400 dark:text-white/30">{clinicSummary.invoiceCount} invoices</p>
+                </div>
+                <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Collected</p>
+                  <p className="mt-1 text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{formatUGX(clinicSummary.collectedUGX)}</p>
+                </div>
+                <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">Outstanding</p>
+                  <p className="mt-1 text-2xl font-extrabold text-amber-600 dark:text-amber-400">{formatUGX(clinicSummary.outstandingUGX)}</p>
+                  <p className="mt-0.5 text-[11px] text-gray-400 dark:text-white/30">{clinicSummary.unpaidInvoiceCount} unpaid invoices</p>
+                </div>
+              </div>
+              <p className="flex items-start gap-1.5 mt-2 text-[11px] text-gray-400 dark:text-white/30"><Info size={13} className="mt-0.5 flex-shrink-0" /> {clinicSummary.note}</p>
+            </div>
+          )}
+
           {/* Root cause of a genuinely-zero Total Collected: this report
               reads ONLY the local Code Clinic invoices/payments tables
               (Accounts module) — the same tables the Accounts dashboard
@@ -81,12 +113,16 @@ export default function RevenueWorkspace() {
               local -> QuickBooks only), so it is invisible here. This is
               not a query bug — say so honestly rather than showing a
               silent, unexplained zero. */}
-          {summary.totalCollectedUGX === 0 && (
+          {clinicSummary && clinicSummary.collectedUGX === 0 && (
             <div className="flex items-start gap-2 rounded-2xl border border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/10 p-4 text-xs text-amber-800 dark:text-amber-300">
               <Info size={14} className="mt-0.5 flex-shrink-0" />
-              <span>Total Collected is UGX 0 because no payments exist yet in Code Clinic's own Accounts records. If the clinic records payments in QuickBooks instead, that activity is not reflected here — QuickBooks sync is currently one-way (Code Clinic → QuickBooks only), so this report cannot show it without a separate two-way sync.</span>
+              <span>Collected is UGX 0 because no payments exist yet in Code Clinic's own Accounts records. If the clinic records payments in QuickBooks instead, that activity is not reflected here — QuickBooks sync is currently one-way (Code Clinic → QuickBooks only), so this report cannot show it without a separate two-way sync.</span>
             </div>
           )}
+
+          {!summary ? null : (
+          <>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50 mt-2">Attributed to a Lead</p>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
@@ -142,6 +178,8 @@ export default function RevenueWorkspace() {
             )}
             {bucketNote && <p className="border-t border-gray-100 dark:border-white/10 px-4 py-2 text-[11px] text-gray-400 dark:text-white/30">{bucketNote}</p>}
           </div>
+          </>
+          )}
         </>
       )}
     </div>

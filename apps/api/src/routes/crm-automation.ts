@@ -11,7 +11,8 @@ import { prisma } from '../lib/prisma'
 import { requireDoctorPatientAccess } from '../lib/doctor-access'
 import { applyPatientTagUpdate, runDailyPatientTagDerivation, type PatientTagUpdateInput } from '../crm-automation/patient-tags.service'
 import { recordConsent, getConsentHistory, type ConsentSource, type ConsentStatus } from '../crm-automation/consent-log.service'
-import { assignCollectionsOwner, listCollectionsCases } from '../crm-automation/collections.service'
+import { assignCollectionsOwner, listCollectionsCases, realOutstandingBalancePatients } from '../crm-automation/collections.service'
+import { reviewsOverview } from '../crm-automation/reviews.service'
 import { enrollEntityInSequence, exitActiveEnrollments } from '../crm-automation/automation-events.service'
 import { processDueScheduledTouches } from '../crm-automation/sequence-dispatcher'
 import { checkLeadSlas } from '../crm-automation/lead-sla.service'
@@ -34,7 +35,7 @@ import { sourceReadiness } from '../crm-automation/source-readiness.service'
 import { listPatientReferrals } from '../crm-automation/referrals.service'
 import { buildLeadFollowUpSummary, completeLeadFollowUp } from '../crm-automation/lead-followups.service'
 import { buildOwnershipAudit } from '../crm-automation/ownership-audit.service'
-import { buildAcquisitionRevenueReport, acquisitionRevenueByDimension, unattributedRevenueSummary } from '../crm-automation/revenue-attribution.service'
+import { buildAcquisitionRevenueReport, acquisitionRevenueByDimension, unattributedRevenueSummary, clinicRevenueSummary } from '../crm-automation/revenue-attribution.service'
 import { isCrmAutomationLive, crmFeatureStatus } from '../crm-automation/dry-run'
 import { isSmsChannelActive } from '../ai-suite/sms/sms.service'
 import { isCallingChannelActive } from '../services/calling-channel.service'
@@ -132,6 +133,13 @@ router.post('/patients/:id/consent', requireAuth, clinicalStaff, scopedPatientAc
 // ── Collections / treatment-plan follow-up (Part E) ─────────────────────
 router.get('/collections', requireAuth, accountsOrAdmin, async (req: Request, res: Response) => {
   res.json(await listCollectionsCases(req.query.ownerId as string | undefined))
+})
+
+// Real, read-only outstanding-balance list computed directly from Invoice
+// rows — see collections.service.ts header for why this exists alongside
+// the (currently near-empty) assigned-case list above.
+router.get('/collections/outstanding-balances', requireAuth, accountsOrAdmin, async (_req: Request, res: Response) => {
+  res.json(await realOutstandingBalancePatients())
 })
 
 router.post('/collections/:patientId/assign', requireAuth, accountsOrAdmin, async (req: Request, res: Response) => {
@@ -400,6 +408,12 @@ router.post('/review-config', requireAuth, adminOnly, async (req: Request, res: 
   res.json(config)
 })
 
+// Real review/feedback activity — see reviews.service.ts header for why
+// this is separate from the config endpoints above.
+router.get('/reviews/overview', requireAuth, adminOnly, async (_req: Request, res: Response) => {
+  res.json(await reviewsOverview())
+})
+
 // ── Backlog re-engagement (Part Q) — admin-only, three explicit steps ─────
 router.post('/backlog/tag', requireAuth, adminOnly, async (_req: Request, res: Response) => {
   try {
@@ -541,6 +555,14 @@ router.get('/reports/acquisition-revenue-by/:dimension', requireAuth, accountsOr
 
 router.get('/reports/unattributed-revenue', requireAuth, accountsOrAdmin, async (_req: Request, res: Response) => {
   res.json(await unattributedRevenueSummary())
+})
+
+// Clinic-wide Invoiced/Collected/Outstanding — independent of lead
+// attribution, so the Revenue workspace still shows real numbers for the
+// large majority of patients with no Lead link. Same guard as the
+// attribution reports above.
+router.get('/reports/clinic-revenue-summary', requireAuth, accountsOrAdmin, async (_req: Request, res: Response) => {
+  res.json(await clinicRevenueSummary())
 })
 
 // ── Manual dispatcher triggers (testing/admin only — the real triggers are

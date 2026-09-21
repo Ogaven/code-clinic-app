@@ -6,13 +6,13 @@ const { prismaMock } = vi.hoisted(() => ({
     appointment: { findMany: vi.fn() },
     patient: { count: vi.fn() },
     treatmentPlan: { findMany: vi.fn() },
-    invoice: { aggregate: vi.fn() },
+    invoice: { aggregate: vi.fn(), count: vi.fn() },
     payment: { aggregate: vi.fn() },
   },
 }))
 vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
 
-import { buildAcquisitionRevenueReport, acquisitionRevenueByDimension, unattributedRevenueSummary } from '../../crm-automation/revenue-attribution.service'
+import { buildAcquisitionRevenueReport, acquisitionRevenueByDimension, unattributedRevenueSummary, clinicRevenueSummary } from '../../crm-automation/revenue-attribution.service'
 
 function lead(overrides: Partial<{ id: string; convertedToPatientId: string | null; source: string; campaignId: string | null; assignedTo: string | null; createdAt: Date }>) {
   return { id: 'l', convertedToPatientId: null, source: 'WHATSAPP', campaignId: null, assignedTo: null, createdAt: new Date('2026-01-01'), ...overrides }
@@ -26,6 +26,7 @@ beforeEach(() => {
   prismaMock.patient.count.mockResolvedValue(0)
   prismaMock.treatmentPlan.findMany.mockResolvedValue([])
   prismaMock.invoice.aggregate.mockResolvedValue({ _sum: { totalUGX: null } })
+  prismaMock.invoice.count.mockResolvedValue(0)
   prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amountUGX: null } })
 })
 
@@ -158,5 +159,53 @@ describe('unattributedRevenueSummary', () => {
       .mockResolvedValueOnce({ _sum: { amountUGX: 50 } })  // ambiguous
     const summary = await unattributedRevenueSummary()
     expect(summary.unattributedUGX).toBe(0)
+  })
+})
+
+// Milestone: CRM Data/Role-Parity closure. Revenue previously only showed
+// lead-attributed figures — patients with no Lead link at all (the large
+// majority: walk-ins, referrals, historical/imported patients) never
+// appeared anywhere on the page even though their real Invoice/Payment data
+// exists. clinicRevenueSummary() is independent of lead attribution.
+describe('clinicRevenueSummary', () => {
+  it('reports real Invoiced/Collected/Outstanding, independent of any lead attribution', async () => {
+    prismaMock.invoice.aggregate
+      .mockResolvedValueOnce({ _sum: { totalUGX: 92_190_000 } }) // invoiced (status != CANCELLED)
+      .mockResolvedValueOnce({ _sum: { totalUGX: 92_190_000 }, _count: 1663 }) // outstanding
+    prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amountUGX: 0 } })
+    prismaMock.invoice.count
+      .mockResolvedValueOnce(1663) // invoiceCount
+      .mockResolvedValueOnce(1663) // unpaidInvoiceCount
+
+    const result = await clinicRevenueSummary()
+
+    expect(result.invoicedUGX).toBe(92_190_000)
+    expect(result.collectedUGX).toBe(0)
+    expect(result.outstandingUGX).toBe(92_190_000)
+    expect(result.invoiceCount).toBe(1663)
+    expect(result.unpaidInvoiceCount).toBe(1663)
+  })
+
+  it('excludes CANCELLED invoices from the invoiced total', async () => {
+    prismaMock.invoice.aggregate.mockResolvedValue({ _sum: { totalUGX: 0 } })
+    await clinicRevenueSummary()
+    expect(prismaMock.invoice.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: { not: 'CANCELLED' } } })
+    )
+  })
+
+  it('outstanding only counts real not-yet-paid statuses (UNPAID/SENT/PARTIAL/OVERDUE), never DRAFT or CANCELLED', async () => {
+    prismaMock.invoice.aggregate.mockResolvedValue({ _sum: { totalUGX: 0 } })
+    await clinicRevenueSummary()
+    expect(prismaMock.invoice.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: { in: ['UNPAID', 'SENT', 'PARTIAL', 'OVERDUE'] } } })
+    )
+  })
+
+  it('never fabricates a collected figure — reads only the real local Payment table', async () => {
+    prismaMock.invoice.aggregate.mockResolvedValue({ _sum: { totalUGX: 0 } })
+    prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amountUGX: null } })
+    const result = await clinicRevenueSummary()
+    expect(result.collectedUGX).toBe(0)
   })
 })
