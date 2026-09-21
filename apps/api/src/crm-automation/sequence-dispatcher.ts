@@ -136,7 +136,7 @@ export async function processDueScheduledTouches(limit = 200): Promise<{ process
     // Meta template fail-closed gate — only applies to touches mapped in
     // sequence-meta-templates.ts. Every other sequence/channel is completely
     // unaffected and keeps sending free-text exactly as before.
-    let realSend = () => sendViaChannel(channel, recipient.to, body)
+    let realSend: () => Promise<unknown> = () => sendViaChannel(channel, recipient.to, body)
     if (channel === 'WHATSAPP' && touch.patientId) {
       const metaSlot = resolveMetaTemplateSlot(touch.touchTemplate.sequence.key, touch.touchTemplate.order)
       if (metaSlot) {
