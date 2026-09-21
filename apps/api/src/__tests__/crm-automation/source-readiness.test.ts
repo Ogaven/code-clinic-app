@@ -31,7 +31,7 @@ describe('sourceReadiness — never claims CONNECTED without real configuration 
     expect(result.find(r => r.key === 'FACEBOOK')!.status).toBe('NOT_CONNECTED')
     expect(result.find(r => r.key === 'INSTAGRAM')!.status).toBe('NOT_CONNECTED')
     expect(result.find(r => r.key === 'SCOREAPP')!.status).toBe('NOT_CONNECTED')
-    expect(result.find(r => r.key === 'FACEBOOK_LEAD_ADS')!.status).toBe('NOT_CONNECTED')
+    expect(result.find(r => r.key === 'FACEBOOK_LEAD_AD')!.status).toBe('NOT_CONNECTED')
   })
 
   it('self-hosted sources (Website, Quiz, Walk-in, Other) are always CONNECTED — no external dependency', async () => {
@@ -60,13 +60,27 @@ describe('sourceReadiness — never claims CONNECTED without real configuration 
   it('Facebook Lead Ads is SETUP_REQUIRED (never CONNECTED) even with a page token — subscription/permission can only be verified by a live Meta call, out of scope here', async () => {
     process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'token'
     const result = await sourceReadiness()
-    expect(result.find(r => r.key === 'FACEBOOK_LEAD_ADS')!.status).toBe('SETUP_REQUIRED')
+    expect(result.find(r => r.key === 'FACEBOOK_LEAD_AD')!.status).toBe('SETUP_REQUIRED')
   })
 
   it('reads the Facebook token from the DB config as a real alternative to the env var', async () => {
     prismaMock.aiAgentConfig.findFirst.mockResolvedValue({ facebookPageAccessToken: 'db-token' } as any)
     const result = await sourceReadiness()
     expect(result.find(r => r.key === 'FACEBOOK')!.status).toBe('CONNECTED')
+  })
+
+  // Milestone: CRM UX/IA/Dashboard refinement — regression for a real key
+  // mismatch found during that work: this service used to key Facebook Lead
+  // Ads as 'FACEBOOK_LEAD_ADS' (plural), but the actual Lead.source value
+  // the webhook writes is 'FACEBOOK_LEAD_AD' (singular) — see
+  // facebook.routes.ts's lead-ads handler. SourcesWorkspace.tsx looks up
+  // readiness by the real source value, so the mismatch silently broke the
+  // per-row "Setup Required" badge for this one source (the top pill list
+  // still looked fine because it iterates this array directly).
+  it('keys Facebook Lead Ads as the exact real Lead.source value the webhook writes (singular AD, not ADS)', async () => {
+    const result = await sourceReadiness()
+    expect(result.find(r => r.key === 'FACEBOOK_LEAD_AD')).toBeDefined()
+    expect(result.find(r => r.key === 'FACEBOOK_LEAD_ADS' as any)).toBeUndefined()
   })
 
   it('never returns a secret/token value anywhere in the response', async () => {

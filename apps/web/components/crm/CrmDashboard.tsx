@@ -39,6 +39,17 @@ const SOURCE_LABEL: Record<string, string> = {
 }
 const DONUT_COLORS = ['#29ABE2', '#0c1e50', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6B7280', '#EF4444']
 
+// Shared range selector for Leads Received / Conversions — the backend
+// (reports/lead-trend, reports/conversion-trend) already accepted a ?days=
+// param clamped 7-180; that clamp was raised to 366 alongside this so "1
+// year" is a genuine range, not silently truncated to ~6 months.
+const TREND_RANGES: { days: number; label: string }[] = [
+  { days: 7, label: '7d' },
+  { days: 30, label: '30d' },
+  { days: 90, label: '90d' },
+  { days: 365, label: '1y' },
+]
+
 // Empty path means "not applicable for this role" (e.g. Revenue for
 // RECEPTIONIST, who lacks accountsOrAdmin server-side) — skipped entirely
 // rather than firing a request that server-side RBAC would reject anyway.
@@ -119,8 +130,9 @@ export default function CrmDashboard({ leadsHref, followUpsHref, needsAttentionH
   const lostReasons = useCrmFetch<LostReasons>('/crm-automation/reports/lost-reasons')
   const followUps = useCrmFetch<FollowUpCounts>('/crm-automation/follow-ups')
   const responseLeaderboard = useCrmFetch<ResponseLeaderboardEntry[]>('/crm-automation/reports/response-time-leaderboard')
-  const leadTrend = useCrmFetch<TrendSeries>('/crm-automation/reports/lead-trend?days=30')
-  const conversionTrend = useCrmFetch<TrendSeries>('/crm-automation/reports/conversion-trend?days=30')
+  const [trendDays, setTrendDays] = useState(30)
+  const leadTrend = useCrmFetch<TrendSeries>(`/crm-automation/reports/lead-trend?days=${trendDays}`)
+  const conversionTrend = useCrmFetch<TrendSeries>(`/crm-automation/reports/conversion-trend?days=${trendDays}`)
   const insights = useCrmFetch<Insight[]>('/crm-automation/insights')
   // Revenue attribution requires accountsOrAdmin server-side — RECEPTIONIST
   // never issues these requests at all, not just hides the result client-side.
@@ -225,11 +237,30 @@ export default function CrmDashboard({ leadsHref, followUpsHref, needsAttentionH
         </Card>
       </div>
 
+      {/* Shared date-range selector for Leads Received / Conversions below */}
+      <div className="flex items-center justify-end gap-1.5">
+        <span className="text-[11px] font-semibold text-gray-400 dark:text-white/40 mr-1">Trend range:</span>
+        {TREND_RANGES.map(r => (
+          <button
+            key={r.days}
+            onClick={() => setTrendDays(r.days)}
+            className={cn(
+              'px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors',
+              trendDays === r.days
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/20',
+            )}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Lead Trend */}
-        <Card title="Leads Received (30 days)">
+        <Card title={`Leads Received (${trendDays} days)`}>
           {!leadTrend.data || leadTrend.data.series.every(p => p.count === 0) ? (
-            <EmptyChart label={leadTrend.loading ? 'Loading…' : 'No leads in the last 30 days.'} />
+            <EmptyChart label={leadTrend.loading ? 'Loading…' : `No leads in the last ${trendDays} days.`} />
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={leadTrend.data.series} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
@@ -244,9 +275,9 @@ export default function CrmDashboard({ leadsHref, followUpsHref, needsAttentionH
         </Card>
 
         {/* Conversion Trend */}
-        <Card title="Conversions (30 days)">
+        <Card title={`Conversions (${trendDays} days)`}>
           {!conversionTrend.data || conversionTrend.data.series.every(p => p.count === 0) ? (
-            <EmptyChart label={conversionTrend.loading ? 'Loading…' : 'No conversions in the last 30 days.'} />
+            <EmptyChart label={conversionTrend.loading ? 'Loading…' : `No conversions in the last ${trendDays} days.`} />
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={conversionTrend.data.series} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>

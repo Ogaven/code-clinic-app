@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { slaBadge, LeadAutomationPanel } from '@/components/leads/LeadAutomationStatus'
+import { LEAD_SOURCES, resolveInitialSourceFilter } from '@/lib/leadsSourceFilter'
 
 // ── Types ────────────────────────────────────────────────────────
 interface Lead {
@@ -48,7 +49,9 @@ interface StaffMember {
 }
 
 // ── Constants ────────────────────────────────────────────────────
-const SOURCES = ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'WEBSITE', 'QUIZ', 'SCOREAPP', 'FACEBOOK_LEAD_AD', 'WALKIN', 'OTHER'] as const
+// LEAD_SOURCES itself now lives in lib/leadsSourceFilter.ts (single source
+// of truth shared with the Sources -> Pipeline drill-down seeding logic).
+const SOURCES = LEAD_SOURCES
 const STATUSES = ['NEW', 'CONTACTED', 'QUALIFIED', 'CONVERTED', 'LOST'] as const
 
 const SOURCE_STYLE: Record<string, string> = {
@@ -171,7 +174,7 @@ function findMatchedConversation(lead: Lead, conversations: ConversationSummary[
 // record already used for currentUserId — DELETE /crm/leads/:id is
 // ADMIN-only server-side (apps/api/src/routes/crm.ts), so hiding the button
 // for non-admins is purely supplementary, not the real enforcement.
-export default function LeadsPipeline({ inboxPath, initialLeadId }: { inboxPath: string; initialLeadId?: string | null }) {
+export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource }: { inboxPath: string; initialLeadId?: string | null; initialSource?: string | null }) {
   const API   = '/api-proxy'
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
@@ -179,7 +182,12 @@ export default function LeadsPipeline({ inboxPath, initialLeadId }: { inboxPath:
   const [leads,      setLeads]      = useState<Lead[]>([])
   const [loading,    setLoading]    = useState(true)
   const [search,     setSearch]     = useState('')
-  const [srcFilter,  setSrcFilter]  = useState('all')
+  // Sources -> Pipeline drill-down: seeds the SAME srcFilter state the
+  // existing source-pill buttons already set, from ?source=X on the
+  // Pipeline URL (see SourcesWorkspace.tsx's Link). Lazy initializer: this
+  // only needs to seed the very first fetch, exactly like any other filter
+  // a staff member could have clicked before the page loaded.
+  const [srcFilter,  setSrcFilter]  = useState(() => resolveInitialSourceFilter(initialSource))
   const [ownerFilter, setOwnerFilter] = useState('all') // all | unassigned | mine | <userId>
   const [sortBy,     setSortBy]     = useState<'updated' | 'oldest' | 'created'>('updated')
   const [periodKey,  setPeriodKey]  = useState<LeadPeriod>('all')
