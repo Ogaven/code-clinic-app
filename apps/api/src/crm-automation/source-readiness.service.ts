@@ -66,7 +66,13 @@ export async function sourceReadiness(): Promise<SourceReadiness[]> {
         : 'No webhook secret configured — the receiver rejects every submission until this is set.',
     },
     {
-      key: 'FACEBOOK_LEAD_ADS', label: 'Facebook Lead Ads',
+      // Singular "AD", not plural "ADS" — must exactly match the real
+      // Lead.source value the webhook actually writes (see
+      // facebook.routes.ts's lead-ads handler), or SourcesWorkspace.tsx's
+      // per-row readiness lookup (keyed on the real source value) silently
+      // never resolves for this source, even though the top-level pill
+      // list looks correct because it iterates this array directly.
+      key: 'FACEBOOK_LEAD_AD', label: 'Facebook Lead Ads',
       status: hasFacebookToken ? 'SETUP_REQUIRED' : 'NOT_CONNECTED',
       detail: hasFacebookToken
         ? "Page token configured, but this Page's leadgen webhook subscription and leads_retrieval permission have not been verified — that check is a separate Meta account workstream."

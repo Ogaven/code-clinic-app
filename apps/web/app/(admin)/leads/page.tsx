@@ -5,8 +5,10 @@ import { useSearchParams } from 'next/navigation'
 import LeadsPipeline from '@/components/leads/LeadsPipeline'
 
 function LeadsPageContent() {
-  const openLeadId = useSearchParams().get('open')
-  return <LeadsPipeline inboxPath="/ai-suite/inbox" initialLeadId={openLeadId} />
+  const params = useSearchParams()
+  const openLeadId = params.get('open')
+  const initialSource = params.get('source')
+  return <LeadsPipeline inboxPath="/ai-suite/inbox" initialLeadId={openLeadId} initialSource={initialSource} />
 }
 
 export default function LeadsPage() {

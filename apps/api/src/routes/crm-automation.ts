@@ -460,12 +460,14 @@ router.get('/reports/call-performance',           requireAuth, adminAndReception
 router.get('/reports/source-performance',         requireAuth, adminAndReceptionist, async (_req, res) => res.json(await sourcePerformance()))
 router.get('/reports/lost-reasons',               requireAuth, adminAndReceptionist, async (_req, res) => res.json(await lostReasonsBreakdown()))
 router.get('/reports/campaign-performance',       requireAuth, adminAndReceptionist, async (_req, res) => res.json(await campaignPerformance()))
+// Clamp upper bound is 366 (not 180) so the Dashboard's "year" range option
+// is genuinely supported, not silently truncated to ~6 months.
 router.get('/reports/lead-trend',                 requireAuth, adminAndReceptionist, async (req, res) => {
-  const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 180)
+  const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 366)
   res.json(await leadTrend(days))
 })
 router.get('/reports/conversion-trend',           requireAuth, adminAndReceptionist, async (req, res) => {
-  const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 180)
+  const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 366)
   res.json(await conversionTrend(days))
 })
 router.get('/reports/revenue-trend',              requireAuth, accountsOrAdmin,      async (req, res) => {

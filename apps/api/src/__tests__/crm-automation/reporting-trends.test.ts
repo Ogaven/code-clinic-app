@@ -42,6 +42,20 @@ describe('leadTrend', () => {
       expect.objectContaining({ where: { createdAt: { gte: expect.any(Date) } } })
     )
   })
+
+  // Milestone: CRM UX/IA/Dashboard refinement — the Dashboard's new "1 year"
+  // trend range option (GET .../lead-trend?days=365) depends on this
+  // function genuinely handling a full year, not just the old 30-day
+  // default. The route-level clamp was raised from 180 to 366 alongside
+  // this to stop silently truncating a requested year to ~6 months.
+  it('builds a full 365-day series without truncating (the Dashboard "1 year" range)', async () => {
+    const today = new Date()
+    prismaMock.lead.findMany.mockResolvedValue([{ createdAt: today }])
+    const result = await leadTrend(365)
+    expect(result.days).toBe(365)
+    expect(result.series).toHaveLength(365)
+    expect(result.series[result.series.length - 1].count).toBe(1)
+  })
 })
 
 describe('conversionTrend', () => {
@@ -52,6 +66,15 @@ describe('conversionTrend', () => {
     expect(prismaMock.leadStageHistory.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ toStage: 'CONVERTED' }) })
     )
+    expect(result.series[result.series.length - 1].count).toBe(1)
+  })
+
+  it('builds a full 365-day series without truncating (the Dashboard "1 year" range)', async () => {
+    const today = new Date()
+    prismaMock.leadStageHistory.findMany.mockResolvedValue([{ changedAt: today }])
+    const result = await conversionTrend(365)
+    expect(result.days).toBe(365)
+    expect(result.series).toHaveLength(365)
     expect(result.series[result.series.length - 1].count).toBe(1)
   })
 })
