@@ -48,6 +48,46 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
   }
 }
 
+export interface PushDispatchResult {
+  targeted:  number
+  succeeded: number
+  expired:   number
+  failed:    number
+}
+
+// Admin-only acceptance-test send — targets only the calling user's own
+// subscriptions (never another staff member's) and returns per-subscription
+// dispatch outcomes so the caller can report exactly what the push provider did,
+// rather than the fire-and-forget void that sendPushToUser returns.
+export async function sendTestPushToUser(userId: string): Promise<PushDispatchResult> {
+  const subs = await prisma.pushSubscription.findMany({ where: { userId } })
+  const body = JSON.stringify({
+    title: 'Code Clinic',
+    body:  'Code Clinic notification test — background notifications are working.',
+  } satisfies PushPayload)
+
+  let succeeded = 0, expired = 0, failed = 0
+  await Promise.all(subs.map(async sub => {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        body,
+      )
+      succeeded++
+    } catch (err: any) {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        expired++
+        await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {})
+      } else {
+        failed++
+        console.error(`[Push] Test send failed for user ${userId}:`, err.message)
+      }
+    }
+  }))
+
+  return { targeted: subs.length, succeeded, expired, failed }
+}
+
 export function isPushConfigured(): boolean {
   return vapidConfigured
 }

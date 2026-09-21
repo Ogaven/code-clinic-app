@@ -1,8 +1,9 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
+import { adminOnly } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { env } from '../lib/env'
-import { isPushConfigured } from '../services/push.service'
+import { isPushConfigured, sendTestPushToUser } from '../services/push.service'
 
 const router = Router()
 
@@ -49,6 +50,23 @@ router.delete('/subscribe', requireAuth, async (req, res) => {
   } catch (e: any) {
     console.error('[Push] unsubscribe error:', e.message)
     res.status(500).json({ error: 'Failed to remove push subscription' })
+  }
+})
+
+// POST /push/test — admin-only acceptance-test send. Targets only the
+// caller's own subscriptions (req.user.id from the verified JWT — never a
+// request body userId), fixed safe payload, no patient data ever involved.
+router.post('/test', requireAuth, adminOnly, async (req, res) => {
+  try {
+    if (!isPushConfigured()) {
+      res.status(503).json({ error: 'Push notifications are not configured on this server' })
+      return
+    }
+    const result = await sendTestPushToUser(req.user!.id)
+    res.json({ ok: true, ...result })
+  } catch (e: any) {
+    console.error('[Push] test error:', e.message)
+    res.status(500).json({ error: 'Failed to send test push' })
   }
 })
 
