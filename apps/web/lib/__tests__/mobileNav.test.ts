@@ -98,6 +98,20 @@ describe('getMobileNav — role-aware navigation + RBAC', () => {
     )
   })
 
+  it('RECEPTIONIST Waitlist item points to the real receptionist route, not the admin-only /waitlist that bounces them out', () => {
+    // Milestone: CRM Data/Role-Parity closure. /waitlist lives under the
+    // (admin) route group — a Receptionist who followed that link was
+    // redirected straight back to their own dashboard before the page ever
+    // rendered, even though the backend already permitted them. Fixed by
+    // adding a real (receptionist)/receptionist/waitlist re-export page.
+    const nav = getMobileNav('RECEPTIONIST', {})
+    const crmTab = nav.primary.find(t => t.key === 'crm')
+    if (crmTab?.type !== 'menu') throw new Error('unreachable')
+    const patientEngagement = crmTab.sections[0].items.find(i => i.label === 'Patient Engagement')
+    const waitlistItem = patientEngagement?.children?.[0].items.find(i => i.label === 'Waitlist')
+    expect(waitlistItem?.href).toBe('/receptionist/waitlist')
+  })
+
   it('RECEPTIONIST "CRM" menu Patient Engagement drill-down disappears when \'patients\' is denied', () => {
     const nav = getMobileNav('RECEPTIONIST', { patients: false, leads: false, referrals: false, campaigns: false })
     const crmTab = nav.primary.find(t => t.key === 'crm')

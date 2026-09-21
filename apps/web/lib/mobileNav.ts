@@ -257,7 +257,7 @@ const RECEPTIONIST_NAV: MobileNavConfig = {
                 { label: 'Recall',             href: '/receptionist/crm/recall',             icon: CalendarClock, permKey: 'patients' },
                 { label: 'Treatment Follow-up', href: '/receptionist/crm/treatment-followup', icon: ClipboardList, permKey: 'patients' },
                 { label: 'Reactivation',        href: '/receptionist/crm/reactivation',       icon: AlertTriangle, permKey: 'patients' },
-                { label: 'Waitlist',            href: '/waitlist',                            icon: CalendarDays,  permKey: 'patients' },
+                { label: 'Waitlist',            href: '/receptionist/waitlist',               icon: CalendarDays,  permKey: 'patients' },
               ],
             }],
           },

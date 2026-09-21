@@ -239,13 +239,17 @@ export async function syncTreatmentPlanStatusFromPipeline(patientId: string): Pr
 // sees it exactly like a manual edit. This is the "event source", not a
 // polling trigger: the poll only computes a candidate value, the SAME shared
 // write path decides whether that's a change worth emitting.
-const RECALL_INTERVAL_DAYS: Record<string, number> = {
+export const RECALL_INTERVAL_DAYS: Record<string, number> = {
   THREE_MONTH: 90,
   SIX_MONTH: 180,
   TWELVE_MONTH: 365,
 }
 
-function computeRecallStatus(recallInterval: string | null, lastCompletedAt: Date | null, now: Date): string {
+// Exported so patient-engagement.service.ts can reuse the exact same
+// day-threshold math for its read-time "estimated recall" fallback
+// (patients with no staff-set recallInterval) instead of a second,
+// possibly-drifting copy of these thresholds.
+export function computeRecallStatus(recallInterval: string | null, lastCompletedAt: Date | null, now: Date): string {
   if (!recallInterval || !lastCompletedAt) return 'NOT_DUE'
   const intervalDays = RECALL_INTERVAL_DAYS[recallInterval]
   if (!intervalDays) return 'NOT_DUE'

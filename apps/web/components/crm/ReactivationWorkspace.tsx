@@ -12,13 +12,19 @@ import { cn } from '@/lib/utils'
 
 interface Candidate {
   id: string; firstName: string; lastName: string; phone: string
-  reason: 'DORMANT_180_PLUS' | 'REPEATED_NO_SHOW'; recallStatus: string; noShowCount: number; lateCancelCount: number
+  reason: 'DORMANT_180_PLUS' | 'REPEATED_NO_SHOW' | 'DORMANT_ESTIMATED'; recallStatus: string; noShowCount: number; lateCancelCount: number
+  estimated: boolean
 }
 
-const REASON_LABEL: Record<string, string> = { DORMANT_180_PLUS: 'Dormant 180+ days', REPEATED_NO_SHOW: 'Repeated no-show / late-cancel' }
+const REASON_LABEL: Record<string, string> = {
+  DORMANT_180_PLUS: 'Dormant 180+ days',
+  REPEATED_NO_SHOW: 'Repeated no-show / late-cancel',
+  DORMANT_ESTIMATED: 'Dormant 180+ days (estimated)',
+}
 const REASON_TONE: Record<string, string> = {
   DORMANT_180_PLUS: 'bg-red-50 text-red-600 dark:bg-red-400/15 dark:text-red-300',
   REPEATED_NO_SHOW: 'bg-orange-50 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300',
+  DORMANT_ESTIMATED: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/50',
 }
 
 export default function ReactivationWorkspace({ patientHref }: { patientHref: (id: string) => string }) {
@@ -43,7 +49,7 @@ export default function ReactivationWorkspace({ patientHref }: { patientHref: (i
 
       <p className="flex items-start gap-1.5 text-[11px] text-gray-400 dark:text-white/30">
         <Info size={13} className="mt-0.5 flex-shrink-0" />
-        This is a status view for staff outreach — no patient is automatically messaged from this page or this list.
+        This is a status view for staff outreach — no patient is automatically messaged from this page or this list. "Dormant 180+ days (estimated)" patients have no confirmed recall interval on file — flagged from a real last-visit gap against a default 6-month cadence, not a precise figure.
       </p>
 
       {loading ? (

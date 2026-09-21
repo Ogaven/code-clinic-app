@@ -50,6 +50,13 @@ const ROUTE_FEATURE: Array<[string, string]> = [
   ['/receptionist/scheduling',                               'appointments'],
   ['/receptionist/appointments',                             'appointments'],
   ['/receptionist/patients',                                 'patients'],
+  // Same permission that already governs viewing patient records — matches
+  // the Patient Engagement nav items (Recall/Treatment Follow-up/
+  // Reactivation) which all ride 'patients' too. Previously had no route
+  // entry at all because Receptionist was linked to the admin-only
+  // `/waitlist` URL (which the (admin) layout bounced them out of) instead
+  // of this real `/receptionist/waitlist` re-export page.
+  ['/receptionist/waitlist',                                 'patients'],
   ['/receptionist/leads',                                    'leads'],
   // CRM shell (Dashboard/Needs Attention/Follow-ups/Sources) rides the same
   // 'leads' permission — see ReceptionistTopBar.tsx/mobileNav.ts for why no

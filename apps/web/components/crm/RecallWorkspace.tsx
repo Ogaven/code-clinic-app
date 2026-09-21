@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 import { CalendarClock, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface RecallPatient { id: string; firstName: string; lastName: string; phone: string; recallInterval: string | null }
+interface RecallPatient { id: string; firstName: string; lastName: string; phone: string; recallInterval: string | null; estimated: boolean }
 interface RecallBucket { key: string; label: string; count: number; patients: RecallPatient[] }
 
 const BUCKET_TONE: Record<string, string> = {
@@ -42,7 +42,7 @@ export default function RecallWorkspace({ patientHref }: { patientHref: (id: str
 
       <p className="flex items-start gap-1.5 text-[11px] text-gray-400 dark:text-white/30">
         <Info size={13} className="mt-0.5 flex-shrink-0" />
-        This is a status view, not a messaging tool — no reminder is sent from this page.
+        This is a status view, not a messaging tool — no reminder is sent from this page. Patients tagged "ESTIMATED" have no confirmed recall interval on file; their status is a read-time estimate from their last completed visit against a default 6-month cadence, not a precise figure.
       </p>
 
       {loading ? (
@@ -72,7 +72,12 @@ export default function RecallWorkspace({ patientHref }: { patientHref: (id: str
             <div className="divide-y divide-gray-50 dark:divide-white/5">
               {b.patients.map(p => (
                 <a key={p.id} href={patientHref(p.id)} className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-white/5">
-                  <span className="font-semibold text-gray-700 dark:text-white/80">{p.firstName} {p.lastName}</span>
+                  <span className="font-semibold text-gray-700 dark:text-white/80 flex items-center gap-1.5">
+                    {p.firstName} {p.lastName}
+                    {p.estimated && (
+                      <span title="No recall interval set — estimated from a default 6-month checkup cadence against their last completed appointment." className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/50">ESTIMATED</span>
+                    )}
+                  </span>
                   <span className="text-xs text-gray-400">{p.phone}{p.recallInterval ? ` · ${p.recallInterval.replace('_', ' ').toLowerCase()}` : ''}</span>
                 </a>
               ))}

@@ -1,16 +1,21 @@
 'use client'
 
-// CRM Automation — Reviews (Patient Engagement, Admin only — the backend
-// GET/POST /crm-automation/review-config are both adminOnly). Surfaces and
-// edits the existing post-visit review-request configuration; the send
-// logic itself (review-request.service.ts) is untouched and unreused here —
-// this is purely the config screen, and no review request is ever sent
-// from this page.
+// CRM Automation — Reviews (Patient Engagement, Admin only — every endpoint
+// this page calls is adminOnly). Shows real patient feedback (in-app
+// ratings) and real outbound review-request activity, plus the existing
+// post-visit review-request configuration form. The send logic itself
+// (review-request.service.ts) is untouched and unreused here — no review
+// request is ever sent from this page.
 
 import { useEffect, useState } from 'react'
 import { Star, Info } from 'lucide-react'
 
 interface ReviewConfig { id?: string; delayHours: number; isActive: boolean; gbpPlaceId: string | null; reviewLinkOverride: string | null }
+interface FeedbackEntry { id: string; patientId: string; patientName: string; rating: number; comment: string | null; channel: string; submittedAt: string }
+interface ReviewsOverview {
+  feedback: { totalCount: number; averageRating: number | null; ratingBreakdown: Record<string, number>; recent: FeedbackEntry[] }
+  reviewRequests: { totalCount: number; byStatus: Record<string, number> }
+}
 
 export default function ReviewsWorkspace() {
   const API = '/api-proxy'
@@ -18,6 +23,7 @@ export default function ReviewsWorkspace() {
   const authH = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
 
   const [config, setConfig] = useState<ReviewConfig | null>(null)
+  const [overview, setOverview] = useState<ReviewsOverview | null>(null)
   const [draft, setDraft] = useState<Partial<ReviewConfig>>({})
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
@@ -25,11 +31,14 @@ export default function ReviewsWorkspace() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch(`${API}/crm-automation/review-config`, { headers: authH as any })
-      .then(r => { if (r.status === 403) { setForbidden(true); return null } return r.ok ? r.json() : null })
-      .then(d => { if (d) setConfig(d) })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    Promise.all([
+      fetch(`${API}/crm-automation/review-config`, { headers: authH as any }),
+      fetch(`${API}/crm-automation/reviews/overview`, { headers: authH as any }),
+    ]).then(async ([configRes, overviewRes]) => {
+      if (configRes.status === 403 || overviewRes.status === 403) { setForbidden(true); return }
+      if (configRes.ok) setConfig(await configRes.json())
+      if (overviewRes.ok) setOverview(await overviewRes.json())
+    }).catch(() => {}).finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -53,10 +62,54 @@ export default function ReviewsWorkspace() {
     <div className="space-y-4 max-w-xl">
       <div>
         <h1 className="text-xl font-extrabold text-gray-800 dark:text-white flex items-center gap-2"><Star size={20} className="text-amber-500" /> Reviews</h1>
-        <p className="text-sm text-gray-500 dark:text-white/50">Post-visit review request configuration.</p>
+        <p className="text-sm text-gray-500 dark:text-white/50">Real patient feedback, outbound Google-review requests, and post-visit review request configuration.</p>
       </div>
 
       {loading ? <p className="text-sm text-gray-400 dark:text-white/40">Loading…</p> : (
+        <>
+          {overview && (
+            <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50 mb-1">Patient Feedback (in-app ratings)</p>
+              <p className="text-xs text-gray-400 dark:text-white/30 mb-3">Star ratings and comments patients send back via WhatsApp after a visit — a different concept from the outbound Google-review requests configured below.</p>
+              {overview.feedback.totalCount === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-white/40">No patient feedback has been received yet.</p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-2xl font-extrabold text-gray-800 dark:text-white">{overview.feedback.averageRating ?? '—'}</span>
+                    <span className="text-xs text-gray-400">avg / 5, from {overview.feedback.totalCount} rating(s)</span>
+                  </div>
+                  <div className="divide-y divide-gray-50 dark:divide-white/5">
+                    {overview.feedback.recent.map(f => (
+                      <div key={f.id} className="py-2 flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-700 dark:text-white/80">{f.patientName} <span className="text-amber-500">{'★'.repeat(f.rating)}{'☆'.repeat(5 - f.rating)}</span></p>
+                          {f.comment && <p className="text-xs text-gray-500 dark:text-white/50 mt-0.5">{f.comment}</p>}
+                        </div>
+                        <span className="text-[11px] text-gray-400 whitespace-nowrap">{new Date(f.submittedAt).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {overview && (
+            <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50 mb-1">Outbound Google-Review Requests</p>
+              {overview.reviewRequests.totalCount === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-white/40">No review requests have been sent yet — this stays empty until "Send review requests" is turned on below.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(overview.reviewRequests.byStatus).map(([status, count]) => (
+                    <span key={status} className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-white/70">{status.replace(/_/g, ' ').toLowerCase()}: {count}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
         <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
           {error && <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg p-3">{error}</div>}
           <label className="flex items-center justify-between text-sm">
@@ -86,6 +139,7 @@ export default function ReviewsWorkspace() {
             {saving ? 'Saving…' : 'Save Changes'}
           </button>
         </div>
+        </>
       )}
     </div>
   )
