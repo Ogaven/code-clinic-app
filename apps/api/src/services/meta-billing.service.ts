@@ -1,40 +1,27 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Real Meta WhatsApp Business billing status — built from live Graph API
-// calls made during the 2026-09-15 production investigation (see
-// docs/ if that report is kept, or git history for this file's introducing
-// commit). Two things were confirmed by actually calling Meta's API, not
-// assumed:
+// Real Meta WhatsApp Business account/health status.
 //
-//   1. The Business Manager's /extendedcredits edge DOES return real credit-
-//      line balances for this token — but those are Marketing-API credit
-//      lines tied to reseller entities ("Ajua Inc.", "LeadConnector LLC"),
-//      not a distinctly-labeled "WhatsApp messaging invoice" figure. They're
-//      shown here as exactly what they are, never relabeled as "the"
-//      WhatsApp balance.
-//   2. /payment_methods, /adaccounts, and WABA-level primary_funding_id all
-//      return permission-denied ("requires Business Solution Provider
-//      status") for this token — there is no way to fetch a definitive
-//      outstanding-invoice figure via this API. The one authoritative,
-//      unfabricated action Meta itself provides is the `href` PAY_NOW link
-//      embedded in real 131042 error responses (persisted to
-//      MetaDeliveryFailure by the webhook handler) — that is what this
-//      service surfaces as the admin action, never a constructed URL.
+// 2026-09-22 cleanup: this used to also fetch the Business Manager's
+// /extendedcredits edge and surface the results ("Ajua Inc.", "LeadConnector
+// LLC" — real Marketing API credit-line entities, never Code Clinic's own
+// WhatsApp billing) under a "Meta Billing" card. Confirmed unfixable by
+// relabeling: Meta genuinely does not expose a WhatsApp-specific outstanding
+// balance to this token (payment_methods/adaccounts/primary_funding_id all
+// return permission-denied — "requires Business Solution Provider status").
+// Per an explicit instruction to remove all non-Code-Clinic billing data
+// from Analytics & Costs, that call and every credit-line field have been
+// deleted outright rather than kept-but-demoted. The one authoritative,
+// unfabricated signal this service still surfaces is the real #131042 error
+// text and its Meta-provided `PAY_NOW` action URL — read back from a
+// persisted MetaDeliveryFailure row, never constructed.
 //
-// 2026-09-20 correction: `wabaAccountReviewStatus` used to be queried
-// against a hardcoded WABA ID (`1754698499275270`) left over from before
-// Code Clinic migrated off Africa's Talking onto direct Meta Cloud API
-// (see whatsapp.service.ts's "Zero AT involvement" send path). That ID
-// belongs to a different WABA under the same Business Manager — it is not
-// the account that sends Code Clinic's messages, is not the account named
-// in real MetaDeliveryFailure records, and does not own Code Clinic's real
-// phone number or approved templates. It was live-verified to still
-// resolve (returning APPROVED), which is exactly why the drift went
-// unnoticed — a wrong-but-successful answer looks identical to a right one
-// unless you check which account it actually describes. The real
-// production WABA (`1035568108843333`) is now read from the same
-// WHATSAPP_WABA_ID env var the actual messaging path and
-// connections.routes.ts already use — see config/meta-config.ts, now the
-// single accessor for this ID so it can't drift out of sync again.
+// 2026-09-20 correction (still in effect): `wabaAccountReviewStatus` used to
+// be queried against a hardcoded WABA ID (`1754698499275270`) left over from
+// before Code Clinic migrated off Africa's Talking onto direct Meta Cloud
+// API (see whatsapp.service.ts's "Zero AT involvement" send path). That ID
+// belongs to a different WABA under the same Business Manager. The real
+// production WABA (`1035568108843333`) is read from WHATSAPP_WABA_ID via
+// config/meta-config.ts — the single accessor for this ID.
 // ─────────────────────────────────────────────────────────────────────────
 import fs from 'fs'
 import { prisma } from '../lib/prisma'
@@ -42,17 +29,9 @@ import { getWhatsAppWabaId, getWhatsAppPhoneNumberId } from '../config/meta-conf
 
 const GRAPH_VER    = 'v25.0'
 const CACHE_FILE   = '/tmp/codeclinic-meta-billing.json'
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours — billing data changes slowly; avoid hammering Graph API
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours — this data changes slowly; avoid hammering Graph API
 
 export type BillingStatus = 'HEALTHY' | 'ATTENTION_REQUIRED' | 'UNKNOWN'
-
-export interface CreditLine {
-  id: string
-  legalEntityName: string | null
-  balance: { amount: string; currency: string } | null
-  creditAvailable: { amount: string; currency: string } | null
-  isAccessRevoked: boolean | null
-}
 
 export interface PhoneNumberStatus {
   displayPhoneNumber: string | null
@@ -75,9 +54,6 @@ export interface MetaBillingStatus {
   wabaAccountReviewStatus: string | null
   phoneNumber: PhoneNumberStatus | null
   templates: TemplateSummary | null
-  creditLines: CreditLine[]
-  creditLinesSource: 'GRAPH_API_EXTENDEDCREDITS' | 'UNAVAILABLE'
-  creditLinesNote: string
   recent131042: boolean
   recent131042Within24h: boolean
   latestPaymentError: { code: number; title: string; occurredAt: string } | null
@@ -93,32 +69,6 @@ async function graphGet(url: string): Promise<any> {
   const json = await res.json() as any
   if (!res.ok || json.error) throw new Error(json.error?.message ?? `HTTP ${res.status}`)
   return json
-}
-
-async function fetchCreditLines(businessId: string, token: string): Promise<{ lines: CreditLine[]; error: string | null }> {
-  try {
-    const list = await graphGet(`https://graph.facebook.com/${GRAPH_VER}/${businessId}/extendedcredits?access_token=${token}`)
-    const ids: string[] = (list.data ?? []).map((d: any) => d.id)
-    const lines = await Promise.all(ids.map(async (id): Promise<CreditLine> => {
-      try {
-        const detail = await graphGet(
-          `https://graph.facebook.com/${GRAPH_VER}/${id}?fields=legal_entity_name,balance,credit_available,is_access_revoked&access_token=${token}`
-        )
-        return {
-          id,
-          legalEntityName: detail.legal_entity_name ?? null,
-          balance: detail.balance ? { amount: detail.balance.amount, currency: detail.balance.currency } : null,
-          creditAvailable: detail.credit_available ? { amount: detail.credit_available.amount, currency: detail.credit_available.currency } : null,
-          isAccessRevoked: detail.is_access_revoked ?? null,
-        }
-      } catch {
-        return { id, legalEntityName: null, balance: null, creditAvailable: null, isAccessRevoked: null }
-      }
-    }))
-    return { lines, error: null }
-  } catch (e: any) {
-    return { lines: [], error: e.message }
-  }
 }
 
 async function fetchPhoneNumberStatus(phoneNumberId: string, token: string): Promise<PhoneNumberStatus | null> {
@@ -139,7 +89,7 @@ async function fetchPhoneNumberStatus(phoneNumberId: string, token: string): Pro
 }
 
 // Meta's default page size comfortably covers Code Clinic's real template
-// count (17 as of the 2026-09-20 investigation); if it ever grows past this,
+// count (16 as of the 2026-09-22 verification); if it ever grows past this,
 // undercounting here degrades gracefully to an honest partial count rather
 // than an error, since staff care about "roughly how many," not an exact
 // total requiring full pagination.
@@ -166,11 +116,7 @@ async function fetchTemplateSummary(wabaId: string, token: string): Promise<Temp
 // what Meta itself returned in an error response. This is a cheap local DB
 // read, not a Graph API call, and is deliberately NEVER cached: it decides
 // whether an active incident is reported as ATTENTION_REQUIRED, so it must
-// reflect the database at request time, not up to CACHE_TTL_MS stale. (Real
-// incident this fixes: the whole response used to be cached as one blob, so
-// this file kept serving 'HEALTHY' for hours after a fresh 131042 had
-// already landed, because it was cached alongside the genuinely-slow Graph
-// API fields below.)
+// reflect the database at request time, not up to CACHE_TTL_MS stale.
 interface RecentFailureEvidence {
   recentFailure: { occurredAt: Date; details: string | null; code: number; title: string } | null
   within24h: boolean
@@ -194,18 +140,13 @@ async function getRecentFailureEvidence(): Promise<RecentFailureEvidence> {
   return { recentFailure, within24h, adminActionUrl }
 }
 
-// Genuinely slow-changing, real external calls (WABA review status, credit
-// lines) — the only part worth CACHE_TTL_MS caching, so as not to hammer
-// Graph API. businessId is only ever derived from RecentFailureEvidence
-// (never queried), so it's passed in rather than looked up here.
+// Genuinely slow-changing, real external calls (WABA review status, phone
+// number, templates) — the only part worth CACHE_TTL_MS caching, so as not
+// to hammer Graph API.
 interface GraphBillingData {
   wabaStatus: string | null
-  businessId: string | null
   phoneNumber: PhoneNumberStatus | null
   templates: TemplateSummary | null
-  creditLines: CreditLine[]
-  creditLinesSource: MetaBillingStatus['creditLinesSource']
-  creditLinesNote: string
   graphApiError: string | null
 }
 
@@ -223,19 +164,14 @@ function writeGraphCache(data: GraphBillingData): void {
   try { fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...data, cachedAt: new Date().toISOString() }), 'utf-8') } catch {}
 }
 
-async function fetchGraphBillingData(token: string, businessId: string | null, forceRefresh: boolean): Promise<GraphBillingData> {
+async function fetchGraphBillingData(token: string, forceRefresh: boolean): Promise<GraphBillingData> {
   if (!forceRefresh) {
     const cached = readGraphCache()
-    // Only reuse the cache if it was built for the same businessId — a
-    // businessId we've only just learned (first-ever 131042) must not
-    // silently reuse a stale "no business_id known" cache entry.
-    if (cached && cached.businessId === businessId) {
-      const { wabaStatus, phoneNumber, templates, creditLines, creditLinesSource, creditLinesNote, graphApiError } = cached
-      // A cache file written by a pre-2026-09-20 deploy won't have
-      // phoneNumber/templates keys at all — default them rather than let
-      // `undefined` leak into fields typed `T | null`. Self-heals within
-      // CACHE_TTL_MS regardless.
-      return { wabaStatus, businessId, phoneNumber: phoneNumber ?? null, templates: templates ?? null, creditLines, creditLinesSource, creditLinesNote, graphApiError }
+    if (cached) {
+      const { wabaStatus, phoneNumber, templates, graphApiError } = cached
+      // A cache file written by an older deploy may not have every current
+      // key — default rather than let `undefined` leak into `T | null` fields.
+      return { wabaStatus, phoneNumber: phoneNumber ?? null, templates: templates ?? null, graphApiError }
     }
   }
 
@@ -257,23 +193,7 @@ async function fetchGraphBillingData(token: string, businessId: string | null, f
   const phoneNumber = phoneNumberId ? await fetchPhoneNumberStatus(phoneNumberId, token) : null
   const templates    = wabaId ? await fetchTemplateSummary(wabaId, token) : null
 
-  let creditLines: CreditLine[] = []
-  let creditLinesSource: MetaBillingStatus['creditLinesSource'] = 'UNAVAILABLE'
-  let creditLinesNote = 'No business_id known yet (derived only from a real 131042 error response) — nothing to query.'
-
-  if (businessId) {
-    const result = await fetchCreditLines(businessId, token)
-    if (result.error) {
-      creditLinesNote = `Graph API error: ${result.error}`
-      if (!graphApiError) graphApiError = result.error
-    } else {
-      creditLines = result.lines
-      creditLinesSource = 'GRAPH_API_EXTENDEDCREDITS'
-      creditLinesNote = 'Marketing API credit-line balances for this Business Manager account — not a distinctly-labeled WhatsApp messaging invoice figure. Meta does not expose that to this app’s token (payment_methods/adaccounts/funding fields all return permission-denied).'
-    }
-  }
-
-  const data: GraphBillingData = { wabaStatus, businessId, phoneNumber, templates, creditLines, creditLinesSource, creditLinesNote, graphApiError }
+  const data: GraphBillingData = { wabaStatus, phoneNumber, templates, graphApiError }
   writeGraphCache(data)
   return data
 }
@@ -288,19 +208,6 @@ export async function getMetaBillingStatus(forceRefresh = false): Promise<MetaBi
   // Always fresh — see getRecentFailureEvidence's comment above.
   const { recentFailure, within24h, adminActionUrl } = await getRecentFailureEvidence()
 
-  // The business_id isn't a WABA field — it's only known via the href Meta
-  // put in a real error response. If we've never seen a 131042, we genuinely
-  // don't have a business_id to query extendedcredits for.
-  let businessId: string | null = null
-  if (recentFailure?.details) {
-    const bizMatch = recentFailure.details.match(/business_id=(\d+)/)
-    if (bizMatch) businessId = bizMatch[1]
-  }
-  if (!businessId && adminActionUrl) {
-    const bizMatch = adminActionUrl.match(/business_id=(\d+)/)
-    if (bizMatch) businessId = bizMatch[1]
-  }
-
   const latestPaymentError = recentFailure ? {
     code: recentFailure.code,
     title: recentFailure.title ?? 'Business eligibility payment issue',
@@ -314,9 +221,6 @@ export async function getMetaBillingStatus(forceRefresh = false): Promise<MetaBi
       wabaAccountReviewStatus: null,
       phoneNumber: null,
       templates: null,
-      creditLines: [],
-      creditLinesSource: 'UNAVAILABLE',
-      creditLinesNote: 'WHATSAPP_TOKEN not configured — cannot query Meta.',
       recent131042: recentFailure != null,
       recent131042Within24h: within24h,
       latestPaymentError,
@@ -328,11 +232,11 @@ export async function getMetaBillingStatus(forceRefresh = false): Promise<MetaBi
     }
   }
 
-  const graph = await fetchGraphBillingData(token, businessId, forceRefresh)
+  const graph = await fetchGraphBillingData(token, forceRefresh)
 
   const billingStatus: BillingStatus = within24h
     ? 'ATTENTION_REQUIRED'
-    : (graph.graphApiError && graph.creditLines.length === 0) ? 'UNKNOWN' : 'HEALTHY'
+    : graph.graphApiError ? 'UNKNOWN' : 'HEALTHY'
 
   return {
     billingStatus,
@@ -340,9 +244,6 @@ export async function getMetaBillingStatus(forceRefresh = false): Promise<MetaBi
     wabaAccountReviewStatus: graph.wabaStatus,
     phoneNumber: graph.phoneNumber,
     templates: graph.templates,
-    creditLines: graph.creditLines,
-    creditLinesSource: graph.creditLinesSource,
-    creditLinesNote: graph.creditLinesNote,
     recent131042: recentFailure != null,
     recent131042Within24h: within24h,
     latestPaymentError,

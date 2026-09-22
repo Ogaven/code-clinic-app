@@ -23,6 +23,7 @@ import { antiHallucinationGuard, type ToolRecord } from '../../services/agent/gu
 import { getGreetingName, guardianTitle, isMinor, normalizeRelation, toProper } from '../../utils/nameHelper'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, containsPhrase } from '../whatsapp/whatsapp.service'
+import { sendPushToUser } from '../../services/push.service'
 
 function sanitizeIncomingMessage(content: string): string {
   if (content.startsWith('__MEDIA_IMAGE__:')) {
@@ -1500,19 +1501,32 @@ async function alertStaffOfConcern(params: {
       console.error('[Agent] SMS fallback failed for clinical concern alert:', smsErr.message)
     }
 
-    // 2. In-app notification for all active RECEPTIONIST + ADMIN users
+    // 2. In-app notification + real push for all active RECEPTIONIST + ADMIN
+    // users. Creating the Notification row alone does NOT reach a device
+    // that doesn't have the tab open — every other staff-alert path in this
+    // codebase (maybeNotifyStaff, lead-intake, lead-sla, previsit,
+    // treatment-followup-alerts) pairs prisma.notification.create with
+    // sendPushToUser; this one was missing that pairing, so a clinical
+    // concern never actually reached the receptionist's phone unless they
+    // happened to have the inbox open. Push body stays generic (no patient
+    // name/phone/message) — same PII-safety convention as maybeNotifyStaff.
     const staff = await prisma.user.findMany({
       where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
     })
-    await Promise.all(staff.map(u => prisma.notification.create({
-      data: {
-        userId: u.id,
-        type:   'SYSTEM',
-        title:  `Patient concern — ${patientName}`,
-        body:   alertText,
-        href:   '/receptionist/ai-suite/inbox',
-      },
-    })))
+    const pushTitle = 'Patient needs attention'
+    const pushBody  = 'A patient concern was flagged — tap to view.'
+    await Promise.all(staff.map(async u => {
+      await prisma.notification.create({
+        data: {
+          userId: u.id,
+          type:   'SYSTEM',
+          title:  `Patient concern — ${patientName}`,
+          body:   alertText,
+          href:   '/receptionist/ai-suite/inbox',
+        },
+      })
+      sendPushToUser(u.id, { title: pushTitle, body: pushBody, url: '/receptionist/ai-suite/inbox' }).catch(() => {})
+    }))
 
     // 3. Dedup marker + staff-relay linking — SYSTEM role excluded from Sarah's context window
     await prisma.aiMessage.create({
@@ -2789,12 +2803,21 @@ export async function getAgentReplyV2OpenAI(
       apiMessages.push({ role: 'user', content: latestMessage })
     }
 
+    // 2026-09-22 fix: this used to send a bare freeform WhatsApp message to
+    // staff and stop there — no Escalation record, no in-app Notification,
+    // no push, and no fallback template outside Meta's 24h session window
+    // (a freeform send outside that window just silently fails, e.g. with
+    // #131047). Routed through the same alertStaffOfConcern() every other
+    // staff alert in this file uses, so a "talk to a human" request gets the
+    // identical template-preferred/SMS-fallback/Escalation-row/push
+    // treatment as every other escalation, and is deduped the same way.
     if (/talk to|speak to|speak with|talk with|call me|ring me|real person|human|julian|receptionist/i.test(latestMessage)) {
-      const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
-      sendWhatsAppMessage(
-        staffNumber,
-        `👤 Patient requesting human\nPhone: ${from}\nMessage: "${latestMessage.slice(0, 200)}"\n\nPlease follow up via the AI Suite inbox.`
-      ).catch((e: any) => console.error('[V2-OpenAI] Human escalation alert failed:', e?.message))
+      alertStaffOfConcern({
+        conversationId,
+        patientPhone: from,
+        message:      latestMessage,
+        channel,
+      }).catch((e: any) => console.error('[V2-OpenAI] Human escalation alert failed:', e?.message))
     }
 
     const client = new OpenAI({ apiKey })

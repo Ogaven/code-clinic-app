@@ -150,34 +150,6 @@ router.get('/upcoming-appointments', requireAuth, async (_req, res) => {
   }
 })
 
-// ─── GET /receptionist/escalations ───────────────────────────
-router.get('/escalations', requireAuth, async (_req, res) => {
-  try {
-    const todayStart = kampalaDay(0)
-    const escalations = await prisma.agentLog.findMany({
-      where: { escalated: true, createdAt: { gte: todayStart }, outcome: { not: 'RESOLVED' } },
-      include: { patient: { select: { id: true, firstName: true, lastName: true, phone: true } } },
-      orderBy: { createdAt: 'desc' },
-    })
-    res.json(escalations)
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch escalations' })
-  }
-})
-
-// ─── POST /receptionist/escalations/:id/resolve ──────────────
-router.post('/escalations/:id/resolve', requireAuth, async (req, res) => {
-  try {
-    await prisma.agentLog.update({
-      where: { id: req.params.id },
-      data: { outcome: 'RESOLVED' },
-    })
-    res.json({ success: true })
-  } catch {
-    res.status(500).json({ error: 'Failed to resolve escalation' })
-  }
-})
-
 // Legacy delivery-failure notifications created before the PROVIDER_HEALTH
 // migration (see whatsapp.routes.ts notifyStaffOfDeliveryFailure) — type
 // SYSTEM, sent to ADMIN+RECEPTIONIST, one per ~30min for as long as Meta's
