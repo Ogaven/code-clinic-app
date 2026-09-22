@@ -33,6 +33,9 @@ interface OperationalVolume {
   escalations:       number
   callEvents:        number
   totalInteractions: number
+  humanHandovers:       number
+  engagedConversations: number
+  aiResolutionRatePct:  number | null
 }
 
 interface DataPoint  { start: number; end: number; volume: number; cost?: number }
@@ -114,12 +117,6 @@ interface WhatsAppDeliveryHealth {
   staffEscalation?: StaffEscalationHealth
 }
 
-interface CreditLine {
-  id: string; legalEntityName: string | null
-  balance: { amount: string; currency: string } | null
-  creditAvailable: { amount: string; currency: string } | null
-  isAccessRevoked: boolean | null
-}
 interface MetaPhoneNumberStatus {
   displayPhoneNumber: string | null
   verifiedName: string | null
@@ -136,8 +133,6 @@ interface MetaBillingStatus {
   wabaAccountReviewStatus: string | null
   phoneNumber: MetaPhoneNumberStatus | null
   templates: MetaTemplateSummary | null
-  creditLines: CreditLine[]
-  creditLinesNote: string
   recent131042: boolean
   recent131042Within24h: boolean
   latestPaymentError: { code: number; title: string; occurredAt: string } | null
@@ -692,28 +687,14 @@ function MetaBillingCard({ data, loading }: { data: MetaBillingStatus | null; lo
               )}
             </div>
 
-            {/* ── Billing data — honest, never fabricated ── */}
+            {/* ── Billing data — honest, never fabricated. No unrelated Marketing
+                API / non-Code-Clinic billing entities are shown here — see
+                meta-billing.service.ts, which stopped calling /extendedcredits
+                entirely (2026-09-22). ── */}
             <p className="text-[10px] text-gray-400 dark:text-white/40 leading-relaxed pt-2 border-t border-gray-100 dark:border-white/10">
               {data.billingDataNote}
             </p>
 
-            {/* ── Marketing API credit lines — explicitly NOT WhatsApp billing ── */}
-            {data.creditLines.length > 0 && (
-              <div className="pt-2 border-t border-gray-100 dark:border-white/10">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-300 dark:text-white/20 mb-2">
-                  Marketing API Credit Lines (not WhatsApp billing)
-                </p>
-                <div className="space-y-1.5">
-                  {data.creditLines.map(cl => (
-                    <div key={cl.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-white/5 rounded-lg text-[11px] opacity-70">
-                      <span className="text-gray-500 dark:text-white/50">{cl.legalEntityName ?? cl.id}{cl.isAccessRevoked ? ' · access revoked' : ''}</span>
-                      <span className="text-gray-500 dark:text-white/50">{cl.balance ? `${cl.balance.amount} ${cl.balance.currency}` : '—'}</span>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-[9px] text-gray-300 dark:text-white/20 mt-1.5 leading-relaxed">{data.creditLinesNote}</p>
-              </div>
-            )}
             {data.graphApiError && (
               <p className="text-[9px] text-gray-300 dark:text-white/20">Graph API note: {data.graphApiError}</p>
             )}
@@ -1042,16 +1023,22 @@ export default function AnalyticsPage() {
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
                 <ClipboardCheck size={10} /> Operational Volume ({AI_USAGE_RANGES.find(r => r.key === channelRange)?.label})
               </p>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
-                  { label: 'AI Interactions', value: data.operational.totalInteractions, tooltip: 'Total agent + patient messages across every channel below, for the selected period.' },
-                  { label: 'Confirmations Sent', value: data.operational.confirmationsSent },
-                  { label: 'Follow-ups Sent', value: data.operational.followupsSent },
-                  { label: 'Escalations', value: data.operational.escalations },
-                  { label: 'Calls', value: data.operational.callEvents, tooltip: 'Calling runs on a mock provider today — see the Calling status below.' },
+                  { label: 'AI Interactions', display: data.operational.totalInteractions.toLocaleString(), tooltip: 'Total agent + patient messages across every channel below, for the selected period.' },
+                  { label: 'Confirmations Sent', display: data.operational.confirmationsSent.toLocaleString() },
+                  { label: 'Follow-ups Sent', display: data.operational.followupsSent.toLocaleString() },
+                  { label: 'Escalations', display: data.operational.escalations.toLocaleString() },
+                  { label: 'Calls', display: data.operational.callEvents.toLocaleString(), tooltip: 'Calling runs on a mock provider today — see the Calling status below.' },
+                  {
+                    label: 'AI Resolution Rate',
+                    display: data.operational.aiResolutionRatePct === null ? '—' : `${data.operational.aiResolutionRatePct}%`,
+                    tooltip: `Of ${data.operational.engagedConversations.toLocaleString()} conversation(s) with real inbound activity this period, the % Sarah handled with zero human takeover in that same period. Not a satisfaction score — just "did a human have to step in."`,
+                  },
+                  { label: 'Human Handovers', display: data.operational.humanHandovers.toLocaleString(), tooltip: 'Real takeover events in this period (staff clicking "Take over" in the inbox) — an event count, not a current snapshot.' },
                 ].map(tile => (
                   <div key={tile.label} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4" title={tile.tooltip}>
-                    <p className="text-2xl font-black text-gray-800 dark:text-white leading-none">{tile.value.toLocaleString()}</p>
+                    <p className="text-2xl font-black text-gray-800 dark:text-white leading-none">{tile.display}</p>
                     <p className="text-[10px] font-bold text-gray-400 dark:text-white/40 mt-1">{tile.label}</p>
                   </div>
                 ))}

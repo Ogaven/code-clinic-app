@@ -3,13 +3,17 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 vi.setConfig({ testTimeout: 20000 })
 
 // getMetaBillingStatus() must never fabricate a balance. Real production
-// investigation (2026-09-15) confirmed Meta's Graph API returns real credit-
-// line data via /extendedcredits for this token, but NOT a distinctly-
-// labeled "WhatsApp invoice" figure (payment_methods/adaccounts/funding
-// fields all return permission-denied). This suite proves: real data is
-// surfaced when available, nothing is invented when it isn't, and the
-// admin action URL only ever comes from a real persisted Meta error
-// response — never constructed from guesswork.
+// investigation (2026-09-15) confirmed Meta's Graph API does NOT expose a
+// distinctly-labeled "WhatsApp invoice" figure to this token
+// (payment_methods/adaccounts/funding fields all return permission-denied).
+// A 2026-09-22 follow-up removed this service's /extendedcredits call
+// entirely (it only ever returned unrelated Marketing API credit-line
+// entities — "Ajua Inc.", "LeadConnector LLC" — never Code Clinic's own
+// WhatsApp billing) per an explicit instruction to strip all non-Code-Clinic
+// billing data from Analytics & Costs. This suite proves: real data is
+// surfaced when available, nothing is invented when it isn't, no credit-line
+// data is fetched or exposed, and the admin action URL only ever comes from
+// a real persisted Meta error response — never constructed from guesswork.
 
 const { prismaMock, fsMock } = vi.hoisted(() => ({
   prismaMock: {
@@ -41,47 +45,30 @@ async function importFresh() {
   return import('../services/meta-billing.service')
 }
 
-describe('getMetaBillingStatus — no fabricated balances', () => {
-  it('returns NOT_AVAILABLE-equivalent (UNKNOWN, empty credit lines) when WHATSAPP_TOKEN is absent, never fabricating a figure', async () => {
+describe('getMetaBillingStatus — no fabricated balances, no unrelated billing data', () => {
+  it('returns UNKNOWN, no Graph API calls, when WHATSAPP_TOKEN is absent, never fabricating a figure', async () => {
     const { getMetaBillingStatus } = await importFresh()
     const status = await getMetaBillingStatus()
 
-    expect(status.creditLines).toEqual([])
-    expect(status.creditLinesSource).toBe('UNAVAILABLE')
     expect(status.billingStatus).toBe('UNKNOWN')
     expect(status.graphApiError).toMatch(/WHATSAPP_TOKEN/)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('surfaces real credit-line data when Graph API returns it, with explicit sourcing (never relabeled as "the WhatsApp invoice")', async () => {
+  it('never calls /extendedcredits and the response never carries Ajua/LeadConnector or any credit-line field', async () => {
     process.env.WHATSAPP_TOKEN = 'test-token'
-    prismaMock.metaDeliveryFailure.findFirst.mockResolvedValue({
-      code: 131042,
-      title: 'Business eligibility payment issue',
-      details: 'unsettled payments. Visit https://business.facebook.com/billing_hub/accounts/details/?business_id=339508138390029&asset_id=1035568108843333&wizard_name=PAY_NOW&account_type=whatsapp-business-account to resolve.',
-      occurredAt: new Date(), // recent -> within 24h
-    })
-
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes('account_review_status')) {
-        return { ok: true, json: async () => ({ account_review_status: 'APPROVED' }) }
-      }
-      if (url.includes('/extendedcredits')) {
-        return { ok: true, json: async () => ({ data: [{ id: '27323648533991106' }] }) }
-      }
-      if (url.includes('27323648533991106')) {
-        return { ok: true, json: async () => ({ legal_entity_name: 'Ajua Inc.', balance: { amount: '0.14', currency: 'USD' }, is_access_revoked: false }) }
-      }
-      return { ok: false, json: async () => ({ error: { message: 'unexpected url' } }) }
-    })
+    process.env.WHATSAPP_WABA_ID = '1035568108843333'
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ account_review_status: 'APPROVED', data: [] }) })
 
     const { getMetaBillingStatus } = await importFresh()
     const status = await getMetaBillingStatus()
 
-    expect(status.creditLines).toHaveLength(1)
-    expect(status.creditLines[0]).toMatchObject({ legalEntityName: 'Ajua Inc.', balance: { amount: '0.14', currency: 'USD' } })
-    expect(status.creditLinesSource).toBe('GRAPH_API_EXTENDEDCREDITS')
-    expect(status.creditLinesNote).toMatch(/not a distinctly-labeled WhatsApp messaging invoice/)
+    const calledUrls = fetchMock.mock.calls.map((c: any[]) => c[0] as string)
+    expect(calledUrls.some(u => u.includes('extendedcredits'))).toBe(false)
+    expect(status).not.toHaveProperty('creditLines')
+    expect(status).not.toHaveProperty('creditLinesSource')
+    expect(status).not.toHaveProperty('creditLinesNote')
+    expect(JSON.stringify(status)).not.toMatch(/Ajua|LeadConnector/)
   })
 
   it('sources adminActionUrl only from a real persisted Meta error response, never constructing one', async () => {
@@ -128,8 +115,7 @@ describe('getMetaBillingStatus — no fabricated balances', () => {
   it('caches the slow Graph API fields and does not re-fetch within the TTL', async () => {
     process.env.WHATSAPP_TOKEN = 'test-token'
     const cached = {
-      wabaStatus: 'APPROVED', businessId: null, creditLines: [],
-      creditLinesSource: 'UNAVAILABLE', creditLinesNote: 'cached',
+      wabaStatus: 'APPROVED-FROM-CACHE', phoneNumber: null, templates: null,
       graphApiError: null, cachedAt: new Date().toISOString(),
     }
     fsMock.readFileSync.mockReturnValue(JSON.stringify(cached))
@@ -137,7 +123,7 @@ describe('getMetaBillingStatus — no fabricated balances', () => {
     const { getMetaBillingStatus } = await importFresh()
     const status = await getMetaBillingStatus()
 
-    expect(status.creditLinesNote).toBe('cached')
+    expect(status.wabaAccountReviewStatus).toBe('APPROVED-FROM-CACHE')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -152,8 +138,7 @@ describe('getMetaBillingStatus — no fabricated balances', () => {
     // A Graph API cache written before the failure — well within TTL, so it
     // would normally be reused as-is for the slow fields.
     const cachedBeforeFailure = {
-      wabaStatus: 'APPROVED', businessId: null, creditLines: [],
-      creditLinesSource: 'UNAVAILABLE', creditLinesNote: 'no business_id known yet',
+      wabaStatus: 'APPROVED', phoneNumber: null, templates: null,
       graphApiError: null, cachedAt: new Date().toISOString(),
     }
     fsMock.readFileSync.mockReturnValue(JSON.stringify(cachedBeforeFailure))

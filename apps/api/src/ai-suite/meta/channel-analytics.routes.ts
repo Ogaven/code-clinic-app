@@ -84,6 +84,9 @@ interface OperationalVolume {
   escalations:       number  // Escalation rows created in range
   callEvents:        number  // CallEvent rows in range (provider is MOCK until a real telephony provider is wired up -- see schema.prisma)
   totalInteractions: number  // sum of every message-channel's `selected.total` below -- one honest "AI interactions" figure, not invented
+  humanHandovers:      number       // real takeover EVENTS in range (takeover.service.ts's SYSTEM "takenOverAt" marker) -- not a current-state snapshot, an event count
+  engagedConversations: number      // distinct conversations with a real inbound USER message in range -- the denominator for aiResolutionRatePct
+  aiResolutionRatePct:  number | null // % of engagedConversations with zero takeover events in range; null (never 0%) when there's no real traffic to measure
 }
 
 interface Analytics {
@@ -223,8 +226,8 @@ async function fetchChannelData(selectedRange: { start: Date; end: Date }): Prom
 
 // ── Operational volume (confirmations, follow-ups, escalations, calling) ──────
 
-async function fetchOperationalVolume(range: { start: Date; end: Date }, channels: Record<string, ChannelData>): Promise<OperationalVolume> {
-  const [confirmationsSent, followupsSent, escalations, callEvents] = await Promise.all([
+export async function fetchOperationalVolume(range: { start: Date; end: Date }, channels: Record<string, ChannelData>): Promise<OperationalVolume> {
+  const [confirmationsSent, followupsSent, escalations, callEvents, humanHandovers, engagedConvIds, handedOverConvIds] = await Promise.all([
     prisma.aiScheduledMessage.count({
       where: { templateType: 'APPOINTMENT_CONFIRMATION', sent: true, scheduledFor: { gte: range.start, lt: range.end } },
     }),
@@ -233,11 +236,41 @@ async function fetchOperationalVolume(range: { start: Date; end: Date }, channel
     }),
     prisma.escalation.count({ where: { createdAt: { gte: range.start, lt: range.end } } }),
     prisma.callEvent.count({ where: { occurredAt: { gte: range.start, lt: range.end } } }),
+    // Real takeover EVENTS in range — the SYSTEM-role marker takeover.service.ts
+    // writes on every takeoverConversation() call. An event count, not a
+    // current-state snapshot (AiConversation.agentEnabled only reflects "right
+    // now", not "how many times did staff have to step in this period").
+    prisma.aiMessage.count({
+      where: { role: 'SYSTEM', metadata: { contains: 'takenOverAt' }, createdAt: { gte: range.start, lt: range.end } },
+    }),
+    prisma.aiMessage.findMany({
+      where: { role: 'USER', createdAt: { gte: range.start, lt: range.end } },
+      select: { conversationId: true },
+      distinct: ['conversationId'],
+    }),
+    prisma.aiMessage.findMany({
+      where: { role: 'SYSTEM', metadata: { contains: 'takenOverAt' }, createdAt: { gte: range.start, lt: range.end } },
+      select: { conversationId: true },
+      distinct: ['conversationId'],
+    }),
   ])
 
   const totalInteractions = Object.values(channels).reduce((sum, c) => sum + c.selected.total, 0)
 
-  return { confirmationsSent, followupsSent, escalations, callEvents, totalInteractions }
+  // AI Resolution Rate = % of conversations with real inbound activity this
+  // period that Sarah handled without any human takeover event in the same
+  // period. Real data only: both the numerator and denominator are distinct
+  // conversationIds from actual AiMessage rows -- never a guessed or
+  // hardcoded figure. null (never a misleading 0%) when there's no engaged
+  // conversation to measure in this period at all.
+  const engagedConversations = engagedConvIds.length
+  const handedOverSet = new Set(handedOverConvIds.map(c => c.conversationId))
+  const resolvedWithoutHandover = engagedConvIds.filter(c => !handedOverSet.has(c.conversationId)).length
+  const aiResolutionRatePct = engagedConversations > 0
+    ? Math.round((resolvedWithoutHandover / engagedConversations) * 1000) / 10
+    : null
+
+  return { confirmationsSent, followupsSent, escalations, callEvents, totalInteractions, humanHandovers, engagedConversations, aiResolutionRatePct }
 }
 
 // ── DigitalOcean balance ──────────────────────────────────────────────────────

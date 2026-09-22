@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
+vi.setConfig({ testTimeout: 20000 })
+
 // Verifies the Phase-9 safe-failure behavior added alongside the OpenAI
 // cutover: a single provider failure just returns the fallback text (as
 // before), but two CONSECUTIVE failures for the same conversation trigger an
