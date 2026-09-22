@@ -211,3 +211,35 @@ export async function getCrmReadinessSummary(): Promise<CrmReadinessSummary> {
     reviewRequestConfigured: reviewConfig != null,
   }
 }
+
+// ── Per-channel ingestion evidence (Meta Integration Health) ──────────────
+// Answers one narrow, factual question per channel: "when did we last
+// actually persist a real inbound event for this channel?" — the DB-side
+// half of distinguishing "Meta is receiving this but our webhook isn't" from
+// "everything's fine." Deliberately says nothing about WHY a channel is
+// quiet (that's meta-integration-diagnostics.service.ts, the live Graph API
+// side) — this is ground truth from our own database only, so it can never
+// be wrong about what we actually received, even if every live Graph API
+// call below fails.
+export type IngestionEvidence = 'RECENT' | 'STALE' | 'NONE'
+
+export interface ChannelIngestionStatus {
+  channel: string
+  lastInboundEventAt: string | null
+  evidence: IngestionEvidence
+}
+
+const INGESTION_RECENT_WINDOW_MS = 48 * 60 * 60 * 1000 // 48h — social channels are lower-volume than WhatsApp, so 24h is too tight a bar for "still working"
+
+export async function getChannelIngestionHealth(channels: string[]): Promise<ChannelIngestionStatus[]> {
+  return Promise.all(channels.map(async (channel): Promise<ChannelIngestionStatus> => {
+    const last = await prisma.aiMessage.findFirst({
+      where: { role: 'USER', conversation: { channel } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    })
+    if (!last) return { channel, lastInboundEventAt: null, evidence: 'NONE' }
+    const evidence: IngestionEvidence = Date.now() - last.createdAt.getTime() < INGESTION_RECENT_WINDOW_MS ? 'RECENT' : 'STALE'
+    return { channel, lastInboundEventAt: last.createdAt.toISOString(), evidence }
+  }))
+}

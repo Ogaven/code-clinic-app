@@ -39,10 +39,12 @@ router.post('/facebook', async (req, res) => {
       // Messenger DMs
       for (const event of entry.messaging ?? []) {
         if (!event.message?.text) continue
-        const senderId = String(event.sender.id)
-        const text     = String(event.message.text)
+        if (event.message?.is_echo) continue // never process our own outbound sends mirrored back
+        const senderId  = String(event.sender.id)
+        const text      = String(event.message.text)
+        const messageId = event.message.mid ? String(event.message.mid) : undefined
         console.log(`[Webhooks] Facebook message from ${senderId}: ${text}`)
-        await processSocialMessage(senderId, text, 'FACEBOOK')
+        await processSocialMessage(senderId, text, 'FACEBOOK', messageId)
       }
       // Page feed comments + native Lead Ads (leadgen) submissions
       for (const change of entry.changes ?? []) {

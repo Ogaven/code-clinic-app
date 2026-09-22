@@ -4,32 +4,51 @@ import { requireAuth } from '../../middleware/auth'
 import { adminOnly } from '../../middleware/rbac'
 import { prisma } from '../../lib/prisma'
 import { startOfKampalaDay, endOfKampalaDay, startOfKampalaMonth, startOfPreviousKampalaMonth } from '../../utils/kampala-time'
+import { getWhatsAppWabaId, getWhatsAppToken } from '../../config/meta-config'
 
 const router = Router()
 
 const CACHE_FILE = '/tmp/codeclinic-meta-usage.json'
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours
 
-const UG_WABA   = '1754698499275270'   // Code Clinic Uganda (routed via AT)
-const KE_WABA   = '1035568108843333'   // Elyrac AI Kenya (Meta Cloud API direct)
 const GRAPH_VER = 'v25.0'
 
-// Meta per-message pricing changed July 1 2025 — lookback only from Dec 1 2025
-const DATA_SINCE = new Date('2025-12-01T00:00:00Z')
+// 2026-09-20 correction: this used to fetch two SEPARATE WABAs —
+// UG_WABA='1754698499275270' labeled "Code Clinic Uganda (routed via AT)"
+// and KE_WABA='1035568108843333' labeled "Elyrac AI Kenya (test WABA,
+// Meta Cloud API direct)". Both labels predate a completed migration: Code
+// Clinic's real number now sends with zero Africa's Talking involvement
+// (see whatsapp.service.ts), and live Graph API calls during the 2026-09-20
+// investigation confirmed the real phone number, templates, and delivery
+// failures all live on `1035568108843333` — the ID this file called
+// "Kenya (test WABA)". `1754698499275270` is an unrelated WABA that does
+// not own Code Clinic's number; the "Uganda" usage panel was silently
+// pulling pricing data for the wrong account the entire time.
+//
+// There is exactly one real, configured, direct-Meta-Cloud-API WhatsApp
+// account (WHATSAPP_WABA_ID, via config/meta-config.ts) with two phone
+// numbers registered on it. pricing_analytics is a WABA-level metric —
+// live-tested with Graph API's `phone_numbers` filter parameter, which
+// returned an empty result set for both numbers individually — so Meta
+// does not expose a way to split this account's cost by phone number.
+// Rather than re-fabricate a fake per-number split, this now reports one
+// honest, correctly-sourced account with every phone number registered on
+// it listed underneath, instead of pretending two independent accounts.
+const DATA_SINCE = new Date('2025-12-01T00:00:00Z') // Meta per-message pricing changed July 1 2025 — lookback only from Dec 1 2025
 
 interface DataPoint { start: number; end: number; volume: number; cost?: number }
+interface WabaPhoneNumber { id: string; displayPhoneNumber: string; verifiedName: string | null }
 interface WabaUsage {
-  wabaId:      string
-  wabaName:    string
-  phone:       string
-  daily:       DataPoint[]
-  thisMonth:   { volume: number; cost: number }
-  lastMonth:   { volume: number; cost: number }
-  fetchedAt:   string
+  wabaId:       string
+  phoneNumbers: WabaPhoneNumber[]
+  daily:        DataPoint[]
+  thisMonth:    { volume: number; cost: number }
+  lastMonth:    { volume: number; cost: number }
+  fetchedAt:    string
 }
 interface UsageCache {
-  uganda:    WabaUsage
-  kenya:     WabaUsage
+  account:   WabaUsage | null
+  configured: boolean
   cachedAt:  string
 }
 
@@ -66,6 +85,26 @@ async function fetchWabaAnalytics(wabaId: string, token: string): Promise<DataPo
   return json.data?.[0]?.data_points ?? []
 }
 
+async function fetchWabaPhoneNumbers(wabaId: string, token: string): Promise<WabaPhoneNumber[]> {
+  try {
+    const url = `https://graph.facebook.com/${GRAPH_VER}/${wabaId}/phone_numbers?fields=display_phone_number,verified_name&access_token=${token}`
+    const res  = await fetch(url)
+    const json = await res.json() as { data?: { id: string; display_phone_number?: string; verified_name?: string }[]; error?: any }
+    if (json.error) {
+      console.warn(`[MetaUsage] phone_numbers error for WABA ${wabaId}:`, json.error.message)
+      return []
+    }
+    return (json.data ?? []).map(n => ({
+      id: n.id,
+      displayPhoneNumber: n.display_phone_number ?? 'unknown',
+      verifiedName: n.verified_name ?? null,
+    }))
+  } catch (e: any) {
+    console.warn(`[MetaUsage] phone_numbers fetch failed for WABA ${wabaId}:`, e.message)
+    return []
+  }
+}
+
 function summariseMonth(points: DataPoint[], year: number, month: number) {
   const start = new Date(year, month - 1, 1).getTime() / 1000
   const end   = new Date(year, month, 1).getTime() / 1000
@@ -77,14 +116,19 @@ function summariseMonth(points: DataPoint[], year: number, month: number) {
 }
 
 async function buildUsage(token: string): Promise<UsageCache> {
-  const now  = new Date()
+  const now = new Date()
+  const wabaId = getWhatsAppWabaId()
+  if (!wabaId) {
+    return { account: null, configured: false, cachedAt: now.toISOString() }
+  }
+
   const yr   = now.getUTCFullYear()
   const mo   = now.getUTCMonth() + 1
   const prev = mo === 1 ? { yr: yr - 1, mo: 12 } : { yr, mo: mo - 1 }
 
-  const [ugPoints, kePoints] = await Promise.all([
-    fetchWabaAnalytics(UG_WABA, token),
-    fetchWabaAnalytics(KE_WABA, token),
+  const [points, phoneNumbers] = await Promise.all([
+    fetchWabaAnalytics(wabaId, token),
+    fetchWabaPhoneNumbers(wabaId, token),
   ])
 
   // Keep only last 30 days of daily points for the chart
@@ -92,24 +136,15 @@ async function buildUsage(token: string): Promise<UsageCache> {
   const trim   = (pts: DataPoint[]) => pts.filter(p => p.start >= cutoff)
 
   return {
-    uganda: {
-      wabaId:    UG_WABA,
-      wabaName:  'Code Clinic (Uganda)',
-      phone:     '+256 741 087667',
-      daily:     trim(ugPoints),
-      thisMonth: summariseMonth(ugPoints, yr, mo),
-      lastMonth: summariseMonth(ugPoints, prev.yr, prev.mo),
+    account: {
+      wabaId,
+      phoneNumbers,
+      daily:     trim(points),
+      thisMonth: summariseMonth(points, yr, mo),
+      lastMonth: summariseMonth(points, prev.yr, prev.mo),
       fetchedAt: now.toISOString(),
     },
-    kenya: {
-      wabaId:    KE_WABA,
-      wabaName:  'Elyrac AI (Kenya)',
-      phone:     '+254 701 944393',
-      daily:     trim(kePoints),
-      thisMonth: summariseMonth(kePoints, yr, mo),
-      lastMonth: summariseMonth(kePoints, prev.yr, prev.mo),
-      fetchedAt: now.toISOString(),
-    },
+    configured: true,
     cachedAt: now.toISOString(),
   }
 }
@@ -120,7 +155,7 @@ router.get('/meta-usage', requireAuth, async (_req, res) => {
     const cached = readCache()
     if (cached) return res.json(cached)
 
-    const token = process.env.WHATSAPP_TOKEN
+    const token = getWhatsAppToken()
     if (!token) return res.status(503).json({ error: 'WHATSAPP_TOKEN not configured' })
 
     const data = await buildUsage(token)
@@ -136,7 +171,7 @@ router.get('/meta-usage', requireAuth, async (_req, res) => {
 router.post('/meta-usage/refresh', requireAuth, async (_req, res) => {
   try {
     try { fs.unlinkSync(CACHE_FILE) } catch {}
-    const token = process.env.WHATSAPP_TOKEN
+    const token = getWhatsAppToken()
     if (!token) return res.status(503).json({ error: 'WHATSAPP_TOKEN not configured' })
     const data = await buildUsage(token)
     writeCache(data)

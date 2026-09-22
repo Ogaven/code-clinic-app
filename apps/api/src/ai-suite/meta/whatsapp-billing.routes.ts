@@ -8,8 +8,9 @@
 import { Router } from 'express'
 import { requireAuth } from '../../middleware/auth'
 import { adminOnly } from '../../middleware/rbac'
-import { getWhatsAppDeliveryHealth, getStaffEscalationHealth, getCrmReadinessSummary } from '../../services/provider-health.service'
+import { getWhatsAppDeliveryHealth, getStaffEscalationHealth, getCrmReadinessSummary, getChannelIngestionHealth } from '../../services/provider-health.service'
 import { getMetaBillingStatus } from '../../services/meta-billing.service'
+import { getMetaIntegrationDiagnostics } from '../../services/meta-integration-diagnostics.service'
 
 const router = Router()
 
@@ -52,6 +53,27 @@ router.get('/crm-readiness', requireAuth, adminOnly, async (_req, res) => {
     res.json(await getCrmReadinessSummary())
   } catch (err: any) {
     console.error('[CrmReadiness]', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /ai-suite/meta-integration-health — Facebook/Instagram (and WhatsApp)
+// webhook subscription, permission, and real-recent-event evidence.
+// Admin-only: reveals real token scopes/subscription callback URLs, which
+// are diagnostic detail, not something to expose to non-admin staff.
+// Every field here comes from a read-only Graph API GET or a local DB read
+// — nothing in this handler can send a message, reply to a comment, or
+// change a Meta subscription.
+router.get('/meta-integration-health', requireAuth, adminOnly, async (_req, res) => {
+  try {
+    const [diagnostics, ingestion] = await Promise.all([
+      getMetaIntegrationDiagnostics(),
+      getChannelIngestionHealth(['WHATSAPP', 'FACEBOOK', 'FACEBOOK_COMMENT', 'INSTAGRAM', 'INSTAGRAM_COMMENT']),
+    ])
+    const ingestionByChannel = Object.fromEntries(ingestion.map(i => [i.channel, i]))
+    res.json({ diagnostics, ingestion: ingestionByChannel })
+  } catch (err: any) {
+    console.error('[MetaIntegrationHealth]', err.message)
     res.status(500).json({ error: err.message })
   }
 })
