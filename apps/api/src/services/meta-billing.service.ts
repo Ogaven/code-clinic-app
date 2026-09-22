@@ -19,15 +19,30 @@
 //      embedded in real 131042 error responses (persisted to
 //      MetaDeliveryFailure by the webhook handler) — that is what this
 //      service surfaces as the admin action, never a constructed URL.
+//
+// 2026-09-20 correction: `wabaAccountReviewStatus` used to be queried
+// against a hardcoded WABA ID (`1754698499275270`) left over from before
+// Code Clinic migrated off Africa's Talking onto direct Meta Cloud API
+// (see whatsapp.service.ts's "Zero AT involvement" send path). That ID
+// belongs to a different WABA under the same Business Manager — it is not
+// the account that sends Code Clinic's messages, is not the account named
+// in real MetaDeliveryFailure records, and does not own Code Clinic's real
+// phone number or approved templates. It was live-verified to still
+// resolve (returning APPROVED), which is exactly why the drift went
+// unnoticed — a wrong-but-successful answer looks identical to a right one
+// unless you check which account it actually describes. The real
+// production WABA (`1035568108843333`) is now read from the same
+// WHATSAPP_WABA_ID env var the actual messaging path and
+// connections.routes.ts already use — see config/meta-config.ts, now the
+// single accessor for this ID so it can't drift out of sync again.
 // ─────────────────────────────────────────────────────────────────────────
 import fs from 'fs'
 import { prisma } from '../lib/prisma'
+import { getWhatsAppWabaId, getWhatsAppPhoneNumberId } from '../config/meta-config'
 
 const GRAPH_VER    = 'v25.0'
 const CACHE_FILE   = '/tmp/codeclinic-meta-billing.json'
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours — billing data changes slowly; avoid hammering Graph API
-
-const UG_WABA      = '1754698499275270'
 
 export type BillingStatus = 'HEALTHY' | 'ATTENTION_REQUIRED' | 'UNKNOWN'
 
@@ -39,16 +54,36 @@ export interface CreditLine {
   isAccessRevoked: boolean | null
 }
 
+export interface PhoneNumberStatus {
+  displayPhoneNumber: string | null
+  verifiedName: string | null
+  qualityRating: string | null
+  codeVerificationStatus: string | null
+  nameStatus: string | null
+}
+
+export interface TemplateSummary {
+  approvedCount: number
+  pendingCount: number
+  rejectedCount: number
+  totalCount: number
+}
+
 export interface MetaBillingStatus {
   billingStatus: BillingStatus
+  wabaConfigured: boolean
   wabaAccountReviewStatus: string | null
+  phoneNumber: PhoneNumberStatus | null
+  templates: TemplateSummary | null
   creditLines: CreditLine[]
   creditLinesSource: 'GRAPH_API_EXTENDEDCREDITS' | 'UNAVAILABLE'
   creditLinesNote: string
   recent131042: boolean
   recent131042Within24h: boolean
+  latestPaymentError: { code: number; title: string; occurredAt: string } | null
   adminActionUrl: string | null
   adminActionSource: 'META_ERROR_RESPONSE' | 'NONE'
+  billingDataNote: string
   fetchedAt: string
   graphApiError: string | null
 }
@@ -86,6 +121,46 @@ async function fetchCreditLines(businessId: string, token: string): Promise<{ li
   }
 }
 
+async function fetchPhoneNumberStatus(phoneNumberId: string, token: string): Promise<PhoneNumberStatus | null> {
+  try {
+    const data = await graphGet(
+      `https://graph.facebook.com/${GRAPH_VER}/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,code_verification_status,name_status&access_token=${token}`
+    )
+    return {
+      displayPhoneNumber: data.display_phone_number ?? null,
+      verifiedName: data.verified_name ?? null,
+      qualityRating: data.quality_rating ?? null,
+      codeVerificationStatus: data.code_verification_status ?? null,
+      nameStatus: data.name_status ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
+// Meta's default page size comfortably covers Code Clinic's real template
+// count (17 as of the 2026-09-20 investigation); if it ever grows past this,
+// undercounting here degrades gracefully to an honest partial count rather
+// than an error, since staff care about "roughly how many," not an exact
+// total requiring full pagination.
+async function fetchTemplateSummary(wabaId: string, token: string): Promise<TemplateSummary | null> {
+  try {
+    const data = await graphGet(
+      `https://graph.facebook.com/${GRAPH_VER}/${wabaId}/message_templates?fields=status&limit=250&access_token=${token}`
+    )
+    const templates: { status?: string }[] = data.data ?? []
+    let approvedCount = 0, pendingCount = 0, rejectedCount = 0
+    for (const t of templates) {
+      if (t.status === 'APPROVED') approvedCount++
+      else if (t.status === 'PENDING') pendingCount++
+      else if (t.status === 'REJECTED') rejectedCount++
+    }
+    return { approvedCount, pendingCount, rejectedCount, totalCount: templates.length }
+  } catch {
+    return null
+  }
+}
+
 // The most recent real 131042 failure this app has actually seen, and its
 // Meta-provided action URL — never constructed, only ever read back from
 // what Meta itself returned in an error response. This is a cheap local DB
@@ -97,7 +172,7 @@ async function fetchCreditLines(businessId: string, token: string): Promise<{ li
 // already landed, because it was cached alongside the genuinely-slow Graph
 // API fields below.)
 interface RecentFailureEvidence {
-  recentFailure: { occurredAt: Date; details: string | null } | null
+  recentFailure: { occurredAt: Date; details: string | null; code: number; title: string } | null
   within24h: boolean
   adminActionUrl: string | null
 }
@@ -106,7 +181,7 @@ async function getRecentFailureEvidence(): Promise<RecentFailureEvidence> {
   const recentFailure = await prisma.metaDeliveryFailure.findFirst({
     where: { code: 131042 },
     orderBy: { occurredAt: 'desc' },
-    select: { occurredAt: true, details: true },
+    select: { occurredAt: true, details: true, code: true, title: true },
   })
   const within24h = recentFailure
     ? Date.now() - recentFailure.occurredAt.getTime() < 24 * 60 * 60 * 1000
@@ -126,6 +201,8 @@ async function getRecentFailureEvidence(): Promise<RecentFailureEvidence> {
 interface GraphBillingData {
   wabaStatus: string | null
   businessId: string | null
+  phoneNumber: PhoneNumberStatus | null
+  templates: TemplateSummary | null
   creditLines: CreditLine[]
   creditLinesSource: MetaBillingStatus['creditLinesSource']
   creditLinesNote: string
@@ -153,19 +230,32 @@ async function fetchGraphBillingData(token: string, businessId: string | null, f
     // businessId we've only just learned (first-ever 131042) must not
     // silently reuse a stale "no business_id known" cache entry.
     if (cached && cached.businessId === businessId) {
-      const { wabaStatus, creditLines, creditLinesSource, creditLinesNote, graphApiError } = cached
-      return { wabaStatus, businessId, creditLines, creditLinesSource, creditLinesNote, graphApiError }
+      const { wabaStatus, phoneNumber, templates, creditLines, creditLinesSource, creditLinesNote, graphApiError } = cached
+      // A cache file written by a pre-2026-09-20 deploy won't have
+      // phoneNumber/templates keys at all — default them rather than let
+      // `undefined` leak into fields typed `T | null`. Self-heals within
+      // CACHE_TTL_MS regardless.
+      return { wabaStatus, businessId, phoneNumber: phoneNumber ?? null, templates: templates ?? null, creditLines, creditLinesSource, creditLinesNote, graphApiError }
     }
   }
 
   let wabaStatus: string | null = null
   let graphApiError: string | null = null
-  try {
-    const waba = await graphGet(`https://graph.facebook.com/${GRAPH_VER}/${UG_WABA}?fields=account_review_status&access_token=${token}`)
-    wabaStatus = waba.account_review_status ?? null
-  } catch (e: any) {
-    graphApiError = e.message
+  const wabaId = getWhatsAppWabaId()
+  if (!wabaId) {
+    graphApiError = 'WHATSAPP_WABA_ID not configured — cannot query the production WABA.'
+  } else {
+    try {
+      const waba = await graphGet(`https://graph.facebook.com/${GRAPH_VER}/${wabaId}?fields=account_review_status&access_token=${token}`)
+      wabaStatus = waba.account_review_status ?? null
+    } catch (e: any) {
+      graphApiError = e.message
+    }
   }
+
+  const phoneNumberId = getWhatsAppPhoneNumberId()
+  const phoneNumber = phoneNumberId ? await fetchPhoneNumberStatus(phoneNumberId, token) : null
+  const templates    = wabaId ? await fetchTemplateSummary(wabaId, token) : null
 
   let creditLines: CreditLine[] = []
   let creditLinesSource: MetaBillingStatus['creditLinesSource'] = 'UNAVAILABLE'
@@ -183,10 +273,13 @@ async function fetchGraphBillingData(token: string, businessId: string | null, f
     }
   }
 
-  const data: GraphBillingData = { wabaStatus, businessId, creditLines, creditLinesSource, creditLinesNote, graphApiError }
+  const data: GraphBillingData = { wabaStatus, businessId, phoneNumber, templates, creditLines, creditLinesSource, creditLinesNote, graphApiError }
   writeGraphCache(data)
   return data
 }
+
+const BILLING_DATA_NOTE =
+  'Detailed WhatsApp payment method and outstanding balance are managed in Meta Business Manager and are not available through the current API connection.'
 
 export async function getMetaBillingStatus(forceRefresh = false): Promise<MetaBillingStatus> {
   const token = process.env.WHATSAPP_TOKEN
@@ -208,17 +301,28 @@ export async function getMetaBillingStatus(forceRefresh = false): Promise<MetaBi
     if (bizMatch) businessId = bizMatch[1]
   }
 
+  const latestPaymentError = recentFailure ? {
+    code: recentFailure.code,
+    title: recentFailure.title ?? 'Business eligibility payment issue',
+    occurredAt: recentFailure.occurredAt.toISOString(),
+  } : null
+
   if (!token) {
     return {
       billingStatus: within24h ? 'ATTENTION_REQUIRED' : 'UNKNOWN',
+      wabaConfigured: getWhatsAppWabaId() != null,
       wabaAccountReviewStatus: null,
+      phoneNumber: null,
+      templates: null,
       creditLines: [],
       creditLinesSource: 'UNAVAILABLE',
       creditLinesNote: 'WHATSAPP_TOKEN not configured — cannot query Meta.',
       recent131042: recentFailure != null,
       recent131042Within24h: within24h,
+      latestPaymentError,
       adminActionUrl,
       adminActionSource: adminActionUrl ? 'META_ERROR_RESPONSE' : 'NONE',
+      billingDataNote: BILLING_DATA_NOTE,
       fetchedAt: now,
       graphApiError: 'WHATSAPP_TOKEN not configured',
     }
@@ -232,14 +336,19 @@ export async function getMetaBillingStatus(forceRefresh = false): Promise<MetaBi
 
   return {
     billingStatus,
+    wabaConfigured: getWhatsAppWabaId() != null,
     wabaAccountReviewStatus: graph.wabaStatus,
+    phoneNumber: graph.phoneNumber,
+    templates: graph.templates,
     creditLines: graph.creditLines,
     creditLinesSource: graph.creditLinesSource,
     creditLinesNote: graph.creditLinesNote,
     recent131042: recentFailure != null,
     recent131042Within24h: within24h,
+    latestPaymentError,
     adminActionUrl,
     adminActionSource: adminActionUrl ? 'META_ERROR_RESPONSE' : 'NONE',
+    billingDataNote: BILLING_DATA_NOTE,
     fetchedAt: now,
     graphApiError: graph.graphApiError,
   }

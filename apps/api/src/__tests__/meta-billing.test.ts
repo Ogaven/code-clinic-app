@@ -32,6 +32,8 @@ beforeEach(() => {
   fsMock.readFileSync.mockImplementation(() => { throw new Error('no cache') })
   prismaMock.metaDeliveryFailure.findFirst.mockResolvedValue(null)
   delete process.env.WHATSAPP_TOKEN
+  delete process.env.WHATSAPP_WABA_ID
+  delete process.env.WHATSAPP_PHONE_NUMBER_ID
 })
 
 async function importFresh() {
@@ -55,6 +57,7 @@ describe('getMetaBillingStatus — no fabricated balances', () => {
     process.env.WHATSAPP_TOKEN = 'test-token'
     prismaMock.metaDeliveryFailure.findFirst.mockResolvedValue({
       code: 131042,
+      title: 'Business eligibility payment issue',
       details: 'unsettled payments. Visit https://business.facebook.com/billing_hub/accounts/details/?business_id=339508138390029&asset_id=1035568108843333&wizard_name=PAY_NOW&account_type=whatsapp-business-account to resolve.',
       occurredAt: new Date(), // recent -> within 24h
     })
@@ -167,5 +170,128 @@ describe('getMetaBillingStatus — no fabricated balances', () => {
     expect(status.recent131042Within24h).toBe(true)
     // The slow Graph API fields still legitimately came from cache.
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+// Regression suite for the 2026-09-20 wrong-WABA fix: `wabaAccountReviewStatus`
+// used to be queried against a hardcoded WABA ID (`1754698499275270`) that
+// does not own Code Clinic's real phone number, templates, or delivery
+// failures. It must now come exclusively from WHATSAPP_WABA_ID.
+describe('getMetaBillingStatus — WABA configuration source of truth', () => {
+  const LEGACY_DECOY_WABA = '1754698499275270'
+  const REAL_WABA = '1035568108843333'
+
+  it('queries the configured WHATSAPP_WABA_ID for account_review_status, never the legacy hardcoded WABA', async () => {
+    process.env.WHATSAPP_TOKEN = 'test-token'
+    process.env.WHATSAPP_WABA_ID = REAL_WABA
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes(LEGACY_DECOY_WABA)) {
+        throw new Error('TEST FAILURE: queried the legacy decoy WABA, not the configured one')
+      }
+      if (url.includes(REAL_WABA) && url.includes('account_review_status')) {
+        return { ok: true, json: async () => ({ account_review_status: 'APPROVED' }) }
+      }
+      if (url.includes('message_templates')) {
+        return { ok: true, json: async () => ({ data: [] }) }
+      }
+      return { ok: false, json: async () => ({ error: { message: 'unexpected url: ' + url } }) }
+    })
+
+    const { getMetaBillingStatus } = await importFresh()
+    const status = await getMetaBillingStatus()
+
+    expect(status.wabaAccountReviewStatus).toBe('APPROVED')
+    expect(status.wabaConfigured).toBe(true)
+    const calledUrls = fetchMock.mock.calls.map((c: any[]) => c[0] as string)
+    expect(calledUrls.some(u => u.includes(REAL_WABA))).toBe(true)
+    expect(calledUrls.some(u => u.includes(LEGACY_DECOY_WABA))).toBe(false)
+  })
+
+  it('fails safely (no crash, clear error, wabaConfigured=false) when WHATSAPP_WABA_ID is not set', async () => {
+    process.env.WHATSAPP_TOKEN = 'test-token'
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: [] }) })
+
+    const { getMetaBillingStatus } = await importFresh()
+    const status = await getMetaBillingStatus()
+
+    expect(status.wabaConfigured).toBe(false)
+    expect(status.wabaAccountReviewStatus).toBeNull()
+    expect(status.graphApiError).toMatch(/WHATSAPP_WABA_ID not configured/)
+    const calledUrls = fetchMock.mock.calls.map((c: any[]) => c[0] as string)
+    expect(calledUrls.some(u => u.includes(LEGACY_DECOY_WABA))).toBe(false)
+  })
+})
+
+describe('getMetaBillingStatus — verified WhatsApp health fields (phone, templates, payment error)', () => {
+  it('surfaces real phone-number status when WHATSAPP_PHONE_NUMBER_ID is configured', async () => {
+    process.env.WHATSAPP_TOKEN = 'test-token'
+    process.env.WHATSAPP_PHONE_NUMBER_ID = 'test-phone-id'
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('test-phone-id')) {
+        return { ok: true, json: async () => ({ display_phone_number: '+256 741 087667', verified_name: 'Code Clinic', quality_rating: 'GREEN', code_verification_status: 'EXPIRED', name_status: 'APPROVED' }) }
+      }
+      return { ok: true, json: async () => ({ data: [] }) }
+    })
+
+    const { getMetaBillingStatus } = await importFresh()
+    const status = await getMetaBillingStatus()
+
+    expect(status.phoneNumber).toMatchObject({ displayPhoneNumber: '+256 741 087667', verifiedName: 'Code Clinic', qualityRating: 'GREEN' })
+  })
+
+  it('phoneNumber is null (not fabricated) when WHATSAPP_PHONE_NUMBER_ID is not configured', async () => {
+    process.env.WHATSAPP_TOKEN = 'test-token'
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: [] }) })
+
+    const { getMetaBillingStatus } = await importFresh()
+    const status = await getMetaBillingStatus()
+
+    expect(status.phoneNumber).toBeNull()
+  })
+
+  it('summarises real approved/pending/rejected template counts from Graph API, never a guessed count', async () => {
+    process.env.WHATSAPP_TOKEN = 'test-token'
+    process.env.WHATSAPP_WABA_ID = '1035568108843333'
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('message_templates')) {
+        return { ok: true, json: async () => ({ data: [{ status: 'APPROVED' }, { status: 'APPROVED' }, { status: 'PENDING' }, { status: 'REJECTED' }] }) }
+      }
+      return { ok: true, json: async () => ({ account_review_status: 'APPROVED' }) }
+    })
+
+    const { getMetaBillingStatus } = await importFresh()
+    const status = await getMetaBillingStatus()
+
+    expect(status.templates).toEqual({ approvedCount: 2, pendingCount: 1, rejectedCount: 1, totalCount: 4 })
+  })
+
+  it('always includes an honest billingDataNote explaining WhatsApp payment data is not available via this API', async () => {
+    const { getMetaBillingStatus } = await importFresh()
+    const status = await getMetaBillingStatus()
+    expect(status.billingDataNote).toMatch(/Meta Business Manager/)
+  })
+
+  it('latestPaymentError reflects the real persisted 131042 record, scoped to payment/eligibility only', async () => {
+    process.env.WHATSAPP_TOKEN = 'test-token'
+    const occurredAt = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    prismaMock.metaDeliveryFailure.findFirst.mockResolvedValue({
+      code: 131042, title: 'Business eligibility payment issue', details: null, occurredAt,
+    })
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: [] }) })
+
+    const { getMetaBillingStatus } = await importFresh()
+    const status = await getMetaBillingStatus()
+
+    expect(status.latestPaymentError).toEqual({
+      code: 131042,
+      title: 'Business eligibility payment issue',
+      occurredAt: occurredAt.toISOString(),
+    })
+  })
+
+  it('latestPaymentError is null when no 131042 has ever been recorded', async () => {
+    const { getMetaBillingStatus } = await importFresh()
+    const status = await getMetaBillingStatus()
+    expect(status.latestPaymentError).toBeNull()
   })
 })

@@ -27,6 +27,13 @@ function logOpenAICommentReply(channel: string, fromId: string, text: string, re
 
 const GRAPH_VERSION = 'v24.0'
 
+// Our own Page/IG account identity — used to guard against ever processing
+// our own outbound sends as if they were inbound (self-reply loop). Shared
+// by both the comment path (processComment) and the DM path
+// (processSocialMessage) — see the 2026-09-20 idempotency/echo-guard audit.
+const FB_PAGE_ID    = '532091973485208'
+const IG_ACCOUNT_ID = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID ?? '17841404690443540'
+
 // ── Post caption + thumbnail caches (in-memory, 1-hour TTL) ──────────────────
 const postCaptionCache   = new Map<string, { caption: string; fetchedAt: number }>()
 const postThumbnailCache = new Map<string, { url: string | null; fetchedAt: number }>()
@@ -132,10 +139,12 @@ router.post('/facebook/webhook', async (req, res) => {
     for (const entry of body.entry ?? []) {
       for (const event of entry.messaging ?? []) {
         if (!event.message?.text) continue
+        if (event.message?.is_echo) continue // never process our own outbound sends mirrored back
         await processSocialMessage(
           String(event.sender.id),
           String(event.message.text),
           'FACEBOOK',
+          event.message.mid ? String(event.message.mid) : undefined,
         )
       }
     }
@@ -178,10 +187,12 @@ router.post('/instagram/webhook', async (req, res) => {
       // DMs
       for (const event of entry.messaging ?? []) {
         if (!event.message?.text) continue
+        if (event.message?.is_echo) continue // never process our own outbound sends mirrored back
         await processSocialMessage(
           String(event.sender.id),
           String(event.message.text),
           'INSTAGRAM',
+          event.message.mid ? String(event.message.mid) : undefined,
         )
       }
       // Post comments
@@ -190,8 +201,7 @@ router.post('/instagram/webhook', async (req, res) => {
         const v = change.value
         if (!v?.text || !v?.id) continue
         // Never process comments authored by our own IG account (prevents self-reply loops)
-        const igAccountId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID ?? '17841404690443540'
-        if (String(v.from?.id ?? '') === igAccountId) continue
+        if (String(v.from?.id ?? '') === IG_ACCOUNT_ID) continue
         await processComment(
           String(v.id),
           String(v.media?.id ?? ''),
@@ -227,8 +237,6 @@ export async function processComment(
 ): Promise<void> {
   try {
     // ── 0. Hard guard: never process our own Page/account comments ────────────
-    const FB_PAGE_ID = '532091973485208'
-    const IG_ACCOUNT_ID = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID ?? '17841404690443540'
     if (fromId === FB_PAGE_ID || fromId === IG_ACCOUNT_ID) {
       console.log(`[${channel}] Ignoring own-account comment — self-reply loop guard`)
       return
@@ -403,11 +411,41 @@ export async function sendCommentReply(
 // ── Shared processor ──────────────────────────────────────────────────────────
 
 export async function processSocialMessage(
-  senderId: string,
-  text:     string,
-  channel:  'FACEBOOK' | 'INSTAGRAM',
+  senderId:  string,
+  text:      string,
+  channel:   'FACEBOOK' | 'INSTAGRAM',
+  messageId?: string,
 ): Promise<void> {
   try {
+    // ── 0. Hard guard: never process our own Page/account as a "sender" ──────
+    // (self-reply loop guard — mirrors processComment's guard above. Not
+    // currently reachable in production since message_echoes isn't a
+    // subscribed webhook field, per live Graph API /app/subscriptions checks
+    // during the 2026-09-20 investigation — but the field-subscription state
+    // is external Meta configuration, not something this code controls, so
+    // the guard exists defensively rather than relying on that staying true.)
+    const ownAccountId = channel === 'FACEBOOK' ? FB_PAGE_ID : IG_ACCOUNT_ID
+    if (senderId === ownAccountId) {
+      console.log(`[${channel}] Ignoring own-account message event — self-reply loop guard`)
+      return
+    }
+
+    // ── 1. Idempotency: skip if we've already processed this exact message ───
+    // Meta delivers webhooks at-least-once — a retried delivery of the same
+    // messaging event must not create a second stored message, a second AI
+    // reply, or a second staff escalation. Mirrors processComment's
+    // commentId-marker pattern (metadata JSON, no schema change required).
+    if (messageId) {
+      const marker = `"messageId":"${messageId}"`
+      const alreadyProcessed = await prisma.aiMessage.findFirst({
+        where: { metadata: { contains: marker } },
+      })
+      if (alreadyProcessed) {
+        console.log(`[${channel}] Duplicate webhook — messageId ${messageId} already processed, skipping`)
+        return
+      }
+    }
+
     const config    = await prisma.aiAgentConfig.findFirst()
     const dmToken   = channel === 'FACEBOOK'
       ? (config?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || null)
@@ -457,7 +495,10 @@ export async function processSocialMessage(
     })
 
     await prisma.aiMessage.create({
-      data: { conversationId: conversation.id, role: 'USER', content: text },
+      data: {
+        conversationId: conversation.id, role: 'USER', content: text,
+        metadata: messageId ? JSON.stringify({ messageId }) : undefined,
+      },
     })
 
     // Creating a message does NOT bump the parent conversation's updatedAt —

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { RefreshCw, Loader2, BarChart2, DollarSign, MessageSquare, AlertCircle, Cpu, HeartPulse, CreditCard, ClipboardCheck, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -36,8 +36,10 @@ interface OperationalVolume {
 }
 
 interface DataPoint  { start: number; end: number; volume: number; cost?: number }
+interface WabaPhoneNumber { id: string; displayPhoneNumber: string; verifiedName: string | null }
 interface WabaUsage  {
-  wabaName: string; phone: string
+  wabaId: string
+  phoneNumbers: WabaPhoneNumber[]
   daily: DataPoint[]
   thisMonth: { volume: number; cost: number }
   lastMonth: { volume: number; cost: number }
@@ -55,7 +57,7 @@ interface Analytics {
   channelStatus?: Record<string, ChannelStatus>
   operational?: OperationalVolume
   range?: AiUsageRange
-  meta: { uganda: WabaUsage; kenya: WabaUsage; cachedAt: string } | null
+  meta: { account: WabaUsage | null; configured: boolean; cachedAt: string } | null
   digitalocean: DoBalance | { notConfigured: true }
   cachedAt: string
 }
@@ -118,14 +120,29 @@ interface CreditLine {
   creditAvailable: { amount: string; currency: string } | null
   isAccessRevoked: boolean | null
 }
+interface MetaPhoneNumberStatus {
+  displayPhoneNumber: string | null
+  verifiedName: string | null
+  qualityRating: string | null
+  codeVerificationStatus: string | null
+  nameStatus: string | null
+}
+interface MetaTemplateSummary {
+  approvedCount: number; pendingCount: number; rejectedCount: number; totalCount: number
+}
 interface MetaBillingStatus {
   billingStatus: 'HEALTHY' | 'ATTENTION_REQUIRED' | 'UNKNOWN'
+  wabaConfigured: boolean
   wabaAccountReviewStatus: string | null
+  phoneNumber: MetaPhoneNumberStatus | null
+  templates: MetaTemplateSummary | null
   creditLines: CreditLine[]
   creditLinesNote: string
   recent131042: boolean
   recent131042Within24h: boolean
+  latestPaymentError: { code: number; title: string; occurredAt: string } | null
   adminActionUrl: string | null
+  billingDataNote: string
   fetchedAt: string
   graphApiError: string | null
 }
@@ -135,6 +152,29 @@ interface CrmReadinessSummary {
   sequenceDefinitionCount: number; activeSequenceDefinitionCount: number
   staleUnassignedLeadCount: number
   reviewRequestConfigured: boolean
+}
+
+// ── Meta Integration Health (Facebook/Instagram/WhatsApp webhook + permission evidence) ──
+
+interface AppSubscriptionInfo { object: string; callbackUrl: string | null; active: boolean | null; fields: string[] }
+interface PermissionCheck { permission: string; requiredByFeature: string; granted: boolean | 'UNKNOWN' }
+interface MetaIntegrationDiagnostics {
+  appConfigured: boolean
+  appSubscriptions: AppSubscriptionInfo[] | null
+  pageSubscribedToApp: boolean | null
+  pageSubscribedFields: string[] | null
+  pageReachable: boolean | null
+  pageName: string | null
+  instagramReachable: boolean | null
+  instagramUsername: string | null
+  whatsappPhoneSubscribed: boolean | null
+  permissionChecks: PermissionCheck[]
+  graphApiError: string | null
+}
+interface ChannelIngestionStatus { channel: string; lastInboundEventAt: string | null; evidence: 'RECENT' | 'STALE' | 'NONE' }
+interface MetaIntegrationHealth {
+  diagnostics: MetaIntegrationDiagnostics
+  ingestion: Record<string, ChannelIngestionStatus>
 }
 
 const AI_USAGE_RANGES: { key: AiUsageRange; label: string }[] = [
@@ -256,8 +296,15 @@ function MetaWabaCard({ data, label }: { data: WabaUsage; label: string }) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">{label}</p>
-          <p className="text-xs font-bold text-gray-700 dark:text-white mt-0.5">{data.wabaName}</p>
-          <p className="text-[10px] text-gray-400 dark:text-white/30">{data.phone}</p>
+          {data.phoneNumbers.length > 0 ? (
+            data.phoneNumbers.map(p => (
+              <p key={p.id} className="text-[10px] text-gray-500 dark:text-white/40">
+                <span className="font-bold text-gray-700 dark:text-white">{p.verifiedName ?? 'Unnamed'}</span> · {p.displayPhoneNumber}
+              </p>
+            ))
+          ) : (
+            <p className="text-[10px] text-gray-400 dark:text-white/30">Phone numbers unavailable</p>
+          )}
         </div>
         <div className="text-right">
           <p className="text-2xl font-black text-gray-800 dark:text-white leading-none">{data.thisMonth.volume.toLocaleString()}</p>
@@ -548,7 +595,18 @@ function WhatsAppHealthCard({ data, loading, isAdmin }: { data: WhatsAppDelivery
   )
 }
 
-// ── Meta Billing card (Admin-only — financial account data) ────────────────
+// ── WhatsApp / Meta Status card (Admin-only) ────────────────────────────────
+// Redesigned 2026-09-20: this used to be titled "Meta Billing" and rendered
+// Marketing API credit-line entities ("Ajua Inc.", "LeadConnector LLC") as
+// bold entity-name-plus-balance rows indistinguishable from real financial
+// line items, with only a 9px footnote explaining they weren't actually
+// WhatsApp billing. Meta does not expose a real WhatsApp outstanding-balance
+// figure to this token (payment_methods/adaccounts/funding all return
+// permission-denied — see meta-billing.service.ts) — so this card now leads
+// with verified, operationally useful status (account/phone/templates/
+// payment-eligibility) and demotes the credit-line data to its own small,
+// explicitly-labeled, visually muted section at the bottom, never implying
+// it's Code Clinic's own WhatsApp bill.
 
 const BILLING_STYLE: Record<MetaBillingStatus['billingStatus'], { label: string; pill: string }> = {
   HEALTHY:             { label: 'Healthy',             pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
@@ -556,11 +614,20 @@ const BILLING_STYLE: Record<MetaBillingStatus['billingStatus'], { label: string;
   UNKNOWN:             { label: 'Unknown',              pill: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40' },
 }
 
+function StatusRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between text-[11px] py-1.5">
+      <span className="text-gray-400 dark:text-white/40">{label}</span>
+      <span className="font-bold text-gray-700 dark:text-white/80">{value}</span>
+    </div>
+  )
+}
+
 function MetaBillingCard({ data, loading }: { data: MetaBillingStatus | null; loading: boolean }) {
   return (
     <section>
       <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
-        <CreditCard size={10} /> Meta Billing (Admin only)
+        <CreditCard size={10} /> WhatsApp / Meta Status (Admin only)
       </p>
       <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
         {loading || !data ? (
@@ -568,12 +635,18 @@ function MetaBillingCard({ data, loading }: { data: MetaBillingStatus | null; lo
         ) : (
           <>
             <span className={cn('inline-flex items-center px-2.5 py-1.5 rounded-xl text-xs font-bold w-fit', BILLING_STYLE[data.billingStatus].pill)}>
-              Billing status: {BILLING_STYLE[data.billingStatus].label}
+              Messaging health: {BILLING_STYLE[data.billingStatus].label}
             </span>
 
-            {data.recent131042Within24h && (
+            {/* ── Payment / Eligibility — the ONLY red-alert section, and only when Meta actually reports one ── */}
+            {data.recent131042Within24h && data.latestPaymentError ? (
               <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-700/30 rounded-xl text-sm text-red-600 dark:text-red-400">
-                <p className="font-bold flex items-center gap-1.5"><AlertCircle size={14} /> WhatsApp delivery is currently affected by a Meta billing/payment issue.</p>
+                <p className="font-bold flex items-center gap-1.5">
+                  <AlertCircle size={14} /> Meta has blocked WhatsApp delivery — #{data.latestPaymentError.code} {data.latestPaymentError.title}
+                </p>
+                <p className="text-xs mt-1 text-red-500/90 dark:text-red-400/80">
+                  Meta reports a business eligibility/payment condition on the production WhatsApp account. This is not something Code Clinic can resolve in-app.
+                </p>
                 {data.adminActionUrl && (
                   <a href={data.adminActionUrl} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 mt-2 text-xs font-bold underline">
@@ -581,33 +654,68 @@ function MetaBillingCard({ data, loading }: { data: MetaBillingStatus | null; lo
                   </a>
                 )}
               </div>
-            )}
+            ) : data.recent131042 ? (
+              <p className="text-[10px] text-gray-400 dark:text-white/40">
+                A payment/eligibility error (#{data.latestPaymentError?.code}) occurred previously but not in the last 24 hours — not currently treated as an active incident.
+              </p>
+            ) : null}
 
-            {data.creditLines.length > 0 ? (
-              <div className="space-y-2">
-                {data.creditLines.map(cl => (
-                  <div key={cl.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/5 rounded-xl text-sm">
-                    <div>
-                      <p className="font-bold text-gray-700 dark:text-white/80">{cl.legalEntityName ?? cl.id}</p>
-                      {cl.isAccessRevoked && <p className="text-[10px] text-red-400 font-bold uppercase">Access revoked</p>}
+            {/* ── WhatsApp Business Account ── */}
+            <div className="pt-2 border-t border-gray-100 dark:border-white/10">
+              <StatusRow label="WhatsApp Business Account" value={data.wabaConfigured ? 'Configured' : 'Not configured'} />
+              {data.wabaAccountReviewStatus && <StatusRow label="Account review status" value={data.wabaAccountReviewStatus} />}
+            </div>
+
+            {/* ── Phone Number ── */}
+            <div className="pt-2 border-t border-gray-100 dark:border-white/10">
+              {data.phoneNumber ? (
+                <>
+                  <StatusRow label="Production number" value={data.phoneNumber.displayPhoneNumber ?? '—'} />
+                  <StatusRow label="Verified name" value={data.phoneNumber.verifiedName ?? '—'} />
+                  {data.phoneNumber.qualityRating && <StatusRow label="Quality rating" value={data.phoneNumber.qualityRating} />}
+                </>
+              ) : (
+                <StatusRow label="Production number" value="Unavailable" />
+              )}
+            </div>
+
+            {/* ── Templates ── */}
+            <div className="pt-2 border-t border-gray-100 dark:border-white/10">
+              {data.templates ? (
+                <>
+                  <StatusRow label="Approved templates" value={data.templates.approvedCount} />
+                  {data.templates.pendingCount > 0 && <StatusRow label="Pending review" value={data.templates.pendingCount} />}
+                  {data.templates.rejectedCount > 0 && <StatusRow label="Rejected" value={data.templates.rejectedCount} />}
+                </>
+              ) : (
+                <StatusRow label="Templates" value="Unavailable" />
+              )}
+            </div>
+
+            {/* ── Billing data — honest, never fabricated ── */}
+            <p className="text-[10px] text-gray-400 dark:text-white/40 leading-relaxed pt-2 border-t border-gray-100 dark:border-white/10">
+              {data.billingDataNote}
+            </p>
+
+            {/* ── Marketing API credit lines — explicitly NOT WhatsApp billing ── */}
+            {data.creditLines.length > 0 && (
+              <div className="pt-2 border-t border-gray-100 dark:border-white/10">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-300 dark:text-white/20 mb-2">
+                  Marketing API Credit Lines (not WhatsApp billing)
+                </p>
+                <div className="space-y-1.5">
+                  {data.creditLines.map(cl => (
+                    <div key={cl.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-white/5 rounded-lg text-[11px] opacity-70">
+                      <span className="text-gray-500 dark:text-white/50">{cl.legalEntityName ?? cl.id}{cl.isAccessRevoked ? ' · access revoked' : ''}</span>
+                      <span className="text-gray-500 dark:text-white/50">{cl.balance ? `${cl.balance.amount} ${cl.balance.currency}` : '—'}</span>
                     </div>
-                    <div className="text-right">
-                      <p className="font-black text-gray-800 dark:text-white">{cl.balance ? `${cl.balance.amount} ${cl.balance.currency}` : '—'}</p>
-                      <p className="text-[9px] text-gray-400 dark:text-white/40">balance</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 text-sm text-gray-400 dark:text-white/40">
-                <AlertCircle size={15} className="text-amber-400 flex-shrink-0" />
-                <p>Not available through API{data.graphApiError ? ` (${data.graphApiError})` : ''}</p>
+                  ))}
+                </div>
+                <p className="text-[9px] text-gray-300 dark:text-white/20 mt-1.5 leading-relaxed">{data.creditLinesNote}</p>
               </div>
             )}
-
-            <p className="text-[9px] text-gray-300 dark:text-white/20 leading-relaxed">{data.creditLinesNote}</p>
-            {data.wabaAccountReviewStatus && (
-              <p className="text-[10px] text-gray-400 dark:text-white/40">WABA account review status: <span className="font-bold">{data.wabaAccountReviewStatus}</span></p>
+            {data.graphApiError && (
+              <p className="text-[9px] text-gray-300 dark:text-white/20">Graph API note: {data.graphApiError}</p>
             )}
           </>
         )}
@@ -656,6 +764,104 @@ function CrmReadinessCard({ data, loading }: { data: CrmReadinessSummary | null;
   )
 }
 
+// ── Meta Integration Health (Admin-only) ────────────────────────────────────
+// Built 2026-09-20 for the Facebook/Instagram ingestion investigation.
+// Every value shown is either a real Graph API read or a real DB read —
+// "Connected" is never shown merely because a credential exists, and a
+// quiet channel is never reported as failed without real evidence either
+// way (see ChannelIngestionStatus.evidence === 'NONE' → "No recent inbound
+// event available for verification").
+
+function fmtEvidence(status: ChannelIngestionStatus | undefined): { label: string; className: string } {
+  if (!status || status.evidence === 'NONE') {
+    return { label: 'No recent inbound event available for verification', className: 'text-gray-400 dark:text-white/40' }
+  }
+  if (status.evidence === 'RECENT') {
+    return { label: `Last event ${fmtDateTime(status.lastInboundEventAt)}`, className: 'text-emerald-600 dark:text-emerald-400' }
+  }
+  return { label: `Last event ${fmtDateTime(status.lastInboundEventAt)} (stale)`, className: 'text-amber-600 dark:text-amber-400' }
+}
+
+function BoolBadge({ value }: { value: boolean | null }) {
+  if (value === null) return <span className="text-[10px] text-gray-400 dark:text-white/40">Unknown</span>
+  return value
+    ? <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Yes</span>
+    : <span className="text-[10px] font-bold text-red-500 dark:text-red-400">No</span>
+}
+
+function MetaIntegrationHealthCard({ data, loading }: { data: MetaIntegrationHealth | null; loading: boolean }) {
+  const d = data?.diagnostics
+  const pageSub = d?.appSubscriptions?.find(s => s.object === 'page') ?? null
+  const igSub   = d?.appSubscriptions?.find(s => s.object === 'instagram') ?? null
+
+  return (
+    <section>
+      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
+        <HeartPulse size={10} /> Meta Integration Health — Facebook &amp; Instagram (Admin only)
+      </p>
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-5">
+        {loading || !d ? (
+          <div className="flex items-center justify-center py-10"><Loader2 size={20} className="animate-spin text-cyan-500" /></div>
+        ) : (
+          <>
+            {/* ── Facebook ── */}
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-white/50 mb-2">Facebook</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                <div><span className="text-gray-400 dark:text-white/40 block">Page reachable</span><BoolBadge value={d.pageReachable} /></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">App subscribed</span><BoolBadge value={pageSub?.active ?? null} /></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">Page subscribed to app</span><BoolBadge value={d.pageSubscribedToApp} /></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">Callback URL</span><span className="font-mono text-[9px] text-gray-500 dark:text-white/50 break-all">{pageSub?.callbackUrl ?? 'unknown'}</span></div>
+              </div>
+              <div className="mt-2 space-y-1">
+                <p className={cn('text-[10px]', fmtEvidence(data.ingestion.FACEBOOK).className)}>DMs — {fmtEvidence(data.ingestion.FACEBOOK).label}</p>
+                <p className={cn('text-[10px]', fmtEvidence(data.ingestion.FACEBOOK_COMMENT).className)}>Comments — {fmtEvidence(data.ingestion.FACEBOOK_COMMENT).label}</p>
+              </div>
+            </div>
+
+            {/* ── Instagram ── */}
+            <div className="pt-3 border-t border-gray-100 dark:border-white/10">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-white/50 mb-2">Instagram {d.instagramUsername && <span className="font-normal normal-case text-gray-400">· @{d.instagramUsername}</span>}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                <div><span className="text-gray-400 dark:text-white/40 block">Account reachable</span><BoolBadge value={d.instagramReachable} /></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">App subscribed</span><BoolBadge value={igSub?.active ?? null} /></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">Subscribed fields</span><span className="text-gray-600 dark:text-white/60">{igSub?.fields?.join(', ') || 'unknown'}</span></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">Callback URL</span><span className="font-mono text-[9px] text-gray-500 dark:text-white/50 break-all">{igSub?.callbackUrl ?? 'unknown'}</span></div>
+              </div>
+              <div className="mt-2 space-y-1">
+                <p className={cn('text-[10px]', fmtEvidence(data.ingestion.INSTAGRAM).className)}>DMs — {fmtEvidence(data.ingestion.INSTAGRAM).label}</p>
+                <p className={cn('text-[10px]', fmtEvidence(data.ingestion.INSTAGRAM_COMMENT).className)}>Comments — {fmtEvidence(data.ingestion.INSTAGRAM_COMMENT).label}</p>
+              </div>
+            </div>
+
+            {/* ── Permissions ── */}
+            <div className="pt-3 border-t border-gray-100 dark:border-white/10">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-white/50 mb-2">Permissions</p>
+              <div className="space-y-1">
+                {d.permissionChecks.map(p => (
+                  <div key={p.permission} className="flex items-center justify-between text-[11px]">
+                    <span className="text-gray-500 dark:text-white/50">{p.permission} <span className="text-gray-300 dark:text-white/20">— {p.requiredByFeature}</span></span>
+                    {p.granted === 'UNKNOWN'
+                      ? <span className="text-[10px] text-gray-400 dark:text-white/40">Unknown</span>
+                      : <BoolBadge value={p.granted} />}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {d.graphApiError && (
+              <p className="text-[9px] text-gray-300 dark:text-white/20 pt-2 border-t border-gray-100 dark:border-white/10">Graph API note: {d.graphApiError}</p>
+            )}
+            <p className="text-[9px] text-gray-300 dark:text-white/20">
+              &quot;App subscribed&quot; reflects Meta&apos;s app-level webhook configuration. &quot;Page subscribed to app&quot; confirms this specific Page opted into receiving from it — both must be true for events to arrive.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const CHANNEL_ORDER = ['WHATSAPP', 'WEBSITE', 'FACEBOOK', 'FACEBOOK_COMMENT', 'INSTAGRAM', 'INSTAGRAM_COMMENT', 'SMS']
@@ -684,6 +890,8 @@ export default function AnalyticsPage() {
   const [metaBillingLoading, setMetaBillingLoading] = useState(true)
   const [crmReadiness, setCrmReadiness]           = useState<CrmReadinessSummary | null>(null)
   const [crmReadinessLoading, setCrmReadinessLoading] = useState(true)
+  const [metaIntegrationHealth, setMetaIntegrationHealth]               = useState<MetaIntegrationHealth | null>(null)
+  const [metaIntegrationHealthLoading, setMetaIntegrationHealthLoading] = useState(true)
 
   function authH() {
     const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
@@ -755,6 +963,18 @@ export default function AnalyticsPage() {
     }
   }
 
+  async function loadMetaIntegrationHealth() {
+    setMetaIntegrationHealthLoading(true)
+    try {
+      const res = await fetch(`${API}/ai-suite/meta-integration-health`, { headers: authH() })
+      setMetaIntegrationHealth(res.ok ? await res.json() : null)
+    } catch {
+      setMetaIntegrationHealth(null)
+    } finally {
+      setMetaIntegrationHealthLoading(false)
+    }
+  }
+
   useEffect(() => {
     loadWhatsappHealth()
     try {
@@ -777,6 +997,7 @@ export default function AnalyticsPage() {
       loadAiUsage(aiUsageRange)
       loadMetaBilling()
       loadCrmReadiness()
+      loadMetaIntegrationHealth()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, aiUsageRange])
@@ -900,20 +1121,31 @@ export default function AnalyticsPage() {
           {/* ── CRM configuration readiness (Admin only) ── */}
           {isAdmin && <CrmReadinessCard data={crmReadiness} loading={crmReadinessLoading} />}
 
-          {/* ── Meta WhatsApp API view ─────────────────── */}
+          {/* ── Meta Integration Health — Facebook/Instagram webhook + permission evidence (Admin only) ── */}
+          {isAdmin && <MetaIntegrationHealthCard data={metaIntegrationHealth} loading={metaIntegrationHealthLoading} />}
+
+          {/* ── Meta WhatsApp API usage ─────────────────── */}
           {data.meta && (
             <section>
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
-                <MessageSquare size={10} /> WhatsApp — Meta billing view
+                <MessageSquare size={10} /> WhatsApp — Meta Cloud API usage
               </p>
               <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <MetaWabaCard data={data.meta.uganda} label="Main Clinic (Uganda)" />
-                  <MetaWabaCard data={data.meta.kenya}  label="Kenya (test WABA)" />
-                </div>
-                <p className="text-[9px] text-gray-300 dark:text-white/20 mt-3 leading-relaxed">
-                  Via Meta pricing_analytics API · Uganda routes through Africa&apos;s Talking so direct cost isn&apos;t exposed · Kenya uses Meta Cloud API directly · $0.00 = utility messages within 24-hour service window
-                </p>
+                {data.meta.account ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-3">
+                      <MetaWabaCard data={data.meta.account} label="Production WhatsApp Business Account" />
+                    </div>
+                    <p className="text-[9px] text-gray-300 dark:text-white/20 mt-3 leading-relaxed">
+                      Via Meta pricing_analytics API, direct Meta Cloud API (no third-party routing) · figures cover every phone number registered on this account — Meta does not expose a per-number cost split · $0.00 = utility messages within 24-hour service window
+                    </p>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-3 text-sm text-gray-400 dark:text-white/40">
+                    <AlertCircle size={15} className="text-amber-400 flex-shrink-0" />
+                    <p>WHATSAPP_WABA_ID not configured — usage data unavailable.</p>
+                  </div>
+                )}
               </div>
             </section>
           )}

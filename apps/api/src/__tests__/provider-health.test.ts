@@ -27,7 +27,7 @@ const { prismaMock, staleLeadsByOwnerMock } = vi.hoisted(() => ({
 vi.mock('../lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('../crm-automation/reporting.service', () => ({ staleLeadsByOwner: staleLeadsByOwnerMock }))
 
-import { getWhatsAppDeliveryHealth, getStaffEscalationHealth, getCrmReadinessSummary } from '../services/provider-health.service'
+import { getWhatsAppDeliveryHealth, getStaffEscalationHealth, getCrmReadinessSummary, getChannelIngestionHealth } from '../services/provider-health.service'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -212,5 +212,37 @@ describe('getCrmReadinessSummary — real configuration counts, not hardcoded', 
     prismaMock.reviewRequestConfig.findFirst.mockResolvedValue(null)
     const readiness = await getCrmReadinessSummary()
     expect(readiness.reviewRequestConfigured).toBe(false)
+  })
+})
+
+describe('getChannelIngestionHealth — per-channel real ingestion evidence, never conflated with Meta-side status', () => {
+  it('reports NONE when a channel has never had an inbound message', async () => {
+    prismaMock.aiMessage.findFirst.mockResolvedValue(null)
+    const [status] = await getChannelIngestionHealth(['INSTAGRAM'])
+    expect(status).toEqual({ channel: 'INSTAGRAM', lastInboundEventAt: null, evidence: 'NONE' })
+  })
+
+  it('reports RECENT for an inbound message within the last 48 hours', async () => {
+    const recent = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    prismaMock.aiMessage.findFirst.mockResolvedValue({ createdAt: recent })
+    const [status] = await getChannelIngestionHealth(['FACEBOOK'])
+    expect(status.evidence).toBe('RECENT')
+    expect(status.lastInboundEventAt).toBe(recent.toISOString())
+  })
+
+  it('reports STALE for an inbound message older than 48 hours — real evidence exists, just not recent', async () => {
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    prismaMock.aiMessage.findFirst.mockResolvedValue({ createdAt: old })
+    const [status] = await getChannelIngestionHealth(['FACEBOOK_COMMENT'])
+    expect(status.evidence).toBe('STALE')
+  })
+
+  it('queries each requested channel independently, scoped by conversation.channel', async () => {
+    prismaMock.aiMessage.findFirst.mockResolvedValue(null)
+    await getChannelIngestionHealth(['WHATSAPP', 'INSTAGRAM_COMMENT'])
+    const channelsQueried = prismaMock.aiMessage.findFirst.mock.calls.map(
+      (c: any[]) => c[0].where.conversation.channel
+    )
+    expect(channelsQueried).toEqual(['WHATSAPP', 'INSTAGRAM_COMMENT'])
   })
 })
