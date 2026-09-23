@@ -115,7 +115,7 @@ function summariseMonth(points: DataPoint[], year: number, month: number) {
   }
 }
 
-async function buildUsage(token: string): Promise<UsageCache> {
+export async function buildUsage(token: string): Promise<UsageCache> {
   const now = new Date()
   const wabaId = getWhatsAppWabaId()
   if (!wabaId) {
