@@ -4,8 +4,22 @@ import { clearBookingState } from '../booking/booking.state'
 import { sendWhatsAppMessage } from './whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { phoneVariants } from '../../utils/phone'
+import { getClinicEscalationWhatsAppNumber } from '../../config/escalation-config'
 
-export const STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
+// Evaluated once at module load for use in webhook routing comparisons
+// (inbound-from-staff detection) and outbound relay replies. A throw here
+// would crash server boot, which is worse than the previous always-defined
+// behavior, so an invalid config falls back to the same owner-approved
+// default getClinicEscalationWhatsAppNumber() itself falls back to — this
+// catch only fires if someone actively misconfigures the env var.
+export const STAFF_NUMBER = (() => {
+  try {
+    return getClinicEscalationWhatsAppNumber()
+  } catch (e: any) {
+    console.error('[StaffRelay] Cannot resolve clinic escalation WhatsApp number, using fallback:', e.message)
+    return '+256394836298'
+  }
+})()
 
 export interface AlertMeta {
   alertMessageId: string | null

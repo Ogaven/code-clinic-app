@@ -2,6 +2,7 @@ import { prisma } from '../../../lib/prisma'
 import { phoneVariants } from '../../../utils/phone'
 import { sendPushToUser } from '../../push.service'
 import { sendStaffSMS } from '../../../ai-suite/sms/sms.service'
+import { getClinicEscalationWhatsAppNumber } from '../../../config/escalation-config'
 
 // ── Emergency keyword detection ────────────────────────────────
 
@@ -141,7 +142,12 @@ export async function isWithinStaffSessionWindow(staffPhone: string): Promise<bo
 }
 
 export async function notifyJulian(patientPhone: string, patientMessage: string): Promise<void> {
-  const staffPhone = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
+  let staffPhone: string | null = null
+  try {
+    staffPhone = getClinicEscalationWhatsAppNumber()
+  } catch (e: any) {
+    console.error('[Escalation] Cannot resolve clinic escalation WhatsApp number:', e.message)
+  }
   const freeformBody =
     `🚨 Code Clinic Alert — Patient needs your attention.\n\n` +
     `📞 Phone: ${patientPhone}\n` +
@@ -150,6 +156,7 @@ export async function notifyJulian(patientPhone: string, patientMessage: string)
 
   let waSucceeded = false
   try {
+    if (!staffPhone) throw new Error('No valid clinic escalation WhatsApp number configured')
     // Dynamic import avoids circular dependency (whatsapp.service → escalation → whatsapp.service)
     const { sendWhatsAppMessage, sendWhatsAppTemplate } = await import('../../../ai-suite/whatsapp/whatsapp.service')
     const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
@@ -195,12 +202,14 @@ export async function notifyJulian(patientPhone: string, patientMessage: string)
 
   // Always attempt SMS too — independent channel, doesn't share WhatsApp's failure modes.
   let smsSucceeded = false
-  try {
-    await sendStaffSMS(staffPhone, freeformBody)
-    smsSucceeded = true
-    console.log(`[Escalation] Staff notified via SMS about ${patientPhone}`)
-  } catch (smsErr: any) {
-    console.error('[Escalation] SMS fallback failed:', smsErr.message)
+  if (staffPhone) {
+    try {
+      await sendStaffSMS(staffPhone, freeformBody)
+      smsSucceeded = true
+      console.log(`[Escalation] Staff notified via SMS about ${patientPhone}`)
+    } catch (smsErr: any) {
+      console.error('[Escalation] SMS fallback failed:', smsErr.message)
+    }
   }
 
   // Last resort: if BOTH WhatsApp and SMS failed (Meta billing/window issues,
