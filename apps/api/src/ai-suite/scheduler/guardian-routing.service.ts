@@ -2,6 +2,7 @@ import { prisma } from '../../lib/prisma'
 import { getGreetingName, isMinor } from '../../utils/nameHelper'
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { isWithinStaffSessionWindow, notifyStaffInApp } from '../../services/agent/guards/escalation'
+import { getClinicEscalationWhatsAppNumber } from '../../config/escalation-config'
 
 export type PatientForRouting = {
   id: string
@@ -107,7 +108,12 @@ export async function alertStaffMinorNoGuardian(
   messageType: string,
   patientPhone?: string,
 ): Promise<void> {
-  const staffNum = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
+  let staffNum: string | null = null
+  try {
+    staffNum = getClinicEscalationWhatsAppNumber()
+  } catch (e: any) {
+    console.error('[GuardianRouting] Cannot resolve clinic escalation WhatsApp number:', e.message)
+  }
   const reason = `${messageType} could not be sent — no guardian contact on file, please add guardian info and follow up manually`
   const msg = `⚠️ ${patientFullName} is a minor with no guardian contact on file — a ${messageType} could not be sent. Please add guardian info and follow up manually.`
 
@@ -134,9 +140,9 @@ export async function alertStaffMinorNoGuardian(
   // when absent, "N/A" is an honest placeholder rather than a fabricated
   // or mislabelled value.
   const templateName = process.env.WA_TEMPLATE_STAFF_ALERT_NAME
-  const withinWindow = await isWithinStaffSessionWindow(staffNum)
+  const withinWindow = staffNum ? await isWithinStaffSessionWindow(staffNum) : false
   let sent = false
-  if (templateName) {
+  if (staffNum && templateName) {
     try {
       await sendWhatsAppTemplate(staffNum, templateName, [patientFullName, patientPhone || 'N/A', reason])
       sent = true
@@ -151,14 +157,14 @@ export async function alertStaffMinorNoGuardian(
         }
       }
     }
-  } else if (withinWindow) {
+  } else if (staffNum && withinWindow) {
     try {
       await sendWhatsAppMessage(staffNum, msg)
       sent = true
     } catch (err: any) {
       console.error(`[GuardianRouting] Staff alert failed for ${patientFullName}:`, err.message)
     }
-  } else {
+  } else if (staffNum) {
     console.warn(`[GuardianRouting] BLOCKED_TEMPLATE_REQUIRED for ${patientFullName} — outside the 24h WhatsApp session window and no WA_TEMPLATE_STAFF_ALERT_NAME configured. No freeform send attempted.`)
   }
 

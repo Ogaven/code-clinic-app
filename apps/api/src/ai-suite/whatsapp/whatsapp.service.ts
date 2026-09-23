@@ -9,6 +9,7 @@ import { classifyConfirmationReply, findPendingConfirmation, applyConfirmationRe
 import { sendPushToUser } from '../../services/push.service'
 import { findOrCreateLeadForChannel } from '../../crm-automation/lead-intake.service'
 import { exitActiveEnrollments } from '../../crm-automation/automation-events.service'
+import { getClinicEscalationWhatsAppNumber } from '../../config/escalation-config'
 
 // ── Whole-word/phrase matching for reminder-reply intent detection ────────────
 // A real appointment was auto-cancelled (2026-08-24, Auntie Loy) because her
@@ -313,11 +314,11 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
       // doomed freeform send, and always fall back to the in-app notification
       // centre + push so the lead alert is never silently lost.
       ;(async () => {
-        const staffNumber = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
         const preview      = text.slice(0, 200)
         const leadBody      = `🔔 Lead enquiry\nPhone: ${from}\nMessage: "${preview}"${text.length > 200 ? '…' : ''}\n\nPlease follow up in the AI Suite inbox.`
         let waSucceeded = false
         try {
+          const staffNumber = getClinicEscalationWhatsAppNumber()
           const withinWindow = await isWithinStaffSessionWindow(staffNumber)
           if (withinWindow) {
             await sendWhatsAppMessage(staffNumber, leadBody)

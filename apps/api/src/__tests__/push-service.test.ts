@@ -26,6 +26,14 @@ const { prismaMock } = vi.hoisted(() => ({
     pushSubscription: {
       findMany: vi.fn(),
       delete: vi.fn().mockResolvedValue({}),
+      count: vi.fn().mockResolvedValue(1),
+    },
+    notification: {
+      create: vi.fn().mockResolvedValue({}),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    user: {
+      findUnique: vi.fn().mockResolvedValue({ role: 'ADMIN' }),
     },
   },
 }))
@@ -137,5 +145,85 @@ describe('sendPushToUser', () => {
     const { sendPushToUser } = await loadWithEnv(VAPID)
 
     await expect(sendPushToUser('user-1', { title: 't', body: 'b' })).resolves.toBeUndefined()
+  })
+})
+
+// A subscription dying (404/410) used to be handled with total silence once
+// deleted — the user got no signal their OS-level push had stopped working,
+// discoverable only by chance. This is the root cause found for "no push
+// notification for two days" in the 2026-09-23 urgent fix: the admin's only
+// subscription had silently expired. Now, the moment a user's LAST
+// subscription is cleaned up, a persistent in-app notice is recorded so the
+// next time they open the app for any reason, they see an actionable prompt.
+describe('sendPushToUser — push-exhaustion self-alert', () => {
+  const VAPID = { VAPID_PUBLIC_KEY: 'pub', VAPID_PRIVATE_KEY: 'priv', VAPID_SUBJECT: 'mailto:ops@codeclinicemr.com' }
+
+  it('records an in-app PROVIDER_HEALTH notice when an expired subscription was the user\'s last one', async () => {
+    prismaMock.pushSubscription.findMany.mockResolvedValueOnce([
+      { id: 'sub-dead', endpoint: 'https://push.example/dead', p256dh: 'p1', auth: 'a1' },
+    ])
+    prismaMock.pushSubscription.count.mockResolvedValueOnce(0) // none left after delete
+    sendNotificationMock.mockRejectedValueOnce({ statusCode: 410 })
+    const { sendPushToUser } = await loadWithEnv(VAPID)
+
+    await sendPushToUser('user-1', { title: 't', body: 'b' })
+
+    expect(prismaMock.notification.create).toHaveBeenCalledTimes(1)
+    const call = prismaMock.notification.create.mock.calls[0][0].data
+    expect(call.userId).toBe('user-1')
+    expect(call.type).toBe('PROVIDER_HEALTH')
+    expect(call.title).toContain('stopped working')
+  })
+
+  it('does NOT alert when the user still has other valid subscriptions remaining', async () => {
+    prismaMock.pushSubscription.findMany.mockResolvedValueOnce([
+      { id: 'sub-dead', endpoint: 'https://push.example/dead', p256dh: 'p1', auth: 'a1' },
+    ])
+    prismaMock.pushSubscription.count.mockResolvedValueOnce(1) // one other device still subscribed
+    sendNotificationMock.mockRejectedValueOnce({ statusCode: 410 })
+    const { sendPushToUser } = await loadWithEnv(VAPID)
+
+    await sendPushToUser('user-1', { title: 't', body: 'b' })
+
+    expect(prismaMock.notification.create).not.toHaveBeenCalled()
+  })
+
+  it('routes the RECEPTIONIST re-enable link to the receptionist-prefixed settings page', async () => {
+    prismaMock.pushSubscription.findMany.mockResolvedValueOnce([
+      { id: 'sub-dead', endpoint: 'https://push.example/dead', p256dh: 'p1', auth: 'a1' },
+    ])
+    prismaMock.pushSubscription.count.mockResolvedValueOnce(0)
+    prismaMock.user.findUnique.mockResolvedValueOnce({ role: 'RECEPTIONIST' })
+    sendNotificationMock.mockRejectedValueOnce({ statusCode: 410 })
+    const { sendPushToUser } = await loadWithEnv(VAPID)
+
+    await sendPushToUser('reception-1', { title: 't', body: 'b' })
+
+    const call = prismaMock.notification.create.mock.calls[0][0].data
+    expect(call.href).toBe('/receptionist/settings')
+  })
+
+  it('never throws out of the caller even if recording the exhaustion notice itself fails', async () => {
+    prismaMock.pushSubscription.findMany.mockResolvedValueOnce([
+      { id: 'sub-dead', endpoint: 'https://push.example/dead', p256dh: 'p1', auth: 'a1' },
+    ])
+    prismaMock.pushSubscription.count.mockResolvedValueOnce(0)
+    prismaMock.notification.create.mockRejectedValueOnce(new Error('db down'))
+    sendNotificationMock.mockRejectedValueOnce({ statusCode: 410 })
+    const { sendPushToUser } = await loadWithEnv(VAPID)
+
+    await expect(sendPushToUser('user-1', { title: 't', body: 'b' })).resolves.toBeUndefined()
+  })
+
+  it('does not blow up the dispatch loop if the remaining-count check itself throws', async () => {
+    prismaMock.pushSubscription.findMany.mockResolvedValueOnce([
+      { id: 'sub-dead', endpoint: 'https://push.example/dead', p256dh: 'p1', auth: 'a1' },
+    ])
+    prismaMock.pushSubscription.count.mockRejectedValueOnce(new Error('count not supported'))
+    sendNotificationMock.mockRejectedValueOnce({ statusCode: 410 })
+    const { sendPushToUser } = await loadWithEnv(VAPID)
+
+    await expect(sendPushToUser('user-1', { title: 't', body: 'b' })).resolves.toBeUndefined()
+    expect(prismaMock.pushSubscription.delete).toHaveBeenCalled() // deletion still happened despite the count failure
   })
 })
