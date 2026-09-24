@@ -176,6 +176,14 @@ router.get('/webhook', (req, res) => {
 
 // ── POST /ai-suite/webhook — inbound messages from Meta ──────────────────────────
 router.post('/webhook', async (req: Request, res: Response) => {
+  // See lib/webhook-signature.ts — rejects only once a real app secret is
+  // configured; today (no WHATSAPP_APP_SECRET set) this only logs a warning
+  // and never blocks live patient traffic.
+  if (checkMetaWebhookSignature(req, ['WHATSAPP_APP_SECRET', 'META_APP_SECRET'], 'WhatsApp') === 'REJECTED') {
+    res.sendStatus(403)
+    return
+  }
+
   // Temporary Harvest integration-test router. Only payloads addressed to the
   // explicit Harvest test phone-number ID leave Code Clinic. Everything else
   // continues through the existing Sarah workflow unchanged.
@@ -204,14 +212,6 @@ router.post('/webhook', async (req: Request, res: Response) => {
     res.sendStatus(200)
     return
   }
-  // See lib/webhook-signature.ts — rejects only once a real app secret is
-  // configured; today (no WHATSAPP_APP_SECRET set) this only logs a warning
-  // and never blocks live patient traffic.
-  if (checkMetaWebhookSignature(req, ['WHATSAPP_APP_SECRET', 'META_APP_SECRET'], 'WhatsApp') === 'REJECTED') {
-    res.sendStatus(403)
-    return
-  }
-
   // Never log the full raw payload — it carries patient message content,
   // phone numbers, and names. A structural summary is enough to debug
   // delivery/routing issues without writing patient data to application logs.
