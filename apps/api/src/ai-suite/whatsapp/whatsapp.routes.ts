@@ -176,6 +176,34 @@ router.get('/webhook', (req, res) => {
 
 // ── POST /ai-suite/webhook — inbound messages from Meta ──────────────────────────
 router.post('/webhook', async (req: Request, res: Response) => {
+  // Temporary Harvest integration-test router. Only payloads addressed to the
+  // explicit Harvest test phone-number ID leave Code Clinic. Everything else
+  // continues through the existing Sarah workflow unchanged.
+  const HARVEST_TEST_PHONE_NUMBER_ID = '1163288503545718'
+  const HARVEST_WEBHOOK_URL = 'https://pnzhpnptvynbqdcsqmqe.supabase.co/functions/v1/whatsapp-webhook'
+  const incomingPhoneNumberIds = (req.body?.entry ?? []).flatMap((entry: any) =>
+    (entry?.changes ?? []).map((change: any) => String(change?.value?.metadata?.phone_number_id ?? ''))
+  ).filter(Boolean)
+  const isHarvestTestTraffic = incomingPhoneNumberIds.length > 0 &&
+    incomingPhoneNumberIds.every((id: string) => id === HARVEST_TEST_PHONE_NUMBER_ID)
+
+  if (isHarvestTestTraffic) {
+    try {
+      const headers: Record<string, string> = { 'content-type': 'application/json' }
+      const signature = req.get('x-hub-signature-256')
+      if (signature) headers['x-hub-signature-256'] = signature
+      const forwarded = await fetch(HARVEST_WEBHOOK_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(req.body),
+      })
+      if (!forwarded.ok) console.error('[WhatsApp][HarvestRouter] Harvest webhook rejected payload', forwarded.status)
+    } catch (err: any) {
+      console.error('[WhatsApp][HarvestRouter] Forwarding failed:', err?.message ?? 'unknown error')
+    }
+    res.sendStatus(200)
+    return
+  }
   // See lib/webhook-signature.ts — rejects only once a real app secret is
   // configured; today (no WHATSAPP_APP_SECRET set) this only logs a warning
   // and never blocks live patient traffic.
