@@ -32,6 +32,10 @@ const envSchema = z.object({
   VAPID_PUBLIC_KEY:  z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT:     z.string().optional(),
+
+  // OneSignal — preferred staff push transport; existing VAPID remains as fallback during rollout
+  ONESIGNAL_APP_ID:       z.string().optional(),
+  ONESIGNAL_REST_API_KEY: z.string().optional(),
 })
 
 export type Env = z.infer<typeof envSchema>
