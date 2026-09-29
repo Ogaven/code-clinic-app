@@ -1,6 +1,7 @@
 import webpush from 'web-push'
 import { prisma } from '../lib/prisma'
 import { env } from '../lib/env'
+import { isOneSignalConfigured, sendOneSignalToUser } from './onesignal.service'
 
 const vapidConfigured = !!(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT)
 
@@ -70,6 +71,13 @@ async function alertUserPushSubscriptionsExhausted(userId: string): Promise<void
 // if that was the user's last subscription, alertUserPushSubscriptionsExhausted
 // records an in-app notice so the gap doesn't stay invisible.
 export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
+  // OneSignal is the preferred staff delivery layer. During rollout, legacy
+  // VAPID remains a fallback only when OneSignal is unavailable or rejects
+  // the send, preventing duplicate OS notifications on migrated devices.
+  if (isOneSignalConfigured()) {
+    const oneSignal = await sendOneSignalToUser(userId, payload)
+    if (oneSignal.accepted) return
+  }
   if (!vapidConfigured) return
 
   try {
@@ -114,6 +122,19 @@ export interface PushDispatchResult {
 // dispatch outcomes so the caller can report exactly what the push provider did,
 // rather than the fire-and-forget void that sendPushToUser returns.
 export async function sendTestPushToUser(userId: string): Promise<PushDispatchResult> {
+  if (isOneSignalConfigured()) {
+    const oneSignal = await sendOneSignalToUser(userId, {
+      title: 'Code Clinic notification test',
+      body: 'Notifications are working on this device.',
+    })
+    return {
+      targeted: 1,
+      succeeded: oneSignal.accepted ? 1 : 0,
+      expired: 0,
+      failed: oneSignal.accepted ? 0 : 1,
+    }
+  }
+
   const subs = await prisma.pushSubscription.findMany({ where: { userId } })
   const body = JSON.stringify({
     title: 'Code Clinic',
@@ -143,5 +164,5 @@ export async function sendTestPushToUser(userId: string): Promise<PushDispatchRe
 }
 
 export function isPushConfigured(): boolean {
-  return vapidConfigured
+  return isOneSignalConfigured() || vapidConfigured
 }

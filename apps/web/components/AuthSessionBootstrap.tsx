@@ -23,6 +23,7 @@
 import { useEffect } from 'react'
 import { refreshToken } from '@/lib/api'
 import { resyncPushSubscription } from '@/lib/push'
+import { initializeOneSignal } from '@/lib/onesignal'
 
 export default function AuthSessionBootstrap() {
   useEffect(() => {
@@ -31,6 +32,7 @@ export default function AuthSessionBootstrap() {
     if (isReturningSession()) {
       refreshToken()
       resyncPushSubscription()
+      initializeOneSignal()
     }
 
     function onVisibilityChange() {

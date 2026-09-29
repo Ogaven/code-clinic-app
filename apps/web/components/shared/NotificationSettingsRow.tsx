@@ -5,13 +5,13 @@
 // dropdown (components/layout/ProfileMenu.tsx) — one copy of the real
 // subscribe/unsubscribe flow so the two surfaces can't drift.
 //
-// Never auto-prompts — Notification.requestPermission() is only ever called
-// from inside subscribeToPush(), which this row invokes solely on tap.
+// Never auto-prompts — OneSignal's permission request is invoked only from
+// the explicit Enable Notifications user action.
 
 import { useEffect, useState } from 'react'
 import { Bell, BellOff, BellRing } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { subscribeToPush, unsubscribeFromPush, isPushSubscribed } from '@/lib/push'
+import { enableOneSignalNotifications, initializeOneSignal } from '@/lib/onesignal'
 import { getNotificationRowState } from '@/lib/notificationRowState'
 
 interface NotificationSettingsRowProps {
@@ -26,7 +26,6 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
   const [busy, setBusy] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
 
   useEffect(() => {
@@ -34,7 +33,8 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
     const hasPushApi = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window
     setSupported(hasNotificationApi && hasPushApi)
     if (hasNotificationApi) setPermission(Notification.permission)
-    isPushSubscribed().then(setSubscribed)
+    initializeOneSignal()
+    setSubscribed(hasNotificationApi && Notification.permission === 'granted')
 
     // iPadOS reports itself as "MacIntel" but is touch-only, unlike a real Mac.
     const ua = navigator.userAgent
@@ -43,10 +43,6 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
       window.matchMedia('(display-mode: standalone)').matches ||
       (navigator as unknown as { standalone?: boolean }).standalone === true
     )
-    try {
-      const u = JSON.parse(localStorage.getItem('cc_user') || '{}')
-      setIsAdmin(u.role === 'ADMIN')
-    } catch { setIsAdmin(false) }
   }, [])
 
   async function sendTest() {
@@ -66,16 +62,9 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
 
   async function enable() {
     setBusy(true)
-    const result = await subscribeToPush()
+    const ok = await enableOneSignalNotifications()
     if (typeof window !== 'undefined' && 'Notification' in window) setPermission(Notification.permission)
-    setSubscribed(result.ok)
-    setBusy(false)
-  }
-
-  async function disable() {
-    setBusy(true)
-    await unsubscribeFromPush()
-    setSubscribed(false)
+    setSubscribed(ok)
     setBusy(false)
   }
 
@@ -112,18 +101,16 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
         </div>
       ) : rowState === 'subscribed' ? (
         <>
-          <button onClick={disable} disabled={busy} className={buttonCls}>
-            <BellRing size={iconSize} className="text-emerald-500" /> {compact ? 'Notifications enabled' : 'Notifications enabled — tap to disable'}
-          </button>
-          {isAdmin && (
-            <button onClick={sendTest} disabled={testStatus === 'sending'} className={buttonCls}>
+          <div className={staticCls}>
+            <BellRing size={iconSize} className="text-emerald-500" /> Notifications enabled
+          </div>
+          <button onClick={sendTest} disabled={testStatus === 'sending'} className={buttonCls}>
               <Bell size={iconSize} />
               {testStatus === 'sending' ? 'Sending test…'
                 : testStatus === 'sent' ? 'Test sent — check your device'
                 : testStatus === 'error' ? 'Test failed — try again'
                 : 'Send test notification'}
             </button>
-          )}
         </>
       ) : (
         <button onClick={enable} disabled={busy} className={buttonCls}>

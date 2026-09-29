@@ -10,6 +10,7 @@ import { AppTheme, saveTheme } from '@/lib/theme'
 import type { PwaInstallState } from '@/lib/pwaInstall'
 import ProfileMenu from '@/components/layout/ProfileMenu'
 import NotificationSettingsRow from '@/components/shared/NotificationSettingsRow'
+import { logoutOneSignal } from '@/lib/onesignal'
 
 type UserInfo = { firstName: string; lastName: string; role: string; avatarUrl?: string | null }
 type NavLink = { label: string; href?: string; children?: NavLink[]; disabled?: boolean }
@@ -218,6 +219,7 @@ export default function TopBar({ title, user, theme, onThemeChange, install }: T
   }
 
   function signOut() {
+    logoutOneSignal()
     localStorage.removeItem('cc_token'); localStorage.removeItem('cc_user')
     document.cookie = 'cc_token=; path=/; SameSite=Lax; max-age=0'
     window.location.href = '/login'

@@ -10,6 +10,7 @@ import { cn, getInitials } from '@/lib/utils'
 import type { PwaInstallState } from '@/lib/pwaInstall'
 import ProfileMenu from '@/components/layout/ProfileMenu'
 import NotificationSettingsRow from '@/components/shared/NotificationSettingsRow'
+import { logoutOneSignal } from '@/lib/onesignal'
 
 type UserInfo = { firstName: string; lastName: string; role: string; avatarUrl?: string | null }
 type Result = { type: 'patient' | 'appointment'; id: string; primary: string; secondary: string }
@@ -74,7 +75,7 @@ export default function DoctorTopBar({ user, theme, onTheme, install }: { user: 
     } finally { setSearching(false) }
   }
   function chooseTheme(next: AppTheme) { onTheme(next, saveTheme(next)) }
-  function signOut() { localStorage.removeItem('cc_token'); localStorage.removeItem('cc_user'); document.cookie = 'cc_token=; path=/; max-age=0'; router.push('/login') }
+  function signOut() { logoutOneSignal(); localStorage.removeItem('cc_token'); localStorage.removeItem('cc_user'); document.cookie = 'cc_token=; path=/; max-age=0'; router.push('/login') }
   const active = (item: Nav) => item.href ? pathname === item.href || pathname.startsWith(item.href + '/') : item.children?.some(c => pathname === c.href.split('?')[0])
   const initials = user ? getInitials(user.firstName, user.lastName) : 'DR'
   const iconButton = 'relative grid h-10 w-10 place-items-center rounded-full border border-gray-200/80 bg-white/75 text-gray-600 shadow-sm transition hover:-translate-y-0.5 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-300'
