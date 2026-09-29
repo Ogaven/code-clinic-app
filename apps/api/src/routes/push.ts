@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
-import { adminOnly } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { env } from '../lib/env'
 import { isPushConfigured, sendTestPushToUser } from '../services/push.service'
@@ -53,10 +52,10 @@ router.delete('/subscribe', requireAuth, async (req, res) => {
   }
 })
 
-// POST /push/test — admin-only acceptance-test send. Targets only the
-// caller's own subscriptions (req.user.id from the verified JWT — never a
-// request body userId), fixed safe payload, no patient data ever involved.
-router.post('/test', requireAuth, adminOnly, async (req, res) => {
+// POST /push/test — authenticated self-test for Admin, Reception and Doctor.
+// It always targets req.user.id from the verified JWT; callers cannot select
+// another staff member. The payload is fixed and contains no patient data.
+router.post('/test', requireAuth, async (req, res) => {
   try {
     if (!isPushConfigured()) {
       res.status(503).json({ error: 'Push notifications are not configured on this server' })
