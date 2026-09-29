@@ -5,8 +5,8 @@
 // dropdown (components/layout/ProfileMenu.tsx) — one copy of the real
 // subscribe/unsubscribe flow so the two surfaces can't drift.
 //
-// Never auto-prompts — Notification.requestPermission() is only ever called
-// from inside subscribeToPush(), which this row invokes solely on tap.
+// Never auto-prompts — OneSignal's permission request is invoked only from
+// the explicit Enable Notifications user action.
 
 import { useEffect, useState } from 'react'
 import { Bell, BellOff, BellRing } from 'lucide-react'
@@ -68,12 +68,6 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
     setBusy(false)
   }
 
-  async function disable() {
-    // Browser notification permission cannot be revoked programmatically.
-    // Keep identity attached; staff can block the site from browser settings.
-    setSubscribed(typeof Notification !== 'undefined' && Notification.permission === 'granted')
-  }
-
   const rowState = getNotificationRowState({ supported, permission, subscribed, isIOS, isStandalone })
   const compact = variant === 'menu'
   const iconSize = compact ? 15 : 17
@@ -107,18 +101,16 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
         </div>
       ) : rowState === 'subscribed' ? (
         <>
-          <button onClick={disable} disabled={busy} className={buttonCls}>
-            <BellRing size={iconSize} className="text-emerald-500" /> {compact ? 'Notifications enabled' : 'Notifications enabled — tap to disable'}
-          </button>
-          {(
-            <button onClick={sendTest} disabled={testStatus === 'sending'} className={buttonCls}>
+          <div className={staticCls}>
+            <BellRing size={iconSize} className="text-emerald-500" /> Notifications enabled
+          </div>
+          <button onClick={sendTest} disabled={testStatus === 'sending'} className={buttonCls}>
               <Bell size={iconSize} />
               {testStatus === 'sending' ? 'Sending test…'
                 : testStatus === 'sent' ? 'Test sent — check your device'
                 : testStatus === 'error' ? 'Test failed — try again'
                 : 'Send test notification'}
             </button>
-          )}
         </>
       ) : (
         <button onClick={enable} disabled={busy} className={buttonCls}>
