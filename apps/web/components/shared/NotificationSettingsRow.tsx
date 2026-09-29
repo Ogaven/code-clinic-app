@@ -24,6 +24,7 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('default')
   const [subscribed, setSubscribed] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [enableFailed, setEnableFailed] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
@@ -62,10 +63,17 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
 
   async function enable() {
     setBusy(true)
-    const ok = await enableOneSignalNotifications()
-    if (typeof window !== 'undefined' && 'Notification' in window) setPermission(Notification.permission)
-    setSubscribed(ok)
-    setBusy(false)
+    setEnableFailed(false)
+    try {
+      const ok = await enableOneSignalNotifications()
+      if (typeof window !== 'undefined' && 'Notification' in window) setPermission(Notification.permission)
+      setSubscribed(ok)
+      if (!ok) setEnableFailed(true)
+    } catch {
+      setEnableFailed(true)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const rowState = getNotificationRowState({ supported, permission, subscribed, isIOS, isStandalone })
@@ -114,7 +122,8 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
         </>
       ) : (
         <button onClick={enable} disabled={busy} className={buttonCls}>
-          <Bell size={iconSize} /> {compact ? 'Enable Notifications' : 'Enable notifications'}
+          <Bell size={iconSize} />
+          {busy ? 'Enabling…' : enableFailed ? "Couldn't enable — tap to retry" : (compact ? 'Enable Notifications' : 'Enable notifications')}
         </button>
       )}
     </div>

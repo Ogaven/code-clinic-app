@@ -93,9 +93,15 @@ export function middleware(request: NextRequest) {
 
   // Public routes — never redirect, let the page handle its own auth state
   if (PUBLIC_PATHS.some(p => pathname === p)) return NextResponse.next()
-  if (pathname.startsWith('/auth/'))   return NextResponse.next()
-  if (pathname.startsWith('/widget/')) return NextResponse.next()
-  if (pathname.startsWith('/quiz/'))   return NextResponse.next()
+  if (pathname.startsWith('/auth/'))     return NextResponse.next()
+  if (pathname.startsWith('/widget/'))   return NextResponse.next()
+  if (pathname.startsWith('/quiz/'))     return NextResponse.next()
+  // OneSignal's SDK registers/verifies this service worker with its own fetch
+  // semantics, which cannot be relied on to carry the cc_token cookie — this
+  // path must stay reachable with zero auth state or it 307s to /login and
+  // the browser gets HTML instead of the worker script, breaking Web Push
+  // registration entirely regardless of whether the visitor is signed in.
+  if (pathname.startsWith('/onesignal/')) return NextResponse.next()
 
   const token = request.cookies.get('cc_token')?.value
   if (!token) {
