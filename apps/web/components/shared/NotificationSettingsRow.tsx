@@ -54,7 +54,12 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
-      setTestStatus(res.ok ? 'sent' : 'error')
+      // /push/test returns HTTP 200 with { ok: true, succeeded, failed, ... }
+      // even when the push provider rejected the send (e.g. a misconfigured
+      // OneSignal REST key) — res.ok alone can't tell delivery from a
+      // same-shape failure response, so check the actual dispatch result.
+      const data = await res.json().catch(() => null) as { succeeded?: number } | null
+      setTestStatus(res.ok && (data?.succeeded ?? 0) > 0 ? 'sent' : 'error')
     } catch {
       setTestStatus('error')
     }
