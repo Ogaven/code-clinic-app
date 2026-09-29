@@ -4,6 +4,7 @@ declare global {
   interface Window {
     OneSignalDeferred?: Array<(OneSignal: any) => void>
     __ccOneSignalInitialized?: boolean
+    __ccOneSignalReady?: Promise<boolean>
   }
 }
 
@@ -24,6 +25,27 @@ function withOneSignal(callback: (OneSignal: any) => void) {
   window.OneSignalDeferred.push(callback)
 }
 
+function initOneSignal(OneSignal: any): Promise<boolean> {
+  if (!window.__ccOneSignalReady) {
+    window.__ccOneSignalReady = (async () => {
+      try {
+        await OneSignal.init({
+          appId: ONESIGNAL_APP_ID,
+          serviceWorkerPath: '/onesignal/OneSignalSDKWorker.js',
+          serviceWorkerParam: { scope: '/onesignal/' },
+          notifyButton: { enable: false },
+          allowLocalhostAsSecureOrigin: process.env.NODE_ENV !== 'production',
+        })
+        return true
+      } catch (error) {
+        console.error('[push] OneSignal initialization failed', error)
+        return false
+      }
+    })()
+  }
+  return window.__ccOneSignalReady
+}
+
 export function initializeOneSignal(): void {
   if (typeof window === 'undefined' || window.__ccOneSignalInitialized) return
   window.__ccOneSignalInitialized = true
@@ -37,13 +59,7 @@ export function initializeOneSignal(): void {
   }
 
   withOneSignal(async (OneSignal) => {
-    await OneSignal.init({
-      appId: ONESIGNAL_APP_ID,
-      serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
-      serviceWorkerParam: { scope: '/onesignal/' },
-      notifyButton: { enable: false },
-      allowLocalhostAsSecureOrigin: process.env.NODE_ENV !== 'production',
-    })
+    if (!(await initOneSignal(OneSignal))) return
 
     const user = currentUser()
     if (user?.id) {
@@ -58,13 +74,15 @@ export async function enableOneSignalNotifications(): Promise<boolean> {
   return new Promise((resolve) => {
     withOneSignal(async (OneSignal) => {
       try {
+        if (!(await initOneSignal(OneSignal))) return resolve(false)
         const user = currentUser()
         if (!user?.id) return resolve(false)
         await OneSignal.login(user.id)
         if (user.role) await OneSignal.User.addTag('codeclinic_role', user.role)
         await OneSignal.Notifications.requestPermission()
         resolve(OneSignal.Notifications.permission === true)
-      } catch {
+      } catch (error) {
+        console.error('[push] OneSignal enable failed', error)
         resolve(false)
       }
     })
@@ -73,6 +91,8 @@ export async function enableOneSignalNotifications(): Promise<boolean> {
 
 export function logoutOneSignal(): void {
   withOneSignal(async (OneSignal) => {
-    try { await OneSignal.logout() } catch {}
+    try {
+      if (await initOneSignal(OneSignal)) await OneSignal.logout()
+    } catch {}
   })
 }
