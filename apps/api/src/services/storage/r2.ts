@@ -117,5 +117,10 @@ export async function deleteFile(key: string): Promise<void> {
 
 export function getPublicUrl(key: string): string {
   if (key.startsWith('local:')) return `${API_URL}/uploads/${key.replace('local:', '')}`
-  return `${process.env.R2_PUBLIC_URL}/${key}`
+  const publicUrl = process.env.R2_PUBLIC_URL || process.env.CLOUDFLARE_R2_PUBLIC_URL
+  if (!publicUrl) {
+    console.warn('[storage] R2 public URL is not configured; omitting broken avatar URL')
+    return ''
+  }
+  return `${publicUrl.replace(/\/$/, '')}/${key}`
 }
