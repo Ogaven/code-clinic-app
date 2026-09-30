@@ -17,6 +17,19 @@ export function isOneSignalConfigured(): boolean {
   return !!(env.ONESIGNAL_APP_ID && env.ONESIGNAL_REST_API_KEY)
 }
 
+// How long OneSignal should keep retrying delivery to a device that's
+// temporarily offline (phone locked with no network, laptop asleep, etc.)
+// before giving up, in seconds. Explicit rather than relying on OneSignal's
+// own default (~3 days undocumented-in-code) so the choice is visible and
+// intentional: long enough that a device offline overnight or over a
+// weekend still gets every operational alert the moment it reconnects, short
+// enough that a staff member who was offline for a week doesn't suddenly get
+// buried in day-old "needs action" pushes that are likely stale/superseded
+// by the time they arrive. 3 days (matches OneSignal's own default, made
+// explicit) — operational alerts here are same-shift/same-day actionable
+// items, not calendar-scheduled reminders that need a longer horizon.
+const PUSH_TTL_SECONDS = 3 * 24 * 60 * 60
+
 // OneSignal external_id is always the authenticated Code Clinic User.id.
 // No patient identifiers or clinical content are used for addressing.
 //
@@ -47,6 +60,7 @@ export async function sendOneSignalToUser(userId: string, payload: OneSignalPayl
         headings: { en: payload.title },
         contents: { en: payload.body },
         url: payload.url,
+        ttl: PUSH_TTL_SECONDS,
       }),
     })
     const elapsedMs = Date.now() - startedAt

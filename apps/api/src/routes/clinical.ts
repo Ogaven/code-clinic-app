@@ -9,6 +9,29 @@ import { logAudit } from '../services/audit.service'
 import { authenticatedDoctorId, requireDoctorPatientAccess } from '../lib/doctor-access'
 import { kampalaMonthToDateRange, kampalaPreviousMonthToDateRange, safePercentChange } from '../utils/kampala-time'
 import { getTotalPatients, getPatientsSeen, splitNewAndReturning } from '../services/patient-analytics.service'
+import { notifyUsers } from '../services/notification.service'
+
+// Staff operational notification — someone other than the doctor themselves
+// explicitly assigned this new treatment plan to a clinician. Mirrors
+// pipeline.ts's notifyDoctorAssigned (kept local here since clinical.ts
+// doesn't otherwise import from routes/pipeline.ts, and this is the only
+// assignment-notification site this file needs).
+export async function notifyDoctorAssignedOnCreate(doctorId: string, patientId: string): Promise<void> {
+  try {
+    const doctor = await prisma.doctor.findUnique({ where: { id: doctorId }, select: { userId: true } })
+    if (!doctor) return
+    await notifyUsers({
+      userIds: [doctor.userId],
+      type: 'SYSTEM',
+      title: 'Treatment case assigned',
+      body: 'A treatment case has been assigned to you. Tap to review.',
+      href: `/patients/${patientId}`,
+      category: 'treatment.assigned',
+    })
+  } catch (e: any) {
+    console.error('[Clinical] notifyDoctorAssignedOnCreate failed:', e?.message)
+  }
+}
 
 const router = Router()
 router.use(requireAuth)
@@ -177,6 +200,13 @@ router.post('/patients/:id/treatment-plans', requireAuth, doctorOrAdmin, async (
     })
     await logActivity(req.params.id, req.user!.id, `${req.user!.firstName} ${req.user!.lastName}`, `Treatment plan item added: ${toothNumber || 'General'}`)
     logAudit({ userId: req.user!.id, actionType: 'CREATE', entityType: 'TREATMENT_PLAN', entityId: plan.id, entityName: `${toothNumber || 'General'} — patient ${req.params.id}`, req })
+
+    // Only when someone OTHER than the assigned doctor did the assigning —
+    // a doctor creating their own plan already knows about it.
+    if (req.user!.role !== 'DOCTOR' && doctorId) {
+      notifyDoctorAssignedOnCreate(doctorId, req.params.id).catch(() => {})
+    }
+
     res.status(201).json(plan)
   } catch (e) {
     res.status(500).json({ error: 'Failed to create treatment plan' })

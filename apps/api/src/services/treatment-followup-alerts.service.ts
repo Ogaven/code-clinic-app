@@ -102,8 +102,10 @@ export async function checkAndSendTreatmentFollowUpAlerts(): Promise<void> {
       // Full clinical detail (stage/status/reason) is fine in the in-app
       // notification centre, which only the authenticated staff member ever
       // sees. A push notification can surface on a locked device screen, so
-      // its body stays generic -- patient name + due/overdue only.
-      const pushBody = `Tap to view ${patientName}'s treatment follow-up details.`
+      // its body stays fully generic -- no patient name, per the lock-screen
+      // privacy requirement (a push popup should say WHAT kind of action is
+      // needed, never WHO it's about).
+      const pushBody = `A treatment follow-up needs attention. Tap to review.`
 
       const recipientIds = new Set<string>(staff.map(u => u.id))
       if (plan.doctor?.user?.id) recipientIds.add(plan.doctor.user.id)

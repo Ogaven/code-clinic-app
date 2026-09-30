@@ -61,6 +61,19 @@ describe('sendOneSignalToUser', () => {
     expect(body.include_aliases).toEqual({ external_id: ['user-42'] })
   })
 
+  it('sends an explicit TTL so a temporarily offline device still gets the push on reconnect, instead of relying on an undocumented provider default', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'notif-1' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const { sendOneSignalToUser } = await loadWithEnv(ENV)
+
+    await sendOneSignalToUser('user-42', { title: 't', body: 'b' })
+
+    const [, requestInit] = fetchMock.mock.calls[0]
+    const body = JSON.parse(requestInit.body)
+    expect(body.ttl).toBeGreaterThan(0)
+    expect(typeof body.ttl).toBe('number')
+  })
+
   it('reports accepted with the notification id when OneSignal returns 200 + an id', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'notif-1' }) }))
     const { sendOneSignalToUser } = await loadWithEnv(ENV)
