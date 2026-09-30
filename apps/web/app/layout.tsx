@@ -21,8 +21,11 @@ export const metadata: Metadata = {
   applicationName: 'Code Clinic',
   manifest: '/manifest.json',
   icons: {
+    // Browser-tab favicon/shortcut — unchanged, deliberately left on the
+    // existing /icon.png (a different surface from the installed-app icon
+    // below; not what iOS/Android show on Add to Home Screen).
     icon: '/icon.png',
-    apple: '/icon.png',
+    apple: '/apple-touch-icon.png',
     shortcut: '/icon.png',
   },
   appleWebApp: {
@@ -41,7 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Code Clinic" />
-        <link rel="apple-touch-icon" href="/icon.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
