@@ -27,12 +27,24 @@ export default function IOSInstallInstructions({ onClose }: IOSInstallInstructio
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-[160] flex items-end justify-center bg-slate-950/55 backdrop-blur-sm sm:items-center" onMouseDown={onClose}>
+    // z-[10010]: must clear the fixed mobile bottom nav (MobileBottomNav.tsx,
+    // z-[10000] — itself raised above the SarahChatbot widget at z-[9999])
+    // and its MoreSheet (z-[10001]), or on phone-width viewports the nav bar
+    // renders on top of this modal instead of the other way around.
+    <div className="fixed inset-0 z-[10010] flex items-end justify-center bg-slate-950/55 backdrop-blur-sm sm:items-center" onMouseDown={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Install Code Clinic"
-        className="w-full max-w-sm overflow-hidden rounded-t-[28px] border-t border-gray-200/70 bg-white p-6 shadow-2xl animate-fade-in dark:border-white/10 dark:bg-[#0a1730] sm:rounded-[28px] sm:border"
+        // max-sm:mb-*: lifts the card clear of the fixed bottom nav's real
+        // footprint (same 88px + safe-area value the chatbot widgets already
+        // use to clear the same nav) instead of letting it render underneath.
+        // max-sm:max-h-*: caps the card to whatever's left of the dynamic
+        // viewport height above that reserved nav space (plus a small top
+        // gap), so a short phone screen scrolls the card's own content
+        // instead of clipping it off-screen. Both are mobile-only (max-sm:)
+        // so the centered sm:+ dialog is untouched.
+        className="w-full max-w-sm overflow-y-auto rounded-t-[28px] border-t border-gray-200/70 bg-white p-6 shadow-2xl animate-fade-in dark:border-white/10 dark:bg-[#0a1730] sm:rounded-[28px] sm:border max-sm:mb-[calc(88px_+_env(safe-area-inset-bottom))] max-sm:max-h-[calc(100dvh_-_112px_-_env(safe-area-inset-bottom))]"
         style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
         onMouseDown={e => e.stopPropagation()}
       >
