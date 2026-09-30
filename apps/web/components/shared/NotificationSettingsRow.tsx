@@ -13,7 +13,7 @@ import { Bell, BellOff, BellRing } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { enableOneSignalNotifications, initializeOneSignal } from '@/lib/onesignal'
 import { getNotificationRowState } from '@/lib/notificationRowState'
-import { detectIOS, detectIOSNonSafariBrowser, detectStandalone } from '@/lib/pwaInstall'
+import { detectIOS, detectStandalone } from '@/lib/pwaInstall'
 
 interface NotificationSettingsRowProps {
   /** 'sheet' = full-size mobile row with its own heading (default). 'menu' = compact row for the small desktop dropdown. */
@@ -28,7 +28,6 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
   const [enableFailed, setEnableFailed] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
-  const [isIOSNonSafari, setIsIOSNonSafari] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
 
   useEffect(() => {
@@ -40,7 +39,6 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
     setSubscribed(hasNotificationApi && Notification.permission === 'granted')
 
     setIsIOS(detectIOS())
-    setIsIOSNonSafari(detectIOSNonSafariBrowser())
     setIsStandalone(detectStandalone())
   }, [])
 
@@ -79,7 +77,7 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
     }
   }
 
-  const rowState = getNotificationRowState({ supported, permission, subscribed, isIOS, isStandalone, isIOSNonSafari })
+  const rowState = getNotificationRowState({ supported, permission, subscribed, isIOS, isStandalone })
   const compact = variant === 'menu'
   const iconSize = compact ? 15 : 17
 
@@ -96,12 +94,7 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
   return (
     <div>
       <p className={headingCls}><Bell size={compact ? 13 : 12} /> Notifications</p>
-      {rowState === 'ios-needs-safari' ? (
-        <div className={cn(staticCls, 'bg-gray-50 dark:bg-white/5')}>
-          <BellOff size={iconSize} className="flex-shrink-0" />
-          <span>{compact ? 'Open in Safari to enable' : 'On iPhone/iPad, notifications only work through Safari: open Code Clinic in Safari, then Share → Add to Home Screen.'}</span>
-        </div>
-      ) : rowState === 'ios-needs-install' ? (
+      {rowState === 'ios-needs-install' ? (
         <div className={cn(staticCls, 'bg-gray-50 dark:bg-white/5')}>
           <BellOff size={iconSize} className="flex-shrink-0" />
           <span>{compact ? 'Add to Home Screen to enable' : 'On iPhone/iPad: tap Share → Add to Home Screen, then open Code Clinic from there to enable notifications.'}</span>

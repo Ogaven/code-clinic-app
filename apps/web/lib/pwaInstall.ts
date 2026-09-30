@@ -27,8 +27,6 @@ export interface PwaInstallState {
   isIOS: boolean
   /** Running as an installed PWA right now (any platform). */
   isStandalone: boolean
-  /** iOS in a non-Safari browser (Chrome/Firefox/Edge/Opera for iOS) — Add to Home Screen and Web Push require Safari specifically. */
-  isIOSNonSafari: boolean
   /** Invokes the real native install prompt. No-op (resolves 'unavailable') if not captured. */
   promptInstall: () => Promise<InstallOutcome>
 }
@@ -50,29 +48,14 @@ export function detectStandalone(): boolean {
   return iosStandalone || window.matchMedia('(display-mode: standalone)').matches
 }
 
-// Every third-party iOS browser (Chrome, Firefox, Edge, Opera) is required by
-// Apple to render with WebKit, but none of them expose Safari's "Add to Home
-// Screen" → manifest-driven standalone install, and iOS never grants the
-// Push API outside of that Safari-created standalone context. Their UAs
-// self-identify with a distinct token even though they otherwise look like
-// Safari, so this is the reliable way to know "Add to Home Screen" guidance
-// needs an extra first step: open this page in Safari at all.
-export function detectIOSNonSafariBrowser(): boolean {
-  if (typeof navigator === 'undefined') return false
-  if (!detectIOS()) return false
-  return /CriOS|FxiOS|EdgiOS|OPiOS|OPT\//.test(navigator.userAgent)
-}
-
 export function usePwaInstall(): PwaInstallState {
   const [deferredEvent, setDeferredEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [isStandalone, setIsStandalone] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
-  const [isIOSNonSafari, setIsIOSNonSafari] = useState(false)
 
   useEffect(() => {
     setIsIOS(detectIOS())
     setIsStandalone(detectStandalone())
-    setIsIOSNonSafari(detectIOSNonSafariBrowser())
 
     function onBeforeInstallPrompt(e: Event) {
       e.preventDefault()
@@ -104,5 +87,5 @@ export function usePwaInstall(): PwaInstallState {
     return outcome
   }, [deferredEvent])
 
-  return { canInstallNative: !!deferredEvent, isIOS, isStandalone, isIOSNonSafari, promptInstall }
+  return { canInstallNative: !!deferredEvent, isIOS, isStandalone, promptInstall }
 }

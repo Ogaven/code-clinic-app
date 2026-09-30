@@ -24,13 +24,19 @@ describe('getNotificationRowState', () => {
     expect(getNotificationRowState({ supported: true, permission: 'granted', subscribed: false })).toBe('offer')
   })
 
-  it('iOS Safari tab (not installed) reports ios-needs-install instead of a dead-end "unsupported"', () => {
+  // Since iOS/iPadOS 16.4, Home Screen web apps and Web Push work from any
+  // browser's Add to Home Screen (WebKit's own guidance: feature-detect,
+  // don't browser-detect) — getNotificationRowState only ever receives
+  // isIOS/isStandalone, with no browser-identity signal at all, so iPhone
+  // Chrome/Firefox/Edge get the exact same guidance as Safari here, never a
+  // "you must switch to Safari" message.
+  it('iOS not installed (any browser) reports ios-needs-install instead of a dead-end "unsupported"', () => {
     expect(getNotificationRowState({
       supported: false, permission: 'default', subscribed: false, isIOS: true, isStandalone: false,
     })).toBe('ios-needs-install')
   })
 
-  it('iOS installed as a Home Screen PWA falls through to the normal supported logic', () => {
+  it('iOS installed as a Home Screen web app (any browser) falls through to the normal supported logic', () => {
     expect(getNotificationRowState({
       supported: true, permission: 'default', subscribed: false, isIOS: true, isStandalone: true,
     })).toBe('offer')
@@ -40,23 +46,5 @@ describe('getNotificationRowState', () => {
     expect(getNotificationRowState({
       supported: false, permission: 'default', subscribed: false, isIOS: false, isStandalone: false,
     })).toBe('unsupported')
-  })
-
-  it('iOS in Chrome/Firefox/Edge (not installed) reports ios-needs-safari, not the regular Add to Home Screen guidance', () => {
-    expect(getNotificationRowState({
-      supported: false, permission: 'default', subscribed: false, isIOS: true, isStandalone: false, isIOSNonSafari: true,
-    })).toBe('ios-needs-safari')
-  })
-
-  it('iOS in actual Safari (not installed) still reports the regular ios-needs-install guidance', () => {
-    expect(getNotificationRowState({
-      supported: false, permission: 'default', subscribed: false, isIOS: true, isStandalone: false, isIOSNonSafari: false,
-    })).toBe('ios-needs-install')
-  })
-
-  it('a non-Safari iOS browser that is somehow already standalone falls through to normal supported logic, not the Safari warning', () => {
-    expect(getNotificationRowState({
-      supported: true, permission: 'default', subscribed: false, isIOS: true, isStandalone: true, isIOSNonSafari: true,
-    })).toBe('offer')
   })
 })
