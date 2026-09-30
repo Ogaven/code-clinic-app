@@ -294,6 +294,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
       `📊 *Code Clinic — ${data.period.label}*`,
       '',
       `✅ Total Scheduled: ${m.totalScheduled}`,
+      `✅ Appointments Attended: ${m.appointmentsAttended}`,
       `👁️ Patients Seen: ${m.totalSeen}`,
       `🆕 New Patients: ${m.newPatients}`,
       `🔄 Active Patients: ${m.returningPatients}`,
@@ -331,7 +332,9 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
   // Cancelled concept.
   const STATS: { label: string; value: number; color: string; Icon: any; status?: string; tooltip?: string }[] = !m ? [] : [
     { label: 'Total Scheduled',             value: m.totalScheduled,          color: '#29ABE2', Icon: Calendar,
-      tooltip: 'Every appointment scheduled to start in this period, regardless of outcome.' },
+      tooltip: 'Appointment reconciliation: Attended appointments + Confirmed + Pending + Cancelled + Rescheduled + No-Shows = Total Scheduled.' },
+    { label: 'Appointments Attended',       value: m.appointmentsAttended,    color: '#059669', Icon: CheckCircle2,
+      tooltip: 'Attended appointment count used in the Total Scheduled reconciliation. One patient can have more than one attended appointment.' },
     { label: 'Patients Seen',               value: m.totalSeen,               color: '#10B981', Icon: UserCheck,
       tooltip: 'Unique patients who attended at least one appointment in this period. Equals New Patients + Active Patients.' },
     { label: 'New Patients',                value: m.newPatients,             color: '#8B5CF6', Icon: UserPlus,
