@@ -354,6 +354,9 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
     { label: 'No-Shows',                    value: m.noShows,                 color: '#F97316', Icon: PhoneOff,     status: 'NO_SHOW'   },
   ]
 
+  const appointmentStats = STATS.filter(s => ['Total Scheduled', 'Appointments Attended', 'Confirmed', 'Pending', 'Cancelled', 'Rescheduled', 'No-Shows'].includes(s.label))
+  const patientStats = STATS.filter(s => ['Patients Seen', 'New Patients', 'Active Patients', 'Reviews / Recalls'].includes(s.label))
+
   const weekEnd = weekStart ? addDays(weekStart, 6) : ''
 
   return (
@@ -492,29 +495,53 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
           </div>
         </div>
 
-        {/* ── Metric cards ───────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {loading
-            ? Array.from({ length: 10 }).map((_, i) => (
-                <div key={i} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm">
-                  <div className="h-2.5 bg-gray-100 dark:bg-white/10 rounded animate-pulse mb-3 w-16" />
-                  <div className="h-7 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-10" />
+        {/* ── Metrics: keep appointment arithmetic separate from patient classifications ── */}
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {Array.from({ length: 11 }).map((_, i) => (
+              <div key={i} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm">
+                <div className="h-2.5 bg-gray-100 dark:bg-white/10 rounded animate-pulse mb-3 w-16" />
+                <div className="h-7 bg-gray-100 dark:bg-white/10 rounded animate-pulse w-10" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {[
+              {
+                title: 'Appointment Statistics',
+                note: 'These appointment outcomes reconcile to Total Scheduled.',
+                stats: appointmentStats,
+              },
+              {
+                title: 'Patient Statistics',
+                note: 'Patients Seen = New Patients + Active Patients. Reviews / Recalls is already included in Patients Seen.',
+                stats: patientStats,
+              },
+            ].map(section => (
+              <section key={section.title}>
+                <div className="mb-2">
+                  <h2 className="text-xs font-black uppercase tracking-wider text-clinic-navy dark:text-white">{section.title}</h2>
+                  <p className="text-[11px] text-gray-400 mt-0.5">{section.note}</p>
                 </div>
-              ))
-            : STATS.map(({ label, value, color, Icon, status, tooltip }, i) => (
-                <div key={i}
-                  onClick={status ? () => setDrilldown({ label, status, color }) : undefined}
-                  title={tooltip ?? (status ? `View the ${value} appointment${value !== 1 ? 's' : ''} behind this number` : undefined)}
-                  className={`bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm hover:shadow-md transition-shadow ${status ? 'cursor-pointer hover:-translate-y-0.5 hover:border-gray-200 dark:hover:border-white/20' : ''}`}>
-                  <div className="flex items-start justify-between mb-2 gap-1">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 leading-tight">{label}</p>
-                    <Icon size={13} style={{ color }} className="opacity-50 flex-shrink-0 mt-0.5" />
-                  </div>
-                  <p className="text-3xl font-black leading-none" style={{ color }}>{value}</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {section.stats.map(({ label, value, color, Icon, status, tooltip }) => (
+                    <div key={label}
+                      onClick={status ? () => setDrilldown({ label, status, color }) : undefined}
+                      title={tooltip ?? (status ? `View the ${value} appointment${value !== 1 ? 's' : ''} behind this number` : undefined)}
+                      className={`bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm hover:shadow-md transition-shadow ${status ? 'cursor-pointer hover:-translate-y-0.5 hover:border-gray-200 dark:hover:border-white/20' : ''}`}>
+                      <div className="flex items-start justify-between mb-2 gap-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 leading-tight">{label}</p>
+                        <Icon size={13} style={{ color }} className="opacity-50 flex-shrink-0 mt-0.5" />
+                      </div>
+                      <p className="text-3xl font-black leading-none" style={{ color }}>{value}</p>
+                    </div>
+                  ))}
                 </div>
-              ))
-          }
-        </div>
+              </section>
+            ))}
+          </div>
+        )}
 
         {/* Read-only drill-down — reuses the real appointment records already
             behind this count for the exact period currently selected, via
