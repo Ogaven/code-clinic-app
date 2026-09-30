@@ -27,6 +27,7 @@ interface RecentSubmission {
   patientId: string
   name: string
   phone: string
+  referralSource: string | null
   outcome: 'CREATED' | 'MATCHED_EXISTING' | 'REQUIRES_REVIEW' | null
   createdAt: string
 }
@@ -314,6 +315,7 @@ export default function WalkInIntakePanel({ basePath, requiredRoles, fallbackHre
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-gray-800 dark:text-white truncate">{s.name || 'Unnamed patient'}</p>
                           <p className="text-xs text-gray-400 dark:text-white/40">{s.phone} · {timeAgo(s.createdAt)}</p>
+                          <p className="text-[11px] text-gray-500 dark:text-white/45 mt-0.5 truncate">How they heard about us: <span className="font-semibold">{s.referralSource || 'Not provided'}</span></p>
                         </div>
                         {badge && (
                           <span className={cn('text-[10px] font-black px-2 py-1 rounded-full flex-shrink-0', badge.pill)}>{badge.label}</span>
