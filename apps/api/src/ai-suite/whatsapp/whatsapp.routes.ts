@@ -197,13 +197,22 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
   if (isHarvestTestTraffic) {
     try {
+      // Code Clinic has already authenticated the original Meta request above.
+      // Forward the exact original bytes instead of re-serializing JSON, because
+      // X-Hub-Signature-256 is computed over those literal bytes.
+      const rawBody = (req as Request & { rawBody?: Buffer }).rawBody
+      if (!rawBody) {
+        console.error('[WhatsApp][HarvestRouter] Missing raw request body; refusing to forward')
+        res.sendStatus(500)
+        return
+      }
       const headers: Record<string, string> = { 'content-type': 'application/json' }
       const signature = req.get('x-hub-signature-256')
       if (signature) headers['x-hub-signature-256'] = signature
       const forwarded = await fetch(HARVEST_WEBHOOK_URL, {
         method: 'POST',
         headers,
-        body: JSON.stringify(req.body),
+        body: rawBody,
       })
       if (!forwarded.ok) console.error('[WhatsApp][HarvestRouter] Harvest webhook rejected payload', forwarded.status)
     } catch (err: any) {
