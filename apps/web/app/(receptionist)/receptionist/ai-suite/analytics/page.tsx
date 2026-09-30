@@ -993,10 +993,10 @@ export default function AnalyticsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-black text-gray-800 dark:text-white">Platform Analytics & Costs</h1>
+          <h1 className="text-xl font-black text-gray-800 dark:text-white">Clinic AI Overview</h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Message volumes, channel breakdown, and infrastructure costs
-            {cachedAt && <span className="ml-2 text-[10px]">· cached {cachedAt}</span>}
+            A simple view of AI activity, messaging health and running costs
+            {cachedAt && <span className="ml-2 text-[10px]">· updated {cachedAt}</span>}
           </p>
         </div>
         <button onClick={() => load(true)} disabled={refreshing || loading}
@@ -1021,7 +1021,7 @@ export default function AnalyticsPage() {
           {data.operational && (
             <section>
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
-                <ClipboardCheck size={10} /> Operational Volume ({AI_USAGE_RANGES.find(r => r.key === channelRange)?.label})
+                <ClipboardCheck size={10} /> What the AI handled ({AI_USAGE_RANGES.find(r => r.key === channelRange)?.label})
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
@@ -1050,7 +1050,7 @@ export default function AnalyticsPage() {
           <section>
             <div className="flex items-center justify-between mb-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 flex items-center gap-2">
-                <BarChart2 size={10} /> Messaging Channels
+                <BarChart2 size={10} /> Where patients contacted us
               </p>
               <div className="flex gap-1">
                 {AI_USAGE_RANGES.map(r => (
@@ -1105,11 +1105,9 @@ export default function AnalyticsPage() {
           {/* ── Meta billing status (Admin only — financial account data) ── */}
           {isAdmin && <MetaBillingCard data={metaBilling} loading={metaBillingLoading} />}
 
-          {/* ── CRM configuration readiness (Admin only) ── */}
-          {isAdmin && <CrmReadinessCard data={crmReadiness} loading={crmReadinessLoading} />}
-
-          {/* ── Meta Integration Health — Facebook/Instagram webhook + permission evidence (Admin only) ── */}
-          {isAdmin && <MetaIntegrationHealthCard data={metaIntegrationHealth} loading={metaIntegrationHealthLoading} />}
+          {/* Technical CRM/Meta diagnostics are intentionally kept off this
+              day-to-day overview. They remain available through the existing
+              backend health endpoints for support/admin troubleshooting. */}
 
           {/* ── Meta WhatsApp API usage ─────────────────── */}
           {data.meta && (
@@ -1141,7 +1139,7 @@ export default function AnalyticsPage() {
           {isAdmin && (
           <section>
             <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
-              <DollarSign size={10} /> Infrastructure (DigitalOcean)
+              <DollarSign size={10} /> Hosting cost
             </p>
             <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
               {doNotConfig ? (
