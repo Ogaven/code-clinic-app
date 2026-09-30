@@ -843,6 +843,118 @@ function MetaIntegrationHealthCard({ data, loading }: { data: MetaIntegrationHea
   )
 }
 
+
+function CompactTrendChart({ channels }: { channels: Record<string, ChannelData> }) {
+  const byDay = new Map<string, number>()
+  Object.values(channels).forEach(channel => channel.daily.forEach(point => {
+    byDay.set(point.day, (byDay.get(point.day) ?? 0) + point.agent + point.user)
+  }))
+  const points = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-30)
+  if (!points.length) return <div className="h-32 grid place-items-center text-xs text-gray-400">No activity in this period</div>
+  const width = 620, height = 150, pad = 12
+  const max = Math.max(...points.map(([, value]) => value), 1)
+  const coords = points.map(([, value], index) => {
+    const x = points.length === 1 ? width / 2 : pad + (index / (points.length - 1)) * (width - pad * 2)
+    const y = height - pad - (value / max) * (height - pad * 2)
+    return { x, y, value }
+  })
+  const line = coords.map(p => `${p.x},${p.y}`).join(' ')
+  const area = `${pad},${height - pad} ${line} ${width - pad},${height - pad}`
+  return (
+    <div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32" role="img" aria-label="AI activity trend">
+        <defs>
+          <linearGradient id="activityFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        <polygon points={area} fill="url(#activityFill)" />
+        <polyline points={line} fill="none" stroke="#06b6d4" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {coords.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="3" fill="#0891b2"><title>{points[i][0]}: {p.value.toLocaleString()} messages</title></circle>)}
+      </svg>
+      <div className="flex justify-between text-[9px] text-gray-400">
+        <span>{points[0]?.[0]}</span><span>{points[points.length - 1]?.[0]}</span>
+      </div>
+    </div>
+  )
+}
+
+function ChannelMixDonut({ channels }: { channels: Record<string, ChannelData> }) {
+  const palette = ['#06b6d4', '#2563eb', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#94a3b8']
+  const rows = CHANNEL_ORDER.map((key, index) => ({
+    key,
+    label: CHANNEL_META[key]?.label ?? key,
+    value: channels[key]?.selected?.total ?? 0,
+    color: palette[index % palette.length],
+  })).filter(row => row.value > 0)
+  const total = rows.reduce((sum, row) => sum + row.value, 0)
+  let cursor = 0
+  const gradient = total
+    ? rows.map(row => {
+        const start = cursor
+        cursor += (row.value / total) * 100
+        return `${row.color} ${start}% ${cursor}%`
+      }).join(', ')
+    : '#e5e7eb 0 100%'
+  return (
+    <div className="flex items-center gap-5">
+      <div className="relative h-28 w-28 shrink-0 rounded-full" style={{ background: `conic-gradient(${gradient})` }}>
+        <div className="absolute inset-[18px] rounded-full bg-white dark:bg-gray-900 grid place-items-center text-center">
+          <div><p className="text-xl font-black text-gray-800 dark:text-white">{total.toLocaleString()}</p><p className="text-[8px] uppercase tracking-wide text-gray-400">messages</p></div>
+        </div>
+      </div>
+      <div className="min-w-0 flex-1 space-y-1.5">
+        {rows.slice(0, 5).map(row => (
+          <div key={row.key} className="flex items-center gap-2 text-[10px]">
+            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: row.color }} />
+            <span className="text-gray-500 dark:text-white/50 truncate flex-1">{row.label}</span>
+            <span className="font-bold text-gray-700 dark:text-white">{row.value.toLocaleString()}</span>
+          </div>
+        ))}
+        {!rows.length && <p className="text-xs text-gray-400">No channel activity in this period</p>}
+      </div>
+    </div>
+  )
+}
+
+function DeliveryDonut({ window }: { window: DeliveryWindow | null }) {
+  if (!window || window.attempted === 0) return <div className="h-28 grid place-items-center text-xs text-gray-400">No delivery attempts in this period</div>
+  const delivered = Math.max(window.delivered, 0)
+  const failed = Math.max(window.failed, 0)
+  const pending = Math.max(window.pending, 0)
+  const total = Math.max(delivered + failed + pending, 1)
+  const deliveredEnd = (delivered / total) * 100
+  const failedEnd = deliveredEnd + (failed / total) * 100
+  return (
+    <div className="flex items-center gap-5">
+      <div className="relative h-28 w-28 shrink-0 rounded-full" style={{ background: `conic-gradient(#10b981 0 ${deliveredEnd}%, #ef4444 ${deliveredEnd}% ${failedEnd}%, #f59e0b ${failedEnd}% 100%)` }}>
+        <div className="absolute inset-[18px] rounded-full bg-white dark:bg-gray-900 grid place-items-center text-center">
+          <div><p className="text-xl font-black text-gray-800 dark:text-white">{window.deliveryRate}%</p><p className="text-[8px] uppercase tracking-wide text-gray-400">delivered</p></div>
+        </div>
+      </div>
+      <div className="space-y-2 text-[10px] flex-1">
+        <div className="flex justify-between"><span className="text-emerald-600">Delivered</span><b>{delivered.toLocaleString()}</b></div>
+        <div className="flex justify-between"><span className="text-red-500">Failed</span><b>{failed.toLocaleString()}</b></div>
+        <div className="flex justify-between"><span className="text-amber-500">Pending</span><b>{pending.toLocaleString()}</b></div>
+        <div className="pt-1 border-t border-gray-100 dark:border-white/10 flex justify-between"><span className="text-gray-400">Attempted</span><b>{window.attempted.toLocaleString()}</b></div>
+      </div>
+    </div>
+  )
+}
+
+function SimpleChannelState({ channel, data, integration }: { channel: string; data: ChannelData; integration: MetaIntegrationHealth | null }) {
+  let label = data.selected.total > 0 ? 'Receiving traffic' : 'No recent traffic'
+  let className = data.selected.total > 0 ? 'text-emerald-600 bg-emerald-50' : 'text-gray-500 bg-gray-100'
+  if (['FACEBOOK', 'FACEBOOK_COMMENT', 'INSTAGRAM', 'INSTAGRAM_COMMENT'].includes(channel)) {
+    const evidence = integration?.ingestion?.[channel]?.evidence
+    if (evidence === 'RECENT') { label = 'Receiving traffic'; className = 'text-emerald-600 bg-emerald-50' }
+    else if (evidence === 'STALE') { label = 'No recent traffic'; className = 'text-amber-700 bg-amber-50' }
+    else { label = 'Configured / unverified'; className = 'text-gray-600 bg-gray-100' }
+  }
+  return <span className={cn('rounded-full px-2 py-1 text-[9px] font-bold', className)}>{label}</span>
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const CHANNEL_ORDER = ['WHATSAPP', 'WEBSITE', 'FACEBOOK', 'FACEBOOK_COMMENT', 'INSTAGRAM', 'INSTAGRAM_COMMENT', 'SMS']
@@ -988,7 +1100,7 @@ export default function AnalyticsPage() {
   const cachedAt       = data ? new Date(data.cachedAt).toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit' }) : null
 
   return (
-    <div className="p-6 space-y-8 max-w-5xl">
+    <div className="p-4 lg:p-5 space-y-3 max-w-[1500px]">
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -1017,165 +1129,154 @@ export default function AnalyticsPage() {
         </div>
       ) : data ? (
         <>
-          {/* ── Operational volume (confirmations/follow-ups/escalations/calling) ── */}
-          {data.operational && (
-            <section>
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
-                <ClipboardCheck size={10} /> What the AI handled ({AI_USAGE_RANGES.find(r => r.key === channelRange)?.label})
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {[
-                  { label: 'AI Interactions', display: data.operational.totalInteractions.toLocaleString(), tooltip: 'Total agent + patient messages across every channel below, for the selected period.' },
-                  { label: 'Confirmations Sent', display: data.operational.confirmationsSent.toLocaleString() },
-                  { label: 'Follow-ups Sent', display: data.operational.followupsSent.toLocaleString() },
-                  { label: 'Escalations', display: data.operational.escalations.toLocaleString() },
-                  { label: 'Calls', display: data.operational.callEvents.toLocaleString(), tooltip: 'Calling runs on a mock provider today — see the Calling status below.' },
-                  {
-                    label: 'AI Resolution Rate',
-                    display: data.operational.aiResolutionRatePct === null ? '—' : `${data.operational.aiResolutionRatePct}%`,
-                    tooltip: `Of ${data.operational.engagedConversations.toLocaleString()} conversation(s) with real inbound activity this period, the % Sarah handled with zero human takeover in that same period. Not a satisfaction score — just "did a human have to step in."`,
-                  },
-                  { label: 'Human Handovers', display: data.operational.humanHandovers.toLocaleString(), tooltip: 'Real takeover events in this period (staff clicking "Take over" in the inbox) — an event count, not a current snapshot.' },
-                ].map(tile => (
-                  <div key={tile.label} className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-4" title={tile.tooltip}>
-                    <p className="text-2xl font-black text-gray-800 dark:text-white leading-none">{tile.display}</p>
-                    <p className="text-[10px] font-bold text-gray-400 dark:text-white/40 mt-1">{tile.label}</p>
+          {(() => {
+            const op = data.operational
+            const deliveryWindow = channelRange === 'today'
+              ? whatsappHealth?.today ?? null
+              : channelRange === 'month'
+                ? whatsappHealth?.thisMonth ?? null
+                : whatsappHealth?.last30Days ?? null
+            const openAiCost = aiUsage?.cost?.value ?? null
+            const metaCost = data.meta?.account?.thisMonth?.cost ?? null
+            const hostingCost = doBalance ? Number(doBalance.monthToDateUsage) : null
+            const rangeLabel = AI_USAGE_RANGES.find(r => r.key === channelRange)?.label ?? 'Selected period'
+            return (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-1">
+                    {AI_USAGE_RANGES.map(r => (
+                      <button key={r.key} onClick={() => { setChannelRange(r.key); if (isAdmin) setAiUsageRange(r.key) }}
+                        className={cn('px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors',
+                          channelRange === r.key ? 'bg-cyan-500 text-white shadow-sm' : 'bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 text-gray-500')}>
+                        {r.label}
+                      </button>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          )}
+                  <p className="text-[10px] text-gray-400">Main dashboard · {rangeLabel}</p>
+                </div>
 
-          {/* ── Channel analytics ─────────────────────── */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 flex items-center gap-2">
-                <BarChart2 size={10} /> Where patients contacted us
-              </p>
-              <div className="flex gap-1">
-                {AI_USAGE_RANGES.map(r => (
-                  <button key={r.key} onClick={() => setChannelRange(r.key)}
-                    className={cn(
-                      'px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors',
-                      channelRange === r.key
-                        ? 'bg-cyan-500 text-white'
-                        : 'bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-white/40 hover:bg-gray-100 dark:hover:bg-white/10'
-                    )}>
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              {CHANNEL_ORDER.map(ch => (
-                <ChannelCard key={ch} channel={ch} data={data.channels[ch]} status={data.channelStatus?.[ch]} rangeLabel={AI_USAGE_RANGES.find(r => r.key === channelRange)?.label} />
-              ))}
-            </div>
-            {/* Calling has no message-volume data to chart (it isn't an aiConversation
-                channel) but its dormancy still needs to be visible here per the same
-                active/paused convention as the message channels above. Status is read
-                from the real computed channelStatus.CALLING, not hardcoded. */}
-            <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-400 dark:text-white/30">
-              <span className="text-base">📞</span>
-              <span className="font-bold uppercase tracking-widest text-[10px]">Calling</span>
-              <span className={cn(
-                'text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full',
-                data.channelStatus?.CALLING === 'ACTIVE'
-                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                  : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40',
-              )}>
-                {data.channelStatus?.CALLING === 'ACTIVE' ? 'Active' : 'Paused'}
-              </span>
-            </div>
-          </section>
-
-          {/* ── WhatsApp delivery health (real webhook-fed status, visible to all staff) ── */}
-          <WhatsAppHealthCard data={whatsappHealth} loading={whatsappHealthLoading} isAdmin={isAdmin} />
-
-          {/* ── OpenAI token usage & cost (Admin only) ──── */}
-          {isAdmin && (
-            <OpenAiUsageCard
-              data={aiUsage}
-              range={aiUsageRange}
-              onRangeChange={setAiUsageRange}
-              loading={aiUsageLoading}
-            />
-          )}
-
-          {/* ── Meta billing status (Admin only — financial account data) ── */}
-          {isAdmin && <MetaBillingCard data={metaBilling} loading={metaBillingLoading} />}
-
-          {/* Technical CRM/Meta diagnostics are intentionally kept off this
-              day-to-day overview. They remain available through the existing
-              backend health endpoints for support/admin troubleshooting. */}
-
-          {/* ── Meta WhatsApp API usage ─────────────────── */}
-          {data.meta && (
-            <section>
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
-                <MessageSquare size={10} /> WhatsApp — Meta Cloud API usage
-              </p>
-              <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
-                {data.meta.account ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-3">
-                      <MetaWabaCard data={data.meta.account} label="Production WhatsApp Business Account" />
-                    </div>
-                    <p className="text-[9px] text-gray-300 dark:text-white/20 mt-3 leading-relaxed">
-                      Via Meta pricing_analytics API, direct Meta Cloud API (no third-party routing) · figures cover every phone number registered on this account — Meta does not expose a per-number cost split · $0.00 = utility messages within 24-hour service window
-                    </p>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-3 text-sm text-gray-400 dark:text-white/40">
-                    <AlertCircle size={15} className="text-amber-400 flex-shrink-0" />
-                    <p>WHATSAPP_WABA_ID not configured — usage data unavailable.</p>
+                {op && (
+                  <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
+                    {[
+                      ['AI Interactions', op.totalInteractions.toLocaleString()],
+                      ['Calls', op.callEvents.toLocaleString()],
+                      ['AI Resolution', op.aiResolutionRatePct === null ? '—' : `${op.aiResolutionRatePct}%`],
+                      ['Handovers', op.humanHandovers.toLocaleString()],
+                      ['Escalations', op.escalations.toLocaleString()],
+                      ['AI Cost', openAiCost === null ? '—' : `$${openAiCost.toFixed(2)}`],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 px-3 py-3 shadow-sm">
+                        <p className="text-xl font-black text-gray-800 dark:text-white">{value}</p>
+                        <p className="mt-1 text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+                      </div>
+                    ))}
                   </div>
                 )}
-              </div>
-            </section>
-          )}
 
-          {/* ── DigitalOcean costs (Admin only — infrastructure billing) ── */}
-          {isAdmin && (
-          <section>
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
-              <DollarSign size={10} /> Hosting cost
-            </p>
-            <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
-              {doNotConfig ? (
-                <div className="flex items-center gap-3 text-sm text-gray-400 dark:text-white/40">
-                  <AlertCircle size={15} className="text-amber-400 flex-shrink-0" />
-                  <div>
-                    <p className="font-bold text-gray-600 dark:text-white/60">Not connected</p>
-                    <p className="text-[11px] mt-0.5">Set the <code className="bg-gray-100 dark:bg-white/10 px-1 py-0.5 rounded text-xs">DIGITALOCEAN_API_TOKEN</code> environment variable to see live billing data.</p>
-                  </div>
+                <div className="grid lg:grid-cols-12 gap-3">
+                  <section className="lg:col-span-6 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-1">
+                      <div><p className="text-sm font-black text-gray-800 dark:text-white">Activity trend</p><p className="text-[10px] text-gray-400">Patient and AI messages over time</p></div>
+                      <BarChart2 size={16} className="text-cyan-500" />
+                    </div>
+                    <CompactTrendChart channels={data.channels} />
+                  </section>
+
+                  <section className="lg:col-span-3 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 shadow-sm">
+                    <p className="text-sm font-black text-gray-800 dark:text-white">Channel mix</p>
+                    <p className="text-[10px] text-gray-400 mb-3">Where conversations came from</p>
+                    <ChannelMixDonut channels={data.channels} />
+                  </section>
+
+                  <section className="lg:col-span-3 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 shadow-sm">
+                    <p className="text-sm font-black text-gray-800 dark:text-white">WhatsApp delivery</p>
+                    <p className="text-[10px] text-gray-400 mb-3">{channelRange === 'today' ? 'Today' : channelRange === 'month' ? 'This month' : 'Last 30 days'}</p>
+                    <DeliveryDonut window={deliveryWindow} />
+                  </section>
                 </div>
-              ) : doBalance ? (
-                <div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="text-center p-4 bg-gray-50 dark:bg-white/5 rounded-xl">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-2">Account Balance</p>
-                      <p className="text-2xl font-black text-gray-800 dark:text-white">${doBalance.accountBalance}</p>
+
+                <div className="grid lg:grid-cols-12 gap-3">
+                  <section className="lg:col-span-7 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <div><p className="text-sm font-black text-gray-800 dark:text-white">Patient channels</p><p className="text-[10px] text-gray-400">Traffic and operational state</p></div>
+                      <MessageSquare size={16} className="text-cyan-500" />
                     </div>
-                    <div className="text-center p-4 bg-gray-50 dark:bg-white/5 rounded-xl">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-2">Month-to-Date Usage</p>
-                      <p className="text-2xl font-black text-amber-500">${doBalance.monthToDateUsage}</p>
+                    <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
+                      {CHANNEL_ORDER.filter(ch => ch !== 'SMS').map(ch => {
+                        const channel = data.channels[ch]
+                        if (!channel) return null
+                        return (
+                          <div key={ch} className="rounded-xl bg-gray-50 dark:bg-white/5 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[10px] font-black text-gray-600 dark:text-white/60 truncate">{CHANNEL_META[ch]?.label ?? ch}</p>
+                              <SimpleChannelState channel={ch} data={channel} integration={metaIntegrationHealth} />
+                            </div>
+                            <p className="mt-2 text-lg font-black text-gray-800 dark:text-white">{channel.selected.total.toLocaleString()}</p>
+                            <p className="text-[9px] text-gray-400">{rangeLabel} messages</p>
+                          </div>
+                        )
+                      })}
                     </div>
-                    <div className="text-center p-4 bg-gray-50 dark:bg-white/5 rounded-xl">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-2">MTD Balance</p>
-                      <p className="text-2xl font-black text-gray-800 dark:text-white">${doBalance.monthToDateBalance}</p>
+                  </section>
+
+                  <section className="lg:col-span-5 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <div><p className="text-sm font-black text-gray-800 dark:text-white">Running costs</p><p className="text-[10px] text-gray-400">Clear provider cost summary</p></div>
+                      <DollarSign size={16} className="text-amber-500" />
                     </div>
-                  </div>
-                  {doBalance.generatedAt && (
-                    <p className="text-[9px] text-gray-300 dark:text-white/20 text-center mt-3">
-                      Generated {new Date(doBalance.generatedAt).toLocaleString()}
-                    </p>
-                  )}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between rounded-xl bg-violet-50 dark:bg-violet-900/10 px-3 py-2">
+                        <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">OpenAI</p><p className="text-[9px] text-gray-400">{AI_USAGE_RANGES.find(r => r.key === aiUsageRange)?.label ?? 'Selected period'}</p></div>
+                        <p className="text-lg font-black text-violet-600">{openAiCost === null ? 'Unavailable' : `$${openAiCost.toFixed(2)}`}</p>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl bg-emerald-50 dark:bg-emerald-900/10 px-3 py-2">
+                        <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">Meta / WhatsApp</p><p className="text-[9px] text-gray-400">This month</p></div>
+                        <p className="text-lg font-black text-emerald-600">{metaCost === null ? 'Unavailable' : `$${metaCost.toFixed(2)}`}</p>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl bg-cyan-50 dark:bg-cyan-900/10 px-3 py-2">
+                        <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">DigitalOcean hosting</p><p className="text-[9px] text-gray-400">Month to date</p></div>
+                        <p className="text-lg font-black text-cyan-700">{hostingCost === null ? 'Cost unavailable' : `$${hostingCost.toFixed(2)}`}</p>
+                      </div>
+                    </div>
+                  </section>
                 </div>
-              ) : null}
-            </div>
-          </section>
-          )}
+
+                <details className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 shadow-sm">
+                  <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between">
+                    <div><p className="text-sm font-black text-gray-700 dark:text-white">Technical details</p><p className="text-[10px] text-gray-400">Provider diagnostics, detailed usage and account information</p></div>
+                    <span className="text-xs font-bold text-cyan-600">Open</span>
+                  </summary>
+                  <div className="border-t border-gray-100 dark:border-white/10 p-4 space-y-6">
+                    <WhatsAppHealthCard data={whatsappHealth} loading={whatsappHealthLoading} isAdmin={isAdmin} />
+                    {isAdmin && <OpenAiUsageCard data={aiUsage} range={aiUsageRange} onRangeChange={setAiUsageRange} loading={aiUsageLoading} />}
+                    {isAdmin && <MetaBillingCard data={metaBilling} loading={metaBillingLoading} />}
+                    {data.meta && (
+                      <section>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Meta Cloud API usage</p>
+                        <div className="rounded-xl bg-gray-50 dark:bg-white/5 p-3">
+                          {data.meta.account ? <MetaWabaCard data={data.meta.account} label="Production WhatsApp Business Account" /> : <p className="text-xs text-gray-400">Meta usage unavailable</p>}
+                        </div>
+                      </section>
+                    )}
+                    {isAdmin && (
+                      <section>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Hosting details</p>
+                        <div className="rounded-xl bg-gray-50 dark:bg-white/5 p-4 text-sm text-gray-500">
+                          {doBalance ? (
+                            <div className="grid sm:grid-cols-3 gap-3">
+                              <div><p className="text-[9px] uppercase text-gray-400">Account balance</p><b>$ {doBalance.accountBalance}</b></div>
+                              <div><p className="text-[9px] uppercase text-gray-400">Month-to-date usage</p><b>$ {doBalance.monthToDateUsage}</b></div>
+                              <div><p className="text-[9px] uppercase text-gray-400">MTD balance</p><b>$ {doBalance.monthToDateBalance}</b></div>
+                            </div>
+                          ) : <p>Hosting cost unavailable. Connect billing credentials in the protected server environment.</p>}
+                        </div>
+                      </section>
+                    )}
+                  </div>
+                </details>
+              </div>
+            )
+          })()}
         </>
       ) : null}
     </div>
