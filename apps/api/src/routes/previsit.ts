@@ -38,7 +38,7 @@ router.get('/recent', requireAuth, async (_req, res) => {
       where: { userId: 'pre-visit-form', createdAt: { gte: since } },
       orderBy: { createdAt: 'desc' },
       take: 20,
-      include: { patient: { select: { id: true, firstName: true, lastName: true, phone: true } } },
+      include: { patient: { select: { id: true, firstName: true, lastName: true, phone: true, referralSource: true } } },
     })
     const submissions = activities.map(a => {
       let outcome: IntakeOutcome | null = null
@@ -48,6 +48,7 @@ router.get('/recent', requireAuth, async (_req, res) => {
         patientId: a.patientId,
         name:      `${a.patient.firstName} ${a.patient.lastName}`.trim(),
         phone:     a.patient.phone,
+        referralSource: a.patient.referralSource,
         outcome,
         createdAt: a.createdAt,
       }
