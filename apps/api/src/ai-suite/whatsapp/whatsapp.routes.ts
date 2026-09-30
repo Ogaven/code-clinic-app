@@ -188,7 +188,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
   // explicit Harvest test phone-number ID leave Code Clinic. Everything else
   // continues through the existing Sarah workflow unchanged.
   const HARVEST_TEST_PHONE_NUMBER_ID = '1163288503545718'
-  const HARVEST_WEBHOOK_URL = 'https://pnzhpnptvynbqdcsqmqe.supabase.co/functions/v1/whatsapp-webhook'
+  const HARVEST_WEBHOOK_URL = 'https://ednewnjsenudwlsyvhfo.supabase.co/functions/v1/whatsapp-webhook'
   const incomingPhoneNumberIds = (req.body?.entry ?? []).flatMap((entry: any) =>
     (entry?.changes ?? []).map((change: any) => String(change?.value?.metadata?.phone_number_id ?? ''))
   ).filter(Boolean)
