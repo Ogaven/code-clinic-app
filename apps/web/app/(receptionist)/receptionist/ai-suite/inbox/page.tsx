@@ -1170,15 +1170,15 @@ function InboxPage() {
   )
 
   const WaChatPanel = sel ? (
-    <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ background: '#075E54' }}>
+    <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
+      <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 flex-shrink-0 min-w-0 overflow-hidden" style={{ background: '#075E54' }}>
         <button onClick={() => router.back()} className="md:hidden text-white/70 hover:text-white mr-1">
           <ChevronLeft size={20} />
         </button>
         {/* No online/last-seen indicator — WhatsApp's Business API does not expose
             contact presence to businesses (a peer-to-peer WhatsApp privacy feature,
             never extended to the Cloud API). Showing a dot here would be fake. */}
-        <Avatar name={convLabel(sel, 'WHATSAPP')} size={40} />
+        <div className="flex-shrink-0"><Avatar name={convLabel(sel, 'WHATSAPP')} size={40} /></div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate">{convLabel(sel, 'WHATSAPP')}</p>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px]" style={{ color: '#90cbb7' }}>
@@ -1191,15 +1191,15 @@ function InboxPage() {
             )}
           </div>
         </div>
-        <ChatMenu sel={sel} onChanged={handleConvChanged} />
+        <div className="flex-shrink-0"><ChatMenu sel={sel} onChanged={handleConvChanged} /></div>
         <button onClick={toggleTakeover}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-90"
+          className="flex-shrink-0 flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-90"
           style={{ background: isHuman ? '#06b6d4' : '#F59E0B' }}>
-          {isHuman ? <><Bot size={13} /> Hand Back</> : <><UserCheck size={13} /> Take Over</>}
+          {isHuman ? <><Bot size={13} /><span className="hidden sm:inline">Hand Back</span></> : <><UserCheck size={13} /><span className="hidden sm:inline">Take Over</span></>}
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-0 px-4 pt-4 pb-20 space-y-1.5"
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 px-3 sm:px-4 pt-4 pb-20 space-y-1.5"
         onScroll={handleMessagesScroll}
         style={{ background: dark ? '#0b1f38' : '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
         {loadingM && msgs.length === 0 && (
@@ -1211,8 +1211,8 @@ function InboxPage() {
           const showTime = i === msgs.length - 1 || msgs[i + 1]?.role !== msg.role
           return (
             <div key={msg.id} className={cn('flex', isAgent ? 'justify-end' : 'justify-start')}>
-              <div className="max-w-[68%]">
-                <div className="px-3 py-2 rounded-2xl shadow-sm text-sm leading-relaxed"
+              <div className="min-w-0 max-w-[85%] sm:max-w-[68%]">
+                <div className="min-w-0 break-words [overflow-wrap:anywhere] px-3 py-2 rounded-2xl shadow-sm text-sm leading-relaxed"
                   style={isAgent
                     ? { background: '#d9fdd3', borderBottomRightRadius: 4, color: '#111' }
                     : { background: '#fff',    borderBottomLeftRadius:  4, color: '#111' }}>
