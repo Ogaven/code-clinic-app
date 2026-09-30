@@ -11,7 +11,7 @@ import { useState } from 'react'
 import { User, Settings as SettingsIcon, Palette, Download, LogOut, Sun, Moon, Monitor, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AppTheme } from '@/lib/theme'
-import type { PwaInstallState } from '@/lib/pwaInstall'
+import { decideInstallAction, type PwaInstallState } from '@/lib/pwaInstall'
 import NotificationSettingsRow from '@/components/shared/NotificationSettingsRow'
 import IOSInstallInstructions from '@/components/shared/IOSInstallInstructions'
 
@@ -110,8 +110,13 @@ export default function ProfileMenu({
         {showInstall ? (
           <button
             onClick={async () => {
-              if (install.isIOS) { setShowInstallHelp(true); return }
-              await install.promptInstall()
+              const action = decideInstallAction(install)
+              if (action === 'native-prompt') {
+                const outcome = await install.promptInstall()
+                if (outcome === 'unavailable') setShowInstallHelp(true)
+                return
+              }
+              if (action === 'show-fallback') setShowInstallHelp(true)
             }}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"
           >

@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { detectIOS, detectStandalone } from '../pwaInstall'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { decideInstallAction, detectIOS, detectStandalone, resolveInstallPrompt } from '../pwaInstall'
 
 function stubGlobals(overrides: { navigator?: any; window?: any }) {
   if (overrides.navigator !== undefined) (globalThis as any).navigator = overrides.navigator
@@ -86,5 +86,57 @@ describe('detectStandalone', () => {
       window: { navigator: {}, matchMedia: () => ({ matches: false }) },
     })
     expect(detectStandalone()).toBe(false)
+  })
+})
+
+// Regression coverage for "tapping Install App skipped straight to the
+// instructional modal instead of the browser's own native install prompt":
+// the tap handler must always prefer the real OS/browser confirmation over
+// the manual fallback, and must never offer installation again once already
+// installed. Deliberately capability-based (isStandalone/canInstallNative
+// only) — no isIOS branch — so a native prompt is used the moment one is
+// available on ANY platform, and iOS isn't special-cased into always
+// skipping straight to the fallback.
+describe('decideInstallAction', () => {
+  it('uses the native prompt when one is available (desktop/Android Chrome/Edge path)', () => {
+    expect(decideInstallAction({ isStandalone: false, canInstallNative: true })).toBe('native-prompt')
+  })
+
+  it('falls back to the instructional modal when no native prompt is available (today\'s iOS reality, any browser)', () => {
+    expect(decideInstallAction({ isStandalone: false, canInstallNative: false })).toBe('show-fallback')
+  })
+
+  it('never offers installation again once already installed/standalone, even if a native prompt is (still) available', () => {
+    expect(decideInstallAction({ isStandalone: true, canInstallNative: true })).toBe('noop')
+  })
+
+  it('never offers installation again once already installed/standalone, with no native prompt either', () => {
+    expect(decideInstallAction({ isStandalone: true, canInstallNative: false })).toBe('noop')
+  })
+})
+
+describe('resolveInstallPrompt', () => {
+  it('resolves "unavailable" with no captured event, and never calls anything', async () => {
+    await expect(resolveInstallPrompt(null)).resolves.toBe('unavailable')
+  })
+
+  it('calls prompt() immediately, then reports "accepted" from the real userChoice result', async () => {
+    const prompt = vi.fn().mockResolvedValue(undefined)
+    const event = { prompt, userChoice: Promise.resolve({ outcome: 'accepted' as const, platform: 'web' }) }
+
+    const outcome = await resolveInstallPrompt(event as any)
+
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(outcome).toBe('accepted')
+  })
+
+  it('reports "dismissed" from the real userChoice result without treating it as an error', async () => {
+    const prompt = vi.fn().mockResolvedValue(undefined)
+    const event = { prompt, userChoice: Promise.resolve({ outcome: 'dismissed' as const, platform: 'web' }) }
+
+    const outcome = await resolveInstallPrompt(event as any)
+
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(outcome).toBe('dismissed')
   })
 })

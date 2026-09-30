@@ -48,6 +48,32 @@ export function detectStandalone(): boolean {
   return iosStandalone || window.matchMedia('(display-mode: standalone)').matches
 }
 
+// Invokes an already-captured beforeinstallprompt event and reports what the
+// user actually did — pulled out of the hook below so it's testable without
+// rendering React. Never fabricates an outcome: 'unavailable' only means
+// "there was nothing to invoke", not that installation failed.
+export async function resolveInstallPrompt(deferredEvent: BeforeInstallPromptEvent | null): Promise<InstallOutcome> {
+  if (!deferredEvent) return 'unavailable'
+  await deferredEvent.prompt()
+  const { outcome } = await deferredEvent.userChoice
+  return outcome
+}
+
+export type InstallTapAction = 'native-prompt' | 'show-fallback' | 'noop'
+
+// What tapping "Install App" should do, based purely on capability/state —
+// never on platform/browser identity. A native beforeinstallprompt always
+// wins when one has actually fired (any platform, including a hypothetical
+// future iOS/WebKit that starts firing it — see usePwaInstall's listener);
+// only the total absence of one falls back to the manual Share → Add to
+// Home Screen instructions, which is today's reality for every iOS browser
+// but isn't hard-coded as an iOS-only rule.
+export function decideInstallAction(state: { isStandalone: boolean; canInstallNative: boolean }): InstallTapAction {
+  if (state.isStandalone) return 'noop'
+  if (state.canInstallNative) return 'native-prompt'
+  return 'show-fallback'
+}
+
 export function usePwaInstall(): PwaInstallState {
   const [deferredEvent, setDeferredEvent] = useState<BeforeInstallPromptEvent | null>(null)
   const [isStandalone, setIsStandalone] = useState(false)
@@ -79,11 +105,9 @@ export function usePwaInstall(): PwaInstallState {
   }, [])
 
   const promptInstall = useCallback(async (): Promise<InstallOutcome> => {
-    if (!deferredEvent) return 'unavailable'
-    await deferredEvent.prompt()
-    const { outcome } = await deferredEvent.userChoice
+    const outcome = await resolveInstallPrompt(deferredEvent)
     if (outcome === 'accepted') setIsStandalone(true)
-    setDeferredEvent(null)
+    if (outcome !== 'unavailable') setDeferredEvent(null)
     return outcome
   }, [deferredEvent])
 
