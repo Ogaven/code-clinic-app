@@ -39,6 +39,7 @@ const NO_INSTALL: PwaInstallState = {
   canInstallNative: false,
   isIOS: false,
   isStandalone: false,
+  isIOSNonSafari: false,
   promptInstall: async () => 'unavailable',
 }
 
@@ -139,7 +140,7 @@ export default function ProfileMenu({
         <LogOut size={15} /> Sign Out
       </button>
 
-      {showInstallHelp && <IOSInstallInstructions onClose={() => setShowInstallHelp(false)} />}
+      {showInstallHelp && <IOSInstallInstructions onClose={() => setShowInstallHelp(false)} needsSafari={install.isIOSNonSafari} />}
     </div>
   )
 }

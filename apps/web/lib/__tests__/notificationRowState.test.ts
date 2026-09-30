@@ -41,4 +41,22 @@ describe('getNotificationRowState', () => {
       supported: false, permission: 'default', subscribed: false, isIOS: false, isStandalone: false,
     })).toBe('unsupported')
   })
+
+  it('iOS in Chrome/Firefox/Edge (not installed) reports ios-needs-safari, not the regular Add to Home Screen guidance', () => {
+    expect(getNotificationRowState({
+      supported: false, permission: 'default', subscribed: false, isIOS: true, isStandalone: false, isIOSNonSafari: true,
+    })).toBe('ios-needs-safari')
+  })
+
+  it('iOS in actual Safari (not installed) still reports the regular ios-needs-install guidance', () => {
+    expect(getNotificationRowState({
+      supported: false, permission: 'default', subscribed: false, isIOS: true, isStandalone: false, isIOSNonSafari: false,
+    })).toBe('ios-needs-install')
+  })
+
+  it('a non-Safari iOS browser that is somehow already standalone falls through to normal supported logic, not the Safari warning', () => {
+    expect(getNotificationRowState({
+      supported: true, permission: 'default', subscribed: false, isIOS: true, isStandalone: true, isIOSNonSafari: true,
+    })).toBe('offer')
+  })
 })

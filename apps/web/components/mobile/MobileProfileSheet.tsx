@@ -153,7 +153,7 @@ export default function MobileProfileSheet({ user, theme, onThemeChange, profile
         </div>
       </div>
 
-      {showInstallHelp && <IOSInstallInstructions onClose={() => setShowInstallHelp(false)} />}
+      {showInstallHelp && <IOSInstallInstructions onClose={() => setShowInstallHelp(false)} needsSafari={install.isIOSNonSafari} />}
     </div>
   )
 }

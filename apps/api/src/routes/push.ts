@@ -56,15 +56,22 @@ router.delete('/subscribe', requireAuth, async (req, res) => {
 // It always targets req.user.id from the verified JWT; callers cannot select
 // another staff member. The payload is fixed and contains no patient data.
 router.post('/test', requireAuth, async (req, res) => {
+  const receivedAt = Date.now()
   try {
     if (!isPushConfigured()) {
       res.status(503).json({ error: 'Push notifications are not configured on this server' })
       return
     }
     const result = await sendTestPushToUser(req.user!.id)
+    // Route-level elapsed time, end to end — should track the OneSignal
+    // service's own logged elapsedMs closely. If this is ever much larger,
+    // the gap is somewhere in Code Clinic's own request handling, not the
+    // push provider; if it tracks closely, any delivery delay reported by a
+    // user is happening after this response, outside our server entirely.
+    console.log('[Push] test dispatched', { elapsedMs: Date.now() - receivedAt, succeeded: result.succeeded, failed: result.failed })
     res.json({ ok: true, ...result })
   } catch (e: any) {
-    console.error('[Push] test error:', e.message)
+    console.error('[Push] test error:', e.message, { elapsedMs: Date.now() - receivedAt })
     res.status(500).json({ error: 'Failed to send test push' })
   }
 })

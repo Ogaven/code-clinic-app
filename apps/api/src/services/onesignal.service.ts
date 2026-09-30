@@ -19,9 +19,20 @@ export function isOneSignalConfigured(): boolean {
 
 // OneSignal external_id is always the authenticated Code Clinic User.id.
 // No patient identifiers or clinical content are used for addressing.
+//
+// elapsedMs below times only Code Clinic's request -> OneSignal's HTTP
+// acceptance of the send. It does NOT measure actual device delivery, which
+// happens asynchronously afterwards via FCM/APNs/the browser's own push
+// service, entirely outside this process — a fast elapsedMs here proves our
+// own code isn't the source of an end-to-end delay a user reports, but
+// can't by itself prove the opposite (device delivery can still lag behind
+// a prompt accept). targetedExternalIds is the number of external_ids in
+// this call, not a confirmed eligible-device count — OneSignal's synchronous
+// create-notification response doesn't report device fan-out.
 export async function sendOneSignalToUser(userId: string, payload: OneSignalPayload): Promise<OneSignalDispatchResult> {
   if (!isOneSignalConfigured()) return { configured: false, accepted: false, error: 'not_configured' }
 
+  const startedAt = Date.now()
   try {
     const response = await fetch('https://api.onesignal.com/notifications?c=push', {
       method: 'POST',
@@ -38,15 +49,18 @@ export async function sendOneSignalToUser(userId: string, payload: OneSignalPayl
         url: payload.url,
       }),
     })
+    const elapsedMs = Date.now() - startedAt
 
     const data = await response.json().catch(() => ({})) as { id?: string; errors?: unknown }
     if (!response.ok || !data.id) {
-      console.error('[OneSignal] Push rejected', { status: response.status, hasErrors: !!data.errors })
+      console.error('[OneSignal] Push rejected', { status: response.status, hasErrors: !!data.errors, elapsedMs, targetedExternalIds: 1 })
       return { configured: true, accepted: false, error: `http_${response.status}` }
     }
+    console.log('[OneSignal] Push accepted', { elapsedMs, hasNotificationId: !!data.id, targetedExternalIds: 1 })
     return { configured: true, accepted: true, notificationId: data.id }
   } catch (error: any) {
-    console.error('[OneSignal] Push dispatch failed:', error?.message)
+    const elapsedMs = Date.now() - startedAt
+    console.error('[OneSignal] Push dispatch failed:', error?.message, { elapsedMs })
     return { configured: true, accepted: false, error: 'network_error' }
   }
 }

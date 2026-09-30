@@ -10,9 +10,15 @@
 // instructions never drift between the two surfaces.
 
 import { useEffect } from 'react'
-import { Download, Share, PlusSquare, Check } from 'lucide-react'
+import { Download, Share, PlusSquare, Check, Compass } from 'lucide-react'
 
-export default function IOSInstallInstructions({ onClose }: { onClose: () => void }) {
+interface IOSInstallInstructionsProps {
+  onClose: () => void
+  /** iOS in Chrome/Firefox/Edge/Opera rather than Safari — those never unlock Add to Home Screen's real install or Web Push on iOS, so the flow needs an extra first step. */
+  needsSafari?: boolean
+}
+
+export default function IOSInstallInstructions({ onClose, needsSafari = false }: IOSInstallInstructionsProps) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -33,11 +39,16 @@ export default function IOSInstallInstructions({ onClose }: { onClose: () => voi
           <Download size={24} className="text-white" />
         </div>
         <h3 className="text-center text-lg font-black text-gray-800 dark:text-white">Install Code Clinic</h3>
-        <p className="mt-1 text-center text-sm text-gray-500 dark:text-slate-400">To install Code Clinic on your device:</p>
+        <p className="mt-1 text-center text-sm text-gray-500 dark:text-slate-400">
+          {needsSafari
+            ? 'On iPhone/iPad, installing and notifications only work through Safari:'
+            : 'To install Code Clinic on your device:'}
+        </p>
         <ol className="mt-5 space-y-4">
-          <InstallStep n={1} icon={Share}>Tap the <strong>Share</strong> icon in Safari</InstallStep>
-          <InstallStep n={2} icon={PlusSquare}>Select <strong>Add to Home Screen</strong></InstallStep>
-          <InstallStep n={3} icon={Check}>Tap <strong>Add</strong></InstallStep>
+          {needsSafari && <InstallStep n={1} icon={Compass}>Open this page in <strong>Safari</strong></InstallStep>}
+          <InstallStep n={needsSafari ? 2 : 1} icon={Share}>Tap the <strong>Share</strong> icon in Safari</InstallStep>
+          <InstallStep n={needsSafari ? 3 : 2} icon={PlusSquare}>Select <strong>Add to Home Screen</strong></InstallStep>
+          <InstallStep n={needsSafari ? 4 : 3} icon={Check}>Tap <strong>Add</strong></InstallStep>
         </ol>
         <button onClick={onClose} className="mt-6 w-full rounded-2xl py-3 text-sm font-bold text-white" style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
           Got it

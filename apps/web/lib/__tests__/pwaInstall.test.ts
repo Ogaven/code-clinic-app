@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { detectIOS, detectStandalone } from '../pwaInstall'
+import { detectIOS, detectIOSNonSafariBrowser, detectStandalone } from '../pwaInstall'
 
 function stubGlobals(overrides: { navigator?: any; window?: any }) {
   if (overrides.navigator !== undefined) (globalThis as any).navigator = overrides.navigator
@@ -40,6 +40,43 @@ describe('detectIOS', () => {
   it('does not flag Android as iOS', () => {
     stubGlobals({ navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8)', platform: 'Linux armv8l', maxTouchPoints: 5 } })
     expect(detectIOS()).toBe(false)
+  })
+})
+
+describe('detectIOSNonSafariBrowser', () => {
+  it('is false when navigator is unavailable (SSR / Node)', () => {
+    delete (globalThis as any).navigator
+    expect(detectIOSNonSafariBrowser()).toBe(false)
+  })
+
+  it('is false on a non-iOS device regardless of UA tokens', () => {
+    stubGlobals({ navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 14) CriOS/120.0', platform: 'Linux armv8l', maxTouchPoints: 5 } })
+    expect(detectIOSNonSafariBrowser()).toBe(false)
+  })
+
+  it('is false for real Safari on iPhone', () => {
+    stubGlobals({ navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', platform: 'iPhone', maxTouchPoints: 5 } })
+    expect(detectIOSNonSafariBrowser()).toBe(false)
+  })
+
+  it('detects Chrome for iOS (CriOS)', () => {
+    stubGlobals({ navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1', platform: 'iPhone', maxTouchPoints: 5 } })
+    expect(detectIOSNonSafariBrowser()).toBe(true)
+  })
+
+  it('detects Firefox for iOS (FxiOS)', () => {
+    stubGlobals({ navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/119.0 Mobile/15E148 Safari/605.1.15', platform: 'iPhone', maxTouchPoints: 5 } })
+    expect(detectIOSNonSafariBrowser()).toBe(true)
+  })
+
+  it('detects Edge for iOS (EdgiOS)', () => {
+    stubGlobals({ navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) EdgiOS/120.0 Mobile/15E148 Safari/605.1.15', platform: 'iPhone', maxTouchPoints: 5 } })
+    expect(detectIOSNonSafariBrowser()).toBe(true)
+  })
+
+  it('detects Chrome for iPadOS 13+ reporting as "MacIntel"', () => {
+    stubGlobals({ navigator: { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1', platform: 'MacIntel', maxTouchPoints: 5 } })
+    expect(detectIOSNonSafariBrowser()).toBe(true)
   })
 })
 

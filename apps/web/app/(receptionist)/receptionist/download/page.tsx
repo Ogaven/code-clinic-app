@@ -78,7 +78,7 @@ export default function DownloadPage() {
             ) : (
               <div className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-sm font-medium">
                 <CheckCircle2 size={16} className="text-green-400" />
-                Open this page in Chrome/Edge to install
+                {platform === 'ios' ? 'Follow the iPhone/iPad steps below' : 'Open this page in Chrome/Edge to install'}
               </div>
             )}
           </div>
