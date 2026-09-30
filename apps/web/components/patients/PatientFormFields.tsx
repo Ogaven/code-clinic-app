@@ -39,7 +39,7 @@ export const MEDICAL_CONDITIONS = [
 
 export const REFERRAL_SOURCES = [
   'Google Search', 'Google Maps', 'Facebook', 'Instagram', 'TikTok',
-  'Referred by Friend / Family', 'Referred by Doctor', 'Walk-in', 'Returning Patient', 'Other',
+  'Referred by Friend / Family', 'Referred by Doctor', 'City Medicals', 'ERA', 'NWSC', 'Walk-in', 'Returning Patient', 'Other',
 ]
 
 const toProperCase = (str: string) => str.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())

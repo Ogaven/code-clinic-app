@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { CheckCircle2, AlertCircle, Loader2, Stethoscope } from 'lucide-react'
+import { CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Suspense } from 'react'
 import { REFERRAL_SOURCES } from '@/components/patients/PatientFormFields'
@@ -125,15 +125,12 @@ function PreVisitForm() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-cyan-50/30">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-          <Stethoscope size={16} className="text-white" />
-        </div>
+      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-black text-gray-800">Code Clinic</p>
           <p className="text-[10px] text-gray-400">Pre-Visit Health Form</p>
         </div>
+        <img src="/logo.png" alt="Code Clinic" className="h-9 w-auto max-w-[140px] object-contain" />
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5 pb-12">
