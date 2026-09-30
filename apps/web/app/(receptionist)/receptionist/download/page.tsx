@@ -78,7 +78,7 @@ export default function DownloadPage() {
             ) : (
               <div className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-sm font-medium">
                 <CheckCircle2 size={16} className="text-green-400" />
-                Open this page in Chrome/Edge to install
+                {platform === 'ios' ? 'Follow the iPhone/iPad steps below' : 'Open this page in Chrome/Edge to install'}
               </div>
             )}
           </div>
@@ -188,11 +188,11 @@ export default function DownloadPage() {
             <div className="border-t border-gray-100 dark:border-white/8 pt-4">
               <div className="flex items-center gap-2 mb-2">
                 <Apple size={14} className="text-gray-700 dark:text-white/70" />
-                <p className="text-sm font-bold text-gray-700 dark:text-white/70">iPhone / iPad (Safari)</p>
+                <p className="text-sm font-bold text-gray-700 dark:text-white/70">iPhone / iPad</p>
               </div>
               {[
-                'Open Code Clinic in Safari on your iPhone or iPad',
-                'Tap the Share button (square with arrow) at the bottom',
+                'Open Code Clinic on your iPhone or iPad',
+                'Tap your browser\'s Share button (square with arrow)',
                 'Scroll down and tap "Add to Home Screen"',
                 'Tap "Add" — the app icon appears on your home screen',
               ].map((text, i) => (

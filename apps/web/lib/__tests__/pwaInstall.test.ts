@@ -41,6 +41,24 @@ describe('detectIOS', () => {
     stubGlobals({ navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8)', platform: 'Linux armv8l', maxTouchPoints: 5 } })
     expect(detectIOS()).toBe(false)
   })
+
+  // Since iOS/iPadOS 16.4, Home Screen web apps and Web Push work from any
+  // browser's Add to Home Screen, not just Safari's (WebKit's own guidance:
+  // feature-detect, don't browser-detect) — detectIOS() must keep reporting
+  // "this is an iOS device" the same way regardless of which browser it's
+  // running in, so callers never single out Chrome/Firefox/Edge for iOS.
+  it('detects iOS the same way for Chrome, Firefox, and Edge on iOS as for Safari', () => {
+    const uas = [
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/119.0 Mobile/15E148 Safari/605.1.15',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) EdgiOS/120.0 Mobile/15E148 Safari/605.1.15',
+    ]
+    for (const userAgent of uas) {
+      stubGlobals({ navigator: { userAgent, platform: 'iPhone', maxTouchPoints: 5 } })
+      expect(detectIOS()).toBe(true)
+    }
+  })
 })
 
 describe('detectStandalone', () => {

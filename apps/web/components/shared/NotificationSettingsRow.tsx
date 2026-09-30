@@ -13,6 +13,7 @@ import { Bell, BellOff, BellRing } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { enableOneSignalNotifications, initializeOneSignal } from '@/lib/onesignal'
 import { getNotificationRowState } from '@/lib/notificationRowState'
+import { detectIOS, detectStandalone } from '@/lib/pwaInstall'
 
 interface NotificationSettingsRowProps {
   /** 'sheet' = full-size mobile row with its own heading (default). 'menu' = compact row for the small desktop dropdown. */
@@ -37,13 +38,8 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
     initializeOneSignal()
     setSubscribed(hasNotificationApi && Notification.permission === 'granted')
 
-    // iPadOS reports itself as "MacIntel" but is touch-only, unlike a real Mac.
-    const ua = navigator.userAgent
-    setIsIOS(/iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
-    setIsStandalone(
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as unknown as { standalone?: boolean }).standalone === true
-    )
+    setIsIOS(detectIOS())
+    setIsStandalone(detectStandalone())
   }, [])
 
   async function sendTest() {

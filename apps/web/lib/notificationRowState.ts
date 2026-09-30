@@ -9,15 +9,15 @@ export function getNotificationRowState(params: {
   supported: boolean
   permission: NotificationPermission | 'unsupported'
   subscribed: boolean
-  /** iPhone/iPad (incl. iPadOS reporting as "Mac" with touch support). */
+  /** iPhone/iPad (incl. iPadOS reporting as "Mac" with touch support). Applies to any iOS browser — since iOS/iPadOS 16.4, Home Screen web apps can get Web Push regardless of which browser installed them; this is feature detection (`supported`), not a Safari-only rule. */
   isIOS?: boolean
-  /** Launched from the Home Screen (installed PWA), not a regular Safari tab. */
+  /** Launched from the Home Screen (installed PWA), not a regular browser tab. */
   isStandalone?: boolean
 }): NotificationRowState {
   if (!params.supported) {
-    // iOS/iPadOS Safari only exposes the Push API to an installed
-    // (Add to Home Screen) PWA, even on versions that otherwise support Web
-    // Push — a regular Safari tab always reports unsupported here. Give
+    // iOS/iPadOS only exposes the Push API to an installed (Add to Home
+    // Screen) web app, even on versions/browsers that otherwise support Web
+    // Push — a regular browser tab always reports unsupported here. Give
     // staff the real fix instead of a dead-end "not supported" message.
     if (params.isIOS && !params.isStandalone) return 'ios-needs-install'
     return 'unsupported'
