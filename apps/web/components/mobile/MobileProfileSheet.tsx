@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { User, Palette, Download, LogOut, X, Sun, Moon, Monitor, Check } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { AppTheme, saveTheme } from '@/lib/theme'
-import type { PwaInstallState } from '@/lib/pwaInstall'
+import { decideInstallAction, type PwaInstallState } from '@/lib/pwaInstall'
 import NotificationSettingsRow from '@/components/shared/NotificationSettingsRow'
 import IOSInstallInstructions from '@/components/shared/IOSInstallInstructions'
 
@@ -144,8 +144,13 @@ export default function MobileProfileSheet({ user, theme, onThemeChange, profile
               icon={Download}
               label="Install App"
               onClick={async () => {
-                if (install.isIOS) { setShowInstallHelp(true); return }
-                await install.promptInstall()
+                const action = decideInstallAction(install)
+                if (action === 'native-prompt') {
+                  const outcome = await install.promptInstall()
+                  if (outcome === 'unavailable') setShowInstallHelp(true)
+                  return
+                }
+                if (action === 'show-fallback') setShowInstallHelp(true)
               }}
             />
           )}
