@@ -311,6 +311,9 @@ describe('Treatment follow-up alert scheduler', () => {
     const pushPayload = pushCall![1]
     expect(pushPayload.body).not.toContain('Sensitive clinical detail')
     expect(pushPayload.body).not.toContain('Consulted')
+    expect(pushPayload.body).not.toContain('Jane')
+    expect(pushPayload.body).not.toContain('Doe')
+    expect(pushPayload.body).toBe('A treatment follow-up needs attention. Tap to review.')
   })
 
   it('never notifies the patient -- every recipient is an internal staff/doctor user id, and no WhatsApp/SMS send is attempted', async () => {

@@ -81,13 +81,14 @@ describe('persistDeliveryFailure — real Meta error detail, additive to AiMessa
   })
 })
 
-describe('notifyStaffOfDeliveryFailure — dedup survives a process restart', () => {
+describe('notifyStaffOfDeliveryFailure — durable unread-notification dedup survives a process restart', () => {
   // Each test gets a FRESH module instance (vi.resetModules + dynamic
   // re-import) so its module-level lastDeliveryFailureAlertAt always starts
   // at 0 — genuinely isolated per test, and for the "process restart"
   // scenarios below, exactly what a real process restart looks like (the
-  // in-memory guard alone provides zero protection at that point; the DB
-  // check is what must catch a still-open incident).
+  // in-memory debounce alone provides zero protection at that point; the DB
+  // "is there still an UNREAD notification for this title" check is what
+  // must catch a still-open incident).
   async function freshNotify() {
     vi.resetModules()
     const mod = await import('../ai-suite/whatsapp/whatsapp.routes')
@@ -103,7 +104,7 @@ describe('notifyStaffOfDeliveryFailure — dedup survives a process restart', ()
     vi.useRealTimers()
   })
 
-  it('creates a fresh notification for a genuinely new incident (no recent DB record), addressed to ADMIN only', async () => {
+  it('creates a fresh notification for a genuinely new incident (no unread DB record), addressed to ADMIN only', async () => {
     prismaMock.notification.findFirst.mockResolvedValue(null)
     const notify = await freshNotify()
     await notify(131047, 'Re-engagement message', 'more than 24 hours have passed')
@@ -118,9 +119,10 @@ describe('notifyStaffOfDeliveryFailure — dedup survives a process restart', ()
     )
   })
 
-  it('does not create a duplicate when a DB notification already exists within the cooldown window, even right after a simulated process restart', async () => {
+  it('does not create a duplicate while the existing incident notification is still unread, even right after a simulated process restart', async () => {
     // Simulate the SAME open incident already having been recorded by an
-    // earlier process (before the restart wiped the in-memory timestamp).
+    // earlier process (before the restart wiped the in-memory timestamp) —
+    // and nobody has read it yet, so it's still the live alert for this code.
     prismaMock.notification.findFirst.mockResolvedValue({ id: 'existing-notification' })
     const notify = await freshNotify()
 
@@ -130,28 +132,31 @@ describe('notifyStaffOfDeliveryFailure — dedup survives a process restart', ()
     expect(sendStaffSMSMock).not.toHaveBeenCalled()
   })
 
-  it('a genuinely new incident after the cooldown window has fully elapsed creates a new notification', async () => {
+  it('once the prior notification for this code has been read, a later failure is treated as a genuinely new incident', async () => {
     prismaMock.notification.findFirst.mockResolvedValue(null)
     const notify = await freshNotify()
     await notify(131047, 'Re-engagement message', 'first incident')
     expect(prismaMock.notification.create).toHaveBeenCalledTimes(1)
 
     vi.clearAllMocks()
+    // findFirst is scoped to isRead: false — once an admin reads the prior
+    // notification, it no longer matches, so the mock returning null here
+    // stands in for "the earlier row now has isRead: true."
     prismaMock.notification.findFirst.mockResolvedValue(null)
-    vi.setSystemTime(new Date('2026-09-16T01:00:00.000Z')) // +60 min, past the 30-min cooldown
+    vi.setSystemTime(new Date('2026-09-16T00:02:00.000Z')) // +2 min, past the 60s debounce
 
     await notify(131047, 'Re-engagement message', 'second, later incident')
     expect(prismaMock.notification.create).toHaveBeenCalledTimes(1)
   })
 
-  it('does not repeat-notify for rapid-fire failures of the SAME code within the same cooldown window (in-memory fast path, no DB round trip)', async () => {
+  it('does not repeat-notify for rapid-fire failures of the SAME code within the debounce window (in-memory fast path, no DB round trip)', async () => {
     prismaMock.notification.findFirst.mockResolvedValue(null)
     const notify = await freshNotify()
     await notify(131047, 'first', 'first')
     vi.clearAllMocks()
     prismaMock.notification.findFirst.mockResolvedValue(null)
 
-    vi.setSystemTime(new Date('2026-09-16T00:05:00.000Z')) // +5 min, still within cooldown
+    vi.setSystemTime(new Date('2026-09-16T00:00:30.000Z')) // +30s, still within the 60s debounce
     await notify(131047, 'second', 'second')
 
     expect(prismaMock.notification.create).not.toHaveBeenCalled()
@@ -159,11 +164,11 @@ describe('notifyStaffOfDeliveryFailure — dedup survives a process restart', ()
     expect(prismaMock.notification.findFirst).not.toHaveBeenCalled()
   })
 
-  it('a DIFFERENT error code is never suppressed by another code\'s active cooldown — distinct incidents, distinct alerts', async () => {
+  it('a DIFFERENT error code is never suppressed by another code\'s active debounce — distinct incidents, distinct alerts', async () => {
     // Regression guard: the old single global cooldown collapsed a billing
     // error (131042) and a later, unrelated re-engagement-window error
     // (131047) into "the same incident," so the second one silently never
-    // reached an admin if it arrived inside the first one's 30-minute window.
+    // reached an admin if it arrived inside the first one's window.
     prismaMock.notification.findFirst.mockResolvedValue(null)
     const notify = await freshNotify()
     await notify(131042, 'Business eligibility payment issue', 'unsettled payments')
@@ -171,12 +176,22 @@ describe('notifyStaffOfDeliveryFailure — dedup survives a process restart', ()
 
     vi.clearAllMocks()
     prismaMock.notification.findFirst.mockResolvedValue(null)
-    vi.setSystemTime(new Date('2026-09-16T00:05:00.000Z')) // +5 min — still inside 131042's cooldown
+    vi.setSystemTime(new Date('2026-09-16T00:00:05.000Z')) // +5s — still inside 131042's debounce
 
     await notify(131047, 'Re-engagement message', 'more than 24 hours have passed')
     expect(prismaMock.notification.create).toHaveBeenCalledTimes(1)
     expect(prismaMock.notification.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ title: expect.stringContaining('#131047') }) })
+    )
+  })
+
+  it('an unrelated provider-health failure (a different Meta code) still surfaces normally — suppression is scoped to the specific repeating incident only', async () => {
+    prismaMock.notification.findFirst.mockResolvedValue(null)
+    const notify = await freshNotify()
+    await notify(131009, 'Parameter value is not valid', 'malformed template parameter')
+    expect(prismaMock.notification.create).toHaveBeenCalledTimes(1)
+    expect(prismaMock.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ title: expect.stringContaining('#131009') }) })
     )
   })
 })

@@ -31,15 +31,25 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 // Dedup: keyed per Meta error CODE, not a single global cooldown. A 131042
 // (billing) and a later 131047 (re-engagement window) are different incidents
 // an admin needs to know about separately — collapsing them under one
-// constant title (the old behavior) meant the second, genuinely different,
-// error silently never got surfaced if it arrived inside the first one's
-// cooldown window. The DB check (title + createdAt) survives a process
-// restart, since an in-memory-only cooldown resets to zero on every deploy
-// and a burst of failures shortly after would defeat it. The in-memory map
-// stays as a same-process fast path per code to skip the DB round trip for
-// the (common) case of many failures for the same code arriving in seconds.
+// constant title (an even older behavior) meant the second, genuinely
+// different, error silently never got surfaced if it arrived inside the
+// first one's cooldown window.
+//
+// Incident state, not a rolling cooldown: an unresolved #131047 (or any
+// other code) used to keep re-alerting every 30 minutes for as long as Meta
+// kept redelivering the same failure — a real recurring incident. The real
+// "is this incident still open" signal is whether any admin still has an
+// UNREAD notification for this exact title (reusing Notification.isRead,
+// no migration, no separate incident table): as long as one does, the
+// incident is already visible and known, so no new alert fires. The moment
+// every admin has read/cleared it, a fresh failure for the same code is
+// treated as a genuinely NEW incident (which it is) and alerts again. This
+// DB check survives a process restart, unlike a purely in-memory cooldown.
+// The in-memory map is kept only as a short same-process debounce, to
+// collapse Meta's rapid-fire webhook retries (which can land milliseconds
+// apart) into one DB round trip — it is not the dedup authority.
 const lastDeliveryFailureAlertAtByCode = new Map<number | 'unknown', number>()
-const DELIVERY_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
+const DELIVERY_FAILURE_DEBOUNCE_MS = 60 * 1000
 const DELIVERY_FAILURE_ALERT_TITLE_BASE = '⚠️ Staff WhatsApp alerts are failing to deliver'
 const PROVIDER_HEALTH_HREF = '/ai-suite/analytics'
 
@@ -51,17 +61,15 @@ export async function notifyStaffOfDeliveryFailure(code?: number, message?: stri
   const codeKey = code ?? 'unknown'
   const now = Date.now()
   const lastAt = lastDeliveryFailureAlertAtByCode.get(codeKey) ?? 0
-  if (now - lastAt < DELIVERY_FAILURE_ALERT_COOLDOWN_MS) return
+  if (now - lastAt < DELIVERY_FAILURE_DEBOUNCE_MS) return
+  lastDeliveryFailureAlertAtByCode.set(codeKey, now)
 
   const title = deliveryFailureAlertTitle(code)
-  const cooldownStart = new Date(now - DELIVERY_FAILURE_ALERT_COOLDOWN_MS)
-  const recent = await prisma.notification.findFirst({
-    where: { type: 'PROVIDER_HEALTH', title, createdAt: { gte: cooldownStart } },
+  const stillOpen = await prisma.notification.findFirst({
+    where: { type: 'PROVIDER_HEALTH', title, isRead: false },
     select: { id: true },
   }).catch(() => null)
-  if (recent) { lastDeliveryFailureAlertAtByCode.set(codeKey, now); return }
-
-  lastDeliveryFailureAlertAtByCode.set(codeKey, now)
+  if (stillOpen) return
 
   const body = `Meta error #${code ?? '?'}: ${message ?? 'unknown'}${details ? ` — ${details}` : ''}. ` +
     `Clinical concern / escalation alerts may not be reaching this WhatsApp number right now — check WhatsApp Health in AI Suite Analytics.`

@@ -5,6 +5,54 @@ import { authenticatedDoctorId } from '../lib/doctor-access'
 import { checkAndConvertLeadOnTreatmentStart, checkAndConvertLeadsForPatients } from '../crm-automation/lead-patient-link.service'
 import { syncTreatmentPlanStatusFromPipeline } from '../crm-automation/patient-tags.service'
 import { logAudit } from '../services/audit.service'
+import { notifyUsers } from '../services/notification.service'
+
+// ── Staff operational notifications (event hooks around the existing,
+// already-verified stage/status transitions — never a new status/stage) ────
+//
+// Fire-and-forget, wrapped so a notification failure can never break the
+// underlying transition response. Full clinical detail (patient name/tooth)
+// only in the in-app `body`, which only the authenticated recipient ever
+// sees; the push-visible `pushBody` stays generic per the lock-screen
+// privacy requirement — same split treatment-followup-alerts.service.ts
+// already uses for this exact model.
+// Exported (like notifyStaffOfDeliveryFailure in whatsapp.routes.ts) for
+// direct unit testing rather than only through full HTTP route requests.
+export async function notifyDoctorAssigned(doctorId: string, patientId: string): Promise<void> {
+  try {
+    const doctor = await prisma.doctor.findUnique({ where: { id: doctorId }, select: { userId: true } })
+    if (!doctor) return
+    await notifyUsers({
+      userIds: [doctor.userId],
+      type: 'SYSTEM',
+      title: 'Treatment case assigned',
+      body: 'A treatment case has been assigned to you. Tap to review.',
+      href: `/patients/${patientId}`,
+      category: 'treatment.assigned',
+    })
+  } catch (e: any) {
+    console.error('[Pipeline] notifyDoctorAssigned failed:', e?.message)
+  }
+}
+
+export async function notifyTreatmentNeedsScheduling(patientId: string): Promise<void> {
+  try {
+    const staff = await prisma.user.findMany({
+      where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
+      select: { id: true },
+    })
+    await notifyUsers({
+      userIds: staff.map(u => u.id),
+      type: 'SYSTEM',
+      title: 'Treatment needs scheduling',
+      body: 'An accepted treatment case needs scheduling. Tap to review.',
+      href: `/patients/${patientId}`,
+      category: 'treatment.needs_scheduling',
+    })
+  } catch (e: any) {
+    console.error('[Pipeline] notifyTreatmentNeedsScheduling failed:', e?.message)
+  }
+}
 
 // Mirrors clinical.ts's logActivity — writes to the patient's activity
 // timeline. Duplicated locally (rather than imported) since clinical.ts
@@ -224,9 +272,22 @@ router.patch('/treatment/:id/stage', requireAuth, async (req, res) => {
     if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
     const doctorId = await authenticatedDoctorId(prisma, req.user!)
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+    // Read the pre-transition stage so the notification below only fires on
+    // an actual A->B change, never a no-op re-save of the same stage.
+    const before = await prisma.treatmentPlan.findFirst({
+      where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
+      select: { stage: true, patientId: true },
+    })
     const result = await prisma.treatmentPlan.updateMany({ where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) }, data: { stage } })
     if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: req.params.id, entityName: `Pipeline stage -> ${stage}`, req })
+
+    // Staff operational notification — patient accepted treatment, reception
+    // needs to schedule it. Only on the actual transition into this stage,
+    // never re-fired for a plan that was already there.
+    if (before && before.stage !== stage && stage === 'Accepted & Unscheduled') {
+      notifyTreatmentNeedsScheduling(before.patientId).catch(() => {})
+    }
 
     // CRM Automation (Part C) — re-derive the patient's treatmentPlanStatus
     // CRM tag from the canonical pipeline stage (never a second source of
@@ -285,12 +346,24 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     const { data: followUpData, error: followUpError } = parseFollowUpFields(req.body)
     if (followUpError) { res.status(400).json({ error: followUpError }); return }
+    // Pre-write snapshot so a doctorId reassignment in this same request can
+    // be detected as an actual A->B change below (updateMany doesn't return rows).
+    const before = await prisma.treatmentPlan.findFirst({
+      where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
+      select: { doctorId: true, patientId: true },
+    })
     const result = await prisma.treatmentPlan.updateMany({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
       data:  { status, ...followUpData },
     })
     if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: req.params.id, entityName: `Status -> ${status}`, notes: followUpData.followUpAt ? `follow-up set: ${followUpData.followUpAt}` : undefined, req })
+
+    // Staff operational notification — a clinician was newly assigned/
+    // reassigned to this case in the same request that changed status.
+    if (before && 'doctorId' in followUpData && followUpData.doctorId && followUpData.doctorId !== before.doctorId) {
+      notifyDoctorAssigned(followUpData.doctorId, before.patientId).catch(() => {})
+    }
 
     // CRM Automation (Part N) — "treatment started" -> a QUALIFIED lead
     // matching this patient auto-converts. updateMany doesn't return the
@@ -328,12 +401,21 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
     const { data: followUpData, error: followUpError } = parseFollowUpFields(req.body)
     if (followUpError) { res.status(400).json({ error: followUpError }); return }
     if (Object.keys(followUpData).length === 0) { res.status(400).json({ error: 'No follow-up fields provided' }); return }
+    const before = await prisma.treatmentPlan.findFirst({
+      where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
+      select: { doctorId: true, patientId: true },
+    })
     const result = await prisma.treatmentPlan.updateMany({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
       data:  followUpData,
     })
     if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     logAudit({ userId: req.user!.id, actionType: 'UPDATE', entityType: 'TREATMENT_PLAN', entityId: req.params.id, entityName: 'Follow-up updated', notes: JSON.stringify(followUpData), req })
+
+    if (before && 'doctorId' in followUpData && followUpData.doctorId && followUpData.doctorId !== before.doctorId) {
+      notifyDoctorAssigned(followUpData.doctorId, before.patientId).catch(() => {})
+    }
+
     res.json({ id: req.params.id, ...followUpData })
   } catch (e) {
     console.error('[Pipeline] follow-up update error:', e)

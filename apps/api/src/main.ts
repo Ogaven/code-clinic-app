@@ -99,6 +99,8 @@ import { sweepStaleContactedLeads }        from './crm-automation/lead-stage.ser
 import { runDailyPatientTagDerivation }    from './crm-automation/patient-tags.service'
 import { ensureDefaultCrmSequences }       from './crm-automation/seed-default-sequences'
 import { processDueReviewRequests }        from './crm-automation/review-request.service'
+import { checkLeadNeedsHelpAlerts }        from './crm-automation/lead-needs-help-alerts.service'
+import { checkLeadFollowUpOverdueAlerts }  from './crm-automation/lead-followup-overdue-alerts.service'
 
 // Lock process timezone to EAT (UTC+3) — must be set before any Date operations.
 // Africa/Kampala and Africa/Nairobi are both fixed UTC+3 with no DST, so this
@@ -463,6 +465,15 @@ runStartup().then(() => {
   setInterval(() => {
     runDailyPatientTagDerivation().catch(err => console.error('[CrmPatientTagDerivation] Scheduler error:', err))
   }, TWENTY_FOUR_HOURS)
+  // Staff operational alerts — "lead needs help" / "lead follow-up overdue".
+  // Hourly matches the other CRM operational sweeps above; each is
+  // idempotent (unread-notification dedup), so extra ticks are safe no-ops.
+  setInterval(() => {
+    checkLeadNeedsHelpAlerts().catch(err => console.error('[CrmLeadNeedsHelp] Scheduler error:', err))
+  }, ONE_HOUR)
+  setInterval(() => {
+    checkLeadFollowUpOverdueAlerts().catch(err => console.error('[CrmLeadFollowUpOverdue] Scheduler error:', err))
+  }, ONE_HOUR)
 
   // Run once 2 minutes after startup (gives DB time to settle after migrations)
   setTimeout(() => {
@@ -472,6 +483,8 @@ runStartup().then(() => {
     updatePatientStatuses().catch(err => console.error('[PatientStatus] Initial run error:', err))
     checkAndSendBirthdayAlerts().catch(err => console.error('[Birthday] Initial run error:', err))
     checkAndSendTreatmentFollowUpAlerts().catch(err => console.error('[TreatmentFollowUpAlert] Initial run error:', err))
+    checkLeadNeedsHelpAlerts().catch(err => console.error('[CrmLeadNeedsHelp] Initial run error:', err))
+    checkLeadFollowUpOverdueAlerts().catch(err => console.error('[CrmLeadFollowUpOverdue] Initial run error:', err))
     // Daily derived-tag job has a 24h setInterval below with no initial kick
     // of its own — on a host that restarts more often than once every 24h
     // (routine deploys), the timer resets every restart and can go
