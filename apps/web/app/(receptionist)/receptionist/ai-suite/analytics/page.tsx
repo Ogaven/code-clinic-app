@@ -40,12 +40,27 @@ interface OperationalVolume {
 
 interface DataPoint  { start: number; end: number; volume: number; cost?: number }
 interface WabaPhoneNumber { id: string; displayPhoneNumber: string; verifiedName: string | null }
+interface RangeCoverage {
+  requestedStart: string
+  requestedEnd:   string
+  coveredStart:   string | null
+  coveredEnd:     string | null
+  full:           boolean
+  unavailable:    boolean
+  reason:         string | null
+}
 interface WabaUsage  {
   wabaId: string
   phoneNumbers: WabaPhoneNumber[]
   daily: DataPoint[]
   thisMonth: { volume: number; cost: number }
   lastMonth: { volume: number; cost: number }
+  selected: { volume: number; cost: number } | null
+  coverage: RangeCoverage | null
+}
+interface MetaUsage {
+  account: WabaUsage | null
+  configured: boolean
 }
 
 interface DoBalance {
@@ -67,7 +82,7 @@ interface Analytics {
 
 // ── OpenAI token-usage / cost analytics (Admin-only) ───────────────────────
 
-type AiUsageRange = 'today' | '7d' | '30d' | 'month' | 'prev_month'
+type AiUsageRange = 'today' | '7d' | '30d' | '90d' | 'month' | 'prev_month' | 'custom'
 
 interface AiUsageDayPoint { day: string; requests: number; totalTokens: number }
 interface AiUsageChannelPoint { channel: string; requests: number; totalTokens: number }
@@ -178,6 +193,17 @@ const AI_USAGE_RANGES: { key: AiUsageRange; label: string }[] = [
   { key: '30d',        label: '30 days' },
   { key: 'month',      label: 'This month' },
   { key: 'prev_month', label: 'Last month' },
+]
+
+// Expenditure-history-specific range set (OpenAI + Meta cost cards only) —
+// adds 90 days and an arbitrary Custom From/To, which the rest of the
+// dashboard (message-volume charts, delivery-health windows) doesn't need
+// and isn't wired to handle, so it stays on the shorter AI_USAGE_RANGES list
+// above.
+const COST_HISTORY_RANGES: { key: AiUsageRange; label: string }[] = [
+  ...AI_USAGE_RANGES,
+  { key: '90d',   label: '90 days' },
+  { key: 'custom', label: 'Custom' },
 ]
 
 // ── Channel metadata ──────────────────────────────────────────────────────────
@@ -361,21 +387,24 @@ function TokenBarChart({ points }: { points: AiUsageDayPoint[] }) {
 // ── OpenAI usage card (Admin-only — cost figures never shown to Receptionist) ──
 
 function OpenAiUsageCard({
-  data, range, onRangeChange, loading,
+  data, range, onRangeChange, loading, customFrom, customTo, onCustomChange,
 }: {
   data: AiUsage | null
   range: AiUsageRange
   onRangeChange: (r: AiUsageRange) => void
   loading: boolean
+  customFrom: string
+  customTo: string
+  onCustomChange: (from: string, to: string) => void
 }) {
   return (
     <section>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 flex items-center gap-2">
-          <Cpu size={10} /> OpenAI Usage (Admin only)
+          <Cpu size={10} /> Expenditure History (Admin only)
         </p>
-        <div className="flex gap-1">
-          {AI_USAGE_RANGES.map(r => (
+        <div className="flex gap-1 flex-wrap">
+          {COST_HISTORY_RANGES.map(r => (
             <button key={r.key} onClick={() => onRangeChange(r.key)}
               className={cn(
                 'px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors',
@@ -388,9 +417,23 @@ function OpenAiUsageCard({
           ))}
         </div>
       </div>
+      {range === 'custom' && (
+        <div className="flex items-center gap-2 mb-4 text-[10px]">
+          <label className="text-gray-400">From</label>
+          <input type="date" value={customFrom} max={customTo || undefined}
+            onChange={e => onCustomChange(e.target.value, customTo)}
+            className="px-2 py-1 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white/70" />
+          <label className="text-gray-400">To</label>
+          <input type="date" value={customTo} min={customFrom || undefined}
+            onChange={e => onCustomChange(customFrom, e.target.value)}
+            className="px-2 py-1 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-700 dark:text-white/70" />
+        </div>
+      )}
 
       <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
-        {loading || !data ? (
+        {range === 'custom' && (!customFrom || !customTo) ? (
+          <p className="text-xs text-gray-400 text-center py-10">Pick both a From and To date to load this range.</p>
+        ) : loading || !data ? (
           <div className="flex items-center justify-center py-10">
             <Loader2 size={20} className="animate-spin text-violet-500" />
           </div>
@@ -976,6 +1019,13 @@ export default function AnalyticsPage() {
   const [aiUsage, setAiUsage]           = useState<AiUsage | null>(null)
   const [aiUsageRange, setAiUsageRange] = useState<AiUsageRange>('30d')
   const [aiUsageLoading, setAiUsageLoading] = useState(true)
+  // Custom From/To (YYYY-MM-DD, Kampala calendar dates) — only used when
+  // aiUsageRange === 'custom'. Shared by both the OpenAI and Meta cost
+  // fetches below so "Custom" is one range selection covering both providers.
+  const [costCustomFrom, setCostCustomFrom] = useState('')
+  const [costCustomTo, setCostCustomTo]     = useState('')
+  const [metaUsage, setMetaUsage]               = useState<MetaUsage | null>(null)
+  const [metaUsageLoading, setMetaUsageLoading] = useState(true)
 
   const [whatsappHealth, setWhatsappHealth]       = useState<WhatsAppDeliveryHealth | null>(null)
   const [whatsappHealthLoading, setWhatsappHealthLoading] = useState(true)
@@ -1007,16 +1057,40 @@ export default function AnalyticsPage() {
     }
   }
 
-  async function loadAiUsage(range: AiUsageRange) {
+  function rangeQuery(range: AiUsageRange, from: string, to: string): string {
+    if (range !== 'custom') return `range=${range}`
+    return `range=custom&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  }
+
+  async function loadAiUsage(range: AiUsageRange, from: string, to: string) {
+    if (range === 'custom' && (!from || !to)) return
     setAiUsageLoading(true)
     try {
-      const res = await fetch(`${API}/ai-suite/ai-usage?range=${range}`, { headers: authH() })
+      const res = await fetch(`${API}/ai-suite/ai-usage?${rangeQuery(range, from, to)}`, { headers: authH() })
       if (!res.ok) { setAiUsage(null); return }
       setAiUsage(await res.json())
     } catch {
       setAiUsage(null)
     } finally {
       setAiUsageLoading(false)
+    }
+  }
+
+  // Meta's own cost figure for the exact same selected range — a separate
+  // fetch (not bundled into channel-analytics, which only ever returns a
+  // 6h-cached "this month" snapshot) so Meta's cost card can follow the same
+  // range control as OpenAI's instead of being stuck on "this month".
+  async function loadMetaUsage(range: AiUsageRange, from: string, to: string) {
+    if (range === 'custom' && (!from || !to)) return
+    setMetaUsageLoading(true)
+    try {
+      const res = await fetch(`${API}/ai-suite/meta-usage?${rangeQuery(range, from, to)}`, { headers: authH() })
+      if (!res.ok) { setMetaUsage(null); return }
+      setMetaUsage(await res.json())
+    } catch {
+      setMetaUsage(null)
+    } finally {
+      setMetaUsageLoading(false)
     }
   }
 
@@ -1087,13 +1161,14 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     if (isAdmin) {
-      loadAiUsage(aiUsageRange)
+      loadAiUsage(aiUsageRange, costCustomFrom, costCustomTo)
+      loadMetaUsage(aiUsageRange, costCustomFrom, costCustomTo)
       loadMetaBilling()
       loadCrmReadiness()
       loadMetaIntegrationHealth()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, aiUsageRange])
+  }, [isAdmin, aiUsageRange, costCustomFrom, costCustomTo])
 
   const doBalance      = data && !('notConfigured' in data.digitalocean) ? data.digitalocean as DoBalance : null
   const doNotConfig    = !!(data && 'notConfigured' in data.digitalocean)
@@ -1137,8 +1212,14 @@ export default function AnalyticsPage() {
                 ? whatsappHealth?.thisMonth ?? null
                 : whatsappHealth?.last30Days ?? null
             const openAiCost = aiUsage?.cost?.value ?? null
-            const metaCost = data.meta?.account?.thisMonth?.cost ?? null
+            // Meta's figure for the EXACT selected cost range (today/7d/30d/
+            // 90d/month/prev_month/custom), not a fixed "this month" — null
+            // (rendered as "Unavailable") when Meta's provider can't supply
+            // data that far back, never a misleading $0.00.
+            const metaCoverage = metaUsage?.account?.coverage ?? null
+            const metaCost = metaUsage?.account?.selected?.cost ?? null
             const hostingCost = doBalance ? Number(doBalance.monthToDateUsage) : null
+            const costRangeLabel = COST_HISTORY_RANGES.find(r => r.key === aiUsageRange)?.label ?? 'Selected period'
             const rangeLabel = AI_USAGE_RANGES.find(r => r.key === channelRange)?.label ?? 'Selected period'
             return (
               <div className="space-y-3">
@@ -1226,13 +1307,20 @@ export default function AnalyticsPage() {
                     </div>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between rounded-xl bg-violet-50 dark:bg-violet-900/10 px-3 py-2">
-                        <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">OpenAI</p><p className="text-[9px] text-gray-400">{AI_USAGE_RANGES.find(r => r.key === aiUsageRange)?.label ?? 'Selected period'}</p></div>
+                        <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">OpenAI (estimate)</p><p className="text-[9px] text-gray-400">{costRangeLabel}</p></div>
                         <p className="text-lg font-black text-violet-600">{openAiCost === null ? 'Unavailable' : `$${openAiCost.toFixed(2)}`}</p>
                       </div>
                       <div className="flex items-center justify-between rounded-xl bg-emerald-50 dark:bg-emerald-900/10 px-3 py-2">
-                        <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">Meta / WhatsApp</p><p className="text-[9px] text-gray-400">This month</p></div>
-                        <p className="text-lg font-black text-emerald-600">{metaCost === null ? 'Unavailable' : `$${metaCost.toFixed(2)}`}</p>
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-600 dark:text-white/60">Meta / WhatsApp (actual)</p>
+                          <p className="text-[9px] text-gray-400">{costRangeLabel}</p>
+                          {metaCoverage?.reason && <p className="text-[8px] text-amber-500 mt-0.5 max-w-[220px]">{metaCoverage.reason}</p>}
+                        </div>
+                        <p className="text-lg font-black text-emerald-600">{metaUsageLoading ? '…' : metaCost === null ? 'Unavailable' : `$${metaCost.toFixed(2)}`}</p>
                       </div>
+                      {/* No blended "total" row here by design — OpenAI is a token-derived
+                          estimate and Meta is actual provider billing; summing incompatible
+                          confidence levels into one figure would misrepresent both. */}
                       <div className="flex items-center justify-between rounded-xl bg-cyan-50 dark:bg-cyan-900/10 px-3 py-2">
                         <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">DigitalOcean hosting</p><p className="text-[9px] text-gray-400">Month to date</p></div>
                         <p className="text-lg font-black text-cyan-700">{hostingCost === null ? 'Cost unavailable' : `$${hostingCost.toFixed(2)}`}</p>
@@ -1248,7 +1336,13 @@ export default function AnalyticsPage() {
                   </summary>
                   <div className="border-t border-gray-100 dark:border-white/10 p-4 space-y-6">
                     <WhatsAppHealthCard data={whatsappHealth} loading={whatsappHealthLoading} isAdmin={isAdmin} />
-                    {isAdmin && <OpenAiUsageCard data={aiUsage} range={aiUsageRange} onRangeChange={setAiUsageRange} loading={aiUsageLoading} />}
+                    {isAdmin && (
+                      <OpenAiUsageCard
+                        data={aiUsage} range={aiUsageRange} onRangeChange={setAiUsageRange} loading={aiUsageLoading}
+                        customFrom={costCustomFrom} customTo={costCustomTo}
+                        onCustomChange={(from, to) => { setCostCustomFrom(from); setCostCustomTo(to) }}
+                      />
+                    )}
                     {isAdmin && <MetaBillingCard data={metaBilling} loading={metaBillingLoading} />}
                     {data.meta && (
                       <section>
