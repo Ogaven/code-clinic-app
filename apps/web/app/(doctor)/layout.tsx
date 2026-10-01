@@ -11,6 +11,7 @@ import MobileHeader from '@/components/mobile/MobileHeader'
 import MobileBottomNav from '@/components/mobile/MobileBottomNav'
 import MobileProfileSheet from '@/components/mobile/MobileProfileSheet'
 import { usePwaInstall } from '@/lib/pwaInstall'
+import { enableOneSignalNotifications, getOneSignalSubscriptionState } from '@/lib/onesignal'
 
 async function fetchLivePerms(token: string): Promise<Record<string, boolean>> {
   try {
@@ -27,6 +28,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [user, setUser] = useState<any>(null)
   const [permsMap, setPermsMap] = useState<Record<string, boolean>>({})
   const [profileOpen, setProfileOpen] = useState(false)
+  const [pushReady, setPushReady] = useState<boolean | null>(null)
   const profileBtnRef = useRef<HTMLButtonElement>(null)
   // Mounted here (always-on for the session), not inside MobileProfileSheet
   // (which only mounts when opened) — beforeinstallprompt fires once, early,
@@ -46,6 +48,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     }
     setUser(current)
     fetchLivePerms(token).then(setPermsMap)
+    getOneSignalSubscriptionState().then(state => setPushReady(state.permission && state.optedIn))
 
     fetch('/api-proxy/doctors/me', {
       headers: { Authorization: `Bearer ${token}` },
@@ -88,6 +91,16 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           onSelectPatient={id => router.push(`/doctor/patients/${id}`)}
           profileButtonRef={profileBtnRef}
         />
+      )}
+      {pushReady === false && (
+        <div className="mx-auto w-full max-w-[1600px] px-4 pt-3 sm:px-6 lg:px-8">
+          <button
+            onClick={async () => setPushReady(await enableOneSignalNotifications())}
+            className="text-[11px] font-semibold text-amber-600 hover:underline dark:text-amber-400"
+          >
+            Enable Code Clinic notifications on this device
+          </button>
+        </div>
       )}
       <main className="mx-auto w-full max-w-[1600px] px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-8">
         {children}
