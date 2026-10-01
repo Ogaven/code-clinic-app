@@ -65,6 +65,17 @@ export function initializeOneSignal(): void {
     if (user?.id) {
       await OneSignal.login(user.id)
       if (user.role) await OneSignal.User.addTag('codeclinic_role', user.role)
+
+      // A device can retain browser permission while its OneSignal push
+      // subscription is opted out (browser/profile migration, cleared site
+      // data, an earlier SDK state, etc.). On an already-authorized device,
+      // restore the provider subscription without showing a new permission
+      // prompt. This is what lets Windows/Android receive background push
+      // after Code Clinic has been closed, provided the OS/browser permits
+      // background notifications and the device later has network access.
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        await OneSignal.User?.PushSubscription?.optIn?.()
+      }
     }
   })
 }
@@ -80,7 +91,13 @@ export async function enableOneSignalNotifications(): Promise<boolean> {
         await OneSignal.login(user.id)
         if (user.role) await OneSignal.User.addTag('codeclinic_role', user.role)
         await OneSignal.Notifications.requestPermission()
-        resolve(OneSignal.Notifications.permission === true)
+        if (OneSignal.Notifications.permission === true) {
+          await OneSignal.User?.PushSubscription?.optIn?.()
+        }
+        resolve(
+          OneSignal.Notifications.permission === true &&
+          OneSignal.User?.PushSubscription?.optedIn !== false
+        )
       } catch (error) {
         console.error('[push] OneSignal enable failed', error)
         resolve(false)
@@ -94,5 +111,24 @@ export function logoutOneSignal(): void {
     try {
       if (await initOneSignal(OneSignal)) await OneSignal.logout()
     } catch {}
+  })
+}
+
+
+export async function getOneSignalSubscriptionState(): Promise<{ permission: boolean; optedIn: boolean }> {
+  initializeOneSignal()
+  return new Promise((resolve) => {
+    withOneSignal(async (OneSignal) => {
+      try {
+        if (!(await initOneSignal(OneSignal))) return resolve({ permission: false, optedIn: false })
+        const user = currentUser()
+        if (user?.id) await OneSignal.login(user.id)
+        const permission = OneSignal.Notifications?.permission === true
+        const optedIn = OneSignal.User?.PushSubscription?.optedIn === true
+        resolve({ permission, optedIn })
+      } catch {
+        resolve({ permission: false, optedIn: false })
+      }
+    })
   })
 }
