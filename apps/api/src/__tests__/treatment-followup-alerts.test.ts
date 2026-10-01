@@ -280,7 +280,7 @@ describe('Treatment follow-up alert scheduler', () => {
 
   it('a followUpAt between configured reminder milestones produces no notification', async () => {
     const { checkAndSendTreatmentFollowUpAlerts } = await import('../services/treatment-followup-alerts.service')
-    const farFuture = new Date(TODAY_KAMPALA_MIDNIGHT.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const farFuture = new Date(TODAY_KAMPALA_MIDNIGHT.getTime() + 10 * 24 * 60 * 60 * 1000)
     makePlan({ id: 'p_far_future', followUpAt: farFuture })
 
     await checkAndSendTreatmentFollowUpAlerts()
