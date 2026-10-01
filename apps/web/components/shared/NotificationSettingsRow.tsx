@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react'
 import { Bell, BellOff, BellRing } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { enableOneSignalNotifications, initializeOneSignal } from '@/lib/onesignal'
+import { enableOneSignalNotifications, getOneSignalSubscriptionState, initializeOneSignal } from '@/lib/onesignal'
 import { getNotificationRowState } from '@/lib/notificationRowState'
 import { detectIOS, detectStandalone } from '@/lib/pwaInstall'
 
@@ -36,7 +36,14 @@ export default function NotificationSettingsRow({ variant = 'sheet' }: Notificat
     setSupported(hasNotificationApi && hasPushApi)
     if (hasNotificationApi) setPermission(Notification.permission)
     initializeOneSignal()
-    setSubscribed(hasNotificationApi && Notification.permission === 'granted')
+    // Browser permission alone does not prove OneSignal has an active push
+    // subscription. Read the provider-side SDK state so Windows/Android do
+    // not misleadingly show "Notifications enabled" while opted out.
+    if (hasNotificationApi && Notification.permission === 'granted') {
+      getOneSignalSubscriptionState().then(state => setSubscribed(state.permission && state.optedIn))
+    } else {
+      setSubscribed(false)
+    }
 
     setIsIOS(detectIOS())
     setIsStandalone(detectStandalone())
