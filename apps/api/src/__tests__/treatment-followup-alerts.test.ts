@@ -1,6 +1,6 @@
 // Covers the internal treatment follow-up / hold-scheduling alert scheduler
 // (apps/api/src/services/treatment-followup-alerts.service.ts): correct
-// DUE_SOON / DUE_TODAY / OVERDUE bucketing against Kampala "today", the
+// 30/14/7/3/1-day / DUE_TODAY / OVERDUE bucketing against Kampala "today", the
 // write-then-notify idempotency guarantee (no duplicate Notification/
 // TreatmentFollowUpAlert for the same plan+type+day even if the job runs
 // twice), and that a plan with no followUpAt never alerts. No real push
@@ -120,7 +120,7 @@ beforeEach(() => {
 })
 
 describe('Treatment follow-up alert scheduler', () => {
-  it('fires DUE_SOON once for a follow-up due tomorrow', async () => {
+  it('fires UPCOMING_1 once for a follow-up due tomorrow', async () => {
     const { checkAndSendTreatmentFollowUpAlerts } = await import('../services/treatment-followup-alerts.service')
     const tomorrow = new Date(TODAY_KAMPALA_MIDNIGHT.getTime() + 24 * 60 * 60 * 1000)
     makePlan({ id: 'p_tomorrow', followUpAt: tomorrow })
@@ -129,8 +129,36 @@ describe('Treatment follow-up alert scheduler', () => {
 
     const alerts = [...store.alerts.values()].filter(a => a.treatmentPlanId === 'p_tomorrow')
     expect(alerts).toHaveLength(1)
-    expect(alerts[0].alertType).toBe('DUE_SOON')
+    expect(alerts[0].alertType).toBe('UPCOMING_1')
     expect(store.notifications.filter(n => n.title.includes('Jane Doe'))).toHaveLength(2) // reception + admin
+  })
+
+  it.each([
+    [30, 'UPCOMING_30'],
+    [14, 'UPCOMING_14'],
+    [7, 'UPCOMING_7'],
+    [3, 'UPCOMING_3'],
+  ])('fires the %i-day planned-treatment reminder milestone', async (days, expectedType) => {
+    const { checkAndSendTreatmentFollowUpAlerts } = await import('../services/treatment-followup-alerts.service')
+    makePlan({ id: `p_upcoming_${days}`, followUpAt: new Date(TODAY_KAMPALA_MIDNIGHT.getTime() + days * 24 * 60 * 60 * 1000) })
+
+    await checkAndSendTreatmentFollowUpAlerts()
+
+    const alerts = [...store.alerts.values()].filter(a => a.treatmentPlanId === `p_upcoming_${days}`)
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0].alertType).toBe(expectedType)
+    expect(store.notifications).toHaveLength(2) // reception + admin
+  })
+
+  it('does not alert between milestone days, preventing daily reminder noise', async () => {
+    const { checkAndSendTreatmentFollowUpAlerts } = await import('../services/treatment-followup-alerts.service')
+    makePlan({ id: 'p_between', followUpAt: new Date(TODAY_KAMPALA_MIDNIGHT.getTime() + 10 * 24 * 60 * 60 * 1000) })
+
+    await checkAndSendTreatmentFollowUpAlerts()
+
+    expect(store.alerts.size).toBe(0)
+    expect(store.notifications).toHaveLength(0)
+    expect(pushMock).not.toHaveBeenCalled()
   })
 
   it('fires DUE_TODAY once for a follow-up due today', async () => {
@@ -250,9 +278,9 @@ describe('Treatment follow-up alert scheduler', () => {
     expect(alerts[0].alertType).toBe('DUE_TODAY')
   })
 
-  it('a followUpAt more than the due-soon window away produces no notification', async () => {
+  it('a followUpAt between configured reminder milestones produces no notification', async () => {
     const { checkAndSendTreatmentFollowUpAlerts } = await import('../services/treatment-followup-alerts.service')
-    const farFuture = new Date(TODAY_KAMPALA_MIDNIGHT.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const farFuture = new Date(TODAY_KAMPALA_MIDNIGHT.getTime() + 10 * 24 * 60 * 60 * 1000)
     makePlan({ id: 'p_far_future', followUpAt: farFuture })
 
     await checkAndSendTreatmentFollowUpAlerts()
@@ -313,7 +341,7 @@ describe('Treatment follow-up alert scheduler', () => {
     expect(pushPayload.body).not.toContain('Consulted')
     expect(pushPayload.body).not.toContain('Jane')
     expect(pushPayload.body).not.toContain('Doe')
-    expect(pushPayload.body).toBe('A treatment follow-up needs attention. Tap to review.')
+    expect(pushPayload.body).toBe('A planned treatment follow-up is due today. Please review and contact the patient.')
   })
 
   it('never notifies the patient -- every recipient is an internal staff/doctor user id, and no WhatsApp/SMS send is attempted', async () => {
