@@ -13,6 +13,7 @@ import MobileBottomNav from '@/components/mobile/MobileBottomNav'
 import MobileProfileSheet from '@/components/mobile/MobileProfileSheet'
 import { usePwaInstall } from '@/lib/pwaInstall'
 import { refreshToken } from '@/lib/api'
+import { enableOneSignalNotifications, getOneSignalSubscriptionState } from '@/lib/onesignal'
 
 async function fetchLivePerms(token: string): Promise<Record<string, boolean>> {
   try {
@@ -217,7 +218,17 @@ export default function ReceptionistLayout({ children }: { children: React.React
     const t = setInterval(() => fetchUnread(), 10000)
     const saved = readTheme()
     setTheme(saved); setDark(applyTheme(saved))
-    if ('Notification' in window) setNotifPerm(Notification.permission)
+    if ('Notification' in window) {
+      setNotifPerm(Notification.permission)
+      if (Notification.permission === 'granted') {
+        getOneSignalSubscriptionState().then(state => {
+          // If browser permission survived but the OneSignal subscription did
+          // not, show the enable nudge again instead of falsely treating this
+          // reception device as ready for background push.
+          if (!state.optedIn) setNotifPerm('default')
+        })
+      }
+    }
     return () => clearInterval(t)
   }, [])
 
@@ -327,11 +338,13 @@ export default function ReceptionistLayout({ children }: { children: React.React
   }
 
   async function handleEnableNotifications() {
-    const perm = await requestNotificationPermission()
-    setNotifPerm(perm)
-    if (perm === 'granted') {
-      showLocalNotification('Notifications enabled!', 'You will now receive Code Clinic alerts.', '/receptionist/dashboard')
-    }
+    // Reception previously used Notification.requestPermission() directly.
+    // That granted browser permission but did NOT guarantee a OneSignal
+    // subscription/External ID, so the UI could say enabled while server-side
+    // operational pushes had nowhere to go. Use the same OneSignal enrollment
+    // path as Admin/Doctor and bind it to this authenticated receptionist.
+    const enabled = await enableOneSignalNotifications()
+    setNotifPerm(enabled ? 'granted' : ('Notification' in window ? Notification.permission : 'not-supported'))
   }
 
   function signOut() {
