@@ -20,6 +20,7 @@ import { prisma } from '../lib/prisma'
 import { sendOrSimulate } from './dry-run'
 import { sendWhatsAppMessage } from '../ai-suite/whatsapp/whatsapp.service'
 import { sendSMS, isSmsChannelActive } from '../ai-suite/sms/sms.service'
+import { sendPushToUser } from '../services/push.service'
 import { getChannelConsentStatus } from './consent-log.service'
 import type { CommsChannel, WaitlistEntry, Patient } from '@prisma/client'
 
@@ -196,6 +197,51 @@ export async function notifyWaitlistForOpenSlot(cancelledAppointmentId: string, 
   }
 
   return { eligibleCount: top.length, notified, skipped, targetingMode: 'MATCHED' }
+}
+
+// ── Reception alert: a cancellation had real waitlist demand, but automation
+// couldn't reach anyone (consent declined, channel paused/not wired) ───────
+//
+// Deliberately NOT fired when there's simply no waitlist entry for the
+// cancelled service (targetingMode !== 'MATCHED') — that's the routine case
+// and isn't actionable; nothing failed, there was just no demand to fill the
+// slot with. It's also not fired when automation DID reach someone
+// (notified.length > 0) — the system already handled it. Only the genuine
+// gap (eligible candidates existed, zero got contacted) is worth a Reception
+// push, since manual outreach may still be able to fill the slot.
+const WAITLIST_UNFILLED_TITLE = 'Waitlist Slot Needs Manual Outreach'
+
+export async function notifyReceptionIfWaitlistUnfilled(result: NotifyWaitlistResult, cancelledAppointmentId: string): Promise<void> {
+  if (result.targetingMode !== 'MATCHED' || result.notified.length > 0 || result.skipped.length === 0) return
+
+  try {
+    const staff = await prisma.user.findMany({
+      where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
+      select: { id: true, role: true },
+    })
+    const title = WAITLIST_UNFILLED_TITLE
+    const body = `A cancelled appointment opened a slot with ${result.skipped.length} waitlisted patient(s) eligible, but none could be auto-notified (consent/channel). Manual outreach may still fill it.`
+    const pushBody = "A cancelled slot couldn't be auto-filled from the waitlist — tap to review."
+    // Scopes the dedup key to this specific cancelled appointment, so a
+    // fire-and-forget retry for the SAME cancellation never double-alerts
+    // while a different cancellation still gets its own notification.
+    const apptQuery = `?apptId=${encodeURIComponent(cancelledAppointmentId)}`
+
+    await Promise.all(staff.map(async u => {
+      const href = (u.role === 'RECEPTIONIST' ? '/receptionist/waitlist' : '/waitlist') + apptQuery
+
+      const existing = await prisma.notification.findFirst({
+        where: { userId: u.id, href, title, isRead: false },
+        select: { id: true },
+      })
+      if (existing) return
+
+      await prisma.notification.create({ data: { userId: u.id, type: 'SYSTEM', title, body, href, isRead: false } })
+      sendPushToUser(u.id, { title, body: pushBody, url: href }).catch(() => {})
+    }))
+  } catch (e: any) {
+    console.error('[Waitlist] notifyReceptionIfWaitlistUnfilled failed:', e?.message)
+  }
 }
 
 // ── Waitlist CRUD (Part 8 UI backing) ───────────────────────────────────────

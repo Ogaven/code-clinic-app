@@ -18,6 +18,7 @@
 // CONFIRMED is a normal, non-destructive status.
 
 import { prisma } from '../../lib/prisma'
+import { sendPushToUser } from '../../services/push.service'
 
 export type ConfirmationReplyClassification = 'CONFIRM' | 'CANCEL_REQUESTED' | 'RESCHEDULE_REQUESTED'
 
@@ -124,15 +125,25 @@ export async function applyConfirmationReply(params: {
     },
   })
 
-  await notifyStaffOfConfirmationReply(classification, patientName, phone)
+  await notifyStaffOfConfirmationReply(classification, patientName, phone, appointmentId)
 
   return { replyText }
+}
+
+// Generic, lock-screen-safe push copy — no patient name/phone, matching the
+// pushBody/body split used everywhere else in this codebase (maybeNotifyStaff,
+// previsit's notifyWalkInStaff, lead-needs-help-alerts, etc). Full context
+// (patient name/phone/requested action) stays in the authenticated in-app body.
+const PUSH_COPY: Record<'CANCEL_REQUESTED' | 'RESCHEDULE_REQUESTED', string> = {
+  CANCEL_REQUESTED:     'A patient asked to cancel — tap to review.',
+  RESCHEDULE_REQUESTED: 'A patient asked to reschedule — tap to review.',
 }
 
 async function notifyStaffOfConfirmationReply(
   classification: 'CANCEL_REQUESTED' | 'RESCHEDULE_REQUESTED',
   patientName: string,
   phone: string,
+  appointmentId: string | null,
 ): Promise<void> {
   try {
     const staff = await prisma.user.findMany({
@@ -141,13 +152,30 @@ async function notifyStaffOfConfirmationReply(
     const title = classification === 'CANCEL_REQUESTED' ? 'Cancellation Requested' : 'Reschedule Requested'
     const action = classification === 'CANCEL_REQUESTED' ? 'cancel' : 'reschedule'
     const body = `${patientName} (${phone}) replied to their appointment confirmation asking to ${action}. Please follow up — no change has been made automatically.`
+    const pushBody = PUSH_COPY[classification]
+    // Scopes the href (and therefore the dedup key below) to this specific
+    // appointment when known, so a retry/duplicate webhook delivery for the
+    // SAME appointment's reply is suppressed while a genuinely different
+    // appointment's cancel/reschedule request still gets its own alert.
+    const apptQuery = appointmentId ? `?apptId=${encodeURIComponent(appointmentId)}` : ''
 
     await Promise.all(
-      staff.map(u => {
-        const href = u.role === 'RECEPTIONIST'
+      staff.map(async u => {
+        const href = (u.role === 'RECEPTIONIST'
           ? '/receptionist/ai-suite/confirmation-dashboard'
-          : '/ai-suite/confirmation-dashboard'
-        return prisma.notification.create({ data: { userId: u.id, type: 'CONFIRMATION', title, body, href } })
+          : '/ai-suite/confirmation-dashboard') + apptQuery
+
+        // Durable dedup: an existing UNREAD alert for this exact (user, href,
+        // title) means this same still-open request already has a live
+        // notification — skip rather than spamming a duplicate on retry.
+        const existing = await prisma.notification.findFirst({
+          where: { userId: u.id, href, title, isRead: false },
+          select: { id: true },
+        })
+        if (existing) return
+
+        await prisma.notification.create({ data: { userId: u.id, type: 'CONFIRMATION', title, body, href, isRead: false } })
+        sendPushToUser(u.id, { title, body: pushBody, url: href }).catch(() => {})
       })
     )
   } catch (e: any) {

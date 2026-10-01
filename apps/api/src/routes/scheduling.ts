@@ -18,15 +18,45 @@ import { logAudit } from '../services/audit.service'
 import { appointmentVisibleToUser, authenticatedDoctorId } from '../lib/doctor-access'
 import { deleteAppointmentPermanently } from '../services/appointment-delete.service'
 import { recordVisitFlag } from '../crm-automation/patient-tags.service'
-import { notifyWaitlistForOpenSlot } from '../crm-automation/waitlist.service'
+import { notifyWaitlistForOpenSlot, notifyReceptionIfWaitlistUnfilled } from '../crm-automation/waitlist.service'
 import { scheduleReviewRequest } from '../crm-automation/review-request.service'
 import { checkAndConvertLeadOnBooking } from '../crm-automation/lead-patient-link.service'
 import { exitActiveEnrollments } from '../crm-automation/automation-events.service'
+import { sendPushToUser } from '../services/push.service'
 import { PATIENT_RECALL_CONFLICT_GROUP } from '../crm-automation/sequence-groups'
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
 const STAFF_NUMBER = process.env.STAFF_WHATSAPP_NUMBER || '+256394836298'
+
+// Reception operational alert — a patient is ready for checkout. Exported
+// (like notifyDoctorAssigned in pipeline.ts) for direct unit testing rather
+// than only through the full PATCH /appointments/:id/status route request.
+// SESSION_COMPLETE/CHECKOUT/READY_CHECKOUT can each independently reach this
+// as an appointment moves through the checkout funnel; the unread-
+// notification dedup below collapses repeated transitions into one live
+// alert per appointment instead of re-pushing for each status hop.
+export async function notifyReceptionOfCheckout(appointmentId: string, patientFullName: string): Promise<void> {
+  const receptionists = await prisma.user.findMany({ where: { role: 'RECEPTIONIST', isActive: true } })
+  const title = 'Patient Ready for Checkout'
+  const body = `${patientFullName} is ready for checkout.`
+  // Push body stays generic — no patient name on a lock-screen popup.
+  const pushBody = 'A patient is ready for checkout — tap to review.'
+  const href = `/receptionist/appointments?apptId=${encodeURIComponent(appointmentId)}`
+
+  await Promise.all(receptionists.map(async (r) => {
+    const existing = await prisma.notification.findFirst({
+      where: { userId: r.id, href, title, isRead: false },
+      select: { id: true },
+    })
+    if (existing) return
+
+    await prisma.notification.create({
+      data: { userId: r.id, type: 'APPOINTMENT', title, body, href, isRead: false },
+    })
+    sendPushToUser(r.id, { title, body: pushBody, url: href }).catch(() => {})
+  }))
+}
 
 async function notifyStaff(
   prismaClient: PrismaClient,
@@ -538,9 +568,11 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
           console.error('[CrmAutomation] recordVisitFlag(LATE_CANCEL) failed:', e?.message)
         )
       }
-      notifyWaitlistForOpenSlot(appointment.id).catch((e: any) =>
-        console.error('[CrmAutomation] notifyWaitlistForOpenSlot failed:', e?.message)
-      )
+      notifyWaitlistForOpenSlot(appointment.id)
+        .then(result => notifyReceptionIfWaitlistUnfilled(result, appointment.id))
+        .catch((e: any) =>
+          console.error('[CrmAutomation] notifyWaitlistForOpenSlot failed:', e?.message)
+        )
     }
 
     // CRM Automation (Part A) — no-show visit flag + count.
@@ -571,20 +603,14 @@ router.patch('/appointments/:id/status', requireAuth, auditLog('appointments'), 
       })
     }
 
-    // Notify receptionists when session is complete / ready for checkout
+    // Notify receptionists when session is complete / ready for checkout.
+    // SESSION_COMPLETE/CHECKOUT/READY_CHECKOUT can each independently reach
+    // this branch for the SAME appointment as it moves through the checkout
+    // funnel — notifyReceptionOfCheckout's unread-notification dedup
+    // collapses those into one live alert instead of up to three pushes for
+    // one real event.
     if (status === 'SESSION_COMPLETE' || status === 'CHECKOUT' || status === 'READY_CHECKOUT') {
-      const receptionists = await prisma.user.findMany({ where: { role: 'RECEPTIONIST', isActive: true } })
-      await Promise.all(receptionists.map((r) =>
-        prisma.notification.create({
-          data: {
-            userId: r.id,
-            type: 'APPOINTMENT',
-            title: 'Patient Ready for Checkout',
-            body: `${appointment.patient.firstName} ${appointment.patient.lastName} is ready for checkout.`,
-            href: '/receptionist/appointments',
-          },
-        }),
-      ))
+      await notifyReceptionOfCheckout(appointment.id, `${appointment.patient.firstName} ${appointment.patient.lastName}`)
     }
 
     // Create invoice when patient departs / session completes

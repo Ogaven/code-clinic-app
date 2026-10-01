@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer'
 import { prisma } from '../../lib/prisma'
 import { phoneVariants } from '../../utils/phone'
 import { checkAndConvertLeadOnBooking } from '../../crm-automation/lead-patient-link.service'
+import { createEscalation } from './guards/escalation'
 
 async function sendEmail(opts: { to: string; subject: string; text: string }) {
   try {
@@ -731,41 +732,37 @@ async function handle_escalate_to_human(
   transcript?: string,
   whatsappThread?: any[]
 ) {
-  // Create escalation record
   const patient = await prisma.patient.findFirst({ where: { phone: ctx.phoneNumber } })
 
-  await prisma.escalation.create({
-    data: {
-      patientId: patient?.id,
-      phoneNumber: ctx.phoneNumber,
-      channel: input.channel,
-      reason: input.reason,
-      transcript,
-      whatsappThread: whatsappThread ? JSON.stringify(whatsappThread) : undefined,
-      status: 'PENDING',
-    },
-  })
-
-  // Notify all receptionist + admin users
-  const staff = await prisma.user.findMany({
-    where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
+  // Dedup: an agentic tool-call loop can retry a transient failure and call
+  // this tool twice for the same underlying concern. If this phone number
+  // already has a PENDING escalation from the last 5 minutes, don't create a
+  // second one (and don't re-notify staff who already have a live alert) —
+  // scoped to this call site only, not a change to createEscalation's shared
+  // behavior for its other existing callers.
+  const recentPending = await prisma.escalation.findFirst({
+    where: { phoneNumber: ctx.phoneNumber, status: 'PENDING', createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) } },
     select: { id: true },
   })
+  if (recentPending) {
+    return { escalated: true, message: 'Connecting you with our team now' }
+  }
 
-  const urgencyEmoji = { LOW: '⚠️', MEDIUM: '🔶', HIGH: '🚨' }[input.urgency]
-  await Promise.all(
-    staff.map(u =>
-      prisma.notification.create({
-        data: {
-          userId: u.id,
-          type: 'ESCALATION',
-          title: `${urgencyEmoji} Patient Flagged for Follow-up — ${input.urgency} Priority`,
-          body: `${input.reason.slice(0, 180)} | Phone: ${ctx.phoneNumber}`,
-          href: '/receptionist/dashboard',
-        },
-      })
-    )
-  )
+  // Routes through the same createEscalation() used by every other
+  // escalation trigger (unified-agent.ts, whatsapp.service.ts,
+  // booking.service.ts) instead of duplicating the Escalation-record +
+  // staff-notification logic inline — this was the one call site missing
+  // the OneSignal push half of the pairing (persistent Notification existed,
+  // no sendPushToUser), so it's folded into the shared helper rather than
+  // patched separately.
+  await createEscalation({
+    patientId:   patient?.id,
+    phoneNumber: ctx.phoneNumber,
+    channel:     input.channel,
+    reason:      `[${input.urgency}] ${input.reason}`,
+    transcript,
+    whatsappThread,
+  })
 
   return { escalated: true, message: 'Connecting you with our team now' }
 }
