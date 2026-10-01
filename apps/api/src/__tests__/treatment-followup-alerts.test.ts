@@ -278,7 +278,7 @@ describe('Treatment follow-up alert scheduler', () => {
     expect(alerts[0].alertType).toBe('DUE_TODAY')
   })
 
-  it('a followUpAt more than the due-soon window away produces no notification', async () => {
+  it('a followUpAt between configured reminder milestones produces no notification', async () => {
     const { checkAndSendTreatmentFollowUpAlerts } = await import('../services/treatment-followup-alerts.service')
     const farFuture = new Date(TODAY_KAMPALA_MIDNIGHT.getTime() + 30 * 24 * 60 * 60 * 1000)
     makePlan({ id: 'p_far_future', followUpAt: farFuture })
@@ -341,7 +341,7 @@ describe('Treatment follow-up alert scheduler', () => {
     expect(pushPayload.body).not.toContain('Consulted')
     expect(pushPayload.body).not.toContain('Jane')
     expect(pushPayload.body).not.toContain('Doe')
-    expect(pushPayload.body).toBe('A treatment follow-up needs attention. Tap to review.')
+    expect(pushPayload.body).toBe('A planned treatment follow-up is due today. Please review and contact the patient.')
   })
 
   it('never notifies the patient -- every recipient is an internal staff/doctor user id, and no WhatsApp/SMS send is attempted', async () => {
