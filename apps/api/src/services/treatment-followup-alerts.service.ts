@@ -15,28 +15,41 @@ import { prisma } from '../lib/prisma'
 import { startOfKampalaDay } from '../utils/kampala-time'
 import { sendPushToUser } from './push.service'
 
-// Anything due within this many days (but not today, not overdue) is
-// DUE_SOON. Matches the "within 3 days" example in the task — no other
-// due-soon threshold exists elsewhere in the codebase to reuse.
-const DUE_SOON_WINDOW_DAYS = 3
+// Planned treatment/follow-up reminders need enough runway for staff to act.
+// These milestones intentionally avoid a noisy "every day for 30 days" model:
+// reception/admin and the assigned doctor get progressively stronger reminders
+// at 30, 14, 7, 3 and 1 day before the staff-set followUpAt date, then on the
+// due date and once when it becomes overdue.
+export type FollowUpAlertType =
+  | 'UPCOMING_30'
+  | 'UPCOMING_14'
+  | 'UPCOMING_7'
+  | 'UPCOMING_3'
+  | 'UPCOMING_1'
+  | 'DUE_TODAY'
+  | 'OVERDUE'
 
-export type FollowUpAlertType = 'DUE_SOON' | 'DUE_TODAY' | 'OVERDUE'
-
-// Buckets a follow-up date against Kampala "today". Returns null when the
-// follow-up is further out than the due-soon window (no alert yet).
 export function bucketFollowUp(followUpAt: Date, today: Date = startOfKampalaDay()): FollowUpAlertType | null {
   const followUpDay = startOfKampalaDay(followUpAt)
   const diffDays = Math.round((followUpDay.getTime() - today.getTime()) / 86_400_000)
   if (diffDays < 0) return 'OVERDUE'
   if (diffDays === 0) return 'DUE_TODAY'
-  if (diffDays <= DUE_SOON_WINDOW_DAYS) return 'DUE_SOON'
+  if (diffDays === 1) return 'UPCOMING_1'
+  if (diffDays === 3) return 'UPCOMING_3'
+  if (diffDays === 7) return 'UPCOMING_7'
+  if (diffDays === 14) return 'UPCOMING_14'
+  if (diffDays === 30) return 'UPCOMING_30'
   return null
 }
 
 const ALERT_LABEL: Record<FollowUpAlertType, string> = {
-  DUE_SOON:  'due soon',
-  DUE_TODAY: 'due today',
-  OVERDUE:   'overdue',
+  UPCOMING_30: 'due in 30 days',
+  UPCOMING_14: 'due in 14 days',
+  UPCOMING_7:  'due in 7 days',
+  UPCOMING_3:  'due in 3 days',
+  UPCOMING_1:  'due tomorrow',
+  DUE_TODAY:   'due today',
+  OVERDUE:     'overdue',
 }
 
 // Statuses a treatment plan can carry (pipeline.ts VALID_STATUSES) that mean
@@ -52,7 +65,9 @@ const NON_ACTIONABLE_STATUSES = ['Completed', 'Cancelled', 'Declined']
 // in the domain model that represents a genuine staff-set due date; there is
 // no separate "treatment due date" to consume, and none is inferred from
 // dateAdded/createdAt. Buckets it against Kampala "today", and fires at most
-// one alert per (plan, alertType) per Kampala calendar day.
+// one alert per (plan, alertType, planned follow-up date). This means a scheduler
+// retry cannot spam staff, while changing the plan's follow-up date creates a
+// fresh reminder lifecycle for the new date.
 export async function checkAndSendTreatmentFollowUpAlerts(): Promise<void> {
   try {
     const today = startOfKampalaDay()
@@ -84,7 +99,7 @@ export async function checkAndSendTreatmentFollowUpAlerts(): Promise<void> {
       // no notification, no push, no duplicate.
       try {
         await prisma.treatmentFollowUpAlert.create({
-          data: { treatmentPlanId: plan.id, alertType, sentForDate: today },
+          data: { treatmentPlanId: plan.id, alertType, sentForDate: startOfKampalaDay(plan.followUpAt) },
         })
       } catch (e: any) {
         if (e?.code === 'P2002') continue
@@ -105,7 +120,11 @@ export async function checkAndSendTreatmentFollowUpAlerts(): Promise<void> {
       // its body stays fully generic -- no patient name, per the lock-screen
       // privacy requirement (a push popup should say WHAT kind of action is
       // needed, never WHO it's about).
-      const pushBody = `A treatment follow-up needs attention. Tap to review.`
+      const pushBody = alertType === 'OVERDUE'
+        ? 'A planned treatment follow-up is overdue. Please review and contact the patient.'
+        : alertType === 'DUE_TODAY'
+          ? 'A planned treatment follow-up is due today. Please review and contact the patient.'
+          : 'A planned treatment follow-up is approaching. Please review and contact the patient.'
 
       const recipientIds = new Set<string>(staff.map(u => u.id))
       if (plan.doctor?.user?.id) recipientIds.add(plan.doctor.user.id)
