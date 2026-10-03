@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma'
 import { requireAuth } from '../middleware/auth'
 import { startOfKampalaDay, endOfKampalaDay, startOfKampalaWeek, startOfKampalaMonth, startOfNextKampalaMonth, kampalaTodayRange } from '../utils/kampala-time'
 import { getPatientActivitySummary, getAppointmentStatusBreakdown, ATTENDED_STATUSES } from '../services/patient-analytics.service'
+import { isAccepted, isDeclined } from '../services/treatment-classification.service'
 
 const router = Router()
 
@@ -52,9 +53,9 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
     function patientName(p: any) { return `${proper(p.firstName)} ${proper(p.lastName)}`.trim() }
 
     const presented  = plans.length
-    const accepted   = plans.filter((p: any) => ['In Progress', 'Completed'].includes(p.status)).length
+    const accepted   = plans.filter((p: any) => isAccepted(p)).length
     const followUp   = plans.filter((p: any) => p.status === 'Planned').length
-    const declined   = plans.filter((p: any) => p.status === 'Declined').length
+    const declined   = plans.filter((p: any) => isDeclined(p)).length
     const onHold     = plans.filter((p: any) => p.status === 'On Hold').length
     const inProgress = plans.filter((p: any) => p.status === 'In Progress').length
     const completed  = plans.filter((p: any) => p.status === 'Completed').length
@@ -100,8 +101,8 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
       const pName    = patientName(plan.patient)
       const row      = { name: pName, service: svcName, date: dateStr, value }
 
-      if (['In Progress', 'Completed'].includes(plan.status)) { entry.accepted++;  entry.patients.accepted.push(row) }
-      else if (plan.status === 'Declined')                     { entry.declined++;  entry.patients.declined.push(row) }
+      if (isAccepted(plan))                                    { entry.accepted++;  entry.patients.accepted.push(row) }
+      else if (isDeclined(plan))                               { entry.declined++;  entry.patients.declined.push(row) }
       else if (plan.status === 'Planned')                      { entry.followUp++;  entry.patients.pending.push(row) }
       else if (plan.status === 'On Hold')                      { entry.onHold++ }
     }
