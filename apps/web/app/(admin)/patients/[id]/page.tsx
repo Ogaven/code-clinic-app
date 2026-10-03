@@ -651,14 +651,17 @@ function PerioChartTab({ patientId, token }: { patientId: string; token: string 
 
 // ─── Treatment Plan Tab ───────────────────────────────────────────────────
 
-function TreatmentPlanTab({ patientId, token }: { patientId: string; token: string | null }) {
+function TreatmentPlanTab({ patientId, token, userRole }: { patientId: string; token: string | null; userRole?: string }) {
   const [plans, setPlans] = useState<any[]>([])
   const [services, setServices] = useState<any[]>([])
+  const [doctors, setDoctors] = useState<any[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [appointments, setAppointments] = useState<any[]>([])
-  const [form, setForm] = useState({ serviceId: '', toothNumber: '', quantity: 1, costPerUnit: 0, discount: 0, notes: '', status: 'Planned' })
+  const [addError, setAddError] = useState<string | null>(null)
+  const emptyForm = { serviceId: '', toothNumber: '', quantity: 1, costPerUnit: 0, discount: 0, notes: '', status: 'Planned', doctorId: '', followUpAt: '', followUpReason: '' }
+  const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState({ serviceId: '', toothNumber: '', quantity: 1, costPerUnit: 0, discount: 0, notes: '', status: 'Planned' })
+  const [editForm, setEditForm] = useState(emptyForm)
   const [noteEditingId, setNoteEditingId] = useState<string | null>(null)
   const [noteEditValue, setNoteEditValue] = useState('')
   const [noteSavedId, setNoteSavedId] = useState<string | null>(null)
@@ -668,20 +671,29 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
       .then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => {})
     fetch('/api-proxy/services', { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json()).then(d => setServices(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch('/api-proxy/doctors', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => setDoctors(Array.isArray(d) ? d : [])).catch(() => {})
     fetch(`/api-proxy/patients/${patientId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json()).then(d => setAppointments(d.appointments || [])).catch(() => {})
   }, [patientId, token])
 
+  // Admin must pick the treating doctor explicitly — this is the fix for
+  // treatments silently landing "Unassigned" in the pipeline. A doctor
+  // creating their own plan is auto-assigned server-side and never sees this.
+  const doctorRequired = userRole === 'ADMIN'
+
   const handleAdd = async () => {
+    if (doctorRequired && !form.doctorId) { setAddError('Please select the treating doctor.'); return }
+    setAddError(null)
     const res = await fetch(`/api-proxy/clinical/patients/${patientId}/treatment-plans`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(form),
     })
-    if (!res.ok) return
+    if (!res.ok) { const d = await res.json().catch(() => null); setAddError(d?.error || 'Failed to save treatment.'); return }
     const plan = await res.json()
     setPlans(p => [plan, ...p])
     setShowAdd(false)
-    setForm({ serviceId: '', toothNumber: '', quantity: 1, costPerUnit: 0, discount: 0, notes: '', status: 'Planned' })
+    setForm(emptyForm)
   }
 
   const handleStatusChange = async (planId: string, status: string) => {
@@ -705,7 +717,11 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
   function handleStartEdit(p: any) {
     setEditingId(p.id)
     setNoteEditingId(null)
-    setEditForm({ serviceId: p.serviceId || '', toothNumber: p.toothNumber || '', quantity: p.quantity || 1, costPerUnit: p.costPerUnit || 0, discount: p.discount || 0, notes: p.notes || '', status: p.status || 'Planned' })
+    setEditForm({
+      serviceId: p.serviceId || '', toothNumber: p.toothNumber || '', quantity: p.quantity || 1,
+      costPerUnit: p.costPerUnit || 0, discount: p.discount || 0, notes: p.notes || '', status: p.status || 'Planned',
+      doctorId: p.doctorId || '', followUpAt: p.followUpAt ? String(p.followUpAt).slice(0, 10) : '', followUpReason: p.followUpReason || '',
+    })
   }
 
   async function handleSaveEdit() {
@@ -797,11 +813,34 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
               <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Discount (UGX)</label>
               <input type="number" min={0} value={form.discount} onChange={e => setForm(f => ({ ...f, discount: Number(e.target.value) }))} className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5" />
             </div>
+            {doctorRequired && (
+              <div>
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Treating Doctor</label>
+                <select value={form.doctorId} onChange={e => setForm(f => ({ ...f, doctorId: e.target.value }))}
+                  className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5">
+                  <option value="">Select doctor</option>
+                  {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.user?.firstName} {d.user?.lastName}</option>)}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Remind us to follow up <span className="text-slate-400 font-normal">— optional</span></label>
+              <input type="date" value={form.followUpAt} onChange={e => setForm(f => ({ ...f, followUpAt: e.target.value }))}
+                className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5" />
+            </div>
+            {form.followUpAt && (
+              <div>
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Follow-up reason <span className="text-slate-400 font-normal">— optional</span></label>
+                <input value={form.followUpReason} onChange={e => setForm(f => ({ ...f, followUpReason: e.target.value }))} placeholder="e.g. Patient asked to be contacted in 2 weeks"
+                  className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5" />
+              </div>
+            )}
           </div>
           <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Notes..." className="w-full text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5 min-h-[60px] resize-none" />
+          {addError && <p className="text-xs text-red-500 font-medium">{addError}</p>}
           <div className="flex gap-2">
             <button onClick={handleAdd} className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700">Save</button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/10 rounded-lg">Cancel</button>
+            <button onClick={() => { setShowAdd(false); setAddError(null) }} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/10 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
@@ -811,7 +850,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
           <table className="w-full text-left">
             <thead className="bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
               <tr>
-                {['Tooth','Treatment','Status','Qty','Unit Cost','Disc (UGX)','Total','Date','Notes',''].map(h => (
+                {['Tooth','Treatment','Status','Qty','Unit Cost','Disc (UGX)','Total','Date','Notes','Follow-up',''].map(h => (
                   <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -862,6 +901,10 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                       <td className="px-3 py-2">
                         <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
                           className="w-40 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 resize-none" rows={2} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="date" value={editForm.followUpAt} onChange={e => setEditForm(f => ({ ...f, followUpAt: e.target.value }))}
+                          className="w-36 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1" />
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">
@@ -918,6 +961,13 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                         </div>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-xs">
+                      {p.followUpAt ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 font-medium whitespace-nowrap" title={p.followUpReason || ''}>
+                          {new Date(p.followUpAt).toLocaleDateString('en-GB')}
+                        </span>
+                      ) : <span className="text-slate-300 dark:text-white/20">—</span>}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button onClick={() => handleStartEdit(p)} className="p-1 text-slate-400 hover:text-slate-600"><Pencil size={14} /></button>
@@ -933,7 +983,7 @@ function TreatmentPlanTab({ patientId, token }: { patientId: string; token: stri
                 <tr>
                   <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white text-right">Outstanding Cost:</td>
                   <td className="px-4 py-3 text-sm font-bold text-clinic-navy dark:text-white text-right">{formatUGX(totalCost)}</td>
-                  <td colSpan={3} />
+                  <td colSpan={4} />
                 </tr>
               </tfoot>
             )}
@@ -2160,7 +2210,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
       case 'appointments': return <AppointmentsTab patient={patient} token={token} />
       case 'dental': return <DentalChartTab patientId={id!} token={token} />
       case 'perio': return <PerioChartTab patientId={id!} token={token} />
-      case 'treatment': return <TreatmentPlanTab patientId={id!} token={token} />
+      case 'treatment': return <TreatmentPlanTab patientId={id!} token={token} userRole={user.role} />
       case 'notes': return <NotesTab patientId={id!} token={token} />
       case 'billing': return <BillingTab patient={patient} token={token} />
       case 'documents': return <DocumentsTab patientId={id!} token={token} />
