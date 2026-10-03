@@ -7,6 +7,7 @@ import { syncTreatmentPlanStatusFromPipeline } from '../crm-automation/patient-t
 import { logAudit } from '../services/audit.service'
 import { notifyUsers } from '../services/notification.service'
 import { parseFollowUpFields, NON_ACTIONABLE_STATUSES } from '../utils/treatment-followup'
+import { isAccepted, isDeclined } from '../services/treatment-classification.service'
 
 // ── Staff operational notifications (event hooks around the existing,
 // already-verified stage/status transitions — never a new status/stage) ────
@@ -216,17 +217,25 @@ router.get('/treatment', requireAuth, async (req, res) => {
 
     const presentedValue = inPeriod.reduce((s, p) => s + p.value, 0)
 
-    const acceptedStages = ['Accepted & Scheduled', 'Accepted & Unscheduled', 'Completed']
     // "Accepted Value" for the period = of the plans PRESENTED in this window,
-    // how much value (by current stage) has been accepted — the same
+    // how much value (by current status) has been accepted — the same
     // cohort-by-presentation-date methodology Case Acceptance's report uses,
     // since TreatmentPlan has no separate "accepted at" timestamp to filter by.
+    // Reads TreatmentPlan.status via the shared treatment-classification
+    // service — the SAME field and SAME function Case Acceptance's report
+    // (reports.ts) uses, so the two can never silently disagree on what
+    // "accepted" means. Previously read `stage` here instead, a field
+    // that's barely ever written by any current staff-facing action (see
+    // treatment-classification.service.ts's header comment) — a plan could
+    // be `status: 'In Progress'` (genuinely underway) yet still read
+    // `stage: 'Consulted'` (its untouched default), so this board's own
+    // "Accepted" KPI could silently diverge from Case Acceptance's.
     const acceptedValue = inPeriod
-      .filter(p => acceptedStages.includes(p.stage))
+      .filter(p => isAccepted(p))
       .reduce((s, p) => s + p.value, 0)
 
     const presentedForRate = inPeriod
-      .filter(p => p.stage !== 'Declined')
+      .filter(p => !isDeclined(p))
       .reduce((s, p) => s + p.value, 0)
     const conversionRate = presentedForRate > 0
       ? Math.round((acceptedValue / presentedForRate) * 100)
@@ -238,6 +247,16 @@ router.get('/treatment', requireAuth, async (req, res) => {
     // it just because it wasn't presented "this week" would be actively
     // misleading, not just imprecise. Always computed from the full, unfiltered
     // pipeline regardless of the selected period — labelled "All time" in the UI.
+    //
+    // KNOWN GAP (not changed by this pass — see treatment-classification.
+    // service.ts's header comment): these two specifically need the
+    // "accepted but not yet booked" vs "accepted and scheduled" distinction,
+    // which only `stage` encodes — `status` has no equivalent intermediate
+    // state. Since `stage` is rarely written by any current staff-facing
+    // action, these two metrics likely under-report in production today.
+    // Fixing that would mean deciding how/whether staff should start
+    // setting stage explicitly (a workflow change), not a read-time
+    // reinterpretation — intentionally left alone here.
     const moneyAtRisk = enriched
       .filter(p => p.stage === 'Accepted & Unscheduled')
       .reduce((s, p) => s + p.value, 0)
