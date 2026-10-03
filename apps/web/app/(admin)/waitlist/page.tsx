@@ -24,7 +24,7 @@ interface WaitlistEntry {
 }
 
 interface Service { id: string; name: string }
-interface Doctor { id: string; user: { firstName: string; lastName: string } }
+interface Doctor { id: string; firstName: string; lastName: string }
 interface PatientHit { id: string; firstName: string; lastName: string; phone: string }
 
 interface WaitlistMatchPreviewEntry {
@@ -245,7 +245,7 @@ export default function WaitlistPage() {
               <select value={form.preferredDoctorId} onChange={e => setForm(f => ({ ...f, preferredDoctorId: e.target.value }))}
                 className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-xl">
                 <option value="">Any doctor</option>
-                {doctors.map(d => <option key={d.id} value={d.id}>Dr {d.user.firstName} {d.user.lastName}</option>)}
+                {doctors.map(d => <option key={d.id} value={d.id}>Dr {d.firstName} {d.lastName}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">

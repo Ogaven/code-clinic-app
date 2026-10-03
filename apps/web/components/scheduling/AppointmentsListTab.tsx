@@ -13,7 +13,7 @@ interface Appointment {
   service: { id: string; name: string; colour: string; durationMins: number; priceUGX: number }
 }
 
-interface Doctor { id: string; user: { firstName: string; lastName: string } }
+interface Doctor { id: string; firstName: string; lastName: string }
 
 const API = '/api-proxy'
 function hdr() {
@@ -96,7 +96,7 @@ export default function AppointmentsListTab() {
           <select value={doctorId} onChange={e => setDoctorId(e.target.value)}
             className="appearance-none pl-2.5 pr-6 py-1.5 text-xs border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all max-w-[130px] sm:max-w-none">
             <option value="">All doctors</option>
-            {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.user.firstName} {d.user.lastName}</option>)}
+            {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}</option>)}
           </select>
           <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
         </div>

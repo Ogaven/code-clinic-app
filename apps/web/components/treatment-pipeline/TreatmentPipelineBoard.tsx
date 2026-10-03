@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus, Search, CalendarClock, BellRing } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { doctorLabel, findDoctorIdByLabel, type DoctorLite } from '@/lib/doctorLabel'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,10 +81,15 @@ interface NeedsReviewData {
   total:       number
 }
 
-interface Doctor {
-  id: string
-  user: { firstName: string; lastName: string }
-}
+// Matches the ACTUAL GET /doctors response shape (apps/api/src/routes/doctors.ts's
+// formatDoctor()) — flat firstName/lastName, never a nested `user` object. A
+// previous pass here wrongly assumed `d.user.firstName`, which is `undefined.
+// firstName` for every doctor, every time (not just unassigned ones) — this
+// was the exact "Cannot read properties of undefined (reading 'firstName')"
+// crash on opening ANY treatment card, since the drawer's doctor dropdown
+// iterates the whole roster on every open regardless of the plan's own doctor.
+// See apps/web/lib/doctorLabel.ts for the shared, tested formatting logic.
+type Doctor = DoctorLite
 
 // ── Stage config (Needs Review section only — untouched, still stage-based) ───
 
@@ -584,8 +590,13 @@ export default function TreatmentPipelineBoard({
           on (followUpAt set). NOT a pipeline status/stage — a plan keeps
           whatever status/stage it already has (Planned, On Hold, even a
           reconsidered Declined) and simply also appears here while the
-          follow-up is outstanding, sorted soonest-first. */}
-      {followUps.length > 0 && (
+          follow-up is outstanding, sorted soonest-first.
+          Always rendered, even with zero outstanding follow-ups (shows a
+          friendly empty state) — a section that only appears once staff
+          have already used the feature isn't discoverable as "a clear
+          usable Pipeline section" for someone checking it exists. Not
+          gated by loading either, so it doesn't flash in after the board. */}
+      {!loading && (
         <FollowUpSection
           plans={followUps}
           open={followUpOpen}
@@ -824,7 +835,8 @@ export default function TreatmentPipelineBoard({
           onOpenPatient={() => { router.push(`${patientBasePath}/${detailPlan.patientId}`); setDetailPlan(null) }}
           onStatusChange={(status) => applyStatusChange(detailPlan.id, status)}
           onDoctorChange={async (doctorId) => {
-            setPlans(prev => prev.map(p => p.id === detailPlan.id ? { ...p, doctorName: doctors.find(d => d.id === doctorId) ? `Dr. ${doctors.find(d => d.id === doctorId)!.user.firstName} ${doctors.find(d => d.id === doctorId)!.user.lastName}` : 'Unassigned' } : p))
+            const picked = doctors.find(d => d.id === doctorId)
+            setPlans(prev => prev.map(p => p.id === detailPlan.id ? { ...p, doctorName: doctorLabel(picked) } : p))
             try {
               await fetch(`${API}/pipeline/treatment/${detailPlan.id}/follow-up`, { method: 'PATCH', headers: authH as any, body: JSON.stringify({ doctorId: doctorId || null }) })
             } finally { load() }
@@ -1203,6 +1215,12 @@ function FollowUpSection({
       </button>
       {open && (
         <div className="bg-white dark:bg-[#0e1f4d] border-t border-indigo-200 dark:border-indigo-400/20">
+          {plans.length === 0 && (
+            <div className="px-4 py-6 text-center">
+              <p className="text-sm text-gray-400 dark:text-white/30">No outstanding follow-ups right now.</p>
+              <p className="text-xs text-gray-300 dark:text-white/20 mt-1">Set "Remind us to follow up" on a treatment to see it here.</p>
+            </div>
+          )}
           {plans.map(plan => {
             const diff = followUpDiffDays(plan.followUpAt)
             return (
@@ -1419,7 +1437,7 @@ function TreatmentDetailDrawer({
   onReschedule: () => void
 }) {
   const [status, setStatus] = useState(plan.status)
-  const [doctorId, setDoctorId] = useState(() => doctors.find(d => `Dr. ${d.user.firstName} ${d.user.lastName}` === plan.doctorName)?.id || '')
+  const [doctorId, setDoctorId] = useState(() => findDoctorIdByLabel(doctors, plan.doctorName))
   const [followUpAt, setFollowUpAt] = useState(plan.followUpAt ? plan.followUpAt.slice(0, 10) : '')
   const [followUpReason, setFollowUpReason] = useState(plan.followUpReason || '')
   const [savingFollowUp, setSavingFollowUp] = useState(false)
@@ -1462,7 +1480,7 @@ function TreatmentDetailDrawer({
             <select value={doctorId} onChange={e => { setDoctorId(e.target.value); onDoctorChange(e.target.value) }}
               className="w-full mt-1.5 text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-lg px-2.5 py-2">
               <option value="">Unassigned</option>
-              {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.user.firstName} {d.user.lastName}</option>)}
+              {doctors.map(d => <option key={d.id} value={d.id}>{doctorLabel(d)}</option>)}
             </select>
           </div>
 
