@@ -10,6 +10,7 @@ import { authenticatedDoctorId, requireDoctorPatientAccess } from '../lib/doctor
 import { kampalaMonthToDateRange, kampalaPreviousMonthToDateRange, safePercentChange } from '../utils/kampala-time'
 import { getTotalPatients, getPatientsSeen, splitNewAndReturning } from '../services/patient-analytics.service'
 import { notifyUsers } from '../services/notification.service'
+import { parseFollowUpFields } from '../utils/treatment-followup'
 
 // Staff operational notification — someone other than the doctor themselves
 // explicitly assigned this new treatment plan to a clinician. Mirrors
@@ -185,6 +186,17 @@ router.post('/patients/:id/treatment-plans', requireAuth, doctorOrAdmin, async (
       ? await authenticatedDoctorId(prisma, req.user!)
       : (req.body.doctorId || null)
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+    // Root cause of "Unassigned" pipeline cards: an admin creating a plan on
+    // a doctor's behalf previously had no required way to say whose case it
+    // is, so doctorId silently stayed null. Rather than guess (patient has no
+    // reliably-maintained primary-doctor field — see Patient.providerId,
+    // which nothing currently sets), require the admin to pick the treating
+    // doctor explicitly. A doctor creating their own plan is unaffected.
+    if (req.user!.role === 'ADMIN' && !doctorId) {
+      res.status(400).json({ error: 'Please select the treating doctor for this treatment.' }); return
+    }
+    const { data: followUpData, error: followUpError } = parseFollowUpFields(req.body)
+    if (followUpError) { res.status(400).json({ error: followUpError }); return }
     const plan = await prisma.treatmentPlan.create({
       data: {
         patientId: req.params.id,
@@ -196,6 +208,7 @@ router.post('/patients/:id/treatment-plans', requireAuth, doctorOrAdmin, async (
         discount: Number(discount) || 0,
         notes,
         status: status || 'Planned',
+        ...followUpData,
       },
     })
     await logActivity(req.params.id, req.user!.id, `${req.user!.firstName} ${req.user!.lastName}`, `Treatment plan item added: ${toothNumber || 'General'}`)
@@ -220,6 +233,8 @@ router.put('/patients/:id/treatment-plans/:planId', requireAuth, doctorOrAdmin, 
     const existing = await prisma.treatmentPlan.findFirst({ where: { id: req.params.planId, patientId: req.params.id, ...(doctorId ? { doctorId } : {}) } })
     if (!existing) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     const { serviceId, toothNumber, quantity, costPerUnit, discount, notes, status } = req.body
+    const { data: followUpData, error: followUpError } = parseFollowUpFields(req.body)
+    if (followUpError) { res.status(400).json({ error: followUpError }); return }
     const plan = await prisma.treatmentPlan.update({
       where: { id: req.params.planId },
       data: {
@@ -230,6 +245,7 @@ router.put('/patients/:id/treatment-plans/:planId', requireAuth, doctorOrAdmin, 
         discount: Number(discount) || 0,
         notes,
         status,
+        ...followUpData,
       },
     })
     if (status === 'Completed') {
