@@ -860,6 +860,7 @@ function InboxPage() {
   const prevConvsRef   = useRef<Map<string, string>>(new Map())
   const [showArchived, setShowArchived] = useState(false)
   const [showNewChat,  setShowNewChat]  = useState(false)
+  const [handbackOpen, setHandbackOpen] = useState(false)
   const pendingSelectId = useRef<string | null>(null)
   const listPanelRef    = useRef<HTMLDivElement>(null)
 
@@ -1054,8 +1055,23 @@ function InboxPage() {
 
   async function toggleTakeover() {
     if (!sel) return
-    const ep = sel.agentEnabled ? 'takeover' : 'handback'
-    await fetch(`${API}/ai-suite/${ep}/${sel.id}`, { method: 'POST', headers: authH() })
+    // Taking over is immediate (Sarah just needs to go quiet); handing back
+    // opens a small optional-summary prompt first so staff can tell Sarah
+    // what happened, instead of silently resuming her.
+    if (sel.agentEnabled) {
+      await fetch(`${API}/ai-suite/takeover/${sel.id}`, { method: 'POST', headers: authH() })
+      fetchConvs()
+    } else {
+      setHandbackOpen(true)
+    }
+  }
+
+  async function confirmHandback(summary: string) {
+    if (!sel) return
+    setHandbackOpen(false)
+    await fetch(`${API}/ai-suite/handback/${sel.id}`, {
+      method: 'POST', headers: authH(true), body: JSON.stringify({ summary: summary || undefined }),
+    })
     fetchConvs()
   }
 
@@ -1516,6 +1532,51 @@ function InboxPage() {
       {showNewChat && (
         <NewChatModal onClose={() => setShowNewChat(false)} onCreated={handleNewChatCreated} />
       )}
+
+      {handbackOpen && (
+        <HandBackModal onClose={() => setHandbackOpen(false)} onConfirm={confirmHandback} />
+      )}
+    </div>
+  )
+}
+
+// ── Hand Back to Sarah modal ─────────────────────────────────────────────────
+// Optional free-text summary ("Patient wanted a filling, booked Tuesday
+// 8am, continue from here") — Sarah reads it back on her next reply
+// (getPendingHandoffNote in patient-context.service.ts) so she doesn't
+// re-ask questions or contradict what staff already did. Never required —
+// confirming with a blank field just resumes her, same as before.
+function HandBackModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (summary: string) => void }) {
+  const [summary, setSummary] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+          <p className="text-sm font-bold text-gray-900">Hand Back to Sarah</p>
+          <p className="text-xs text-gray-500 mt-0.5">Optionally tell Sarah what happened — she'll continue from here instead of starting over.</p>
+        </div>
+        <div className="p-4">
+          <textarea
+            autoFocus
+            value={summary}
+            onChange={e => setSummary(e.target.value)}
+            placeholder="e.g. Patient wanted a filling, booked Tuesday 8am, continue from here."
+            rows={3}
+            maxLength={1000}
+            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+          />
+        </div>
+        <div className="flex gap-2 px-4 pb-4">
+          <button
+            disabled={submitting}
+            onClick={async () => { setSubmitting(true); await onConfirm(summary.trim()) }}
+            className="flex-1 px-4 py-2 text-sm font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 disabled:opacity-50">
+            {submitting ? 'Handing back…' : 'Hand Back'}
+          </button>
+          <button onClick={onClose} disabled={submitting} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg disabled:opacity-50">Cancel</button>
+        </div>
+      </div>
     </div>
   )
 }
