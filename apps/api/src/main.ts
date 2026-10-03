@@ -48,6 +48,7 @@ import templatesRouter from './routes/templates'
 import sponsorsRouter from './routes/sponsors'
 import pushRouter from './routes/push'
 import { isPushConfigured } from './services/push.service'
+import { isR2Configured } from './services/storage/r2'
 import quizFunnelsRouter from './routes/quiz-funnels'
 import attendanceRouter from './routes/attendance'
 
@@ -161,12 +162,20 @@ app.get('/health', async (_req, res) => {
 
   // Probe optional services
   const emailOk   = !!(process.env.SMTP_HOST || process.env.SENDGRID_API_KEY)
-  // Web Push (VAPID) is the only push implementation this app has — not
-  // FCM/OneSignal, which were never wired up. isPushConfigured() checks the
-  // real VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY/VAPID_SUBJECT trio without ever
-  // exposing their values.
+  // isPushConfigured() checks OneSignal (ONESIGNAL_APP_ID/ONESIGNAL_REST_API_KEY)
+  // first, then falls back to legacy Web Push VAPID — same real condition
+  // sendPushToUser() itself branches on, without ever exposing the values.
   const pushOk    = isPushConfigured()
-  const storageOk = !!(process.env.R2_BUCKET && process.env.R2_ACCOUNT_ID)
+  // Previously checked `R2_BUCKET` (a env var name this app never actually
+  // reads — storage/r2.ts reads R2_BUCKET_NAME, falling back to R2_BUCKET,
+  // defaulting to 'codeclinic') alongside R2_ACCOUNT_ID, an inconsistent
+  // pair that didn't match isR2Configured()'s own real gate (ACCOUNT_ID +
+  // ACCESS_KEY_ID). That mismatch could report storage as unconfigured even
+  // when R2 uploads were actually active — confirmed in production, where
+  // R2_BUCKET was never set (only R2_BUCKET_NAME) despite R2 being fully
+  // configured. Reuses the exact same function uploadAvatar/uploadFile
+  // already branch on, so this can never drift from reality again.
+  const storageOk = isR2Configured()
   const redisOk   = !!(process.env.REDIS_URL)
 
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000)
