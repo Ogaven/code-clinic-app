@@ -185,9 +185,14 @@ router.get('/webhook', (req, res) => {
 // ── POST /ai-suite/webhook — inbound messages from Meta ──────────────────────────
 router.post('/webhook', async (req: Request, res: Response) => {
   // See lib/webhook-signature.ts — rejects only once a real app secret is
-  // configured; today (no WHATSAPP_APP_SECRET set) this only logs a warning
-  // and never blocks live patient traffic.
-  if (checkMetaWebhookSignature(req, ['WHATSAPP_APP_SECRET', 'META_APP_SECRET'], 'WhatsApp') === 'REJECTED') {
+  // configured. No dedicated WHATSAPP_APP_SECRET exists, but Meta signs
+  // every webhook delivery (Messenger, WhatsApp, Instagram) for an App with
+  // that single App's one App Secret — confirmed via a read-only
+  // /debug_token check that WHATSAPP_TOKEN belongs to the exact same App ID
+  // as the already-configured FACEBOOK_APP_SECRET (used successfully by the
+  // Facebook/Instagram webhooks below), so it's reused here rather than
+  // requiring a second, redundant copy of the same value under a new name.
+  if (checkMetaWebhookSignature(req, ['WHATSAPP_APP_SECRET', 'FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'WhatsApp') === 'REJECTED') {
     res.sendStatus(403)
     return
   }
