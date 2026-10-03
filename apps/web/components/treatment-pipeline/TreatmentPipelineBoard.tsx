@@ -16,6 +16,7 @@ import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, A
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { doctorLabel, findDoctorIdByLabel, type DoctorLite } from '@/lib/doctorLabel'
+import { STATUSES, PRIMARY_COLUMNS } from '@/lib/pipelineColumns'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,20 +104,11 @@ const STAGES = [
   { id: 'Follow-up Due',          label: 'Follow-up Due',          headerColor: '#5B21B6', headerBg: '#EDE9FE' },
 ]
 
-// ── Status config — the board's columns. Same 6 values as the Treatment Plan
-// status dropdown (patient profile) and Case Acceptance's report, so all three
-// stay genuinely in sync — this is the shared field, not a separate copy.
-
-const STATUSES = [
-  { id: 'Planned',     label: 'Planned',     headerColor: '#1D4ED8', headerBg: '#DBEAFE' },
-  { id: 'In Progress', label: 'In Progress', headerColor: '#92400E', headerBg: '#FDE68A' },
-  { id: 'Completed',   label: 'Completed',   headerColor: '#065F46', headerBg: '#D1FAE5' },
-  { id: 'On Hold',     label: 'On Hold',     headerColor: '#854D0E', headerBg: '#FEF9C3' },
-  { id: 'Declined',    label: 'Declined',    headerColor: '#9F1239', headerBg: '#FFE4E6' },
-  { id: 'Cancelled',   label: 'Cancelled',   headerColor: '#991B1B', headerBg: '#FEE2E2' },
-]
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// STATUSES (full set, used for Move modal/bulk actions/validation) and
+// PRIMARY_COLUMNS (the main Kanban row — excludes Declined, see rationale
+// in apps/web/lib/pipelineColumns.ts) now live there as a plain data module,
+// independently unit-tested without needing to render this client component.
 
 function fmtCC(n: number) { return `CC-${String(n).padStart(4, '0')}` }
 
@@ -199,6 +191,7 @@ export default function TreatmentPipelineBoard({
   const [needsReview,    setNeedsReview]    = useState<NeedsReviewData | null>(null)
   const [reviewOpen,     setReviewOpen]     = useState(false)
   const [followUpOpen,   setFollowUpOpen]   = useState(true)
+  const [declinedOpen,   setDeclinedOpen]   = useState(false)
   const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set())
   const [bulkStatus,     setBulkStatus]     = useState('')
   const [bulkLoading,    setBulkLoading]    = useState(false)
@@ -494,6 +487,14 @@ export default function TreatmentPipelineBoard({
   const plansByStatus = (statusId: string) => filteredPlans.filter(p => p.status === statusId)
   const statusTotal   = (statusId: string) => plansByStatus(statusId).reduce((s, p) => s + p.value, 0)
 
+  // Declined plans, read-only historical view — same filter set (search/
+  // doctor/stage) as the main board, just never rendered as a draggable
+  // primary column. Pulled from `filteredPlans` (not a separate fetch), so
+  // there is exactly one source of plan data and no risk of this view
+  // drifting out of sync with the board or double-counting in any KPI,
+  // since KPI totals never read from this list.
+  const declinedPlans = useMemo(() => filteredPlans.filter(p => p.status === 'Declined'), [filteredPlans])
+
   // "Today" | "This Week" | "This Month" | "All Time" — drives both the KPI
   // card labels and the board heading, so they can never disagree.
   const periodSuffix = period?.label ?? 'This Month'
@@ -608,6 +609,24 @@ export default function TreatmentPipelineBoard({
         />
       )}
 
+      {/* ── Declined (history) section ────────────────────────────────────
+          Declined is no longer a primary active-work column — it never
+          competes for board space with Planned/In Progress/Completed/On
+          Hold/Follow Up. The underlying data is untouched: a plan's status
+          stays exactly "Declined", nothing is renamed, mutated, or hidden.
+          This is simply the "historical/reporting view" that keeps those
+          records reachable, same collapsible pattern as Follow Up/Needs
+          Review above. Collapsed by default since it's historical, not
+          active work. */}
+      {!loading && (
+        <DeclinedHistorySection
+          plans={declinedPlans}
+          open={declinedOpen}
+          onToggle={() => setDeclinedOpen(v => !v)}
+          onOpenDetail={(plan) => setDetailPlan(plan)}
+        />
+      )}
+
       {/* ── Needs Review section ──────────────────────────────────────── */}
       {needsReview && needsReview.total > 0 && (
         <NeedsReviewSection
@@ -699,7 +718,7 @@ export default function TreatmentPipelineBoard({
           style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
         >
           <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-            {STATUSES.map(status => {
+            {PRIMARY_COLUMNS.map(status => {
               const statusPlans = plansByStatus(status.id)
               const total       = statusTotal(status.id)
               const isOver      = dropOver === status.id
@@ -1217,7 +1236,7 @@ function FollowUpSection({
         <div className="bg-white dark:bg-[#0e1f4d] border-t border-indigo-200 dark:border-indigo-400/20">
           {plans.length === 0 && (
             <div className="px-4 py-6 text-center">
-              <p className="text-sm text-gray-400 dark:text-white/30">No outstanding follow-ups right now.</p>
+              <p className="text-sm text-gray-400 dark:text-white/30">No treatments currently need follow-up.</p>
               <p className="text-xs text-gray-300 dark:text-white/20 mt-1">Set "Remind us to follow up" on a treatment to see it here.</p>
             </div>
           )}
@@ -1261,6 +1280,61 @@ function FollowUpSection({
               </div>
             )
           })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Declined (history) section ──────────────────────────────────────────────
+// Read-only — no drag, no "Move" action. Declined plans are historical, not
+// live operational work; reopening one (e.g. a patient reconsiders) happens
+// via the detail drawer's own status select, same canonical write path as
+// everywhere else, never a bespoke action here.
+
+function DeclinedHistorySection({
+  plans, open, onToggle, onOpenDetail,
+}: {
+  plans: Plan[]
+  open: boolean
+  onToggle: () => void
+  onOpenDetail: (plan: Plan) => void
+}) {
+  const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
+
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden flex-shrink-0 bg-gray-50 dark:bg-white/[0.02]">
+      <button onClick={onToggle} className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-100/60 dark:hover:bg-white/5 transition-colors">
+        <div className="flex items-center gap-2">
+          <History size={15} className="text-gray-500 dark:text-white/40" />
+          <span className="text-sm font-bold text-gray-600 dark:text-white/60">Declined (history)</span>
+          <span className="text-xs font-black px-2 py-0.5 rounded-full bg-gray-400 dark:bg-white/20 text-white">{plans.length}</span>
+        </div>
+        {open ? <ChevronUp size={15} className="text-gray-500 dark:text-white/40" /> : <ChevronDown size={15} className="text-gray-500 dark:text-white/40" />}
+      </button>
+      {open && (
+        <div className="bg-white dark:bg-[#0e1f4d] border-t border-gray-200 dark:border-white/10">
+          {plans.length === 0 && (
+            <div className="px-4 py-6 text-center">
+              <p className="text-sm text-gray-400 dark:text-white/30">No declined treatments.</p>
+            </div>
+          )}
+          {plans.map(plan => (
+            <div key={plan.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 dark:border-white/5 last:border-0 hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors cursor-pointer" onClick={() => onOpenDetail(plan)}>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-bold text-gray-700 dark:text-white/80 truncate">{plan.patient.firstName} {plan.patient.lastName}</span>
+                  <span className="text-[10px] font-semibold text-gray-400 dark:text-white/40">{fmt(plan.updatedAt)}</span>
+                </div>
+                <div className="text-[11px] text-gray-500 dark:text-white/50 mt-0.5">
+                  {plan.treatmentName} · {plan.doctorName} · {fmtUGX(plan.value)}
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/50 flex-shrink-0">
+                View
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -22,15 +22,18 @@
 // fields that could silently diverge. `status` is the one staff actually
 // keep current, so it's the canonical field here.
 //
-// NOT covered by this helper: Pipeline's "Money at Risk" and "Avg Days to
-// Schedule" still read `stage` directly (Accepted & Unscheduled / Accepted
-// & Scheduled) — deliberately left unchanged. Redefining what those two
-// metrics MEAN (e.g. deriving "scheduled" from some other signal) would be
-// a workflow redesign, out of scope here; `status` alone has no equivalent
-// "accepted but not yet booked" state to borrow. Since `stage` is rarely
-// populated in practice, these two metrics are likely under-reporting in
-// production today — a real, pre-existing gap, not something this file
-// silently reinterprets.
+// Avg Days to Schedule still reads `stage` directly in pipeline.ts,
+// untouched — out of scope here. Money at Risk ALSO still reads `stage`
+// directly (Accepted & Unscheduled), its definition deliberately
+// unchanged — computeMoneyAtRisk below only centralizes that existing
+// read so Case Acceptance's report can show the identical figure instead
+// of a second, possibly-drifting definition of the same metric name.
+// Redefining what either metric MEANS (e.g. deriving "scheduled" from
+// some other signal) would be a workflow redesign, out of scope here;
+// `status` alone has no equivalent "accepted but not yet booked" state to
+// borrow. Since `stage` is rarely populated in practice, both metrics are
+// likely under-reporting in production today — a real, pre-existing gap,
+// not something this file silently reinterprets.
 export const ACCEPTED_STATUSES = ['In Progress', 'Completed'] as const
 
 export interface ClassifiablePlan {
@@ -59,4 +62,17 @@ export function isDeclined(plan: ClassifiablePlan): boolean {
 
 export function isCancelled(plan: ClassifiablePlan): boolean {
   return plan.status === 'Cancelled'
+}
+
+interface MoneyAtRiskPlan { stage: string; value: number }
+
+// Single shared definition of "Money at Risk" (value of accepted-but-
+// unscheduled plans) — same stage-based rule pipeline.ts's KPI card has
+// always used, just centralized here so reports.ts's Case Acceptance
+// endpoint can reuse the exact same number instead of inventing a second
+// definition that could drift from the first.
+export function computeMoneyAtRisk<T extends MoneyAtRiskPlan>(plans: T[]): number {
+  return plans
+    .filter(p => p.stage === 'Accepted & Unscheduled')
+    .reduce((s, p) => s + p.value, 0)
 }

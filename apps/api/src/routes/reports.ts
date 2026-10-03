@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma'
 import { requireAuth } from '../middleware/auth'
 import { startOfKampalaDay, endOfKampalaDay, startOfKampalaWeek, startOfKampalaMonth, startOfNextKampalaMonth, kampalaTodayRange } from '../utils/kampala-time'
 import { getPatientActivitySummary, getAppointmentStatusBreakdown, ATTENDED_STATUSES } from '../services/patient-analytics.service'
-import { isAccepted, isDeclined } from '../services/treatment-classification.service'
+import { isAccepted, isDeclined, computeMoneyAtRisk } from '../services/treatment-classification.service'
 
 const router = Router()
 
@@ -61,6 +61,13 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
     const completed  = plans.filter((p: any) => p.status === 'Completed').length
     const acceptanceRate = presented > 0 ? Math.round((accepted / presented) * 100) : 0
 
+    // Shared definition (treatment-classification.service.ts), same number
+    // pipeline.ts's "Money at Risk" KPI card shows — not a second, possibly
+    // disagreeing definition of the same metric name.
+    const moneyAtRisk = computeMoneyAtRisk(
+      (plans as any[]).map(p => ({ stage: p.stage, value: Math.round(p.costPerUnit * p.quantity - p.discount) })),
+    )
+
     // Per-doctor breakdown with patient lists
     const doctorMap = new Map<string, {
       id: string
@@ -112,7 +119,7 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
       .sort((a, b) => b.presented - a.presented)
 
     res.json({
-      summary: { presented, accepted, followUp, declined, onHold, acceptanceRate, target: 90 },
+      summary: { presented, accepted, followUp, declined, onHold, completed, moneyAtRisk, acceptanceRate, target: 90 },
       byStatus: { planned: followUp, inProgress, completed, onHold, declined },
       byDoctor,
     })

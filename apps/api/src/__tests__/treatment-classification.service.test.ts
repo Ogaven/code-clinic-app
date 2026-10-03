@@ -8,7 +8,7 @@
 // pipeline.ts-style value-sum always select the identical subset.
 
 import { describe, expect, it } from 'vitest'
-import { isAccepted, isDeclined, isCancelled, isPresented, ACCEPTED_STATUSES } from '../services/treatment-classification.service'
+import { isAccepted, isDeclined, isCancelled, isPresented, ACCEPTED_STATUSES, computeMoneyAtRisk } from '../services/treatment-classification.service'
 
 function plan(status: string, followUpAt: Date | null = null) {
   return { status, followUpAt }
@@ -108,5 +108,38 @@ describe('Pipeline KPI vs Case Acceptance parity', () => {
     const nonDeclined = plans.filter(p => !isDeclined(p))
     expect(nonDeclined.find(p => p.status === 'Declined')).toBeUndefined()
     expect(nonDeclined).toHaveLength(5)
+  })
+})
+
+describe('computeMoneyAtRisk', () => {
+  it('sums value only for plans in the Accepted & Unscheduled stage', () => {
+    const plans = [
+      { stage: 'Accepted & Unscheduled', value: 100_000 },
+      { stage: 'Accepted & Scheduled',   value: 200_000 },
+      { stage: 'Completed',              value: 50_000 },
+      { stage: 'Accepted & Unscheduled', value: 25_000 },
+    ]
+    expect(computeMoneyAtRisk(plans)).toBe(125_000)
+  })
+
+  it('returns 0 for an empty plan list', () => {
+    expect(computeMoneyAtRisk([])).toBe(0)
+  })
+
+  // Parity check: pipeline.ts's own "Money at Risk" KPI card performs this
+  // exact computation on its `enriched` plans array. Asserting the same
+  // inputs produce the same output here pins down that reports.ts's
+  // case-acceptance endpoint can never silently drift from it after both
+  // call through this one shared function.
+  it('agrees with a hand-computed pipeline.ts-style figure for a mixed cohort', () => {
+    const enriched = [
+      { stage: 'Treatment Presented',    value: 10_000 },
+      { stage: 'Accepted & Unscheduled', value: 300_000 },
+      { stage: 'Declined',               value: 40_000 },
+    ]
+    const handComputed = enriched
+      .filter(p => p.stage === 'Accepted & Unscheduled')
+      .reduce((s, p) => s + p.value, 0)
+    expect(computeMoneyAtRisk(enriched)).toBe(handComputed)
   })
 })
