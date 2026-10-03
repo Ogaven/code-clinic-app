@@ -281,20 +281,28 @@ export async function processAfterHoursQueue(): Promise<void> {
       : minor ? 'there' : patientName
 
     let templateName: string | undefined
+    let templateParams: string[]
     let message: string
 
     if (entry.agentMode === 'MISSED_CALL_FOLLOWUP') {
       templateName = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
+      // The approved cc_missed_call_followup body has ZERO {{1}}-style
+      // placeholders (confirmed against the live Meta template definition)
+      // — a fixed generic message, not personalized by name. Sending any
+      // parameter mismatches Meta's expected count and is rejected with
+      // #132000 before the freeform fallback below ever gets a chance.
+      templateParams = []
       message = `Hello ${name} 😊 We are now open at Code Clinic. We noticed your message last night, how can we help you today?`
     } else {
       templateName = process.env.WA_TEMPLATE_AFTER_HOURS_NAME
+      templateParams = [name]
       message = `Hello ${name}, good morning 😊 Code Clinic is now open. You messaged us last night, how can we help you today?`
     }
 
     try {
       if (templateName) {
         try {
-          await sendWhatsAppTemplate(entry.phoneNumber, templateName, [name])
+          await sendWhatsAppTemplate(entry.phoneNumber, templateName, templateParams)
         } catch {
           await sendWhatsAppMessage(entry.phoneNumber, message)
         }
@@ -838,7 +846,14 @@ export async function checkAndSendMissedCallFollowups(): Promise<void> {
     const recipientPhone = missedCallRouting.recipient.phone
     try {
       try {
-        await sendWhatsAppTemplate(recipientPhone, templateName, [addr])
+        // The approved cc_missed_call_followup template body has ZERO
+        // {{1}}-style placeholders (confirmed against the live Meta
+        // template definition via message_templates) — it's a fixed,
+        // generic "sorry we missed you" message, not personalized by name.
+        // Passing any parameter here mismatches Meta's expected param count
+        // and the send is rejected with #132000 before it ever reaches the
+        // patient; addr/name only appear in the freeform fallback below.
+        await sendWhatsAppTemplate(recipientPhone, templateName, [])
       } catch {
         await sendWhatsAppMessage(
           recipientPhone,
