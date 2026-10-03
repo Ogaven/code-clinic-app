@@ -568,6 +568,22 @@ router.get('/:id', requireAuth, async (req, res) => {
         },
         invoices: { orderBy: { createdAt: 'desc' }, take: 10 },
         feedback: { orderBy: { submittedAt: 'desc' }, take: 10 },
+        // Structured treatment summary for the Patient Overview — one
+        // reliable place staff can see active/completed treatments and any
+        // outstanding patient-requested follow-up without hopping to the
+        // Treatment Plan tab or the Pipeline board (which only show their
+        // own page-scoped query). Same fields clinical.ts's treatment-plans
+        // list already returns to these same authenticated roles.
+        treatmentPlans: {
+          select: {
+            id: true, serviceId: true, toothNumber: true, status: true, stage: true,
+            quantity: true, costPerUnit: true, discount: true, notes: true,
+            followUpAt: true, followUpReason: true, followUpNote: true,
+            doctorId: true, doctor: { select: { user: { select: { firstName: true, lastName: true } } } },
+            createdAt: true, updatedAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
         guardian: { select: { id: true, firstName: true, lastName: true, phone: true, patientNumber: true } },
         dependents: {
           select: { id: true, firstName: true, lastName: true, phone: true, patientNumber: true, relationship: true, isMinor: true, accountBalance: true },

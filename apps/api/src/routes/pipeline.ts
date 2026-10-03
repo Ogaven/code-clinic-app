@@ -6,6 +6,7 @@ import { checkAndConvertLeadOnTreatmentStart, checkAndConvertLeadsForPatients } 
 import { syncTreatmentPlanStatusFromPipeline } from '../crm-automation/patient-tags.service'
 import { logAudit } from '../services/audit.service'
 import { notifyUsers } from '../services/notification.service'
+import { parseFollowUpFields, NON_ACTIONABLE_STATUSES } from '../utils/treatment-followup'
 
 // ── Staff operational notifications (event hooks around the existing,
 // already-verified stage/status transitions — never a new status/stage) ────
@@ -251,8 +252,24 @@ router.get('/treatment', requireAuth, async (req, res) => {
         )
       : 0
 
+    // ── Follow Up queue ─────────────────────────────────────────────────────
+    // A separate, cross-cutting view of plans the patient asked to be
+    // followed up on (followUpAt set) — orthogonal to the status columns
+    // above, NOT a new status/stage value. A plan keeps whatever status/stage
+    // it already has (Planned, On Hold, even Declined-then-reconsidered) and
+    // simply also appears here while its follow-up is still outstanding.
+    // Deliberately all-time like Money at Risk, not period-scoped — a
+    // follow-up set last month is still live work today. Excludes the same
+    // non-actionable statuses the alert scheduler already excludes (Completed/
+    // Cancelled/Declined) so a resolved or declined plan can't sit in both the
+    // "Declined" column and this queue at once.
+    const followUps = enriched
+      .filter(p => p.followUpAt && !NON_ACTIONABLE_STATUSES.includes(p.status))
+      .sort((a, b) => new Date(a.followUpAt!).getTime() - new Date(b.followUpAt!).getTime())
+
     res.json({
       plans:   inPeriod,
+      followUps,
       metrics: { presentedValue, acceptedValue, conversionRate, moneyAtRisk, avgDaysToSchedule },
       period:  { key: periodKey, start: periodStart?.toISOString() ?? null, end: periodEnd?.toISOString() ?? null, label: periodLabel },
     })
@@ -302,31 +319,6 @@ router.patch('/treatment/:id/stage', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Failed to update stage' })
   }
 })
-
-// Shared by PATCH /status and PATCH /follow-up — pulls the internal
-// follow-up/hold-scheduling fields out of the request body (all optional,
-// all independent of `status`). Undefined means "leave unchanged"; an
-// explicit null clears the field. followUpAt is validated as a real date
-// when present so a bad client payload can't write "Invalid Date" into
-// the DB (which would silently break the alert scheduler's comparisons).
-function parseFollowUpFields(body: any): { data: Record<string, any>; error?: string } {
-  const data: Record<string, any> = {}
-  if ('followUpAt' in body) {
-    if (body.followUpAt === null || body.followUpAt === '') {
-      data.followUpAt = null
-    } else {
-      const d = new Date(body.followUpAt)
-      if (isNaN(d.getTime())) return { data, error: 'Invalid followUpAt date' }
-      data.followUpAt = d
-    }
-  }
-  if ('followUpReason' in body) data.followUpReason = body.followUpReason === '' ? null : body.followUpReason
-  if ('followUpNote' in body) data.followUpNote = body.followUpNote === '' ? null : body.followUpNote
-  // Assigned clinician — reuses the existing TreatmentPlan.doctorId field
-  // (no new assignment field). null unassigns.
-  if ('doctorId' in body) data.doctorId = body.doctorId === '' ? null : body.doctorId
-  return { data }
-}
 
 // PATCH /pipeline/treatment/:id/status — moves a card between Pipeline's board
 // columns AND updates the real Treatment Plan status in one write, since the

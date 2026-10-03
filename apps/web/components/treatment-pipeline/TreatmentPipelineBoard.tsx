@@ -80,6 +80,11 @@ interface NeedsReviewData {
   total:       number
 }
 
+interface Doctor {
+  id: string
+  user: { firstName: string; lastName: string }
+}
+
 // ── Stage config (Needs Review section only — untouched, still stage-based) ───
 
 const STAGES = [
@@ -177,6 +182,7 @@ export default function TreatmentPipelineBoard({
   const authH  = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
   const [plans,          setPlans]          = useState<Plan[]>([])
+  const [followUps,      setFollowUps]      = useState<Plan[]>([])
   const [metrics,        setMetrics]        = useState<Metrics | null>(null)
   const [period,         setPeriod]         = useState<PeriodInfo | null>(null)
   const [periodKey,      setPeriodKey]      = useState<PeriodKey>('month')
@@ -186,6 +192,7 @@ export default function TreatmentPipelineBoard({
   const [movePlan,       setMovePlan]       = useState<Plan | null>(null)
   const [needsReview,    setNeedsReview]    = useState<NeedsReviewData | null>(null)
   const [reviewOpen,     setReviewOpen]     = useState(false)
+  const [followUpOpen,   setFollowUpOpen]   = useState(true)
   const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set())
   const [bulkStatus,     setBulkStatus]     = useState('')
   const [bulkLoading,    setBulkLoading]    = useState(false)
@@ -194,6 +201,9 @@ export default function TreatmentPipelineBoard({
   const [doctorFilter,   setDoctorFilter]   = useState('all')
   const [stageFilter,    setStageFilter]    = useState('all')
   const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilterKey>('all')
+  const [doctors,        setDoctors]        = useState<Doctor[]>([])
+  const [detailPlan,     setDetailPlan]     = useState<Plan | null>(null)
+  const userRole = typeof window !== 'undefined' ? (JSON.parse(localStorage.getItem('cc_user') || '{}').role || '') : ''
   // Internal follow-up / hold scheduling modal — either a pending drag/move
   // into "On Hold" (pendingStatus set, nothing written yet) or an in-place
   // edit on a plan already On Hold (pendingStatus null).
@@ -222,6 +232,7 @@ export default function TreatmentPipelineBoard({
       const d  = await r.json()
       const dr = await rr.json()
       setPlans(Array.isArray(d.plans) ? d.plans : [])
+      setFollowUps(Array.isArray(d.followUps) ? d.followUps : [])
       setMetrics(d.metrics ?? null)
       setPeriod(d.period ?? null)
       if (!dr.error) setNeedsReview(dr)
@@ -231,6 +242,12 @@ export default function TreatmentPipelineBoard({
   }, [periodKey])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetch(`${API}/doctors`, { headers: authH as any })
+      .then(r => r.json()).then(d => setDoctors(Array.isArray(d) ? d : [])).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
 
@@ -394,11 +411,12 @@ export default function TreatmentPipelineBoard({
   async function submitFollowUp(
     planId: string,
     pendingStatus: string | null,
-    fields: { followUpAt: string | null; followUpReason: string | null; followUpNote: string | null },
+    fields: { followUpAt: string | null; followUpReason: string | null; followUpNote: string | null; doctorId?: string | null },
   ) {
     setFollowUpModal(null)
     if (pendingStatus) {
       await applyStatusChange(planId, pendingStatus, fields)
+      load()
       return
     }
     setPlans(prev => prev.map(p => p.id === planId ? { ...p, ...fields } : p))
@@ -408,21 +426,28 @@ export default function TreatmentPipelineBoard({
         headers: authH as any,
         body:    JSON.stringify(fields),
       })
-    } catch { load() }
+    } catch { /* fall through to reconcile */ }
+    load()
   }
 
   // Marks an internal follow-up Completed/Dismissed (clears it from the
   // due/upcoming/overdue queue) or wires up the reschedule modal for
   // RESCHEDULED. Internal-only, audited server-side — never messages the patient.
+  // Idempotent server-side (resolve always writes followUpAt: null for
+  // COMPLETED/DISMISSED, so a double-click/retry can never create two
+  // "resolved" events) — reconciles both the board and the Follow Up queue
+  // afterward so neither view can show a stale outstanding follow-up.
   async function resolveFollowUp(planId: string, resolution: 'COMPLETED' | 'DISMISSED') {
     setPlans(prev => prev.map(p => p.id === planId ? { ...p, followUpAt: null } : p))
+    setFollowUps(prev => prev.filter(p => p.id !== planId))
     try {
       await fetch(`${API}/pipeline/treatment/${planId}/follow-up/resolve`, {
         method:  'POST',
         headers: authH as any,
         body:    JSON.stringify({ resolution }),
       })
-    } catch { load() }
+    } catch { /* fall through to reconcile */ }
+    load()
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -553,6 +578,24 @@ export default function TreatmentPipelineBoard({
           {STAGES.map(s => <option key={s.id} value={s.id} className="dark:bg-[#152040]">{s.label}</option>)}
         </select>
       </div>
+
+      {/* ── Follow Up section ────────────────────────────────────────────
+          Cross-cutting view of plans the patient asked to be followed up
+          on (followUpAt set). NOT a pipeline status/stage — a plan keeps
+          whatever status/stage it already has (Planned, On Hold, even a
+          reconsidered Declined) and simply also appears here while the
+          follow-up is outstanding, sorted soonest-first. */}
+      {followUps.length > 0 && (
+        <FollowUpSection
+          plans={followUps}
+          open={followUpOpen}
+          onToggle={() => setFollowUpOpen(v => !v)}
+          onOpenPatient={(patientId) => router.push(`${patientBasePath}/${patientId}`)}
+          onOpenDetail={(plan) => setDetailPlan(plan)}
+          onResolve={resolveFollowUp}
+          onReschedule={(plan) => setFollowUpModal({ plan, pendingStatus: null })}
+        />
+      )}
 
       {/* ── Needs Review section ──────────────────────────────────────── */}
       {needsReview && needsReview.total > 0 && (
@@ -725,6 +768,7 @@ export default function TreatmentPipelineBoard({
                         onMove={() => setMovePlan(plan)}
                         onToggleSelect={() => toggleSelect(plan.id)}
                         onOpenPatient={() => router.push(`${patientBasePath}/${plan.patientId}`)}
+                        onOpenDetail={() => setDetailPlan(plan)}
                         onResolveFollowUp={resolution => resolveFollowUp(plan.id, resolution)}
                         onRescheduleFollowUp={() => setFollowUpModal({ plan, pendingStatus: null })}
                       />
@@ -755,6 +799,41 @@ export default function TreatmentPipelineBoard({
           onClose={() => setMovePlan(null)}
         />
       )}
+
+      {/* ── Follow-up capture / reschedule modal ───────────────────────── */}
+      {followUpModal && (
+        <FollowUpModal
+          plan={followUpModal.plan}
+          pendingStatus={followUpModal.pendingStatus}
+          onSubmit={(fields) => submitFollowUp(followUpModal.plan.id, followUpModal.pendingStatus, fields)}
+          onClose={() => setFollowUpModal(null)}
+        />
+      )}
+
+      {/* ── Treatment detail drawer ─────────────────────────────────────
+          Single canonical write path — every mutation here goes through
+          the SAME endpoints the board itself uses (PATCH /status,
+          PATCH /follow-up, POST /follow-up/resolve), so Treatment Plan,
+          Pipeline, and Case Acceptance never see a second source of truth. */}
+      {detailPlan && (
+        <TreatmentDetailDrawer
+          plan={plans.find(p => p.id === detailPlan.id) || followUps.find(p => p.id === detailPlan.id) || detailPlan}
+          doctors={doctors}
+          userRole={userRole}
+          onClose={() => setDetailPlan(null)}
+          onOpenPatient={() => { router.push(`${patientBasePath}/${detailPlan.patientId}`); setDetailPlan(null) }}
+          onStatusChange={(status) => applyStatusChange(detailPlan.id, status)}
+          onDoctorChange={async (doctorId) => {
+            setPlans(prev => prev.map(p => p.id === detailPlan.id ? { ...p, doctorName: doctors.find(d => d.id === doctorId) ? `Dr. ${doctors.find(d => d.id === doctorId)!.user.firstName} ${doctors.find(d => d.id === doctorId)!.user.lastName}` : 'Unassigned' } : p))
+            try {
+              await fetch(`${API}/pipeline/treatment/${detailPlan.id}/follow-up`, { method: 'PATCH', headers: authH as any, body: JSON.stringify({ doctorId: doctorId || null }) })
+            } finally { load() }
+          }}
+          onSaveFollowUp={(fields) => submitFollowUp(detailPlan.id, null, fields)}
+          onResolve={(resolution) => { resolveFollowUp(detailPlan.id, resolution); setDetailPlan(null) }}
+          onReschedule={() => { setFollowUpModal({ plan: detailPlan, pendingStatus: null }); setDetailPlan(null) }}
+        />
+      )}
     </div>
   )
 }
@@ -771,6 +850,7 @@ function PlanCard({
   onMove,
   onToggleSelect,
   onOpenPatient,
+  onOpenDetail,
   onResolveFollowUp,
   onRescheduleFollowUp,
 }: {
@@ -783,6 +863,7 @@ function PlanCard({
   onMove:         () => void
   onToggleSelect: () => void
   onOpenPatient:  () => void
+  onOpenDetail:   () => void
   onResolveFollowUp:    (resolution: 'COMPLETED' | 'DISMISSED') => void
   onRescheduleFollowUp: () => void
 }) {
@@ -802,6 +883,8 @@ function PlanCard({
       draggable
       onDragStart={e => onDragStart(e, plan.id)}
       onDragEnd={onDragEnd}
+      onClick={onOpenDetail}
+      title="Open treatment details"
       className="bg-white dark:bg-[#152040] rounded-xl p-3 select-none transition-all duration-150"
       style={{
         boxShadow:   isDragging
@@ -1020,6 +1103,152 @@ function MoveModal({
   )
 }
 
+// ── Follow-up capture / reschedule modal ───────────────────────────────────────
+// Opened either from a drag/move into "On Hold" (pendingStatus set — the
+// write is status+follow-up together) or from "Reschedule follow-up" on a
+// card/drawer (pendingStatus null — writes only the follow-up fields). This
+// was previously dead: the board already tracked `followUpModal` state and
+// set it in three places, but never rendered a component for it, so dragging
+// a card to On Hold or clicking Reschedule silently did nothing.
+function FollowUpModal({
+  plan, pendingStatus, onSubmit, onClose,
+}: {
+  plan: Plan
+  pendingStatus: string | null
+  onSubmit: (fields: { followUpAt: string | null; followUpReason: string | null; followUpNote: string | null }) => void
+  onClose: () => void
+}) {
+  const [date, setDate] = useState(plan.followUpAt ? plan.followUpAt.slice(0, 10) : '')
+  const [reason, setReason] = useState(plan.followUpReason || '')
+  const [note, setNote] = useState('')
+  const [customReason, setCustomReason] = useState(!FOLLOW_UP_REASON_PRESETS.includes(plan.followUpReason || ''))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-[#152040] w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between px-4 pt-4 pb-3 border-b border-gray-100 dark:border-white/10">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-gray-900 dark:text-white">{pendingStatus ? 'Set follow-up for On Hold' : 'Reschedule follow-up'}</p>
+            <p className="text-xs text-gray-500 dark:text-white/50 truncate mt-0.5">{plan.patient.firstName} {plan.patient.lastName} · {plan.treatmentName}</p>
+          </div>
+          <button onClick={onClose} className="ml-3 w-7 h-7 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors flex-shrink-0">
+            <X size={14} />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-xs font-medium text-gray-600 dark:text-white/60">Follow-up date</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="w-full mt-1 text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-lg px-2.5 py-1.5" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 dark:text-white/60">Reason</label>
+            <select
+              value={customReason ? 'Other' : reason}
+              onChange={e => { if (e.target.value === 'Other') { setCustomReason(true) } else { setCustomReason(false); setReason(e.target.value) } }}
+              className="w-full mt-1 text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-lg px-2.5 py-1.5">
+              {FOLLOW_UP_REASON_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            {customReason && (
+              <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason for follow-up"
+                className="w-full mt-1.5 text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-lg px-2.5 py-1.5" />
+            )}
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 dark:text-white/60">Note <span className="text-gray-400 font-normal">— optional</span></label>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+              className="w-full mt-1 text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-lg px-2.5 py-1.5 resize-none" />
+          </div>
+        </div>
+        <div className="flex gap-2 px-4 pb-4">
+          <button
+            disabled={!date}
+            onClick={() => onSubmit({ followUpAt: date || null, followUpReason: reason || null, followUpNote: note || null })}
+            className="flex-1 px-4 py-2 text-sm font-bold text-white bg-clinic-navy dark:bg-cyan-600 rounded-lg disabled:opacity-40">
+            Save
+          </button>
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-white/70 bg-gray-100 dark:bg-white/10 rounded-lg">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Follow Up section (visible pipeline "Follow Up" view) ──────────────────────
+
+function FollowUpSection({
+  plans, open, onToggle, onOpenPatient, onOpenDetail, onResolve, onReschedule,
+}: {
+  plans: Plan[]
+  open: boolean
+  onToggle: () => void
+  onOpenPatient: (patientId: string) => void
+  onOpenDetail: (plan: Plan) => void
+  onResolve: (planId: string, resolution: 'COMPLETED' | 'DISMISSED') => void
+  onReschedule: (plan: Plan) => void
+}) {
+  const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const overdueCount = plans.filter(p => followUpDiffDays(p.followUpAt) !== null && followUpDiffDays(p.followUpAt)! < 0).length
+
+  return (
+    <div className="rounded-2xl border border-indigo-200 dark:border-indigo-400/20 overflow-hidden flex-shrink-0 bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-400/10 dark:to-indigo-400/5">
+      <button onClick={onToggle} className="w-full flex items-center justify-between px-4 py-3 hover:bg-indigo-50/50 dark:hover:bg-indigo-400/10 transition-colors">
+        <div className="flex items-center gap-2">
+          <BellRing size={15} className="text-indigo-600 dark:text-indigo-400" />
+          <span className="text-sm font-bold text-indigo-800 dark:text-indigo-300">Follow Up</span>
+          <span className="text-xs font-black px-2 py-0.5 rounded-full bg-indigo-500 text-white">{plans.length}</span>
+          {overdueCount > 0 && <span className="text-xs font-bold text-red-500">{overdueCount} overdue</span>}
+        </div>
+        {open ? <ChevronUp size={15} className="text-indigo-600 dark:text-indigo-400" /> : <ChevronDown size={15} className="text-indigo-600 dark:text-indigo-400" />}
+      </button>
+      {open && (
+        <div className="bg-white dark:bg-[#0e1f4d] border-t border-indigo-200 dark:border-indigo-400/20">
+          {plans.map(plan => {
+            const diff = followUpDiffDays(plan.followUpAt)
+            return (
+              <div key={plan.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-indigo-100/60 dark:border-indigo-400/10 last:border-0 hover:bg-indigo-50/30 dark:hover:bg-indigo-400/5 transition-colors cursor-pointer" onClick={() => onOpenDetail(plan)}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-gray-800 dark:text-white truncate">{plan.patient.firstName} {plan.patient.lastName}</span>
+                    <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                      diff !== null && diff < 0 ? 'bg-red-100 text-red-700 dark:bg-red-400/15 dark:text-red-300'
+                        : diff === 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300'
+                        : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-400/15 dark:text-indigo-300')}>
+                      {fmt(plan.followUpAt!)}
+                    </span>
+                    <span className="text-[10px] font-semibold text-gray-400 dark:text-white/40">{plan.status}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 dark:text-white/50 mt-0.5">
+                    {plan.treatmentName} · {plan.doctorName}
+                    {plan.followUpReason && <span className="ml-2 text-gray-400 dark:text-white/30">{plan.followUpReason}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => onResolve(plan.id, 'COMPLETED')}
+                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors"
+                    title="Mark reached out / complete">
+                    <CheckCircle2 size={11} className="inline mr-0.5" />Reached Out
+                  </button>
+                  <button onClick={() => onReschedule(plan)}
+                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-400/15 dark:text-blue-300 dark:hover:bg-blue-400/25 transition-colors"
+                    title="Reschedule follow-up">
+                    <CalendarPlus size={11} className="inline mr-0.5" />Reschedule
+                  </button>
+                  <button onClick={() => onOpenPatient(plan.patientId)}
+                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/15 transition-colors"
+                    title="Open patient">
+                    Open
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Needs Review Section ──────────────────────────────────────────────────────
 
 function NeedsReviewSection({
@@ -1164,6 +1393,139 @@ function MetricCard({
         <p className="text-lg font-black leading-none truncate" style={{ color }}>{value}</p>
       )}
       <p className="text-[9px] text-gray-400 dark:text-white/40 mt-0.5 truncate">{sub}</p>
+    </div>
+  )
+}
+
+// ── Treatment detail drawer ──────────────────────────────────────────────────
+// Clicking any card (board or Follow Up section) opens this. Every mutation
+// goes through the same canonical endpoints the rest of the board already
+// uses — this is a UI entry point, never a second write path. RBAC mirrors
+// the API: status/doctor/follow-up are PATCH /pipeline/... (Admin, Doctor,
+// Receptionist); only Admin/Doctor can be given a "full edit" link since
+// clinical.ts's PUT treatment-plans route is doctorOrAdmin-only.
+function TreatmentDetailDrawer({
+  plan, doctors, userRole, onClose, onOpenPatient, onStatusChange, onDoctorChange, onSaveFollowUp, onResolve, onReschedule,
+}: {
+  plan: Plan
+  doctors: Doctor[]
+  userRole: string
+  onClose: () => void
+  onOpenPatient: () => void
+  onStatusChange: (status: string) => void
+  onDoctorChange: (doctorId: string) => void
+  onSaveFollowUp: (fields: { followUpAt: string | null; followUpReason: string | null; followUpNote: string | null }) => void
+  onResolve: (resolution: 'COMPLETED' | 'DISMISSED') => void
+  onReschedule: () => void
+}) {
+  const [status, setStatus] = useState(plan.status)
+  const [doctorId, setDoctorId] = useState(() => doctors.find(d => `Dr. ${d.user.firstName} ${d.user.lastName}` === plan.doctorName)?.id || '')
+  const [followUpAt, setFollowUpAt] = useState(plan.followUpAt ? plan.followUpAt.slice(0, 10) : '')
+  const [followUpReason, setFollowUpReason] = useState(plan.followUpReason || '')
+  const [savingFollowUp, setSavingFollowUp] = useState(false)
+  const canEditFullDetails = userRole === 'ADMIN' || userRole === 'DOCTOR'
+  const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
+      <div className="h-full w-full sm:w-[420px] bg-white dark:bg-[#0e1f4d] shadow-2xl overflow-y-auto animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white dark:bg-[#0e1f4d] border-b border-gray-100 dark:border-white/10 px-5 py-4 flex items-start justify-between z-10">
+          <div className="min-w-0">
+            <button onClick={onOpenPatient} className="text-base font-bold text-gray-900 dark:text-white hover:underline text-left">
+              {plan.patient.firstName} {plan.patient.lastName}
+            </button>
+            <p className="text-xs text-gray-500 dark:text-white/50 mt-0.5">{plan.treatmentName}{plan.toothNumber && ` · Tooth ${plan.toothNumber}`}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 flex-shrink-0">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          <div>
+            <p className="text-sm font-bold text-gray-900 dark:text-white">{fmtUGX(plan.value)}</p>
+            <p className="text-[11px] text-gray-400 dark:text-white/40 mt-0.5">Entered pipeline {fmt(plan.createdAt)} · last updated {fmt(plan.updatedAt)}</p>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-white/60 uppercase tracking-wide">Status</label>
+            <select value={status} onChange={e => { setStatus(e.target.value); onStatusChange(e.target.value) }}
+              className="w-full mt-1.5 text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-lg px-2.5 py-2">
+              {STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+          </div>
+
+          {/* Doctor assignment */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-white/60 uppercase tracking-wide">Treating Doctor</label>
+            <select value={doctorId} onChange={e => { setDoctorId(e.target.value); onDoctorChange(e.target.value) }}
+              className="w-full mt-1.5 text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-lg px-2.5 py-2">
+              <option value="">Unassigned</option>
+              {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.user.firstName} {d.user.lastName}</option>)}
+            </select>
+          </div>
+
+          {/* Notes (read-only here — full edit happens on the patient's Treatment Plan tab) */}
+          {plan.notes && (
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-white/60 uppercase tracking-wide">Notes</label>
+              <p className="text-sm text-gray-700 dark:text-white/70 mt-1 whitespace-pre-wrap">{plan.notes}</p>
+            </div>
+          )}
+
+          {/* Follow-up */}
+          <div className="border-t border-gray-100 dark:border-white/10 pt-4">
+            <label className="text-xs font-semibold text-gray-600 dark:text-white/60 uppercase tracking-wide">Follow-up</label>
+            <div className="mt-1.5 space-y-2">
+              <input type="date" value={followUpAt} onChange={e => setFollowUpAt(e.target.value)}
+                className="w-full text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-lg px-2.5 py-2" />
+              <input value={followUpReason} onChange={e => setFollowUpReason(e.target.value)} placeholder="Reason — e.g. patient asked to be contacted in 2 weeks"
+                className="w-full text-sm border border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-white rounded-lg px-2.5 py-2" />
+              <button
+                disabled={savingFollowUp}
+                onClick={async () => {
+                  setSavingFollowUp(true)
+                  await onSaveFollowUp({ followUpAt: followUpAt || null, followUpReason: followUpReason || null, followUpNote: null })
+                  setSavingFollowUp(false)
+                }}
+                className="w-full px-3 py-2 text-sm font-bold text-white bg-clinic-navy dark:bg-cyan-600 rounded-lg disabled:opacity-40">
+                {savingFollowUp ? 'Saving…' : 'Save follow-up'}
+              </button>
+            </div>
+
+            {plan.followUpAt && (
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => onResolve('COMPLETED')}
+                  className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-400/15 dark:text-emerald-300">
+                  <CheckCircle2 size={12} /> Reached Out
+                </button>
+                <button onClick={onReschedule}
+                  className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-400/15 dark:text-blue-300">
+                  <CalendarPlus size={12} /> Reschedule
+                </button>
+                <button onClick={() => onResolve('DISMISSED')}
+                  className="flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/10 dark:text-white/60">
+                  <X size={12} /> Dismiss
+                </button>
+              </div>
+            )}
+
+            {plan.followUpNote && (
+              <p className="text-[11px] text-gray-400 dark:text-white/40 mt-2 whitespace-pre-line">{plan.followUpNote}</p>
+            )}
+          </div>
+
+          <div className="border-t border-gray-100 dark:border-white/10 pt-4 flex flex-col gap-2">
+            <button onClick={onOpenPatient} className="w-full px-3 py-2 text-sm font-semibold text-clinic-navy dark:text-cyan-400 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5">
+              Open full patient profile
+            </button>
+            {!canEditFullDetails && (
+              <p className="text-[10px] text-gray-400 dark:text-white/30 text-center">Service, cost, and quantity can only be edited by the treating doctor or an admin, from the patient's Treatment Plan tab.</p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

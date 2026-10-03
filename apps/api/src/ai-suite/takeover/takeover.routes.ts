@@ -27,11 +27,13 @@ const router = Router()
 router.use(requireAuth)
 
 // POST /ai-suite/takeover/:conversationId
-// Staff member takes over a conversation — Sarah goes silent.
+// Staff member takes over a conversation — Sarah goes silent. staffId comes
+// from the authenticated session (requireAuth + adminAndReceptionist already
+// guarantee req.user) rather than a client-supplied body field, so the audit
+// trail can't be spoofed by whatever the client happens to send.
 router.post('/takeover/:conversationId', adminAndReceptionist, async (req, res) => {
   try {
-    const staffId = (req.body.staffId as string | undefined) ?? 'unknown'
-    await takeoverConversation(req.params.conversationId, staffId)
+    await takeoverConversation(req.params.conversationId, req.user!.id)
     res.json({ success: true })
   } catch (err: any) {
     console.error('[Takeover] takeover error:', err.message)
@@ -40,10 +42,14 @@ router.post('/takeover/:conversationId', adminAndReceptionist, async (req, res) 
 })
 
 // POST /ai-suite/handback/:conversationId
-// Staff hands the conversation back to Sarah.
+// Staff hands the conversation back to Sarah. Optional `summary` is a short
+// free-text handoff note ("Patient wanted a filling, booked Tuesday 8am,
+// continue from here") that Sarah reads back on her next reply via
+// getPendingHandoffNote() — never fabricated, never required.
 router.post('/handback/:conversationId', adminAndReceptionist, async (req, res) => {
   try {
-    await handbackConversation(req.params.conversationId)
+    const summary = typeof req.body?.summary === 'string' && req.body.summary.trim() ? req.body.summary.trim().slice(0, 1000) : undefined
+    await handbackConversation(req.params.conversationId, req.user!.id, summary)
     res.json({ success: true })
   } catch (err: any) {
     console.error('[Takeover] handback error:', err.message)

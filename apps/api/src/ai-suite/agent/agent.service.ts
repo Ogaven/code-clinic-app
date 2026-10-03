@@ -24,6 +24,7 @@ import { getGreetingName, guardianTitle, isMinor, normalizeRelation, toProper } 
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, containsPhrase } from '../whatsapp/whatsapp.service'
 import { sendPushToUser } from '../../services/push.service'
+import { buildPatientContextSummary, getPendingHandoffNote } from './patient-context.service'
 
 function sanitizeIncomingMessage(content: string): string {
   if (content.startsWith('__MEDIA_IMAGE__:')) {
@@ -2676,7 +2677,16 @@ export async function getAgentReplyV2OpenAI(
 
     const isPlaceholderName = patient?.firstName?.toLowerCase() === 'whatsapp' || patient?.lastName?.toLowerCase() === 'patient'
     const patientName = isPlaceholderName ? 'there' : getGreetingName(patient)
-    const guardianContext = patient ? await getGuardianDependentsContext(patient.id) : ''
+    // Both scoped strictly to this resolved patient.id (never a fuzzy/name
+    // match) — resolveTextingPatient() above is the only identity decision
+    // made for this reply, so a wrong patient here can't cross-contaminate.
+    const [guardianContext, patientContextSummary, handoffNote] = patient
+      ? await Promise.all([
+          getGuardianDependentsContext(patient.id),
+          buildPatientContextSummary(patient.id),
+          getPendingHandoffNote(conversationId, patient.id),
+        ])
+      : ['', '', null]
 
     const patientIsMinor = !isPlaceholderName && patient?.dob ? isMinor(patient.dob) : false
     let minorPatientContext = ''
@@ -2742,6 +2752,8 @@ export async function getAgentReplyV2OpenAI(
       '',
       ...(minorPatientContext ? [minorPatientContext, ''] : []),
       ...(guardianContext ? ['GUARDIAN CONTEXT:', guardianContext, ''] : []),
+      ...(patientContextSummary ? ['PATIENT CONTEXT:', patientContextSummary, ''] : []),
+      ...(handoffNote ? ['STAFF HAND-BACK:', handoffNote, ''] : []),
       ...(channel === 'FACEBOOK' || channel === 'INSTAGRAM' ? [
         `SOCIAL MEDIA CONTEXT: This person is messaging via ${channel === 'FACEBOOK' ? 'Facebook Messenger' : 'Instagram DM'} — NOT WhatsApp. Never suggest they "WhatsApp us" or call our WhatsApp number to message you. If they need human support, say "drop us a message here and one of our team will reply shortly 😊". If their name is unknown, ask naturally once during the conversation.`,
         '',
