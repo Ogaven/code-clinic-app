@@ -919,6 +919,11 @@ function TreatmentPlanTab({ patientId, token, userRole }: { patientId: string; t
                       <td className="px-3 py-2">
                         <input type="date" value={editForm.followUpAt} onChange={e => setEditForm(f => ({ ...f, followUpAt: e.target.value }))}
                           className="w-36 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1" />
+                        {editForm.followUpAt && (
+                          <input value={editForm.followUpReason} onChange={e => setEditForm(f => ({ ...f, followUpReason: e.target.value }))}
+                            placeholder="Follow-up reason"
+                            className="w-36 mt-1 text-xs border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1" />
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">

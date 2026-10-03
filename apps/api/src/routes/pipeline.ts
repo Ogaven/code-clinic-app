@@ -7,7 +7,7 @@ import { syncTreatmentPlanStatusFromPipeline } from '../crm-automation/patient-t
 import { logAudit } from '../services/audit.service'
 import { notifyUsers } from '../services/notification.service'
 import { parseFollowUpFields, NON_ACTIONABLE_STATUSES } from '../utils/treatment-followup'
-import { isAccepted, isDeclined } from '../services/treatment-classification.service'
+import { isAccepted, isDeclined, computeMoneyAtRisk } from '../services/treatment-classification.service'
 
 // ── Staff operational notifications (event hooks around the existing,
 // already-verified stage/status transitions — never a new status/stage) ────
@@ -249,17 +249,17 @@ router.get('/treatment', requireAuth, async (req, res) => {
     // pipeline regardless of the selected period — labelled "All time" in the UI.
     //
     // KNOWN GAP (not changed by this pass — see treatment-classification.
-    // service.ts's header comment): these two specifically need the
-    // "accepted but not yet booked" vs "accepted and scheduled" distinction,
-    // which only `stage` encodes — `status` has no equivalent intermediate
-    // state. Since `stage` is rarely written by any current staff-facing
-    // action, these two metrics likely under-report in production today.
-    // Fixing that would mean deciding how/whether staff should start
-    // setting stage explicitly (a workflow change), not a read-time
-    // reinterpretation — intentionally left alone here.
-    const moneyAtRisk = enriched
-      .filter(p => p.stage === 'Accepted & Unscheduled')
-      .reduce((s, p) => s + p.value, 0)
+    // service.ts's header comment): this specifically needs the "accepted
+    // but not yet booked" vs "accepted and scheduled" distinction, which
+    // only `stage` encodes — `status` has no equivalent intermediate state.
+    // Since `stage` is rarely written by any current staff-facing action,
+    // this metric likely under-reports in production today. Fixing that
+    // would mean deciding how/whether staff should start setting stage
+    // explicitly (a workflow change), not a read-time reinterpretation —
+    // intentionally left alone here. Computed via the shared
+    // computeMoneyAtRisk so Case Acceptance's report can show the exact
+    // same figure instead of a second, possibly-drifting definition.
+    const moneyAtRisk = computeMoneyAtRisk(enriched)
 
     const scheduledPlans = enriched.filter(p => p.stage === 'Accepted & Scheduled')
     const avgDaysToSchedule = scheduledPlans.length > 0
