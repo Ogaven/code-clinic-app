@@ -6,7 +6,10 @@ import fs from 'fs'
 import path from 'path'
 
 // ── Local fallback when R2 is not configured ───────────────────────────────
-function isR2Configured(): boolean {
+// Exported so /health's storageOk can check the exact same condition that
+// actually gates uploadAvatar/uploadFile's real-vs-local branch, instead of
+// main.ts hand-rolling a second, independently-drifting check.
+export function isR2Configured(): boolean {
   const id  = process.env.R2_ACCOUNT_ID
   const key = process.env.R2_ACCESS_KEY_ID
   return !!(id && id !== '...' && key && key !== '...')
