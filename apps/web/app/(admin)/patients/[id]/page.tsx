@@ -9,6 +9,7 @@ import {
   Eye, Download, CheckCircle, XCircle, Star, Receipt, Camera, Printer, Share2, ShieldCheck
 } from 'lucide-react'
 import { cn, formatUGX, formatPhone, getInitials } from '@/lib/utils'
+import { doctorLabel } from '@/lib/doctorLabel'
 import AvatarUpload from '@/components/ui/AvatarUpload'
 import TimelineTab from '@/components/patients/TimelineTab'
 import GuardianSection from '@/components/patients/GuardianSection'
@@ -819,7 +820,7 @@ function TreatmentPlanTab({ patientId, token, userRole }: { patientId: string; t
                 <select value={form.doctorId} onChange={e => setForm(f => ({ ...f, doctorId: e.target.value }))}
                   className="w-full mt-1 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1.5">
                   <option value="">Select doctor</option>
-                  {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.user?.firstName} {d.user?.lastName}</option>)}
+                  {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}</option>)}
                 </select>
               </div>
             )}
@@ -850,7 +851,7 @@ function TreatmentPlanTab({ patientId, token, userRole }: { patientId: string; t
           <table className="w-full text-left">
             <thead className="bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
               <tr>
-                {['Tooth','Treatment','Status','Qty','Unit Cost','Disc (UGX)','Total','Date','Notes','Follow-up',''].map(h => (
+                {['Tooth','Treatment','Status','Qty','Unit Cost','Disc (UGX)','Total','Date','Notes','Doctor','Follow-up',''].map(h => (
                   <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -901,6 +902,19 @@ function TreatmentPlanTab({ patientId, token, userRole }: { patientId: string; t
                       <td className="px-3 py-2">
                         <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
                           className="w-40 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1 resize-none" rows={2} />
+                      </td>
+                      <td className="px-3 py-2">
+                        {userRole === 'ADMIN' ? (
+                          <select value={editForm.doctorId} onChange={e => setEditForm(f => ({ ...f, doctorId: e.target.value }))}
+                            className="w-32 text-sm border border-slate-200 dark:border-white/10 dark:bg-gray-800 dark:text-white rounded px-2 py-1">
+                            <option value="">Unassigned</option>
+                            {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}</option>)}
+                          </select>
+                        ) : (
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {doctorLabel(doctors.find((x: any) => x.id === editForm.doctorId))}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <input type="date" value={editForm.followUpAt} onChange={e => setEditForm(f => ({ ...f, followUpAt: e.target.value }))}
@@ -961,6 +975,9 @@ function TreatmentPlanTab({ patientId, token, userRole }: { patientId: string; t
                         </div>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                      {doctorLabel(doctors.find((x: any) => x.id === p.doctorId))}
+                    </td>
                     <td className="px-4 py-3 text-xs">
                       {p.followUpAt ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 font-medium whitespace-nowrap" title={p.followUpReason || ''}>
@@ -983,7 +1000,7 @@ function TreatmentPlanTab({ patientId, token, userRole }: { patientId: string; t
                 <tr>
                   <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-white text-right">Outstanding Cost:</td>
                   <td className="px-4 py-3 text-sm font-bold text-clinic-navy dark:text-white text-right">{formatUGX(totalCost)}</td>
-                  <td colSpan={4} />
+                  <td colSpan={5} />
                 </tr>
               </tfoot>
             )}
