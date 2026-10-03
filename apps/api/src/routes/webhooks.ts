@@ -33,6 +33,21 @@ router.post('/facebook', async (req, res) => {
   try {
     const body = req.body as any
     console.log(`[Webhooks] FB raw: object=${body.object} entries=${body.entry?.length ?? 0}`)
+
+    // Meta delivers Instagram events to this SAME callback URL (one app,
+    // one webhook endpoint, both the linked Page and the linked Instagram
+    // professional account subscribed) — distinguished only by `object`.
+    // This used to unconditionally `return` for anything that wasn't
+    // `'page'`, which silently dropped every Instagram DM/comment payload
+    // even though INSTAGRAM_ACCESS_TOKEN/INSTAGRAM_BUSINESS_ACCOUNT_ID are
+    // configured and processSocialMessage/processComment already have full
+    // 'INSTAGRAM'/'INSTAGRAM_COMMENT' support — the processing layer was
+    // ready, this route just never dispatched to it. Internal routing bug,
+    // not a Meta permission/review blocker.
+    if (body.object === 'instagram') {
+      await handleInstagramEntries(body.entry ?? [])
+      return
+    }
     if (body.object !== 'page') return
 
     for (const entry of body.entry ?? []) {
@@ -85,5 +100,43 @@ router.post('/facebook', async (req, res) => {
     console.error('[Webhooks] Facebook processing error:', err)
   }
 })
+
+// Instagram DMs reuse the exact same `messaging[]` shape as Facebook
+// Messenger (sender.id / message.text / message.mid / message.is_echo) —
+// both ride the unified Messenger Platform webhook format. Instagram
+// comments use a documented but distinct shape (`changes[].field ===
+// 'comments'`, `value: { id, text, from: { id, username }, media, parent_id? }`)
+// — handled conservatively here since it has not yet been exercised against
+// a real live payload; unrecognized change fields are logged and skipped
+// rather than guessed at further.
+async function handleInstagramEntries(entries: any[]): Promise<void> {
+  for (const entry of entries) {
+    for (const event of entry.messaging ?? []) {
+      if (!event.message?.text) continue
+      if (event.message?.is_echo) continue
+      const senderId  = String(event.sender.id)
+      const text      = String(event.message.text)
+      const messageId = event.message.mid ? String(event.message.mid) : undefined
+      console.log(`[Webhooks] Instagram message from ${senderId}: ${text}`)
+      await processSocialMessage(senderId, text, 'INSTAGRAM', messageId)
+    }
+    for (const change of entry.changes ?? []) {
+      console.log(`[Webhooks] IG change: field=${change.field}`)
+      if (change.field !== 'comments') continue
+      const v = change.value
+      if (!v?.text || !v?.from?.id) continue
+      console.log(`[Webhooks] Instagram comment from ${v.from?.id}: ${v.text}`)
+      await processComment(
+        String(v.id ?? ''),
+        String(v.media?.id ?? ''),
+        String(v.from.id),
+        String(v.from?.username ?? ''),
+        String(v.text),
+        'INSTAGRAM_COMMENT',
+        v.parent_id ? String(v.parent_id) : undefined,
+      )
+    }
+  }
+}
 
 export default router
