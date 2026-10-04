@@ -92,7 +92,7 @@ router.get('/connections/facebook/oauth', async (req, res) => {
   const apiBase     = process.env.API_URL || 'https://api.codeclinicemr.com'
   const callbackUrl = encodeURIComponent(`${apiBase}/ai-suite/connections/facebook/callback`)
   if (!appId) return res.status(503).json({ error: 'FACEBOOK_APP_ID not configured' })
-  const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${callbackUrl}&scope=pages_messaging,pages_read_engagement,pages_manage_metadata&response_type=code`
+  const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${callbackUrl}&scope=pages_messaging,pages_show_list,pages_read_engagement,pages_manage_metadata&response_type=code`
   res.redirect(oauthUrl)
 })
 
@@ -118,13 +118,23 @@ router.get('/connections/facebook/callback', async (req, res) => {
     // Get page list using the long-lived user token — page tokens will also be long-lived
     const pagesRes  = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedUserToken}`)
     const pagesData = await pagesRes.json() as { data?: Array<{ id: string; name: string; access_token: string }> }
-    const page      = pagesData.data?.[0]
+    const pages = pagesData.data ?? []
 
-    if (!page) {
+    if (!pages.length) {
       // This means the OAuth user has no pages or didn't grant page permissions.
       // Storing a user token as the page token will break /me/messages sends.
       console.error('[Facebook OAuth] /me/accounts returned no pages — cannot get page token:', JSON.stringify(pagesData))
       throw new Error('No Facebook pages found. Make sure you are logging in as an admin of the Code Clinic page and approve all requested permissions.')
+    }
+
+    // Code Clinic is a single-clinic deployment. Select the clinic Page explicitly
+    // instead of silently taking the first Page returned by Meta. This keeps the
+    // OAuth behavior deterministic for admins who manage multiple Pages.
+    const normalized = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const page = pages.find(p => normalized(p.name).includes('codeclinic'))
+    if (!page) {
+      const available = pages.map(p => p.name).join(', ')
+      throw new Error(`CODE Clinic Facebook Page was not found among the Pages this account manages. Available Pages: ${available || 'none'}.`)
     }
 
     const pageToken = page.access_token
