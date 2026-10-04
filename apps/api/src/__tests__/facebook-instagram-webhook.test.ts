@@ -239,3 +239,63 @@ describe('outbound routing — never crosses channels, mocked fetch only, no rea
     expect(call[0]).toContain('/comment-1/replies')
   })
 })
+
+
+describe('Facebook social identity enrichment', () => {
+  it('back-fills a missing Messenger profile picture even when the display name already exists', async () => {
+    prismaMock.aiConversation.findFirst.mockResolvedValue({
+      id: 'conv-existing',
+      channel: 'FACEBOOK',
+      phoneNumber: 'psid-123',
+      status: 'ACTIVE',
+      agentEnabled: true,
+      displayName: 'Jane Doe',
+      profilePictureUrl: null,
+    })
+    global.fetch = vi.fn(async (url: any) => {
+      if (String(url).includes('/psid-123?fields=name,profile_pic')) {
+        return { ok: true, json: async () => ({ name: 'Jane Doe', profile_pic: 'https://example.test/jane.jpg' }) } as any
+      }
+      return { ok: true, json: async () => ({}), text: async () => '' } as any
+    }) as any
+
+    await processSocialMessage('psid-123', 'Hello', 'FACEBOOK', 'mid-profile-1')
+
+    expect(prismaMock.aiConversation.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'conv-existing' },
+      data: expect.objectContaining({ profilePictureUrl: 'https://example.test/jane.jpg' }),
+    }))
+    expect(findOrCreateLeadForChannel).toHaveBeenCalledWith(expect.objectContaining({
+      createData: expect.objectContaining({ name: 'Jane Doe' }),
+    }))
+  })
+
+  it('stores a Facebook commenter profile picture and keeps post caption context for the AI', async () => {
+    global.fetch = vi.fn(async (url: any) => {
+      const value = String(url)
+      if (value.includes('/commenter-1?fields=name,profile_pic')) {
+        return { ok: true, json: async () => ({ name: 'Princess Priscilla', profile_pic: 'https://example.test/priscilla.jpg' }) } as any
+      }
+      if (value.includes('/post-1?fields=message')) {
+        return { ok: true, json: async () => ({ message: 'Alcohol before the dentist? Tell us you are anxious instead.' }) } as any
+      }
+      return { ok: true, json: async () => ({}), text: async () => '' } as any
+    }) as any
+
+    await processComment('comment-1', 'post-1', 'commenter-1', 'Princess Priscilla', "What's this all about?", 'FACEBOOK_COMMENT')
+
+    expect(prismaMock.aiConversation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        displayName: 'Princess Priscilla',
+        profilePictureUrl: 'https://example.test/priscilla.jpg',
+      }),
+    })
+    expect(getCommentReplyOpenAI).toHaveBeenCalledWith(
+      'conv-1',
+      "What's this all about?",
+      'FACEBOOK_COMMENT',
+      'commenter-1',
+      'Alcohol before the dentist? Tell us you are anxious instead.',
+    )
+  })
+})
