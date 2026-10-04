@@ -279,19 +279,38 @@ export async function processComment(
       orderBy: { createdAt: 'desc' },
     })
     const isNew = !conversation
-    const resolvedName = fromName || null
+
+    // Facebook comment webhook payloads are not guaranteed to contain all
+    // profile fields. Resolve the commenter through the Graph API so the
+    // clinic inbox can show the person's real name and profile photo whenever
+    // Meta makes them available. Failure is non-blocking: the comment still
+    // gets processed with the webhook identity/fallback.
+    let resolvedName: string | null = fromName || conversation?.displayName || null
+    let pictureUrl: string | null = conversation?.profilePictureUrl ?? null
+    if (channel === 'FACEBOOK_COMMENT' && token && fromId && (!resolvedName || !pictureUrl)) {
+      const info = await fetchFbUserInfo(fromId, token)
+      resolvedName = resolvedName || info.name
+      pictureUrl = pictureUrl || info.pictureUrl
+    }
 
     if (!conversation) {
       conversation = await prisma.aiConversation.create({
-        data: { channel, phoneNumber: fromId, status: 'ACTIVE', agentEnabled: true, displayName: resolvedName },
+        data: {
+          channel, phoneNumber: fromId, status: 'ACTIVE', agentEnabled: true,
+          displayName: resolvedName, profilePictureUrl: pictureUrl,
+        },
       })
-    } else if (resolvedName && !conversation.displayName) {
-      // Back-fill name on existing conversations that didn't have one yet
-      await prisma.aiConversation.update({
-        where: { id: conversation.id },
-        data:  { displayName: resolvedName },
-      })
-      conversation = { ...conversation, displayName: resolvedName }
+    } else {
+      const identityPatch: { displayName?: string; profilePictureUrl?: string } = {}
+      if (!conversation.displayName && resolvedName) identityPatch.displayName = resolvedName
+      if (!conversation.profilePictureUrl && pictureUrl) identityPatch.profilePictureUrl = pictureUrl
+      if (Object.keys(identityPatch).length) {
+        await prisma.aiConversation.update({
+          where: { id: conversation.id },
+          data: identityPatch,
+        })
+        conversation = { ...conversation, ...identityPatch }
+      }
     }
 
     // ── D. Fetch post caption (cached) ────────────────────────────────────────
@@ -306,7 +325,7 @@ export async function processComment(
     // this same comment in real time through the normal pipeline.
     await findOrCreateLeadForChannel({
       where:      { phone: fromId, status: { notIn: ['CONVERTED', 'LOST'] } },
-      createData: { name: fromName || undefined, phone: fromId, source: baseChannel, status: 'NEW', stage: 'NEW', lastMessage: text },
+      createData: { name: resolvedName || undefined, phone: fromId, source: baseChannel, status: 'NEW', stage: 'NEW', lastMessage: text },
       onExistingMessage: text,
       intakeOptions: { skipAcknowledgement: true },
       // The lead just commented — real operational contact-origin evidence.
@@ -336,7 +355,7 @@ export async function processComment(
       })
     }
 
-    maybeNotifyStaff(conversation.id, fromId, fromName || fromId, channel, isNew)
+    maybeNotifyStaff(conversation.id, fromId, resolvedName || fromId, channel, isNew)
 
     // ── Channel kill-switch ───────────────────────────────────────────────────
     const commentToggleField = channel === 'FACEBOOK_COMMENT' ? 'fbCommentsEnabled' : 'igCommentsEnabled'
@@ -457,13 +476,15 @@ export async function processSocialMessage(
     })
     const isNew = !conversation
 
-    // Fetch real name + profile picture for new DM conversations (or if missing)
-    let resolvedName: string | null   = null
-    let pictureUrl:   string | null   = null
-    if (dmToken && (!conversation || !conversation.displayName)) {
+    // Fetch/refresh the person's real Meta identity whenever either field is
+    // missing. Previously an existing displayName prevented us from ever
+    // back-filling a missing profile photo, leaving many inbox rows generic.
+    let resolvedName: string | null = conversation?.displayName ?? null
+    let pictureUrl: string | null = conversation?.profilePictureUrl ?? null
+    if (dmToken && (!resolvedName || !pictureUrl)) {
       const info = await fetchFbUserInfo(senderId, dmToken)
-      resolvedName = info.name
-      pictureUrl   = info.pictureUrl
+      resolvedName = resolvedName || info.name
+      pictureUrl = pictureUrl || info.pictureUrl
     }
 
     if (!conversation) {
@@ -473,12 +494,17 @@ export async function processSocialMessage(
           displayName: resolvedName, profilePictureUrl: pictureUrl,
         },
       })
-    } else if (resolvedName && !conversation.displayName) {
-      await prisma.aiConversation.update({
-        where: { id: conversation.id },
-        data:  { displayName: resolvedName, profilePictureUrl: pictureUrl },
-      })
-      conversation = { ...conversation, displayName: resolvedName, profilePictureUrl: pictureUrl }
+    } else {
+      const identityPatch: { displayName?: string; profilePictureUrl?: string } = {}
+      if (!conversation.displayName && resolvedName) identityPatch.displayName = resolvedName
+      if (!conversation.profilePictureUrl && pictureUrl) identityPatch.profilePictureUrl = pictureUrl
+      if (Object.keys(identityPatch).length) {
+        await prisma.aiConversation.update({
+          where: { id: conversation.id },
+          data: identityPatch,
+        })
+        conversation = { ...conversation, ...identityPatch }
+      }
     }
 
     // Create or update Lead for this social contact — routed through the
@@ -488,7 +514,7 @@ export async function processSocialMessage(
     const source = channel // 'FACEBOOK' | 'INSTAGRAM'
     await findOrCreateLeadForChannel({
       where:      { phone: senderId, status: { notIn: ['CONVERTED', 'LOST'] } },
-      createData: { phone: senderId, source, status: 'NEW', stage: 'NEW', lastMessage: text },
+      createData: { name: resolvedName || undefined, phone: senderId, source, status: 'NEW', stage: 'NEW', lastMessage: text },
       onExistingMessage: text,
       intakeOptions: { skipAcknowledgement: true },
       contactEvidence: { channel: 'WHATSAPP', source: 'INBOUND_MESSAGE' },
