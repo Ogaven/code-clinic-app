@@ -64,7 +64,11 @@ router.get('/connections/facebook/generate-state', requireAuth, async (_req, res
     VALUES ('fb_oauth_state', ${value}, NOW())
     ON CONFLICT (key) DO UPDATE SET value = ${value}, "updatedAt" = NOW()
   `
-  res.json({ state })
+  const apiBase = process.env.API_URL || 'https://api.codeclinicemr.com'
+  res.json({
+    state,
+    oauthUrl: `${apiBase}/ai-suite/connections/facebook/oauth?state=${encodeURIComponent(state)}`,
+  })
 })
 
 // Step 2: popup opens this URL with ?state=<token>. Validates state from DB, then
