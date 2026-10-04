@@ -1096,8 +1096,11 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
   async function connect() {
     const r = await fetch(`${API}/ai-suite/connections/facebook/generate-state`, { headers: authH() })
     if (!r.ok) { toast('Session error — please log in again'); return }
-    const { state } = await r.json()
-    const w = window.open(`${API}/ai-suite/connections/facebook/oauth?state=${state}`, '_blank', 'width=600,height=700')
+    const { oauthUrl } = await r.json() as { oauthUrl?: string }
+    if (!oauthUrl) { toast('Facebook connection URL unavailable — please try again'); return }
+    // Navigate the popup directly to the API host. /api-proxy requires a bearer
+    // header and top-level popup navigation cannot attach that header.
+    const w = window.open(oauthUrl, '_blank', 'width=600,height=700')
     const t = setInterval(() => {
       if (w?.closed) {
         clearInterval(t)
