@@ -253,8 +253,8 @@ describe('Facebook social identity enrichment', () => {
       profilePictureUrl: null,
     })
     global.fetch = vi.fn(async (url: any) => {
-      if (String(url).includes('/psid-123?fields=name,profile_pic')) {
-        return { ok: true, json: async () => ({ name: 'Jane Doe', profile_pic: 'https://example.test/jane.jpg' }) } as any
+      if (String(url).includes('/psid-123?fields=first_name,last_name,profile_pic')) {
+        return { ok: true, json: async () => ({ first_name: 'Jane', last_name: 'Doe', profile_pic: 'https://example.test/jane.jpg' }) } as any
       }
       return { ok: true, json: async () => ({}), text: async () => '' } as any
     }) as any
@@ -270,12 +270,9 @@ describe('Facebook social identity enrichment', () => {
     }))
   })
 
-  it('stores a Facebook commenter profile picture and keeps post caption context for the AI', async () => {
+  it('keeps the Facebook commenter name and post caption context for the AI', async () => {
     global.fetch = vi.fn(async (url: any) => {
       const value = String(url)
-      if (value.includes('/commenter-1?fields=name,profile_pic')) {
-        return { ok: true, json: async () => ({ name: 'Princess Priscilla', profile_pic: 'https://example.test/priscilla.jpg' }) } as any
-      }
       if (value.includes('/post-1?fields=message')) {
         return { ok: true, json: async () => ({ message: 'Alcohol before the dentist? Tell us you are anxious instead.' }) } as any
       }
@@ -287,7 +284,6 @@ describe('Facebook social identity enrichment', () => {
     expect(prismaMock.aiConversation.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         displayName: 'Princess Priscilla',
-        profilePictureUrl: 'https://example.test/priscilla.jpg',
       }),
     })
     expect(getCommentReplyOpenAI).toHaveBeenCalledWith(

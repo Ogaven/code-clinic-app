@@ -88,7 +88,7 @@ async function fetchFbUserInfo(
   token: string,
 ): Promise<{ name: string | null; pictureUrl: string | null }> {
   try {
-    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${psid}?fields=name,profile_pic&access_token=${token}`
+    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${psid}?fields=first_name,last_name,profile_pic&access_token=${token}`
     const res  = await fetch(url)
     const data = await res.json() as any
     if (!res.ok) {
@@ -99,7 +99,7 @@ async function fetchFbUserInfo(
       console.error(`[Facebook] Profile fetch failed for PSID ${psid}:`, JSON.stringify(data?.error ?? data))
       return { name: null, pictureUrl: null }
     }
-    return { name: data.name ?? null, pictureUrl: data.profile_pic ?? null }
+    return { name: [data.first_name, data.last_name].filter(Boolean).join(' ').trim() || null, pictureUrl: data.profile_pic ?? null }
   } catch (err: any) {
     console.error(`[Facebook] Profile fetch error for PSID ${psid}:`, err?.message)
     return { name: null, pictureUrl: null }
