@@ -253,8 +253,8 @@ describe('Facebook social identity enrichment', () => {
       profilePictureUrl: null,
     })
     global.fetch = vi.fn(async (url: any) => {
-      if (String(url).includes('/psid-123?fields=name,profile_pic')) {
-        return { ok: true, json: async () => ({ name: 'Jane Doe', profile_pic: 'https://example.test/jane.jpg' }) } as any
+      if (String(url).includes('/psid-123?fields=first_name,last_name,profile_pic')) {
+        return { ok: true, json: async () => ({ first_name: 'Jane', last_name: 'Doe', profile_pic: 'https://example.test/jane.jpg' }) } as any
       }
       return { ok: true, json: async () => ({}), text: async () => '' } as any
     }) as any
