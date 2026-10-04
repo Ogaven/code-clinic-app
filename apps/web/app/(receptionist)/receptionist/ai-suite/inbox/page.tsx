@@ -853,6 +853,7 @@ function InboxPage() {
   const [channelPicked, setChannelPicked] = useState(() => !!searchParams.get('channel'))
 
   const msgsEnd        = useRef<HTMLDivElement>(null)
+  const messagesScroll = useRef<HTMLDivElement>(null)
   const pollConv       = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollMsg        = useRef<ReturnType<typeof setInterval> | null>(null)
   const isNearBottom   = useRef(true)
@@ -994,17 +995,32 @@ function InboxPage() {
     return () => { if (pollMsg.current) clearInterval(pollMsg.current) }
   }, [sel?.id])
 
+  // Keep scrolling local to the message pane. scrollIntoView() can scroll
+  // ancestor/page containers as well, which made the inbox jump while staff
+  // were reading or typing. Polling also replaces the msgs array every 5s, so
+  // only pin to the bottom when switching chats or when the user was already
+  // near the bottom.
   useEffect(() => {
     const isSwitch = sel?.id !== prevConvId.current
     prevConvId.current = sel?.id ?? null
+    const pane = messagesScroll.current
+    if (!pane) return
     if (isSwitch || isNearBottom.current) {
-      msgsEnd.current?.scrollIntoView({ behavior: isSwitch ? 'auto' : 'smooth' })
-      if (isSwitch) isNearBottom.current = true
+      requestAnimationFrame(() => {
+        const current = messagesScroll.current
+        if (!current) return
+        current.scrollTop = current.scrollHeight
+        if (isSwitch) isNearBottom.current = true
+      })
     }
-  }, [msgs])
+  }, [msgs, sel?.id])
 
   useEffect(() => {
-    const handler = () => { if (isNearBottom.current) msgsEnd.current?.scrollIntoView({ behavior: 'smooth' }) }
+    const handler = () => {
+      if (!isNearBottom.current) return
+      const pane = messagesScroll.current
+      if (pane) pane.scrollTop = pane.scrollHeight
+    }
     window.visualViewport?.addEventListener('resize', handler)
     return () => { window.visualViewport?.removeEventListener('resize', handler) }
   }, [])
@@ -1215,7 +1231,7 @@ function InboxPage() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 px-3 sm:px-4 pt-4 pb-20 space-y-1.5"
+      <div ref={messagesScroll} className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 px-3 sm:px-4 pt-4 pb-20 space-y-1.5"
         onScroll={handleMessagesScroll}
         style={{ background: dark ? '#0b1f38' : '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
         {loadingM && msgs.length === 0 && (
@@ -1383,7 +1399,7 @@ function InboxPage() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20 space-y-2" onScroll={handleMessagesScroll}>
+      <div ref={messagesScroll} className="flex-1 overflow-y-auto px-4 pt-4 pb-20 space-y-2" onScroll={handleMessagesScroll}>
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-300" /></div>
         )}
