@@ -250,6 +250,12 @@ app.use('/webhooks', webhooksRouter)
 app.use('/webhooks/scoreapp', scoreappWebhookRouter)
 
 // ─── AI Suite ─────────────────────────────────────────────────
+// Connection OAuth routes must be mounted before takeoverRouter. takeoverRouter
+// currently installs router-level requireAuth, which otherwise rejects public
+// OAuth popup/callback requests before connectionsRouter can validate their
+// short-lived, single-use state token. All non-OAuth connection routes retain
+// their own requireAuth middleware inside connections.routes.ts.
+app.use('/ai-suite',              connectionsRouter)
 // WhatsApp webhook: GET /ai-suite/webhook  POST /ai-suite/webhook
 app.use('/ai-suite',              aiSuiteRouter)
 // SMS inbound:      POST /ai-suite/sms/incoming
@@ -293,12 +299,9 @@ app.use('/ai-suite/voice',        voiceLlmRouter)
 app.use('/ai-suite',              agentControlRouter)
 // Agent config:     GET/PATCH /ai-suite/config
 app.use('/ai-suite',              configRouter)
-// Connections:      GET/PATCH /ai-suite/connections/whatsapp
-//                   GET/DELETE /ai-suite/connections/facebook/status
-//                   GET/DELETE /ai-suite/connections/instagram/status
-//                   GET/PATCH /ai-suite/connections/sms
-//                   GET/POST/PATCH/DELETE /ai-suite/connections/sip-trunks
-app.use('/ai-suite',              connectionsRouter)
+// Connections are mounted at the start of the AI Suite section above so
+// state-validated OAuth popup/callback requests are not intercepted by the
+// takeover router's router-level authentication middleware.
 // Facebook/Instagram webhooks: GET/POST /ai-suite/facebook/webhook
 //                              GET/POST /ai-suite/instagram/webhook
 app.use('/ai-suite',              facebookRouter)
