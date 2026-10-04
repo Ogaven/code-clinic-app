@@ -334,17 +334,32 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
   const [showEmoji,  setShowEmoji]  = useState(false)
   const [sending,    setSending]    = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const draftKey = `cc-inbox-draft:${sel.id}`
 
-  // Reset composer when switching conversations
-  useEffect(() => { setReply(''); setShowEmoji(false) }, [sel.id])
+  // Keep unsent text safe across polling, parent remounts and accidental
+  // in-app refreshes. Drafts are scoped per conversation and only removed
+  // after a successful send.
+  useEffect(() => {
+    try { setReply(sessionStorage.getItem(draftKey) ?? '') } catch { setReply('') }
+    setShowEmoji(false)
+  }, [draftKey])
+
+  useEffect(() => {
+    try {
+      if (reply) sessionStorage.setItem(draftKey, reply)
+      else sessionStorage.removeItem(draftKey)
+    } catch {}
+  }, [draftKey, reply])
 
   async function send() {
     if (!reply.trim() || sending) return
     setSending(true)
     try {
-      await fetch(`${API}/ai-suite/conversations/${sel.id}/send`, {
+      const res = await fetch(`${API}/ai-suite/conversations/${sel.id}/send`, {
         method: 'POST', headers: authH(true), body: JSON.stringify({ text: reply.trim() }),
       })
+      if (!res.ok) return
+      try { sessionStorage.removeItem(draftKey) } catch {}
       setReply('')
       fetchMsgs(sel.id)
     } catch {} finally {
