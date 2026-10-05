@@ -80,7 +80,7 @@ describe('logHumanReply — STAFF outbound reply, NEW -> CONTACTED (Part N)', ()
     expect(firstUpdateCall.data).not.toHaveProperty('lastInboundReplyAt')
   })
 
-  it('transitions to CONTACTED only when the reply is logged by the ASSIGNED owner', async () => {
+  it('transitions to CONTACTED when a real staff reply is logged', async () => {
     prismaMock.lead.findUniqueOrThrow
       .mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1', firstReplyAt: null, firstHumanReplyAt: null, lossReason: null })
     prismaMock.lead.update.mockResolvedValueOnce({ id: 'lead-1', firstReplyAt: new Date(), firstHumanReplyAt: new Date() })
@@ -91,7 +91,7 @@ describe('logHumanReply — STAFF outbound reply, NEW -> CONTACTED (Part N)', ()
     await logHumanReply('lead-1', 'owner-1')
 
     expect(prismaMock.leadStageHistory.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ toStage: 'CONTACTED', reason: 'first_human_reply_by_assigned_owner' }) })
+      expect.objectContaining({ data: expect.objectContaining({ toStage: 'CONTACTED', reason: 'first_human_staff_reply' }) })
     )
   })
 
@@ -124,7 +124,7 @@ describe('logHumanReply — STAFF outbound reply, NEW -> CONTACTED (Part N)', ()
 // message send) and logHumanReply, which previously was only reachable via
 // a separate manual "Log Reply" button nobody was clicking.
 describe('advanceLeadOnHumanReply — wiring the real staff-reply send path to the stage engine', () => {
-  it('finds the lead by phone and advances NEW -> CONTACTED when the sender is the assigned owner', async () => {
+  it('finds the lead by phone and advances NEW -> CONTACTED after a real staff reply', async () => {
     prismaMock.lead.findFirst.mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1' })
     // logHumanReply's own lookup + its internal transitionLeadStage lookup
     prismaMock.lead.findUniqueOrThrow
@@ -137,7 +137,7 @@ describe('advanceLeadOnHumanReply — wiring the real staff-reply send path to t
     await advanceLeadOnHumanReply('+256700000001', 'owner-1')
 
     expect(prismaMock.leadStageHistory.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ toStage: 'CONTACTED', reason: 'first_human_reply_by_assigned_owner' }) })
+      expect.objectContaining({ data: expect.objectContaining({ toStage: 'CONTACTED', reason: 'first_human_staff_reply' }) })
     )
   })
 
