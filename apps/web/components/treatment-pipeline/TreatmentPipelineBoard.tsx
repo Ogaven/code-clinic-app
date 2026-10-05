@@ -303,12 +303,6 @@ export default function TreatmentPipelineBoard({
     await applyStatusChange(planId, targetStatus)
   }
 
-  const handleDragOver = (e: React.DragEvent, statusId: string) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    setDropOver(statusId)
-  }
-
   const handleDrop = async (e: React.DragEvent, targetStatus: string) => {
     e.preventDefault()
     const planId = e.dataTransfer.getData('planId') || dragId
@@ -1220,87 +1214,6 @@ function FollowUpModal({
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-white/70 bg-gray-100 dark:bg-white/10 rounded-lg">Cancel</button>
         </div>
       </div>
-    </div>
-  )
-}
-
-// ── Follow Up section (visible pipeline "Follow Up" view) ──────────────────────
-
-function FollowUpSection({
-  plans, open, onToggle, onOpenPatient, onOpenDetail, onResolve, onReschedule,
-}: {
-  plans: Plan[]
-  open: boolean
-  onToggle: () => void
-  onOpenPatient: (patientId: string) => void
-  onOpenDetail: (plan: Plan) => void
-  onResolve: (planId: string, resolution: 'COMPLETED' | 'DISMISSED') => void
-  onReschedule: (plan: Plan) => void
-}) {
-  const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-  const overdueCount = plans.filter(p => followUpDiffDays(p.followUpAt) !== null && followUpDiffDays(p.followUpAt)! < 0).length
-
-  return (
-    <div className="rounded-2xl border border-indigo-200 dark:border-indigo-400/20 overflow-hidden flex-shrink-0 bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-400/10 dark:to-indigo-400/5">
-      <button onClick={onToggle} className="w-full flex items-center justify-between px-4 py-3 hover:bg-indigo-50/50 dark:hover:bg-indigo-400/10 transition-colors">
-        <div className="flex items-center gap-2">
-          <BellRing size={15} className="text-indigo-600 dark:text-indigo-400" />
-          <span className="text-sm font-bold text-indigo-800 dark:text-indigo-300">Follow Up</span>
-          <span className="text-xs font-black px-2 py-0.5 rounded-full bg-indigo-500 text-white">{plans.length}</span>
-          {overdueCount > 0 && <span className="text-xs font-bold text-red-500">{overdueCount} overdue</span>}
-        </div>
-        {open ? <ChevronUp size={15} className="text-indigo-600 dark:text-indigo-400" /> : <ChevronDown size={15} className="text-indigo-600 dark:text-indigo-400" />}
-      </button>
-      {open && (
-        <div className="bg-white dark:bg-[#0e1f4d] border-t border-indigo-200 dark:border-indigo-400/20">
-          {plans.length === 0 && (
-            <div className="px-4 py-6 text-center">
-              <p className="text-sm text-gray-400 dark:text-white/30">No treatments currently need follow-up.</p>
-              <p className="text-xs text-gray-300 dark:text-white/20 mt-1">Set "Remind us to follow up" on a treatment to see it here.</p>
-            </div>
-          )}
-          {plans.map(plan => {
-            const diff = followUpDiffDays(plan.followUpAt)
-            return (
-              <div key={plan.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-indigo-100/60 dark:border-indigo-400/10 last:border-0 hover:bg-indigo-50/30 dark:hover:bg-indigo-400/5 transition-colors cursor-pointer" onClick={() => onOpenDetail(plan)}>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-bold text-gray-800 dark:text-white truncate">{plan.patient.firstName} {plan.patient.lastName}</span>
-                    <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full',
-                      diff !== null && diff < 0 ? 'bg-red-100 text-red-700 dark:bg-red-400/15 dark:text-red-300'
-                        : diff === 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300'
-                        : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-400/15 dark:text-indigo-300')}>
-                      {fmt(plan.followUpAt!)}
-                    </span>
-                    <span className="text-[10px] font-semibold text-gray-400 dark:text-white/40">{plan.status}</span>
-                  </div>
-                  <div className="text-[11px] text-gray-500 dark:text-white/50 mt-0.5">
-                    {plan.treatmentName} · {plan.doctorName}
-                    {plan.followUpReason && <span className="ml-2 text-gray-400 dark:text-white/30">{plan.followUpReason}</span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => onResolve(plan.id, 'COMPLETED')}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors"
-                    title="Mark reached out / complete">
-                    <CheckCircle2 size={11} className="inline mr-0.5" />Reached Out
-                  </button>
-                  <button onClick={() => onReschedule(plan)}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-400/15 dark:text-blue-300 dark:hover:bg-blue-400/25 transition-colors"
-                    title="Reschedule follow-up">
-                    <CalendarPlus size={11} className="inline mr-0.5" />Reschedule
-                  </button>
-                  <button onClick={() => onOpenPatient(plan.patientId)}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/15 transition-colors"
-                    title="Open patient">
-                    Open
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }
