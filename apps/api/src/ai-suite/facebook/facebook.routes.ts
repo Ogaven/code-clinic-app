@@ -147,6 +147,33 @@ router.post('/facebook/webhook', async (req, res) => {
           event.message.mid ? String(event.message.mid) : undefined,
         )
       }
+      // Page post comments arrive as entry.changes[] with field "feed".
+      // Keep this separate from Messenger events so a comment is persisted in
+      // the FACEBOOK_COMMENT channel and replied to on the originating thread.
+      for (const change of entry.changes ?? []) {
+        if (change.field !== 'feed') continue
+        const v = change.value
+        if (v?.item !== 'comment' || v?.verb !== 'add') continue
+
+        const commentId = v.comment_id ?? v.id
+        const postId = v.post_id
+        const fromId = v.from?.id
+        const text = v.message
+        if (!commentId || !postId || !fromId || !text) continue
+
+        // Never process comments authored by the CODE Clinic Page itself.
+        if (String(fromId) === FB_PAGE_ID) continue
+
+        await processComment(
+          String(commentId),
+          String(postId),
+          String(fromId),
+          String(v.from?.name ?? ''),
+          String(text),
+          'FACEBOOK_COMMENT',
+          v.parent_id ? String(v.parent_id) : undefined,
+        )
+      }
     }
   } catch (err) {
     console.error('[Facebook] Webhook error:', err)
