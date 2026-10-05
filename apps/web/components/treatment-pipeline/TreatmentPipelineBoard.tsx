@@ -190,7 +190,6 @@ export default function TreatmentPipelineBoard({
   const [movePlan,       setMovePlan]       = useState<Plan | null>(null)
   const [needsReview,    setNeedsReview]    = useState<NeedsReviewData | null>(null)
   const [reviewOpen,     setReviewOpen]     = useState(false)
-  const [followUpOpen,   setFollowUpOpen]   = useState(true)
   const [declinedOpen,   setDeclinedOpen]   = useState(false)
   const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set())
   const [bulkStatus,     setBulkStatus]     = useState('')
@@ -485,7 +484,31 @@ export default function TreatmentPipelineBoard({
   }, [plans, search, doctorFilter, stageFilter, followUpFilter])
 
   const plansByStatus = (statusId: string) => filteredPlans.filter(p => p.status === statusId)
-  const statusTotal   = (statusId: string) => plansByStatus(statusId).reduce((s, p) => s + p.value, 0)
+
+  // Follow Up is an operational queue, not a TreatmentPlan status. A plan
+  // appears in this virtual column whenever it has an outstanding follow-up
+  // date, while its real status (Planned/In Progress/etc.) remains untouched.
+  // This keeps follow-up scheduling additive and avoids corrupting the shared
+  // status field used by Treatment Plan and Case Acceptance.
+  const filteredFollowUps = useMemo(() => {
+    const visibleIds = new Set(filteredPlans.map(p => p.id))
+    return followUps.filter(p => visibleIds.has(p.id))
+  }, [followUps, filteredPlans])
+
+  const FOLLOW_UP_COLUMN = {
+    id: '__follow_up__',
+    label: 'Follow Up',
+    headerColor: '#5B21B6',
+    headerBg: '#EDE9FE',
+  }
+
+  const boardColumns = [...PRIMARY_COLUMNS, FOLLOW_UP_COLUMN]
+
+  const columnPlans = (statusId: string) =>
+    statusId === FOLLOW_UP_COLUMN.id ? filteredFollowUps : plansByStatus(statusId)
+
+  const statusTotal = (statusId: string) =>
+    columnPlans(statusId).reduce((s, p) => s + p.value, 0)
 
   // Declined plans, read-only historical view — same filter set (search/
   // doctor/stage) as the main board, just never rendered as a draggable
@@ -586,28 +609,9 @@ export default function TreatmentPipelineBoard({
         </select>
       </div>
 
-      {/* ── Follow Up section ────────────────────────────────────────────
-          Cross-cutting view of plans the patient asked to be followed up
-          on (followUpAt set). NOT a pipeline status/stage — a plan keeps
-          whatever status/stage it already has (Planned, On Hold, even a
-          reconsidered Declined) and simply also appears here while the
-          follow-up is outstanding, sorted soonest-first.
-          Always rendered, even with zero outstanding follow-ups (shows a
-          friendly empty state) — a section that only appears once staff
-          have already used the feature isn't discoverable as "a clear
-          usable Pipeline section" for someone checking it exists. Not
-          gated by loading either, so it doesn't flash in after the board. */}
-      {!loading && (
-        <FollowUpSection
-          plans={followUps}
-          open={followUpOpen}
-          onToggle={() => setFollowUpOpen(v => !v)}
-          onOpenPatient={(patientId) => router.push(`${patientBasePath}/${patientId}`)}
-          onOpenDetail={(plan) => setDetailPlan(plan)}
-          onResolve={resolveFollowUp}
-          onReschedule={(plan) => setFollowUpModal({ plan, pendingStatus: null })}
-        />
-      )}
+      {/* Outstanding follow-ups now live as the final Kanban column below.
+          This removes the duplicate accordion while preserving the same
+          follow-up dates, reasons, reminders and resolve/reschedule actions. */}
 
       {/* ── Declined (history) section ────────────────────────────────────
           Declined is no longer a primary active-work column — it never
@@ -718,8 +722,8 @@ export default function TreatmentPipelineBoard({
           style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
         >
           <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-            {PRIMARY_COLUMNS.map(status => {
-              const statusPlans = plansByStatus(status.id)
+            {boardColumns.map(status => {
+              const statusPlans = columnPlans(status.id)
               const total       = statusTotal(status.id)
               const isOver      = dropOver === status.id
               const isExpanded  = expandedColumns.has(status.id)
@@ -735,9 +739,24 @@ export default function TreatmentPipelineBoard({
                     border:    `1px solid ${dark ? (isOver ? 'rgba(41,171,226,0.4)' : 'rgba(255,255,255,0.08)') : (isOver ? '#BAE6FD' : '#E5E7EB')}`,
                     boxShadow: isOver ? '0 0 0 2px #29ABE2' : 'none',
                   }}
-                  onDragOver={e  => handleDragOver(e, status.id)}
+                  onDragOver={e => {
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                    setDropOver(status.id)
+                  }}
                   onDragLeave={() => setDropOver(null)}
-                  onDrop={e      => handleDrop(e, status.id)}
+                  onDrop={e => {
+                    if (status.id !== FOLLOW_UP_COLUMN.id) {
+                      handleDrop(e, status.id)
+                      return
+                    }
+                    e.preventDefault()
+                    const planId = e.dataTransfer.getData('planId') || dragId
+                    setDragId(null)
+                    setDropOver(null)
+                    const plan = plans.find(p => p.id === planId)
+                    if (plan) setFollowUpModal({ plan, pendingStatus: null })
+                  }}
                 >
                   {/* Column header */}
                   <div
@@ -783,7 +802,7 @@ export default function TreatmentPipelineBoard({
                         className="h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-xs text-gray-300 dark:text-white/15"
                         style={{ borderColor: isOver ? '#29ABE2' : dark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' }}
                       >
-                        Drop here
+                        {status.id === FOLLOW_UP_COLUMN.id ? 'Drop here to set follow-up' : 'Drop here'}
                       </div>
                     )}
                     {visiblePlans.map(plan => (
