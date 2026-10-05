@@ -301,8 +301,17 @@ export async function processComment(
       ? (config?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || null)
       : (config?.instagramAccessToken    || process.env.INSTAGRAM_ACCESS_TOKEN     || null)
 
+    // Comment threads are scoped to both the commenter and the originating
+    // post. Reusing one conversation for the same person across different
+    // posts makes the /posts inbox group fresh comments under whichever post
+    // that person commented on first.
     let conversation = await prisma.aiConversation.findFirst({
-      where:   { phoneNumber: fromId, channel, status: 'ACTIVE' },
+      where: {
+        phoneNumber: fromId,
+        channel,
+        status: 'ACTIVE',
+        messages: { some: { metadata: { contains: `"postId":"${postId}"` } } },
+      },
       orderBy: { createdAt: 'desc' },
     })
     const isNew = !conversation
