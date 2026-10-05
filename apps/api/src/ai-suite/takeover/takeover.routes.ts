@@ -317,39 +317,56 @@ router.get('/posts', adminAndReceptionist, async (req, res) => {
       },
     })
 
-    // Group by postId (from first USER message metadata)
+    // A single commenter conversation can contain messages from several posts.
+    // Group at MESSAGE level so a reused conversation never gets pinned to the
+    // postId of its first historical comment.
+    type ConvWithMessages = typeof convs[number]
+    type PostConvSlice = {
+      conv: ConvWithMessages
+      messages: ConvWithMessages['messages']
+      displayName: string | null
+    }
     const postMap = new Map<string, {
       postId: string; caption: string | null; latestAt: Date
-      convs: typeof convs
+      commentCount: number; convs: Map<string, PostConvSlice>
     }>()
 
     for (const conv of convs) {
-      let postId: string | null = null
-      let caption: string | null = null
       for (const msg of conv.messages) {
-        if (msg.role === 'USER' && msg.metadata) {
-          try {
-            const m = JSON.parse(msg.metadata)
-            if (m.postId) { postId = m.postId; caption = m.postCaption ?? null; break }
-          } catch {}
+        if (!msg.metadata) continue
+        let meta: any = null
+        try { meta = JSON.parse(msg.metadata) } catch { continue }
+        if (!meta?.postId) continue
+
+        const postId = String(meta.postId)
+        let entry = postMap.get(postId)
+        if (!entry) {
+          entry = {
+            postId,
+            caption: meta.postCaption ?? null,
+            latestAt: msg.createdAt,
+            commentCount: 0,
+            convs: new Map(),
+          }
+          postMap.set(postId, entry)
         }
-      }
-      if (!postId) continue
 
-      // Use the real last-message time, not conv.updatedAt — creating a
-      // message doesn't bump the parent conversation row, so relying on
-      // updatedAt buries fresh comments on reused threads under old ones.
-      const lastMsgAt = conv.messages.length
-        ? conv.messages[conv.messages.length - 1].createdAt
-        : conv.updatedAt
+        if (msg.createdAt > entry.latestAt) entry.latestAt = msg.createdAt
+        if (!entry.caption && meta.postCaption) entry.caption = meta.postCaption
+        if (msg.role === 'USER') entry.commentCount++
 
-      const entry = postMap.get(postId)
-      if (!entry) {
-        postMap.set(postId, { postId, caption, latestAt: lastMsgAt, convs: [conv] })
-      } else {
-        entry.convs.push(conv)
-        if (lastMsgAt > entry.latestAt) entry.latestAt = lastMsgAt
-        if (!entry.caption && caption) entry.caption = caption
+        let slice = entry.convs.get(conv.id)
+        if (!slice) {
+          slice = { conv, messages: [], displayName: null }
+          entry.convs.set(conv.id, slice)
+        }
+        slice.messages.push(msg)
+        // Webhook metadata is the freshest source of the commenter's name.
+        // This also repairs old conversations whose displayName was captured
+        // before Facebook identity enrichment was corrected.
+        if (msg.role === 'USER' && typeof meta.fromName === 'string' && meta.fromName.trim()) {
+          slice.displayName = meta.fromName.trim()
+        }
       }
     }
 
@@ -365,14 +382,14 @@ router.get('/posts', adminAndReceptionist, async (req, res) => {
       caption:      p.caption,
       thumbnailUrl: token ? await fetchPostThumbnail(p.postId, token) : null,
       latestAt:     p.latestAt,
-      commentCount: p.convs.length,
-      conversations: p.convs.map(c => ({
+      commentCount: p.commentCount,
+      conversations: Array.from(p.convs.values()).map(({ conv: c, messages, displayName }) => ({
         id:               c.id,
-        displayName:      (c as any).displayName ?? null,
+        displayName:      displayName ?? (c as any).displayName ?? null,
         profilePictureUrl:(c as any).profilePictureUrl ?? null,
         agentEnabled:     c.agentEnabled,
-        updatedAt:        c.updatedAt,
-        messages: c.messages.map(m => ({
+        updatedAt:        messages.length ? messages[messages.length - 1].createdAt : c.updatedAt,
+        messages: messages.map(m => ({
           id: m.id, role: m.role, content: m.content,
           createdAt: m.createdAt, metadata: m.metadata ?? null,
         })),
