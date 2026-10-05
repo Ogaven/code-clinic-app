@@ -116,6 +116,7 @@ export interface AcquisitionRevenueReport {
     bookedCount: number
     attendedCount: number
     treatmentAcceptedCount: number
+    payingClientCount: number
   }
   revenue: {
     treatmentValueUGX: number
@@ -147,13 +148,16 @@ export async function buildAcquisitionRevenueReport(filters: AttributionFilters 
 
   const { patientIds, ambiguousPatientCount } = await cleanlyAttributedPatientIds(filters, allLinks)
 
-  const [appointments, treatmentAcceptedCount, treatmentValueUGX, invoicedUGX, collectedUGX] = await Promise.all([
+  const [appointments, treatmentAcceptedCount, payingPatients, treatmentValueUGX, invoicedUGX, collectedUGX] = await Promise.all([
     patientIds.length
       ? prisma.appointment.findMany({ where: { patientId: { in: patientIds } }, select: { patientId: true, status: true } })
       : Promise.resolve([]),
     patientIds.length
       ? prisma.patient.count({ where: { id: { in: patientIds }, treatmentPlanStatus: 'ACCEPTED' } })
       : Promise.resolve(0),
+    patientIds.length
+      ? prisma.payment.findMany({ where: { patientId: { in: patientIds }, amountUGX: { gt: 0 } }, select: { patientId: true } })
+      : Promise.resolve([]),
     sumTreatmentValueUGX(patientIds),
     sumInvoicedUGX(patientIds),
     sumCollectedUGX(patientIds),
@@ -171,6 +175,7 @@ export async function buildAcquisitionRevenueReport(filters: AttributionFilters 
       bookedCount: bookedPatientIds.size,
       attendedCount: attendedPatientIds.size,
       treatmentAcceptedCount,
+      payingClientCount: new Set(payingPatients.map(p => p.patientId)).size,
     },
     revenue: { treatmentValueUGX, invoicedUGX, collectedUGX },
     ambiguousPatientCount,
@@ -179,7 +184,8 @@ export async function buildAcquisitionRevenueReport(filters: AttributionFilters 
       `linked from more than one lead (${ambiguousPatientCount} in this cohort) are excluded rather than having their ` +
       'revenue guessed or split. Revenue figures are lifetime totals for the attributed patients, not activity within ' +
       'dateFrom/dateTo (that window only scopes which leads count toward Lead/Contacted/Qualified). ' +
-      'Converted != revenue: booked/attended/treatment-accepted/invoiced/collected are tracked separately on purpose.',
+      'Converted != revenue: booked/attended/treatment-accepted/paying/invoiced/collected are tracked separately on purpose. ' +
+      'Paying clients are distinct cleanly-attributed patients with at least one positive Payment row.',
   }
 }
 
