@@ -298,9 +298,30 @@ export default function DashboardPage() {
 
     fetch('/api-proxy/crm-automation/reports/stage-conversion-rates', { headers: auth })
       .then(r => r.ok ? r.json() : null).then(d => { if (d?.totals) setGrowthFunnel(d) }).catch(() => {})
-    fetch('/api-proxy/crm-automation/reports/acquisition-revenue', { headers: auth })
-      .then(r => r.ok ? r.json() : null).then(d => { if (d?.funnel && d?.revenue) setGrowthRevenue(d) }).catch(() => {})
+
   }, [])
+
+  useEffect(() => {
+    const token = localStorage.getItem('cc_token')
+    if (!token) return
+    const now = new Date()
+    const local = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+    const start = new Date(local)
+    start.setHours(0, 0, 0, 0)
+    if (growthPeriod === 'week') { const day = start.getDay(); start.setDate(start.getDate() - (day === 0 ? 6 : day - 1)) }
+    if (growthPeriod === 'month') start.setDate(1)
+    if (growthPeriod === 'year') start.setMonth(0, 1)
+    const qs = new URLSearchParams()
+    if (growthPeriod !== 'all') {
+      qs.set('dateFrom', new Date(start.getTime() - 3 * 60 * 60 * 1000).toISOString())
+      qs.set('dateTo', now.toISOString())
+    }
+    const suffix = qs.toString() ? '?' + qs.toString() : ''
+    fetch('/api-proxy/crm-automation/reports/acquisition-revenue' + suffix, { headers: { Authorization: 'Bearer ' + token } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.funnel && d?.revenue) setGrowthRevenue(d) })
+      .catch(() => {})
+  }, [growthPeriod])
 
   // Returning/New avatar previews come from the dashboard endpoint's own
   // canonical newIds/returningIds (see clinical.ts) rather than a separate
