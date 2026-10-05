@@ -160,6 +160,34 @@ export async function applyQualifyingIntent(leadId: string, byUserId: string, in
   return transitionLeadStage(leadId, 'QUALIFIED', { changedBy: byUserId, trigger: 'MANUAL', reason: `qualifying_intent:${intent}` })
 }
 
+// Conservative cross-channel qualification signal. This deliberately only
+// recognizes explicit commercial/booking intent; greetings, general dental
+// questions, symptoms and ordinary conversation must remain unqualified.
+export function detectCrmQualifyingIntent(message: string): string | null {
+  const text = message.toLowerCase().trim()
+  if (/\b(how much|price|pricing|cost|charge|charges|fee|fees)\b/.test(text)) return 'asked_pricing'
+  if (/\b(available slot|slots available|check availability|who is available|which doctor is available|available today|available tomorrow)\b/.test(text)) return 'asked_availability'
+  if (/\b(i want to book|i'd like to book|i would like to book|can i book|please book|book (?:me|an? appointment)|schedule (?:me|an? appointment)|can i come in|i want an? appointment|need an? appointment|make an? appointment)\b/.test(text)) return 'wants_appointment'
+  return null
+}
+
+// Automated counterpart to applyQualifyingIntent(). It preserves the same
+// CONTACTED + recent genuine inbound safeguards and the canonical stage/history
+// write path, but records automation rather than inventing a human actor.
+export async function applyAutomatedQualifyingIntent(leadId: string, intent: string): Promise<Lead> {
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } })
+  if (lead.status !== 'CONTACTED') return lead
+  const repliedRecently = !!lead.lastInboundReplyAt && Date.now() - lead.lastInboundReplyAt.getTime() <= FORTY_EIGHT_HR_MS
+  if (!repliedRecently) return lead
+
+  await prisma.lead.update({ where: { id: leadId }, data: { qualifyingIntent: intent } })
+  return transitionLeadStage(leadId, 'QUALIFIED', {
+    changedBy: null,
+    trigger: 'AUTOMATION',
+    reason: 'qualifying_intent:' + intent,
+  })
+}
+
 // ── CONTACTED -> LOST: no lead response within 48h of the last outbound
 // message. Swept periodically alongside the SLA engine (see main.ts wiring).
 export async function sweepStaleContactedLeads(): Promise<number> {

@@ -31,7 +31,7 @@ import { prisma } from '../lib/prisma'
 import type { Lead, Prisma, CommsChannel } from '@prisma/client'
 import { emitAutomationEvent } from './automation-events.service'
 import { pickOwnerForNewLead } from './lead-routing.service'
-import { recordInboundLeadMessage } from './lead-stage.service'
+import { recordInboundLeadMessage, detectCrmQualifyingIntent, applyAutomatedQualifyingIntent } from './lead-stage.service'
 import { sendOrSimulate, isCrmFeatureLive } from './dry-run'
 import { sendPushToUser } from '../services/push.service'
 import { recordLeadConsent, decideLeadSend, isAllowed, type LeadConsentSource } from './lead-consent.service'
@@ -177,6 +177,15 @@ export async function findOrCreateLeadForChannel(params: FindOrCreateLeadParams)
     // CONTACTED->QUALIFIED window and the CONTACTED->LOST no-response sweep
     // actually observe real channel traffic instead of only manual actions.
     await recordInboundLeadMessage(lead.id)
+
+    // Qualification is channel-neutral: once a real staff reply has moved the
+    // lead to CONTACTED, a later genuine inbound message with explicit
+    // commercial/booking intent can qualify it. The classifier is deliberately
+    // conservative so greetings and general questions do not inflate the funnel.
+    if (lead.status === 'CONTACTED' && params.onExistingMessage) {
+      const intent = detectCrmQualifyingIntent(params.onExistingMessage)
+      if (intent) await applyAutomatedQualifyingIntent(lead.id, intent)
+    }
 
     if (params.contactEvidence) {
       await recordLeadConsent({
