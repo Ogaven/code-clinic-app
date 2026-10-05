@@ -163,7 +163,7 @@ router.get('/connections/facebook/callback', async (req, res) => {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              subscribed_fields: ['messages', 'messaging_postbacks', 'messaging_referrals'],
+              subscribed_fields: ['messages', 'messaging_postbacks', 'messaging_referrals', 'feed'],
               access_token: pageToken,
             }),
           },
