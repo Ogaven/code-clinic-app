@@ -47,6 +47,7 @@ describe('buildAcquisitionRevenueReport — single-linking-lead attribution', ()
     const report = await buildAcquisitionRevenueReport({ source: 'FACEBOOK' })
 
     expect(report.funnel.bookedCount).toBe(1)
+    expect(report.funnel.convertedCount).toBe(1)
     expect(report.funnel.attendedCount).toBe(1)
     expect(report.funnel.payingClientCount).toBe(1)
     expect(report.revenue.treatmentValueUGX).toBe(190_000) // 100000*2 - 10000
