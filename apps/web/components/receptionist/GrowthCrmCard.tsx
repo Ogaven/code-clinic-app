@@ -44,11 +44,11 @@ export default function GrowthCrmCard() {
       </div>
       <div className="my-2.5 space-y-1.5">
         <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Users size={12} /> New Leads (7d)</span>
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Users size={12} /> Leads</span>
           <span className="text-sm font-bold text-white">{newLeads ?? '—'}</span>
         </div>
         <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><UserCheck size={12} /> Converted <span className="text-blue-200/60">(all time)</span></span>
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><UserCheck size={12} /> Converted</span>
           <span className="text-sm font-bold text-white">{convertedLeads ?? '—'}</span>
         </div>
         {/* Labelled "Source Recorded", NOT "Referral Patients" — this counts
