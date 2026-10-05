@@ -85,7 +85,9 @@ router.post('/message', async (req, res) => {
       },
       onExistingMessage: message,
       intakeOptions: { skipAcknowledgement: true },
-      contactEvidence: { channel: 'WEBSITE', source: 'INBOUND_MESSAGE' },
+      // CommsChannel has no WEBSITE enum today. Do not fabricate consent on a
+      // different channel; the website message itself is still recorded as
+      // genuine inbound CRM activity by findOrCreateLeadForChannel().
     })
 
     const reply = await getAgentReplyV2OpenAI(conv.id, sessionId, message, 'WEBSITE')
