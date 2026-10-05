@@ -12,7 +12,7 @@
 // custom prop signature like this one.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus, Search, CalendarClock, BellRing } from 'lucide-react'
+import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus, Search, CalendarClock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { doctorLabel, findDoctorIdByLabel, type DoctorLite } from '@/lib/doctorLabel'
@@ -190,7 +190,6 @@ export default function TreatmentPipelineBoard({
   const [movePlan,       setMovePlan]       = useState<Plan | null>(null)
   const [needsReview,    setNeedsReview]    = useState<NeedsReviewData | null>(null)
   const [reviewOpen,     setReviewOpen]     = useState(false)
-  const [followUpOpen,   setFollowUpOpen]   = useState(true)
   const [declinedOpen,   setDeclinedOpen]   = useState(false)
   const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set())
   const [bulkStatus,     setBulkStatus]     = useState('')
@@ -302,12 +301,6 @@ export default function TreatmentPipelineBoard({
       return
     }
     await applyStatusChange(planId, targetStatus)
-  }
-
-  const handleDragOver = (e: React.DragEvent, statusId: string) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    setDropOver(statusId)
   }
 
   const handleDrop = async (e: React.DragEvent, targetStatus: string) => {
@@ -485,7 +478,31 @@ export default function TreatmentPipelineBoard({
   }, [plans, search, doctorFilter, stageFilter, followUpFilter])
 
   const plansByStatus = (statusId: string) => filteredPlans.filter(p => p.status === statusId)
-  const statusTotal   = (statusId: string) => plansByStatus(statusId).reduce((s, p) => s + p.value, 0)
+
+  // Follow Up is an operational queue, not a TreatmentPlan status. A plan
+  // appears in this virtual column whenever it has an outstanding follow-up
+  // date, while its real status (Planned/In Progress/etc.) remains untouched.
+  // This keeps follow-up scheduling additive and avoids corrupting the shared
+  // status field used by Treatment Plan and Case Acceptance.
+  const filteredFollowUps = useMemo(() => {
+    const visibleIds = new Set(filteredPlans.map(p => p.id))
+    return followUps.filter(p => visibleIds.has(p.id))
+  }, [followUps, filteredPlans])
+
+  const FOLLOW_UP_COLUMN = {
+    id: '__follow_up__',
+    label: 'Follow Up',
+    headerColor: '#5B21B6',
+    headerBg: '#EDE9FE',
+  }
+
+  const boardColumns = [...PRIMARY_COLUMNS, FOLLOW_UP_COLUMN]
+
+  const columnPlans = (statusId: string) =>
+    statusId === FOLLOW_UP_COLUMN.id ? filteredFollowUps : plansByStatus(statusId)
+
+  const statusTotal = (statusId: string) =>
+    columnPlans(statusId).reduce((s, p) => s + p.value, 0)
 
   // Declined plans, read-only historical view — same filter set (search/
   // doctor/stage) as the main board, just never rendered as a draggable
@@ -586,28 +603,9 @@ export default function TreatmentPipelineBoard({
         </select>
       </div>
 
-      {/* ── Follow Up section ────────────────────────────────────────────
-          Cross-cutting view of plans the patient asked to be followed up
-          on (followUpAt set). NOT a pipeline status/stage — a plan keeps
-          whatever status/stage it already has (Planned, On Hold, even a
-          reconsidered Declined) and simply also appears here while the
-          follow-up is outstanding, sorted soonest-first.
-          Always rendered, even with zero outstanding follow-ups (shows a
-          friendly empty state) — a section that only appears once staff
-          have already used the feature isn't discoverable as "a clear
-          usable Pipeline section" for someone checking it exists. Not
-          gated by loading either, so it doesn't flash in after the board. */}
-      {!loading && (
-        <FollowUpSection
-          plans={followUps}
-          open={followUpOpen}
-          onToggle={() => setFollowUpOpen(v => !v)}
-          onOpenPatient={(patientId) => router.push(`${patientBasePath}/${patientId}`)}
-          onOpenDetail={(plan) => setDetailPlan(plan)}
-          onResolve={resolveFollowUp}
-          onReschedule={(plan) => setFollowUpModal({ plan, pendingStatus: null })}
-        />
-      )}
+      {/* Outstanding follow-ups now live as the final Kanban column below.
+          This removes the duplicate accordion while preserving the same
+          follow-up dates, reasons, reminders and resolve/reschedule actions. */}
 
       {/* ── Declined (history) section ────────────────────────────────────
           Declined is no longer a primary active-work column — it never
@@ -718,8 +716,8 @@ export default function TreatmentPipelineBoard({
           style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
         >
           <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-            {PRIMARY_COLUMNS.map(status => {
-              const statusPlans = plansByStatus(status.id)
+            {boardColumns.map(status => {
+              const statusPlans = columnPlans(status.id)
               const total       = statusTotal(status.id)
               const isOver      = dropOver === status.id
               const isExpanded  = expandedColumns.has(status.id)
@@ -735,9 +733,24 @@ export default function TreatmentPipelineBoard({
                     border:    `1px solid ${dark ? (isOver ? 'rgba(41,171,226,0.4)' : 'rgba(255,255,255,0.08)') : (isOver ? '#BAE6FD' : '#E5E7EB')}`,
                     boxShadow: isOver ? '0 0 0 2px #29ABE2' : 'none',
                   }}
-                  onDragOver={e  => handleDragOver(e, status.id)}
+                  onDragOver={e => {
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                    setDropOver(status.id)
+                  }}
                   onDragLeave={() => setDropOver(null)}
-                  onDrop={e      => handleDrop(e, status.id)}
+                  onDrop={e => {
+                    if (status.id !== FOLLOW_UP_COLUMN.id) {
+                      handleDrop(e, status.id)
+                      return
+                    }
+                    e.preventDefault()
+                    const planId = e.dataTransfer.getData('planId') || dragId
+                    setDragId(null)
+                    setDropOver(null)
+                    const plan = plans.find(p => p.id === planId)
+                    if (plan) setFollowUpModal({ plan, pendingStatus: null })
+                  }}
                 >
                   {/* Column header */}
                   <div
@@ -783,7 +796,7 @@ export default function TreatmentPipelineBoard({
                         className="h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-xs text-gray-300 dark:text-white/15"
                         style={{ borderColor: isOver ? '#29ABE2' : dark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' }}
                       >
-                        Drop here
+                        {status.id === FOLLOW_UP_COLUMN.id ? 'Drop here to set follow-up' : 'Drop here'}
                       </div>
                     )}
                     {visiblePlans.map(plan => (
@@ -1201,87 +1214,6 @@ function FollowUpModal({
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-white/70 bg-gray-100 dark:bg-white/10 rounded-lg">Cancel</button>
         </div>
       </div>
-    </div>
-  )
-}
-
-// ── Follow Up section (visible pipeline "Follow Up" view) ──────────────────────
-
-function FollowUpSection({
-  plans, open, onToggle, onOpenPatient, onOpenDetail, onResolve, onReschedule,
-}: {
-  plans: Plan[]
-  open: boolean
-  onToggle: () => void
-  onOpenPatient: (patientId: string) => void
-  onOpenDetail: (plan: Plan) => void
-  onResolve: (planId: string, resolution: 'COMPLETED' | 'DISMISSED') => void
-  onReschedule: (plan: Plan) => void
-}) {
-  const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-  const overdueCount = plans.filter(p => followUpDiffDays(p.followUpAt) !== null && followUpDiffDays(p.followUpAt)! < 0).length
-
-  return (
-    <div className="rounded-2xl border border-indigo-200 dark:border-indigo-400/20 overflow-hidden flex-shrink-0 bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-400/10 dark:to-indigo-400/5">
-      <button onClick={onToggle} className="w-full flex items-center justify-between px-4 py-3 hover:bg-indigo-50/50 dark:hover:bg-indigo-400/10 transition-colors">
-        <div className="flex items-center gap-2">
-          <BellRing size={15} className="text-indigo-600 dark:text-indigo-400" />
-          <span className="text-sm font-bold text-indigo-800 dark:text-indigo-300">Follow Up</span>
-          <span className="text-xs font-black px-2 py-0.5 rounded-full bg-indigo-500 text-white">{plans.length}</span>
-          {overdueCount > 0 && <span className="text-xs font-bold text-red-500">{overdueCount} overdue</span>}
-        </div>
-        {open ? <ChevronUp size={15} className="text-indigo-600 dark:text-indigo-400" /> : <ChevronDown size={15} className="text-indigo-600 dark:text-indigo-400" />}
-      </button>
-      {open && (
-        <div className="bg-white dark:bg-[#0e1f4d] border-t border-indigo-200 dark:border-indigo-400/20">
-          {plans.length === 0 && (
-            <div className="px-4 py-6 text-center">
-              <p className="text-sm text-gray-400 dark:text-white/30">No treatments currently need follow-up.</p>
-              <p className="text-xs text-gray-300 dark:text-white/20 mt-1">Set "Remind us to follow up" on a treatment to see it here.</p>
-            </div>
-          )}
-          {plans.map(plan => {
-            const diff = followUpDiffDays(plan.followUpAt)
-            return (
-              <div key={plan.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-indigo-100/60 dark:border-indigo-400/10 last:border-0 hover:bg-indigo-50/30 dark:hover:bg-indigo-400/5 transition-colors cursor-pointer" onClick={() => onOpenDetail(plan)}>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-bold text-gray-800 dark:text-white truncate">{plan.patient.firstName} {plan.patient.lastName}</span>
-                    <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full',
-                      diff !== null && diff < 0 ? 'bg-red-100 text-red-700 dark:bg-red-400/15 dark:text-red-300'
-                        : diff === 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300'
-                        : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-400/15 dark:text-indigo-300')}>
-                      {fmt(plan.followUpAt!)}
-                    </span>
-                    <span className="text-[10px] font-semibold text-gray-400 dark:text-white/40">{plan.status}</span>
-                  </div>
-                  <div className="text-[11px] text-gray-500 dark:text-white/50 mt-0.5">
-                    {plan.treatmentName} · {plan.doctorName}
-                    {plan.followUpReason && <span className="ml-2 text-gray-400 dark:text-white/30">{plan.followUpReason}</span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => onResolve(plan.id, 'COMPLETED')}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors"
-                    title="Mark reached out / complete">
-                    <CheckCircle2 size={11} className="inline mr-0.5" />Reached Out
-                  </button>
-                  <button onClick={() => onReschedule(plan)}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-400/15 dark:text-blue-300 dark:hover:bg-blue-400/25 transition-colors"
-                    title="Reschedule follow-up">
-                    <CalendarPlus size={11} className="inline mr-0.5" />Reschedule
-                  </button>
-                  <button onClick={() => onOpenPatient(plan.patientId)}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/15 transition-colors"
-                    title="Open patient">
-                    Open
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }
