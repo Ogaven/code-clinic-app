@@ -163,6 +163,21 @@ describe('processComment — comment ingestion', () => {
     )
   })
 
+  it('scopes a commenter conversation to the originating post so the inbox groups comments under the correct post', async () => {
+    await processComment('comment-post-2', 'post-2', 'same-user', 'Jane', 'What is this post about?', 'FACEBOOK_COMMENT')
+
+    expect(prismaMock.aiConversation.findFirst).toHaveBeenCalledWith({
+      where: {
+        phoneNumber: 'same-user',
+        channel: 'FACEBOOK_COMMENT',
+        status: 'ACTIVE',
+        messages: { some: { metadata: { contains: '"postId":"post-2"' } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    expect(prismaMock.aiConversation.create).toHaveBeenCalled()
+  })
+
   it('never processes a comment authored by our own Page — self-reply loop guard', async () => {
     await processComment('c1', 'post1', FB_PAGE_ID, 'Code Clinic', 'own comment', 'FACEBOOK_COMMENT')
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
