@@ -456,11 +456,36 @@ export async function sendCommentReply(
     body: new URLSearchParams({ message: text, access_token: token }).toString(),
   })
 
-  if (!res.ok) {
-    console.error(`[${channel}] Failed to send comment reply:`, await res.text())
-  } else {
-    console.log(`[${channel}] Comment reply sent to ${commentId}`)
+  const rawBody = await res.text()
+  let responseBody: any = null
+  try {
+    responseBody = rawBody ? JSON.parse(rawBody) : null
+  } catch {
+    responseBody = rawBody
   }
+
+  if (!res.ok) {
+    const detail = typeof responseBody === 'string'
+      ? responseBody
+      : JSON.stringify(responseBody)
+    throw new Error(`[${channel}] Failed to send comment reply (HTTP ${res.status}): ${detail}`)
+  }
+
+  // Meta's create-comment/reply endpoints return the created reply id on
+  // success. Treat a 2xx without that id as unverified rather than claiming
+  // the reply was delivered; this makes production diagnostics trustworthy.
+  const replyId = responseBody && typeof responseBody === 'object'
+    ? responseBody.id
+    : null
+
+  if (!replyId || typeof replyId !== 'string') {
+    const detail = typeof responseBody === 'string'
+      ? responseBody
+      : JSON.stringify(responseBody)
+    throw new Error(`[${channel}] Comment reply response missing created reply id: ${detail}`)
+  }
+
+  console.log(`[${channel}] Comment reply created: parent=${commentId} reply=${replyId}`)
 }
 
 // ── Shared processor ──────────────────────────────────────────────────────────
