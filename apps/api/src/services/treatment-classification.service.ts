@@ -64,15 +64,55 @@ export function isCancelled(plan: ClassifiablePlan): boolean {
   return plan.status === 'Cancelled'
 }
 
-interface MoneyAtRiskPlan { stage: string; value: number }
+export interface TreatmentAppointmentRef {
+  status: string
+  createdAt: Date | string
+}
 
-// Single shared definition of "Money at Risk" (value of accepted-but-
-// unscheduled plans) — same stage-based rule pipeline.ts's KPI card has
-// always used, just centralized here so reports.ts's Case Acceptance
-// endpoint can reuse the exact same number instead of inventing a second
-// definition that could drift from the first.
-export function computeMoneyAtRisk<T extends MoneyAtRiskPlan>(plans: T[]): number {
+// Appointment statuses that no longer represent a live booking for a treatment.
+// A rescheduled booking remains live when the appointment row itself is the
+// current booking; explicit cancellation/no-show does not.
+const INACTIVE_TREATMENT_APPOINTMENT_STATUSES = new Set([
+  'CANCELLED',
+  'CANCELLED_RESCHEDULED',
+  'NO_SHOW',
+])
+
+export interface TreatmentSchedulingPlan extends ClassifiablePlan {
+  value: number
+  appointments?: TreatmentAppointmentRef[]
+}
+
+export function activeTreatmentAppointment<T extends TreatmentSchedulingPlan>(plan: T): TreatmentAppointmentRef | null {
+  return (plan.appointments ?? [])
+    .filter(a => !INACTIVE_TREATMENT_APPOINTMENT_STATUSES.has(a.status))
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0] ?? null
+}
+
+// Money at Risk is accepted treatment value without a live appointment explicitly
+// linked to that treatment plan. We intentionally do not infer links from another
+// appointment belonging to the same patient.
+export function computeMoneyAtRisk<T extends TreatmentSchedulingPlan>(plans: T[]): number {
   return plans
-    .filter(p => p.stage === 'Accepted & Unscheduled')
+    .filter(p => isAccepted(p) && !activeTreatmentAppointment(p))
     .reduce((s, p) => s + p.value, 0)
+}
+
+export function computeAvgDaysToSchedule<T extends TreatmentSchedulingPlan & { acceptedAt?: Date | string | null; createdAt: Date | string }>(plans: T[]): number {
+  const scheduled = plans
+    .map(plan => ({ plan, appointment: activeTreatmentAppointment(plan) }))
+    .filter((x): x is { plan: T; appointment: TreatmentAppointmentRef } => x.appointment !== null)
+
+  if (!scheduled.length) return 0
+
+  const totalDays = scheduled.reduce((sum, { plan, appointment }) => {
+    // Until a dedicated acceptedAt timestamp exists, createdAt is the stable,
+    // non-mutating cohort timestamp. Crucially, we no longer use plan.updatedAt,
+    // which changes for unrelated edits.
+    const acceptedAt = new Date(plan.acceptedAt ?? plan.createdAt).getTime()
+    const scheduledAt = new Date(appointment.createdAt).getTime()
+    return sum + Math.max(0, (scheduledAt - acceptedAt) / 86_400_000)
+  }, 0)
+
+  return Math.round(totalDays / scheduled.length)
 }
