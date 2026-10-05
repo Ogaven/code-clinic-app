@@ -7,7 +7,7 @@ import { syncTreatmentPlanStatusFromPipeline } from '../crm-automation/patient-t
 import { logAudit } from '../services/audit.service'
 import { notifyUsers } from '../services/notification.service'
 import { parseFollowUpFields, NON_ACTIONABLE_STATUSES } from '../utils/treatment-followup'
-import { isAccepted, isDeclined, computeMoneyAtRisk } from '../services/treatment-classification.service'
+import { isAccepted, isDeclined, computeMoneyAtRisk, computeAvgDaysToSchedule } from '../services/treatment-classification.service'
 
 // ── Staff operational notifications (event hooks around the existing,
 // already-verified stage/status transitions — never a new status/stage) ────
@@ -147,6 +147,7 @@ router.get('/treatment', requireAuth, async (req, res) => {
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, patientNumber: true } },
         doctor: { include: { user: { select: { firstName: true, lastName: true } } } },
+        appointments: { select: { status: true, createdAt: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -260,16 +261,7 @@ router.get('/treatment', requireAuth, async (req, res) => {
     // computeMoneyAtRisk so Case Acceptance's report can show the exact
     // same figure instead of a second, possibly-drifting definition.
     const moneyAtRisk = computeMoneyAtRisk(enriched)
-
-    const scheduledPlans = enriched.filter(p => p.stage === 'Accepted & Scheduled')
-    const avgDaysToSchedule = scheduledPlans.length > 0
-      ? Math.round(
-          scheduledPlans.reduce((s, p) => {
-            const days = (new Date(p.updatedAt).getTime() - new Date(p.createdAt).getTime()) / 86_400_000
-            return s + Math.max(0, days)
-          }, 0) / scheduledPlans.length,
-        )
-      : 0
+    const avgDaysToSchedule = computeAvgDaysToSchedule(enriched)
 
     // ── Follow Up queue ─────────────────────────────────────────────────────
     // A separate, cross-cutting view of plans the patient asked to be
