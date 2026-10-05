@@ -7,7 +7,7 @@ const { prismaMock } = vi.hoisted(() => ({
     patient: { count: vi.fn() },
     treatmentPlan: { findMany: vi.fn() },
     invoice: { aggregate: vi.fn(), count: vi.fn() },
-    payment: { aggregate: vi.fn() },
+    payment: { aggregate: vi.fn(), findMany: vi.fn() },
   },
 }))
 vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
@@ -28,6 +28,7 @@ beforeEach(() => {
   prismaMock.invoice.aggregate.mockResolvedValue({ _sum: { totalUGX: null } })
   prismaMock.invoice.count.mockResolvedValue(0)
   prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amountUGX: null } })
+  prismaMock.payment.findMany.mockResolvedValue([])
 })
 
 describe('buildAcquisitionRevenueReport — single-linking-lead attribution', () => {
@@ -41,11 +42,13 @@ describe('buildAcquisitionRevenueReport — single-linking-lead attribution', ()
     prismaMock.treatmentPlan.findMany.mockResolvedValue([{ costPerUnit: 100_000, quantity: 2, discount: 10_000 }])
     prismaMock.invoice.aggregate.mockResolvedValue({ _sum: { totalUGX: 190_000 } })
     prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amountUGX: 150_000 } })
+    prismaMock.payment.findMany.mockResolvedValue([{ patientId: 'p1' }])
 
     const report = await buildAcquisitionRevenueReport({ source: 'FACEBOOK' })
 
     expect(report.funnel.bookedCount).toBe(1)
     expect(report.funnel.attendedCount).toBe(1)
+    expect(report.funnel.payingClientCount).toBe(1)
     expect(report.revenue.treatmentValueUGX).toBe(190_000) // 100000*2 - 10000
     expect(report.revenue.invoicedUGX).toBe(190_000)
     expect(report.revenue.collectedUGX).toBe(150_000)
