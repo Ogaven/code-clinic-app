@@ -642,10 +642,11 @@ export async function sendSocialReply(
     return
   }
 
-  // Both Facebook and Instagram DMs use /me/messages with the Page token.
-  // The /{ig-acct-id}/messages endpoint returns error #3 (capability) even with
-  // instagram_manage_messages scope; /me/messages resolves correctly for both.
-  const sendUrl = `https://graph.facebook.com/${GRAPH_VERSION}/me/messages`
+  // Instagram Business Login tokens belong on graph.instagram.com. Facebook
+  // Messenger continues to use graph.facebook.com with the Page token.
+  const sendUrl = channel === 'INSTAGRAM'
+    ? `https://graph.instagram.com/${GRAPH_VERSION}/me/messages`
+    : `https://graph.facebook.com/${GRAPH_VERSION}/me/messages`
 
   const res = await fetch(sendUrl, {
     method:  'POST',
