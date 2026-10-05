@@ -62,9 +62,12 @@ export async function transitionLeadStage(leadId: string, toStage: string, opts:
   return updated
 }
 
-// ── NEW -> CONTACTED: first HUMAN reply logged by the ASSIGNED owner ───────
+// ── NEW -> CONTACTED: first HUMAN staff reply ─────────────────────────────
 // AI-generated replies must never call this — only a real "staff replied"
 // action (human-takeover send, or an explicit "log reply" action) should.
+// A genuine clinic reply counts as contact even when the lead is unassigned or
+// another authorised receptionist/admin answers it. Ownership is a routing
+// concern; it must not make the CRM deny that a real human response happened.
 //
 // IMPORTANT: this is a STAFF OUTBOUND reply (staff -> lead), not a message
 // FROM the lead. It must never touch lastInboundReplyAt — that field is
@@ -89,12 +92,11 @@ export async function logHumanReply(leadId: string, byUserId: string): Promise<L
   await cancelSlaOnHumanReply(leadId)
   await exitActiveEnrollments('LEAD', leadId, 'EXITED_REPLY', 'human_reply_logged')
 
-  const isAssignedOwner = !!lead.assignedTo && lead.assignedTo === byUserId
-  if (lead.status === 'NEW' && isAssignedOwner) {
+  if (lead.status === 'NEW') {
     return transitionLeadStage(leadId, 'CONTACTED', {
       changedBy: byUserId,
       trigger:   'AUTOMATION',
-      reason:    'first_human_reply_by_assigned_owner',
+      reason:    'first_human_staff_reply',
     })
   }
 
