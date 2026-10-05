@@ -55,9 +55,6 @@ interface AiSnapshot {
   channels:           Record<string, number>
 }
 interface MiniPatient { id: string; firstName: string; lastName: string; avatarUrl?: string | null }
-interface GrowthCrmFunnel {
-  totals: { totalNew: number; contactedCount: number; qualifiedCount: number; convertedCount: number }
-}
 interface GrowthCrmRevenue {
   funnel: { leadCount: number; contactedCount: number; qualifiedCount: number; convertedCount: number; bookedCount: number; attendedCount: number; treatmentAcceptedCount: number; payingClientCount: number }
   revenue: { treatmentValueUGX: number; invoicedUGX: number; collectedUGX: number }
@@ -238,7 +235,6 @@ export default function DashboardPage() {
   const [upcoming, setUpcoming] = useState<Appt[] | null>(null)
   const [aiSnapshot, setAiSnapshot] = useState<AiSnapshot | null>(null)
   const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
-  const [growthFunnel, setGrowthFunnel] = useState<GrowthCrmFunnel | null>(null)
   const [growthRevenue, setGrowthRevenue] = useState<GrowthCrmRevenue | null>(null)
   const [growthPeriod, setGrowthPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month')
   const [dashError, setDashError] = useState(false)
@@ -296,8 +292,6 @@ export default function DashboardPage() {
         .catch(() => {})
     })
 
-    fetch('/api-proxy/crm-automation/reports/stage-conversion-rates', { headers: auth })
-      .then(r => r.ok ? r.json() : null).then(d => { if (d?.totals) setGrowthFunnel(d) }).catch(() => {})
 
   }, [])
 
