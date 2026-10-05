@@ -22,6 +22,7 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
     const plans = await prisma.treatmentPlan.findMany({
       where: { createdAt: { gte: fromDate, lte: toDate } },
       include: {
+        appointments: { select: { status: true, createdAt: true } },
         patient: {
           select: {
             firstName: true,
@@ -65,7 +66,7 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
     // pipeline.ts's "Money at Risk" KPI card shows — not a second, possibly
     // disagreeing definition of the same metric name.
     const moneyAtRisk = computeMoneyAtRisk(
-      (plans as any[]).map(p => ({ stage: p.stage, value: Math.round(p.costPerUnit * p.quantity - p.discount) })),
+      (plans as any[]).map(p => ({ status: p.status, appointments: p.appointments, value: Math.round(p.costPerUnit * p.quantity - p.discount) })),
     )
 
     // Per-doctor breakdown with patient lists
