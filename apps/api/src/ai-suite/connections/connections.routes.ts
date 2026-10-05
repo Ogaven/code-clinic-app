@@ -330,6 +330,27 @@ router.get('/connections/instagram/callback', async (req, res) => {
       where: { id: config.id },
       data: { instagramAccessToken: accessToken, instagramAccountName: igName },
     })
+
+    // Instagram Login does not inherit the Facebook Page subscription. Subscribe
+    // this professional account explicitly so Meta forwards DMs to our Instagram
+    // webhook after every fresh OAuth/token rotation.
+    const subRes = await fetch('https://graph.instagram.com/v24.0/me/subscribed_apps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        subscribed_fields: 'messages,messaging_postbacks',
+        access_token: accessToken,
+      }).toString(),
+    })
+    const subRaw = await subRes.text()
+    let subData: any = null
+    try { subData = subRaw ? JSON.parse(subRaw) : null } catch { subData = subRaw }
+    if (!subRes.ok || subData?.success !== true) {
+      console.error('[Instagram] Webhook subscription failed:', typeof subData === 'string' ? subData : JSON.stringify(subData))
+      throw new Error('Instagram connected, but Meta did not enable message webhook delivery. Please reconnect and try again.')
+    }
+    console.log('[Instagram] Webhook subscribed for connected professional account')
+
     res.send('<script>window.close()</script><p>Instagram connected! You can close this window.</p>')
   } catch (err: any) {
     res.status(500).send(`Error: ${err.message}`)
