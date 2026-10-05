@@ -448,7 +448,14 @@ export async function sendCommentReply(
   // Instagram comments: POST /{comment_id}/replies
   // Graph API comment endpoints require form-encoded params, not JSON
   const replyPath = channel === 'FACEBOOK_COMMENT' ? 'comments' : 'replies'
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${commentId}/${replyPath}`
+  // Instagram Business Login issues Instagram access tokens that must be sent
+  // to graph.instagram.com. Sending that token to graph.facebook.com produces
+  // OAuthException #190 ("Cannot parse access token") even though inbound
+  // comments and AI generation succeed.
+  const graphHost = channel === 'INSTAGRAM_COMMENT'
+    ? 'graph.instagram.com'
+    : 'graph.facebook.com'
+  const url = `https://${graphHost}/${GRAPH_VERSION}/${commentId}/${replyPath}`
 
   const res = await fetch(url, {
     method:  'POST',
