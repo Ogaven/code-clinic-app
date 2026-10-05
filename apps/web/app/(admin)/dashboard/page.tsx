@@ -5,7 +5,7 @@ import Link from 'next/link'
 import NextImage from 'next/image'
 import {
   Plus, Calendar, Download, Users, TrendingUp, TrendingDown, ArrowUpRight,
-  UserCheck, Megaphone, Share2, MessageSquareText, Phone,
+  UserCheck, MessageSquareText, Phone,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList,
@@ -55,9 +55,14 @@ interface AiSnapshot {
   channels:           Record<string, number>
 }
 interface MiniPatient { id: string; firstName: string; lastName: string; avatarUrl?: string | null }
-interface Lead { id: string; status: string; createdAt: string }
-interface Campaign { id: string; status: string; sentCount: number }
-interface ReferralStats { stats: { source: string; count: number; thisMonth: number }[] }
+interface GrowthCrmFunnel {
+  totals: { totalNew: number; contactedCount: number; qualifiedCount: number; convertedCount: number }
+}
+interface GrowthCrmRevenue {
+  funnel: { leadCount: number; contactedCount: number; qualifiedCount: number; bookedCount: number; attendedCount: number; treatmentAcceptedCount: number; payingClientCount: number }
+  revenue: { treatmentValueUGX: number; invoicedUGX: number; collectedUGX: number }
+  ambiguousPatientCount: number
+}
 
 const PIPELINE_STATUSES = [
   { key: 'Planned', label: 'Planned', color: '#1D4ED8' },
@@ -233,9 +238,8 @@ export default function DashboardPage() {
   const [upcoming, setUpcoming] = useState<Appt[] | null>(null)
   const [aiSnapshot, setAiSnapshot] = useState<AiSnapshot | null>(null)
   const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
-  const [leads, setLeads] = useState<Lead[] | null>(null)
-  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null)
-  const [referrals, setReferrals] = useState<ReferralStats | null>(null)
+  const [growthFunnel, setGrowthFunnel] = useState<GrowthCrmFunnel | null>(null)
+  const [growthRevenue, setGrowthRevenue] = useState<GrowthCrmRevenue | null>(null)
   const [dashError, setDashError] = useState(false)
 
   useEffect(() => {
@@ -291,12 +295,10 @@ export default function DashboardPage() {
         .catch(() => {})
     })
 
-    fetch('/api-proxy/crm/leads', { headers: auth })
-      .then(r => r.ok ? r.json() : null).then(d => { if (Array.isArray(d)) setLeads(d) }).catch(() => {})
-    fetch('/api-proxy/campaigns', { headers: auth })
-      .then(r => r.ok ? r.json() : null).then(d => { if (Array.isArray(d)) setCampaigns(d) }).catch(() => {})
-    fetch('/api-proxy/patients/referral-stats', { headers: auth })
-      .then(r => r.ok ? r.json() : null).then(d => { if (d?.stats) setReferrals(d) }).catch(() => {})
+    fetch('/api-proxy/crm-automation/reports/stage-conversion-rates', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d?.totals) setGrowthFunnel(d) }).catch(() => {})
+    fetch('/api-proxy/crm-automation/reports/acquisition-revenue', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d?.funnel && d?.revenue) setGrowthRevenue(d) }).catch(() => {})
   }, [])
 
   // Returning/New avatar previews come from the dashboard endpoint's own
@@ -350,12 +352,6 @@ export default function DashboardPage() {
     .filter(a => new Date(a.startAt).getTime() >= Date.now() && a.status !== 'CANCELLED')
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
     .slice(0, 8)
-
-  const newLeads = leads ? leads.filter(l => Date.now() - new Date(l.createdAt).getTime() < 7 * 86400000).length : null
-  const convertedLeads = leads ? leads.filter(l => l.status === 'CONVERTED').length : null
-  const activeCampaigns = campaigns ? campaigns.filter(c => c.status !== 'DRAFT').length : null
-  const referralPatients = referrals ? referrals.stats.filter(s => s.source !== 'Not Recorded').reduce((sum, s) => sum + s.count, 0) : null
-  const conversionRate = leads && leads.length > 0 && convertedLeads !== null ? Math.round((convertedLeads / leads.length) * 100) : null
 
   // Upcoming Appointments timeline geometry — pixel-based (not %) so the
   // hour labels and blocks scroll together inside the horizontal scroller.
@@ -541,59 +537,55 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* CRM / Growth summary — real Leads/Referrals/Campaigns */}
-        <Link href="/leads" className="flex flex-col justify-between rounded-2xl p-4 text-white shadow-sm transition hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg,#0c1e50,#1A237E 45%,#29ABE2)' }}>
+        {/* Growth & CRM — lifecycle and revenue are intentionally separate.
+            Paying Client requires a real positive Payment row; CONVERTED alone
+            is never presented as proof of payment. */}
+        <Link href="/crm" className="flex flex-col justify-between rounded-2xl p-4 text-white shadow-sm transition hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg,#0c1e50,#1A237E 45%,#29ABE2)' }}>
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-100">Growth &amp; CRM</p>
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-white/15"><Share2 size={13} /></span>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-blue-100">Growth &amp; CRM</p>
+              <p className="mt-0.5 text-[9px] text-blue-200/70">Enquiry → contact → intent → appointment → payment</p>
+            </div>
+            <span className="flex items-center gap-1 text-[10px] font-bold text-white/90">Open CRM <ArrowUpRight size={12} /></span>
           </div>
-          <div className="my-2.5 space-y-1.5">
-            <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Users size={12} /> New Leads (7d)</span>
-              <span className="text-sm font-bold text-white">{newLeads ?? '—'}</span>
+
+          <div className="my-2.5 grid grid-cols-2 gap-1.5">
+            {[
+              { label: 'All Leads', value: growthFunnel?.totals.totalNew },
+              { label: 'Contacted', value: growthFunnel?.totals.contactedCount },
+              { label: 'Qualified', value: growthFunnel?.totals.qualifiedCount },
+              { label: 'Appointments', value: growthRevenue?.funnel.bookedCount },
+              { label: 'Converted', value: growthFunnel?.totals.convertedCount },
+              { label: 'Paying Clients', value: growthRevenue?.funnel.payingClientCount },
+            ].map(item => (
+              <div key={item.label} className="rounded-xl bg-white/10 px-2.5 py-2">
+                <p className="text-[9px] font-medium text-blue-100">{item.label}</p>
+                <p className="mt-0.5 text-base font-extrabold text-white">{item.value ?? '—'}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-1 border-t border-white/15 pt-2 text-[9px] text-blue-100">
+            <div className="flex items-center justify-between gap-3">
+              <span>Contact rate</span>
+              <strong className="text-white">{growthFunnel && growthFunnel.totals.totalNew > 0 ? `${((growthFunnel.totals.contactedCount / growthFunnel.totals.totalNew) * 100).toFixed(1)}%` : '—'}</strong>
             </div>
-            {/* Converted = every lead ever marked CONVERTED (leads.filter,
-                full array) — genuinely all-time, unlike its "New Leads (7d)"
-                sibling above, so labelled separately rather than left to look
-                like it shares that 7-day window. */}
-            <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><UserCheck size={12} /> Converted <span className="text-blue-200/60">(all time)</span></span>
-              <span className="text-sm font-bold text-white">{convertedLeads ?? '—'}</span>
+            <div className="flex items-center justify-between gap-3">
+              <span>Lead → appointment</span>
+              <strong className="text-white">{growthRevenue && growthRevenue.funnel.leadCount > 0 ? `${((growthRevenue.funnel.bookedCount / growthRevenue.funnel.leadCount) * 100).toFixed(1)}%` : '—'}</strong>
             </div>
-            {/* referral-stats' `.count` (used here) is the all-time patient
-                count per source — the endpoint also returns a `.thisMonth`
-                field that this card deliberately does NOT use, so the label
-                must say which one this is.
-                Labelled "Source Recorded", NOT "Referral Patients": this
-                counts every patient with ANY non-empty legacy intake
-                referralSource value (Google, Walk-in, Instagram, etc — see
-                GET /patients/referral-stats), which is a much broader
-                acquisition-channel metric than genuine patient-referred-a-
-                patient tracking. That narrower metric lives on
-                /crm/referrals (Patient.crmReferralSource === 'PATIENT_
-                REFERRAL' + crmReferredByPatientId) and is a DIFFERENT,
-                deliberately much smaller number — the two must never share
-                a label, or they read as disagreeing when they're actually
-                just measuring different things. */}
-            <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Share2 size={12} /> Source Recorded <span className="text-blue-200/60">(all time)</span></span>
-              <span className="text-sm font-bold text-white">{referralPatients ?? '—'}</span>
+            <div className="flex items-center justify-between gap-3">
+              <span>Lead → paying client</span>
+              <strong className="text-white">{growthRevenue && growthRevenue.funnel.leadCount > 0 ? `${((growthRevenue.funnel.payingClientCount / growthRevenue.funnel.leadCount) * 100).toFixed(1)}%` : '—'}</strong>
             </div>
-            {/* GET /campaigns has no complete/aggregate source (confirmed: no
-                count() endpoint exists) and is hard-capped at the 100 most
-                recent WhatsApp broadcast campaigns — this count can silently
-                undercount if the clinic ever has more than 100 total, so it's
-                marked rather than presented as a guaranteed-complete total. */}
-            <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-100"><Megaphone size={12} /> Active Campaigns</span>
-              <span className="text-sm font-bold text-white" title="Based on the 100 most recently created campaigns — may undercount if older campaigns are still active">{activeCampaigns ?? '—'}{activeCampaigns !== null && <span className="ml-0.5 align-top text-[9px] font-bold text-blue-200">*</span>}</span>
+            <div className="flex items-center justify-between gap-3">
+              <span>Collected from attributable leads</span>
+              <strong className="text-white">{growthRevenue ? formatUGX(growthRevenue.revenue.collectedUGX) : '—'}</strong>
             </div>
           </div>
-          <div className="flex items-center justify-between border-t border-white/15 pt-2">
-            <span className="text-[10px] font-medium text-blue-100">{conversionRate !== null ? `${conversionRate}% lead conversion (all time)` : 'Conversion — unavailable'}</span>
-            <span className="flex items-center gap-1 text-[11px] font-bold text-white/90">Open CRM <ArrowUpRight size={12} /></span>
-          </div>
-          {activeCampaigns !== null && <p className="mt-1 text-center text-[8px] text-blue-200/60">*last 100 campaigns</p>}
+          {growthRevenue && growthRevenue.ambiguousPatientCount > 0 && (
+            <p className="mt-1.5 text-[8px] leading-tight text-amber-200">{growthRevenue.ambiguousPatientCount} ambiguous patient link(s) excluded from financial attribution.</p>
+          )}
         </Link>
       </div>
 
