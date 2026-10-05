@@ -250,12 +250,22 @@ app.use('/webhooks', webhooksRouter)
 app.use('/webhooks/scoreapp', scoreappWebhookRouter)
 
 // ─── AI Suite ─────────────────────────────────────────────────
-// Connection OAuth routes must be mounted before takeoverRouter. takeoverRouter
-// currently installs router-level requireAuth, which otherwise rejects public
-// OAuth popup/callback requests before connectionsRouter can validate their
-// short-lived, single-use state token. All non-OAuth connection routes retain
-// their own requireAuth middleware inside connections.routes.ts.
+// Connection OAuth routes AND the Facebook/Instagram webhooks must both be
+// mounted before takeoverRouter. takeoverRouter currently installs
+// router-level requireAuth, which otherwise rejects these public requests
+// before they ever reach connectionsRouter's own state-token validation or
+// facebookRouter's own signature check — confirmed in production: every
+// POST to /ai-suite/instagram/webhook was returning 401 from takeoverRouter
+// without ever reaching facebook.routes.ts, because facebookRouter used to
+// be mounted after takeoverRouter (see git history). All non-OAuth
+// connection routes retain their own requireAuth middleware inside
+// connections.routes.ts; facebookRouter's webhook routes are intentionally
+// public (Meta can't attach a staff JWT) and rely on their own signature
+// check instead.
 app.use('/ai-suite',              connectionsRouter)
+// Facebook/Instagram webhooks: GET/POST /ai-suite/facebook/webhook
+//                              GET/POST /ai-suite/instagram/webhook
+app.use('/ai-suite',              facebookRouter)
 // WhatsApp webhook: GET /ai-suite/webhook  POST /ai-suite/webhook
 app.use('/ai-suite',              aiSuiteRouter)
 // SMS inbound:      POST /ai-suite/sms/incoming
@@ -299,12 +309,6 @@ app.use('/ai-suite/voice',        voiceLlmRouter)
 app.use('/ai-suite',              agentControlRouter)
 // Agent config:     GET/PATCH /ai-suite/config
 app.use('/ai-suite',              configRouter)
-// Connections are mounted at the start of the AI Suite section above so
-// state-validated OAuth popup/callback requests are not intercepted by the
-// takeover router's router-level authentication middleware.
-// Facebook/Instagram webhooks: GET/POST /ai-suite/facebook/webhook
-//                              GET/POST /ai-suite/instagram/webhook
-app.use('/ai-suite',              facebookRouter)
 // Website chatbot:  POST /ai-suite/website/message
 //                   GET  /ai-suite/website/messages/:sessionId
 app.use('/ai-suite/website',      websiteRouter)
