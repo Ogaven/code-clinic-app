@@ -12,7 +12,7 @@
 // custom prop signature like this one.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus, Search, CalendarClock, BellRing } from 'lucide-react'
+import { RefreshCw, TrendingUp, AlertTriangle, Clock, CheckCircle2, Kanban, X, ArrowLeftRight, ChevronDown, ChevronUp, Trash2, History, CalendarPlus, Search, CalendarClock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { doctorLabel, findDoctorIdByLabel, type DoctorLite } from '@/lib/doctorLabel'
