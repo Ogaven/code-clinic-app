@@ -46,7 +46,7 @@ beforeEach(() => {
   process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'test-fb-page-token'
   process.env.INSTAGRAM_ACCESS_TOKEN = 'test-ig-token'
   process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID = IG_ACCOUNT_ID
-  global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}), text: async () => '' }) as any
+  global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'created-reply-1' }), text: async () => JSON.stringify({ id: 'created-reply-1' }) }) as any
 })
 afterEach(() => { global.fetch = originalFetch })
 
