@@ -113,6 +113,7 @@ export interface AcquisitionRevenueReport {
     leadCount: number
     contactedCount: number
     qualifiedCount: number
+    convertedCount: number
     bookedCount: number
     attendedCount: number
     treatmentAcceptedCount: number
@@ -139,10 +140,11 @@ export async function buildAcquisitionRevenueReport(filters: AttributionFilters 
     }
   }
 
-  const [leadCount, contactedCount, qualifiedCount, allLinks] = await Promise.all([
+  const [leadCount, contactedCount, qualifiedCount, convertedCount, allLinks] = await Promise.all([
     prisma.lead.count({ where: leadWhere }),
     prisma.lead.count({ where: { AND: [leadWhere, OPEN_LEAD_REACHED('CONTACTED')] } }),
     prisma.lead.count({ where: { AND: [leadWhere, OPEN_LEAD_REACHED('QUALIFIED')] } }),
+    prisma.lead.count({ where: { AND: [leadWhere, OPEN_LEAD_REACHED('CONVERTED')] } }),
     loadLeadPatientLinks(),
   ])
 
@@ -172,6 +174,7 @@ export async function buildAcquisitionRevenueReport(filters: AttributionFilters 
       leadCount,
       contactedCount,
       qualifiedCount,
+      convertedCount,
       bookedCount: bookedPatientIds.size,
       attendedCount: attendedPatientIds.size,
       treatmentAcceptedCount,
