@@ -59,7 +59,7 @@ interface GrowthCrmFunnel {
   totals: { totalNew: number; contactedCount: number; qualifiedCount: number; convertedCount: number }
 }
 interface GrowthCrmRevenue {
-  funnel: { leadCount: number; contactedCount: number; qualifiedCount: number; bookedCount: number; attendedCount: number; treatmentAcceptedCount: number; payingClientCount: number }
+  funnel: { leadCount: number; contactedCount: number; qualifiedCount: number; convertedCount: number; bookedCount: number; attendedCount: number; treatmentAcceptedCount: number; payingClientCount: number }
   revenue: { treatmentValueUGX: number; invoicedUGX: number; collectedUGX: number }
   ambiguousPatientCount: number
 }
@@ -240,6 +240,7 @@ export default function DashboardPage() {
   const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
   const [growthFunnel, setGrowthFunnel] = useState<GrowthCrmFunnel | null>(null)
   const [growthRevenue, setGrowthRevenue] = useState<GrowthCrmRevenue | null>(null)
+  const [growthPeriod, setGrowthPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month')
   const [dashError, setDashError] = useState(false)
 
   useEffect(() => {
