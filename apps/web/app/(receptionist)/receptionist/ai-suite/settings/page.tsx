@@ -1204,8 +1204,8 @@ function InstagramSection({ toast }: { toast: (m: string) => void }) {
   async function connect() {
     const r = await fetch(`${API}/ai-suite/connections/instagram/generate-state`, { headers: authH() })
     if (!r.ok) { toast('Session error — please log in again'); return }
-    const { state } = await r.json()
-    const w = window.open(`${API}/ai-suite/connections/instagram/oauth?state=${state}`, '_blank', 'width=600,height=700')
+    const { state, oauthUrl } = await r.json()
+    const w = window.open(oauthUrl || `${API}/ai-suite/connections/instagram/oauth?state=${state}`, '_blank', 'width=600,height=700')
     const t = setInterval(() => {
       if (w?.closed) {
         clearInterval(t)
