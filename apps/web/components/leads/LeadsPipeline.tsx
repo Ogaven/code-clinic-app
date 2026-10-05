@@ -299,7 +299,7 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
       if (!r.ok) { showToast(d.error || 'Failed to log reply', false); return }
       setLeads(ls => ls.map(l => l.id === lead.id ? { ...l, ...d } : l))
       setViewLead(v => v ? { ...v, ...d } : v)
-      showToast(d.status === 'CONTACTED' ? 'Reply logged — lead moved to Contacted' : 'Reply logged (lead stays New — you are not its assigned owner)')
+      showToast(d.status === 'CONTACTED' ? 'Reply logged — lead moved to Contacted' : `Reply logged — lead remains ${d.status || lead.status}`)
     } catch { showToast('Network error', false) }
     setBusy(false)
   }
