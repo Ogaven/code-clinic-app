@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma'
 import { getAgentReplyV2OpenAI } from '../ai-suite/agent/agent.service'
+import { findOrCreateLeadForChannel } from '../crm-automation/lead-intake.service'
 
 const router = Router()
 
@@ -66,6 +67,25 @@ router.post('/message', async (req, res) => {
 
     await prisma.aiMessage.create({
       data: { conversationId: conv.id, role: 'USER', content: message },
+    })
+
+    // Website visitors must enter the same CRM lifecycle as WhatsApp and
+    // social-channel enquiries. The widget session id is the stable identity
+    // available before the visitor supplies a phone/email, so use it for
+    // deduplication without pretending it is a real phone number.
+    await findOrCreateLeadForChannel({
+      where:      { provider: 'WEBSITE_CHAT', externalSubmissionId: sessionId, status: { notIn: ['CONVERTED', 'LOST'] } },
+      createData: {
+        source: 'WEBSITE',
+        status: 'NEW',
+        stage: 'NEW',
+        lastMessage: message,
+        provider: 'WEBSITE_CHAT',
+        externalSubmissionId: sessionId,
+      },
+      onExistingMessage: message,
+      intakeOptions: { skipAcknowledgement: true },
+      contactEvidence: { channel: 'WEBSITE', source: 'INBOUND_MESSAGE' },
     })
 
     const reply = await getAgentReplyV2OpenAI(conv.id, sessionId, message, 'WEBSITE')
