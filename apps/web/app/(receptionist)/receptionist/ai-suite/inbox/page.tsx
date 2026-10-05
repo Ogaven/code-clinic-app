@@ -731,9 +731,23 @@ function CommentPostView({ channel, accent, onMobileBack }: { channel: 'FB_COMME
   useEffect(() => {
     setPosts([]); setSelPost(null); setLoading(true); selPostId.current = null
     fetchPosts()
-    const t = setInterval(fetchPosts, 15000)
-    return () => clearInterval(t)
-  }, [channel])
+
+    // Keep comment inboxes fresh without requiring a manual browser refresh.
+    // A shorter poll handles normal foreground use; focus/visibility refreshes
+    // immediately after the browser throttles timers in a background tab.
+    const t = setInterval(fetchPosts, 5000)
+    const refreshOnFocus = () => fetchPosts()
+    const refreshOnVisible = () => {
+      if (document.visibilityState === 'visible') fetchPosts()
+    }
+    window.addEventListener('focus', refreshOnFocus)
+    document.addEventListener('visibilitychange', refreshOnVisible)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('focus', refreshOnFocus)
+      document.removeEventListener('visibilitychange', refreshOnVisible)
+    }
+  }, [channel, fetchPosts])
 
   function selectPost(p: PostThread) { setSelPost(p); selPostId.current = p.postId; setMobilePane('thread') }
 
