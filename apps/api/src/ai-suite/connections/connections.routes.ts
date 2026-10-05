@@ -246,7 +246,11 @@ router.get('/connections/instagram/generate-state', requireAuth, async (_req, re
     VALUES ('ig_oauth_state', ${value}, NOW())
     ON CONFLICT (key) DO UPDATE SET value = ${value}, "updatedAt" = NOW()
   `
-  res.json({ state })
+  const apiBase = process.env.API_URL || 'https://api.codeclinicemr.com'
+  res.json({
+    state,
+    oauthUrl: `${apiBase}/ai-suite/connections/instagram/oauth?state=${encodeURIComponent(state)}`,
+  })
 })
 
 router.get('/connections/instagram/oauth', async (req, res) => {
@@ -267,11 +271,14 @@ router.get('/connections/instagram/oauth', async (req, res) => {
     return res.status(500).send('Server error validating OAuth session. Please try again.')
   }
 
-  const appId    = process.env.FACEBOOK_APP_ID
+  // App Review requests the Instagram Login permissions (instagram_business_*),
+  // so this flow must use Instagram OAuth rather than Facebook Login's legacy
+  // instagram_basic / instagram_manage_messages scopes.
+  const appId    = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID
   const apiBase  = process.env.API_URL || 'https://api.codeclinicemr.com'
   const callback = encodeURIComponent(`${apiBase}/ai-suite/connections/instagram/callback`)
-  if (!appId) return res.status(503).json({ error: 'FACEBOOK_APP_ID not configured' })
-  const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${callback}&scope=instagram_basic,instagram_manage_messages,pages_show_list&response_type=code`
+  if (!appId) return res.status(503).json({ error: 'INSTAGRAM_APP_ID not configured' })
+  const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${callback}&scope=instagram_business_basic,instagram_business_manage_messages&response_type=code&enable_fb_login=0&force_authentication=1`
   res.redirect(oauthUrl)
 })
 
@@ -279,30 +286,49 @@ router.get('/connections/instagram/callback', async (req, res) => {
   const { code } = req.query as { code?: string }
   if (!code) return res.status(400).send('Missing code')
   try {
-    const appId     = process.env.FACEBOOK_APP_ID || ''
-    const appSecret = process.env.FACEBOOK_APP_SECRET || ''
+    const appId     = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID || ''
+    const appSecret = process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET || ''
     const apiBase   = process.env.API_URL || 'https://api.codeclinicemr.com'
-    const callback  = encodeURIComponent(`${apiBase}/ai-suite/connections/instagram/callback`)
+    const callback  = `${apiBase}/ai-suite/connections/instagram/callback`
 
-    const tokenRes  = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?client_id=${appId}&redirect_uri=${callback}&client_secret=${appSecret}&code=${code}`)
-    const tokenData = await tokenRes.json() as { access_token?: string }
-    if (!tokenData.access_token) throw new Error('No access token returned')
-
-    // Get Instagram account
-    const igRes  = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${tokenData.access_token}`)
-    const igData = await igRes.json() as { data?: Array<{ instagram_business_account?: { id: string }; name: string; access_token: string }> }
-    const page   = igData.data?.[0]
-    let igName   = page?.name || 'Connected'
-    if (page?.instagram_business_account) {
-      const igInfoRes  = await fetch(`https://graph.facebook.com/v19.0/${page.instagram_business_account.id}?fields=username&access_token=${page.access_token}`)
-      const igInfoData = await igInfoRes.json() as { username?: string }
-      if (igInfoData.username) igName = '@' + igInfoData.username
+    // Instagram Login exchanges the authorization code at api.instagram.com
+    // using form fields (not Facebook's graph OAuth endpoint).
+    const tokenRes = await fetch('https://api.instagram.com/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: appId,
+        client_secret: appSecret,
+        grant_type: 'authorization_code',
+        redirect_uri: callback,
+        code,
+      }).toString(),
+    })
+    const tokenData = await tokenRes.json() as { access_token?: string; user_id?: number | string; error_message?: string; error?: any }
+    if (!tokenRes.ok || !tokenData.access_token) {
+      throw new Error(tokenData.error_message || JSON.stringify(tokenData.error || tokenData))
     }
+
+    // Upgrade the short-lived Instagram token to the 60-day token used by the
+    // production messaging integration.
+    const longRes = await fetch(`https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${encodeURIComponent(appSecret)}&access_token=${encodeURIComponent(tokenData.access_token)}`)
+    const longData = await longRes.json() as { access_token?: string; expires_in?: number; error?: any }
+    const accessToken = longData.access_token || tokenData.access_token
+
+    // Resolve the professional account identity on the same Instagram Login
+    // graph surface used by the token. Failure to resolve the username should
+    // not discard an otherwise valid messaging token.
+    let igName = tokenData.user_id ? String(tokenData.user_id) : 'Connected'
+    try {
+      const profileRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${encodeURIComponent(accessToken)}`)
+      const profile = await profileRes.json() as { id?: string; username?: string }
+      if (profile.username) igName = '@' + profile.username
+    } catch {}
 
     const config = await getConfig()
     await prisma.aiAgentConfig.update({
       where: { id: config.id },
-      data: { instagramAccessToken: page?.access_token || tokenData.access_token, instagramAccountName: igName },
+      data: { instagramAccessToken: accessToken, instagramAccountName: igName },
     })
     res.send('<script>window.close()</script><p>Instagram connected! You can close this window.</p>')
   } catch (err: any) {
