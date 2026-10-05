@@ -571,13 +571,21 @@ export default function DashboardPage() {
             <span className="flex items-center gap-1 text-[10px] font-bold text-white/90">Open CRM <ArrowUpRight size={12} /></span>
           </div>
 
+          <div className="mt-3 flex flex-wrap gap-1">
+            {(['today', 'week', 'month', 'year', 'all'] as const).map(p => (
+              <button key={p} type="button" onClick={(e) => { e.preventDefault(); setGrowthPeriod(p) }} className={"rounded-full px-2 py-1 text-[9px] font-bold transition " + (growthPeriod === p ? "bg-white text-[#1A237E]" : "bg-white/10 text-blue-100 hover:bg-white/20")}>
+                {p === 'all' ? 'All Time' : p[0].toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
+
           <div className="my-2.5 grid grid-cols-2 gap-1.5">
             {[
-              { label: 'All Leads', value: growthFunnel?.totals.totalNew },
-              { label: 'Contacted', value: growthFunnel?.totals.contactedCount },
-              { label: 'Qualified', value: growthFunnel?.totals.qualifiedCount },
+              { label: 'Leads', value: growthRevenue?.funnel.leadCount },
+              { label: 'Contacted', value: growthRevenue?.funnel.contactedCount },
+              { label: 'Qualified', value: growthRevenue?.funnel.qualifiedCount },
               { label: 'Appointments', value: growthRevenue?.funnel.bookedCount },
-              { label: 'Converted', value: growthFunnel?.totals.convertedCount },
+              { label: 'Converted', value: growthRevenue?.funnel.convertedCount },
               { label: 'Paying Clients', value: growthRevenue?.funnel.payingClientCount },
             ].map(item => (
               <div key={item.label} className="rounded-xl bg-white/10 px-2.5 py-2">
@@ -590,7 +598,7 @@ export default function DashboardPage() {
           <div className="space-y-1 border-t border-white/15 pt-2 text-[9px] text-blue-100">
             <div className="flex items-center justify-between gap-3">
               <span>Contact rate</span>
-              <strong className="text-white">{growthFunnel && growthFunnel.totals.totalNew > 0 ? `${((growthFunnel.totals.contactedCount / growthFunnel.totals.totalNew) * 100).toFixed(1)}%` : '—'}</strong>
+              <strong className="text-white">{growthRevenue && growthRevenue.funnel.leadCount > 0 ? `${((growthRevenue.funnel.contactedCount / growthRevenue.funnel.leadCount) * 100).toFixed(1)}%` : '—'}</strong>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span>Lead → appointment</span>
