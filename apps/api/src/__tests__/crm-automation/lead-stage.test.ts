@@ -95,13 +95,19 @@ describe('logHumanReply — STAFF outbound reply, NEW -> CONTACTED (Part N)', ()
     )
   })
 
-  it('does NOT transition when a different staff member (not the assigned owner) logs the reply', async () => {
-    prismaMock.lead.findUniqueOrThrow.mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1', firstReplyAt: null, firstHumanReplyAt: null, lossReason: null })
-    prismaMock.lead.update.mockResolvedValueOnce({ id: 'lead-1' })
+  it('transitions when a different authorized staff member (not the assigned owner) logs the real reply', async () => {
+    prismaMock.lead.findUniqueOrThrow
+      .mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1', firstReplyAt: null, firstHumanReplyAt: null, lossReason: null })
+      .mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', lossReason: null })
+    prismaMock.lead.update
+      .mockResolvedValueOnce({ id: 'lead-1' })
+      .mockResolvedValueOnce({ id: 'lead-1', status: 'CONTACTED' })
 
     await logHumanReply('lead-1', 'someone-else')
 
-    expect(prismaMock.leadStageHistory.create).not.toHaveBeenCalled()
+    expect(prismaMock.leadStageHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ toStage: 'CONTACTED', reason: 'first_human_staff_reply' }) })
+    )
   })
 
   it('cancels the SLA clock and exits active sequence enrollments on any logged human reply', async () => {
@@ -173,14 +179,20 @@ describe('advanceLeadOnHumanReply — wiring the real staff-reply send path to t
     await expect(advanceLeadOnHumanReply('+256700000001', 'owner-1')).resolves.toBeUndefined()
   })
 
-  it('still stamps reply data (via logHumanReply) even when the sender is NOT the assigned owner, but does not change stage', async () => {
+  it('advances NEW -> CONTACTED even when the real staff sender is NOT the assigned owner', async () => {
     prismaMock.lead.findFirst.mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1' })
-    prismaMock.lead.findUniqueOrThrow.mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1', firstReplyAt: null, firstHumanReplyAt: null, lossReason: null })
-    prismaMock.lead.update.mockResolvedValueOnce({ id: 'lead-1' })
+    prismaMock.lead.findUniqueOrThrow
+      .mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', assignedTo: 'owner-1', firstReplyAt: null, firstHumanReplyAt: null, lossReason: null })
+      .mockResolvedValueOnce({ id: 'lead-1', status: 'NEW', lossReason: null })
+    prismaMock.lead.update
+      .mockResolvedValueOnce({ id: 'lead-1' })
+      .mockResolvedValueOnce({ id: 'lead-1', status: 'CONTACTED' })
 
     await advanceLeadOnHumanReply('+256700000001', 'a-different-staff-member')
 
-    expect(prismaMock.leadStageHistory.create).not.toHaveBeenCalled()
+    expect(prismaMock.leadStageHistory.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ toStage: 'CONTACTED', reason: 'first_human_staff_reply' }) })
+    )
     expect(prismaMock.lead.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ firstReplyAt: expect.any(Date) }) })
     )
