@@ -465,6 +465,11 @@ model Appointment {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // Optional explicit link to the treatment plan this booking fulfils. Existing
+  // appointments remain valid with null; no historical data is guessed/backfilled.
+  treatmentPlanId String?
+  treatmentPlan   TreatmentPlan? @relation(fields: [treatmentPlanId], references: [id], onDelete: SetNull)
+
   invoice     Invoice?
   feedback    PatientFeedback?
 
@@ -472,6 +477,7 @@ model Appointment {
   @@index([patientId, startAt])
   @@index([followUpSent, status])
   @@index([status, startAt])
+  @@index([treatmentPlanId])
   @@map("appointments")
 }
 
@@ -1018,6 +1024,7 @@ model TreatmentPlan {
   followUpReason String?
   followUpNote   String?
 
+  appointments   Appointment[]
   followUpAlerts TreatmentFollowUpAlert[]
 
   @@index([patientId])

@@ -296,11 +296,12 @@ const createApptSchema = z.object({
   startAt:   z.string().datetime(),
   endAt:     z.string().datetime().optional(),   // client-selected duration; use when provided
   notes:     z.string().optional(),
+  treatmentPlanId: z.string().cuid().optional(),
   notify:    z.boolean().optional(),             // staff toggle — defaults to true (send) when omitted
 })
 
 router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSchema), auditLog('appointments'), async (req, res) => {
-  const { patientId, serviceId, startAt, endAt: endAtStr, notes, notify } = req.body
+  const { patientId, serviceId, startAt, endAt: endAtStr, notes, notify, treatmentPlanId } = req.body
   let { doctorId } = req.body
   if (req.user!.role === 'DOCTOR') {
     doctorId = await authenticatedDoctorId(prisma, req.user!)
@@ -309,6 +310,13 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
 
   const service = await prisma.service.findUnique({ where: { id: serviceId } })
   if (!service) { res.status(404).json({ error: 'Service not found' }); return }
+
+  // A treatment link is optional, but when supplied it must belong to this
+  // patient. Never infer a link from "same patient" or service name.
+  if (treatmentPlanId) {
+    const plan = await prisma.treatmentPlan.findFirst({ where: { id: treatmentPlanId, patientId }, select: { id: true } })
+    if (!plan) { res.status(400).json({ error: 'Treatment plan does not belong to this patient' }); return }
+  }
 
   const start = new Date(startAt)
   // Use the client-supplied endAt (user's duration choice) when present;
@@ -323,7 +331,7 @@ router.post('/appointments', requireAuth, clinicalStaff, validate(createApptSche
   if (blocked) { res.status(409).json({ error: 'Doctor is unavailable during this time', reason: blocked.reason }); return }
 
   const appointment = await prisma.appointment.create({
-    data: { patientId, doctorId, serviceId, startAt: start, endAt: end, notes, createdById: req.user!.id },
+    data: { patientId, doctorId, serviceId, startAt: start, endAt: end, notes, createdById: req.user!.id, treatmentPlanId: treatmentPlanId || null },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
       doctor:  { include: { user: { select: { firstName: true, lastName: true, email: true } } } },

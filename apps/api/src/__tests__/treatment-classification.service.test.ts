@@ -8,7 +8,7 @@
 // pipeline.ts-style value-sum always select the identical subset.
 
 import { describe, expect, it } from 'vitest'
-import { isAccepted, isDeclined, isCancelled, isPresented, ACCEPTED_STATUSES, computeMoneyAtRisk } from '../services/treatment-classification.service'
+import { isAccepted, isDeclined, isCancelled, isPresented, ACCEPTED_STATUSES, computeMoneyAtRisk, computeAvgDaysToSchedule } from '../services/treatment-classification.service'
 
 function plan(status: string, followUpAt: Date | null = null) {
   return { status, followUpAt }
@@ -111,35 +111,44 @@ describe('Pipeline KPI vs Case Acceptance parity', () => {
   })
 })
 
-describe('computeMoneyAtRisk', () => {
-  it('sums value only for plans in the Accepted & Unscheduled stage', () => {
+describe('treatment scheduling KPIs', () => {
+  it('counts accepted treatment with no linked appointment as Money at Risk', () => {
     const plans = [
-      { stage: 'Accepted & Unscheduled', value: 100_000 },
-      { stage: 'Accepted & Scheduled',   value: 200_000 },
-      { stage: 'Completed',              value: 50_000 },
-      { stage: 'Accepted & Unscheduled', value: 25_000 },
+      { status: 'In Progress', value: 100_000, appointments: [] },
+      { status: 'Completed', value: 200_000, appointments: [{ status: 'CONFIRMED', createdAt: '2026-10-03T10:00:00Z' }] },
+      { status: 'Planned', value: 500_000, appointments: [] },
     ]
-    expect(computeMoneyAtRisk(plans)).toBe(125_000)
+    expect(computeMoneyAtRisk(plans)).toBe(100_000)
   })
 
-  it('returns 0 for an empty plan list', () => {
+  it('puts accepted treatment back at risk after its linked appointment is cancelled or no-show', () => {
+    const plans = [
+      { status: 'In Progress', value: 125_000, appointments: [{ status: 'CANCELLED', createdAt: '2026-10-03T10:00:00Z' }] },
+      { status: 'Completed', value: 75_000, appointments: [{ status: 'NO_SHOW', createdAt: '2026-10-04T10:00:00Z' }] },
+    ]
+    expect(computeMoneyAtRisk(plans)).toBe(200_000)
+  })
+
+  it('ignores unrelated patient appointments because only explicitly linked appointments are supplied', () => {
+    expect(computeMoneyAtRisk([{ status: 'In Progress', value: 300_000, appointments: [] }])).toBe(300_000)
+  })
+
+  it('returns zero for an empty plan list', () => {
     expect(computeMoneyAtRisk([])).toBe(0)
   })
 
-  // Parity check: pipeline.ts's own "Money at Risk" KPI card performs this
-  // exact computation on its `enriched` plans array. Asserting the same
-  // inputs produce the same output here pins down that reports.ts's
-  // case-acceptance endpoint can never silently drift from it after both
-  // call through this one shared function.
-  it('agrees with a hand-computed pipeline.ts-style figure for a mixed cohort', () => {
-    const enriched = [
-      { stage: 'Treatment Presented',    value: 10_000 },
-      { stage: 'Accepted & Unscheduled', value: 300_000 },
-      { stage: 'Declined',               value: 40_000 },
+  it('computes Avg Days to Schedule from treatment creation to linked appointment creation', () => {
+    const plans = [
+      { status: 'In Progress', value: 1, createdAt: '2026-10-01T08:00:00Z', appointments: [{ status: 'CONFIRMED', createdAt: '2026-10-03T08:00:00Z' }] },
+      { status: 'Completed', value: 1, createdAt: '2026-10-01T08:00:00Z', appointments: [{ status: 'PENDING', createdAt: '2026-10-05T08:00:00Z' }] },
     ]
-    const handComputed = enriched
-      .filter(p => p.stage === 'Accepted & Unscheduled')
-      .reduce((s, p) => s + p.value, 0)
-    expect(computeMoneyAtRisk(enriched)).toBe(handComputed)
+    expect(computeAvgDaysToSchedule(plans)).toBe(3)
+  })
+
+  it('does not count cancelled linked appointments in Avg Days to Schedule', () => {
+    const plans = [
+      { status: 'In Progress', value: 1, createdAt: '2026-10-01T08:00:00Z', appointments: [{ status: 'CANCELLED', createdAt: '2026-10-02T08:00:00Z' }] },
+    ]
+    expect(computeAvgDaysToSchedule(plans)).toBe(0)
   })
 })
