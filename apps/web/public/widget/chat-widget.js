@@ -32,11 +32,11 @@
     '#ccw{position:fixed;z-index:2147483647;user-select:none;-webkit-user-select:none}',
 
     // Floating button
-    '#ccb{width:82px;height:82px;border-radius:50%;background:#fff;border:3px solid #0f6b5b;',
+    '#ccb{width:82px;height:82px;border-radius:50%;background:#fff;border:3px solid #29ABE2;',
     'cursor:pointer;padding:7px;box-shadow:0 10px 34px rgba(12,30,80,.20);position:relative;',
     'overflow:visible;touch-action:none;animation:ccfloat 3s ease-in-out infinite;transition:transform .2s}',
-    '#ccb:before,#ccb:after{content:"";position:absolute;inset:-11px;border-radius:50%;border:6px solid rgba(15,107,91,.16);pointer-events:none;animation:ccring 2.8s ease-in-out infinite}',
-    '#ccb:after{inset:-20px;border-width:7px;border-color:rgba(41,171,226,.09);animation-delay:-1.4s}',
+    '#ccb:before,#ccb:after{content:"";position:absolute;inset:-11px;border-radius:50%;border:6px solid rgba(41,171,226,.22);pointer-events:none;animation:ccring 2.8s ease-in-out infinite}',
+    '#ccb:after{inset:-20px;border-width:7px;border-color:rgba(26,35,126,.12);animation-delay:-1.4s}',
     '#ccb:hover{transform:scale(1.04)}',
     '#ccb.drag{animation:none!important;cursor:grabbing}',
     '@keyframes ccfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}',
@@ -51,16 +51,16 @@
     // Panel
     '#ccp{position:fixed;z-index:2147483646;width:390px;height:600px;max-height:calc(100vh - 24px);',
     'background:#fff;border:1px solid rgba(15,23,42,.08);border-radius:24px;box-shadow:0 24px 80px rgba(12,30,80,.24);',
-    'display:none;flex-direction:column;overflow:hidden;animation:ccsi .25s ease}',
-    '@keyframes ccsi{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}',
+    'display:none;flex-direction:column;overflow:hidden;transform-origin:bottom right;animation:ccsi .28s cubic-bezier(.2,.8,.2,1)}',
+    '@keyframes ccsi{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}',
 
     // Panel header
     '#ccph{background:linear-gradient(135deg,#0c1e50 0%,#123b78 58%,#29ABE2 100%);padding:16px 16px;display:flex;align-items:center;',
     'gap:10px;flex-shrink:0}',
-    '#ccpav{width:38px;height:38px;border-radius:50%;overflow:hidden;',
+    '#ccpav{width:44px;height:44px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,.78);',
     'background:rgba(255,255,255,.25);display:flex;align-items:center;',
     'justify-content:center;flex-shrink:0}',
-    '#ccpav img{width:100%;height:100%;object-fit:cover;display:block}',
+    '#ccpav img{width:100%;height:100%;object-fit:contain;object-position:center bottom;display:block;background:#fff}',
     '#ccpav .ccpf{display:none;font:700 16px sans-serif;color:#fff}',
     '#ccpinfo{flex:1}',
     '#ccpname{font:800 16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;letter-spacing:-.01em}',
@@ -289,11 +289,13 @@
   var unread = 0;
 
   function placePanel() {
-    var onRight = (bx + BTN_SIZE / 2) > window.innerWidth / 2;
-    var py = by - PANEL_H - 10;
-    if (py < 8) py = by + BTN_SIZE + 10;
-    var px = onRight ? bx + BTN_SIZE - PANEL_W : bx;
-    px = clamp(px, 8, window.innerWidth - PANEL_W - 8);
+    var mobile = window.innerWidth <= 520;
+    var pw = mobile ? Math.min(PANEL_W, window.innerWidth - 20) : PANEL_W;
+    var ph = mobile ? Math.min(640, window.innerHeight - 88) : Math.min(PANEL_H, window.innerHeight - 24);
+    // Float the panel above the page instead of attaching it to the launcher.
+    // Keep a comfortable inset from the viewport edges and animate it as a popup.
+    var px = clamp(window.innerWidth - pw - 42, 10, window.innerWidth - pw - 10);
+    var py = clamp(window.innerHeight - ph - 42, 10, window.innerHeight - ph - 10);
     panEl.style.left   = px + 'px';
     panEl.style.top    = py + 'px';
     panEl.style.right  = 'auto';
