@@ -6,8 +6,8 @@
   var API      = 'https://api.codeclinicemr.com';
   var AVATAR   = 'https://codeclinicemr.com/sarah.jpg';
   var BTN_SIZE = 64;
-  var PANEL_W  = 320;
-  var PANEL_H  = 420;
+  var PANEL_W  = 390;
+  var PANEL_H  = 600;
   var PAD      = 20;
   var SK       = 'cc_wgt_sid';
   var PK       = 'cc_wgt_pos';
@@ -32,11 +32,11 @@
     '#ccw{position:fixed;z-index:2147483647;user-select:none;-webkit-user-select:none}',
 
     // Floating button
-    '#ccb{width:64px;height:64px;border-radius:50%;background:#0d9488;border:0;',
-    'cursor:pointer;padding:0;box-shadow:0 4px 22px rgba(0,0,0,.3);position:relative;',
-    'overflow:hidden;touch-action:none;animation:ccbo 2s ease-in-out infinite;',
-    'transition:box-shadow .15s}',
-    '#ccb:hover{box-shadow:0 6px 28px rgba(0,0,0,.36)}',
+    '#ccb{width:64px;height:64px;border-radius:50%;background:#fff;border:3px solid rgba(41,171,226,.55);',
+    'cursor:pointer;padding:0;box-shadow:0 10px 34px rgba(12,30,80,.28),0 0 0 8px rgba(41,171,226,.10);position:relative;',
+    'overflow:hidden;touch-action:none;animation:ccbo 2.8s ease-in-out infinite;',
+    'transition:box-shadow .2s,transform .2s}',
+    '#ccb:hover{box-shadow:0 14px 40px rgba(12,30,80,.34),0 0 0 10px rgba(41,171,226,.14);transform:scale(1.03)}',
     '#ccb.drag{animation:none!important;cursor:grabbing;box-shadow:0 8px 36px rgba(0,0,0,.4)}',
     '@keyframes ccbo{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}',
     '#ccbimg{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block}',
@@ -62,13 +62,13 @@
     'font:700 10px/14px sans-serif;text-align:center;padding:0 3px;display:none}',
 
     // Panel
-    '#ccp{position:fixed;z-index:2147483646;width:320px;height:420px;',
-    'background:#fff;border-radius:16px;box-shadow:0 12px 48px rgba(0,0,0,.22);',
+    '#ccp{position:fixed;z-index:2147483646;width:390px;height:600px;max-height:calc(100vh - 24px);',
+    'background:#fff;border:1px solid rgba(15,23,42,.08);border-radius:24px;box-shadow:0 24px 80px rgba(12,30,80,.24);',
     'display:none;flex-direction:column;overflow:hidden;animation:ccsi .25s ease}',
     '@keyframes ccsi{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}',
 
     // Panel header
-    '#ccph{background:#0d9488;padding:12px 14px;display:flex;align-items:center;',
+    '#ccph{background:linear-gradient(135deg,#0c1e50 0%,#123b78 58%,#29ABE2 100%);padding:16px 16px;display:flex;align-items:center;',
     'gap:10px;flex-shrink:0}',
     '#ccpav{width:38px;height:38px;border-radius:50%;overflow:hidden;',
     'background:rgba(255,255,255,.25);display:flex;align-items:center;',
@@ -76,8 +76,8 @@
     '#ccpav img{width:100%;height:100%;object-fit:cover;display:block}',
     '#ccpav .ccpf{display:none;font:700 16px sans-serif;color:#fff}',
     '#ccpinfo{flex:1}',
-    '#ccpname{font:700 15px sans-serif;color:#fff}',
-    '#ccpsub{font:12px sans-serif;color:rgba(255,255,255,.82)}',
+    '#ccpname{font:800 16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;letter-spacing:-.01em}',
+    '#ccpsub{font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:rgba(255,255,255,.82);margin-top:2px}',
     '.cchd{width:9px;height:9px;border-radius:50%;background:#4ade80;flex-shrink:0}',
     '#ccpx{background:0;border:0;color:rgba(255,255,255,.82);font-size:24px;',
     'cursor:pointer;line-height:1;padding:0 2px;flex-shrink:0}',
@@ -85,13 +85,13 @@
 
     // Messages area
     '#ccms{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;',
-    'gap:8px;background:#f0fdf9}',
+    'gap:9px;background:linear-gradient(180deg,#f8fbff 0%,#f4f8fc 100%)}',
     '.ccbl{max-width:84%;padding:9px 12px;border-radius:12px;',
     'font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
     'word-break:break-word}',
-    '.ccs{background:#fff;align-self:flex-start;border-radius:4px 12px 12px 12px;',
-    'box-shadow:0 1px 4px rgba(0,0,0,.1);color:#1e293b}',
-    '.ccu{background:#0d9488;align-self:flex-end;',
+    '.ccs{background:#fff;align-self:flex-start;border-radius:6px 16px 16px 16px;',
+    'box-shadow:0 3px 12px rgba(12,30,80,.08);border:1px solid rgba(15,23,42,.05);color:#1e293b}',
+    '.ccu{background:linear-gradient(135deg,#1A237E,#29ABE2);align-self:flex-end;',
     'border-radius:12px 12px 4px 12px;color:#fff}',
 
     // Typing indicator
@@ -105,16 +105,21 @@
     '40%{opacity:1;transform:scale(1.2)}}',
 
     // Input row
-    '#ccir{padding:10px 12px;border-top:1px solid #e2e8f0;display:flex;',
+    '#ccir{padding:12px 12px 8px;border-top:1px solid #e8eef5;display:flex;',
     'align-items:center;gap:8px;background:#fff;flex-shrink:0}',
     '#cci{flex:1;padding:9px 14px;border:1.5px solid #e2e8f0;border-radius:22px;',
     'outline:0;font:14px sans-serif;background:#f8fafc;transition:border-color .15s}',
-    '#cci:focus{border-color:#0d9488;background:#fff}',
-    '#ccs{width:38px;height:38px;border-radius:50%;background:#0d9488;border:0;',
+    '#cci:focus{border-color:#29ABE2;background:#fff;box-shadow:0 0 0 3px rgba(41,171,226,.10)}',
+    '#ccs{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1A237E,#29ABE2);border:0;',
     'cursor:pointer;display:flex;align-items:center;justify-content:center;',
     'flex-shrink:0;transition:background .15s}',
-    '#ccs:hover:not(:disabled){background:#0f766e}',
+    '#ccs:hover:not(:disabled){filter:brightness(1.06);transform:translateY(-1px)}',
     '#ccs:disabled{background:#cbd5e1;cursor:default}',
+    '#ccbrand{padding:0 12px 10px;background:#fff;text-align:center;font:10px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#94a3b8}',
+    '.ccqa{display:flex;flex-wrap:wrap;gap:7px;align-self:flex-start;max-width:95%;margin:2px 0 4px}',
+    '.ccq{border:1px solid rgba(41,171,226,.28);background:#fff;color:#17658a;border-radius:999px;padding:7px 10px;cursor:pointer;font:600 11px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 2px 7px rgba(12,30,80,.05)}',
+    '.ccq:hover{background:#eef9fe;border-color:#29ABE2}',
+    '@media(max-width:520px){#ccp{width:calc(100vw - 20px);height:min(640px,calc(100dvh - 88px));max-height:calc(100dvh - 88px);border-radius:22px}#ccph{padding:14px}#ccms{padding:12px}.ccbl{font-size:14px;max-width:88%}}',
   ].join('');
 
   var se = document.createElement('style');
@@ -145,7 +150,7 @@
     '  </div>' +
     '  <div id="ccpinfo">' +
     '    <div id="ccpname">Sarah</div>' +
-    '    <div id="ccpsub">Code Clinic</div>' +
+    '    <div id="ccpsub">Code Clinic · Online now</div>' +
     '  </div>' +
     '  <div class="cchd"></div>' +
     '  <button id="ccpx" aria-label="Close">&times;</button>' +
@@ -343,6 +348,16 @@
       .replace(/\n/g, '<br>');
   }
 
+  function addQuickActions() {
+    if (document.getElementById('ccqa')) return;
+    var q = document.createElement('div'); q.id='ccqa'; q.className='ccqa';
+    ['Book an appointment','Services & prices','Opening hours','Talk to reception'].forEach(function(label){
+      var b=document.createElement('button'); b.type='button'; b.className='ccq'; b.textContent=label;
+      b.addEventListener('click',function(){ q.remove(); inp.value=label; sendMsg(); }); q.appendChild(b);
+    });
+    msgs.insertBefore(q, typing); msgs.scrollTop=msgs.scrollHeight;
+  }
+
   function addBubble(text, who) {
     var d = document.createElement('div');
     // who='sarah' → classes 'ccbl ccs'; who='user' → 'ccbl ccu'
@@ -376,6 +391,7 @@
       hideType();
       if (d.isNew !== false) {
         addBubble(d.greeting || FALLBACK, 'sarah');
+        addQuickActions();
       } else if (d.messages && d.messages.length) {
         for (var i = 0; i < d.messages.length; i++) {
           var m = d.messages[i];
@@ -384,6 +400,7 @@
         }
       } else {
         addBubble(FALLBACK, 'sarah');
+        addQuickActions();
       }
       // Don't badge the greeting — visitor just opened the panel
       unread = 0; badge.style.display = 'none';
@@ -391,6 +408,7 @@
     .catch(function () {
       hideType();
       addBubble(FALLBACK, 'sarah');
+      addQuickActions();
       unread = 0; badge.style.display = 'none';
     });
   }
