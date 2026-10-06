@@ -1,0 +1,116 @@
+'use client'
+
+import Image from 'next/image'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
+import { Bell, CalendarDays, Download, LogOut, Menu, Search, Settings as SettingsIcon, User, UserRound, X } from 'lucide-react'
+import { AppTheme, saveTheme } from '@/lib/theme'
+import { cn, getInitials } from '@/lib/utils'
+import { decideInstallAction, type PwaInstallState } from '@/lib/pwaInstall'
+import ProfileMenu from '@/components/layout/ProfileMenu'
+import NotificationSettingsRow from '@/components/shared/NotificationSettingsRow'
+import IOSInstallInstructions from '@/components/shared/IOSInstallInstructions'
+import { logoutOneSignal } from '@/lib/onesignal'
+
+type UserInfo = { firstName: string; lastName: string; role: string; avatarUrl?: string | null }
+type Result = { type: 'patient' | 'appointment'; id: string; primary: string; secondary: string }
+type Nav = { label: string; href?: string; children?: { label: string; href: string }[] }
+const NAV: Nav[] = [
+  { label: 'Overview', href: '/doctor/dashboard' },
+  { label: 'Appointments', children: [
+    { label: 'Calendar', href: '/doctor/schedule?tab=calendar' }, { label: 'My Appointments', href: '/doctor/schedule?tab=appointments' },
+    { label: 'Doctors', href: '/doctor/schedule?tab=doctors' }, { label: 'Services', href: '/doctor/schedule?tab=services' },
+  ] },
+  { label: 'My Patients', href: '/doctor/patients' }, { label: 'Live Flow', href: '/doctor/flow' },
+  { label: 'AI Suite', children: [
+    { label: 'Follow-up Dashboard', href: '/doctor/ai-suite/followup-dashboard' },
+    { label: 'Confirmation Dashboard', href: '/doctor/ai-suite/confirmation-dashboard' },
+    { label: 'Knowledge Base', href: '/doctor/ai-suite/knowledge' },
+  ] },
+  { label: 'Reports', children: [{ label: 'Treatment Pipeline', href: '/doctor/reports/treatment-pipeline' }] },
+]
+
+export default function DoctorTopBar({ user, theme, onTheme, install }: { user: UserInfo | null; theme: AppTheme; onTheme: (theme: AppTheme, dark: boolean) => void; install?: PwaInstallState }) {
+  const pathname = usePathname(), router = useRouter(), input = useRef<HTMLInputElement>(null)
+  const [searchOpen, setSearchOpen] = useState(false), [menuOpen, setMenuOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false), [notifOpen, setNotifOpen] = useState(false)
+  const [showInstallHelp, setShowInstallHelp] = useState(false)
+  const [query, setQuery] = useState(''), [results, setResults] = useState<Result[]>([]), [searching, setSearching] = useState(false)
+  const [notifications, setNotifications] = useState<any[]>([]), [unread, setUnread] = useState(0)
+  useEffect(() => { setMenuOpen(false); setProfileOpen(false); setNotifOpen(false) }, [pathname])
+  useEffect(() => { if (searchOpen) setTimeout(() => input.current?.focus(), 30) }, [searchOpen])
+  async function loadNotifications() {
+    const token = localStorage.getItem('cc_token')
+    if (!token) return
+    const r = await fetch('/api-proxy/receptionist/notifications', { headers: { Authorization: `Bearer ${token}` } }).catch(() => null)
+    if (!r?.ok) return
+    const d = await r.json()
+    setNotifications(d.notifications || [])
+    setUnread(d.unread || 0)
+  }
+  useEffect(() => { loadNotifications(); const timer = setInterval(loadNotifications, 30000); return () => clearInterval(timer) }, [])
+  // Reconnect/foreground resync — force an immediate refresh instead of
+  // waiting up to 30s for the next poll after the tab/device comes back.
+  useEffect(() => {
+    const onWake = () => { if (document.visibilityState === 'visible') loadNotifications() }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('online', onWake)
+    window.addEventListener('focus', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('online', onWake)
+      window.removeEventListener('focus', onWake)
+    }
+  }, [])
+
+  async function markAllNotificationsRead() {
+    const token = localStorage.getItem('cc_token')
+    if (!token || unread === 0) return
+    const r = await fetch('/api-proxy/receptionist/notifications/mark-read', { method: 'PUT', headers: { Authorization: `Bearer ${token}` } }).catch(() => null)
+    if (!r?.ok) return
+    setNotifications(current => current.map(n => ({ ...n, isRead: true })))
+    setUnread(0)
+  }
+
+  async function openNotification(notification: any) {
+    const token = localStorage.getItem('cc_token')
+    if (token && !notification.isRead) {
+      const r = await fetch(`/api-proxy/receptionist/notifications/${notification.id}/read`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } }).catch(() => null)
+      if (r?.ok) {
+        setNotifications(current => current.map(n => n.id === notification.id ? { ...n, isRead: true } : n))
+        setUnread(current => Math.max(0, current - 1))
+      }
+    }
+    setNotifOpen(false)
+    router.push(notification.href || '/doctor/notifications')
+  }
+
+  async function search(value: string) {
+    setQuery(value); if (value.trim().length < 2) { setResults([]); return }
+    setSearching(true)
+    try {
+      const token = localStorage.getItem('cc_token'), headers = { Authorization: `Bearer ${token}` }
+      const params = new URLSearchParams({ search: value.trim(), startDate: '2000-01-01', endDate: '2099-12-31', limit: '6' })
+      const [pr, ar] = await Promise.all([fetch(`/api-proxy/patients?q=${encodeURIComponent(value.trim())}&limit=6`, { headers }), fetch(`/api-proxy/scheduling/appointments?${params}`, { headers })])
+      const pd = pr.ok ? await pr.json() : [], ad = ar.ok ? await ar.json() : []
+      const patients = Array.isArray(pd) ? pd : pd.data || [], appts = Array.isArray(ad) ? ad : ad.appointments || []
+      setResults([...patients.map((p: any) => ({ type: 'patient' as const, id: p.id, primary: `${p.firstName} ${p.lastName}`, secondary: p.phone || 'My patient' })), ...appts.map((a: any) => ({ type: 'appointment' as const, id: a.id, primary: `${a.patient?.firstName || ''} ${a.patient?.lastName || ''}`.trim(), secondary: new Date(a.startAt).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Kampala' }) }))])
+    } finally { setSearching(false) }
+  }
+  function chooseTheme(next: AppTheme) { onTheme(next, saveTheme(next)) }
+  function signOut() { logoutOneSignal(); localStorage.removeItem('cc_token'); localStorage.removeItem('cc_user'); document.cookie = 'cc_token=; path=/; max-age=0'; router.push('/login') }
+  const active = (item: Nav) => item.href ? pathname === item.href || pathname.startsWith(item.href + '/') : item.children?.some(c => pathname === c.href.split('?')[0])
+  const initials = user ? getInitials(user.firstName, user.lastName) : 'DR'
+  const iconButton = 'relative grid h-10 w-10 place-items-center rounded-full border border-gray-200/80 bg-white/75 text-gray-600 shadow-sm transition hover:-translate-y-0.5 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-300'
+
+  return <>
+    <header className="sticky top-0 z-40 flex items-center gap-3 px-4 py-3 lg:px-6"><Link href="/doctor/dashboard" className="w-[128px] flex-shrink-0"><Image src="/logo.png" alt="Code Clinic" width={118} height={38} className="object-contain dark:brightness-0 dark:invert" priority /></Link><nav className="mx-auto hidden h-12 items-center gap-0.5 rounded-full border border-white/70 bg-white/65 px-2.5 shadow-[0_8px_28px_rgba(15,23,42,.08)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[.06] xl:flex">{NAV.map(item => <div key={item.label} className="group relative h-full" tabIndex={item.children ? 0 : undefined}>{item.href ? <Link href={item.href} className={cn('flex h-full items-center rounded-full px-3.5 text-[13px] font-medium tracking-[.005em] transition', active(item) ? 'bg-white text-clinic-navy shadow-sm dark:bg-white/[.14] dark:text-white' : 'text-gray-500 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-white/10')}>{item.label}</Link> : <button className={cn('flex h-full items-center rounded-full px-3.5 text-[13px] font-medium', active(item) ? 'bg-white text-clinic-navy shadow-sm dark:bg-white/[.14] dark:text-white' : 'text-gray-500 dark:text-slate-300')}>{item.label}</button>}{item.children && <div className="invisible absolute left-1/2 top-[calc(100%-2px)] w-60 -translate-x-1/2 translate-y-2 pt-3 opacity-0 transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"><div className="rounded-2xl border border-gray-200/80 bg-white/95 p-2 shadow-2xl dark:border-white/10 dark:bg-[#0b1a36]/95">{item.children.map(child => <Link key={child.label} href={child.href} className="block rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10">{child.label}</Link>)}</div></div>}</div>)}</nav><div className="ml-auto flex items-center gap-2 xl:ml-0"><button className={iconButton} onClick={() => { setSearchOpen(true); setNotifOpen(false); setProfileOpen(false) }} aria-label="Search"><Search size={18} /></button><button className={iconButton} onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false) }} aria-label="Notifications"><Bell size={18} />{unread > 0 && <span className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}</button><button onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false) }} className="hidden items-center gap-2 rounded-full p-1 pr-2 hover:bg-white/70 sm:flex dark:hover:bg-white/[.06]">{user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover" /> : <span className="grid h-9 w-9 place-items-center rounded-full bg-clinic-navy text-[11px] text-white">{initials}</span>}<span className="hidden text-left lg:block"><span className="block text-xs text-gray-800 dark:text-white">Dr. {user?.firstName}</span><span className="block text-[10px] text-gray-400">Doctor</span></span></button><button className={cn(iconButton, 'xl:hidden')} onClick={() => setMenuOpen(true)} aria-label="Navigation"><Menu size={18} /></button></div></header>
+    {searchOpen && <div className="fixed inset-0 z-[120] flex justify-center bg-slate-950/40 px-4 pt-[12vh] backdrop-blur-md" onMouseDown={() => setSearchOpen(false)}><div className="h-fit w-full max-w-2xl overflow-hidden rounded-3xl border border-white/40 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0b1a36]" onMouseDown={e => e.stopPropagation()}><div className="flex items-center gap-3 border-b px-4 dark:border-white/10"><Search size={18} className="text-gray-400" /><input ref={input} value={query} onChange={e => search(e.target.value)} placeholder="Search my patients and appointments…" className="h-14 flex-1 bg-transparent text-sm outline-none dark:text-white" /><button onClick={() => setSearchOpen(false)}><X size={17} /></button></div><div className="max-h-[420px] overflow-y-auto p-2">{searching ? <p className="py-10 text-center text-xs text-gray-400">Searching…</p> : results.length ? results.map(r => <button key={`${r.type}-${r.id}`} onClick={() => { router.push(r.type === 'patient' ? `/doctor/patients/${r.id}` : '/doctor/schedule?tab=appointments'); setSearchOpen(false) }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-white/[.06]"><span className="grid h-9 w-9 place-items-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-400/10">{r.type === 'patient' ? <UserRound size={16} /> : <CalendarDays size={16} />}</span><span><span className="block text-sm text-gray-800 dark:text-white">{r.primary}</span><span className="text-xs text-gray-400">{r.secondary}</span></span></button>) : <p className="py-10 text-center text-xs text-gray-400">{query.length < 2 ? 'Type at least two characters.' : 'No results found.'}</p>}</div></div></div>}
+    {notifOpen && <><button className="fixed inset-0 z-[90]" onClick={() => setNotifOpen(false)} /><div className="fixed right-4 top-[70px] z-[100] w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-2xl border bg-white shadow-2xl dark:border-white/10 dark:bg-[#0c1b38]"><div className="flex items-center justify-between border-b px-4 py-3 dark:border-white/10"><span className="text-sm dark:text-white">Notifications</span>{unread > 0 && <button onClick={markAllNotificationsRead} className="text-[11px] font-semibold text-cyan-600 hover:text-cyan-700 dark:text-cyan-400">Mark all read</button>}</div><div className="max-h-[380px] overflow-y-auto">{notifications.length ? notifications.slice(0, 8).map(n => <button key={n.id} onClick={() => openNotification(n)} className={cn('relative block w-full border-b px-4 py-3 text-left hover:bg-gray-50 dark:border-white/5 dark:hover:bg-white/5', !n.isRead && 'bg-blue-50/60 dark:bg-blue-900/10')}><span className={cn('block pr-4 text-xs text-gray-800 dark:text-white', !n.isRead && 'font-semibold')}>{n.title}</span><span className="line-clamp-2 pr-4 text-[11px] text-gray-400">{n.body}</span>{!n.isRead && <span className="absolute right-4 top-4 h-2 w-2 rounded-full bg-blue-500" />}</button>) : <p className="py-10 text-center text-xs text-gray-400">No notifications yet</p>}</div><div className="flex items-center justify-between border-t px-4 py-3 dark:border-white/10"><span className="text-[11px] text-gray-400">{unread > 0 ? `${unread} unread` : 'All caught up'}</span><button onClick={() => { setNotifOpen(false); router.push('/doctor/notifications') }} className="text-xs font-semibold text-cyan-600 hover:text-cyan-700 dark:text-cyan-400">View all notifications →</button></div></div></>}
+    {profileOpen && user && <><button className="fixed inset-0 z-[100]" onClick={() => setProfileOpen(false)} /><ProfileMenu user={user} theme={theme} onTheme={chooseTheme} profileHref="/doctor/profile" settingsHref="/doctor/settings" onNavigate={href => { router.push(href); setProfileOpen(false) }} onSignOut={signOut} install={install} /></>}
+    {menuOpen && <div className="fixed inset-0 z-[130] bg-slate-950/45 backdrop-blur-sm" onMouseDown={() => setMenuOpen(false)}><aside className="ml-auto flex h-full w-[min(360px,90vw)] flex-col bg-white shadow-2xl dark:bg-[#08162f]" onMouseDown={e => e.stopPropagation()}><div className="flex h-16 items-center justify-between border-b px-5 dark:border-white/10"><span className="text-sm dark:text-white">Navigation</span><button onClick={() => setMenuOpen(false)}><X size={18} /></button></div><div className="flex-1 overflow-y-auto p-3">{NAV.map(item => <div key={item.label}>{item.href ? <Link href={item.href} className="block rounded-xl px-3 py-3 text-sm text-gray-700 dark:text-slate-200">{item.label}</Link> : <><p className="px-3 pt-3 text-[10px] text-gray-400">{item.label}</p>{item.children?.map(c => <Link key={c.label} href={c.href} className="ml-2 block rounded-xl px-3 py-2 text-sm text-gray-600 dark:text-slate-300">{c.label}</Link>)}</>}</div>)}</div><div className="border-t p-3 dark:border-white/10"><MenuButton icon={Search} label="Search" onClick={() => { setMenuOpen(false); setSearchOpen(true) }} /><MenuButton icon={Bell} label="Notifications" onClick={() => { setMenuOpen(false); router.push('/doctor/notifications') }} /><MenuButton icon={User} label="My Profile" onClick={() => router.push('/doctor/profile')} /><MenuButton icon={SettingsIcon} label="Settings" onClick={() => { setMenuOpen(false); router.push('/doctor/settings') }} /><div className="my-1 border-t border-gray-100 pt-2 dark:border-white/10"><NotificationSettingsRow variant="menu" /></div>{install && !install.isStandalone && (install.canInstallNative || install.isIOS) && <MenuButton icon={Download} label="Install App" onClick={async () => { const action = decideInstallAction(install); setMenuOpen(false); if (action === 'native-prompt') { const outcome = await install.promptInstall(); if (outcome === 'unavailable') setShowInstallHelp(true); return } if (action === 'show-fallback') setShowInstallHelp(true) }} />}<button onClick={signOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-red-600"><LogOut size={15} />Sign Out</button></div></aside></div>}
+    {showInstallHelp && <IOSInstallInstructions onClose={() => setShowInstallHelp(false)} />}
+  </>
+}
+function MenuButton({ icon: Icon, label, onClick }: { icon: any; label: string; onClick: () => void }) { return <button onClick={onClick} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"><Icon size={15} />{label}</button> }
