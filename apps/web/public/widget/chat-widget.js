@@ -31,23 +31,26 @@
     // Wrapper
     '#ccw{position:fixed;z-index:2147483647;user-select:none;-webkit-user-select:none}',
 
-    // Floating button
-    '#ccb{width:112px;height:112px;border-radius:50%;background:#fff;border:3px solid #29ABE2;',
-    'cursor:pointer;padding:8px;box-shadow:0 10px 34px rgba(12,30,80,.20);position:relative;',
+    // Compact floating launcher: greeting and portrait are siblings so neither can distort the other.
+    '#ccb{width:112px;height:112px;border:0;background:transparent;cursor:pointer;padding:0;position:relative;',
     'overflow:visible;touch-action:none;animation:ccfloat 3s ease-in-out infinite;transition:transform .2s}',
-    '#ccb:before,#ccb:after{content:"";position:absolute;inset:-10px;border-radius:50%;border:6px solid rgba(41,171,226,.20);pointer-events:none;animation:ccring 2.8s ease-in-out infinite}',
-    '#ccb:after{inset:-19px;border-width:7px;border-color:rgba(26,35,126,.10);animation-delay:-1.4s}',
     '#ccb:hover{transform:scale(1.04)}',
     '#ccb.drag{animation:none!important;cursor:grabbing}',
+    '#ccring1,#ccring2,#ccring3{position:absolute;border-radius:50%;pointer-events:none;box-sizing:border-box;animation:ccring 2.8s ease-in-out infinite}',
+    '#ccring1{inset:-7px;border:5px solid rgba(41,171,226,.24)}',
+    '#ccring2{inset:-15px;border:6px solid rgba(41,171,226,.14);animation-delay:-.9s}',
+    '#ccring3{inset:-23px;border:7px solid rgba(26,35,126,.09);animation-delay:-1.8s}',
+    '#ccportrait{position:absolute;inset:0;border-radius:50%;overflow:hidden;background:#fff;border:3px solid #29ABE2;box-shadow:0 10px 34px rgba(12,30,80,.20);box-sizing:border-box;padding:6px}',
+    '#ccportraitclip{width:100%;height:100%;border-radius:50%;overflow:hidden;background:#fff;position:relative}',
     '@keyframes ccfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}',
-    '@keyframes ccring{0%,100%{transform:scale(.96);opacity:.65}50%{transform:scale(1.06);opacity:1}}',
-    '#ccbimg{width:100%;height:100%;object-fit:cover;object-position:center 18%;border-radius:50%;display:block;background:#fff}',
-    '#ccbfb{display:none;width:100%;height:100%;align-items:center;justify-content:center;font:700 26px sans-serif;color:#fff}',
+    '@keyframes ccring{0%,100%{transform:scale(.96);opacity:.58}50%{transform:scale(1.05);opacity:1}}',
+    '#ccbimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 18%;border-radius:50%;display:block;background:#fff}',
+    '#ccbfb{display:none;position:absolute;inset:0;align-items:center;justify-content:center;font:700 26px sans-serif;color:#fff;background:linear-gradient(135deg,#1A237E,#29ABE2)}',
     '#ccdot{position:absolute;bottom:5px;right:4px;width:12px;height:12px;border-radius:50%;background:#22c55e;border:2.5px solid #fff;pointer-events:none;animation:ccpu 2s ease-in-out infinite}',
     '@keyframes ccpu{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.35)}}',
     '#cctp{display:none}',
     '#ccbdg{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#ef4444;border:2px solid #fff;color:#fff;font:700 10px/14px sans-serif;text-align:center;padding:0 3px;display:none;z-index:2}',
-    '#ccgreet{position:absolute;right:-4px;bottom:142px;width:300px;background:#fff;color:#1f2937;border:1px solid rgba(41,171,226,.20);border-radius:20px;padding:16px 42px 16px 18px;box-shadow:0 14px 38px rgba(12,30,80,.14);font:600 16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;pointer-events:auto;text-align:left}',
+    '#ccgreet{position:absolute;right:-4px;bottom:142px;width:300px;box-sizing:border-box;background:#fff;color:#1f2937;border:1px solid rgba(41,171,226,.20);border-radius:20px;padding:16px 42px 16px 18px;box-shadow:0 14px 38px rgba(12,30,80,.14);font:600 16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;pointer-events:auto;text-align:left}',
     '#ccgreetx{position:absolute;right:12px;top:9px;border:0;background:transparent;color:#64748b;font-size:23px;line-height:1;cursor:pointer;padding:2px}',
     '#ccgreet.hide{display:none}',
 
@@ -122,11 +125,14 @@
   wrap.innerHTML =
     '<div id="cctp">Chat with Sarah</div>' +
     '<div id="ccbdg"></div>' +
+    '<div id="ccgreet">Hi! 😊 How may I brighten your smile today?<button id="ccgreetx" aria-label="Dismiss greeting">&times;</button></div>' +
     '<button id="ccb" aria-label="Chat with Sarah">' +
-    '  <div id="ccgreet">Hi! 😊 How may I brighten your smile today?<button id="ccgreetx" aria-label="Dismiss greeting">&times;</button></div>' +
-    '  <img id="ccbimg" src="' + AVATAR + '" alt="Sarah from Code Clinic" />' +
-    '  <div id="ccbfb"><span>S</span></div>' +
-    '  <div id="ccdot"></div>' +
+    '  <span id="ccring1"></span><span id="ccring2"></span><span id="ccring3"></span>' +
+    '  <span id="ccportrait"><span id="ccportraitclip">' +
+    '    <img id="ccbimg" src="' + AVATAR + '" alt="Sarah from Code Clinic" />' +
+    '    <span id="ccbfb"><span>S</span></span>' +
+    '  </span></span>' +
+    '  <span id="ccdot"></span>' +
     '</button>';
   document.body.appendChild(wrap);
 
@@ -311,6 +317,7 @@
 
   function openPanel() {
     placePanel();
+    wrap.style.display = 'none';
     panEl.style.display = 'flex';
     open = true;
     unread = 0;
@@ -323,6 +330,7 @@
 
   function closePanel() {
     panEl.style.display = 'none';
+    wrap.style.display = 'block';
     open = false;
   }
 
