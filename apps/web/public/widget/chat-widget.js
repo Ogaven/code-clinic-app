@@ -4,7 +4,7 @@
   'use strict';
 
   var API      = 'https://api.codeclinicemr.com';
-  var AVATAR   = 'https://codeclinicemr.com/juli.jpg?v=20261006-portrait';
+  var AVATAR   = 'https://codeclinic.ug/wp-content/uploads/2026/10/Sarah-Code-Clinic-Chatbot.jpg?v=20261006';
   var BTN_SIZE = 112;
   var PANEL_W  = 390;
   var PANEL_H  = 600;
