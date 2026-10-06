@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma'
 import { isAccepted, isDeclined, computeMoneyAtRisk } from './treatment-classification.service'
 import { getAppointmentStatusBreakdown, getPatientActivitySummary } from './patient-analytics.service'
-import { buildAcquisitionRevenueReport } from '../crm-automation/revenue-attribution.service'
+import { buildAcquisitionRevenueReport, buildSourceOutcomeEvidence } from '../crm-automation/revenue-attribution.service'
 
 export type ExecutivePeriod = 'weekly' | 'monthly'
 
@@ -102,8 +102,24 @@ async function snapshot(start: Date, end: Date) {
 
   const acquisition = await buildAcquisitionRevenueReport({ dateFrom: start, dateTo: new Date(end.getTime() - 1) })
   const sourceAttribution = await Promise.all(Object.keys(bySource).map(async source => {
-    const r = await buildAcquisitionRevenueReport({ source, dateFrom: start, dateTo: new Date(end.getTime() - 1) })
-    return { source, ...r.funnel, ...r.revenue }
+    const [r, outcomes] = await Promise.all([
+      buildAcquisitionRevenueReport({ source, dateFrom: start, dateTo: new Date(end.getTime() - 1) }),
+      buildSourceOutcomeEvidence(source, start, end),
+    ])
+    return {
+      source,
+      ...r.funnel,
+      ...r.revenue,
+      // Operational Booked/Attended must be period-scoped and may recover
+      // historical WhatsApp outcomes through exact unique phone evidence.
+      // Revenue remains on the stricter explicit Lead -> Patient rule.
+      bookedCount: outcomes.bookedCount,
+      attendedCount: outcomes.attendedCount,
+      directLinkedPatientCount: outcomes.directLinkedPatientCount,
+      evidenceMatchedPatientCount: outcomes.evidenceMatchedPatientCount,
+      ambiguousIdentityCount: outcomes.ambiguousIdentityCount,
+      outcomeAttributionNote: outcomes.note,
+    }
   }))
 
   return {
@@ -226,7 +242,8 @@ export async function buildExecutiveReport(kind: ExecutivePeriod) {
     wins, opportunities, attention,
     notes: [
       'Collected this period is based only on Code Clinic Payment records with paidAt inside the selected period; demo financial dashboard values are never used.',
-      'Attributed revenue is downstream lifetime revenue for patients cleanly linked to exactly one lead acquired in the selected period. Ambiguous multi-lead patients are excluded rather than guessed.',
+      'Business Source Booked/Attended outcomes are period-scoped. WhatsApp can recover historical outcomes only from exact unique normalized phone matches; ambiguous identities, social IDs and website session IDs are excluded.',
+      'Attributed revenue remains stricter: downstream lifetime revenue only for patients explicitly and cleanly linked to exactly one lead acquired in the selected period. Evidence-only phone matches never create revenue attribution.',
       'Treatment opportunity/value is not revenue. Paying client requires a positive Payment record.',
       'Appointment attendance and patient growth use the shared canonical patient-analytics definitions.',
       'Automation impact reports recorded events/touches only; no speculative staff-hours-saved estimate is made.',
