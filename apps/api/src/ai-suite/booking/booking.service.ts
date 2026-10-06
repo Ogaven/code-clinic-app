@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { createEscalation } from '../../services/agent/guards/escalation'
+import { checkAndConvertLeadOnBooking } from '../../crm-automation/lead-patient-link.service'
 
 export interface AvailableSlot {
   doctorId: string
@@ -295,13 +296,24 @@ export async function createAppointment(
   })
   if (conflict) throw new Error('Time slot no longer available — please pick another')
 
-  return prisma.appointment.create({
+  const appointment = await prisma.appointment.create({
     data: { patientId: resolvedPatientId, doctorId, serviceId, startAt, endAt },
     include: {
+      patient: { select: { id: true, phone: true } },
       doctor:  { include: { user: { select: { firstName: true, lastName: true } } } },
       service: { select: { name: true } },
     },
   })
+
+  // Keep AI/Sarah bookings on the same acquisition path as staff bookings.
+  // The shared linker only converts a safely matched QUALIFIED lead and
+  // refuses name-only/shared-patient guesses, so booking remains successful
+  // even if CRM attribution cannot be established.
+  checkAndConvertLeadOnBooking(appointment.patient).catch((e: any) =>
+    console.error('[CrmAutomation] AI booking lead attribution failed:', e?.message),
+  )
+
+  return appointment
 }
 
 // ── rescheduleAppointment ─────────────────────────────────────────────────────
