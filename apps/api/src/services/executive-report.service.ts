@@ -133,9 +133,20 @@ async function snapshot(start: Date, end: Date) {
       noShows: appointmentBreakdown.buckets.noShow,
       rescheduled: appointmentBreakdown.buckets.rescheduled,
       showRate: appointmentBreakdown.scheduledTotal ? Math.round((appointmentBreakdown.buckets.seen / appointmentBreakdown.scheduledTotal) * 1000) / 10 : 0,
-      avgWaitMinutes: waits.length ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : null,
-      avgProviderMinutes: providerTimes.length ? Math.round(providerTimes.reduce((a, b) => a + b, 0) / providerTimes.length) : null,
-      avgVisitMinutes: visits.length ? Math.round(visits.reduce((a, b) => a + b, 0) / visits.length) : null,
+    },
+    liveFlow: {
+      // Live Flow is intentionally separate from appointment scheduling.
+      // Durations come only from persisted clinical timestamps; missing
+      // timestamps stay unmeasured rather than being inferred from status.
+      visitsWithArrival: appointments.filter(a => !!a.arrivedAt).length,
+      visitsWithProviderStart: appointments.filter(a => !!a.withProviderAt).length,
+      completedJourneys: appointments.filter(a => !!a.arrivedAt && !!a.departedAt).length,
+      waitSamples: waits.length,
+      providerSamples: providerTimes.length,
+      visitSamples: visits.length,
+      avgArrivalToProviderMinutes: waits.length ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : null,
+      avgProviderToDepartureMinutes: providerTimes.length ? Math.round(providerTimes.reduce((a, b) => a + b, 0) / providerTimes.length) : null,
+      avgTotalVisitMinutes: visits.length ? Math.round(visits.reduce((a, b) => a + b, 0) / visits.length) : null,
     },
     patients: patientActivity,
     crm: {
