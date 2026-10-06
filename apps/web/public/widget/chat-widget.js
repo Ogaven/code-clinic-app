@@ -8,7 +8,7 @@
   var BTN_SIZE = 64;
   var PANEL_W  = 390;
   var PANEL_H  = 600;
-  var PAD      = 20;
+  var PAD      = 44;
   var SK       = 'cc_wgt_sid';
   var PK       = 'cc_wgt_pos';
 
@@ -41,13 +41,10 @@
     '#ccb.drag{animation:none!important;cursor:grabbing}',
     '@keyframes ccfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}',
     '@keyframes ccring{0%,100%{transform:scale(.96);opacity:.65}50%{transform:scale(1.06);opacity:1}}',
-    '#ccbimg{width:100%;height:100%;object-fit:cover;object-position:center 24%;border-radius:50%;display:block}',
+    '#ccbimg{width:100%;height:100%;object-fit:contain;object-position:center bottom;border-radius:50%;display:block;background:#fff}',
     '#ccbfb{display:none;width:100%;height:100%;align-items:center;justify-content:center;font:700 26px sans-serif;color:#fff}',
     '#ccdot{position:absolute;bottom:5px;right:4px;width:12px;height:12px;border-radius:50%;background:#22c55e;border:2.5px solid #fff;pointer-events:none;animation:ccpu 2s ease-in-out infinite}',
     '@keyframes ccpu{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.35)}}',
-    '#cchello{position:absolute;right:0;bottom:108px;width:286px;background:#fff;color:#1f2937;border:1px solid rgba(15,107,91,.18);border-radius:20px;padding:15px 42px 15px 17px;box-shadow:0 14px 42px rgba(12,30,80,.16);font:600 15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;pointer-events:auto}',
-    '#cchellox{position:absolute;right:13px;top:9px;border:0;background:transparent;color:#64748b;font-size:24px;line-height:1;cursor:pointer;padding:2px}',
-    '#cchello.hide{display:none}',
     '#cctp{display:none}',
     '#ccbdg{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#ef4444;border:2px solid #fff;color:#fff;font:700 10px/14px sans-serif;text-align:center;padding:0 3px;display:none;z-index:2}',
 
@@ -123,7 +120,6 @@
     '<div id="cctp">Chat with Sarah</div>' +
     '<div id="ccbdg"></div>' +
     '<button id="ccb" aria-label="Chat with Sarah">' +
-    '  <div id="cchello">Good day! I\'m Sarah from Code Clinic. Ask me anything 😊<button id="cchellox" aria-label="Dismiss greeting">×</button></div>' +
     '  <img id="ccbimg" src="' + AVATAR + '" alt="Sarah from Code Clinic" />' +
     '  <div id="ccbfb"><span>S</span></div>' +
     '  <div id="ccdot"></div>' +
@@ -197,11 +193,9 @@
     wrap.style.bottom = 'auto';
   }
 
-  function snapEdge(cx, cy) {
-    var tx = (cx + BTN_SIZE / 2) < window.innerWidth / 2
-      ? PAD
-      : window.innerWidth - BTN_SIZE - PAD;
-    var ty = clamp(cy, PAD, window.innerHeight - BTN_SIZE - PAD);
+  function savePos(x, y) {
+    var tx = clamp(x, PAD, window.innerWidth - BTN_SIZE - PAD);
+    var ty = clamp(y, PAD, window.innerHeight - BTN_SIZE - PAD);
     setPos(tx, ty, true);
     try { localStorage.setItem(PK, JSON.stringify({ x: tx, y: ty })); } catch (e) {}
   }
@@ -212,14 +206,14 @@
       var sp = JSON.parse(localStorage.getItem(PK) || 'null');
       if (sp && typeof sp.x === 'number' && typeof sp.y === 'number') {
         setPos(
-          clamp(sp.x, 0, window.innerWidth  - BTN_SIZE),
-          clamp(sp.y, 0, window.innerHeight - BTN_SIZE),
+          clamp(sp.x, PAD, window.innerWidth  - BTN_SIZE - PAD),
+          clamp(sp.y, PAD, window.innerHeight - BTN_SIZE - PAD),
           false
         );
         return;
       }
     } catch (e) {}
-    setPos(window.innerWidth - BTN_SIZE - PAD, window.innerHeight - BTN_SIZE - PAD, false);
+    setPos(window.innerWidth - BTN_SIZE - 64, window.innerHeight - BTN_SIZE - 64, false);
   })();
 
   function startDrag(ex, ey) {
@@ -247,7 +241,7 @@
     if (moved) {
       blockClick = true;
       setTimeout(function () { blockClick = false; }, 80);
-      snapEdge(bx, by);
+      savePos(bx, by);
       if (open) placePanel();
     }
   }
