@@ -235,7 +235,7 @@ export async function buildSourceOutcomeEvidence(source: string, start: Date, en
     for (const lead of leads) {
       if (lead.convertedToPatientId || !lead.phone) continue
       const canonical = normalizePhone(lead.phone)
-      if (!/^\\+256\\d{9}$/.test(canonical)) continue
+      if (!/^\+256\d{9}$/.test(canonical)) continue
       unmatchedPhones.add(canonical)
       for (const variant of phoneVariants(canonical)) lookupVariants.add(variant)
     }
