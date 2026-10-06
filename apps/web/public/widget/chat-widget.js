@@ -5,10 +5,10 @@
 
   var API      = 'https://api.codeclinicemr.com';
   var AVATAR   = 'https://codeclinicemr.com/sarah.jpg';
-  var BTN_SIZE = 64;
+  var BTN_SIZE = 112;
   var PANEL_W  = 390;
   var PANEL_H  = 600;
-  var PAD      = 44;
+  var PAD      = 32;
   var SK       = 'cc_wgt_sid';
   var PK       = 'cc_wgt_pos';
 
@@ -32,23 +32,23 @@
     '#ccw{position:fixed;z-index:2147483647;user-select:none;-webkit-user-select:none}',
 
     // Floating button
-    '#ccb{width:82px;height:82px;border-radius:50%;background:#fff;border:3px solid #29ABE2;',
-    'cursor:pointer;padding:7px;box-shadow:0 10px 34px rgba(12,30,80,.20);position:relative;',
+    '#ccb{width:112px;height:112px;border-radius:50%;background:#fff;border:3px solid #29ABE2;',
+    'cursor:pointer;padding:8px;box-shadow:0 10px 34px rgba(12,30,80,.20);position:relative;',
     'overflow:visible;touch-action:none;animation:ccfloat 3s ease-in-out infinite;transition:transform .2s}',
-    '#ccb:before,#ccb:after{content:"";position:absolute;inset:-11px;border-radius:50%;border:6px solid rgba(41,171,226,.22);pointer-events:none;animation:ccring 2.8s ease-in-out infinite}',
-    '#ccb:after{inset:-20px;border-width:7px;border-color:rgba(26,35,126,.12);animation-delay:-1.4s}',
+    '#ccb:before,#ccb:after{content:"";position:absolute;inset:-10px;border-radius:50%;border:6px solid rgba(41,171,226,.20);pointer-events:none;animation:ccring 2.8s ease-in-out infinite}',
+    '#ccb:after{inset:-19px;border-width:7px;border-color:rgba(26,35,126,.10);animation-delay:-1.4s}',
     '#ccb:hover{transform:scale(1.04)}',
     '#ccb.drag{animation:none!important;cursor:grabbing}',
     '@keyframes ccfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}',
     '@keyframes ccring{0%,100%{transform:scale(.96);opacity:.65}50%{transform:scale(1.06);opacity:1}}',
-    '#ccbimg{width:100%;height:100%;object-fit:contain;object-position:center bottom;border-radius:50%;display:block;background:#fff}',
+    '#ccbimg{width:100%;height:100%;object-fit:cover;object-position:center 18%;border-radius:50%;display:block;background:#fff}',
     '#ccbfb{display:none;width:100%;height:100%;align-items:center;justify-content:center;font:700 26px sans-serif;color:#fff}',
     '#ccdot{position:absolute;bottom:5px;right:4px;width:12px;height:12px;border-radius:50%;background:#22c55e;border:2.5px solid #fff;pointer-events:none;animation:ccpu 2s ease-in-out infinite}',
     '@keyframes ccpu{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.35)}}',
     '#cctp{display:none}',
     '#ccbdg{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#ef4444;border:2px solid #fff;color:#fff;font:700 10px/14px sans-serif;text-align:center;padding:0 3px;display:none;z-index:2}',
-    '#ccgreet{position:absolute;right:0;bottom:112px;width:250px;background:#fff;color:#1f2937;border:1px solid rgba(41,171,226,.22);border-radius:18px;padding:13px 38px 13px 15px;box-shadow:0 14px 38px rgba(12,30,80,.16);font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;pointer-events:auto}',
-    '#ccgreetx{position:absolute;right:11px;top:8px;border:0;background:transparent;color:#64748b;font-size:21px;line-height:1;cursor:pointer;padding:2px}',
+    '#ccgreet{position:absolute;right:-4px;bottom:142px;width:300px;background:#fff;color:#1f2937;border:1px solid rgba(41,171,226,.20);border-radius:20px;padding:16px 42px 16px 18px;box-shadow:0 14px 38px rgba(12,30,80,.14);font:600 16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;pointer-events:auto;text-align:left}',
+    '#ccgreetx{position:absolute;right:12px;top:9px;border:0;background:transparent;color:#64748b;font-size:23px;line-height:1;cursor:pointer;padding:2px}',
     '#ccgreet.hide{display:none}',
 
     // Panel
@@ -220,7 +220,7 @@
         return;
       }
     } catch (e) {}
-    setPos(window.innerWidth - BTN_SIZE - 64, window.innerHeight - BTN_SIZE - 64, false);
+    setPos(window.innerWidth - 112 - 72, window.innerHeight - 112 - 72, false);
   })();
 
   function startDrag(ex, ey) {
@@ -311,7 +311,6 @@
 
   function openPanel() {
     placePanel();
-    wrap.style.display = 'none';
     panEl.style.display = 'flex';
     open = true;
     unread = 0;
@@ -324,7 +323,6 @@
 
   function closePanel() {
     panEl.style.display = 'none';
-    wrap.style.display = 'block';
     open = false;
   }
 
