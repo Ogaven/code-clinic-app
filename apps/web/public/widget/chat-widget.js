@@ -32,37 +32,24 @@
     '#ccw{position:fixed;z-index:2147483647;user-select:none;-webkit-user-select:none}',
 
     // Floating button
-    '#ccb{width:196px;height:66px;border-radius:999px;background:#fff;border:1px solid rgba(41,171,226,.32);',
-    'cursor:pointer;padding:5px 14px 5px 5px;box-shadow:0 14px 38px rgba(12,30,80,.24),0 0 0 7px rgba(41,171,226,.08);position:relative;',
-    'overflow:visible;touch-action:none;animation:ccbo 2.8s ease-in-out infinite;',
-    'transition:box-shadow .2s,transform .2s;display:flex;align-items:center;gap:10px;text-align:left}',
-    '#ccb:hover{box-shadow:0 14px 40px rgba(12,30,80,.34),0 0 0 10px rgba(41,171,226,.14);transform:scale(1.03)}',
-    '#ccb.drag{animation:none!important;cursor:grabbing;box-shadow:0 8px 36px rgba(0,0,0,.4)}',
-    '@keyframes ccbo{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}',
-    '#ccbimg{width:54px;height:54px;object-fit:cover;border-radius:50%;display:block;flex-shrink:0}',
-    '#cclbl{display:flex;flex-direction:column;min-width:0;pointer-events:none}',
-    '#cclbl strong{font:800 13px/1.15 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#0c1e50;white-space:nowrap}',
-    '#cclbl span{font:600 10px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#16a34a;margin-top:4px;white-space:nowrap}',
-    '#ccbfb{display:none;width:100%;height:100%;align-items:center;',
-    'justify-content:center;font:700 26px sans-serif;color:#fff}',
-
-    // Online dot on button
-    '#ccdot{position:absolute;bottom:6px;left:47px;width:12px;height:12px;border-radius:50%;',
-    'background:#22c55e;border:2.5px solid #fff;pointer-events:none;',
-    'animation:ccpu 2s ease-in-out infinite}',
+    '#ccb{width:82px;height:82px;border-radius:50%;background:#fff;border:3px solid #0f6b5b;',
+    'cursor:pointer;padding:7px;box-shadow:0 10px 34px rgba(12,30,80,.20);position:relative;',
+    'overflow:visible;touch-action:none;animation:ccfloat 3s ease-in-out infinite;transition:transform .2s}',
+    '#ccb:before,#ccb:after{content:"";position:absolute;inset:-11px;border-radius:50%;border:6px solid rgba(15,107,91,.16);pointer-events:none;animation:ccring 2.8s ease-in-out infinite}',
+    '#ccb:after{inset:-20px;border-width:7px;border-color:rgba(41,171,226,.09);animation-delay:-1.4s}',
+    '#ccb:hover{transform:scale(1.04)}',
+    '#ccb.drag{animation:none!important;cursor:grabbing}',
+    '@keyframes ccfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}',
+    '@keyframes ccring{0%,100%{transform:scale(.96);opacity:.65}50%{transform:scale(1.06);opacity:1}}',
+    '#ccbimg{width:100%;height:100%;object-fit:cover;object-position:center 24%;border-radius:50%;display:block}',
+    '#ccbfb{display:none;width:100%;height:100%;align-items:center;justify-content:center;font:700 26px sans-serif;color:#fff}',
+    '#ccdot{position:absolute;bottom:5px;right:4px;width:12px;height:12px;border-radius:50%;background:#22c55e;border:2.5px solid #fff;pointer-events:none;animation:ccpu 2s ease-in-out infinite}',
     '@keyframes ccpu{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.35)}}',
-
-    // Tooltip
-    '#cctp{position:absolute;bottom:72px;left:50%;transform:translateX(-50%);',
-    'white-space:nowrap;background:rgba(15,23,42,.78);color:#fff;',
-    'font:12px/1 -apple-system,sans-serif;padding:5px 10px;border-radius:6px;',
-    'opacity:0;transition:opacity .18s;pointer-events:none}',
-    '#ccw:hover #cctp{opacity:1}',
-
-    // Unread badge on button
-    '#ccbdg{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;',
-    'border-radius:9px;background:#ef4444;border:2px solid #fff;color:#fff;',
-    'font:700 10px/14px sans-serif;text-align:center;padding:0 3px;display:none}',
+    '#cchello{position:absolute;right:0;bottom:108px;width:286px;background:#fff;color:#1f2937;border:1px solid rgba(15,107,91,.18);border-radius:20px;padding:15px 42px 15px 17px;box-shadow:0 14px 42px rgba(12,30,80,.16);font:600 15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;pointer-events:auto}',
+    '#cchellox{position:absolute;right:13px;top:9px;border:0;background:transparent;color:#64748b;font-size:24px;line-height:1;cursor:pointer;padding:2px}',
+    '#cchello.hide{display:none}',
+    '#cctp{display:none}',
+    '#ccbdg{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#ef4444;border:2px solid #fff;color:#fff;font:700 10px/14px sans-serif;text-align:center;padding:0 3px;display:none;z-index:2}',
 
     // Panel
     '#ccp{position:fixed;z-index:2147483646;width:390px;height:600px;max-height:calc(100vh - 24px);',
@@ -136,8 +123,8 @@
     '<div id="cctp">Chat with Sarah</div>' +
     '<div id="ccbdg"></div>' +
     '<button id="ccb" aria-label="Chat with Sarah">' +
-    '  <img id="ccbimg" src="' + AVATAR + '" alt="" />' +
-    '  <div id="cclbl"><strong>Chat with Sarah</strong><span>● Online now</span></div>' +
+    '  <div id="cchello">Good day! I\'m Sarah from Code Clinic. Ask me anything 😊<button id="cchellox" aria-label="Dismiss greeting">×</button></div>' +
+    '  <img id="ccbimg" src="' + AVATAR + '" alt="Sarah from Code Clinic" />' +
     '  <div id="ccbfb"><span>S</span></div>' +
     '  <div id="ccdot"></div>' +
     '</button>';
