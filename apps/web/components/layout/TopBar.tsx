@@ -73,6 +73,7 @@ const NAV: NavLink[] = [
     { label: 'Settings', href: '/admin/crm-automation' },
   ] },
   { label: 'Reports', children: [
+    { label: 'Admin Executive Report', href: '/reports/executive' },
     { label: 'Case Acceptance', href: '/reports/case-acceptance' }, { label: 'Patient Live Flow', href: '/reports/patient-flow' },
     { label: 'Daily / Weekly Reports', href: '/reports/clinical' },
   ] },
