@@ -5,7 +5,7 @@
 
   var API      = 'https://api.codeclinicemr.com';
   var AVATAR   = 'https://codeclinic.ug/wp-content/uploads/2026/10/Sarah-Code-Clinic-Chatbot.jpg?v=20261006';
-  var BTN_SIZE = 112;
+  var BTN_SIZE = 96;
   var PANEL_W  = 390;
   var PANEL_H  = 600;
   var PAD      = 32;
@@ -29,20 +29,20 @@
   // ── Styles ──────────────────────────────────────────────────────────────────
   var css = [
     // Wrapper
-    '#ccw{position:fixed;z-index:2147483647;user-select:none;-webkit-user-select:none}',
+    '#ccw{position:fixed;z-index:2147483647;user-select:none;-webkit-user-select:none;animation:ccwrapfloat 3.2s ease-in-out infinite}',
 
     // Compact floating launcher: greeting and portrait are siblings so neither can distort the other.
-    '#ccb{width:112px;height:112px;border:0;background:transparent;cursor:pointer;padding:0;position:relative;',
-    'overflow:visible;touch-action:none;animation:ccfloat 3s ease-in-out infinite;transition:transform .2s}',
+    '#ccb{width:96px;height:96px;border:0;background:transparent;cursor:pointer;padding:0;position:relative;',
+    'overflow:visible;touch-action:none;transition:transform .2s}',
     '#ccb:hover{transform:scale(1.04)}',
-    '#ccb.drag{animation:none!important;cursor:grabbing}',
+    '#ccb.drag{cursor:grabbing}',
     '#ccring1,#ccring2,#ccring3{position:absolute;border-radius:50%;pointer-events:none;box-sizing:border-box;animation:ccring 2.8s ease-in-out infinite}',
     '#ccring1{inset:-7px;border:5px solid rgba(41,171,226,.24)}',
     '#ccring2{inset:-15px;border:6px solid rgba(41,171,226,.14);animation-delay:-.9s}',
     '#ccring3{inset:-23px;border:7px solid rgba(26,35,126,.09);animation-delay:-1.8s}',
     '#ccportrait{position:absolute!important;inset:0!important;border-radius:50%!important;overflow:hidden!important;background:transparent!important;border:3px solid #29ABE2!important;box-shadow:0 10px 34px rgba(12,30,80,.20)!important;box-sizing:border-box!important;padding:6px!important}',
     '#ccsarahphoto{position:absolute!important;inset:6px!important;border-radius:50%!important;overflow:hidden!important;z-index:50!important;pointer-events:none!important;background-color:#dff4fc!important;background-image:url("' + AVATAR + '")!important;background-size:cover!important;background-position:center 18%!important;background-repeat:no-repeat!important;opacity:1!important;visibility:visible!important;display:block!important;filter:none!important;mix-blend-mode:normal!important}',
-    '@keyframes ccfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}',
+    '@keyframes ccwrapfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}',
     '@keyframes ccring{0%,100%{transform:scale(.96);opacity:.58}50%{transform:scale(1.05);opacity:1}}',
     '#ccbimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 18%;border-radius:50%;display:block;background:#fff;z-index:2}',
     '#ccbfb{display:none;position:absolute;inset:0;align-items:center;justify-content:center;font:700 26px sans-serif;color:#fff;background:linear-gradient(135deg,#1A237E,#29ABE2)}',
@@ -50,9 +50,9 @@
     '@keyframes ccpu{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.35)}}',
     '#cctp{display:none}',
     '#ccbdg{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#ef4444;border:2px solid #fff;color:#fff;font:700 10px/14px sans-serif;text-align:center;padding:0 3px;display:none;z-index:2}',
-    '#ccgreet{position:absolute;right:-4px;bottom:142px;width:300px;box-sizing:border-box;background:#fff;color:#1f2937;border:1px solid rgba(41,171,226,.20);border-radius:20px;padding:16px 42px 16px 18px;box-shadow:0 14px 38px rgba(12,30,80,.14);font:600 16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;pointer-events:auto;text-align:left}',
+    '#ccgreet{position:absolute;right:-4px;bottom:122px;width:290px;box-sizing:border-box;background:#fff;color:#1f2937;border:1px solid rgba(41,171,226,.20);border-radius:20px;padding:16px 42px 16px 18px;box-shadow:0 14px 38px rgba(12,30,80,.14);font:600 16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;pointer-events:auto;text-align:left}',
     '#ccgreetx{position:absolute;right:12px;top:9px;border:0;background:transparent;color:#64748b;font-size:23px;line-height:1;cursor:pointer;padding:2px}',
-    '#ccgreet:after{content:"";position:absolute;right:34px;bottom:-12px;width:22px;height:22px;background:#fff;border-right:1px solid rgba(41,171,226,.20);border-bottom:1px solid rgba(41,171,226,.20);transform:rotate(45deg);border-radius:0 0 5px 0}',
+    '#ccgreet:after{content:"";position:absolute;z-index:5;right:30px;bottom:-14px;width:24px;height:24px;background:#fff;border-right:1px solid rgba(41,171,226,.20);border-bottom:1px solid rgba(41,171,226,.20);transform:rotate(45deg);border-radius:0 0 5px 0;box-shadow:4px 4px 8px rgba(12,30,80,.04)}',
     '#ccgreet.hide{display:none}',
 
     // Panel
@@ -220,7 +220,7 @@
         return;
       }
     } catch (e) {}
-    setPos(window.innerWidth - 112 - 72, window.innerHeight - 112 - 72, false);
+    setPos(window.innerWidth - BTN_SIZE - 72, window.innerHeight - BTN_SIZE - 72, false);
   })();
 
   function startDrag(ex, ey) {
