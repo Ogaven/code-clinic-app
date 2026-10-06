@@ -4,7 +4,7 @@
   'use strict';
 
   var API      = 'https://api.codeclinicemr.com';
-  var AVATAR   = 'https://codeclinicemr.com/sarah.jpg';
+  var AVATAR   = '/sarah.jpg';
   var BTN_SIZE = 112;
   var PANEL_W  = 390;
   var PANEL_H  = 600;
@@ -52,6 +52,7 @@
     '#ccbdg{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#ef4444;border:2px solid #fff;color:#fff;font:700 10px/14px sans-serif;text-align:center;padding:0 3px;display:none;z-index:2}',
     '#ccgreet{position:absolute;right:-4px;bottom:142px;width:300px;box-sizing:border-box;background:#fff;color:#1f2937;border:1px solid rgba(41,171,226,.20);border-radius:20px;padding:16px 42px 16px 18px;box-shadow:0 14px 38px rgba(12,30,80,.14);font:600 16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;pointer-events:auto;text-align:left}',
     '#ccgreetx{position:absolute;right:12px;top:9px;border:0;background:transparent;color:#64748b;font-size:23px;line-height:1;cursor:pointer;padding:2px}',
+    '#ccgreet:after{content:"";position:absolute;right:34px;bottom:-12px;width:22px;height:22px;background:#fff;border-right:1px solid rgba(41,171,226,.20);border-bottom:1px solid rgba(41,171,226,.20);transform:rotate(45deg);border-radius:0 0 5px 0}',
     '#ccgreet.hide{display:none}',
 
     // Panel
@@ -454,12 +455,7 @@
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
   });
 
-  // ── Auto-popup (4s, once per session) ───────────────────────────────────────
-  try {
-    if (!sessionStorage.getItem('ccw_dis')) {
-      setTimeout(function () { if (!open) openPanel(); }, 4000);
-    }
-  } catch (e) {}
+  // Keep the compact Sarah launcher visible until the visitor chooses to open chat.
 
   // ── Resize handler ──────────────────────────────────────────────────────────
   window.addEventListener('resize', function () {
