@@ -47,6 +47,9 @@
     '@keyframes ccpu{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.35)}}',
     '#cctp{display:none}',
     '#ccbdg{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#ef4444;border:2px solid #fff;color:#fff;font:700 10px/14px sans-serif;text-align:center;padding:0 3px;display:none;z-index:2}',
+    '#ccgreet{position:absolute;right:0;bottom:112px;width:250px;background:#fff;color:#1f2937;border:1px solid rgba(41,171,226,.22);border-radius:18px;padding:13px 38px 13px 15px;box-shadow:0 14px 38px rgba(12,30,80,.16);font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;pointer-events:auto}',
+    '#ccgreetx{position:absolute;right:11px;top:8px;border:0;background:transparent;color:#64748b;font-size:21px;line-height:1;cursor:pointer;padding:2px}',
+    '#ccgreet.hide{display:none}',
 
     // Panel
     '#ccp{position:fixed;z-index:2147483646;width:390px;height:600px;max-height:calc(100vh - 24px);',
@@ -120,6 +123,7 @@
     '<div id="cctp">Chat with Sarah</div>' +
     '<div id="ccbdg"></div>' +
     '<button id="ccb" aria-label="Chat with Sarah">' +
+    '  <div id="ccgreet">Hi! 😊 How may I brighten your smile today?<button id="ccgreetx" aria-label="Dismiss greeting">&times;</button></div>' +
     '  <img id="ccbimg" src="' + AVATAR + '" alt="Sarah from Code Clinic" />' +
     '  <div id="ccbfb"><span>S</span></div>' +
     '  <div id="ccdot"></div>' +
@@ -165,6 +169,9 @@
   var inp    = document.getElementById('cci');
   var sndBtn = document.getElementById('ccs');
   var closeX = document.getElementById('ccpx');
+  var greet = document.getElementById('ccgreet');
+  var greetX = document.getElementById('ccgreetx');
+  if (greetX) greetX.addEventListener('click', function (e) { e.stopPropagation(); if (greet) greet.classList.add('hide'); });
 
   // ── Avatar fallback ─────────────────────────────────────────────────────────
   document.getElementById('ccbimg').addEventListener('error', function () {
@@ -304,6 +311,7 @@
 
   function openPanel() {
     placePanel();
+    wrap.style.display = 'none';
     panEl.style.display = 'flex';
     open = true;
     unread = 0;
@@ -316,6 +324,7 @@
 
   function closePanel() {
     panEl.style.display = 'none';
+    wrap.style.display = 'block';
     open = false;
   }
 
