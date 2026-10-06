@@ -536,7 +536,7 @@ router.post('/follow-ups/:id/complete', requireAuth, adminAndReceptionist, async
 // not just lead-pipeline counts. See revenue-attribution.service.ts for the
 // single-linking-lead attribution rule and why ambiguous patients are
 // excluded rather than guessed at.
-router.get('/reports/acquisition-revenue', requireAuth, accountsOrAdmin, async (req: Request, res: Response) => {
+router.get('/reports/acquisition-revenue', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   const { source, campaignId, ownerId, dateFrom, dateTo } = req.query as Record<string, string | undefined>
   res.json(await buildAcquisitionRevenueReport({
     source, campaignId, ownerId,

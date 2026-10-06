@@ -55,11 +55,8 @@ interface AiSnapshot {
   channels:           Record<string, number>
 }
 interface MiniPatient { id: string; firstName: string; lastName: string; avatarUrl?: string | null }
-interface GrowthCrmFunnel {
-  totals: { totalNew: number; contactedCount: number; qualifiedCount: number; convertedCount: number }
-}
 interface GrowthCrmRevenue {
-  funnel: { leadCount: number; contactedCount: number; qualifiedCount: number; bookedCount: number; attendedCount: number; treatmentAcceptedCount: number; payingClientCount: number }
+  funnel: { leadCount: number; contactedCount: number; qualifiedCount: number; convertedCount: number; bookedCount: number; attendedCount: number; treatmentAcceptedCount: number; payingClientCount: number }
   revenue: { treatmentValueUGX: number; invoicedUGX: number; collectedUGX: number }
   ambiguousPatientCount: number
 }
@@ -238,8 +235,8 @@ export default function DashboardPage() {
   const [upcoming, setUpcoming] = useState<Appt[] | null>(null)
   const [aiSnapshot, setAiSnapshot] = useState<AiSnapshot | null>(null)
   const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
-  const [growthFunnel, setGrowthFunnel] = useState<GrowthCrmFunnel | null>(null)
   const [growthRevenue, setGrowthRevenue] = useState<GrowthCrmRevenue | null>(null)
+  const [growthPeriod, setGrowthPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month')
   const [dashError, setDashError] = useState(false)
 
   useEffect(() => {
@@ -295,11 +292,30 @@ export default function DashboardPage() {
         .catch(() => {})
     })
 
-    fetch('/api-proxy/crm-automation/reports/stage-conversion-rates', { headers: auth })
-      .then(r => r.ok ? r.json() : null).then(d => { if (d?.totals) setGrowthFunnel(d) }).catch(() => {})
-    fetch('/api-proxy/crm-automation/reports/acquisition-revenue', { headers: auth })
-      .then(r => r.ok ? r.json() : null).then(d => { if (d?.funnel && d?.revenue) setGrowthRevenue(d) }).catch(() => {})
+
   }, [])
+
+  useEffect(() => {
+    const token = localStorage.getItem('cc_token')
+    if (!token) return
+    const now = new Date()
+    const local = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Kampala' }))
+    const start = new Date(local)
+    start.setHours(0, 0, 0, 0)
+    if (growthPeriod === 'week') { const day = start.getDay(); start.setDate(start.getDate() - (day === 0 ? 6 : day - 1)) }
+    if (growthPeriod === 'month') start.setDate(1)
+    if (growthPeriod === 'year') start.setMonth(0, 1)
+    const qs = new URLSearchParams()
+    if (growthPeriod !== 'all') {
+      qs.set('dateFrom', new Date(start.getTime() - 3 * 60 * 60 * 1000).toISOString())
+      qs.set('dateTo', now.toISOString())
+    }
+    const suffix = qs.toString() ? '?' + qs.toString() : ''
+    fetch('/api-proxy/crm-automation/reports/acquisition-revenue' + suffix, { headers: { Authorization: 'Bearer ' + token } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.funnel && d?.revenue) setGrowthRevenue(d) })
+      .catch(() => {})
+  }, [growthPeriod])
 
   // Returning/New avatar previews come from the dashboard endpoint's own
   // canonical newIds/returningIds (see clinical.ts) rather than a separate
@@ -549,13 +565,21 @@ export default function DashboardPage() {
             <span className="flex items-center gap-1 text-[10px] font-bold text-white/90">Open CRM <ArrowUpRight size={12} /></span>
           </div>
 
+          <div className="mt-3 flex flex-wrap gap-1">
+            {(['today', 'week', 'month', 'year', 'all'] as const).map(p => (
+              <button key={p} type="button" onClick={(e) => { e.preventDefault(); setGrowthPeriod(p) }} className={"rounded-full px-2 py-1 text-[9px] font-bold transition " + (growthPeriod === p ? "bg-white text-[#1A237E]" : "bg-white/10 text-blue-100 hover:bg-white/20")}>
+                {p === 'all' ? 'All Time' : p[0].toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
+
           <div className="my-2.5 grid grid-cols-2 gap-1.5">
             {[
-              { label: 'All Leads', value: growthFunnel?.totals.totalNew },
-              { label: 'Contacted', value: growthFunnel?.totals.contactedCount },
-              { label: 'Qualified', value: growthFunnel?.totals.qualifiedCount },
+              { label: 'Leads', value: growthRevenue?.funnel.leadCount },
+              { label: 'Contacted', value: growthRevenue?.funnel.contactedCount },
+              { label: 'Qualified', value: growthRevenue?.funnel.qualifiedCount },
               { label: 'Appointments', value: growthRevenue?.funnel.bookedCount },
-              { label: 'Converted', value: growthFunnel?.totals.convertedCount },
+              { label: 'Converted', value: growthRevenue?.funnel.convertedCount },
               { label: 'Paying Clients', value: growthRevenue?.funnel.payingClientCount },
             ].map(item => (
               <div key={item.label} className="rounded-xl bg-white/10 px-2.5 py-2">
@@ -568,7 +592,7 @@ export default function DashboardPage() {
           <div className="space-y-1 border-t border-white/15 pt-2 text-[9px] text-blue-100">
             <div className="flex items-center justify-between gap-3">
               <span>Contact rate</span>
-              <strong className="text-white">{growthFunnel && growthFunnel.totals.totalNew > 0 ? `${((growthFunnel.totals.contactedCount / growthFunnel.totals.totalNew) * 100).toFixed(1)}%` : '—'}</strong>
+              <strong className="text-white">{growthRevenue && growthRevenue.funnel.leadCount > 0 ? `${((growthRevenue.funnel.contactedCount / growthRevenue.funnel.leadCount) * 100).toFixed(1)}%` : '—'}</strong>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span>Lead → appointment</span>
