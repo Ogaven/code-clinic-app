@@ -9,11 +9,11 @@ const { prismaMock, linkOnBooking } = vi.hoisted(() => ({
   linkOnBooking: vi.fn(),
 }))
 
-vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
-vi.mock('../../crm-automation/lead-patient-link.service', () => ({ checkAndConvertLeadOnBooking: linkOnBooking }))
-vi.mock('../../services/agent/guards/escalation', () => ({ createEscalation: vi.fn() }))
+vi.mock('../lib/prisma', () => ({ prisma: prismaMock }))
+vi.mock('../crm-automation/lead-patient-link.service', () => ({ checkAndConvertLeadOnBooking: linkOnBooking }))
+vi.mock('../services/agent/guards/escalation', () => ({ createEscalation: vi.fn() }))
 
-import { createAppointment } from '../../ai-suite/booking/booking.service'
+import { createAppointment } from '../ai-suite/booking/booking.service'
 
 beforeEach(() => {
   vi.clearAllMocks()
