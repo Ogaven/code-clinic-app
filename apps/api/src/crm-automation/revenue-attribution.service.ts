@@ -26,6 +26,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 import { prisma } from '../lib/prisma'
 import { ATTENDED_STATUSES } from '../services/patient-analytics.service'
+import { normalizePhone, phoneVariants } from '../utils/phone'
 
 export interface AttributionFilters {
   source?: string
@@ -189,6 +190,98 @@ export async function buildAcquisitionRevenueReport(filters: AttributionFilters 
       'dateFrom/dateTo (that window only scopes which leads count toward Lead/Contacted/Qualified). ' +
       'Converted != revenue: booked/attended/treatment-accepted/paying/invoiced/collected are tracked separately on purpose. ' +
       'Paying clients are distinct cleanly-attributed patients with at least one positive Payment row.',
+  }
+}
+
+export interface SourceOutcomeEvidence {
+  source: string
+  leadCount: number
+  directLinkedPatientCount: number
+  evidenceMatchedPatientCount: number
+  ambiguousIdentityCount: number
+  bookedCount: number
+  attendedCount: number
+  note: string
+}
+
+// Period-scoped operational outcomes by acquisition source.
+//
+// Historical channel leads were not always promoted to Lead.convertedToPatientId,
+// so requiring that field alone can under-report real WhatsApp outcomes. We can
+// safely recover a subset without rewriting history: a WhatsApp lead's canonical
+// phone may be matched to a patient only when exactly ONE patient has that same
+// canonical phone. Social platform IDs and website session IDs are deliberately
+// excluded — they are not patient phone numbers. Explicit Lead -> Patient links
+// remain authoritative for every source.
+//
+// Appointments are scoped to the selected reporting period. This function does
+// NOT mutate Lead status, create conversion history, or attribute revenue.
+export async function buildSourceOutcomeEvidence(source: string, start: Date, end: Date): Promise<SourceOutcomeEvidence> {
+  const leads = await prisma.lead.findMany({
+    where: { source, createdAt: { gte: start, lt: end } },
+    select: { id: true, phone: true, convertedToPatientId: true },
+  })
+
+  const patientIds = new Set<string>()
+  for (const lead of leads) if (lead.convertedToPatientId) patientIds.add(lead.convertedToPatientId)
+  const directLinkedPatientCount = patientIds.size
+
+  let evidenceMatchedPatientCount = 0
+  let ambiguousIdentityCount = 0
+
+  if (source === 'WHATSAPP') {
+    const unmatchedPhones = new Set<string>()
+    const lookupVariants = new Set<string>()
+    for (const lead of leads) {
+      if (lead.convertedToPatientId || !lead.phone) continue
+      const canonical = normalizePhone(lead.phone)
+      if (!/^\\+256\\d{9}$/.test(canonical)) continue
+      unmatchedPhones.add(canonical)
+      for (const variant of phoneVariants(canonical)) lookupVariants.add(variant)
+    }
+
+    if (lookupVariants.size) {
+      const patients = await prisma.patient.findMany({
+        where: { phone: { in: [...lookupVariants] } },
+        select: { id: true, phone: true },
+      })
+      const byPhone = new Map<string, string[]>()
+      for (const patient of patients) {
+        const canonical = normalizePhone(patient.phone)
+        byPhone.set(canonical, [...(byPhone.get(canonical) ?? []), patient.id])
+      }
+
+      for (const canonical of unmatchedPhones) {
+        const matches = [...new Set(byPhone.get(canonical) ?? [])]
+        if (matches.length === 1) {
+          if (!patientIds.has(matches[0])) evidenceMatchedPatientCount++
+          patientIds.add(matches[0])
+        } else if (matches.length > 1) {
+          ambiguousIdentityCount++
+        }
+      }
+    }
+  }
+
+  const appointments = patientIds.size
+    ? await prisma.appointment.findMany({
+        where: { patientId: { in: [...patientIds] }, startAt: { gte: start, lt: end } },
+        select: { patientId: true, status: true },
+      })
+    : []
+
+  return {
+    source,
+    leadCount: leads.length,
+    directLinkedPatientCount,
+    evidenceMatchedPatientCount,
+    ambiguousIdentityCount,
+    bookedCount: new Set(appointments.map(a => a.patientId)).size,
+    attendedCount: new Set(appointments.filter(a => (ATTENDED_STATUSES as string[]).includes(a.status)).map(a => a.patientId)).size,
+    note:
+      source === 'WHATSAPP'
+        ? 'Booked/attended outcomes use explicit Lead -> Patient links plus exact unique normalized WhatsApp phone matches. Ambiguous phone matches are excluded. This is read-only evidence attribution and does not change CRM lead stages or revenue attribution.'
+        : 'Booked/attended outcomes use explicit Lead -> Patient links only. Social IDs and website session IDs are never treated as patient phone numbers.',
   }
 }
 
