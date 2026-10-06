@@ -51,7 +51,7 @@ export default function ProfilePage() {
   function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5MB', 'error'); return }
+    if (file.size > 20 * 1024 * 1024) { showToast('Image must be under 20MB', 'error'); return }
     const reader = new FileReader()
     reader.onload = ev => setCropSrc(ev.target?.result as string)
     reader.readAsDataURL(file)
@@ -201,7 +201,7 @@ export default function ProfilePage() {
             <p className="text-xs font-medium mt-0.5" style={{ color: roleColor }}>{user.role}</p>
             <p className="text-xs text-gray-400 mt-3 leading-relaxed">
               Click the camera icon to upload a new photo.<br/>
-              JPEG, PNG or WebP — max 5MB.
+              JPEG, PNG or WebP — max 20MB.
             </p>
           </div>
         </div>
