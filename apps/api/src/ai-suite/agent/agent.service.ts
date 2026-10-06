@@ -25,6 +25,7 @@ import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, containsPhrase } from '../whatsapp/whatsapp.service'
 import { sendPushToUser } from '../../services/push.service'
 import { buildPatientContextSummary, getPendingHandoffNote } from './patient-context.service'
+import { retrieveSharedClinicKnowledge } from '../knowledge/shared-retrieval'
 
 function sanitizeIncomingMessage(content: string): string {
   if (content.startsWith('__MEDIA_IMAGE__:')) {
@@ -2651,8 +2652,6 @@ export async function getAgentReplyV2OpenAI(
       }
     }
 
-    const kbKeywords = latestMessage.split(/\s+/).filter(w => w.length >= 4).slice(0, 5)
-
     const [patient, dbMessages, menu, allHours, kbEntries] = await Promise.all([
       resolveTextingPatient(from),
       prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 10 })
@@ -2661,18 +2660,11 @@ export async function getAgentReplyV2OpenAI(
       prisma.workingHours.findMany({ orderBy: { dayOfWeek: 'asc' } }).catch(
         () => [] as Array<{ dayOfWeek: number; isOpen: boolean; openTime: string; closeTime: string }>
       ),
-      kbKeywords.length > 0
-        ? prisma.aiKnowledgeBase.findMany({
-            where: {
-              OR: kbKeywords.flatMap(kw => [
-                { title: { contains: kw, mode: 'insensitive' } },
-                { content: { contains: kw, mode: 'insensitive' } },
-              ]),
-            },
-            take: 5,
-            select: { title: true, content: true },
-          }).catch(() => [] as Array<{ title: string; content: string }>)
-        : Promise.resolve([] as Array<{ title: string; content: string }>),
+      // Use the exact same retrieval implementation as the Knowledge Trainer.
+      // This keeps a staff test and Sarah's real patient reply grounded on the
+      // same ranked AiKnowledgeBase chunks instead of two subtly different
+      // "top five" algorithms drifting apart.
+      retrieveSharedClinicKnowledge(latestMessage).catch(() => []),
     ])
 
     const isPlaceholderName = patient?.firstName?.toLowerCase() === 'whatsapp' || patient?.lastName?.toLowerCase() === 'patient'
@@ -2778,16 +2770,7 @@ export async function getAgentReplyV2OpenAI(
         if (kbEntries.length === 0) {
           entries = DEFAULT_KB
         } else {
-          const words = latestMessage.toLowerCase().split(/\W+/).filter(w => w.length > 3)
-          const scored = kbEntries
-            .map(e => {
-              const text = `${e.title} ${e.content}`.toLowerCase()
-              const score = words.filter(w => text.includes(w)).length
-              return { e, score }
-            })
-            .sort((a, b) => b.score - a.score)
-          const top = scored.slice(0, 5).map(s => s.e)
-          entries = top.map(e => `${e.title}: ${e.content}`).join('\n\n')
+          entries = kbEntries.map(e => `${e.title}: ${e.content}`).join('\n\n')
         }
         return ['CLINIC KNOWLEDGE BASE (use this for questions about the clinic, services, procedures, policies):', entries, '']
       })()),
