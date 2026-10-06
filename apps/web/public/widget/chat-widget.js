@@ -4,7 +4,7 @@
   'use strict';
 
   var API      = 'https://api.codeclinicemr.com';
-  var AVATAR   = '/sarah.jpg';
+  var AVATAR   = 'https://codeclinicemr.com/sarah.jpg?v=20261006-juli';
   var BTN_SIZE = 112;
   var PANEL_W  = 390;
   var PANEL_H  = 600;
