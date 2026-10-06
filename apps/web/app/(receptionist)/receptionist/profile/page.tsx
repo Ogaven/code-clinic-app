@@ -11,7 +11,7 @@
 // in a square crop (and re-encoded every photo as JPEG) before the original
 // was ever saved. The original file is now uploaded as-is; the backend
 // (POST /employees/:id/avatar) already validates the real MIME type and
-// accepts JPEG/PNG/WebP up to 5MB unchanged — cropping was a frontend-only
+// accepts JPEG/PNG/WebP up to 20MB unchanged — cropping was a frontend-only
 // step, not a backend requirement. Circular display elsewhere (header
 // avatar, etc.) still visually crops via CSS object-cover — that's
 // display-only and never touches the stored file.
@@ -67,7 +67,7 @@ export default function ReceptionistProfilePage() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5MB', 'error'); return }
+    if (file.size > 20 * 1024 * 1024) { showToast('Image must be under 20MB', 'error'); return }
     uploadAvatarFile(file)
   }
 
@@ -242,7 +242,7 @@ export default function ReceptionistProfilePage() {
               <p className="text-xs font-medium mt-0.5" style={{ color: roleColor }}>{user.role}</p>
               <p className="text-xs text-gray-400 mt-3 leading-relaxed">
                 Click the camera icon to upload a new photo.<br/>
-                JPEG, PNG or WebP — max 5MB. Uploaded as-is, no automatic cropping.
+                JPEG, PNG or WebP — max 20MB. Uploaded as-is, no automatic cropping.
               </p>
               {preview && (
                 <button onClick={removeAvatar} disabled={uploading}
