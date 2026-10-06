@@ -86,7 +86,23 @@ export default function ExecutiveReportPage() {
     </Section>
    </div>
 
-   <Section title="Revenue Evidence" icon={Wallet}><Rows rows={[['Clinic collections recorded this period',money(c.finance.collectedUGX)],['Paying patients recorded this period',c.finance.payingPatients],['Invoices created this period',money(c.finance.invoicedUGX)],['Outstanding on those invoices',money(c.finance.outstandingUGX)],['Revenue attributed to acquired-lead cohort',money(c.crm.attributedRevenue.collectedUGX)]]}/><p className="mt-3 text-xs text-gray-400">This report never uses the dashboard's demo financial figures. Clinic collections come from real Payment records; attributed revenue is shown separately and only where a single lead-to-patient link can be defended.</p></Section>
+   <Section title="Revenue & Financial Evidence" icon={Wallet}>
+    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+     <Card label="Collections recorded" value={money(c.finance.collectedUGX)} sub="Payment records paid in this period"/>
+     <Card label="Paying patients" value={c.finance.payingPatients} sub="Distinct patients with positive recorded payments"/>
+     <Card label="Invoices raised" value={money(c.finance.invoicedUGX)} sub="Non-cancelled invoices created this period"/>
+     <Card label="Outstanding" value={money(c.finance.outstandingUGX)} sub="Balance on those period invoices"/>
+    </div>
+    <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-4">
+     <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Acquisition-attributed financial evidence</p>
+     <Rows rows={[['Attributed treatment value',money(c.crm.attributedRevenue.treatmentValueUGX)],['Attributed invoiced value',money(c.crm.attributedRevenue.invoicedUGX)],['Attributed collected revenue',money(c.crm.attributedRevenue.collectedUGX)],['Paying clients attributed',c.crm.funnel.payingClientCount]]}/>
+     <p className="mt-3 text-xs text-gray-400">Attribution is deliberately stricter than clinic-wide finance: only defensible lead → patient relationships are included, with ambiguous multi-lead patients excluded.</p>
+    </div>
+    <div className="mt-4 rounded-xl border border-dashed border-sky-200 dark:border-sky-400/20 bg-sky-50/60 dark:bg-sky-400/5 p-4">
+     <p className="text-sm font-bold text-clinic-navy dark:text-sky-200">Financial coverage</p>
+     <p className="mt-1 text-xs text-gray-600 dark:text-sky-100/60">These figures come from Code Clinic's recorded Payment and Invoice tables only. They do not use the dashboard's demo Financial Snapshot and must not be treated as the clinic's complete accounting revenue while QuickBooks payment data is not being synced back into this report.</p>
+    </div>
+   </Section>
 
    <div className="grid lg:grid-cols-3 gap-4"><Callout title="Business wins" items={data.wins} tone="win"/><Callout title="Revenue opportunities" items={data.opportunities} tone="opportunity"/><Callout title="Management attention" items={data.attention} tone="attention"/></div>
 
