@@ -89,6 +89,23 @@ describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel
     expect(inputText.toLowerCase()).not.toContain('claude')
   })
 
+  it('grounds Sarah on the same ranked AiKnowledgeBase retrieval used by the Knowledge Trainer', async () => {
+    responsesCreate.mockResolvedValueOnce({ output: [], output_text: 'Our cancellation policy is 24 hours.', usage: {} })
+    prismaMock.aiKnowledgeBase.findMany.mockResolvedValueOnce([
+      { id: 'less-relevant', title: 'General policy', content: 'Appointments may be changed.', sourceUrl: null },
+      { id: 'best-match', title: 'Cancellation policy', content: 'Please give 24 hours notice before cancelling an appointment.', sourceUrl: null },
+    ])
+
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    await getAgentReplyV2OpenAI('conv-kb', '+256700000009', 'What is your cancellation policy notice?', 'WEBSITE')
+
+    expect(prismaMock.aiKnowledgeBase.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 15 }))
+    const call = responsesCreate.mock.calls[0][0]
+    const prompt = JSON.stringify(call.input)
+    expect(prompt).toContain('Cancellation policy')
+    expect(prompt).toContain('24 hours notice')
+  })
+
   it('never imports or references @anthropic-ai/sdk to produce this reply (structural: mocking only "openai" is sufficient for the call to succeed)', async () => {
     responsesCreate.mockResolvedValueOnce({ output: [], output_text: 'Hello! 😊', usage: {} })
     const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
