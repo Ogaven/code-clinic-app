@@ -4,7 +4,7 @@ const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     lead: { findMany: vi.fn(), count: vi.fn() },
     appointment: { findMany: vi.fn() },
-    patient: { count: vi.fn() },
+    patient: { count: vi.fn(), findMany: vi.fn() },
     treatmentPlan: { findMany: vi.fn() },
     invoice: { aggregate: vi.fn(), count: vi.fn() },
     payment: { aggregate: vi.fn(), findMany: vi.fn() },
@@ -12,7 +12,7 @@ const { prismaMock } = vi.hoisted(() => ({
 }))
 vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
 
-import { buildAcquisitionRevenueReport, acquisitionRevenueByDimension, unattributedRevenueSummary, clinicRevenueSummary } from '../../crm-automation/revenue-attribution.service'
+import { buildAcquisitionRevenueReport, buildSourceOutcomeEvidence, acquisitionRevenueByDimension, unattributedRevenueSummary, clinicRevenueSummary } from '../../crm-automation/revenue-attribution.service'
 
 function lead(overrides: Partial<{ id: string; convertedToPatientId: string | null; source: string; campaignId: string | null; assignedTo: string | null; createdAt: Date }>) {
   return { id: 'l', convertedToPatientId: null, source: 'WHATSAPP', campaignId: null, assignedTo: null, createdAt: new Date('2026-01-01'), ...overrides }
@@ -24,6 +24,7 @@ beforeEach(() => {
   prismaMock.lead.count.mockResolvedValue(0)
   prismaMock.appointment.findMany.mockResolvedValue([])
   prismaMock.patient.count.mockResolvedValue(0)
+  prismaMock.patient.findMany.mockResolvedValue([])
   prismaMock.treatmentPlan.findMany.mockResolvedValue([])
   prismaMock.invoice.aggregate.mockResolvedValue({ _sum: { totalUGX: null } })
   prismaMock.invoice.count.mockResolvedValue(0)
@@ -211,5 +212,84 @@ describe('clinicRevenueSummary', () => {
     prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amountUGX: null } })
     const result = await clinicRevenueSummary()
     expect(result.collectedUGX).toBe(0)
+  })
+})
+
+
+describe('buildSourceOutcomeEvidence — historical business-source recovery', () => {
+  const start = new Date('2026-09-01T00:00:00.000Z')
+  const end = new Date('2026-10-01T00:00:00.000Z')
+
+  it('recovers a WhatsApp patient through one exact normalized phone identity and counts period outcomes', async () => {
+    prismaMock.lead.findMany.mockResolvedValue([
+      { id: 'l1', phone: '0772123456', convertedToPatientId: null },
+    ])
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 'p1', phone: '+256772123456' },
+    ])
+    prismaMock.appointment.findMany.mockResolvedValue([
+      { patientId: 'p1', status: 'COMPLETED' },
+    ])
+
+    const result = await buildSourceOutcomeEvidence('WHATSAPP', start, end)
+
+    expect(result.directLinkedPatientCount).toBe(0)
+    expect(result.evidenceMatchedPatientCount).toBe(1)
+    expect(result.ambiguousIdentityCount).toBe(0)
+    expect(result.bookedCount).toBe(1)
+    expect(result.attendedCount).toBe(1)
+    expect(prismaMock.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patientId: { in: ['p1'] },
+          startAt: { gte: start, lt: end },
+        }),
+      })
+    )
+  })
+
+  it('rejects an ambiguous WhatsApp phone shared by more than one patient', async () => {
+    prismaMock.lead.findMany.mockResolvedValue([
+      { id: 'l1', phone: '+256772123456', convertedToPatientId: null },
+    ])
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 'p1', phone: '0772123456' },
+      { id: 'p2', phone: '256772123456' },
+    ])
+
+    const result = await buildSourceOutcomeEvidence('WHATSAPP', start, end)
+
+    expect(result.evidenceMatchedPatientCount).toBe(0)
+    expect(result.ambiguousIdentityCount).toBe(1)
+    expect(result.bookedCount).toBe(0)
+    expect(prismaMock.appointment.findMany).not.toHaveBeenCalled()
+  })
+
+  it('never treats Facebook/Instagram platform IDs or website session IDs as patient phone evidence', async () => {
+    prismaMock.lead.findMany.mockResolvedValue([
+      { id: 'l1', phone: '123456789012345', convertedToPatientId: null },
+    ])
+
+    const result = await buildSourceOutcomeEvidence('FACEBOOK', start, end)
+
+    expect(prismaMock.patient.findMany).not.toHaveBeenCalled()
+    expect(result.evidenceMatchedPatientCount).toBe(0)
+    expect(result.bookedCount).toBe(0)
+  })
+
+  it('keeps explicit Lead -> Patient links authoritative and uses canonical attended statuses', async () => {
+    prismaMock.lead.findMany.mockResolvedValue([
+      { id: 'l1', phone: null, convertedToPatientId: 'p1' },
+    ])
+    prismaMock.appointment.findMany.mockResolvedValue([
+      { patientId: 'p1', status: 'PENDING' },
+      { patientId: 'p1', status: 'ARRIVED' },
+    ])
+
+    const result = await buildSourceOutcomeEvidence('INSTAGRAM', start, end)
+
+    expect(result.directLinkedPatientCount).toBe(1)
+    expect(result.bookedCount).toBe(1)
+    expect(result.attendedCount).toBe(1)
   })
 })
