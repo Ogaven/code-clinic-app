@@ -4,7 +4,7 @@
   'use strict';
 
   var API      = 'https://api.codeclinicemr.com';
-  var AVATAR   = 'data:image/jpeg;base64,/9j/4QBORXhpZgAATU0AKgAAAAgAAwEaAAUAAAABAAAAMgEbAAUAAAABAAAA
+  var AVATAR   = (`data:image/jpeg;base64,/9j/4QBORXhpZgAATU0AKgAAAAgAAwEaAAUAAAABAAAAMgEbAAUAAAABAAAA
 OgEoAAMAAAABAAIAAAAAAAAALcbAAAAnEAAtxsAAACcQAAAAAP/tAEBQaG90
 b3Nob3AgMy4wADhCSU0EBgAAAAAABwAIAQEAAQEAOEJJTQQlAAAAAAAQAAAA
 AAAAAAAAAAAAAAAAAP/iDFhJQ0NfUFJPRklMRQABAQAADEhMaW5vAhAAAG1u
@@ -3929,7 +3929,7 @@ RoUJh1qD0xvm82d1Fbst4V70b/JEU/zkcKmi+pttSlucSLiP81Nnt9ytGQXr
 i5eCjtTA1Q0j/MlWmxz7tFHHG9sbw2drWuAceGsAigdo3Tb2tgjE0he6AucO
 2pC68as99Zewu3Pb9wgmSOWJgkdbTseWNcXhoL9KY4Y1tsO9BwudttbS380r
 Jf0vVHMc4Jh/+n//2Q==
-';
+`).replace(/\s/g, '');
   var BTN_SIZE = 112;
   var PANEL_W  = 390;
   var PANEL_H  = 600;
