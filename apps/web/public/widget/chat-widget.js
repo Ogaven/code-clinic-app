@@ -40,8 +40,8 @@
     '#ccring1{inset:-7px;border:5px solid rgba(41,171,226,.24)}',
     '#ccring2{inset:-15px;border:6px solid rgba(41,171,226,.14);animation-delay:-.9s}',
     '#ccring3{inset:-23px;border:7px solid rgba(26,35,126,.09);animation-delay:-1.8s}',
-    '#ccportrait{position:absolute;inset:0;border-radius:50%;overflow:hidden;background:#fff;border:3px solid #29ABE2;box-shadow:0 10px 34px rgba(12,30,80,.20);box-sizing:border-box;padding:6px}',
-    '#ccportraitclip{width:100%;height:100%;border-radius:50%;overflow:hidden;position:relative;background-image:url("' + AVATAR + '")!important;background-size:cover!important;background-position:center 18%!important;background-repeat:no-repeat!important}',
+    '#ccportrait{position:absolute!important;inset:0!important;border-radius:50%!important;overflow:hidden!important;background:transparent!important;border:3px solid #29ABE2!important;box-shadow:0 10px 34px rgba(12,30,80,.20)!important;box-sizing:border-box!important;padding:6px!important}',
+    '#ccsarahphoto{position:absolute!important;inset:6px!important;border-radius:50%!important;overflow:hidden!important;z-index:50!important;pointer-events:none!important;background-color:#dff4fc!important;background-image:url("' + AVATAR + '")!important;background-size:cover!important;background-position:center 18%!important;background-repeat:no-repeat!important;opacity:1!important;visibility:visible!important;display:block!important;filter:none!important;mix-blend-mode:normal!important}',
     '@keyframes ccfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}',
     '@keyframes ccring{0%,100%{transform:scale(.96);opacity:.58}50%{transform:scale(1.05);opacity:1}}',
     '#ccbimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 18%;border-radius:50%;display:block;background:#fff;z-index:2}',
@@ -129,9 +129,7 @@
     '<div id="ccgreet">Hi! 😊 How may I brighten your smile today?<button id="ccgreetx" aria-label="Dismiss greeting">&times;</button></div>' +
     '<button id="ccb" aria-label="Chat with Sarah">' +
     '  <span id="ccring1"></span><span id="ccring2"></span><span id="ccring3"></span>' +
-    '  <span id="ccportrait"><span id="ccportraitclip">' +
-    '    <span id="ccbfb"><span>S</span></span>' +
-    '  </span></span>' +
+    '  <span id="ccportrait"><span id="ccsarahphoto" aria-hidden="true"></span></span>' +
     '  <span id="ccdot"></span>' +
     '</button>';
   document.body.appendChild(wrap);
