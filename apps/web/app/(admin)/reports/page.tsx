@@ -1,9 +1,19 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, Activity, TrendingUp, ChevronRight, ClipboardList, BarChart2, Scale, DollarSign, FileBarChart } from 'lucide-react'
+import { ArrowLeft, Activity, TrendingUp, ChevronRight, ClipboardList, BarChart2, Scale, DollarSign, FileBarChart, BriefcaseBusiness } from 'lucide-react'
 
 const CLINICAL_REPORTS = [
+  {
+    href:        '/reports/executive',
+    icon:        BriefcaseBusiness,
+    iconBg:      'bg-blue-100 dark:bg-blue-900/30',
+    iconColor:   'text-blue-700 dark:text-blue-300',
+    accentColor: '#1A237E',
+    title:       'Admin Executive Report',
+    description: 'Professional weekly/monthly management brief covering appointments, patient flow, CRM leads, communications, treatment pipeline and recorded collections.',
+    cta:         'Preview & test',
+  },
   {
     href:        '/reports/clinical',
     icon:        ClipboardList,

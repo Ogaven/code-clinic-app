@@ -1,11 +1,39 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma'
 import { requireAuth } from '../middleware/auth'
+import { adminOnly } from '../middleware/rbac'
+import { buildExecutiveReport, type ExecutivePeriod } from '../services/executive-report.service'
+import { sendExecutiveReportEmail } from '../services/communications/email'
 import { startOfKampalaDay, endOfKampalaDay, startOfKampalaWeek, startOfKampalaMonth, startOfNextKampalaMonth, kampalaTodayRange } from '../utils/kampala-time'
 import { getPatientActivitySummary, getAppointmentStatusBreakdown, ATTENDED_STATUSES } from '../services/patient-analytics.service'
 import { isAccepted, isDeclined, computeMoneyAtRisk } from '../services/treatment-classification.service'
 
 const router = Router()
+
+// Admin-only management brief. Preview is read-only; email is sent only by an
+// explicit admin test-send request. No scheduler is enabled in this phase.
+router.get('/executive', requireAuth, adminOnly, async (req, res) => {
+  try {
+    const period: ExecutivePeriod = req.query.period === 'monthly' ? 'monthly' : 'weekly'
+    res.json(await buildExecutiveReport(period))
+  } catch (e: any) {
+    console.error('[Reports] executive error:', e.message)
+    res.status(500).json({ error: 'Failed to generate executive report' })
+  }
+})
+router.post('/executive/test-email', requireAuth, adminOnly, async (req, res) => {
+  try {
+    const period: ExecutivePeriod = req.body?.period === 'monthly' ? 'monthly' : 'weekly'
+    const to = String(req.body?.to || '').trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { res.status(400).json({ error: 'A valid test recipient email is required' }); return }
+    const report = await buildExecutiveReport(period)
+    await sendExecutiveReportEmail(to, report)
+    res.json({ ok: true, to, period: report.period })
+  } catch (e: any) {
+    console.error('[Reports] executive test email error:', e.message)
+    res.status(500).json({ error: 'Failed to send executive report test email' })
+  }
+})
 
 type PatientEntry = { name: string; service: string; date: string; value: number }
 
