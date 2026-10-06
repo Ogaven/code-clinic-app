@@ -13,7 +13,7 @@ import { prisma } from '../lib/prisma'
 import { logAudit } from '../services/audit.service'
 
 const router = Router()
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp']
 

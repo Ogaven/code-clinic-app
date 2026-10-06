@@ -136,6 +136,7 @@ export default function DoctorProfilePage() {
   function handleAvatarFile(file: File) {
     if (!file || !token || !user) return
     if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { showToast('Only JPEG, PNG, WebP allowed'); return }
+    if (file.size > 20 * 1024 * 1024) { showToast('Image must be under 20MB'); return }
     const reader = new FileReader()
     reader.onload = e => { if (e.target?.result) setCropSrc(e.target.result as string) }
     reader.readAsDataURL(file)
@@ -154,6 +155,12 @@ export default function DoctorProfilePage() {
       if (r.ok) {
         const d = await r.json()
         setAvatarUrl(d.avatarUrl)
+        const stored = JSON.parse(localStorage.getItem('cc_user') || '{}')
+        if (stored.id === user.id) {
+          const updated = { ...stored, avatarUrl: d.avatarUrl }
+          localStorage.setItem('cc_user', JSON.stringify(updated))
+          setUser(updated)
+        }
         localStorage.setItem('cc_avatar', d.avatarUrl)
         window.dispatchEvent(new CustomEvent('cc-avatar-updated', { detail: d.avatarUrl }))
         showToast('Photo updated!')

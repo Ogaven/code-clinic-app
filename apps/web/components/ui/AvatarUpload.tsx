@@ -39,8 +39,8 @@ export default function AvatarUpload({
       setError('Only JPEG, PNG or WebP images allowed')
       return
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image must be under 5MB')
+    if (file.size > 20 * 1024 * 1024) {
+      setError('Image must be under 20MB')
       return
     }
 
