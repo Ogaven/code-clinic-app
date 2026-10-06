@@ -66,7 +66,24 @@ export default function ExecutiveReportPage() {
     </Section>
     <Section title="Treatment Pipeline & Opportunity" icon={TrendingUp}><Rows rows={[['Plans presented',c.treatment.plansPresented],['Presented value',money(c.treatment.presentedValueUGX)],['Planned',c.treatment.planned],['In progress',c.treatment.inProgress],['Completed',c.treatment.completed],['On hold',c.treatment.onHold],['Follow-up requested',c.treatment.followUpRequested],['Accepted',c.treatment.accepted],['Accepted value',money(c.treatment.acceptedValueUGX)],['Declined',c.treatment.declined],['Acceptance rate',c.treatment.acceptanceRate+'%'],['Period-cohort money at risk',money(c.treatment.moneyAtRiskUGX)]]}/></Section>
     <Section title="Automation Impact" icon={Zap}><Rows rows={[['Automation events created',c.automation.eventsCreated],['Events processed',c.automation.eventsProcessed],['Active sequence enrollments',c.automation.activeEnrollments],['Touches created',c.automation.touchesCreated],['Live automated touches sent',c.automation.touchesSent],['Dry-run touches',c.automation.touchesDryRun],['Pending touches',c.automation.touchesPending],['Failed touches',c.automation.touchesFailed]]}/><p className="mt-3 text-xs text-gray-400">Only recorded automation activity is shown. The report does not invent a staff-hours-saved figure.</p></Section>
-    <Section title="Patient Reviews & Satisfaction" icon={Star}><Rows rows={[['Feedback received',c.crmOperations.feedbackReceived],['Average patient rating',c.crmOperations.averageRating==null?'No measured feedback':c.crmOperations.averageRating+'/5'],['Review requests created',c.crmOperations.reviewRequests],...Object.entries(c.crmOperations.reviewRequestByStatus).map(([k,v])=>[`Review request · ${k}`,v] as [string,any])]}/></Section>
+    <Section title="Patient Reviews & Satisfaction" icon={Star}>
+     <div className="grid sm:grid-cols-2 gap-4">
+      <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-4">
+       <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Internal patient feedback</p>
+       <Rows rows={[['Feedback received this period',c.crmOperations.feedbackReceived],['Average internal rating',c.crmOperations.averageRating==null?'No measured feedback':c.crmOperations.averageRating+'/5']]}/>
+       <p className="mt-3 text-xs text-gray-400">These are ratings patients submitted through Code Clinic's own feedback flow. They are not Google reviews.</p>
+      </div>
+      <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-4">
+       <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Google review requests</p>
+       <Rows rows={[['Requests created this period',c.crmOperations.reviewRequests],...Object.entries(c.crmOperations.reviewRequestByStatus).map(([k,v])=>[`Request · ${String(k).replace(/_/g,' ').toLowerCase()}`,v] as [string,any])]}/>
+       <p className="mt-3 text-xs text-gray-400">This is outbound request activity, not the number of public Google reviews received.</p>
+      </div>
+     </div>
+     <div className="mt-4 rounded-xl border border-dashed border-amber-200 dark:border-amber-400/20 bg-amber-50/60 dark:bg-amber-400/5 p-4">
+      <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Google public review performance</p>
+      <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-200/60">Live Google rating, public review count and recent-review performance are intentionally not shown in this management report until Google Business Profile review access is available. A missing Google API result must never be presented as “0 reviews”.</p>
+     </div>
+    </Section>
    </div>
 
    <Section title="Revenue Evidence" icon={Wallet}><Rows rows={[['Clinic collections recorded this period',money(c.finance.collectedUGX)],['Paying patients recorded this period',c.finance.payingPatients],['Invoices created this period',money(c.finance.invoicedUGX)],['Outstanding on those invoices',money(c.finance.outstandingUGX)],['Revenue attributed to acquired-lead cohort',money(c.crm.attributedRevenue.collectedUGX)]]}/><p className="mt-3 text-xs text-gray-400">This report never uses the dashboard's demo financial figures. Clinic collections come from real Payment records; attributed revenue is shown separately and only where a single lead-to-patient link can be defended.</p></Section>
