@@ -222,6 +222,7 @@ export async function buildExecutiveReport(kind: ExecutivePeriod) {
   const wins: string[] = []
   const opportunities: string[] = []
 
+  if (current.appointments.patientsSeen) wins.push(`${current.appointments.patientsSeen} distinct patient(s) were seen during the period, with a ${current.appointments.showRate}% appointment show-up rate.`)
   if (current.crm.funnel.payingClientCount) wins.push(`${current.crm.funnel.payingClientCount} paying client(s) are cleanly attributable to leads acquired in this period.`)
   if (current.crm.attributedRevenue.collectedUGX) wins.push(`UGX ${current.crm.attributedRevenue.collectedUGX.toLocaleString('en-US')} collected is cleanly attributable to this period's acquired-lead cohort.`)
   if (current.communications.afterHoursInbound) wins.push(`${current.communications.afterHoursInbound} inbound message(s) were engaged outside clinic opening hours.`)
