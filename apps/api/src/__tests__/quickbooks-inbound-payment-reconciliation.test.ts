@@ -181,6 +181,15 @@ describe('QuickBooks supported read API', () => {
     expect(findInvoices).toHaveBeenCalledWith({ fetchAll: true }, expect.any(Function))
   })
 
+  it('accepts the plain array shape returned by node-quickbooks when fetchAll is enabled', async () => {
+    const findInvoices = vi.fn((_criteria: any, callback: any) =>
+      callback(null, [{ Id: 'qb-inv-1' }, { Id: 'qb-inv-2' }]),
+    )
+
+    await expect(fetchQuickBooksCollection({ findInvoices }, 'findInvoices', 'Invoice'))
+      .resolves.toEqual([{ Id: 'qb-inv-1' }, { Id: 'qb-inv-2' }])
+  })
+
   it('fails clearly instead of calling the unsupported generic query API', async () => {
     await expect(fetchQuickBooksCollection({}, 'findBills', 'Bill'))
       .rejects.toThrow('QuickBooks SDK does not support findBills')
