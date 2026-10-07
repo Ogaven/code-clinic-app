@@ -565,7 +565,7 @@ async function markQuickBooksPaymentReversed(qbPaymentId: string, reason: string
   return payments.length
 }
 
-async function syncQuickBooksPaymentObject(qbPayment: any): Promise<{ matched: number; skipped: number }> {
+export async function syncQuickBooksPaymentObject(qbPayment: any): Promise<{ matched: number; skipped: number }> {
   const qbPaymentId = String(qbPayment?.Id || '')
   if (!qbPaymentId) return { matched: 0, skipped: 1 }
 
