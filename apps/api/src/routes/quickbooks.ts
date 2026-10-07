@@ -687,7 +687,9 @@ export function fetchAllQuickBooksPayments(qbo: any): Promise<any[]> {
   return new Promise((resolve, reject) =>
     qbo.findPayments({ fetchAll: true }, (err: any, data: any) => {
       if (err) return reject(err)
-      const payments = data?.QueryResponse?.Payment ?? data?.Payment ?? []
+      const payments = Array.isArray(data)
+        ? data
+        : (data?.QueryResponse?.Payment ?? data?.Payment ?? [])
       resolve(Array.isArray(payments) ? payments : [])
     }),
   )
