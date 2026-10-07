@@ -161,6 +161,17 @@ describe('QuickBooks payment list query', () => {
     expect(findPayments).toHaveBeenCalledWith({ fetchAll: true }, expect.any(Function))
   })
 
+  it('accepts the plain payment array returned by node-quickbooks fetchAll', async () => {
+    const findPayments = vi.fn((_criteria: any, callback: any) =>
+      callback(null, [{ Id: 'qb-pay-1' }, { Id: 'qb-pay-2' }]),
+    )
+
+    await expect(fetchAllQuickBooksPayments({ findPayments })).resolves.toEqual([
+      { Id: 'qb-pay-1' },
+      { Id: 'qb-pay-2' },
+    ])
+  })
+
   it('propagates QuickBooks payment query errors without writing anything', async () => {
     const error = new Error('QuickBooks unavailable')
     const findPayments = vi.fn((_criteria: any, callback: any) => callback(error))
