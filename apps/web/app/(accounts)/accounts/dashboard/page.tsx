@@ -255,7 +255,7 @@ export default function AccountsDashboardPage() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed top-4 right-4 z-50 bg-amber-600 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold max-w-xs">
+        <div className="fixed left-4 right-4 top-20 z-[60] mx-auto max-w-sm bg-amber-600 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold sm:left-auto sm:right-6 sm:top-24 sm:mx-0 sm:max-w-xs">
           {toast}
         </div>
       )}
