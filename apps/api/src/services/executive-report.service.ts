@@ -240,6 +240,8 @@ export async function buildExecutiveReport(kind: ExecutivePeriod) {
   if (current.communications.failedAgentMessages) attention.push(`${current.communications.failedAgentMessages} agent message(s) recorded as failed delivery.`)
   if (current.automation.touchesFailed) attention.push(`${current.automation.touchesFailed} automation touch(es) failed in this period.`)
 
+  if (current.automation.touchesPending) attention.push(`${current.automation.touchesPending} automation touch(es) remain pending.`)
+
   return {
     period: { kind, start: start.toISOString(), end: end.toISOString(), label: label(kind, start, end), previousLabel: label(kind, prevStart, start) },
     generatedAt: new Date().toISOString(),
