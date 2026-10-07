@@ -324,6 +324,133 @@ router.get('/customers', requireAuth, async (_req, res) => {
   } catch (err: any) { res.status(400).json({ error: err.message }) }
 })
 
+// ── GET /accounts/quickbooks/audit/patient-reconciliation ───────────────────
+// Strictly read-only audit. Compares QuickBooks customers with Code Clinic
+// patients and invoice-linked QB customer IDs. It never creates, links, edits,
+// merges or deletes records in either system.
+router.get('/audit/patient-reconciliation', requireAuth, async (_req, res) => {
+  try {
+    const qbo = await getQBClient()
+    const qbCustomers = await fetchQuickBooksCollection(qbo, 'findCustomers', 'Customer')
+    const patients = await prisma.patient.findMany({
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        email: true,
+        invoices: {
+          where: { qbCustomerId: { not: null } },
+          select: { qbCustomerId: true, qbInvoiceId: true, qbSyncStatus: true },
+        },
+      },
+    })
+
+    const normalizeText = (value: unknown) =>
+      String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+    const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '')
+    const phoneKeys = (value: unknown) => {
+      const digits = normalizePhone(value)
+      if (!digits) return []
+      const keys = new Set([digits])
+      // Uganda numbers are commonly stored as 07..., 2567... or +2567....
+      if (digits.startsWith('256') && digits.length >= 12) keys.add('0' + digits.slice(3))
+      if (digits.startsWith('0') && digits.length >= 10) keys.add('256' + digits.slice(1))
+      return [...keys]
+    }
+
+    const qbById = new Map(qbCustomers.map((customer: any) => [String(customer?.Id ?? ''), customer]))
+    const patientById = new Map(patients.map(patient => [patient.id, patient]))
+
+    const exactLinks: Array<{ patientId: string; qbCustomerId: string; basis: string }> = []
+    const brokenInvoiceLinks: Array<{ patientId: string; qbCustomerId: string }> = []
+    for (const patient of patients) {
+      const linkedIds = [...new Set(patient.invoices.map(invoice => invoice.qbCustomerId).filter(Boolean) as string[])]
+      for (const qbCustomerId of linkedIds) {
+        if (qbById.has(qbCustomerId)) exactLinks.push({ patientId: patient.id, qbCustomerId, basis: 'invoice_qb_customer_id' })
+        else brokenInvoiceLinks.push({ patientId: patient.id, qbCustomerId })
+      }
+    }
+
+    const linkedPatientIds = new Set(exactLinks.map(link => link.patientId))
+    const linkedQbIds = new Set(exactLinks.map(link => link.qbCustomerId))
+    const candidateMatches: Array<{
+      patientId: string
+      qbCustomerId: string
+      signals: string[]
+      confidence: 'strong' | 'review'
+    }> = []
+
+    for (const patient of patients) {
+      if (linkedPatientIds.has(patient.id)) continue
+      const patientName = normalizeText(`${patient.firstName} ${patient.lastName}`)
+      const patientEmail = normalizeText(patient.email)
+      const patientPhones = new Set(phoneKeys(patient.phone))
+
+      for (const customer of qbCustomers as any[]) {
+        const qbCustomerId = String(customer?.Id ?? '')
+        if (!qbCustomerId || linkedQbIds.has(qbCustomerId)) continue
+
+        const qbName = normalizeText(customer?.DisplayName || [customer?.GivenName, customer?.FamilyName].filter(Boolean).join(' '))
+        const qbEmail = normalizeText(customer?.PrimaryEmailAddr?.Address)
+        const qbPhones = phoneKeys(customer?.PrimaryPhone?.FreeFormNumber)
+        const signals: string[] = []
+        if (patientEmail && qbEmail && patientEmail === qbEmail) signals.push('email')
+        if (patientPhones.size && qbPhones.some(phone => patientPhones.has(phone))) signals.push('phone')
+        if (patientName && qbName && patientName === qbName) signals.push('name')
+        if (!signals.length) continue
+
+        const strong = signals.includes('email') || signals.includes('phone') || signals.length >= 2
+        candidateMatches.push({
+          patientId: patient.id,
+          qbCustomerId,
+          signals,
+          confidence: strong ? 'strong' : 'review',
+        })
+      }
+    }
+
+    const candidatePatientIds = new Set(candidateMatches.map(match => match.patientId))
+    const candidateQbIds = new Set(candidateMatches.map(match => match.qbCustomerId))
+    const codeClinicOnly = patients
+      .filter(patient => !linkedPatientIds.has(patient.id) && !candidatePatientIds.has(patient.id))
+      .map(patient => patient.id)
+    const quickBooksOnly = (qbCustomers as any[])
+      .map(customer => String(customer?.Id ?? ''))
+      .filter(id => id && !linkedQbIds.has(id) && !candidateQbIds.has(id))
+
+    const linkedInvoices = patients.flatMap(patient => patient.invoices)
+    res.json({
+      success: true,
+      readOnly: true,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        codeClinicPatients: patients.length,
+        quickBooksCustomers: qbCustomers.length,
+        exactLinkedPatients: linkedPatientIds.size,
+        exactLinkedQuickBooksCustomers: linkedQbIds.size,
+        candidateMatches: candidateMatches.length,
+        strongCandidates: candidateMatches.filter(match => match.confidence === 'strong').length,
+        reviewCandidates: candidateMatches.filter(match => match.confidence === 'review').length,
+        codeClinicOnly: codeClinicOnly.length,
+        quickBooksOnly: quickBooksOnly.length,
+        invoiceQbLinks: linkedInvoices.length,
+        brokenInvoiceQbCustomerLinks: brokenInvoiceLinks.length,
+      },
+      // IDs and match signals are returned for authorized staff review; no
+      // automatic linking is performed and no clinical data is included.
+      exactLinks,
+      candidateMatches,
+      codeClinicOnlyPatientIds: codeClinicOnly,
+      quickBooksOnlyCustomerIds: quickBooksOnly,
+      brokenInvoiceLinks,
+    })
+  } catch (err: any) {
+    console.error('[QB Audit] patient reconciliation failed:', err?.message ?? err)
+    res.status(400).json({ error: err?.message ?? 'QuickBooks patient reconciliation audit failed' })
+  }
+})
+
 // ── GET /accounts/quickbooks/vendors ─────────────────────────────────────────
 router.get('/vendors', requireAuth, async (_req, res) => {
   const cacheKey = 'vendors'
