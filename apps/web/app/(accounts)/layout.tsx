@@ -12,7 +12,7 @@ const pageTitles: Record<string, string> = {
   '/accounts/expenses': 'Expenses', '/accounts/reconciliation': 'Bank Reconciliation', '/accounts/journal': 'Journal Entries',
   '/accounts/ledger': 'General Ledger', '/accounts/live-checkout': 'Live Checkout', '/accounts/receivables': 'Patient Balances',
   '/accounts/bills': 'Bills', '/accounts/payables': 'Supplier Balances', '/accounts/reports': 'Finance Reports',
-  '/accounts/payroll': 'Payroll',
+  '/accounts/payroll': 'Payroll', '/accounts/quickbooks-audit': 'QuickBooks Audit',
 }
 
 export default function AccountsLayout({ children }: { children: React.ReactNode }) {
