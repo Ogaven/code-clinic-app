@@ -26,7 +26,7 @@ export default function AccountsLayout({ children }: { children: React.ReactNode
     const stored = localStorage.getItem('cc_user')
     if (!stored) { router.push('/login'); return }
     const current = JSON.parse(stored)
-    if (current.role !== 'ACCOUNTS' && current.role !== 'ADMIN') { router.replace('/login'); return }
+    if (current.role !== 'ACCOUNTS') { router.replace('/login'); return }
     setUser(current)
     const saved = readTheme(); setTheme(saved); setDark(applyTheme(saved))
     const token = localStorage.getItem('cc_token')

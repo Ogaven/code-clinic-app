@@ -7,6 +7,11 @@ import { middleware } from '../../middleware'
 // the worker script 307s to /login and the browser gets HTML instead of JS,
 // silently breaking Web Push registration for every visitor regardless of
 // sign-in state. See middleware.ts, lib/onesignal.ts.
+function tokenFor(role: string) {
+  const payload = Buffer.from(JSON.stringify({ role })).toString('base64url')
+  return `header.${payload}.signature`
+}
+
 function makeRequest(pathname: string, cookie?: string) {
   return {
     nextUrl: { pathname },
@@ -31,5 +36,15 @@ describe('middleware', () => {
   it('still redirects an actual protected route with no auth cookie', () => {
     const res = middleware(makeRequest('/admin/dashboard'))
     expect(res.headers.get('location')).toContain('/login')
+  })
+
+  it('rejects an administrator session from the dedicated accounts app', () => {
+    const res = middleware(makeRequest('/accounts/dashboard', tokenFor('ADMIN')))
+    expect(res.headers.get('location')).toContain('/admin/dashboard')
+  })
+
+  it('allows an accounts session into the dedicated accounts app', () => {
+    const res = middleware(makeRequest('/accounts/dashboard', tokenFor('ACCOUNTS')))
+    expect(res.headers.get('location')).toBeNull()
   })
 })
