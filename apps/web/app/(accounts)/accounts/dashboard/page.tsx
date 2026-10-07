@@ -124,6 +124,7 @@ export default function AccountsDashboardPage() {
   const [syncing, setSyncing]           = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
   const [showDisconnectModal, setShowDisconnectModal] = useState(false)
+  const [qbFinancials, setQbFinancials] = useState<{ todayRevenue: number; monthRevenue: number; monthExpenses: number; unpaidInvoices: number } | null>(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
@@ -141,7 +142,7 @@ export default function AccountsDashboardPage() {
 
       fetch('/api-proxy/accounts/quickbooks/status', { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.json())
-        .then(setQbStatus)
+        .then(status => { setQbStatus(status); if (status.connected) loadQuickBooksFinancials(token) })
         .catch(() => setQbStatus({ connected: false }))
     } else {
       setLoading(false)
@@ -162,6 +163,40 @@ export default function AccountsDashboardPage() {
     return () => clearInterval(tick)
   }, [])
 
+  async function loadQuickBooksFinancials(token: string) {
+    try {
+      const [paymentsRes, expensesRes, invoicesRes] = await Promise.all([
+        fetch('/api-proxy/accounts/quickbooks/payments', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api-proxy/accounts/quickbooks/expenses', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api-proxy/accounts/quickbooks/invoices', { headers: { Authorization: `Bearer ${token}` } }),
+      ])
+      if (!paymentsRes.ok || !expensesRes.ok || !invoicesRes.ok) return
+      const [paymentsBody, expensesBody, invoicesBody] = await Promise.all([
+        paymentsRes.json(), expensesRes.json(), invoicesRes.json(),
+      ])
+      const payments = paymentsBody.data || []
+      const expenses = expensesBody.data || []
+      const invoices = invoicesBody.data || []
+      const kampalaParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(new Date())
+      const part = (type: string) => kampalaParts.find(p => p.type === type)?.value || ''
+      const today = `${part('year')}-${part('month')}-${part('day')}`
+      const month = today.slice(0, 7)
+      const sum = (rows: any[], predicate: (row: any) => boolean) =>
+        rows.filter(predicate).reduce((total: number, row: any) => total + Number(row.TotalAmt || 0), 0)
+
+      setQbFinancials({
+        todayRevenue: sum(payments, p => p.TxnDate === today),
+        monthRevenue: sum(payments, p => String(p.TxnDate || '').startsWith(month)),
+        monthExpenses: sum(expenses, e => String(e.TxnDate || '').startsWith(month)),
+        unpaidInvoices: invoices.filter((i: any) => Number(i.Balance || 0) > 0).length,
+      })
+    } catch {
+      // Keep the existing Code Clinic snapshot visible if QuickBooks reads fail.
+    }
+  }
+
   async function handleSync() {
     setSyncing(true)
     try {
@@ -178,6 +213,7 @@ export default function AccountsDashboardPage() {
       })
       const dashboard = await dashboardResponse.json()
       if (dashboardResponse.ok && !dashboard.error) setData(dashboard)
+      if (token) await loadQuickBooksFinancials(token)
 
       setToast(`QuickBooks synced — ${result.invoiceMatches ?? 0} invoice payment match${result.invoiceMatches === 1 ? '' : 'es'} updated.`)
       setTimeout(() => setToast(''), 4000)
@@ -208,7 +244,8 @@ export default function AccountsDashboardPage() {
 
   const greeting    = getGreeting()
   const name        = user?.firstName || 'Accounts'
-  const netProfit   = data ? data.monthRevenue - data.monthExpenses : 0
+  const financial = qbStatus?.connected && qbFinancials ? qbFinancials : data
+  const netProfit   = financial ? financial.monthRevenue - financial.monthExpenses : 0
   const dateStr     = now.toLocaleDateString('en-GB', {
     timeZone: 'Africa/Nairobi', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   })
@@ -216,7 +253,7 @@ export default function AccountsDashboardPage() {
   const stats = [
     {
       title: "Today's Revenue",
-      value: loading ? null : formatUGX(data?.todayRevenue ?? 0),
+      value: loading ? null : formatUGX(financial?.todayRevenue ?? 0),
       icon: TrendingUp,
       color: '#059669',
       bg: 'linear-gradient(135deg,#D1FAE5,#A7F3D0)',
@@ -224,7 +261,7 @@ export default function AccountsDashboardPage() {
     },
     {
       title: 'Outstanding Invoices',
-      value: loading ? null : String(data?.unpaidInvoices ?? 0),
+      value: loading ? null : String(financial?.unpaidInvoices ?? 0),
       icon: FileText,
       color: '#D97706',
       bg: 'linear-gradient(135deg,#FEF3C7,#FDE68A)',
@@ -232,7 +269,7 @@ export default function AccountsDashboardPage() {
     },
     {
       title: 'Month Expenses',
-      value: loading ? null : formatUGX(data?.monthExpenses ?? 0),
+      value: loading ? null : formatUGX(financial?.monthExpenses ?? 0),
       icon: ShoppingBag,
       color: '#DC2626',
       bg: 'linear-gradient(135deg,#FEE2E2,#FECACA)',
@@ -354,6 +391,12 @@ export default function AccountsDashboardPage() {
             style={{ objectFit: 'contain', objectPosition: 'bottom', filter: 'drop-shadow(0 10px 32px rgba(41,171,226,0.4))', display: 'block', width: '100%', height: 'auto' }} />
         </div>
       </div>
+
+      {qbStatus?.connected && qbFinancials && (
+        <div className="flex items-center gap-2 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2 w-fit">
+          <CheckCircle size={12} /> Financial snapshot is read-only from QuickBooks. Patient records are not modified.
+        </div>
+      )}
 
       {/* ── 4 STAT CARDS ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" style={{ paddingTop: 58 }}>
@@ -495,11 +538,11 @@ export default function AccountsDashboardPage() {
               <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/8">
                 <div className="text-center">
                   <p className="text-[9px] text-gray-400 uppercase font-semibold">Revenue</p>
-                  <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">{formatUGX(data.monthRevenue)}</p>
+                  <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">{formatUGX(financial?.monthRevenue ?? data.monthRevenue)}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-[9px] text-gray-400 uppercase font-semibold">Expenses</p>
-                  <p className="text-[11px] font-bold text-red-500 mt-0.5">{formatUGX(data.monthExpenses)}</p>
+                  <p className="text-[11px] font-bold text-red-500 mt-0.5">{formatUGX(financial?.monthExpenses ?? data.monthExpenses)}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-[9px] text-gray-400 uppercase font-semibold">Net</p>
