@@ -55,6 +55,7 @@ interface AiSnapshot {
   channels:           Record<string, number>
 }
 interface MiniPatient { id: string; firstName: string; lastName: string; avatarUrl?: string | null }
+interface SatisfactionSummary { total: number; averageRating: number | null; satisfiedCount: number; satisfactionPct: number | null }
 interface GrowthCrmRevenue {
   funnel: { leadCount: number; contactedCount: number; qualifiedCount: number; convertedCount: number; bookedCount: number; attendedCount: number; treatmentAcceptedCount: number; payingClientCount: number }
   revenue: { treatmentValueUGX: number; invoicedUGX: number; collectedUGX: number }
@@ -236,6 +237,7 @@ export default function DashboardPage() {
   const [aiSnapshot, setAiSnapshot] = useState<AiSnapshot | null>(null)
   const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
   const [growthRevenue, setGrowthRevenue] = useState<GrowthCrmRevenue | null>(null)
+  const [satisfaction, setSatisfaction] = useState<SatisfactionSummary | null>(null)
   const [growthPeriod, setGrowthPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month')
   const [dashError, setDashError] = useState(false)
 
@@ -283,6 +285,9 @@ export default function DashboardPage() {
 
     fetch('/api-proxy/ai-suite/snapshot', { headers: auth })
       .then(r => r.ok ? r.json() : null).then(d => { if (d) setAiSnapshot(d) }).catch(() => {})
+
+    fetch('/api-proxy/receptionist/patient-satisfaction', { headers: auth })
+      .then(r => r.ok ? r.json() : null).then(d => { if (d && typeof d.total === 'number') setSatisfaction(d) }).catch(() => {})
 
     Object.entries(CATEGORY_FILTERS).forEach(([key, filter]) => {
       const qs = filter ? `filter=${filter}&limit=3` : 'limit=3'
@@ -467,24 +472,19 @@ export default function DashboardPage() {
       {/* ═══ ROW 2 — Patient Satisfaction | Financial Snapshot | CRM Growth ═══ */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[0.85fr_1.6fr_0.85fr]">
 
-        {/* Patient Satisfaction — Google Reviews-ready card. A real, authorized
-            GBP connection already exists server-side (see
-            apps/api/src/routes/business-profile.ts and GET
-            /business-profile/reviews/summary?accountId=&locationId=), but
-            Google's Basic API Access approval is still pending, so no live
-            rating can be shown honestly yet. Layout below is the FINAL
-            shape — the gauge is full-size in both states; swapping the
-            `pending` text block for real averageRating/totalReviewCount/
-            recentReviewCount from that endpoint requires no redesign. */}
-        <CompactCard title="Patient Satisfaction" action={<span className="rounded-full bg-gray-50 px-2 py-0.5 text-[9px] font-bold text-gray-500 dark:bg-white/5 dark:text-white/40">Google Reviews</span>}>
+        {/* Patient Satisfaction — real internal Code Clinic post-visit feedback.
+            Google Reviews remain separate until that provider data is available. */}
+        <CompactCard title="Patient Satisfaction" action={<span className="rounded-full bg-gray-50 px-2 py-0.5 text-[9px] font-bold text-gray-500 dark:bg-white/5 dark:text-white/40">Code Clinic Feedback</span>}>
           <div className="flex items-center justify-between px-1 text-[10px] font-semibold text-gray-400 dark:text-white/25">
-            <span>No reviews yet</span>
-            <span>&nbsp;</span>
+            <span>{(satisfaction?.total ?? 0) > 0 ? `${satisfaction!.total} rating${satisfaction!.total === 1 ? '' : 's'}` : 'No ratings yet'}</span>
+            <span>{(satisfaction?.total ?? 0) > 0 && satisfaction?.satisfactionPct != null ? `${satisfaction.satisfactionPct}% satisfied` : ' '}</span>
           </div>
-          <SatisfactionGauge pct={null} ratingLabel="—" />
+          <SatisfactionGauge pct={satisfaction?.satisfactionPct ?? null} ratingLabel={(satisfaction?.total ?? 0) > 0 && satisfaction?.averageRating != null ? satisfaction.averageRating.toFixed(1) : '—'} />
           <div className="-mt-2 text-center">
-            <p className="mx-auto max-w-[190px] text-[10px] font-semibold leading-snug text-gray-500 dark:text-slate-400">Google Reviews pending API approval</p>
-            <p className="mt-2 text-[10px] font-bold text-gray-300 dark:text-white/25">View all reviews</p>
+            <p className="mx-auto max-w-[210px] text-[10px] font-semibold leading-snug text-gray-500 dark:text-slate-400">
+              {(satisfaction?.total ?? 0) > 0 ? `${satisfaction!.satisfiedCount} patient${satisfaction!.satisfiedCount === 1 ? '' : 's'} rated their visit 4–5 stars` : 'Internal post-visit ratings will appear here as patients respond'}
+            </p>
+            <p className="mt-2 text-[9px] font-medium text-gray-300 dark:text-white/25">Google Reviews remain separate</p>
           </div>
         </CompactCard>
 
