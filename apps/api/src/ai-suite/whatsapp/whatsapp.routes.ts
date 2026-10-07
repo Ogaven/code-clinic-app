@@ -8,6 +8,7 @@ import { isAgentEnabled } from '../takeover/takeover.service'
 import { prisma } from '../../lib/prisma'
 import { sendPushToUser } from '../../services/push.service'
 import { checkMetaWebhookSignature } from '../../lib/webhook-signature'
+import { captureReviewRatingReply } from '../../crm-automation/review-request.service'
 
 const router = Router()
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -390,6 +391,14 @@ router.post('/webhook', async (req: Request, res: Response) => {
                   console.error('[StaffRelay] handleStaffReply error:', err.message)
                 }
               }
+              continue
+            }
+
+            // A bare 1-5 reply is feedback only when this patient has a recent,
+            // actually-sent review request. Otherwise it continues through Sarah normally.
+            const reviewReply = await captureReviewRatingReply(from, text)
+            if (reviewReply) {
+              await sendDirectReply(from, text, reviewReply, msg.id)
               continue
             }
 
