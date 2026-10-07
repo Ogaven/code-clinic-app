@@ -330,7 +330,13 @@ router.get('/customers', requireAuth, async (_req, res) => {
 // merges or deletes records in either system.
 router.get('/audit/patient-reconciliation', requireAuth, async (_req, res) => {
   try {
+    const tokenSetting = await prisma.appSetting.findUnique({ where: { key: 'quickbooks_tokens' } })
+    if (!tokenSetting) throw new Error('QuickBooks not connected')
+    const storedTokens = JSON.parse(tokenSetting.value) as Record<string, any>
     const qbo = await getQBClient()
+    const liveCompanyInfo = await new Promise<any>((resolve, reject) => {
+      qbo.getCompanyInfo(storedTokens.realmId, (err: any, info: any) => err ? reject(err) : resolve(info))
+    })
     const [qbCustomers, qbInvoices, qbPayments, qbPurchases] = await Promise.all([
       fetchQuickBooksCollection(qbo, 'findCustomers', 'Customer'),
       fetchQuickBooksCollection(qbo, 'findInvoices', 'Invoice'),
@@ -438,6 +444,13 @@ router.get('/audit/patient-reconciliation', requireAuth, async (_req, res) => {
       success: true,
       readOnly: true,
       generatedAt: new Date().toISOString(),
+      connection: {
+        environment: process.env.QUICKBOOKS_ENVIRONMENT || 'production',
+        realmId: String(storedTokens.realmId ?? ''),
+        companyName: String(liveCompanyInfo?.CompanyName ?? liveCompanyInfo?.QueryResponse?.CompanyInfo?.[0]?.CompanyName ?? ''),
+        connectedAt: storedTokens.connected_at ?? null,
+        liveCompanyInfoVerified: true,
+      },
       summary: {
         codeClinicPatients: patients.length,
         quickBooksCustomers: qbCustomers.length,
