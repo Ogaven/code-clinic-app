@@ -102,6 +102,7 @@ import { ensureDefaultCrmSequences }       from './crm-automation/seed-default-s
 import { processDueReviewRequests }        from './crm-automation/review-request.service'
 import { checkLeadNeedsHelpAlerts }        from './crm-automation/lead-needs-help-alerts.service'
 import { checkLeadFollowUpOverdueAlerts }  from './crm-automation/lead-followup-overdue-alerts.service'
+import { startExecutiveReportScheduler } from './services/executive-report-scheduler.service'
 
 // Lock process timezone to EAT (UTC+3) — must be set before any Date operations.
 // Africa/Kampala and Africa/Nairobi are both fixed UTC+3 with no DST, so this
@@ -382,6 +383,10 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // ─── Start ────────────────────────────────────────────────────
 runStartup().then(() => {
   // startScheduler() — disabled, outboundQueue/agentMemory tables not in schema
+
+  // Management report delivery is fail-closed: schedules exist, but no email is
+  // sent unless EXECUTIVE_REPORT_RECIPIENTS contains valid addresses.
+  startExecutiveReportScheduler()
 
   // SIP voice — connects to drachtio-server (no-op if DRACHTIO_HOST is not set)
   initializeSIP()
