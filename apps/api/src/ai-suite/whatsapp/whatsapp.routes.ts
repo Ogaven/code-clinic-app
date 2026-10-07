@@ -230,7 +230,16 @@ router.post('/webhook', async (req: Request, res: Response) => {
       })
       if (!forwarded.ok) console.error('[WhatsApp][HarvestRouter] Harvest webhook rejected payload', forwarded.status)
     } catch (err: any) {
-      console.error('[WhatsApp][HarvestRouter] Forwarding failed:', err?.message ?? 'unknown error')
+      // Log transport diagnostics only. Never log request bodies, signatures,
+      // phone numbers, message text, or other WhatsApp payload data here.
+      const cause = err?.cause
+      console.error('[WhatsApp][HarvestRouter] Forwarding failed', {
+        name: err?.name ?? 'unknown',
+        message: err?.message ?? 'unknown error',
+        causeCode: cause?.code ?? null,
+        causeErrno: cause?.errno ?? null,
+        causeSyscall: cause?.syscall ?? null,
+      })
     }
     res.sendStatus(200)
     return
