@@ -9,7 +9,7 @@ const prismaMock = vi.hoisted(() => ({
 
 vi.mock('../lib/prisma', () => ({ prisma: prismaMock }))
 
-import { normalizeQuickBooksWebhookEvents, syncQuickBooksPaymentObject } from '../routes/quickbooks'
+import { fetchAllQuickBooksPayments, normalizeQuickBooksWebhookEvents, syncQuickBooksPaymentObject } from '../routes/quickbooks'
 
 describe('QuickBooks inbound payment reconciliation', () => {
   beforeEach(() => {
@@ -144,5 +144,27 @@ describe('QuickBooks webhook payload normalization', () => {
       realmId: '310687',
       entityId: '99',
     }])
+  })
+})
+
+
+describe('QuickBooks payment list query', () => {
+  it('uses the node-quickbooks findPayments API with SDK pagination enabled', async () => {
+    const findPayments = vi.fn((_criteria: any, callback: any) =>
+      callback(null, { QueryResponse: { Payment: [{ Id: 'qb-pay-1' }, { Id: 'qb-pay-2' }] } }),
+    )
+
+    await expect(fetchAllQuickBooksPayments({ findPayments })).resolves.toEqual([
+      { Id: 'qb-pay-1' },
+      { Id: 'qb-pay-2' },
+    ])
+    expect(findPayments).toHaveBeenCalledWith({ fetchAll: true }, expect.any(Function))
+  })
+
+  it('propagates QuickBooks payment query errors without writing anything', async () => {
+    const error = new Error('QuickBooks unavailable')
+    const findPayments = vi.fn((_criteria: any, callback: any) => callback(error))
+
+    await expect(fetchAllQuickBooksPayments({ findPayments })).rejects.toThrow('QuickBooks unavailable')
   })
 })
