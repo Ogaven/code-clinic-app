@@ -92,7 +92,11 @@ export function fetchQuickBooksCollection(qbo: any, method: string, entity: stri
     }
     finder.call(qbo, { fetchAll: true }, (err: any, data: any) => {
       if (err) return reject(err)
-      const rows = data?.QueryResponse?.[entity] ?? data?.[entity] ?? []
+      // node-quickbooks returns a plain entity array when fetchAll is enabled.
+      // Keep QueryResponse support for non-fetchAll/mocked responses.
+      const rows = Array.isArray(data)
+        ? data
+        : (data?.QueryResponse?.[entity] ?? data?.[entity] ?? [])
       resolve(Array.isArray(rows) ? rows : [])
     })
   })
