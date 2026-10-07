@@ -106,6 +106,41 @@ function newestFirst(rows: any[]): any[] {
   return [...rows].sort((a, b) => String(b?.TxnDate ?? '').localeCompare(String(a?.TxnDate ?? '')))
 }
 
+// Independent read-only diagnostics used by the reconciliation audit. Count
+// queries and financial reports do not create or modify QuickBooks records.
+function fetchQuickBooksCount(qbo: any, method: string): Promise<number | null> {
+  return new Promise(resolve => {
+    const finder = qbo?.[method]
+    if (typeof finder !== 'function') return resolve(null)
+    finder.call(qbo, { count: true }, (err: any, data: any) => {
+      if (err) return resolve(null)
+      const value = data?.QueryResponse?.totalCount ?? data?.totalCount
+      const count = Number(value)
+      resolve(Number.isFinite(count) ? count : null)
+    })
+  })
+}
+
+function reportHasData(report: any): boolean | null {
+  if (!report || typeof report !== 'object') return null
+  const noDataOption = report?.Header?.Option?.find?.((option: any) => option?.Name === 'NoReportData')?.Value
+  if (String(noDataOption).toLowerCase() === 'true') return false
+  const rows = report?.Rows?.Row
+  if (Array.isArray(rows) && rows.length > 0) return true
+  return noDataOption != null ? String(noDataOption).toLowerCase() !== 'true' : false
+}
+
+function fetchQuickBooksReportEvidence(qbo: any): Promise<{ profitAndLossHasData: boolean | null; balanceSheetHasData: boolean | null }> {
+  const today = new Date().toISOString().split('T')[0]
+  const profitAndLoss = new Promise<boolean | null>(resolve => {
+    qbo.reportProfitAndLoss({ date_macro: 'All' }, (err: any, data: any) => resolve(err ? null : reportHasData(data)))
+  })
+  const balanceSheet = new Promise<boolean | null>(resolve => {
+    qbo.reportBalanceSheet({ as_of: today }, (err: any, data: any) => resolve(err ? null : reportHasData(data)))
+  })
+  return Promise.all([profitAndLoss, balanceSheet]).then(([profitAndLossHasData, balanceSheetHasData]) => ({ profitAndLossHasData, balanceSheetHasData }))
+}
+
 // ── GET /accounts/quickbooks/connect ─────────────────────────────────────────
 // Browser navigates here directly; token is embedded in OAuth state so the
 // callback can identify the user.
@@ -337,11 +372,18 @@ router.get('/audit/patient-reconciliation', requireAuth, async (_req, res) => {
     const liveCompanyInfo = await new Promise<any>((resolve, reject) => {
       qbo.getCompanyInfo(storedTokens.realmId, (err: any, info: any) => err ? reject(err) : resolve(info))
     })
-    const [qbCustomers, qbInvoices, qbPayments, qbPurchases] = await Promise.all([
+    const [qbCustomers, qbInvoices, qbPayments, qbPurchases, qbCounts, reportEvidence] = await Promise.all([
       fetchQuickBooksCollection(qbo, 'findCustomers', 'Customer'),
       fetchQuickBooksCollection(qbo, 'findInvoices', 'Invoice'),
       fetchQuickBooksCollection(qbo, 'findPayments', 'Payment'),
       fetchQuickBooksCollection(qbo, 'findPurchases', 'Purchase'),
+      Promise.all([
+        fetchQuickBooksCount(qbo, 'findCustomers'),
+        fetchQuickBooksCount(qbo, 'findInvoices'),
+        fetchQuickBooksCount(qbo, 'findPayments'),
+        fetchQuickBooksCount(qbo, 'findPurchases'),
+      ]),
+      fetchQuickBooksReportEvidence(qbo),
     ])
     // Cross-entity evidence helps distinguish an actually empty QB company from
     // a customer-list problem without exposing transaction or patient details.
@@ -450,6 +492,17 @@ router.get('/audit/patient-reconciliation', requireAuth, async (_req, res) => {
         companyName: String(liveCompanyInfo?.CompanyName ?? liveCompanyInfo?.QueryResponse?.CompanyInfo?.[0]?.CompanyName ?? ''),
         connectedAt: storedTokens.connected_at ?? null,
         liveCompanyInfoVerified: true,
+      },
+      diagnostics: {
+        // Independent QBO count queries let us distinguish a collection parser
+        // problem from a genuinely empty API result without exposing records.
+        countQuery: {
+          customers: qbCounts[0],
+          invoices: qbCounts[1],
+          payments: qbCounts[2],
+          purchases: qbCounts[3],
+        },
+        reports: reportEvidence,
       },
       summary: {
         codeClinicPatients: patients.length,
