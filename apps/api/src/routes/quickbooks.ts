@@ -331,7 +331,21 @@ router.get('/customers', requireAuth, async (_req, res) => {
 router.get('/audit/patient-reconciliation', requireAuth, async (_req, res) => {
   try {
     const qbo = await getQBClient()
-    const qbCustomers = await fetchQuickBooksCollection(qbo, 'findCustomers', 'Customer')
+    const [qbCustomers, qbInvoices, qbPayments, qbPurchases] = await Promise.all([
+      fetchQuickBooksCollection(qbo, 'findCustomers', 'Customer'),
+      fetchQuickBooksCollection(qbo, 'findInvoices', 'Invoice'),
+      fetchQuickBooksCollection(qbo, 'findPayments', 'Payment'),
+      fetchQuickBooksCollection(qbo, 'findPurchases', 'Purchase'),
+    ])
+    // Cross-entity evidence helps distinguish an actually empty QB company from
+    // a customer-list problem without exposing transaction or patient details.
+    const invoiceCustomerRefs = new Set(
+      qbInvoices.map((invoice: any) => String(invoice?.CustomerRef?.value ?? '')).filter(Boolean),
+    )
+    const paymentCustomerRefs = new Set(
+      qbPayments.map((payment: any) => String(payment?.CustomerRef?.value ?? '')).filter(Boolean),
+    )
+    const referencedCustomerIds = new Set([...invoiceCustomerRefs, ...paymentCustomerRefs])
     const patients = await prisma.patient.findMany({
       select: {
         id: true,
@@ -427,6 +441,10 @@ router.get('/audit/patient-reconciliation', requireAuth, async (_req, res) => {
       summary: {
         codeClinicPatients: patients.length,
         quickBooksCustomers: qbCustomers.length,
+        quickBooksInvoices: qbInvoices.length,
+        quickBooksPayments: qbPayments.length,
+        quickBooksPurchases: qbPurchases.length,
+        quickBooksReferencedCustomers: referencedCustomerIds.size,
         exactLinkedPatients: linkedPatientIds.size,
         exactLinkedQuickBooksCustomers: linkedQbIds.size,
         candidateMatches: candidateMatches.length,
