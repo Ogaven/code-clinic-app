@@ -65,7 +65,25 @@ export default function ExecutiveReportPage() {
      <p className="mt-3 text-xs text-gray-400">Lead sources come from CRM lead records for the selected period. Referral and waitlist figures come from their recorded CRM operations; they are not inferred from appointment or conversation counts.</p>
     </Section>
     <Section title="Treatment Pipeline & Opportunity" icon={TrendingUp}><Rows rows={[['Plans presented',c.treatment.plansPresented],['Presented value',money(c.treatment.presentedValueUGX)],['Planned',c.treatment.planned],['In progress',c.treatment.inProgress],['Completed',c.treatment.completed],['On hold',c.treatment.onHold],['Follow-up requested',c.treatment.followUpRequested],['Accepted',c.treatment.accepted],['Accepted value',money(c.treatment.acceptedValueUGX)],['Declined',c.treatment.declined],['Acceptance rate',c.treatment.acceptanceRate+'%'],['Period-cohort money at risk',money(c.treatment.moneyAtRiskUGX)]]}/></Section>
-    <Section title="Automation Impact" icon={Zap}><Rows rows={[['Automation events created',c.automation.eventsCreated],['Events processed',c.automation.eventsProcessed],['Active sequence enrollments',c.automation.activeEnrollments],['Touches created',c.automation.touchesCreated],['Live automated touches sent',c.automation.touchesSent],['Dry-run touches',c.automation.touchesDryRun],['Pending touches',c.automation.touchesPending],['Failed touches',c.automation.touchesFailed]]}/><p className="mt-3 text-xs text-gray-400">Only recorded automation activity is shown. The report does not invent a staff-hours-saved figure.</p></Section>
+    <Section title="Automation & System Contribution" icon={Zap}>
+     <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <Card label="Events processed" value={c.automation.eventsProcessed} sub={`${c.automation.eventsCreated} automation event(s) recorded`}/>
+      <Card label="Live automated touches" value={c.automation.touchesSent} sub="Recorded sends only — dry runs excluded"/>
+      <Card label="Active follow-up journeys" value={c.automation.activeEnrollments} sub="Currently active sequence enrollments"/>
+      <Card label="After-hours inbound" value={c.communications.afterHoursInbound} sub="Patient messages received outside clinic opening hours"/>
+     </div>
+     <div className="grid sm:grid-cols-2 gap-4">
+      <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-4">
+       <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Follow-up execution</p>
+       <Rows rows={[['Touches created this period',c.automation.touchesCreated],['Live touches sent',c.automation.touchesSent],['Pending touches',c.automation.touchesPending],['Failed touches',c.automation.touchesFailed]]}/>
+      </div>
+      <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-4">
+       <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Safety & evidence</p>
+       <Rows rows={[['Dry-run touches',c.automation.touchesDryRun],['Automation events created',c.automation.eventsCreated],['Events processed',c.automation.eventsProcessed],['After-hours inbound messages',c.communications.afterHoursInbound]]}/>
+      </div>
+     </div>
+     <p className="mt-3 text-xs text-gray-400">System contribution is based only on persisted automation, scheduled-touch and message records. Dry runs are kept separate from live sends, failures remain visible, and no speculative staff-hours-saved or labour-cost estimate is used.</p>
+    </Section>
     <Section title="Patient Reviews & Satisfaction" icon={Star}>
      <div className="grid sm:grid-cols-2 gap-4">
       <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-4">
