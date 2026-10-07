@@ -9,7 +9,7 @@ const prismaMock = vi.hoisted(() => ({
 
 vi.mock('../lib/prisma', () => ({ prisma: prismaMock }))
 
-import { syncQuickBooksPaymentObject } from '../routes/quickbooks'
+import { normalizeQuickBooksWebhookEvents, syncQuickBooksPaymentObject } from '../routes/quickbooks'
 
 describe('QuickBooks inbound payment reconciliation', () => {
   beforeEach(() => {
@@ -91,5 +91,58 @@ describe('QuickBooks inbound payment reconciliation', () => {
       where: { id: 'inv-1' },
       data: { paidUGX: 0, status: 'SENT' },
     })
+  })
+})
+
+
+describe('QuickBooks webhook payload normalization', () => {
+  it('normalizes Intuit legacy eventNotifications payment events', () => {
+    expect(normalizeQuickBooksWebhookEvents({
+      eventNotifications: [{
+        realmId: '310687',
+        dataChangeEvent: {
+          entities: [{
+            id: '1234',
+            operation: 'Create',
+            name: 'Payment',
+            lastUpdated: '2026-10-07T07:49:40.738Z',
+          }],
+        },
+      }],
+    })).toEqual([{
+      entityName: 'Payment',
+      operation: 'Create',
+      realmId: '310687',
+      entityId: '1234',
+    }])
+  })
+
+  it('normalizes non-payment legacy entities so the webhook can safely ignore them', () => {
+    expect(normalizeQuickBooksWebhookEvents({
+      eventNotifications: [{
+        realmId: '310687',
+        dataChangeEvent: {
+          entities: [{ id: '55', operation: 'Update', name: 'Customer' }],
+        },
+      }],
+    })).toEqual([{
+      entityName: 'Customer',
+      operation: 'Update',
+      realmId: '310687',
+      entityId: '55',
+    }])
+  })
+
+  it('retains support for the CloudEvent-style array', () => {
+    expect(normalizeQuickBooksWebhookEvents([{
+      type: 'com.intuit.quickbooks.payment.deleted',
+      intuitaccountid: '310687',
+      intuitentityid: '99',
+    }])).toEqual([{
+      entityName: 'Payment',
+      operation: 'deleted',
+      realmId: '310687',
+      entityId: '99',
+    }])
   })
 })

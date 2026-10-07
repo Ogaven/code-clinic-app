@@ -465,6 +465,45 @@ router.post('/push-expense/:id', requireAuth, async (req, res) => {
   }
 })
 
+
+// Intuit's production webhook can arrive in the legacy eventNotifications
+// envelope when "cloud event payload format" is disabled. Keep support for
+// the CloudEvent-style array as well so changing that Intuit setting later
+// does not silently drop payment events.
+export function normalizeQuickBooksWebhookEvents(body: any): Array<{
+  entityName: string
+  operation: string
+  realmId: string
+  entityId: string
+}> {
+  if (Array.isArray(body)) {
+    return body.map((event: any) => {
+      const type = String(event?.type || '')
+      const parts = type.split('.').filter(Boolean)
+      return {
+        entityName: String(event?.entityName || (type.toLowerCase().includes('.payment.') ? 'Payment' : '')),
+        operation: String(event?.operation || parts[parts.length - 1] || ''),
+        realmId: String(event?.intuitaccountid || ''),
+        entityId: String(event?.intuitentityid || ''),
+      }
+    })
+  }
+
+  const notifications = Array.isArray(body?.eventNotifications) ? body.eventNotifications : []
+  return notifications.flatMap((notification: any) => {
+    const realmId = String(notification?.realmId || '')
+    const entities = Array.isArray(notification?.dataChangeEvent?.entities)
+      ? notification.dataChangeEvent.entities
+      : []
+    return entities.map((entity: any) => ({
+      entityName: String(entity?.name || ''),
+      operation: String(entity?.operation || ''),
+      realmId,
+      entityId: String(entity?.id || ''),
+    }))
+  })
+}
+
 // ── POST /accounts/quickbooks/webhook ────────────────────────────────────────
 // Intuit requires HMAC-SHA256 verification of the exact raw payload. This
 // endpoint fails closed until the Production Webhooks Verifier Token is set.
@@ -491,18 +530,15 @@ router.post('/webhook', async (req, res) => {
     const stored = await prisma.appSetting.findUnique({ where: { key: 'quickbooks_tokens' } })
     if (!stored) return
     const connectedRealm = String(JSON.parse(stored.value).realmId || '')
-    const events = Array.isArray(req.body) ? req.body : []
+    const events = normalizeQuickBooksWebhookEvents(req.body)
 
     for (const event of events) {
-      const type = String(event?.type || '').toLowerCase()
-      const realmId = String(event?.intuitaccountid || '')
-      const entityId = String(event?.intuitentityid || '')
-      if (!type.includes('.payment.') || !entityId || realmId !== connectedRealm) continue
-      if (type.includes('.deleted.')) {
-        await markQuickBooksPaymentReversed(entityId, 'Deleted in QuickBooks')
+      if (event.entityName.toLowerCase() !== 'payment' || !event.entityId || event.realmId !== connectedRealm) continue
+      if (event.operation.toLowerCase() === 'delete') {
+        await markQuickBooksPaymentReversed(event.entityId, 'Deleted in QuickBooks')
         continue
       }
-      await syncQuickBooksPayment(entityId)
+      await syncQuickBooksPayment(event.entityId)
     }
   } catch (e: any) {
     console.error('[QB Webhook] processing failed:', e?.message ?? e)
