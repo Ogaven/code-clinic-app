@@ -222,6 +222,7 @@ export async function buildExecutiveReport(kind: ExecutivePeriod) {
   const wins: string[] = []
   const opportunities: string[] = []
 
+  if (current.appointments.patientsSeen) wins.push(`${current.appointments.patientsSeen} distinct patient(s) were seen during the period, with a ${current.appointments.showRate}% appointment show-up rate.`)
   if (current.crm.funnel.payingClientCount) wins.push(`${current.crm.funnel.payingClientCount} paying client(s) are cleanly attributable to leads acquired in this period.`)
   if (current.crm.attributedRevenue.collectedUGX) wins.push(`UGX ${current.crm.attributedRevenue.collectedUGX.toLocaleString('en-US')} collected is cleanly attributable to this period's acquired-lead cohort.`)
   if (current.communications.afterHoursInbound) wins.push(`${current.communications.afterHoursInbound} inbound message(s) were engaged outside clinic opening hours.`)
@@ -232,10 +233,14 @@ export async function buildExecutiveReport(kind: ExecutivePeriod) {
   if (current.finance.outstandingUGX) opportunities.push(`UGX ${current.finance.outstandingUGX.toLocaleString('en-US')} remains outstanding on invoices created in this period.`)
   if (current.crmOperations.waitlistActive) opportunities.push(`${current.crmOperations.waitlistActive} patient(s) are currently on the active waitlist.`)
 
+  if (current.crm.newLeads > current.crm.funnel.bookedCount) opportunities.push(`${current.crm.newLeads - current.crm.funnel.bookedCount} period lead(s) are not evidenced as booked in the strict acquisition funnel and remain a follow-up opportunity.`)
+
   if (current.appointments.noShows) attention.push(`${current.appointments.noShows} no-show appointment(s) recorded in this period.`)
   if (current.appointments.pending) attention.push(`${current.appointments.pending} appointment(s) remain pending.`)
   if (current.communications.failedAgentMessages) attention.push(`${current.communications.failedAgentMessages} agent message(s) recorded as failed delivery.`)
   if (current.automation.touchesFailed) attention.push(`${current.automation.touchesFailed} automation touch(es) failed in this period.`)
+
+  if (current.automation.touchesPending) attention.push(`${current.automation.touchesPending} automation touch(es) remain pending.`)
 
   return {
     period: { kind, start: start.toISOString(), end: end.toISOString(), label: label(kind, start, end), previousLabel: label(kind, prevStart, start) },
