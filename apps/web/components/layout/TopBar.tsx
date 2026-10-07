@@ -39,8 +39,7 @@ const NAV: NavLink[] = [
   ] },
   { label: 'Treatments', children: [{ label: 'Treatment Pipeline', href: '/treatment-pipeline' }] },
   { label: 'Billing', children: [
-    { label: 'Accounts', href: '/accounts/dashboard' }, { label: 'Sales', href: '/accounts/invoices' },
-    { label: 'Expenses', href: '/accounts/expenses' }, { label: 'Payroll', href: '/accounts/payroll' }, { label: 'Stocks', href: '/stocks' },
+    { label: 'Stocks', href: '/stocks' },
   ] },
   { label: 'AI Suite', children: [
     { label: 'Conversations', href: '/ai-suite/inbox' }, { label: 'Knowledge Base', href: '/ai-suite/knowledge-base' },
