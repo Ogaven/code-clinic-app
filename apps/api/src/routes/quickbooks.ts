@@ -678,26 +678,30 @@ async function syncQuickBooksPayment(qbPaymentId: string): Promise<void> {
   await syncQuickBooksPaymentObject(qbPayment)
 }
 
+export function fetchAllQuickBooksPayments(qbo: any): Promise<any[]> {
+  return new Promise((resolve, reject) =>
+    qbo.findPayments({ fetchAll: true }, (err: any, data: any) => {
+      if (err) return reject(err)
+      const payments = data?.QueryResponse?.Payment ?? data?.Payment ?? []
+      resolve(Array.isArray(payments) ? payments : [])
+    }),
+  )
+}
+
 async function reconcileQuickBooksPayments(): Promise<{ paymentsScanned: number; invoiceMatches: number; skipped: number }> {
   const qbo = await getQBClient()
-  let startPosition = 1
+  const payments = await fetchAllQuickBooksPayments(qbo)
   let paymentsScanned = 0
   let invoiceMatches = 0
   let skipped = 0
 
-  // Intuit caps query pages; paginate rather than silently reconciling only the
-  // newest page. A generous hard stop prevents a malformed API response loop.
-  for (let page = 0; page < 100; page += 1) {
-    const data = await qbQuery(qbo, `SELECT * FROM Payment STARTPOSITION ${startPosition} MAXRESULTS 1000`)
-    const payments = Array.isArray(data?.Payment) ? data.Payment : []
-    for (const payment of payments) {
-      const result = await syncQuickBooksPaymentObject(payment)
-      paymentsScanned += 1
-      invoiceMatches += result.matched
-      skipped += result.skipped
-    }
-    if (payments.length < 1000) break
-    startPosition += payments.length
+  // node-quickbooks exposes entity-specific find methods rather than a generic
+  // query() method. fetchAll makes the SDK paginate up to its 1000-row page cap.
+  for (const payment of payments) {
+    const result = await syncQuickBooksPaymentObject(payment)
+    paymentsScanned += 1
+    invoiceMatches += result.matched
+    skipped += result.skipped
   }
 
   return { paymentsScanned, invoiceMatches, skipped }
