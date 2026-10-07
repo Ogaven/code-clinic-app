@@ -84,12 +84,22 @@ export async function getQBClient() {
   )
 }
 
-function qbQuery(qbo: any, query: string): Promise<any> {
-  return new Promise((resolve, reject) =>
-    qbo.query(query, (err: any, data: any) =>
-      err ? reject(err) : resolve(data?.QueryResponse ?? data),
-    ),
-  )
+export function fetchQuickBooksCollection(qbo: any, method: string, entity: string): Promise<any[]> {
+  return new Promise((resolve, reject) => {
+    const finder = qbo?.[method]
+    if (typeof finder !== 'function') {
+      return reject(new Error(`QuickBooks SDK does not support ${method}`))
+    }
+    finder.call(qbo, { fetchAll: true }, (err: any, data: any) => {
+      if (err) return reject(err)
+      const rows = data?.QueryResponse?.[entity] ?? data?.[entity] ?? []
+      resolve(Array.isArray(rows) ? rows : [])
+    })
+  })
+}
+
+function newestFirst(rows: any[]): any[] {
+  return [...rows].sort((a, b) => String(b?.TxnDate ?? '').localeCompare(String(a?.TxnDate ?? '')))
 }
 
 // ── GET /accounts/quickbooks/connect ─────────────────────────────────────────
@@ -239,8 +249,7 @@ router.get('/chart-of-accounts', requireAuth, async (_req, res) => {
   if (hit) return res.json({ success: true, data: hit, cached: true })
   try {
     const qbo  = await getQBClient()
-    const data = await qbQuery(qbo, 'SELECT * FROM Account MAXRESULTS 1000')
-    const list = data.Account || []
+    const list = await fetchQuickBooksCollection(qbo, 'findAccounts', 'Account')
     setCached(cacheKey, list)
     res.json({ success: true, data: list })
   } catch (err: any) { res.status(400).json({ error: err.message }) }
@@ -253,8 +262,7 @@ router.get('/invoices', requireAuth, async (_req, res) => {
   if (hit) return res.json({ success: true, data: hit, cached: true })
   try {
     const qbo  = await getQBClient()
-    const data = await qbQuery(qbo, 'SELECT * FROM Invoice ORDERBY TxnDate DESC MAXRESULTS 1000')
-    const list = data.Invoice || []
+    const list = newestFirst(await fetchQuickBooksCollection(qbo, 'findInvoices', 'Invoice'))
     setCached(cacheKey, list)
     res.json({ success: true, data: list })
   } catch (err: any) { res.status(400).json({ error: err.message }) }
@@ -267,8 +275,7 @@ router.get('/expenses', requireAuth, async (_req, res) => {
   if (hit) return res.json({ success: true, data: hit, cached: true })
   try {
     const qbo  = await getQBClient()
-    const data = await qbQuery(qbo, 'SELECT * FROM Purchase ORDERBY TxnDate DESC MAXRESULTS 1000')
-    const list = data.Purchase || []
+    const list = newestFirst(await fetchQuickBooksCollection(qbo, 'findPurchases', 'Purchase'))
     setCached(cacheKey, list)
     res.json({ success: true, data: list })
   } catch (err: any) { res.status(400).json({ error: err.message }) }
@@ -281,8 +288,7 @@ router.get('/bills', requireAuth, async (_req, res) => {
   if (hit) return res.json({ success: true, data: hit, cached: true })
   try {
     const qbo  = await getQBClient()
-    const data = await qbQuery(qbo, 'SELECT * FROM Bill ORDERBY TxnDate DESC MAXRESULTS 1000')
-    const list = data.Bill || []
+    const list = newestFirst(await fetchQuickBooksCollection(qbo, 'findBills', 'Bill'))
     setCached(cacheKey, list)
     res.json({ success: true, data: list })
   } catch (err: any) { res.status(400).json({ error: err.message }) }
@@ -295,8 +301,7 @@ router.get('/payments', requireAuth, async (_req, res) => {
   if (hit) return res.json({ success: true, data: hit, cached: true })
   try {
     const qbo  = await getQBClient()
-    const data = await qbQuery(qbo, 'SELECT * FROM Payment ORDERBY TxnDate DESC MAXRESULTS 1000')
-    const list = data.Payment || []
+    const list = newestFirst(await fetchQuickBooksCollection(qbo, 'findPayments', 'Payment'))
     setCached(cacheKey, list)
     res.json({ success: true, data: list })
   } catch (err: any) { res.status(400).json({ error: err.message }) }
@@ -309,8 +314,7 @@ router.get('/customers', requireAuth, async (_req, res) => {
   if (hit) return res.json({ success: true, data: hit, cached: true })
   try {
     const qbo  = await getQBClient()
-    const data = await qbQuery(qbo, 'SELECT * FROM Customer MAXRESULTS 1000')
-    const list = data.Customer || []
+    const list = await fetchQuickBooksCollection(qbo, 'findCustomers', 'Customer')
     setCached(cacheKey, list)
     res.json({ success: true, data: list })
   } catch (err: any) { res.status(400).json({ error: err.message }) }
@@ -323,8 +327,7 @@ router.get('/vendors', requireAuth, async (_req, res) => {
   if (hit) return res.json({ success: true, data: hit, cached: true })
   try {
     const qbo  = await getQBClient()
-    const data = await qbQuery(qbo, 'SELECT * FROM Vendor MAXRESULTS 1000')
-    const list = data.Vendor || []
+    const list = await fetchQuickBooksCollection(qbo, 'findVendors', 'Vendor')
     setCached(cacheKey, list)
     res.json({ success: true, data: list })
   } catch (err: any) { res.status(400).json({ error: err.message }) }
@@ -337,8 +340,7 @@ router.get('/journal-entries', requireAuth, async (_req, res) => {
   if (hit) return res.json({ success: true, data: hit, cached: true })
   try {
     const qbo  = await getQBClient()
-    const data = await qbQuery(qbo, 'SELECT * FROM JournalEntry ORDERBY TxnDate DESC MAXRESULTS 1000')
-    const list = data.JournalEntry || []
+    const list = newestFirst(await fetchQuickBooksCollection(qbo, 'findJournalEntries', 'JournalEntry'))
     setCached(cacheKey, list)
     res.json({ success: true, data: list })
   } catch (err: any) { res.status(400).json({ error: err.message }) }
@@ -351,8 +353,7 @@ router.get('/employees', requireAuth, async (_req, res) => {
   if (hit) return res.json({ success: true, data: hit, cached: true })
   try {
     const qbo  = await getQBClient()
-    const data = await qbQuery(qbo, 'SELECT * FROM Employee MAXRESULTS 1000')
-    const list = data.Employee || []
+    const list = await fetchQuickBooksCollection(qbo, 'findEmployees', 'Employee')
     setCached(cacheKey, list)
     res.json({ success: true, data: list })
   } catch (err: any) { res.status(400).json({ error: err.message }) }
