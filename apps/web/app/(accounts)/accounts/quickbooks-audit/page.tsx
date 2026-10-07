@@ -6,6 +6,13 @@ import { AlertTriangle, CheckCircle2, RefreshCw, Search, ShieldCheck } from 'luc
 type Audit = {
   readOnly: boolean
   generatedAt: string
+  connection: {
+    environment: string
+    realmId: string
+    companyName: string
+    connectedAt: string | null
+    liveCompanyInfoVerified: boolean
+  }
   summary: {
     codeClinicPatients: number
     quickBooksCustomers: number
@@ -90,6 +97,19 @@ export default function QuickBooksAuditPage() {
       </div>
 
       {error && <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700"><AlertTriangle size={15} />{error}</div>}
+
+      {audit && (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5 dark:border-blue-900 dark:bg-blue-950/10">
+          <div className="flex items-center gap-2"><CheckCircle2 size={17} className="text-blue-600" /><h3 className="text-sm font-bold text-gray-800 dark:text-white">Live QuickBooks connection identity</h3></div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Environment</p><p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{audit.connection.environment}</p></div>
+            <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Company</p><p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{audit.connection.companyName || 'Not returned'}</p></div>
+            <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Realm / Company ID</p><p className="mt-1 break-all text-sm font-bold text-gray-900 dark:text-white">{audit.connection.realmId || 'Not returned'}</p></div>
+            <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Live CompanyInfo</p><p className="mt-1 text-sm font-bold text-emerald-700">{audit.connection.liveCompanyInfoVerified ? 'Verified ✓' : 'Not verified'}</p></div>
+          </div>
+          <p className="mt-3 text-[11px] text-gray-500">Connected {audit.connection.connectedAt ? new Date(audit.connection.connectedAt).toLocaleString() : 'date unavailable'}. This identity is read live from QuickBooks during the audit; no accounting or patient records are changed.</p>
+        </div>
+      )}
 
       {!audit && !error && <div className="rounded-2xl border border-dashed border-gray-200 bg-white/50 py-16 text-center dark:border-white/10 dark:bg-white/[0.03]"><Search size={28} className="mx-auto mb-3 text-gray-300" /><p className="text-sm font-semibold text-gray-600 dark:text-gray-300">No audit has been run in this session.</p><p className="mt-1 text-xs text-gray-400">Click Run Live Audit to compare the current records.</p></div>}
 
