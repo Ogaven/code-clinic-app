@@ -233,6 +233,8 @@ export async function buildExecutiveReport(kind: ExecutivePeriod) {
   if (current.finance.outstandingUGX) opportunities.push(`UGX ${current.finance.outstandingUGX.toLocaleString('en-US')} remains outstanding on invoices created in this period.`)
   if (current.crmOperations.waitlistActive) opportunities.push(`${current.crmOperations.waitlistActive} patient(s) are currently on the active waitlist.`)
 
+  if (current.crm.newLeads > current.crm.funnel.bookedCount) opportunities.push(`${current.crm.newLeads - current.crm.funnel.bookedCount} period lead(s) are not evidenced as booked in the strict acquisition funnel and remain a follow-up opportunity.`)
+
   if (current.appointments.noShows) attention.push(`${current.appointments.noShows} no-show appointment(s) recorded in this period.`)
   if (current.appointments.pending) attention.push(`${current.appointments.pending} appointment(s) remain pending.`)
   if (current.communications.failedAgentMessages) attention.push(`${current.communications.failedAgentMessages} agent message(s) recorded as failed delivery.`)
