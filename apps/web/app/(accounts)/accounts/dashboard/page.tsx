@@ -350,7 +350,7 @@ export default function AccountsDashboardPage() {
 
 
       {/* ── TOP ROW ── */}
-      <div className="relative flex items-end gap-4" style={{ marginBottom: -50 }}>
+      <div className="relative flex items-end gap-6 min-h-[180px]">
         {/* Greeting — left column; QB buttons sit below greeting text, well left of the clock */}
         <div className="flex-1 pb-3">
           <h2 className="text-clinic-navy dark:text-white text-xl font-bold leading-tight" style={{ fontFamily: 'Plus Jakarta Sans' }}>
@@ -425,7 +425,7 @@ export default function AccountsDashboardPage() {
       )}
 
       {/* ── 4 STAT CARDS ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" style={{ paddingTop: 58 }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {stats.map((k, i) => (
           <div key={i} className="bg-white dark:bg-white/5 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-white/10 hover:shadow-md transition-all">
             <div className="flex items-start justify-between mb-2">
