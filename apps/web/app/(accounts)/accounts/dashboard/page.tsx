@@ -125,6 +125,7 @@ export default function AccountsDashboardPage() {
   const [disconnecting, setDisconnecting] = useState(false)
   const [showDisconnectModal, setShowDisconnectModal] = useState(false)
   const [qbFinancials, setQbFinancials] = useState<{ todayRevenue: number; monthRevenue: number; monthExpenses: number; unpaidInvoices: number } | null>(null)
+  const [qbReadStatus, setQbReadStatus] = useState<{ payments: boolean; expenses: boolean; invoices: boolean } | null>(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('cc_user')
@@ -164,37 +165,57 @@ export default function AccountsDashboardPage() {
   }, [])
 
   async function loadQuickBooksFinancials(token: string) {
-    try {
-      const [paymentsRes, expensesRes, invoicesRes] = await Promise.all([
-        fetch('/api-proxy/accounts/quickbooks/payments', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api-proxy/accounts/quickbooks/expenses', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api-proxy/accounts/quickbooks/invoices', { headers: { Authorization: `Bearer ${token}` } }),
-      ])
-      if (!paymentsRes.ok || !expensesRes.ok || !invoicesRes.ok) return
-      const [paymentsBody, expensesBody, invoicesBody] = await Promise.all([
-        paymentsRes.json(), expensesRes.json(), invoicesRes.json(),
-      ])
-      const payments = paymentsBody.data || []
-      const expenses = expensesBody.data || []
-      const invoices = invoicesBody.data || []
-      const kampalaParts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit',
-      }).formatToParts(new Date())
-      const part = (type: string) => kampalaParts.find(p => p.type === type)?.value || ''
-      const today = `${part('year')}-${part('month')}-${part('day')}`
-      const month = today.slice(0, 7)
-      const sum = (rows: any[], predicate: (row: any) => boolean) =>
-        rows.filter(predicate).reduce((total: number, row: any) => total + Number(row.TotalAmt || 0), 0)
-
-      setQbFinancials({
-        todayRevenue: sum(payments, p => p.TxnDate === today),
-        monthRevenue: sum(payments, p => String(p.TxnDate || '').startsWith(month)),
-        monthExpenses: sum(expenses, e => String(e.TxnDate || '').startsWith(month)),
-        unpaidInvoices: invoices.filter((i: any) => Number(i.Balance || 0) > 0).length,
-      })
-    } catch {
-      // Keep the existing Code Clinic snapshot visible if QuickBooks reads fail.
+    const read = async (path: string) => {
+      try {
+        const response = await fetch(path, { headers: { Authorization: `Bearer ${token}` } })
+        const body = await response.json().catch(() => ({}))
+        return { ok: response.ok && body?.success !== false, data: Array.isArray(body?.data) ? body.data : [] }
+      } catch {
+        return { ok: false, data: [] as any[] }
+      }
     }
+
+    const [paymentsResult, expensesResult, invoicesResult] = await Promise.all([
+      read('/api-proxy/accounts/quickbooks/payments'),
+      read('/api-proxy/accounts/quickbooks/expenses'),
+      read('/api-proxy/accounts/quickbooks/invoices'),
+    ])
+
+    setQbReadStatus({
+      payments: paymentsResult.ok,
+      expenses: expensesResult.ok,
+      invoices: invoicesResult.ok,
+    })
+
+    // Do not let one unavailable QuickBooks collection hide all of the others.
+    if (!paymentsResult.ok && !expensesResult.ok && !invoicesResult.ok) {
+      setQbFinancials(null)
+      return
+    }
+
+    const kampalaParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date())
+    const part = (type: string) => kampalaParts.find(p => p.type === type)?.value || ''
+    const today = `${part('year')}-${part('month')}-${part('day')}`
+    const month = today.slice(0, 7)
+    const sum = (rows: any[], predicate: (row: any) => boolean) =>
+      rows.filter(predicate).reduce((total: number, row: any) => total + Number(row.TotalAmt || 0), 0)
+
+    setQbFinancials({
+      todayRevenue: paymentsResult.ok
+        ? sum(paymentsResult.data, p => p.TxnDate === today)
+        : (data?.todayRevenue ?? 0),
+      monthRevenue: paymentsResult.ok
+        ? sum(paymentsResult.data, p => String(p.TxnDate || '').startsWith(month))
+        : (data?.monthRevenue ?? 0),
+      monthExpenses: expensesResult.ok
+        ? sum(expensesResult.data, e => String(e.TxnDate || '').startsWith(month))
+        : (data?.monthExpenses ?? 0),
+      unpaidInvoices: invoicesResult.ok
+        ? invoicesResult.data.filter((i: any) => Number(i.Balance || 0) > 0).length
+        : (data?.unpaidInvoices ?? 0),
+    })
   }
 
   async function handleSync() {
@@ -392,9 +413,14 @@ export default function AccountsDashboardPage() {
         </div>
       </div>
 
-      {qbStatus?.connected && qbFinancials && (
-        <div className="flex items-center gap-2 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2 w-fit">
-          <CheckCircle size={12} /> Financial snapshot is read-only from QuickBooks. Patient records are not modified.
+      {qbStatus?.connected && qbReadStatus && (
+        <div className={`flex items-center gap-2 text-[10px] font-semibold rounded-xl px-3 py-2 w-fit border ${
+          qbReadStatus.payments && qbReadStatus.expenses && qbReadStatus.invoices
+            ? 'text-green-700 bg-green-50 border-green-200'
+            : 'text-amber-700 bg-amber-50 border-amber-200'
+        }`}>
+          <CheckCircle size={12} />
+          QuickBooks read-only: Payments {qbReadStatus.payments ? '✓' : 'unavailable'} · Expenses {qbReadStatus.expenses ? '✓' : 'unavailable'} · Invoices {qbReadStatus.invoices ? '✓' : 'unavailable'}
         </div>
       )}
 
