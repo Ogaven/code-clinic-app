@@ -82,7 +82,10 @@ const ACCOUNTS_NAV: NavLink[] = [
   { label: 'Overview', href: '/accounts/dashboard' },
   { label: 'Sales & Income', href: '/accounts/invoices' },
   { label: 'Expenses', href: '/accounts/expenses' },
-  { label: 'Reconciliation', href: '/accounts/reconciliation' },
+  { label: 'Reconciliation', children: [
+    { label: 'Bank Reconciliation', href: '/accounts/reconciliation' },
+    { label: 'QuickBooks Audit', href: '/accounts/quickbooks-audit' },
+  ] },
   { label: 'Balances', children: [
     { label: 'Patient Balances', href: '/accounts/receivables' },
     { label: 'Supplier Balances', href: '/accounts/payables' },
