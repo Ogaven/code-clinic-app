@@ -217,10 +217,17 @@ router.post('/disconnect', requireAuth, async (_req, res) => {
 })
 
 // ── POST /accounts/quickbooks/sync ───────────────────────────────────────────
-// Clears the server-side cache so the next read fetches fresh data from QB.
+// Reconciles QuickBooks payments into existing Code Clinic invoices. This is
+// read-only against QuickBooks: it never creates, edits, voids or deletes QB data.
 router.post('/sync', requireAuth, async (_req, res) => {
-  clearQBCache()
-  res.json({ synced: true, message: 'Cache cleared — next fetch will pull fresh data from QuickBooks' })
+  try {
+    const result = await reconcileQuickBooksPayments()
+    clearQBCache()
+    res.json({ synced: true, ...result })
+  } catch (err: any) {
+    console.error('[QB Sync] payment reconciliation failed:', err?.message ?? err)
+    res.status(400).json({ error: err?.message ?? 'QuickBooks reconciliation failed' })
+  }
 })
 
 // ─── READ endpoints (all cached 5 minutes) ───────────────────────────────────
@@ -491,7 +498,10 @@ router.post('/webhook', async (req, res) => {
       const realmId = String(event?.intuitaccountid || '')
       const entityId = String(event?.intuitentityid || '')
       if (!type.includes('.payment.') || !entityId || realmId !== connectedRealm) continue
-      if (type.includes('.deleted.')) continue
+      if (type.includes('.deleted.')) {
+        await markQuickBooksPaymentReversed(entityId, 'Deleted in QuickBooks')
+        continue
+      }
       await syncQuickBooksPayment(entityId)
     }
   } catch (e: any) {
@@ -499,11 +509,72 @@ router.post('/webhook', async (req, res) => {
   }
 })
 
-async function syncQuickBooksPayment(qbPaymentId: string): Promise<void> {
-  const qbo = await getQBClient()
-  const qbPayment: any = await new Promise((resolve, reject) =>
-    qbo.getPayment(qbPaymentId, (err: any, payment: any) => err ? reject(err) : resolve(payment)),
-  )
+async function recalculateInvoicePaymentState(tx: any, invoiceId: string): Promise<void> {
+  const invoice = await tx.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { totalUGX: true, status: true, dueDate: true },
+  })
+  if (!invoice) return
+
+  const aggregate = await tx.payment.aggregate({
+    where: { invoiceId },
+    _sum: { amountUGX: true },
+  })
+  const paidUGX = aggregate._sum.amountUGX || 0
+  let status = invoice.status
+  if (status !== 'DRAFT' && status !== 'CANCELLED') {
+    status = paidUGX >= invoice.totalUGX
+      ? 'PAID'
+      : paidUGX > 0
+        ? 'PARTIAL'
+        : invoice.dueDate && invoice.dueDate.getTime() < Date.now()
+          ? 'OVERDUE'
+          : 'SENT'
+  }
+
+  await tx.invoice.update({
+    where: { id: invoiceId },
+    data: { paidUGX, status },
+  })
+}
+
+async function markQuickBooksPaymentReversed(qbPaymentId: string, reason: string): Promise<number> {
+  const payments = await prisma.payment.findMany({
+    where: { qbPaymentId },
+    select: { id: true, invoiceId: true },
+  })
+  if (!payments.length) return 0
+
+  await prisma.$transaction(async tx => {
+    for (const payment of payments) {
+      // Preserve the mirror row for auditability instead of deleting financial history.
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          amountUGX: 0,
+          method: 'QUICKBOOKS_VOIDED',
+          notes: reason,
+        },
+      })
+    }
+    for (const invoiceId of [...new Set(payments.map(payment => payment.invoiceId))]) {
+      await recalculateInvoicePaymentState(tx, invoiceId)
+    }
+  })
+  clearQBCache()
+  return payments.length
+}
+
+async function syncQuickBooksPaymentObject(qbPayment: any): Promise<{ matched: number; skipped: number }> {
+  const qbPaymentId = String(qbPayment?.Id || '')
+  if (!qbPaymentId) return { matched: 0, skipped: 1 }
+
+  const isVoided = Number(qbPayment?.TotalAmt || 0) === 0 &&
+    String(qbPayment?.PrivateNote || '').toLowerCase().includes('void')
+  if (isVoided) {
+    const matched = await markQuickBooksPaymentReversed(qbPaymentId, 'Voided in QuickBooks')
+    return { matched, skipped: matched ? 0 : 1 }
+  }
 
   const linked = (qbPayment?.Line || []).flatMap((line: any) =>
     (line?.LinkedTxn || [])
@@ -511,18 +582,21 @@ async function syncQuickBooksPayment(qbPaymentId: string): Promise<void> {
       .map((txn: any) => ({ qbInvoiceId: String(txn.TxnId), amountUGX: Math.round(Number(line.Amount || 0)) })),
   ).filter((row: any) => row.amountUGX > 0)
 
-  if (!linked.length) return
+  if (!linked.length) return { matched: 0, skipped: 1 }
 
+  let matched = 0
+  let skipped = 0
   for (const row of linked) {
     const invoices = await prisma.invoice.findMany({
       where: { qbInvoiceId: row.qbInvoiceId },
-      select: { id: true, patientId: true, totalUGX: true },
+      select: { id: true, patientId: true },
       take: 2,
     })
     // Never infer identity: exactly one existing Code Clinic invoice must own
     // this QB invoice ID, otherwise leave the event untouched for review.
     if (invoices.length !== 1) {
       console.warn(`[QB Webhook] Payment ${qbPaymentId}: invoice ${row.qbInvoiceId} has ${invoices.length} Code Clinic matches; skipped`)
+      skipped += 1
       continue
     }
     const invoice = invoices[0]
@@ -535,7 +609,7 @@ async function syncQuickBooksPayment(qbPaymentId: string): Promise<void> {
       if (existing) {
         await tx.payment.update({
           where: { id: existing.id },
-          data: { amountUGX: row.amountUGX, paidAt, reference, method: 'QUICKBOOKS' },
+          data: { amountUGX: row.amountUGX, paidAt, reference, method: 'QUICKBOOKS', notes: 'Synced from QuickBooks' },
         })
       } else {
         await tx.payment.create({
@@ -547,26 +621,50 @@ async function syncQuickBooksPayment(qbPaymentId: string): Promise<void> {
             reference,
             paidAt,
             qbPaymentId,
-            notes: 'Synced from QuickBooks webhook',
+            notes: 'Synced from QuickBooks',
           },
         })
       }
 
-      const aggregate = await tx.payment.aggregate({
-        where: { invoiceId: invoice.id },
-        _sum: { amountUGX: true },
-      })
-      const paidUGX = aggregate._sum.amountUGX || 0
-      await tx.invoice.update({
-        where: { id: invoice.id },
-        data: {
-          paidUGX,
-          status: paidUGX >= invoice.totalUGX ? 'PAID' : paidUGX > 0 ? 'PARTIAL' : 'UNPAID',
-        },
-      })
+      await recalculateInvoicePaymentState(tx, invoice.id)
     })
+    matched += 1
   }
   clearQBCache()
+  return { matched, skipped }
+}
+
+async function syncQuickBooksPayment(qbPaymentId: string): Promise<void> {
+  const qbo = await getQBClient()
+  const qbPayment: any = await new Promise((resolve, reject) =>
+    qbo.getPayment(qbPaymentId, (err: any, payment: any) => err ? reject(err) : resolve(payment)),
+  )
+  await syncQuickBooksPaymentObject(qbPayment)
+}
+
+async function reconcileQuickBooksPayments(): Promise<{ paymentsScanned: number; invoiceMatches: number; skipped: number }> {
+  const qbo = await getQBClient()
+  let startPosition = 1
+  let paymentsScanned = 0
+  let invoiceMatches = 0
+  let skipped = 0
+
+  // Intuit caps query pages; paginate rather than silently reconciling only the
+  // newest page. A generous hard stop prevents a malformed API response loop.
+  for (let page = 0; page < 100; page += 1) {
+    const data = await qbQuery(qbo, `SELECT * FROM Payment STARTPOSITION ${startPosition} MAXRESULTS 1000`)
+    const payments = Array.isArray(data?.Payment) ? data.Payment : []
+    for (const payment of payments) {
+      const result = await syncQuickBooksPaymentObject(payment)
+      paymentsScanned += 1
+      invoiceMatches += result.matched
+      skipped += result.skipped
+    }
+    if (payments.length < 1000) break
+    startPosition += payments.length
+  }
+
+  return { paymentsScanned, invoiceMatches, skipped }
 }
 
 export default router
