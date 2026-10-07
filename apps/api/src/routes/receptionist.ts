@@ -75,6 +75,29 @@ router.get('/dashboard-stats', requireAuth, async (_req, res) => {
   }
 })
 
+// ─── GET /receptionist/patient-satisfaction ──────────────────
+// Internal Code Clinic feedback only. This intentionally does not label these
+// ratings as Google reviews while Google Business Profile review access is pending.
+router.get('/patient-satisfaction', requireAuth, async (_req, res) => {
+  try {
+    const feedback = await prisma.patientFeedback.findMany({
+      select: { rating: true, submittedAt: true },
+      orderBy: { submittedAt: 'desc' },
+    })
+
+    const total = feedback.length
+    const averageRating = total
+      ? Math.round((feedback.reduce((sum, row) => sum + row.rating, 0) / total) * 10) / 10
+      : null
+    const satisfiedCount = feedback.filter(row => row.rating >= 4).length
+    const satisfactionPct = total ? Math.round((satisfiedCount / total) * 100) : null
+
+    res.json({ total, averageRating, satisfiedCount, satisfactionPct })
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch patient satisfaction' })
+  }
+})
+
 // ─── GET /receptionist/today-appointments ────────────────────
 router.get('/today-appointments', requireAuth, async (req, res) => {
   try {
