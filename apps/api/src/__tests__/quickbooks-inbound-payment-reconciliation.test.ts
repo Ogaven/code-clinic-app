@@ -9,7 +9,7 @@ const prismaMock = vi.hoisted(() => ({
 
 vi.mock('../lib/prisma', () => ({ prisma: prismaMock }))
 
-import { fetchAllQuickBooksPayments, normalizeQuickBooksWebhookEvents, syncQuickBooksPaymentObject } from '../routes/quickbooks'
+import { fetchAllQuickBooksPayments, fetchQuickBooksCollection, normalizeQuickBooksWebhookEvents, syncQuickBooksPaymentObject } from '../routes/quickbooks'
 
 describe('QuickBooks inbound payment reconciliation', () => {
   beforeEach(() => {
@@ -166,5 +166,32 @@ describe('QuickBooks payment list query', () => {
     const findPayments = vi.fn((_criteria: any, callback: any) => callback(error))
 
     await expect(fetchAllQuickBooksPayments({ findPayments })).rejects.toThrow('QuickBooks unavailable')
+  })
+})
+
+
+describe('QuickBooks supported read API', () => {
+  it('uses entity-specific node-quickbooks find methods with SDK pagination', async () => {
+    const findInvoices = vi.fn((_criteria: any, callback: any) =>
+      callback(null, { QueryResponse: { Invoice: [{ Id: 'qb-inv-1' }] } }),
+    )
+
+    await expect(fetchQuickBooksCollection({ findInvoices }, 'findInvoices', 'Invoice'))
+      .resolves.toEqual([{ Id: 'qb-inv-1' }])
+    expect(findInvoices).toHaveBeenCalledWith({ fetchAll: true }, expect.any(Function))
+  })
+
+  it('fails clearly instead of calling the unsupported generic query API', async () => {
+    await expect(fetchQuickBooksCollection({}, 'findBills', 'Bill'))
+      .rejects.toThrow('QuickBooks SDK does not support findBills')
+  })
+
+  it('propagates entity-specific QuickBooks read errors', async () => {
+    const findExpenses = vi.fn((_criteria: any, callback: any) =>
+      callback(new Error('QuickBooks unavailable')),
+    )
+
+    await expect(fetchQuickBooksCollection({ findExpenses }, 'findExpenses', 'Purchase'))
+      .rejects.toThrow('QuickBooks unavailable')
   })
 })
