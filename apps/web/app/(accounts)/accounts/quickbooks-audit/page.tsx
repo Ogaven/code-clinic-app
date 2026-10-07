@@ -13,6 +13,10 @@ type Audit = {
     connectedAt: string | null
     liveCompanyInfoVerified: boolean
   }
+  diagnostics: {
+    countQuery: { customers: number | null; invoices: number | null; payments: number | null; purchases: number | null }
+    reports: { profitAndLossHasData: boolean | null; balanceSheetHasData: boolean | null }
+  }
   summary: {
     codeClinicPatients: number
     quickBooksCustomers: number
@@ -114,6 +118,21 @@ export default function QuickBooksAuditPage() {
       {!audit && !error && <div className="rounded-2xl border border-dashed border-gray-200 bg-white/50 py-16 text-center dark:border-white/10 dark:bg-white/[0.03]"><Search size={28} className="mx-auto mb-3 text-gray-300" /><p className="text-sm font-semibold text-gray-600 dark:text-gray-300">No audit has been run in this session.</p><p className="mt-1 text-xs text-gray-400">Click Run Live Audit to compare the current records.</p></div>}
 
       {audit && <>
+        <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-5 dark:border-violet-900 dark:bg-violet-950/10">
+          <h3 className="text-sm font-bold text-gray-800 dark:text-white">Independent QuickBooks read diagnostics</h3>
+          <p className="mt-1 text-xs leading-5 text-gray-500">These checks use separate QuickBooks count queries and financial reports. They are read-only and return only counts/data-presence signals here, not accounting details.</p>
+          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
+            {[
+              ['Customer count', audit.diagnostics.countQuery.customers],
+              ['Invoice count', audit.diagnostics.countQuery.invoices],
+              ['Payment count', audit.diagnostics.countQuery.payments],
+              ['Purchase count', audit.diagnostics.countQuery.purchases],
+            ].map(([label, value]) => <div key={String(label)}><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p><p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{value == null ? 'Unavailable' : Number(value).toLocaleString()}</p></div>)}
+            <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Profit & Loss</p><p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{audit.diagnostics.reports.profitAndLossHasData == null ? 'Unavailable' : audit.diagnostics.reports.profitAndLossHasData ? 'Data present ✓' : 'No data'}</p></div>
+            <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Balance Sheet</p><p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{audit.diagnostics.reports.balanceSheetHasData == null ? 'Unavailable' : audit.diagnostics.reports.balanceSheetHasData ? 'Data present ✓' : 'No data'}</p></div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5">
           {cards.map(([label, value]) => <div key={String(label)} className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-white/10 dark:bg-white/5"><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p><p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{Number(value).toLocaleString()}</p></div>)}
         </div>
