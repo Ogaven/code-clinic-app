@@ -5,9 +5,11 @@ vi.setConfig({ testTimeout: 20000 })
 const { prismaMock, sendWhatsAppMessage } = vi.hoisted(() => ({
   prismaMock: {
     reviewRequestConfig: { findFirst: vi.fn() },
-    reviewRequestLog: { findUnique: vi.fn(), create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
+    reviewRequestLog: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
     consentLog: { findFirst: vi.fn().mockResolvedValue(null) },
     patientConsent: { findFirst: vi.fn().mockResolvedValue(null) },
+    patient: { findFirst: vi.fn() },
+    patientFeedback: { findUnique: vi.fn(), create: vi.fn() },
   },
   sendWhatsAppMessage: vi.fn().mockResolvedValue('wamid-1'),
 }))
@@ -15,7 +17,7 @@ const { prismaMock, sendWhatsAppMessage } = vi.hoisted(() => ({
 vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('../../ai-suite/whatsapp/whatsapp.service', () => ({ sendWhatsAppMessage }))
 
-import { scheduleReviewRequest, processDueReviewRequests, buildGoogleReviewLink } from '../../crm-automation/review-request.service'
+import { scheduleReviewRequest, processDueReviewRequests, buildGoogleReviewLink, captureReviewRatingReply } from '../../crm-automation/review-request.service'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -110,5 +112,33 @@ describe('processDueReviewRequests — CRM_REVIEW_REQUEST_AUTOMATION_LIVE featur
 
     expect(sendWhatsAppMessage).toHaveBeenCalledTimes(1)
     expect(prismaMock.reviewRequestLog.update).toHaveBeenCalledWith({ where: { id: 'log-1' }, data: { status: 'SENT', sentAt: expect.any(Date) } })
+  })
+})
+describe('captureReviewRatingReply', () => {
+  it('ignores a bare rating when there is no recent sent review request', async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 'p-1' })
+    prismaMock.reviewRequestLog.findFirst.mockResolvedValue(null)
+    expect(await captureReviewRatingReply('+256700000001', '5')).toBeNull()
+    expect(prismaMock.patientFeedback.create).not.toHaveBeenCalled()
+  })
+
+  it('stores a recent WhatsApp rating and gives positive patients the configured Google CTA', async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 'p-1' })
+    prismaMock.reviewRequestLog.findFirst.mockResolvedValue({ appointmentId: 'appt-1' })
+    prismaMock.patientFeedback.findUnique.mockResolvedValue(null)
+    prismaMock.reviewRequestConfig.findFirst.mockResolvedValue({ gbpPlaceId: 'place-1', reviewLinkOverride: null })
+    const reply = await captureReviewRatingReply('+256700000001', '5/5')
+    expect(prismaMock.patientFeedback.create).toHaveBeenCalledWith({ data: { patientId: 'p-1', appointmentId: 'appt-1', rating: 5, channel: 'WHATSAPP' } })
+    expect(reply).toContain('Google review')
+    expect(reply).toContain('placeid=place-1')
+  })
+
+  it('stores low ratings without sending the patient to Google', async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 'p-1' })
+    prismaMock.reviewRequestLog.findFirst.mockResolvedValue({ appointmentId: 'appt-2' })
+    prismaMock.patientFeedback.findUnique.mockResolvedValue(null)
+    const reply = await captureReviewRatingReply('+256700000001', '2 stars')
+    expect(prismaMock.patientFeedback.create).toHaveBeenCalledWith({ data: { patientId: 'p-1', appointmentId: 'appt-2', rating: 2, channel: 'WHATSAPP' } })
+    expect(reply).not.toContain('Google')
   })
 })
