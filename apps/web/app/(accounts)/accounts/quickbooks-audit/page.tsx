@@ -9,6 +9,10 @@ type Audit = {
   summary: {
     codeClinicPatients: number
     quickBooksCustomers: number
+    quickBooksInvoices: number
+    quickBooksPayments: number
+    quickBooksPurchases: number
+    quickBooksReferencedCustomers: number
     exactLinkedPatients: number
     exactLinkedQuickBooksCustomers: number
     candidateMatches: number
@@ -50,6 +54,10 @@ export default function QuickBooksAuditPage() {
   const cards = audit ? [
     ['Code Clinic patients', audit.summary.codeClinicPatients],
     ['QuickBooks customers', audit.summary.quickBooksCustomers],
+    ['QB invoices', audit.summary.quickBooksInvoices],
+    ['QB payments', audit.summary.quickBooksPayments],
+    ['QB purchases', audit.summary.quickBooksPurchases],
+    ['QB referenced customers', audit.summary.quickBooksReferencedCustomers],
     ['Exact linked patients', audit.summary.exactLinkedPatients],
     ['Strong candidates', audit.summary.strongCandidates],
     ['Review candidates', audit.summary.reviewCandidates],
@@ -86,9 +94,23 @@ export default function QuickBooksAuditPage() {
       {!audit && !error && <div className="rounded-2xl border border-dashed border-gray-200 bg-white/50 py-16 text-center dark:border-white/10 dark:bg-white/[0.03]"><Search size={28} className="mx-auto mb-3 text-gray-300" /><p className="text-sm font-semibold text-gray-600 dark:text-gray-300">No audit has been run in this session.</p><p className="mt-1 text-xs text-gray-400">Click Run Live Audit to compare the current records.</p></div>}
 
       {audit && <>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5">
           {cards.map(([label, value]) => <div key={String(label)} className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-white/10 dark:bg-white/5"><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p><p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{Number(value).toLocaleString()}</p></div>)}
         </div>
+
+        {audit.summary.quickBooksCustomers === 0 && (audit.summary.quickBooksInvoices > 0 || audit.summary.quickBooksPayments > 0 || audit.summary.quickBooksReferencedCustomers > 0) && (
+          <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900 dark:bg-red-950/20 dark:text-red-300">
+            <AlertTriangle size={18} className="mt-0.5 flex-shrink-0" />
+            <div><p className="text-sm font-bold">QuickBooks contains financial records but the customer list is empty</p><p className="mt-1 text-xs leading-5">This points to a QuickBooks customer retrieval or company-data issue. No patient/customer linking should be attempted until this is resolved.</p></div>
+          </div>
+        )}
+
+        {audit.summary.quickBooksCustomers === 0 && audit.summary.quickBooksInvoices === 0 && audit.summary.quickBooksPayments === 0 && audit.summary.quickBooksPurchases === 0 && (
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
+            <AlertTriangle size={18} className="mt-0.5 flex-shrink-0" />
+            <div><p className="text-sm font-bold">No QuickBooks accounting records returned</p><p className="mt-1 text-xs leading-5">The connection is authenticated, but this company returned zero customers, invoices, payments and purchases. Verify that the connected QuickBooks company is the intended live company before any synchronization.</p></div>
+          </div>
+        )}
 
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-white/10 dark:bg-white/5">
