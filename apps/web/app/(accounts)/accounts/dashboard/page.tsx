@@ -166,12 +166,24 @@ export default function AccountsDashboardPage() {
     setSyncing(true)
     try {
       const token = localStorage.getItem('cc_token')
-      await fetch('/api-proxy/accounts/quickbooks/sync', {
+      const response = await fetch('/api-proxy/accounts/quickbooks/sync', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
-      setToast('QuickBooks cache cleared — refreshing data…')
-      setTimeout(() => setToast(''), 3000)
+      const result = await response.json()
+      if (!response.ok) throw new Error(result?.error || 'QuickBooks sync failed')
+
+      const dashboardResponse = await fetch('/api-proxy/accounts/dashboard', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const dashboard = await dashboardResponse.json()
+      if (dashboardResponse.ok && !dashboard.error) setData(dashboard)
+
+      setToast(`QuickBooks synced — ${result.invoiceMatches ?? 0} invoice payment match${result.invoiceMatches === 1 ? '' : 'es'} updated.`)
+      setTimeout(() => setToast(''), 4000)
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'QuickBooks sync failed.')
+      setTimeout(() => setToast(''), 5000)
     } finally {
       setSyncing(false)
     }
