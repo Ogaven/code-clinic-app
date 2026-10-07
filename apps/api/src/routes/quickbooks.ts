@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import jwt from 'jsonwebtoken'
+import crypto from 'crypto'
 import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
 import { pushInvoiceToQB, pushPaymentToQB, pushExpenseToQB } from '../services/qbPush'
@@ -41,7 +42,7 @@ function getOAuthClient() {
 }
 
 // ─── QB API client (with auto token-refresh) ─────────────────────────────────
-async function getQBClient() {
+export async function getQBClient() {
   const setting = await prisma.appSetting.findUnique({ where: { key: 'quickbooks_tokens' } })
   if (!setting) throw new Error('QuickBooks not connected')
 
@@ -458,9 +459,114 @@ router.post('/push-expense/:id', requireAuth, async (req, res) => {
 })
 
 // ── POST /accounts/quickbooks/webhook ────────────────────────────────────────
-router.post('/webhook', (req, res) => {
-  console.log('[QB Webhook]', JSON.stringify(req.body))
+// Intuit requires HMAC-SHA256 verification of the exact raw payload. This
+// endpoint fails closed until the Production Webhooks Verifier Token is set.
+router.post('/webhook', async (req, res) => {
+  const verifier = process.env.QUICKBOOKS_WEBHOOK_VERIFIER_TOKEN
+  const signature = req.get('intuit-signature') || ''
+  const rawBody = (req as typeof req & { rawBody?: Buffer }).rawBody
+
+  if (!verifier || !rawBody || !signature) {
+    console.warn('[QB Webhook] rejected: verifier token/signature/raw body unavailable')
+    return res.sendStatus(401)
+  }
+
+  const expected = crypto.createHmac('sha256', verifier).update(rawBody).digest('base64')
+  const valid = expected.length === signature.length &&
+    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
+  if (!valid) return res.sendStatus(401)
+
+  // Acknowledge after authentication; processing is intentionally asynchronous
+  // so Intuit is not kept waiting on QuickBooks API reads.
   res.sendStatus(200)
+
+  try {
+    const stored = await prisma.appSetting.findUnique({ where: { key: 'quickbooks_tokens' } })
+    if (!stored) return
+    const connectedRealm = String(JSON.parse(stored.value).realmId || '')
+    const events = Array.isArray(req.body) ? req.body : []
+
+    for (const event of events) {
+      const type = String(event?.type || '').toLowerCase()
+      const realmId = String(event?.intuitaccountid || '')
+      const entityId = String(event?.intuitentityid || '')
+      if (!type.includes('.payment.') || !entityId || realmId !== connectedRealm) continue
+      if (type.includes('.deleted.')) continue
+      await syncQuickBooksPayment(entityId)
+    }
+  } catch (e: any) {
+    console.error('[QB Webhook] processing failed:', e?.message ?? e)
+  }
 })
+
+async function syncQuickBooksPayment(qbPaymentId: string): Promise<void> {
+  const qbo = await getQBClient()
+  const qbPayment: any = await new Promise((resolve, reject) =>
+    qbo.getPayment(qbPaymentId, (err: any, payment: any) => err ? reject(err) : resolve(payment)),
+  )
+
+  const linked = (qbPayment?.Line || []).flatMap((line: any) =>
+    (line?.LinkedTxn || [])
+      .filter((txn: any) => txn?.TxnType === 'Invoice' && txn?.TxnId)
+      .map((txn: any) => ({ qbInvoiceId: String(txn.TxnId), amountUGX: Math.round(Number(line.Amount || 0)) })),
+  ).filter((row: any) => row.amountUGX > 0)
+
+  if (!linked.length) return
+
+  for (const row of linked) {
+    const invoices = await prisma.invoice.findMany({
+      where: { qbInvoiceId: row.qbInvoiceId },
+      select: { id: true, patientId: true, totalUGX: true },
+      take: 2,
+    })
+    // Never infer identity: exactly one existing Code Clinic invoice must own
+    // this QB invoice ID, otherwise leave the event untouched for review.
+    if (invoices.length !== 1) {
+      console.warn(`[QB Webhook] Payment ${qbPaymentId}: invoice ${row.qbInvoiceId} has ${invoices.length} Code Clinic matches; skipped`)
+      continue
+    }
+    const invoice = invoices[0]
+
+    await prisma.$transaction(async tx => {
+      const existing = await tx.payment.findFirst({ where: { qbPaymentId, invoiceId: invoice.id } })
+      const paidAt = qbPayment?.TxnDate ? new Date(`${qbPayment.TxnDate}T12:00:00.000Z`) : new Date()
+      const reference = qbPayment?.PaymentRefNum ? String(qbPayment.PaymentRefNum) : null
+
+      if (existing) {
+        await tx.payment.update({
+          where: { id: existing.id },
+          data: { amountUGX: row.amountUGX, paidAt, reference, method: 'QUICKBOOKS' },
+        })
+      } else {
+        await tx.payment.create({
+          data: {
+            invoiceId: invoice.id,
+            patientId: invoice.patientId,
+            amountUGX: row.amountUGX,
+            method: 'QUICKBOOKS',
+            reference,
+            paidAt,
+            qbPaymentId,
+            notes: 'Synced from QuickBooks webhook',
+          },
+        })
+      }
+
+      const aggregate = await tx.payment.aggregate({
+        where: { invoiceId: invoice.id },
+        _sum: { amountUGX: true },
+      })
+      const paidUGX = aggregate._sum.amountUGX || 0
+      await tx.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          paidUGX,
+          status: paidUGX >= invoice.totalUGX ? 'PAID' : paidUGX > 0 ? 'PARTIAL' : 'UNPAID',
+        },
+      })
+    })
+  }
+  clearQBCache()
+}
 
 export default router
