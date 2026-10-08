@@ -398,6 +398,86 @@ router.get('/audit/customer-sample', requireAuth, async (_req, res) => {
   }
 })
 
+// ── Paginated read-only customer-to-patient reconciliation ────────────────────
+// One bounded QuickBooks page per request. No full-collection fetch, mutations,
+// automatic linking, or exposure of patient contact information.
+router.get('/audit/customer-page', requireAuth, async (req, res) => {
+  const requestedPage = Number(req.query.page ?? 1)
+  if (!Number.isSafeInteger(requestedPage) || requestedPage < 1 || requestedPage > 10000)
+    return res.status(400).json({ error: 'Invalid page number.' })
+  const pageSize = 100
+  try {
+    const timed = <T>(promise: Promise<T>): Promise<T> => Promise.race([
+      promise,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('QuickBooks page request timed out')), 20_000)),
+    ])
+    const qbo = await timed(getQBClient())
+    const customers = await timed(new Promise<any[]>((resolve, reject) => {
+      qbo.findCustomers({ limit: pageSize, offset: (requestedPage - 1) * pageSize + 1 }, (err: any, data: any) => {
+        if (err) return reject(err)
+        const rows = Array.isArray(data) ? data : (data?.QueryResponse?.Customer ?? data?.Customer ?? [])
+        resolve(Array.isArray(rows) ? rows.slice(0, pageSize) : [])
+      })
+    }))
+    const patients = await prisma.patient.findMany({
+      select: { id: true, firstName: true, lastName: true, phone: true, email: true,
+        invoices: { where: { qbCustomerId: { not: null } }, select: { qbCustomerId: true } } },
+    })
+    const normalize = (value: unknown) => String(value ?? '').toLowerCase().normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ')
+    const nameKey = (value: unknown) => normalize(value).split(' ').filter(Boolean).sort().join(' ')
+    const phoneKey = (value: unknown) => {
+      const digits = String(value ?? '').replace(/\D/g, '')
+      return digits.startsWith('256') && digits.length === 12 ? '0' + digits.slice(3) : digits
+    }
+    const byName = new Map<string, typeof patients>()
+    const byEmail = new Map<string, typeof patients>()
+    const byPhone = new Map<string, typeof patients>()
+    const byLinkedId = new Map<string, typeof patients>()
+    const addIndex = (index: Map<string, typeof patients>, key: string, patient: typeof patients[number]) => {
+      if (key) index.set(key, [...(index.get(key) ?? []), patient])
+    }
+    for (const patient of patients) {
+      addIndex(byName, nameKey(`${patient.firstName} ${patient.lastName}`), patient)
+      addIndex(byEmail, normalize(patient.email), patient)
+      addIndex(byPhone, phoneKey(patient.phone), patient)
+      for (const invoice of patient.invoices) addIndex(byLinkedId, String(invoice.qbCustomerId ?? ''), patient)
+    }
+    const results = customers.map((customer: any) => {
+      const customerId = String(customer.Id ?? '')
+      const displayName = String(customer.DisplayName ?? '')
+      const normalizedName = normalize(displayName)
+      const customerEmail = normalize(customer.PrimaryEmailAddr?.Address)
+      const customerPhone = phoneKey(customer.PrimaryPhone?.FreeFormNumber)
+      const found = new Map<string, { patientId: string; patientName: string; signals: string[] }>()
+      const apply = (rows: typeof patients, signal: string) => {
+        for (const patient of rows) {
+          const previous = found.get(patient.id)
+          if (previous) { if (!previous.signals.includes(signal)) previous.signals.push(signal) }
+          else found.set(patient.id, { patientId: patient.id,
+            patientName: `${patient.firstName} ${patient.lastName}`.trim(), signals: [signal] })
+        }
+      }
+      apply(byLinkedId.get(customerId) ?? [], 'existing_invoice_link')
+      apply(byName.get(nameKey(displayName)) ?? [], normalizedName === normalize(displayName) ? 'name_tokens' : 'name_tokens')
+      if (customerEmail) apply(byEmail.get(customerEmail) ?? [], 'email')
+      if (customerPhone) apply(byPhone.get(customerPhone) ?? [], 'phone')
+      const candidates = [...found.values()]
+      const status = candidates.length === 0 ? 'no_candidate'
+        : candidates.length > 1 ? 'multiple_candidates'
+        : candidates[0].signals.includes('existing_invoice_link') ? 'linked'
+        : candidates[0].signals.includes('email') || candidates[0].signals.includes('phone') ? 'strong_candidate'
+        : 'name_candidate'
+      return { customerId, displayName, status, candidates }
+    })
+    return res.json({ success: true, readOnly: true, page: requestedPage, pageSize,
+      returned: results.length, hasMore: results.length === pageSize, emrPatientCount: patients.length,
+      results, note: 'Name-token matches are candidates, never automatic patient links.' })
+  } catch (err: any) {
+    return res.status(502).json({ error: String(err?.message ?? 'Customer page reconciliation failed') })
+  }
+})
+
 // ── GET /accounts/quickbooks/audit/quick-check ───────────────────────────────
 // Fast, read-only connection check. No external QuickBooks API call and no
 // customer sync: shows which company ID the server is actually using.
