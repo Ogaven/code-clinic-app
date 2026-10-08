@@ -298,13 +298,13 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
       `👁️ Patients Seen: ${m.totalSeen}`,
       `🆕 New Patients: ${m.newPatients}`,
       `🔄 Active Patients: ${m.returningPatients}`,
-      `🔍 Reviews / Recalls: ${m.reviews} (informational — already included in Patients Seen)`,
+      `🔍 Review / Recall Visits: ${m.reviews} (attended appointments, not unique patients)`,
       `✔️ Confirmed: ${m.confirmed}`,
       `⏳ Pending: ${m.pending}`,
       `❌ Cancelled: ${m.cancelled}`,
       `🔁 Rescheduled: ${m.rescheduled}`,
       `⚠️ No-Shows: ${m.noShows}`,
-      `📞 Needs Follow-up: ${data.followUpList.length}`,
+      `📞 Needs Follow-up: ${new Set(data.followUpList.map(r => r.patientId)).size} unique patients (${data.followUpList.length} appointments)`,
     ]
     if (data.followUpList.length > 0) {
       lines.push('', '*Needs Follow-up:*')
@@ -341,8 +341,8 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
       tooltip: 'Patients whose very first attended visit at Code Clinic falls inside this period.' },
     { label: 'Active Patients',             value: m.returningPatients,       color: '#3B82F6', Icon: Users,
       tooltip: 'Existing Code Clinic patients (attended before this period) who attended again during this period.' },
-    { label: 'Reviews / Recalls',           value: m.reviews,                 color: '#F59E0B', Icon: RotateCcw,
-      tooltip: 'Informational only — attended visits in this period that were a recall/review/check-up. Already counted inside Patients Seen; not added on top.' },
+    { label: 'Review / Recall Visits',      value: m.reviews,                 color: '#F59E0B', Icon: RotateCcw,
+      tooltip: 'Number of attended review/recall appointments, not unique patients. These visits are already included in Appointments Attended; patients are counted distinctly in Patients Seen.' },
     { label: 'Confirmed',                   value: m.confirmed,               color: '#14B8A6', Icon: CheckCircle2, status: 'CONFIRMED' },
     { label: 'Pending',                     value: m.pending,                 color: '#94A3B8', Icon: Clock,        status: 'PENDING'   },
     { label: 'Cancelled',                   value: m.cancelled,               color: '#EF4444', Icon: XCircle,      status: 'CANCELLED' },
@@ -569,7 +569,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
             </div>
             {!loading && data && data.followUpList.length > 0 && (
               <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                {data.followUpList.length} {data.followUpList.length === 1 ? 'patient' : 'patients'}
+                {new Set(data.followUpList.map(r => r.patientId)).size} unique {new Set(data.followUpList.map(r => r.patientId)).size === 1 ? 'patient' : 'patients'} · {data.followUpList.length} appointments
               </span>
             )}
           </div>
