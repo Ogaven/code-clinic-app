@@ -6,7 +6,7 @@
 // messaging sequences from the prior milestone.
 
 import { useEffect, useState } from 'react'
-import { CalendarClock, Info } from 'lucide-react'
+import { CalendarClock, Info, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface RecallPatient { id: string; firstName: string; lastName: string; phone: string; recallInterval: string | null; estimated: boolean; lastCompletedAt: string | null; dueAt: string | null }
@@ -23,27 +23,40 @@ export default function RecallWorkspace({ patientHref }: { patientHref: (id: str
   const [buckets, setBuckets] = useState<RecallBucket[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>('OVERDUE_180_PLUS')
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
     fetch('/api-proxy/crm-automation/patient-engagement/recall', { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setBuckets(d.buckets) })
+      .then(d => { if (d) { setBuckets(d.buckets); setUpdatedAt(new Date()) } })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [refreshKey])
+
+  const dueCount = buckets?.reduce((total, bucket) => total + bucket.count, 0) ?? 0
+  const estimatedCount = buckets?.reduce((total, bucket) => total + bucket.patients.filter(patient => patient.estimated).length, 0) ?? 0
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-extrabold text-gray-800 dark:text-white flex items-center gap-2"><CalendarClock size={20} className="text-blue-500" /> Recall</h1>
-        <p className="text-sm text-gray-500 dark:text-white/50">Patients due or overdue for their next check-up, by recall interval.</p>
+        <p className="text-sm text-gray-500 dark:text-white/50">Daily staff worklist of patients due or overdue for recall. Review each patient's clinical history and recall eligibility before contacting them.</p>
       </div>
 
       <p className="flex items-start gap-1.5 text-[11px] text-gray-400 dark:text-white/30">
         <Info size={13} className="mt-0.5 flex-shrink-0" />
         This is a status view, not a messaging tool — no reminder is sent from this page. Patients tagged "ESTIMATED" have no confirmed recall interval on file; their status is a read-time estimate from their last completed visit against a default 6-month cadence, not a precise figure.
       </p>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 dark:border-blue-400/20 dark:bg-blue-400/5">
+        <div>
+          <p className="text-sm font-bold text-gray-800 dark:text-white">Today's recall review worklist: {dueCount} patients</p>
+          <p className="text-xs text-gray-500 dark:text-white/50">{estimatedCount} estimated dates require staff confirmation. Internal review only — no messages are sent automatically.{updatedAt ? ` Last refreshed ${updatedAt.toLocaleTimeString('en-GB', { timeZone: 'Africa/Kampala', hour: '2-digit', minute: '2-digit' })} EAT.` : ''}</p>
+        </div>
+        <button type="button" disabled={loading} onClick={() => { setLoading(true); setRefreshKey(key => key + 1) }} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 disabled:opacity-50 dark:border-blue-400/20 dark:bg-white/10 dark:text-blue-300"><RefreshCw size={13} /> Refresh worklist</button>
+      </div>
 
       {loading ? (
         <p className="text-sm text-gray-400 dark:text-white/40">Loading…</p>
