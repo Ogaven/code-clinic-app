@@ -52,8 +52,18 @@ export default function QuickBooksAuditPage() {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
       })
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.toLowerCase().includes('application/json')) {
+        if (response.status === 524 || response.status === 522 || response.status === 504) {
+          throw new Error('QuickBooks audit timed out before the server responded. The audit is read-only; please retry later. No records were changed.')
+        }
+        if (response.redirected || response.status === 401 || response.status === 403) {
+          throw new Error('Your session may have expired. Sign in to Accounts again and retry the audit.')
+        }
+        throw new Error(`QuickBooks audit returned an unexpected server response (HTTP ${response.status}). Please contact support if this continues.`)
+      }
       const body = await response.json()
-      if (!response.ok) throw new Error(body.error || 'QuickBooks audit failed')
+      if (!response.ok) throw new Error(body.error || `QuickBooks audit failed (HTTP ${response.status})`)
       setAudit(body)
     } catch (err: any) {
       setError(err?.message || 'QuickBooks audit failed')
