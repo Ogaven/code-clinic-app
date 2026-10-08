@@ -62,6 +62,7 @@ export default function QuickBooksAuditPage() {
     setFullRunning(true); setFullRows(null); setFullRoster(null); setFullProgress(0)
     setFullWarning(''); setFullCompletedAt(''); setError('')
     const collected: ReconciliationRow[] = []
+    let expectedPatientCount: number | null = null
     try {
       // Each request is bounded to 100 customers. Stop only after the final
       // short page; never present partial data as a complete accountant audit.
@@ -75,6 +76,9 @@ export default function QuickBooksAuditPage() {
           throw new Error(`Invalid response from QuickBooks page ${page}`)
         collected.push(...data.results)
         setFullProgress(collected.length)
+        if (!Number.isInteger(data.emrPatientCount) || data.emrPatientCount < 0) throw new Error('Invalid EMR patient count in reconciliation response.')
+        if (expectedPatientCount !== null && expectedPatientCount !== data.emrPatientCount) setFullWarning('EMR patient count changed across QuickBooks pages. Re-run before accountant sign-off.')
+        expectedPatientCount = data.emrPatientCount
         setFullPatientCount(data.emrPatientCount)
         if (!data.hasMore) break
         if (page === 10000) throw new Error('Safety page limit reached; report incomplete.')
@@ -94,7 +98,7 @@ export default function QuickBooksAuditPage() {
         if (!data.hasMore) break
         if (page === 1000) throw new Error('EMR roster safety limit reached.')
       }
-      if (roster.length !== fullPatientCount && roster.length !== (collected.length ? fullPatientCount : 0))
+      if (expectedPatientCount === null || roster.length !== expectedPatientCount)
         setFullWarning('EMR patient count changed during the scan. Re-run before accountant sign-off.')
       setFullRows(collected); setFullRoster(roster); setFullCompletedAt(new Date().toISOString())
     } catch (err: any) {
@@ -105,7 +109,7 @@ export default function QuickBooksAuditPage() {
 
   function exportAccountantCsv() {
     if (!fullRows || !fullRoster || !fullCompletedAt) return
-    const quote = (v: unknown) => '"' + String(v ?? '').replace(/"/g, '""').replace(/^[=+@-]/, "'  const [sample, setSample]") + '"'
+    const quote = (v: unknown) => '"' + String(v ?? '').replace(/"/g, '""').replace(/^[=+@-]/, "'replace(/^[=+@-]/, "'  const [sample, setSample]")") + '"'
     const lines = [['Source','QuickBooks Customer ID','QuickBooks Customer Name','EMR Patient ID','EMR Patient Name','Status','Evidence','Accountant Decision','Accountant Notes'].map(quote).join(',')]
     const seen = new Set<string>()
     for (const customer of fullRows) {
