@@ -369,10 +369,17 @@ router.get('/audit/patient-reconciliation', requireAuth, async (_req, res) => {
     if (!tokenSetting) throw new Error('QuickBooks not connected')
     const storedTokens = JSON.parse(tokenSetting.value) as Record<string, any>
     const qbo = await getQBClient()
-    const liveCompanyInfo = await new Promise<any>((resolve, reject) => {
+    // Cloudflare returns an HTML 524 after its origin timeout. Fail earlier
+    // with an actionable JSON error rather than leaving the browser waiting.
+    const auditDeadline = <T>(work: Promise<T>): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('QuickBooks audit timed out while reading company data. Please retry; no records were changed.')), 45_000)
+        work.then(value => { clearTimeout(timer); resolve(value) }, error => { clearTimeout(timer); reject(error) })
+      })
+    const liveCompanyInfo = await auditDeadline(new Promise<any>((resolve, reject) => {
       qbo.getCompanyInfo(storedTokens.realmId, (err: any, info: any) => err ? reject(err) : resolve(info))
-    })
-    const [qbCustomers, qbInvoices, qbPayments, qbPurchases, qbCounts, reportEvidence] = await Promise.all([
+    }))
+    const [qbCustomers, qbInvoices, qbPayments, qbPurchases, qbCounts, reportEvidence] = await auditDeadline(Promise.all([
       fetchQuickBooksCollection(qbo, 'findCustomers', 'Customer'),
       fetchQuickBooksCollection(qbo, 'findInvoices', 'Invoice'),
       fetchQuickBooksCollection(qbo, 'findPayments', 'Payment'),
@@ -384,7 +391,7 @@ router.get('/audit/patient-reconciliation', requireAuth, async (_req, res) => {
         fetchQuickBooksCount(qbo, 'findPurchases'),
       ]),
       fetchQuickBooksReportEvidence(qbo),
-    ])
+    ]))
     // Cross-entity evidence helps distinguish an actually empty QB company from
     // a customer-list problem without exposing transaction or patient details.
     const invoiceCustomerRefs = new Set(
