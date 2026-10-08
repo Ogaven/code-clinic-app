@@ -437,8 +437,8 @@ function FeedbackTab() {
 
 // ── Case Acceptance tab ────────────────────────────────────────────────────────
 
-interface CASummary { presented: number; accepted: number; followUp: number; declined: number; onHold: number; acceptanceRate: number }
-interface CADoctor  { name: string; presented: number; accepted: number; followUp: number; declined: number; acceptanceRate: number }
+interface CASummary { presented: number; accepted: number; followUp: number; declined: number; onHold: number; acceptanceRate: number; rawAcceptanceRate: number; patientVolumeBenchmark: number }
+interface CADoctor  { name: string; patientsSeen: number; presented: number; accepted: number; followUp: number; declined: number; acceptanceRate: number; rawAcceptanceRate: number; patientVolumeBenchmark: number; highValuePresented: number; highValueAccepted: number }
 interface CAData    { summary: CASummary; byStatus: Record<string, number>; byDoctor: CADoctor[] }
 
 function eatMonthRange() {
@@ -503,8 +503,8 @@ function CaseAcceptanceTab() {
       <div className="flex-shrink-0 px-6 pt-5 pb-4 bg-white dark:bg-transparent border-b border-gray-100 dark:border-white/8">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h2 className="text-base font-bold text-gray-800 dark:text-white">Case Acceptance Rate</h2>
-            <p className="text-sm text-gray-400 mt-0.5">Treatment plans presented vs. accepted by patients</p>
+            <h2 className="text-base font-bold text-gray-800 dark:text-white">Case Acceptance Performance</h2>
+            <p className="text-sm text-gray-400 mt-0.5">Adjusted performance considers patients seen, accepted plans and high-value procedures</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {(['this', 'last'] as const).map(p => (
@@ -544,11 +544,11 @@ function CaseAcceptanceTab() {
                 <p className={cn('text-7xl font-black', (s?.acceptanceRate ?? 0) >= 70 ? 'text-emerald-400' : (s?.acceptanceRate ?? 0) >= 50 ? 'text-amber-400' : 'text-red-400')}>
                   {s?.acceptanceRate ?? 0}%
                 </p>
-                <p className="text-blue-200/70 text-sm pb-3">Case Acceptance Rate</p>
+                <p className="text-blue-200/70 text-sm pb-3">Clinic-wide Adjusted Score</p>
               </div>
               <RateBar rate={s?.acceptanceRate ?? 0} />
               <p className="text-xs text-blue-200/50 mt-2">
-                {(s?.acceptanceRate ?? 0) >= 70 ? '✓ Above target (70%+)' : (s?.acceptanceRate ?? 0) >= 50 ? '⚠ Below target — follow up on pending plans' : '✕ Needs attention — many plans not accepted'}
+                {`Raw acceptance: ${s?.rawAcceptanceRate ?? 0}% (accepted ÷ presented). Adjusted target: 90%. Volume benchmark: ${s?.patientVolumeBenchmark ?? 1} patients per doctor. Provisional scoring policy.`}
               </p>
             </div>
 
@@ -581,7 +581,7 @@ function CaseAcceptanceTab() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-white/5">
                       <tr>
-                        {['Doctor', 'Presented', 'Accepted', 'Follow-up', 'Declined', 'Rate', ''].map(h => (
+                        {['Doctor', 'Patients Seen', 'Presented', 'Accepted', 'High-value Yes', 'Raw %', 'Adjusted Score', ''].map(h => (
                           <th key={h} className="text-left px-4 py-2.5 text-xs font-black text-gray-400 dark:text-white/30 uppercase tracking-wide">{h}</th>
                         ))}
                       </tr>
@@ -590,10 +590,11 @@ function CaseAcceptanceTab() {
                       {data.byDoctor.map(d => (
                         <tr key={d.name} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                           <td className="px-4 py-3 font-semibold text-gray-800 dark:text-white">{d.name}</td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-white/60">{d.patientsSeen}</td>
                           <td className="px-4 py-3 text-gray-600 dark:text-white/60">{d.presented}</td>
                           <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400">{d.accepted}</td>
-                          <td className="px-4 py-3 text-amber-600 dark:text-amber-400">{d.followUp}</td>
-                          <td className="px-4 py-3 text-red-500 dark:text-red-400">{d.declined}</td>
+                          <td className="px-4 py-3 text-blue-600 dark:text-blue-400">{d.highValueAccepted}</td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-white/60">{d.rawAcceptanceRate}%</td>
                           <td className="px-4 py-3">
                             <span className={cn('font-black text-base', d.acceptanceRate >= 70 ? 'text-emerald-500' : d.acceptanceRate >= 50 ? 'text-amber-500' : 'text-red-500')}>
                               {d.acceptanceRate}%
@@ -616,7 +617,10 @@ function CaseAcceptanceTab() {
                 <li><strong>Accepted</strong> — plans marked <em>In Progress</em> or <em>Completed</em> (patient agreed to proceed)</li>
                 <li><strong>Follow-up</strong> — plans still <em>Planned</em> (patient hasn't decided; staff should follow up)</li>
                 <li><strong>Declined</strong> — plans marked <em>Declined</em> by staff after patient said no</li>
-                <li><strong>Case Acceptance %</strong> = Accepted ÷ Presented × 100. Industry target is 70% or above.</li>
+                <li><strong>Raw acceptance %</strong> = Accepted ÷ Presented × 100. This is a mathematical treatment-plan rate, not a doctor performance score.</li>
+                <li><strong>Adjusted score</strong> = raw acceptance × min(1, distinct patients seen ÷ clinic active-doctor average). Doctors without accepted crowns, braces or aligners are capped at 69%. Target shown by the Admin report: 90%.</li>
+                <li><strong>High-value Yes</strong> counts accepted crowns, braces and aligners. These scoring rules are provisional and require clinic approval.</li>
+                <li><strong>Patients seen</strong> counts distinct patients with attended appointment statuses during the reporting period, including doctors without treatment plans.</li>
                 <li>Doctor attribution is based on the patient's first appointment in the selected date range.</li>
               </ul>
             </div>
