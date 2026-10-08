@@ -253,6 +253,7 @@ const REVIEW_SERVICES = [
 const RECALL_SERVICES = [
   'periodontal maintenance',
   'recall hygiene visit',
+  'periodontal maintenance recall hygiene visit',
 ]
 function normalizedServiceName(service: { name: string; category: string } | null): string {
   return (service?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/\\s+/g, ' ')
