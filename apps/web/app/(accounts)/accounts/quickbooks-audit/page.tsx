@@ -109,7 +109,7 @@ export default function QuickBooksAuditPage() {
 
   function exportAccountantCsv() {
     if (!fullRows || !fullRoster || !fullCompletedAt) return
-    const quote = (v: unknown) => '"' + String(v ?? '').replace(/"/g, '""').replace(/^[=+@-]/, "'replace(/^[=+@-]/, "'  const [sample, setSample]")") + '"'
+    const quote = (v: unknown) => '"' + String(v ?? '').replace(/"/g, '""').replace(/^[=+@-]/, "'$&") + '"'
     const lines = [['Source','QuickBooks Customer ID','QuickBooks Customer Name','EMR Patient ID','EMR Patient Name','Status','Evidence','Accountant Decision','Accountant Notes'].map(quote).join(',')]
     const seen = new Set<string>()
     for (const customer of fullRows) {
