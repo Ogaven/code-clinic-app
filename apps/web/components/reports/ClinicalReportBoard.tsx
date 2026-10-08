@@ -242,7 +242,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
 
     // Follow-up list
     if (data.followUpList.length > 0) {
-      children.push(new Paragraph({ text: `Needs Follow-up (${data.followUpList.length} patient${data.followUpList.length !== 1 ? 's' : ''})`, heading: HeadingLevel.HEADING_3, spacing: { before: 200, after: 160 } }))
+      children.push(new Paragraph({ text: `Needs Follow-up (${new Set(data.followUpList.map(r => r.patientId)).size} unique patients, ${data.followUpList.length} appointments)`, heading: HeadingLevel.HEADING_3, spacing: { before: 200, after: 160 } }))
       const followUpRows = [
         new TableRow({
           tableHeader: true,
