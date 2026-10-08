@@ -434,7 +434,7 @@ export default function CaseAcceptancePage() {
           <>
             {/* Clinic-wide overview */}
             <div className="bg-gradient-to-br from-slate-800 to-blue-900 rounded-2xl p-6 text-white">
-              <p className="text-xs font-bold text-blue-200/70 uppercase tracking-widest mb-1">{monthLabel}</p>
+              <p className="text-xs font-bold text-blue-100 uppercase tracking-widest mb-1">{monthLabel}</p>
               <div className="flex items-end gap-4 mb-2">
                 <p className={cn('text-7xl font-black',
                   (s?.acceptanceRate ?? 0) >= target ? 'text-emerald-400' :
@@ -442,8 +442,8 @@ export default function CaseAcceptancePage() {
                   {s?.acceptanceRate ?? 0}%
                 </p>
                 <div className="pb-3">
-                  <p className="text-blue-200/70 text-sm">Clinic-wide Adjusted Case Acceptance</p>
-                  <p className="text-xs text-blue-200/40">Target: {target}% · Raw procedure acceptance: {s?.rawAcceptanceRate ?? 0}%</p>
+                  <p className="text-white font-semibold text-sm">Clinic-wide Adjusted Case Acceptance</p>
+                  <p className="text-sm text-blue-100">Target: {target}% · Raw procedure acceptance: {s?.rawAcceptanceRate ?? 0}%</p>
                 </div>
               </div>
 
@@ -453,13 +453,13 @@ export default function CaseAcceptancePage() {
                   style={{ width: `${Math.min(s?.acceptanceRate ?? 0, 100)}%`, background: rateBg(s?.acceptanceRate ?? 0, target) }} />
                 <div className="absolute top-0 bottom-0 w-0.5 bg-white/50" style={{ left: `${target}%` }} />
               </div>
-              <div className="flex justify-between text-[10px] text-blue-200/40 mb-3">
+              <div className="flex justify-between text-xs font-semibold text-blue-100 mb-3">
                 <span>0%</span>
-                <span className="text-white/50">Target {target}%</span>
+                <span className="text-white">Target {target}%</span>
                 <span>100%</span>
               </div>
 
-              <p className="text-xs text-blue-200/50">
+              <p className="text-sm font-medium text-blue-100">
                 {(s?.acceptanceRate ?? 0) >= target ? `✓ At or above ${target}% target` :
                  (s?.acceptanceRate ?? 0) >= 70     ? `⚠ Below ${target}% target — follow up on pending plans` :
                                                       `✕ Needs attention — many plans not accepted`}
@@ -484,6 +484,53 @@ export default function CaseAcceptancePage() {
                 </div>
               ))}
             </div>
+
+            {/* Live doctor comparison — always derived from the current report date range. */}
+            {data.byDoctor.length > 0 && (
+              <section className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 sm:p-6" aria-label="Raw acceptance versus adjusted performance by doctor">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+                  <div>
+                    <h3 className="text-base font-bold text-gray-800 dark:text-white">Raw Acceptance vs Adjusted Performance</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-300 mt-1">{monthLabel} · Updated whenever you generate a report</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-gray-700 dark:text-gray-200">
+                    <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-blue-600" /> Raw acceptance</span>
+                    <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-emerald-500" /> Adjusted performance</span>
+                  </div>
+                </div>
+                <div className="overflow-x-auto pb-2">
+                  <div className="min-w-[480px]">
+                    <div className="relative h-60 pl-11 pr-2">
+                      <div className="absolute inset-y-0 left-0 w-full flex flex-col justify-between pointer-events-none">
+                        {[100, 75, 50, 25, 0].map(tick => (
+                          <div key={tick} className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-300">
+                            <span className="w-9 text-right tabular-nums">{tick}%</span>
+                            <div className="flex-1 border-t border-dashed border-gray-200 dark:border-white/15" />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="relative z-10 h-full grid gap-3 px-3" style={{ gridTemplateColumns: `repeat(${data.byDoctor.length}, minmax(72px, 1fr))` }}>
+                        {data.byDoctor.map(d => (
+                          <div key={d.id} className="h-full flex items-end justify-center gap-1.5" title={`${d.name}: raw ${d.rawAcceptanceRate}%, adjusted ${d.acceptanceRate}%`}>
+                            <div className="w-full max-w-9 rounded-t-md bg-blue-600 transition-all duration-500" style={{ height: `${Math.max(0, Math.min(100, d.rawAcceptanceRate ?? 0))}%` }} aria-label={`${d.name} raw acceptance ${d.rawAcceptanceRate}%`} />
+                            <div className="w-full max-w-9 rounded-t-md bg-emerald-500 transition-all duration-500" style={{ height: `${Math.max(0, Math.min(100, d.acceptanceRate ?? 0))}%` }} aria-label={`${d.name} adjusted performance ${d.acceptanceRate}%`} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid gap-3 pl-11 pr-2 mt-3" style={{ gridTemplateColumns: `repeat(${data.byDoctor.length}, minmax(72px, 1fr))` }}>
+                      {data.byDoctor.map(d => (
+                        <div key={d.id} className="text-center min-w-0">
+                          <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 break-words">{d.name.replace(/^Dr\\.?\\s*/i, '')}</p>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-300 tabular-nums">{d.rawAcceptanceRate}% / {d.acceptanceRate}%</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-gray-500 dark:text-gray-300">Blue = accepted ÷ presented plans. Green = adjusted score after patient-volume and high-value procedure rules. Click a doctor in the table below for details.</p>
+              </section>
+            )}
 
             {/* Per-doctor table — click to drill down */}
             {data.byDoctor.length > 0 && (
