@@ -133,6 +133,7 @@ function printDoctorReport(doc: CADoctor, monthLabel: string) {
     <div class="stat"><div class="n" style="color:#d97706">${doc.followUp}</div><div class="l">Pending</div></div>
     <div class="stat"><div class="rate">${doc.acceptanceRate}%</div><div class="l">Adjusted Score</div></div>
   </div>
+  <p>Raw procedure acceptance: ${doc.rawAcceptanceRate}% | High-value accepted: ${doc.highValueAccepted} | Patient-volume benchmark: ${doc.patientVolumeBenchmark}</p>
   ${totalValue > 0 ? `<p style="margin-bottom:20px;font-weight:600;color:#16a34a">Total accepted value: ${fmtUGX(totalValue)}</p>` : ''}
   <h2>✅ Accepted (${doc.patients.accepted.length})</h2>
   <table><thead><tr><th>Patient</th><th>Service</th><th>Date</th><th style="text-align:right">Value</th></tr></thead>
@@ -183,18 +184,18 @@ async function downloadDoctorWordDoc(doc: CADoctor, monthLabel: string) {
   const statsRows = [
     new TableRow({
       tableHeader: true,
-      children: ['Presented', 'Accepted', 'Declined', 'Pending', 'Acceptance Rate'].map(h =>
+      children: ['Patients Seen', 'Presented', 'Accepted', 'High-value Yes', 'Adjusted Score'].map(h =>
         new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })], shading: { fill: 'E8F0FE' } })
       ),
     }),
     new TableRow({
       children: [
-        String(doc.presented), String(doc.accepted), String(doc.declined), String(doc.followUp), `${doc.acceptanceRate}%`,
+        String(doc.patientsSeen), String(doc.presented), String(doc.accepted), String(doc.highValueAccepted), `${doc.acceptanceRate}%`,
       ].map(v => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: v, bold: true })] })] })),
     }),
   ]
   children.push(new Table({ rows: statsRows, width: { size: 100, type: WidthType.PERCENTAGE } }))
-  children.push(new Paragraph({ text: '', spacing: { after: 320 } }))
+  children.push(new Paragraph({ text: `Raw procedure acceptance: ${doc.rawAcceptanceRate}% | Patient-volume benchmark: ${doc.patientVolumeBenchmark} | High-value accepted: ${doc.highValueAccepted}. Adjusted score considers procedure acceptance, distinct patients seen and accepted crowns/aligners/braces.`, spacing: { after: 320 } }))
 
   const totalValue = doc.patients.accepted.reduce((s, p) => s + p.value, 0)
   if (totalValue > 0) {
@@ -251,7 +252,7 @@ function DrilldownModal({ doc, monthLabel, onClose }: { doc: CADoctor; monthLabe
   const totalValue = doc.patients.accepted.reduce((s, p) => s + p.value, 0)
 
   async function handleShare() {
-    const text = `${doc.name} Case Acceptance — ${monthLabel}\nRate: ${doc.acceptanceRate}%\nPresented: ${doc.presented} | Accepted: ${doc.accepted} | Declined: ${doc.declined}\nCode Clinic`
+    const text = `${doc.name} Case Acceptance — ${monthLabel}\nAdjusted performance score: ${doc.acceptanceRate}%\nRaw procedure acceptance: ${doc.rawAcceptanceRate}%\nPatients seen: ${doc.patientsSeen} | Presented: ${doc.presented} | Accepted: ${doc.accepted} | High-value accepted: ${doc.highValueAccepted}\nCode Clinic`
     if (navigator.share) {
       try { await navigator.share({ title: `${doc.name} — Case Acceptance`, text }) } catch {}
     } else {
