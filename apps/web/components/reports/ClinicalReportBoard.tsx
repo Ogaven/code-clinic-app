@@ -48,10 +48,21 @@ interface FollowUpEntry {
   contactedAt: string | null
 }
 
+interface PatientDrilldownRow {
+  appointmentId: string
+  patientId: string
+  patientName: string
+  phone: string
+  originalDate: string
+  service: string
+  doctor: string
+}
+
 interface ClinicalReport {
   period: { view: string; start: string; end: string; label: string }
   metrics: Metrics
   followUpList: FollowUpEntry[]
+  patientDrilldowns?: { seen: PatientDrilldownRow[]; new: PatientDrilldownRow[]; active: PatientDrilldownRow[]; reviews: PatientDrilldownRow[] }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -138,6 +149,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
   const [loading, setLoading]     = useState(true)
   const [contacted, setContacted] = useState<Record<string, string>>({})
   const [drilldown, setDrilldown] = useState<{ label: string; status: string; color: string } | null>(null)
+  const [patientDrilldown, setPatientDrilldown] = useState<{ label: string; key: 'seen' | 'new' | 'active' | 'reviews'; color: string } | null>(null)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
 
@@ -527,9 +539,9 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                   {section.stats.map(({ label, value, color, Icon, status, tooltip }) => (
                     <div key={label}
-                      onClick={status ? () => setDrilldown({ label, status, color }) : undefined}
+                      onClick={status ? () => setDrilldown({ label, status, color }) : data?.patientDrilldowns && ({ 'Patients Seen': 'seen', 'New Patients': 'new', 'Active Patients': 'active', 'Review / Recall Visits': 'reviews' } as Record<string, 'seen' | 'new' | 'active' | 'reviews'>)[label] ? () => setPatientDrilldown({ label, key: ({ 'Patients Seen': 'seen', 'New Patients': 'new', 'Active Patients': 'active', 'Review / Recall Visits': 'reviews' } as Record<string, 'seen' | 'new' | 'active' | 'reviews'>)[label], color }) : undefined}
                       title={tooltip ?? (status ? `View the ${value} appointment${value !== 1 ? 's' : ''} behind this number` : undefined)}
-                      className={`bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm hover:shadow-md transition-shadow ${status ? 'cursor-pointer hover:-translate-y-0.5 hover:border-gray-200 dark:hover:border-white/20' : ''}`}>
+                      className={`bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm hover:shadow-md transition-shadow ${status || ['Patients Seen', 'New Patients', 'Active Patients', 'Review / Recall Visits'].includes(label) ? 'cursor-pointer hover:-translate-y-0.5 hover:border-gray-200 dark:hover:border-white/20' : ''}`}>
                       <div className="flex items-start justify-between mb-2 gap-1">
                         <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 leading-tight">{label}</p>
                         <Icon size={13} style={{ color }} className="opacity-50 flex-shrink-0 mt-0.5" />
@@ -556,6 +568,32 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
             endDate={kampalaDateStr(data.period.end, true)}
             onClose={() => setDrilldown(null)}
           />
+        )}
+
+        {patientDrilldown && data?.patientDrilldowns && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setPatientDrilldown(null)}>
+            <div role="dialog" aria-modal="true" aria-label={patientDrilldown.label} className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#111a35]" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-white/10">
+                <div>
+                  <p className="text-xs font-bold uppercase" style={{ color: patientDrilldown.color }}>{patientDrilldown.label}</p>
+                  <p className="text-sm text-gray-400">{data.patientDrilldowns[patientDrilldown.key].length} {patientDrilldown.key === 'reviews' ? 'appointments' : 'patients'}</p>
+                </div>
+                <button type="button" aria-label="Close" onClick={() => setPatientDrilldown(null)} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"><XCircle size={18} /></button>
+              </div>
+              <div className="overflow-y-auto">
+                {data.patientDrilldowns[patientDrilldown.key].map(row => (
+                  <div key={patientDrilldown.key === 'reviews' ? row.appointmentId : row.patientId} className="flex items-center gap-3 border-b border-gray-50 px-5 py-3 dark:border-white/5">
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-clinic-navy text-xs font-bold text-white">{row.patientName.split(' ').map(p => p[0]).slice(0, 2).join('')}</div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-gray-800 dark:text-white">{row.patientName}</p>
+                      <p className="truncate text-xs text-gray-400">{row.service} · {row.doctor} · {row.phone}</p>
+                    </div>
+                    <p className="flex-shrink-0 text-xs text-gray-500">{fmtDate(row.originalDate)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* ── Follow-up list ─────────────────────────────────────────────────── */}

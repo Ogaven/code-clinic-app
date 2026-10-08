@@ -5,7 +5,7 @@ import { adminOnly } from '../middleware/rbac'
 import { buildExecutiveReport, type ExecutivePeriod } from '../services/executive-report.service'
 import { sendExecutiveReportEmail } from '../services/communications/email'
 import { startOfKampalaDay, endOfKampalaDay, startOfKampalaWeek, startOfKampalaMonth, startOfNextKampalaMonth, kampalaTodayRange } from '../utils/kampala-time'
-import { getPatientActivitySummary, getAppointmentStatusBreakdown, ATTENDED_STATUSES } from '../services/patient-analytics.service'
+import { getPatientActivitySummary, getAppointmentStatusBreakdown, getPatientsSeen, splitNewAndReturning, ATTENDED_STATUSES } from '../services/patient-analytics.service'
 import { isAccepted, isDeclined, computeMoneyAtRisk } from '../services/treatment-classification.service'
 
 const router = Router()
@@ -447,11 +447,43 @@ router.get('/clinical', requireAuth, async (req, res) => {
       contactedAt:    contactedMap.get(a.id) || null,
     }))
 
+    // Read-only drill-down records use the same canonical patient classification
+    // as the displayed metrics. Imported patients with unknown history remain
+    // excluded from New/Active and from the reconciled Patients Seen count.
+    const seen = await getPatientsSeen(range)
+    const classified = await splitNewAndReturning(seen.patientIds, start)
+    const classifiedIds = new Set([...classified.newIds, ...classified.returningIds])
+    const newIds = new Set(classified.newIds)
+    const returningIds = new Set(classified.returningIds)
+    const patientRows = new Map<string, any>()
+    for (const a of appts as any[]) {
+      if (!ATTENDED_STATUSES.includes(a.status) || !classifiedIds.has(a.patientId)) continue
+      if (!patientRows.has(a.patientId)) patientRows.set(a.patientId, a)
+    }
+    const toRow = (a: any) => ({
+      appointmentId: a.id,
+      patientId: a.patientId,
+      patientName: `${cproper(a.patient.firstName)} ${cproper(a.patient.lastName)}`.trim(),
+      phone: a.patient.phone,
+      originalDate: (a.startAt as Date).toISOString(),
+      service: a.service?.name || '—',
+      doctor: a.doctor?.user
+        ? `Dr. ${cproper(a.doctor.user.firstName)} ${cproper(a.doctor.user.lastName)}`
+        : '—',
+    })
+    const patientDrilldowns = {
+      seen: [...patientRows.entries()].filter(([id]) => classifiedIds.has(id)).map(([, a]) => toRow(a)),
+      new: [...patientRows.entries()].filter(([id]) => newIds.has(id)).map(([, a]) => toRow(a)),
+      active: [...patientRows.entries()].filter(([id]) => returningIds.has(id)).map(([, a]) => toRow(a)),
+      reviews: (appts as any[]).filter(a => ATTENDED_STATUSES.includes(a.status) && isReview(a.service)).map(toRow),
+    }
+
     res.json({
       period:  { view, start: start.toISOString(), end: end.toISOString(), label },
       metrics: { totalScheduled, appointmentsAttended, totalSeen, newPatients, returningPatients,
                  reviews, confirmed, pending, cancelled, rescheduled, noShows },
       followUpList,
+      patientDrilldowns,
     })
   } catch (e: any) {
     console.error('[Reports] clinical error:', e.message)
