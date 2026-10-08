@@ -32,6 +32,7 @@ const ESTIMATED_DEFAULT_INTERVAL = 'SIX_MONTH'
 export interface RecallPatientRow {
   id: string; firstName: string; lastName: string; phone: string
   recallInterval: string | null; tagsUpdatedAt: Date | null
+  lastCompletedAt: Date | null; dueAt: Date | null
   estimated: boolean
 }
 
@@ -82,13 +83,35 @@ export async function recallOverview(): Promise<{ buckets: RecallBucket[]; total
     estimatedRecallCandidates(),
   ])
 
+  // Fetch each confirmed patient's latest completed appointment in one bounded
+  // query. Dates are display-only; no patient tags or appointments are changed.
+  const completedVisits = confirmed.length ? await prisma.appointment.findMany({
+    where: { patientId: { in: confirmed.map(p => p.id) }, status: 'COMPLETED' },
+    select: { patientId: true, startAt: true },
+    orderBy: { startAt: 'desc' },
+  }) : []
+  const latestVisitByPatient = new Map<string, Date>()
+  for (const visit of completedVisits) {
+    if (!latestVisitByPatient.has(visit.patientId)) latestVisitByPatient.set(visit.patientId, visit.startAt)
+  }
+  const intervalDays: Record<string, number> = { THREE_MONTH: 90, SIX_MONTH: 180, TWELVE_MONTH: 365 }
+  const dueAt = (visit: Date | null, interval: string | null): Date | null =>
+    visit && interval && intervalDays[interval]
+      ? new Date(visit.getTime() + intervalDays[interval] * 86_400_000)
+      : null
+
   const confirmedRows: Array<RecallPatientRow & { status: string }> = confirmed.map(p => ({
     id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone,
-    recallInterval: p.recallInterval, tagsUpdatedAt: p.tagsUpdatedAt, estimated: false, status: p.recallStatus,
+    recallInterval: p.recallInterval, tagsUpdatedAt: p.tagsUpdatedAt,
+    lastCompletedAt: latestVisitByPatient.get(p.id) ?? null,
+    dueAt: dueAt(latestVisitByPatient.get(p.id) ?? null, p.recallInterval),
+    estimated: false, status: p.recallStatus,
   }))
   const estimatedRows: Array<RecallPatientRow & { status: string }> = estimated.map(p => ({
     id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone,
-    recallInterval: null, tagsUpdatedAt: p.lastCompletedAt, estimated: true, status: p.status,
+    recallInterval: null, tagsUpdatedAt: p.lastCompletedAt,
+    lastCompletedAt: p.lastCompletedAt, dueAt: dueAt(p.lastCompletedAt, 'SIX_MONTH'),
+    estimated: true, status: p.status,
   }))
   const allRows = [...confirmedRows, ...estimatedRows]
 
