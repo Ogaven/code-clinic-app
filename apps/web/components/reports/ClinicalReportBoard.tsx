@@ -355,7 +355,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
   ]
 
   const appointmentStats = STATS.filter(s => ['Total Scheduled', 'Appointments Attended', 'Confirmed', 'Pending', 'Cancelled', 'Rescheduled', 'No-Shows'].includes(s.label))
-  const patientStats = STATS.filter(s => ['Patients Seen', 'New Patients', 'Active Patients', 'Reviews / Recalls'].includes(s.label))
+  const patientStats = STATS.filter(s => ['Patients Seen', 'New Patients', 'Active Patients', 'Review / Recall Visits'].includes(s.label))
 
   const weekEnd = weekStart ? addDays(weekStart, 6) : ''
 
@@ -515,7 +515,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
               },
               {
                 title: 'Patient Statistics',
-                note: 'Patients Seen = New Patients + Active Patients. Reviews / Recalls is already included in Patients Seen.',
+                note: 'Patients Seen = New Patients + Active Patients. Review / Recall Visits counts attended appointments, not distinct patients; these visits are included in Appointments Attended.',
                 stats: patientStats,
               },
             ].map(section => (
