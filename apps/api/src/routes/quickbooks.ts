@@ -359,6 +359,45 @@ router.get('/customers', requireAuth, async (_req, res) => {
   } catch (err: any) { res.status(400).json({ error: err.message }) }
 })
 
+// ── GET /accounts/quickbooks/audit/customer-sample ──────────────────────────
+// Bounded live customer query, independent of the full reconciliation audit.
+// Never fetchAll, sync, or modify QuickBooks / patient records.
+router.get('/audit/customer-sample', requireAuth, async (_req, res) => {
+  try {
+    const qbo = await Promise.race([
+      getQBClient(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('QuickBooks connection timed out')), 12_000)),
+    ])
+    const customers = await Promise.race([
+      new Promise<any[]>((resolve, reject) => {
+        qbo.findCustomers({ limit: 10, offset: 1 }, (err: any, data: any) => {
+          if (err) return reject(err)
+          const rows = Array.isArray(data) ? data : (data?.QueryResponse?.Customer ?? data?.Customer ?? [])
+          resolve(Array.isArray(rows) ? rows.slice(0, 10) : [])
+        })
+      }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('QuickBooks customer sample timed out after 12 seconds')), 12_000)),
+    ])
+    return res.json({
+      success: true,
+      count: customers.length,
+      customers: customers.map((customer: any) => ({
+        id: String(customer.Id ?? ''),
+        displayName: String(customer.DisplayName ?? ''),
+      })),
+      note: 'Live read-only sample, maximum 10 customers; not a full count.',
+    })
+  } catch (err: any) {
+    const message = String(err?.message ?? 'Unknown QuickBooks error')
+    const timedOut = message.toLowerCase().includes('timed out')
+    return res.status(timedOut ? 504 : 502).json({
+      success: false,
+      error: timedOut ? message : 'QuickBooks customer sample request failed.',
+      diagnostic: timedOut ? 'timeout' : 'quickbooks_error',
+    })
+  }
+})
+
 // ── GET /accounts/quickbooks/audit/quick-check ───────────────────────────────
 // Fast, read-only connection check. No external QuickBooks API call and no
 // customer sync: shows which company ID the server is actually using.
