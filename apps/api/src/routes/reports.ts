@@ -221,8 +221,13 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
       })
       .sort((a, b) => b.acceptanceRate - a.acceptanceRate || b.patientsSeen - a.patientsSeen)
 
+    const scoredDoctors = byDoctor.filter(d => d.patientsSeen > 0 || d.presented > 0)
+    const adjustedClinicAcceptanceRate = scoredDoctors.length > 0
+      ? Math.round(scoredDoctors.reduce((sum, d) => sum + d.acceptanceRate, 0) / scoredDoctors.length)
+      : 0
+
     res.json({
-      summary: { presented, accepted, followUp, declined, onHold, completed, moneyAtRisk, acceptanceRate, target: 90, patientVolumeBenchmark },
+      summary: { presented, accepted, followUp, declined, onHold, completed, moneyAtRisk, acceptanceRate: adjustedClinicAcceptanceRate, rawAcceptanceRate: acceptanceRate, target: 90, patientVolumeBenchmark },
       byStatus: { planned: followUp, inProgress, completed, onHold, declined },
       byDoctor,
     })
