@@ -45,6 +45,8 @@ export default function QuickBooksAuditPage() {
   const [quickCheck, setQuickCheck] = useState<{ connected: boolean; realmId?: string; companyName?: string | null } | null>(null)
   const [checking, setChecking] = useState(false)
   const [sampling, setSampling] = useState(false)
+  const [pageLoading, setPageLoading] = useState(false)
+  const [customerPage, setCustomerPage] = useState<{ page: number; returned: number; hasMore: boolean; emrPatientCount: number; results: Array<{ customerId: string; displayName: string; status: string; candidates: Array<{ patientId: string; patientName: string; signals: string[] }> }> } | null>(null)
   const [sample, setSample] = useState<{ count: number; customers: Array<{ id: string; displayName: string }> } | null>(null)
 
   async function runQuickCheck() {
@@ -59,6 +61,23 @@ export default function QuickBooksAuditPage() {
       setQuickCheck(result)
     } catch (err: any) { setError(err?.message || 'Company check failed') }
     finally { setChecking(false) }
+  }
+
+  async function runCustomerPage(page: number) {
+    const token = localStorage.getItem('cc_token')
+    if (!token) { setError('Please sign in to Accounts again.'); return }
+    setPageLoading(true); setError('')
+    try {
+      const response = await fetch(`/api-proxy/accounts/quickbooks/audit/customer-page?page=${page}`, {
+        headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
+      })
+      if (!response.headers.get('content-type')?.includes('application/json'))
+        throw new Error(`Reconciliation page returned HTTP ${response.status} instead of JSON`)
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Page reconciliation failed')
+      setCustomerPage(result)
+    } catch (err: any) { setError(err?.message || 'Page reconciliation failed') }
+    finally { setPageLoading(false) }
   }
 
   async function runCustomerSample() {
@@ -140,13 +159,21 @@ export default function QuickBooksAuditPage() {
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">QuickBooks Data Audit</h1>
           <p className="mt-1 text-xs text-gray-500">Use this to verify whether the two systems contain corresponding people, not just whether the API is connected.</p>
         </div>
-        <div className="flex flex-wrap gap-2"><button onClick={runQuickCheck} disabled={checking} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{checking ? 'Checking…' : 'Check Connected Company'}</button><button onClick={runCustomerSample} disabled={sampling} className="flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{sampling ? "Reading…" : "Test 10 Customers"}</button><button onClick={runAudit} disabled={loading} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">
+        <div className="flex flex-wrap gap-2"><button onClick={runQuickCheck} disabled={checking} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{checking ? 'Checking…' : 'Check Connected Company'}</button><button onClick={() => runCustomerPage(1)} disabled={pageLoading} className="rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{pageLoading ? "Comparing…" : "Compare EMR Patients"}</button><button onClick={runCustomerSample} disabled={sampling} className="flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{sampling ? "Reading…" : "Test 10 Customers"}</button><button onClick={runAudit} disabled={loading} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">
           {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
           {loading ? 'Auditing…' : audit ? 'Run Full Audit Again' : 'Run Full Audit'}
         </button></div>
       </div>
 
       {quickCheck && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><strong>Stored QuickBooks connection:</strong> {quickCheck.connected ? `${quickCheck.companyName || 'Company name unavailable'} · Company ID ${quickCheck.realmId || 'unknown'}` : 'Not connected'}<p className="mt-1 text-xs">Read-only stored identity check. This does not query QuickBooks customers or change records.</p></div>}
+
+      {customerPage && <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950">
+        <strong>Live EMR ↔ QuickBooks comparison · Page {customerPage.page}</strong>
+        <p className="mt-1 text-xs">Compared {customerPage.returned} QuickBooks customers against {customerPage.emrPatientCount} EMR patients. Names in different orders are considered candidates, not automatically linked.</p>
+        <div className="mt-3 max-h-96 overflow-auto"><table className="w-full text-left text-xs"><thead><tr><th className="py-2">QuickBooks customer</th><th>Status</th><th>EMR candidates</th></tr></thead><tbody>{customerPage.results.map(row => <tr key={row.customerId} className="border-t border-indigo-100"><td className="py-2 pr-3">{row.displayName} · {row.customerId}</td><td className="pr-3">{row.status.replace(/_/g, ' ')}</td><td>{row.candidates.length ? row.candidates.map(c => `${c.patientName} (${c.signals.join(', ')})`).join('; ') : 'None found'}</td></tr>)}</tbody></table></div>
+        <div className="mt-3 flex gap-2"><button disabled={pageLoading || customerPage.page === 1} onClick={() => runCustomerPage(customerPage.page - 1)} className="rounded bg-indigo-700 px-3 py-2 text-xs text-white disabled:opacity-40">Previous 100</button><button disabled={pageLoading || !customerPage.hasMore} onClick={() => runCustomerPage(customerPage.page + 1)} className="rounded bg-indigo-700 px-3 py-2 text-xs text-white disabled:opacity-40">Next 100</button></div>
+        <p className="mt-2 text-xs">Read-only page results. Unmatched here means no candidate was identified, not proof the patient does not exist.</p>
+      </div>}
 
       {sample && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><strong>Live QuickBooks customer sample: {sample.count} returned (maximum 10)</strong><p className="mt-1 text-xs">Read-only limited request, not the full customer count.</p>{sample.customers.length > 0 ? <ul className="mt-3 space-y-1">{sample.customers.map(customer => <li key={customer.id}>{customer.displayName || '(Unnamed customer)'} · ID {customer.id}</li>)}</ul> : <p className="mt-2 text-xs">The request succeeded but returned no customers.</p>}</div>}
 
