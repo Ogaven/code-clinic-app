@@ -13,6 +13,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     patient: { findMany: vi.fn() },
+    appointment: { findMany: vi.fn() },
     task: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     $queryRaw: vi.fn(),
   },
@@ -25,6 +26,7 @@ import { recallOverview, treatmentFollowUpList, assignTreatmentFollowUpOwner, re
 beforeEach(() => {
   vi.clearAllMocks()
   prismaMock.$queryRaw.mockResolvedValue([])
+  prismaMock.appointment.findMany.mockResolvedValue([])
 })
 
 describe('recallOverview — confirmed bucket (unchanged behavior)', () => {
