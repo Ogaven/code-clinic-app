@@ -396,8 +396,8 @@ export default function CaseAcceptancePage() {
                 <TrendingUp size={14} className="text-cyan-600 dark:text-cyan-400" />
               </div>
               <div>
-                <h1 className="text-lg font-black text-gray-800 dark:text-white leading-none">Case Acceptance Rate</h1>
-                <p className="text-xs text-gray-400 mt-0.5">Treatment plans presented vs. accepted, per doctor, over time. (For a live snapshot of patients by CRM status instead, see CRM → Leads → Reports → Case Acceptance.)</p>
+                <h1 className="text-lg font-black text-gray-800 dark:text-white leading-none">Case Acceptance Performance</h1>
+                <p className="text-xs text-gray-400 mt-0.5">Adjusted performance by doctor, combining accepted treatment plans, distinct patients seen and high-value procedures.</p>
               </div>
             </div>
           </div>
@@ -425,7 +425,7 @@ export default function CaseAcceptancePage() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 max-w-4xl">
+      <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6 space-y-6 w-full">
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <Loader2 size={24} className="animate-spin text-cyan-500" />
@@ -467,7 +467,7 @@ export default function CaseAcceptancePage() {
             </div>
 
             {/* Four stat cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 { label: 'Presented', value: s?.presented ?? 0, color: '#0891b2', sub: 'total plans this period'     },
                 { label: 'Accepted',  value: s?.accepted  ?? 0, color: '#16a34a', sub: 'In Progress + Completed'     },
@@ -496,7 +496,7 @@ export default function CaseAcceptancePage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-white/5">
                       <tr>
-                        {['Doctor', 'Patients Seen', 'Presented', 'Accepted', 'High-value Yes', 'Follow-up', 'Declined', 'Score', '', ''].map((h, i) => (
+                        {['Doctor', 'Patients Seen', 'Presented', 'Accepted', 'High-value Yes', 'Follow-up', 'Declined', 'Raw %', 'Adjusted Score', '', ''].map((h, i) => (
                           <th key={i} className="text-left px-4 py-2.5 text-xs font-black text-gray-400 dark:text-white/30 uppercase tracking-wide">{h}</th>
                         ))}
                       </tr>
@@ -540,12 +540,13 @@ export default function CaseAcceptancePage() {
                 <li><strong>Patients Seen</strong> — distinct patients who reached a clinical/checkout state with that doctor in the period</li>
                 <li><strong>Presented</strong> — every treatment plan item created in the period</li>
                 <li><strong>Accepted</strong> — plans marked <em>In Progress</em> or <em>Completed</em></li>
-                <li><strong>Adjusted Score</strong> — procedure acceptance is reduced when patient volume is below the clinic's active-doctor benchmark, so a doctor cannot score 100% from only one or two cases</li>
+                <li><strong>Raw %</strong> — accepted plans divided by presented plans, without patient-volume adjustment</li>
+                 <li><strong>Adjusted Score</strong> — procedure acceptance is reduced when patient volume is below the clinic's active-doctor benchmark, so a doctor cannot score 100% from only one or two cases</li>
                 <li><strong>High-value Yes</strong> — accepted crowns, aligners or braces. With none accepted, the adjusted score stays below the 70% performance band</li>
                 <li><strong>Follow-up</strong> — plans still <em>Planned</em> (patient hasn't decided — follow up)</li>
                 <li><strong>Declined</strong> — plans marked <em>Declined</em> by staff after patient said no</li>
-                <li><strong>Target</strong> — {target}% industry benchmark. White marker on bar shows target position.</li>
-                <li>Click any doctor row to see individual patient details and generate a printable PDF report.</li>
+                <li><strong>Target</strong> — {target}% provisional performance target. White marker on bar shows target position.</li>
+                <li>This performance formula is provisional and requires clinic management approval. Click a doctor row for patient details and a print-ready report.</li>
               </ul>
             </div>
           </>
