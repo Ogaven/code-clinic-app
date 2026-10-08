@@ -42,6 +42,22 @@ export default function QuickBooksAuditPage() {
   const [audit, setAudit] = useState<Audit | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [quickCheck, setQuickCheck] = useState<{ connected: boolean; realmId?: string; companyName?: string | null } | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  async function runQuickCheck() {
+    const token = localStorage.getItem('cc_token')
+    if (!token) { setError('Please sign in to Accounts again.'); return }
+    setChecking(true); setError('')
+    try {
+      const response = await fetch('/api-proxy/accounts/quickbooks/audit/quick-check', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error(`Company check failed (HTTP ${response.status}).`)
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Company check failed')
+      setQuickCheck(result)
+    } catch (err: any) { setError(err?.message || 'Company check failed') }
+    finally { setChecking(false) }
+  }
 
   async function runAudit() {
     const token = localStorage.getItem('cc_token')
@@ -104,11 +120,13 @@ export default function QuickBooksAuditPage() {
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">QuickBooks Data Audit</h1>
           <p className="mt-1 text-xs text-gray-500">Use this to verify whether the two systems contain corresponding people, not just whether the API is connected.</p>
         </div>
-        <button onClick={runAudit} disabled={loading} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">
+        <div className="flex flex-wrap gap-2"><button onClick={runQuickCheck} disabled={checking} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{checking ? 'Checking…' : 'Check Connected Company'}</button><button onClick={runAudit} disabled={loading} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">
           {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-          {loading ? 'Auditing…' : audit ? 'Run Audit Again' : 'Run Live Audit'}
-        </button>
+          {loading ? 'Auditing…' : audit ? 'Run Full Audit Again' : 'Run Full Audit'}
+        </button></div>
       </div>
+
+      {quickCheck && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><strong>Stored QuickBooks connection:</strong> {quickCheck.connected ? `${quickCheck.companyName || 'Company name unavailable'} · Company ID ${quickCheck.realmId || 'unknown'}` : 'Not connected'}<p className="mt-1 text-xs">Read-only stored identity check. This does not query QuickBooks customers or change records.</p></div>}
 
       {error && <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700"><AlertTriangle size={15} />{error}</div>}
 
