@@ -47,6 +47,87 @@ export default function QuickBooksAuditPage() {
   const [sampling, setSampling] = useState(false)
   const [pageLoading, setPageLoading] = useState(false)
   const [customerPage, setCustomerPage] = useState<{ page: number; returned: number; hasMore: boolean; emrPatientCount: number; results: Array<{ customerId: string; displayName: string; status: string; candidates: Array<{ patientId: string; patientName: string; signals: string[] }> }> } | null>(null)
+  type ReconciliationRow = { customerId: string; displayName: string; status: string; candidates: Array<{ patientId: string; patientName: string; signals: string[] }> }
+  const [fullRows, setFullRows] = useState<ReconciliationRow[] | null>(null)
+  const [fullRunning, setFullRunning] = useState(false)
+  const [fullProgress, setFullProgress] = useState(0)
+  const [fullCompletedAt, setFullCompletedAt] = useState('')
+  const [fullPatientCount, setFullPatientCount] = useState(0)
+  const [fullRoster, setFullRoster] = useState<Array<{ id: string; name: string }> | null>(null)
+  const [fullWarning, setFullWarning] = useState('')
+
+  async function runCompleteReconciliation() {
+    const token = localStorage.getItem('cc_token')
+    if (!token) { setError('Please sign in to Accounts again.'); return }
+    setFullRunning(true); setFullRows(null); setFullRoster(null); setFullProgress(0)
+    setFullWarning(''); setFullCompletedAt(''); setError('')
+    const collected: ReconciliationRow[] = []
+    try {
+      // Each request is bounded to 100 customers. Stop only after the final
+      // short page; never present partial data as a complete accountant audit.
+      for (let page = 1; page <= 10000; page++) {
+        const response = await fetch(`/api-proxy/accounts/quickbooks/audit/customer-page?page=${page}`, {
+          headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
+        })
+        if (!response.ok) throw new Error(`QuickBooks page ${page} failed (HTTP ${response.status}); no complete report generated.`)
+        const data = await response.json()
+        if (!data.success || !Array.isArray(data.results) || data.page !== page)
+          throw new Error(`Invalid response from QuickBooks page ${page}`)
+        collected.push(...data.results)
+        setFullProgress(collected.length)
+        setFullPatientCount(data.emrPatientCount)
+        if (!data.hasMore) break
+        if (page === 10000) throw new Error('Safety page limit reached; report incomplete.')
+      }
+      // An EMR roster lets us identify EMR-only patients, not merely QB-only
+      // customers. Keep data in the signed-in browser and export locally.
+      const roster: Array<{ id: string; name: string }> = []
+      for (let page = 1; page <= 1000; page++) {
+        const response = await fetch(`/api-proxy/accounts/quickbooks/audit/emr-roster?page=${page}`, {
+          headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
+        })
+        if (!response.ok) throw new Error(`EMR roster page ${page} failed; complete report not generated.`)
+        const data = await response.json()
+        if (!data.success || data.page !== page || !Array.isArray(data.patients))
+          throw new Error(`Invalid EMR roster response on page ${page}`)
+        roster.push(...data.patients)
+        if (!data.hasMore) break
+        if (page === 1000) throw new Error('EMR roster safety limit reached.')
+      }
+      if (roster.length !== fullPatientCount && roster.length !== (collected.length ? fullPatientCount : 0))
+        setFullWarning('EMR patient count changed during the scan. Re-run before accountant sign-off.')
+      setFullRows(collected); setFullRoster(roster); setFullCompletedAt(new Date().toISOString())
+    } catch (err: any) {
+      setError(err?.message || 'Complete reconciliation failed.')
+      setFullWarning('Scan incomplete; no accountant export available.')
+    } finally { setFullRunning(false) }
+  }
+
+  function exportAccountantCsv() {
+    if (!fullRows || !fullRoster || !fullCompletedAt) return
+    const quote = (v: unknown) => '"' + String(v ?? '').replace(/"/g, '""').replace(/^[=+@-]/, "'  const [sample, setSample]") + '"'
+    const lines = [['Source','QuickBooks Customer ID','QuickBooks Customer Name','EMR Patient ID','EMR Patient Name','Status','Evidence','Accountant Decision','Accountant Notes'].map(quote).join(',')]
+    const seen = new Set<string>()
+    for (const customer of fullRows) {
+      if (!customer.candidates.length) {
+        lines.push(['QuickBooks',customer.customerId,customer.displayName,'','','qb_only_no_candidate','','',''].map(quote).join(','))
+      } else {
+        for (const candidate of customer.candidates) {
+          seen.add(candidate.patientId)
+          lines.push(['QuickBooks',customer.customerId,customer.displayName,candidate.patientId,candidate.patientName,customer.status,candidate.signals.join(' + '),'',''].map(quote).join(','))
+        }
+      }
+    }
+    for (const patient of fullRoster) {
+      if (!seen.has(patient.id)) lines.push(['EMR','','',patient.id,patient.name,'emr_only_no_candidate','','',''].map(quote).join(','))
+    }
+    const blob = new Blob(['\uFEFF',lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a'); anchor.href = url
+    anchor.download = `code-clinic-accountant-reconciliation-${fullCompletedAt.slice(0,10)}.csv`
+    anchor.click(); URL.revokeObjectURL(url)
+  }
+
   const [sample, setSample] = useState<{ count: number; customers: Array<{ id: string; displayName: string }> } | null>(null)
 
   async function runQuickCheck() {
@@ -159,13 +240,26 @@ export default function QuickBooksAuditPage() {
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">QuickBooks Data Audit</h1>
           <p className="mt-1 text-xs text-gray-500">Use this to verify whether the two systems contain corresponding people, not just whether the API is connected.</p>
         </div>
-        <div className="flex flex-wrap gap-2"><button onClick={runQuickCheck} disabled={checking} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{checking ? 'Checking…' : 'Check Connected Company'}</button><button onClick={() => runCustomerPage(1)} disabled={pageLoading} className="rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{pageLoading ? "Comparing…" : "Compare EMR Patients"}</button><button onClick={runCustomerSample} disabled={sampling} className="flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{sampling ? "Reading…" : "Test 10 Customers"}</button><button onClick={runAudit} disabled={loading} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">
+        <div className="flex flex-wrap gap-2"><button onClick={runQuickCheck} disabled={checking} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{checking ? 'Checking…' : 'Check Connected Company'}</button><button onClick={() => runCustomerPage(1)} disabled={pageLoading} className="rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{pageLoading ? "Comparing…" : "Compare EMR Patients"}</button><button onClick={runCompleteReconciliation} disabled={fullRunning} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{fullRunning ? `Scanning… ${fullProgress} QB customers` : 'Compare All & Prepare Accountant Report'}</button><button onClick={runCustomerSample} disabled={sampling} className="flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{sampling ? "Reading…" : "Test 10 Customers"}</button><button onClick={runAudit} disabled={loading} className="flex items-center justify-center gap-2 rounded-xl bg-[#2CA01C] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">
           {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
           {loading ? 'Auditing…' : audit ? 'Run Full Audit Again' : 'Run Full Audit'}
         </button></div>
       </div>
 
       {quickCheck && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><strong>Stored QuickBooks connection:</strong> {quickCheck.connected ? `${quickCheck.companyName || 'Company name unavailable'} · Company ID ${quickCheck.realmId || 'unknown'}` : 'Not connected'}<p className="mt-1 text-xs">Read-only stored identity check. This does not query QuickBooks customers or change records.</p></div>}
+
+      {(fullRunning || fullRows || fullWarning) && <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+        <strong>Complete QuickBooks ↔ EMR accountant reconciliation</strong>
+        <p className="mt-1 text-xs">QuickBooks customers scanned: {fullProgress.toLocaleString()} · EMR patients: {fullPatientCount.toLocaleString()}</p>
+        {fullRunning && <p className="mt-2 text-xs">Reading every customer page and the EMR roster. Keep this page open until finished.</p>}
+        {fullRows && fullRoster && <div className="mt-2 space-y-2">
+          <p className="text-xs">Complete scan finished {new Date(fullCompletedAt).toLocaleString()}. {fullRows.length.toLocaleString()} QuickBooks customers and {fullRoster.length.toLocaleString()} EMR patients reviewed for exact/name-token/contact candidates.</p>
+          <p className="text-xs">Existing links: {fullRows.filter(r => r.status === 'linked').length} · Multiple candidates: {fullRows.filter(r => r.status === 'multiple_candidates').length} · No QB candidate: {fullRows.filter(r => r.status === 'no_candidate').length}. All candidate links require accountant review.</p>
+          <button onClick={exportAccountantCsv} className="rounded bg-emerald-700 px-4 py-2 text-xs font-bold text-white">Download Accountant Reconciliation CSV</button>
+        </div>}
+        {fullWarning && <p className="mt-2 text-xs text-amber-700">{fullWarning}</p>}
+        <p className="mt-2 text-xs text-gray-500">Contains patient/customer names and IDs. Share only with authorized Code Clinic accounting staff. No automatic merges, changes or messages.</p>
+      </div>}
 
       {customerPage && <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950">
         <strong>Live EMR ↔ QuickBooks comparison · Page {customerPage.page}</strong>
