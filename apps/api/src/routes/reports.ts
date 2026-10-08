@@ -78,6 +78,34 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
       : []
     const svcMap = new Map(services.map((s: any) => [s.id, s.name]))
 
+    // A doctor with one accepted plan out of one presentation must not appear
+    // to outperform a doctor who handled a full clinic load. Count distinct
+    // patients who actually reached a clinical/checkout state in this period.
+    const seenStatuses = [
+      'ARRIVED', 'WAITING', 'IN_OPERATORY', 'WITH_PROVIDER', 'SESSION_COMPLETE',
+      'CHECKOUT', 'DEPARTED', 'COMPLETED', 'CHECKED_IN', 'IN_CHAIR', 'READY_CHECKOUT',
+    ] as const
+    const seenAppointments = await prisma.appointment.findMany({
+      where: {
+        startAt: { gte: fromDate, lte: toDate },
+        status: { in: [...seenStatuses] as any },
+      },
+      select: {
+        patientId: true,
+        doctorId: true,
+        doctor: { include: { user: { select: { firstName: true, lastName: true } } } },
+      },
+    })
+    const seenByDoctor = new Map<string, Set<string>>()
+    const seenDoctorNames = new Map<string, string>()
+    for (const appointment of seenAppointments as any[]) {
+      if (!seenByDoctor.has(appointment.doctorId)) seenByDoctor.set(appointment.doctorId, new Set())
+      seenByDoctor.get(appointment.doctorId)!.add(appointment.patientId)
+      if (appointment.doctor?.user) {
+        seenDoctorNames.set(appointment.doctorId, `Dr. ${proper(appointment.doctor.user.firstName)} ${proper(appointment.doctor.user.lastName)}`)
+      }
+    }
+
     function proper(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '' }
     function patientName(p: any) { return `${proper(p.firstName)} ${proper(p.lastName)}`.trim() }
 
@@ -102,8 +130,14 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
       id: string
       name: string
       presented: number; accepted: number; declined: number; followUp: number; onHold: number
+      highValuePresented: number; highValueAccepted: number
       patients: { accepted: PatientEntry[]; declined: PatientEntry[]; pending: PatientEntry[] }
     }>()
+
+    // Explicitly requested revenue-driving procedures. Keep this list narrow
+    // and auditable rather than guessing from patient names or financial data.
+    const highValueProcedure = (service: string) =>
+      /\b(crown|crowns|aligner|aligners|brace|braces)\b/i.test(service)
 
     for (const plan of plans as any[]) {
       const appt       = plan.patient.appointments[0]
@@ -116,6 +150,7 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
         doctorMap.set(doctorKey, {
           id: doctorKey, name: doctorName,
           presented: 0, accepted: 0, declined: 0, followUp: 0, onHold: 0,
+          highValuePresented: 0, highValueAccepted: 0,
           patients: { accepted: [], declined: [], pending: [] },
         })
       }
@@ -136,19 +171,63 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
       const value    = Math.round(plan.costPerUnit * plan.quantity - plan.discount)
       const pName    = patientName(plan.patient)
       const row      = { name: pName, service: svcName, date: dateStr, value }
+      const isHighValue = highValueProcedure(String(svcName || ''))
+      if (isHighValue) entry.highValuePresented++
 
-      if (isAccepted(plan))                                    { entry.accepted++;  entry.patients.accepted.push(row) }
+      if (isAccepted(plan))                                    { entry.accepted++; if (isHighValue) entry.highValueAccepted++; entry.patients.accepted.push(row) }
       else if (isDeclined(plan))                               { entry.declined++;  entry.patients.declined.push(row) }
       else if (plan.status === 'Planned')                      { entry.followUp++;  entry.patients.pending.push(row) }
       else if (plan.status === 'On Hold')                      { entry.onHold++ }
     }
 
+    // Include doctors who saw patients even when no treatment plan was created;
+    // otherwise low/zero presentation activity disappears from the report.
+    for (const [doctorId, patientIds] of seenByDoctor) {
+      if (!doctorMap.has(doctorId)) {
+        doctorMap.set(doctorId, {
+          id: doctorId,
+          name: seenDoctorNames.get(doctorId) ?? 'Unknown doctor',
+          presented: 0, accepted: 0, declined: 0, followUp: 0, onHold: 0,
+          highValuePresented: 0, highValueAccepted: 0,
+          patients: { accepted: [], declined: [], pending: [] },
+        })
+      }
+    }
+
+    const activeVolumes = Array.from(seenByDoctor.values()).map(s => s.size).filter(n => n > 0)
+    const patientVolumeBenchmark = activeVolumes.length > 0
+      ? Math.max(1, Math.round(activeVolumes.reduce((sum, n) => sum + n, 0) / activeVolumes.length))
+      : 1
+
     const byDoctor = Array.from(doctorMap.values())
-      .map(d => ({ ...d, acceptanceRate: d.presented > 0 ? Math.round((d.accepted / d.presented) * 100) : 0 }))
-      .sort((a, b) => b.presented - a.presented)
+      .map(d => {
+        const patientsSeen = seenByDoctor.get(d.id)?.size ?? 0
+        const rawAcceptanceRate = d.presented > 0 ? Math.round((d.accepted / d.presented) * 100) : 0
+        const volumeFactor = Math.min(1, patientsSeen / patientVolumeBenchmark)
+        let acceptanceRate = Math.round(rawAcceptanceRate * volumeFactor)
+
+        // A 100% result made only from low-volume routine cases must not read as
+        // target achievement. Until at least one requested high-value procedure
+        // (crown/aligner/braces) is accepted, keep the score below the 70% band.
+        if (d.highValueAccepted === 0) acceptanceRate = Math.min(acceptanceRate, 69)
+
+        return {
+          ...d,
+          patientsSeen,
+          rawAcceptanceRate,
+          patientVolumeBenchmark,
+          acceptanceRate,
+        }
+      })
+      .sort((a, b) => b.acceptanceRate - a.acceptanceRate || b.patientsSeen - a.patientsSeen)
+
+    const scoredDoctors = byDoctor.filter(d => d.patientsSeen > 0 || d.presented > 0)
+    const adjustedClinicAcceptanceRate = scoredDoctors.length > 0
+      ? Math.round(scoredDoctors.reduce((sum, d) => sum + d.acceptanceRate, 0) / scoredDoctors.length)
+      : 0
 
     res.json({
-      summary: { presented, accepted, followUp, declined, onHold, completed, moneyAtRisk, acceptanceRate, target: 90 },
+      summary: { presented, accepted, followUp, declined, onHold, completed, moneyAtRisk, acceptanceRate: adjustedClinicAcceptanceRate, rawAcceptanceRate: acceptanceRate, target: 90, patientVolumeBenchmark },
       byStatus: { planned: followUp, inProgress, completed, onHold, declined },
       byDoctor,
     })

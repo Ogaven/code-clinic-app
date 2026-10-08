@@ -10,10 +10,11 @@ import { cn } from '@/lib/utils'
 
 // ── Types ───────────────────────────────────────────────────────────────────────
 interface PatientEntry { name: string; service: string; date: string; value: number }
-interface CASummary    { presented: number; accepted: number; followUp: number; declined: number; onHold: number; acceptanceRate: number; target: number }
+interface CASummary    { presented: number; accepted: number; followUp: number; declined: number; onHold: number; acceptanceRate: number; rawAcceptanceRate?: number; target: number; patientVolumeBenchmark?: number }
 interface CADoctor     {
   id: string; name: string
   presented: number; accepted: number; followUp: number; declined: number; onHold: number; acceptanceRate: number
+  patientsSeen: number; rawAcceptanceRate: number; patientVolumeBenchmark: number; highValuePresented: number; highValueAccepted: number
   patients: { accepted: PatientEntry[]; declined: PatientEntry[]; pending: PatientEntry[] }
 }
 interface CAData { summary: CASummary; byStatus: Record<string, number>; byDoctor: CADoctor[] }
@@ -126,12 +127,13 @@ function printDoctorReport(doc: CADoctor, monthLabel: string) {
   <h1>${doc.name}</h1>
   <div class="meta">Case Acceptance Report — ${monthLabel} &nbsp;|&nbsp; Generated ${new Date().toLocaleDateString('en-GB')}</div>
   <div class="stats">
-    <div class="stat"><div class="n" style="color:#0891b2">${doc.presented}</div><div class="l">Presented</div></div>
+    <div class="stat"><div class="n" style="color:#0891b2">${doc.patientsSeen}</div><div class="l">Patients Seen</div></div>
     <div class="stat"><div class="n" style="color:#16a34a">${doc.accepted}</div><div class="l">Accepted</div></div>
     <div class="stat"><div class="n" style="color:#dc2626">${doc.declined}</div><div class="l">Declined</div></div>
     <div class="stat"><div class="n" style="color:#d97706">${doc.followUp}</div><div class="l">Pending</div></div>
-    <div class="stat"><div class="rate">${doc.acceptanceRate}%</div><div class="l">Rate</div></div>
+    <div class="stat"><div class="rate">${doc.acceptanceRate}%</div><div class="l">Adjusted Score</div></div>
   </div>
+  <p>Raw procedure acceptance: ${doc.rawAcceptanceRate}% | High-value accepted: ${doc.highValueAccepted} | Patient-volume benchmark: ${doc.patientVolumeBenchmark}</p>
   ${totalValue > 0 ? `<p style="margin-bottom:20px;font-weight:600;color:#16a34a">Total accepted value: ${fmtUGX(totalValue)}</p>` : ''}
   <h2>✅ Accepted (${doc.patients.accepted.length})</h2>
   <table><thead><tr><th>Patient</th><th>Service</th><th>Date</th><th style="text-align:right">Value</th></tr></thead>
@@ -182,18 +184,18 @@ async function downloadDoctorWordDoc(doc: CADoctor, monthLabel: string) {
   const statsRows = [
     new TableRow({
       tableHeader: true,
-      children: ['Presented', 'Accepted', 'Declined', 'Pending', 'Acceptance Rate'].map(h =>
+      children: ['Patients Seen', 'Presented', 'Accepted', 'High-value Yes', 'Adjusted Score'].map(h =>
         new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })], shading: { fill: 'E8F0FE' } })
       ),
     }),
     new TableRow({
       children: [
-        String(doc.presented), String(doc.accepted), String(doc.declined), String(doc.followUp), `${doc.acceptanceRate}%`,
+        String(doc.patientsSeen), String(doc.presented), String(doc.accepted), String(doc.highValueAccepted), `${doc.acceptanceRate}%`,
       ].map(v => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: v, bold: true })] })] })),
     }),
   ]
   children.push(new Table({ rows: statsRows, width: { size: 100, type: WidthType.PERCENTAGE } }))
-  children.push(new Paragraph({ text: '', spacing: { after: 320 } }))
+  children.push(new Paragraph({ text: `Raw procedure acceptance: ${doc.rawAcceptanceRate}% | Patient-volume benchmark: ${doc.patientVolumeBenchmark} | High-value accepted: ${doc.highValueAccepted}. Adjusted score considers procedure acceptance, distinct patients seen and accepted crowns/aligners/braces.`, spacing: { after: 320 } }))
 
   const totalValue = doc.patients.accepted.reduce((s, p) => s + p.value, 0)
   if (totalValue > 0) {
@@ -250,7 +252,7 @@ function DrilldownModal({ doc, monthLabel, onClose }: { doc: CADoctor; monthLabe
   const totalValue = doc.patients.accepted.reduce((s, p) => s + p.value, 0)
 
   async function handleShare() {
-    const text = `${doc.name} Case Acceptance — ${monthLabel}\nRate: ${doc.acceptanceRate}%\nPresented: ${doc.presented} | Accepted: ${doc.accepted} | Declined: ${doc.declined}\nCode Clinic`
+    const text = `${doc.name} Case Acceptance — ${monthLabel}\nAdjusted performance score: ${doc.acceptanceRate}%\nRaw procedure acceptance: ${doc.rawAcceptanceRate}%\nPatients seen: ${doc.patientsSeen} | Presented: ${doc.presented} | Accepted: ${doc.accepted} | High-value accepted: ${doc.highValueAccepted}\nCode Clinic`
     if (navigator.share) {
       try { await navigator.share({ title: `${doc.name} — Case Acceptance`, text }) } catch {}
     } else {
@@ -299,17 +301,21 @@ function DrilldownModal({ doc, monthLabel, onClose }: { doc: CADoctor; monthLabe
 
         {/* Stats row */}
         <div className="px-5 py-4 flex-shrink-0 border-b border-gray-50 dark:border-white/5">
-          <div className="grid grid-cols-5 gap-2 mb-3">
+          <div className="grid grid-cols-6 gap-2 mb-3">
+            <StatChip label="Patients Seen" value={doc.patientsSeen} color="#0c1e50" />
             <StatChip label="Presented" value={doc.presented} color="#0891b2" />
             <StatChip label="Accepted"  value={doc.accepted}  color="#16a34a" />
             <StatChip label="Declined"  value={doc.declined}  color="#dc2626" />
             <StatChip label="Pending"   value={doc.followUp}  color="#d97706" />
             <div className="flex flex-col items-center p-3 bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/10">
               <span className={cn('text-2xl font-black', rateColor(doc.acceptanceRate))}>{doc.acceptanceRate}%</span>
-              <span className="text-[11px] text-gray-500 dark:text-white/50 font-medium mt-0.5">Rate</span>
+              <span className="text-[11px] text-gray-500 dark:text-white/50 font-medium mt-0.5">Adjusted Score</span>
             </div>
           </div>
           <RateBar rate={doc.acceptanceRate} />
+          <p className="text-xs text-gray-500 dark:text-white/50 mt-2">
+            Raw procedure acceptance: <strong>{doc.rawAcceptanceRate}%</strong> · High-value accepted: <strong>{doc.highValueAccepted}</strong> · Patient-volume benchmark: <strong>{doc.patientVolumeBenchmark}</strong>
+          </p>
           {totalValue > 0 && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-2">
               Total accepted value: {fmtUGX(totalValue)}
@@ -436,8 +442,8 @@ export default function CaseAcceptancePage() {
                   {s?.acceptanceRate ?? 0}%
                 </p>
                 <div className="pb-3">
-                  <p className="text-blue-200/70 text-sm">Clinic-wide Case Acceptance</p>
-                  <p className="text-xs text-blue-200/40">Target: {target}%</p>
+                  <p className="text-blue-200/70 text-sm">Clinic-wide Adjusted Case Acceptance</p>
+                  <p className="text-xs text-blue-200/40">Target: {target}% · Raw procedure acceptance: {s?.rawAcceptanceRate ?? 0}%</p>
                 </div>
               </div>
 
@@ -490,7 +496,7 @@ export default function CaseAcceptancePage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-white/5">
                       <tr>
-                        {['Doctor', 'Presented', 'Accepted', 'Follow-up', 'Declined', 'Rate', '', ''].map((h, i) => (
+                        {['Doctor', 'Patients Seen', 'Presented', 'Accepted', 'High-value Yes', 'Follow-up', 'Declined', 'Score', '', ''].map((h, i) => (
                           <th key={i} className="text-left px-4 py-2.5 text-xs font-black text-gray-400 dark:text-white/30 uppercase tracking-wide">{h}</th>
                         ))}
                       </tr>
@@ -506,8 +512,10 @@ export default function CaseAcceptancePage() {
                             </div>
                             {d.name}
                           </td>
+                          <td className="px-4 py-3 font-bold text-gray-800 dark:text-white">{d.patientsSeen}</td>
                           <td className="px-4 py-3 text-gray-600 dark:text-white/60">{d.presented}</td>
                           <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400">{d.accepted}</td>
+                          <td className="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">{d.highValueAccepted}</td>
                           <td className="px-4 py-3 text-amber-600 dark:text-amber-400">{d.followUp}</td>
                           <td className="px-4 py-3 text-red-500 dark:text-red-400">{d.declined}</td>
                           <td className="px-4 py-3">
@@ -529,8 +537,11 @@ export default function CaseAcceptancePage() {
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800/30 p-5">
               <h3 className="text-sm font-bold text-blue-800 dark:text-blue-300 mb-2">How to read this report</h3>
               <ul className="text-sm text-blue-700 dark:text-blue-300/70 space-y-1.5 list-disc list-inside">
+                <li><strong>Patients Seen</strong> — distinct patients who reached a clinical/checkout state with that doctor in the period</li>
                 <li><strong>Presented</strong> — every treatment plan item created in the period</li>
                 <li><strong>Accepted</strong> — plans marked <em>In Progress</em> or <em>Completed</em></li>
+                <li><strong>Adjusted Score</strong> — procedure acceptance is reduced when patient volume is below the clinic's active-doctor benchmark, so a doctor cannot score 100% from only one or two cases</li>
+                <li><strong>High-value Yes</strong> — accepted crowns, aligners or braces. With none accepted, the adjusted score stays below the 70% performance band</li>
                 <li><strong>Follow-up</strong> — plans still <em>Planned</em> (patient hasn't decided — follow up)</li>
                 <li><strong>Declined</strong> — plans marked <em>Declined</em> by staff after patient said no</li>
                 <li><strong>Target</strong> — {target}% industry benchmark. White marker on bar shows target position.</li>
