@@ -242,12 +242,29 @@ router.get('/case-acceptance', requireAuth, async (req, res) => {
 // patient-analytics.service.ts (shared with Dashboard) rather than a
 // locally-duplicated status set.
 
-const REVIEW_KEYWORDS = ['recall','review','check','consult','follow']
-
+// Clinic-approved classifications: ordinary consultations and Check & Treat
+// appointments are not review or hygiene-recall visits.
+const REVIEW_SERVICES = [
+  'review examination',
+  'myobrace review',
+  'aligners review',
+  'orthodontic review appointment',
+]
+const RECALL_SERVICES = [
+  'periodontal maintenance',
+  'recall hygiene visit',
+]
+function normalizedServiceName(service: { name: string; category: string } | null): string {
+  return (service?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/\\s+/g, ' ')
+}
 function isReview(service: { name: string; category: string } | null): boolean {
-  if (!service) return false
-  const text = (service.name + ' ' + (service.category || '')).toLowerCase()
-  return REVIEW_KEYWORDS.some(k => text.includes(k))
+  return REVIEW_SERVICES.includes(normalizedServiceName(service))
+}
+function isRecall(service: { name: string; category: string } | null): boolean {
+  return RECALL_SERVICES.includes(normalizedServiceName(service))
+}
+function isReviewOrRecall(service: { name: string; category: string } | null): boolean {
+  return isReview(service) || isRecall(service)
 }
 
 function cproper(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '' }
@@ -373,7 +390,7 @@ router.get('/clinical', requireAuth, async (req, res) => {
     // subset of totalSeen, never double-counted against the reconciled
     // Confirmed/Pending/Cancelled/No-show/Seen buckets that sum to
     // totalScheduled above.
-    const reviews           = appts.filter((a: any) => ATTENDED_STATUSES.includes(a.status) && isReview(a.service)).length
+    const reviews           = appts.filter((a: any) => ATTENDED_STATUSES.includes(a.status) && isReviewOrRecall(a.service)).length
 
     // Cancelled / No-show that haven't rebooked any future appointment, plus
     // Pending appointments whose scheduled time has already passed without
@@ -475,7 +492,7 @@ router.get('/clinical', requireAuth, async (req, res) => {
       seen: [...patientRows.entries()].filter(([id]) => classifiedIds.has(id)).map(([, a]) => toRow(a)),
       new: [...patientRows.entries()].filter(([id]) => newIds.has(id)).map(([, a]) => toRow(a)),
       active: [...patientRows.entries()].filter(([id]) => returningIds.has(id)).map(([, a]) => toRow(a)),
-      reviews: (appts as any[]).filter(a => ATTENDED_STATUSES.includes(a.status) && isReview(a.service)).map(toRow),
+      reviews: (appts as any[]).filter(a => ATTENDED_STATUSES.includes(a.status) && isReviewOrRecall(a.service)).map(toRow),
     }
 
     res.json({
