@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 import { CalendarClock, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface RecallPatient { id: string; firstName: string; lastName: string; phone: string; recallInterval: string | null; estimated: boolean }
+interface RecallPatient { id: string; firstName: string; lastName: string; phone: string; recallInterval: string | null; estimated: boolean; lastCompletedAt: string | null; dueAt: string | null }
 interface RecallBucket { key: string; label: string; count: number; patients: RecallPatient[] }
 
 const BUCKET_TONE: Record<string, string> = {
@@ -78,7 +78,7 @@ export default function RecallWorkspace({ patientHref }: { patientHref: (id: str
                       <span title="No recall interval set — estimated from a default 6-month checkup cadence against their last completed appointment." className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/50">ESTIMATED</span>
                     )}
                   </span>
-                  <span className="text-xs text-gray-400">{p.phone}{p.recallInterval ? ` · ${p.recallInterval.replace('_', ' ').toLowerCase()}` : ''}</span>
+                  <span className="text-xs text-gray-400">{p.phone}{p.recallInterval ? ` · ${p.recallInterval.replace('_', ' ').toLowerCase()}` : ''}{p.dueAt ? ` · Recall due ${new Date(p.dueAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', day: '2-digit', month: 'short', year: 'numeric' })}` : ''}</span>
                 </a>
               ))}
             </div>
