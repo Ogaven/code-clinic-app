@@ -398,6 +398,29 @@ router.get('/audit/customer-sample', requireAuth, async (_req, res) => {
   }
 })
 
+// ── Bounded read-only EMR roster for accountant review ───────────────────────
+// Authenticated and paginated; returns no medical records or contact details.
+router.get('/audit/emr-roster', requireAuth, async (req, res) => {
+  const page = Number(req.query.page ?? 1)
+  if (!Number.isSafeInteger(page) || page < 1 || page > 1000)
+    return res.status(400).json({ error: 'Invalid roster page number.' })
+  try {
+    const pageSize = 250
+    const patients = await prisma.patient.findMany({
+      orderBy: { id: 'asc' }, skip: (page - 1) * pageSize, take: pageSize,
+      select: { id: true, firstName: true, lastName: true },
+    })
+    return res.json({ success: true, readOnly: true, page, pageSize,
+      hasMore: patients.length === pageSize,
+      patients: patients.map(patient => ({
+        id: patient.id, name: `${patient.firstName} ${patient.lastName}`.trim(),
+      })),
+    })
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Unable to read EMR roster.' })
+  }
+})
+
 // ── Paginated read-only customer-to-patient reconciliation ────────────────────
 // One bounded QuickBooks page per request. No full-collection fetch, mutations,
 // automatic linking, or exposure of patient contact information.
