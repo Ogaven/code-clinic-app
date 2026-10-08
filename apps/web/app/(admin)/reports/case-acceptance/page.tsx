@@ -496,7 +496,7 @@ export default function CaseAcceptancePage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-white/5">
                       <tr>
-                        {['Doctor', 'Patients Seen', 'Presented', 'Accepted', 'High-value Yes', 'Follow-up', 'Declined', 'Raw %', 'Adjusted Score', '', ''].map((h, i) => (
+                        {['Doctor', 'Patients Seen', 'Presented', 'Accepted', 'High-value Yes', 'Follow-up', 'Declined', 'Raw %', 'Adjusted Score', ''].map((h, i) => (
                           <th key={i} className="text-left px-4 py-2.5 text-xs font-black text-gray-400 dark:text-white/30 uppercase tracking-wide">{h}</th>
                         ))}
                       </tr>
@@ -518,10 +518,8 @@ export default function CaseAcceptancePage() {
                           <td className="px-4 py-3 font-bold text-blue-600 dark:text-blue-400">{d.highValueAccepted}</td>
                           <td className="px-4 py-3 text-amber-600 dark:text-amber-400">{d.followUp}</td>
                           <td className="px-4 py-3 text-red-500 dark:text-red-400">{d.declined}</td>
-                          <td className="px-4 py-3">
-                            <span className={cn('font-black text-base', rateColor(d.acceptanceRate, target))}>{d.acceptanceRate}%</span>
-                          </td>
-                          <td className="px-4 py-3 w-28"><RateBar rate={d.acceptanceRate} target={target} /></td>
+                          <td className="px-4 py-3 font-semibold tabular-nums text-gray-700 dark:text-gray-200">{d.rawAcceptanceRate}%</td>
+                           <td className="px-4 py-3 min-w-[155px]"><div className="flex items-center gap-3"><span className={cn('font-black text-base tabular-nums whitespace-nowrap', rateColor(d.acceptanceRate, target))}>{d.acceptanceRate}%</span><div className="min-w-[64px] flex-1"><RateBar rate={d.acceptanceRate} target={target} /></div></div></td>
                           <td className="px-4 py-3 w-8">
                             <ChevronRight size={14} className="text-gray-300 dark:text-white/20 group-hover:text-cyan-400 transition-colors" />
                           </td>
