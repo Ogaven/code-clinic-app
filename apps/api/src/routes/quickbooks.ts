@@ -359,6 +359,36 @@ router.get('/customers', requireAuth, async (_req, res) => {
   } catch (err: any) { res.status(400).json({ error: err.message }) }
 })
 
+// ── GET /accounts/quickbooks/audit/quick-check ───────────────────────────────
+// Fast, read-only connection check. No external QuickBooks API call and no
+// customer sync: shows which company ID the server is actually using.
+router.get('/audit/quick-check', requireAuth, async (_req, res) => {
+  try {
+    const [tokenSetting, companySetting] = await Promise.all([
+      prisma.appSetting.findUnique({ where: { key: 'quickbooks_tokens' } }),
+      prisma.appSetting.findUnique({ where: { key: 'quickbooks_company' } }),
+    ])
+    if (!tokenSetting) return res.json({ connected: false })
+    const tokens = JSON.parse(tokenSetting.value)
+    let companyName: string | null = null
+    if (companySetting) {
+      try {
+        const info = JSON.parse(companySetting.value)
+        companyName = info?.CompanyName ?? info?.QueryResponse?.CompanyInfo?.[0]?.CompanyName ?? null
+      } catch { /* stale metadata; company ID remains authoritative */ }
+    }
+    return res.json({
+      connected: true,
+      realmId: String(tokens.realmId ?? ''),
+      companyName,
+      connectedAt: tokens.connected_at ?? null,
+      note: 'Stored connection identity only; no live QuickBooks data queried.',
+    })
+  } catch {
+    return res.status(500).json({ error: 'Unable to read QuickBooks connection identity.' })
+  }
+})
+
 // ── GET /accounts/quickbooks/audit/patient-reconciliation ───────────────────
 // Strictly read-only audit. Compares QuickBooks customers with Code Clinic
 // patients and invoice-linked QB customer IDs. It never creates, links, edits,
