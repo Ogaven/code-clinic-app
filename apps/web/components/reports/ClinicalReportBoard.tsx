@@ -254,7 +254,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
 
     // Follow-up list
     if (data.followUpList.length > 0) {
-      children.push(new Paragraph({ text: `Needs Follow-up (${new Set(data.followUpList.map(r => r.patientId)).size} unique patients, ${data.followUpList.length} appointments)`, heading: HeadingLevel.HEADING_3, spacing: { before: 200, after: 160 } }))
+      children.push(new Paragraph({ text: `Needs Follow-up (${data.followUpList.length} appointments)`, heading: HeadingLevel.HEADING_3, spacing: { before: 200, after: 160 } }))
       const followUpRows = [
         new TableRow({
           tableHeader: true,
@@ -316,7 +316,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
       `❌ Cancelled: ${m.cancelled}`,
       `🔁 Rescheduled: ${m.rescheduled}`,
       `⚠️ No-Shows: ${m.noShows}`,
-      `📞 Needs Follow-up: ${new Set(data.followUpList.map(r => r.patientId)).size} unique patients (${data.followUpList.length} appointments)`,
+      `📞 Needs Follow-up: ${data.followUpList.length} appointments`,
     ]
     if (data.followUpList.length > 0) {
       lines.push('', '*Needs Follow-up:*')
@@ -607,7 +607,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
             </div>
             {!loading && data && data.followUpList.length > 0 && (
               <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                {new Set(data.followUpList.map(r => r.patientId)).size} unique {new Set(data.followUpList.map(r => r.patientId)).size === 1 ? 'patient' : 'patients'} · {data.followUpList.length} appointments
+                {data.followUpList.length} {data.followUpList.length === 1 ? 'appointment' : 'appointments'}
               </span>
             )}
           </div>
