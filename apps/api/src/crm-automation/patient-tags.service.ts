@@ -59,7 +59,8 @@ export type PatientTagUpdateInput = Partial<
 export async function applyPatientTagUpdate(
   patientId: string,
   updates: PatientTagUpdateInput,
-  actorUserId: string | null // null = system/automated
+  actorUserId: string | null, // null = system/automated
+  options: { suppressRecallAutomationEvent?: boolean } = {}
 ): Promise<Patient> {
   const before = await prisma.patient.findUniqueOrThrow({ where: { id: patientId } })
 
@@ -90,6 +91,9 @@ export async function applyPatientTagUpdate(
 
   for (const field of WATCHED_FIELDS as readonly WatchedField[]) {
     if (!(field in updates)) continue
+    // Historical hygiene-baseline corrections must not enroll patients in
+    // active outbound recall sequences through recall_status_changed events.
+    if (field === 'recallStatus' && options.suppressRecallAutomationEvent) continue
     const fromValue = before[field] as unknown
     const toValue = updated[field] as unknown
     if (fromValue === toValue) continue
@@ -327,7 +331,11 @@ export async function runDailyPatientTagDerivation(): Promise<{ scanned: number;
     if (newTreatmentPlanStatus !== p.treatmentPlanStatus) updates.treatmentPlanStatus = newTreatmentPlanStatus as any
 
     if (Object.keys(updates).length > 0) {
-      await applyPatientTagUpdate(p.id, updates, null)
+      await applyPatientTagUpdate(p.id, updates, null, {
+        // Off by default: daily recalculation is an internal clinical correction,
+        // not authorization to send recall reminders to patients.
+        suppressRecallAutomationEvent: process.env.CRM_DAILY_RECALL_EVENTS_ENABLED !== 'true',
+      })
       updatedCount++
     }
   }
