@@ -150,64 +150,65 @@ export async function recallOverview(): Promise<{ buckets: RecallBucket[]; total
 
 export interface TreatmentFollowUpItem {
   id: string
+  treatmentPlanId: string
   firstName: string
   lastName: string
   phone: string
-  tagsUpdatedAt: Date | null
+  procedure: string
+  dentistNote: string | null
+  followUpReason: string | null
+  followUpNote: string | null
+  followUpAt: Date
   ownerId: string | null
   ownerName: string | null
   taskStatus: 'OPEN' | 'DONE' | 'DISMISSED' | null
-  stage: 'INCOMPLETE' | 'PROPOSED_STALE'
 }
 
-const PROPOSED_STALE_DAYS = 14
-
-// B. Treatment Follow-up — combines two real signals so this list is never
-// empty just because staff have never used the pipeline's specific
-// "Follow-up Due" stage:
-//   1. Patient.treatmentPlanStatus === 'INCOMPLETE' — the canonical signal,
-//      derived in real time from TreatmentPlan.stage === 'Follow-up Due'
-//      (see patient-tags.service.ts's syncTreatmentPlanStatusFromPipeline).
-//   2. treatmentPlanStatus === 'PROPOSED' (Consulted/Treatment Presented)
-//      with no tag update in PROPOSED_STALE_DAYS — real patients who were
-//      consulted/quoted but never moved to accepted/declined/follow-up,
-//      clearly labeled "stale proposal" rather than conflated with (1)'s
-//      precise pipeline signal.
-// Owner assignment reuses the existing generic Task model (entityType=
-// 'PATIENT') instead of a new column — the same model Collections and Lead
-// follow-ups already use.
+// Use the SAME plan-level predicate as the Treatment Pipeline's Follow Up
+// queue. A stale proposal alone is not a scheduled follow-up. This endpoint
+// is read-only; no patient messaging or automatic pipeline transitions.
 export async function treatmentFollowUpList(): Promise<TreatmentFollowUpItem[]> {
-  const staleCutoff = new Date(Date.now() - PROPOSED_STALE_DAYS * 86_400_000)
-
-  const [incomplete, proposedStale] = await Promise.all([
-    prisma.patient.findMany({
-      where:  { isActive: true, treatmentPlanStatus: 'INCOMPLETE' },
-      select: { id: true, firstName: true, lastName: true, phone: true, tagsUpdatedAt: true },
-      orderBy: { tagsUpdatedAt: 'asc' },
-    }),
-    prisma.patient.findMany({
-      where:  { isActive: true, treatmentPlanStatus: 'PROPOSED', tagsUpdatedAt: { lt: staleCutoff } },
-      select: { id: true, firstName: true, lastName: true, phone: true, tagsUpdatedAt: true },
-      orderBy: { tagsUpdatedAt: 'asc' },
-    }),
-  ])
-
-  const patients = [
-    ...incomplete.map(p => ({ ...p, stage: 'INCOMPLETE' as const })),
-    ...proposedStale.map(p => ({ ...p, stage: 'PROPOSED_STALE' as const })),
-  ]
-  if (patients.length === 0) return []
+  const plans = await prisma.treatmentPlan.findMany({
+    where: {
+      followUpAt: { not: null },
+      status: { notIn: ['Completed', 'Cancelled', 'Declined'] },
+      patient: { isActive: true },
+    },
+    select: {
+      id: true, patientId: true, stage: true, status: true, notes: true,
+      followUpAt: true, followUpReason: true, followUpNote: true,
+      patient: { select: { firstName: true, lastName: true, phone: true } },
+    },
+    orderBy: { followUpAt: 'asc' },
+  })
+  if (plans.length === 0) return []
 
   const tasks = await prisma.task.findMany({
-    where:  { entityType: 'PATIENT', entityId: { in: patients.map(p => p.id) }, title: TREATMENT_FOLLOWUP_TASK_TITLE, status: { not: 'DONE' } },
-    select: { entityId: true, assignedToId: true, status: true, assignedTo: { select: { firstName: true, lastName: true } } },
+    where: {
+      entityType: 'PATIENT',
+      entityId: { in: [...new Set(plans.map(p => p.patientId))] },
+      title: TREATMENT_FOLLOWUP_TASK_TITLE,
+      status: { not: 'DONE' },
+    },
+    select: {
+      entityId: true, assignedToId: true, status: true,
+      assignedTo: { select: { firstName: true, lastName: true } },
+    },
   })
   const taskByPatient = new Map(tasks.map(t => [t.entityId, t]))
-
-  return patients.map(p => {
-    const task = taskByPatient.get(p.id)
+  return plans.map(p => {
+    const task = taskByPatient.get(p.patientId)
     return {
-      id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone, tagsUpdatedAt: p.tagsUpdatedAt, stage: p.stage,
+      id: p.patientId,
+      treatmentPlanId: p.id,
+      firstName: p.patient.firstName,
+      lastName: p.patient.lastName,
+      phone: p.patient.phone,
+      procedure: p.stage,
+      dentistNote: p.notes,
+      followUpReason: p.followUpReason,
+      followUpNote: p.followUpNote,
+      followUpAt: p.followUpAt!,
       ownerId: task?.assignedToId ?? null,
       ownerName: task?.assignedTo ? `${task.assignedTo.firstName} ${task.assignedTo.lastName}` : null,
       taskStatus: (task?.status as 'OPEN' | 'DISMISSED' | undefined) ?? null,

@@ -13,6 +13,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     patient: { findMany: vi.fn() },
+    treatmentPlan: { findMany: vi.fn() },
     appointment: { findMany: vi.fn() },
     task: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     $queryRaw: vi.fn(),
@@ -116,67 +117,48 @@ describe('recallOverview — read-time estimated bucket (recallInterval never ba
   })
 })
 
-describe('treatmentFollowUpList', () => {
-  function mockFindMany(incomplete: any[], proposedStale: any[]) {
-    prismaMock.patient.findMany.mockImplementation(async (args: any) => {
-      if (args.where.treatmentPlanStatus === 'INCOMPLETE') return incomplete
-      if (args.where.treatmentPlanStatus === 'PROPOSED') return proposedStale
-      return []
-    })
+describe('treatmentFollowUpList — same source as pipeline Follow Up queue', () => {
+  const plan = {
+    id: 'plan-1', patientId: 'p1', stage: 'Treatment Presented',
+    status: 'On Hold', notes: 'Doctor requested review',
+    followUpAt: new Date('2026-11-01'), followUpReason: 'Patient deciding',
+    followUpNote: 'Call next week',
+    patient: { firstName: 'A', lastName: 'B', phone: '1' },
   }
 
-  it('returns incomplete-treatment patients with no owner when no Task exists yet', async () => {
-    mockFindMany([{ id: 'p1', firstName: 'A', lastName: 'B', phone: '1', tagsUpdatedAt: new Date() }], [])
+  it('reads scheduled actionable plans and preserves plan-specific dentist notes', async () => {
+    prismaMock.treatmentPlan.findMany.mockResolvedValue([plan])
     prismaMock.task.findMany.mockResolvedValue([])
     const result = await treatmentFollowUpList()
     expect(result).toHaveLength(1)
-    expect(result[0].stage).toBe('INCOMPLETE')
-    expect(result[0].ownerId).toBeNull()
-    expect(result[0].ownerName).toBeNull()
+    expect(result[0]).toMatchObject({
+      id: 'p1', treatmentPlanId: 'plan-1', procedure: 'Treatment Presented',
+      dentistNote: 'Doctor requested review', followUpReason: 'Patient deciding',
+      followUpNote: 'Call next week', ownerId: null,
+    })
+    expect(prismaMock.treatmentPlan.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        followUpAt: { not: null },
+        status: { notIn: ['Completed', 'Cancelled', 'Declined'] },
+        patient: { isActive: true },
+      },
+    }))
   })
 
-  it('attaches the assigned owner from the existing generic Task model (no new schema)', async () => {
-    mockFindMany([{ id: 'p1', firstName: 'A', lastName: 'B', phone: '1', tagsUpdatedAt: new Date() }], [])
+  it('reuses existing patient-level owner assignments', async () => {
+    prismaMock.treatmentPlan.findMany.mockResolvedValue([plan])
     prismaMock.task.findMany.mockResolvedValue([
       { entityId: 'p1', assignedToId: 'user-1', status: 'OPEN', assignedTo: { firstName: 'Jane', lastName: 'Doe' } },
     ])
     const result = await treatmentFollowUpList()
-    expect(result[0].ownerId).toBe('user-1')
     expect(result[0].ownerName).toBe('Jane Doe')
   })
 
-  it('queries the real treatmentPlanStatus INCOMPLETE value, scoped to active patients', async () => {
-    mockFindMany([], [])
-    await treatmentFollowUpList()
-    expect(prismaMock.patient.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { isActive: true, treatmentPlanStatus: 'INCOMPLETE' } })
-    )
-  })
-
-  it('also includes stale PROPOSED patients (consulted/presented but never accepted/declined), tagged PROPOSED_STALE', async () => {
-    mockFindMany([], [{ id: 'p2', firstName: 'C', lastName: 'D', phone: '2', tagsUpdatedAt: new Date(Date.now() - 20 * 86_400_000) }])
-    prismaMock.task.findMany.mockResolvedValue([])
+  it('does not add unscheduled stale proposals to the Follow Up queue', async () => {
+    prismaMock.treatmentPlan.findMany.mockResolvedValue([])
     const result = await treatmentFollowUpList()
-    expect(result).toHaveLength(1)
-    expect(result[0].stage).toBe('PROPOSED_STALE')
-  })
-
-  it('the PROPOSED query only looks for patients stale for 14+ days, not freshly consulted ones', async () => {
-    mockFindMany([], [])
-    await treatmentFollowUpList()
-    const proposedCall = prismaMock.patient.findMany.mock.calls.find((c: any) => c[0].where.treatmentPlanStatus === 'PROPOSED')
-    expect(proposedCall![0].where.tagsUpdatedAt.lt).toBeInstanceOf(Date)
-    expect(proposedCall![0].where.tagsUpdatedAt.lt.getTime()).toBeLessThan(Date.now() - 13 * 86_400_000)
-  })
-
-  it('combines INCOMPLETE and stale-PROPOSED patients into one list', async () => {
-    mockFindMany(
-      [{ id: 'p1', firstName: 'A', lastName: 'B', phone: '1', tagsUpdatedAt: new Date() }],
-      [{ id: 'p2', firstName: 'C', lastName: 'D', phone: '2', tagsUpdatedAt: new Date() }],
-    )
-    prismaMock.task.findMany.mockResolvedValue([])
-    const result = await treatmentFollowUpList()
-    expect(result.map(r => r.id).sort()).toEqual(['p1', 'p2'])
+    expect(result).toEqual([])
+    expect(prismaMock.patient.findMany).not.toHaveBeenCalled()
   })
 })
 
