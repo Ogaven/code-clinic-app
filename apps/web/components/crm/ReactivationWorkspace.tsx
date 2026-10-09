@@ -12,19 +12,18 @@ import { cn } from '@/lib/utils'
 
 interface Candidate {
   id: string; firstName: string; lastName: string; phone: string
-  reason: 'DORMANT_180_PLUS' | 'REPEATED_NO_SHOW' | 'DORMANT_ESTIMATED'; recallStatus: string; noShowCount: number; lateCancelCount: number
-  estimated: boolean
+  reason: 'LAST_VISIT_2_YEARS' | 'LAST_VISIT_3_YEARS' | 'LAST_VISIT_5_YEARS'; lastVisitAt: string; yearsSinceVisit: 2 | 3 | 5
 }
 
 const REASON_LABEL: Record<string, string> = {
-  DORMANT_180_PLUS: 'Dormant 180+ days',
-  REPEATED_NO_SHOW: 'Repeated no-show / late-cancel',
-  DORMANT_ESTIMATED: 'Dormant 180+ days (estimated)',
+  LAST_VISIT_2_YEARS: '2–3 years since last visit',
+  LAST_VISIT_3_YEARS: '3–5 years since last visit',
+  LAST_VISIT_5_YEARS: '5+ years since last visit',
 }
 const REASON_TONE: Record<string, string> = {
-  DORMANT_180_PLUS: 'bg-red-50 text-red-600 dark:bg-red-400/15 dark:text-red-300',
-  REPEATED_NO_SHOW: 'bg-orange-50 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300',
-  DORMANT_ESTIMATED: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/50',
+  LAST_VISIT_2_YEARS: 'bg-amber-50 text-amber-700',
+  LAST_VISIT_3_YEARS: 'bg-orange-50 text-orange-700',
+  LAST_VISIT_5_YEARS: 'bg-red-50 text-red-700',
 }
 
 export default function ReactivationWorkspace({ patientHref }: { patientHref: (id: string) => string }) {
@@ -44,13 +43,11 @@ export default function ReactivationWorkspace({ patientHref }: { patientHref: (i
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-extrabold text-gray-800 dark:text-white flex items-center gap-2"><RotateCcw size={20} className="text-red-500" /> Reactivation</h1>
-        <p className="text-sm text-gray-500 dark:text-white/50">Patients who have gone quiet — dormant on recall, or a repeated no-show/late-cancel pattern.</p>
+        <p className="text-sm text-gray-500 dark:text-white/50">Staff-managed campaign audiences based on the most recent completed patient visit: 2, 3, or 5+ years.</p>
       </div>
 
-      <p className="flex items-start gap-1.5 text-[11px] text-gray-400 dark:text-white/30">
-        <Info size={13} className="mt-0.5 flex-shrink-0" />
-        This is a status view for staff outreach — no patient is automatically messaged from this page or this list. "Dormant 180+ days (estimated)" patients have no confirmed recall interval on file — flagged from a real last-visit gap against a default 6-month cadence, not a precise figure.
-      </p>
+      <p className="text-xs text-gray-500">These audiences are for manual campaign planning only. Recently seen patients are excluded; no messages are sent automatically.</p>
+      {candidates && <div className="flex flex-wrap gap-2">{([2, 3, 5] as const).map(years => <span key={years} className="rounded-lg bg-gray-100 px-3 py-2 text-sm dark:bg-white/10">{years === 5 ? '5+ years' : years === 3 ? '3–5 years' : '2–3 years'}: <strong>{candidates.filter(c => c.yearsSinceVisit === years).length}</strong></span>)}</div>}
 
       {loading ? (
         <p className="text-sm text-gray-400 dark:text-white/40">Loading…</p>
@@ -66,8 +63,8 @@ export default function ReactivationWorkspace({ patientHref }: { patientHref: (i
                 <tr className="text-gray-500 dark:text-white/50 text-xs">
                   <th className="px-4 py-3 font-bold">Patient</th>
                   <th className="px-4 py-3 font-bold">Reason</th>
-                  <th className="px-4 py-3 font-bold text-right">No-shows</th>
-                  <th className="px-4 py-3 font-bold text-right">Late Cancels</th>
+                  <th className="px-4 py-3 font-bold">Last Completed Visit</th>
+                  
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-white/5">
@@ -78,8 +75,8 @@ export default function ReactivationWorkspace({ patientHref }: { patientHref: (i
                       <div className="text-[11px] text-gray-400">{c.phone}</div>
                     </td>
                     <td className="px-4 py-3"><span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold', REASON_TONE[c.reason])}>{REASON_LABEL[c.reason]}</span></td>
-                    <td className="px-4 py-3 text-right text-gray-600 dark:text-white/60">{c.noShowCount}</td>
-                    <td className="px-4 py-3 text-right text-gray-600 dark:text-white/60">{c.lateCancelCount}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-white/60">{new Date(c.lastVisitAt).toLocaleDateString()}</td>
+                    
                   </tr>
                 ))}
               </tbody>
