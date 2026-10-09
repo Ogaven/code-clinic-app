@@ -14,6 +14,7 @@ interface FollowUpItem {
   id: string; firstName: string; lastName: string; phone: string
   treatmentPlanId: string; procedure: string; dentistNote: string | null
   followUpReason: string | null; followUpNote: string | null; followUpAt: string
+  nextReminderAt: string; attemptCount: number
   ownerId: string | null; ownerName: string | null; taskStatus: string | null
 }
 
@@ -53,6 +54,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
       if (!response.ok) { setError((await response.json()).error || 'Save failed'); return }
       setComment(''); setNextReminderAt('')
       await openAttempts(selectedPlan)
+      load()
     } catch { setError('Unable to save contact attempt') }
     finally { setSaving(false) }
   }
@@ -117,7 +119,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
                       <div className="text-[11px] text-gray-400">{p.phone}</div>
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-white/70"><div className="font-semibold">{p.procedure}</div><div className="text-xs">{p.followUpReason || "No follow-up reason recorded"}</div>{p.dentistNote && <div className="text-xs">Dentist: {p.dentistNote}</div>}{p.followUpNote && <div className="text-xs">Follow-up: {p.followUpNote}</div>}</td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-white/60">{new Date(p.followUpAt).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-white/60"><div>{new Date(p.nextReminderAt).toLocaleDateString()}</div><div className="text-xs">Original: {new Date(p.followUpAt).toLocaleDateString()}</div><div className="text-xs">{p.attemptCount} contact attempts</div>{new Date(p.nextReminderAt).getTime() <= Date.now() && <span className="text-xs font-semibold text-orange-700">Due / overdue</span>}</td>
                     <td className="px-4 py-3">
                       <select
                         value={p.ownerId ?? ''}

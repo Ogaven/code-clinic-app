@@ -159,6 +159,8 @@ export interface TreatmentFollowUpItem {
   followUpReason: string | null
   followUpNote: string | null
   followUpAt: Date
+  nextReminderAt: Date
+  attemptCount: number
   ownerId: string | null
   ownerName: string | null
   taskStatus: 'OPEN' | 'DONE' | 'DISMISSED' | null
@@ -195,6 +197,28 @@ export async function treatmentFollowUpList(): Promise<TreatmentFollowUpItem[]> 
       assignedTo: { select: { firstName: true, lastName: true } },
     },
   })
+  // Latest staff-entered reminder is a CRM worklist projection only:
+  // do not mutate the dentist's original followUpAt or pipeline status.
+  const activities = await prisma.patientActivity.findMany({
+    where: {
+      patientId: { in: [...new Set(plans.map(p => p.patientId))] },
+      action: 'TREATMENT_FOLLOWUP_CONTACT_ATTEMPT',
+    },
+    select: { metadata: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
+  })
+  const attemptByPlan = new Map<string, { count: number; reminder: Date | null }>()
+  const planIds = new Set(plans.map(p => p.id))
+  for (const activity of activities) {
+    try {
+      const meta = JSON.parse(activity.metadata ?? '{}')
+      if (!planIds.has(meta.treatmentPlanId)) continue
+      const previous = attemptByPlan.get(meta.treatmentPlanId)
+      const reminder = typeof meta.nextReminderAt === 'string' && Number.isFinite(Date.parse(meta.nextReminderAt))
+        ? new Date(meta.nextReminderAt) : null
+      attemptByPlan.set(meta.treatmentPlanId, { count: (previous?.count ?? 0) + 1, reminder })
+    } catch { /* Ignore unrelated or malformed legacy activity metadata. */ }
+  }
   const taskByPatient = new Map(tasks.map(t => [t.entityId, t]))
   return plans.map(p => {
     const task = taskByPatient.get(p.patientId)
@@ -209,6 +233,8 @@ export async function treatmentFollowUpList(): Promise<TreatmentFollowUpItem[]> 
       followUpReason: p.followUpReason,
       followUpNote: p.followUpNote,
       followUpAt: p.followUpAt!,
+      nextReminderAt: attemptByPlan.get(p.id)?.reminder ?? p.followUpAt!,
+      attemptCount: attemptByPlan.get(p.id)?.count ?? 0,
       ownerId: task?.assignedToId ?? null,
       ownerName: task?.assignedTo ? `${task.assignedTo.firstName} ${task.assignedTo.lastName}` : null,
       taskStatus: (task?.status as 'OPEN' | 'DISMISSED' | undefined) ?? null,
