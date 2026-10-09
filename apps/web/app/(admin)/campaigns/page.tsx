@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Megaphone, Send, Clock, Users, CheckCircle2, AlertCircle, RefreshCw, X, Eye, BookOpen, Plus, Pencil, Trash2, Cake, Sparkles } from 'lucide-react'
 import { buildSegmentCountParams } from '@/lib/campaignSegmentParams'
 import { ageFromDob } from '@/lib/dob'
+import ReactivationWorkspace from '@/components/crm/ReactivationWorkspace'
 
 // Full legacy list — used ONLY by the "Send Template" modal below (tmplSegment),
 // which posts to the separate /templates/:id/send endpoint (its own segment
@@ -114,7 +115,7 @@ export default function CampaignsPage() {
   const [bdSent,        setBdSent]        = useState<Set<string>>(new Set())
 
   // Templates
-  const [mainTab,      setMainTab]      = useState<'send' | 'templates' | 'birthdays'>('send')
+  const [mainTab,      setMainTab]      = useState<'send' | 'templates' | 'birthdays' | 'reactivation'>('send')
   const [templates,    setTemplates]    = useState<any[]>([])
   const [tmplLoading,  setTmplLoading]  = useState(false)
   const [editTmpl,     setEditTmpl]     = useState<any | null>(null)   // null = closed, {} = new, obj = edit
@@ -451,6 +452,7 @@ export default function CampaignsPage() {
           { key: 'send',      label: 'Broadcast',  icon: Send     },
           { key: 'templates', label: 'Templates',  icon: BookOpen },
           { key: 'birthdays', label: 'Birthdays',  icon: Cake     },
+          { key: 'reactivation', label: 'Reactivation', icon: RefreshCw },
         ] as const).map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setMainTab(key)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
@@ -461,6 +463,10 @@ export default function CampaignsPage() {
           </button>
         ))}
       </div>
+
+      {mainTab === 'reactivation' && (
+        <ReactivationWorkspace patientHref={id => window.location.pathname.startsWith('/receptionist') ? `/receptionist/patients/${id}` : `/patients/${id}`} />
+      )}
 
       {/* ───────────── TEMPLATES TAB ───────────── */}
       {mainTab === 'templates' && (
