@@ -15,7 +15,7 @@ const { prismaMock } = vi.hoisted(() => ({
     patient: { findMany: vi.fn() },
     treatmentPlan: { findMany: vi.fn() },
     patientActivity: { findMany: vi.fn() },
-    appointment: { findMany: vi.fn() },
+    appointment: { findMany: vi.fn(), groupBy: vi.fn() },
     task: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     $queryRaw: vi.fn(),
   },
@@ -29,6 +29,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   prismaMock.$queryRaw.mockResolvedValue([])
   prismaMock.patientActivity.findMany.mockResolvedValue([])
+  prismaMock.appointment.groupBy.mockResolvedValue([])
   prismaMock.appointment.findMany.mockImplementation(async (args: any) => (args.where.patientId?.in ?? []).map((patientId: string) => ({ patientId, startAt: new Date(Date.now() - (patientId === 'p1' ? 190 : 400) * 86_400_000), service: { name: 'Periodontal Maintenance' } })))
 })
 
@@ -201,74 +202,28 @@ describe('assignTreatmentFollowUpOwner (idempotent Task reuse)', () => {
   })
 })
 
-describe('reactivationCandidates — confirmed data (unchanged behavior)', () => {
-  it('classifies by dormant-recall vs repeated-no-show reason', async () => {
-    prismaMock.patient.findMany.mockResolvedValue([
-      { id: 'p1', firstName: 'A', lastName: 'B', phone: '1', recallStatus: 'OVERDUE_180_PLUS', noShowCount: 0, lateCancelCount: 0, tagsUpdatedAt: new Date() },
-      { id: 'p2', firstName: 'C', lastName: 'D', phone: '2', recallStatus: 'DUE', noShowCount: 3, lateCancelCount: 0, tagsUpdatedAt: new Date() },
+describe('reactivationCandidates — last completed visit audiences', () => {
+  it('creates exclusive 2, 3, and 5-year audiences from last completed visits', async () => {
+    const yearsAgo = (n: number) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() - n); d.setUTCDate(d.getUTCDate() - 3); return d }
+    prismaMock.appointment.groupBy.mockResolvedValue([
+      { patientId: 'p2', _max: { startAt: yearsAgo(2) } },
+      { patientId: 'p3', _max: { startAt: yearsAgo(3) } },
+      { patientId: 'p5', _max: { startAt: yearsAgo(5) } },
+      { patientId: 'recent', _max: { startAt: yearsAgo(1) } },
     ])
+    prismaMock.patient.findMany.mockResolvedValue(['p2', 'p3', 'p5'].map(id => ({ id, firstName: id, lastName: 'Patient', phone: '1' })))
     const result = await reactivationCandidates()
-    expect(result.find(r => r.id === 'p1')!.reason).toBe('DORMANT_180_PLUS')
-    expect(result.find(r => r.id === 'p2')!.reason).toBe('REPEATED_NO_SHOW')
-    expect(result.find(r => r.id === 'p1')!.estimated).toBe(false)
+    expect(result.map(r => r.yearsSinceVisit).sort()).toEqual([2, 3, 5])
+    expect(result.some(r => r.id === 'recent')).toBe(false)
+    expect(prismaMock.appointment.groupBy).toHaveBeenCalledWith(expect.objectContaining({
+      where: { status: 'COMPLETED' },
+      _max: { startAt: true },
+    }))
   })
 
-  it('queries the OR of dormant-recall / 2+ no-shows / 2+ late-cancels, scoped to active patients', async () => {
-    prismaMock.patient.findMany.mockResolvedValue([])
-    await reactivationCandidates()
-    expect(prismaMock.patient.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          isActive: true,
-          OR: [{ recallStatus: 'OVERDUE_180_PLUS' }, { noShowCount: { gte: 2 } }, { lateCancelCount: { gte: 2 } }],
-        },
-      })
-    )
-  })
-})
-
-describe('reactivationCandidates — real historical no-show data (counter has no backfill)', () => {
-  it('surfaces a patient with 2+ real historical NO_SHOW appointments even if the live counter never caught up', async () => {
-    prismaMock.patient.findMany.mockImplementation(async (args: any) => {
-      if (args.where?.id?.in) {
-        return [{ id: 'p-hist', firstName: 'Old', lastName: 'NoShow', phone: '5', recallStatus: 'NOT_DUE', noShowCount: 0, lateCancelCount: 0 }]
-      }
-      return [] // the main OR query finds nobody via live counters
-    })
-    prismaMock.$queryRaw.mockImplementation(async (strings: any) => {
-      const sql = strings.join(' ')
-      if (sql.includes('NO_SHOW')) return [{ patientId: 'p-hist' }]
-      return [] // estimatedRecallCandidates' query
-    })
-    const result = await reactivationCandidates()
-    expect(result.find(r => r.id === 'p-hist')).toBeDefined()
-    expect(result.find(r => r.id === 'p-hist')!.reason).toBe('REPEATED_NO_SHOW')
-  })
-
-  it('does not duplicate a patient already found via the live counter query', async () => {
-    prismaMock.patient.findMany.mockResolvedValue([
-      { id: 'p1', firstName: 'A', lastName: 'B', phone: '1', recallStatus: 'NOT_DUE', noShowCount: 2, lateCancelCount: 0, tagsUpdatedAt: new Date() },
-    ])
-    prismaMock.$queryRaw.mockImplementation(async (strings: any) => {
-      const sql = strings.join(' ')
-      if (sql.includes('NO_SHOW')) return [{ patientId: 'p1' }] // same patient, real historical data agrees
-      return []
-    })
-    const result = await reactivationCandidates()
-    expect(result.filter(r => r.id === 'p1')).toHaveLength(1)
-  })
-})
-
-describe('reactivationCandidates — estimated dormancy (no recallInterval, real visit gap)', () => {
-  it('includes a patient with no recallInterval and no completed visit in 180+ days, flagged DORMANT_ESTIMATED', async () => {
-    prismaMock.patient.findMany.mockResolvedValue([])
-    prismaMock.$queryRaw.mockImplementation(async (strings: any) => {
-      const sql = strings.join(' ')
-      if (sql.includes('NO_SHOW')) return []
-      return [{ id: 'p-est', firstName: 'Est', lastName: 'Dormant', phone: '9', lastCompletedAt: new Date(Date.now() - 400 * 86_400_000) }]
-    })
-    const result = await reactivationCandidates()
-    expect(result.find(r => r.id === 'p-est')!.reason).toBe('DORMANT_ESTIMATED')
-    expect(result.find(r => r.id === 'p-est')!.estimated).toBe(true)
+  it('returns no audience for patients with no completed appointment', async () => {
+    prismaMock.appointment.groupBy.mockResolvedValue([])
+    expect(await reactivationCandidates()).toEqual([])
+    expect(prismaMock.patient.findMany).not.toHaveBeenCalled()
   })
 })
