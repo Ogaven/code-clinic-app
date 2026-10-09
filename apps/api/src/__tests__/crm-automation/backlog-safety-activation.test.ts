@@ -19,7 +19,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     patient: { findMany: vi.fn(), findUniqueOrThrow: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-    appointment: { findFirst: vi.fn().mockResolvedValue(null) },
+    appointment: { findMany: vi.fn().mockResolvedValue([]) },
     invoice: { findFirst: vi.fn().mockResolvedValue(null) },
     treatmentPlan: { findMany: vi.fn().mockResolvedValue([]) },
     automationEvent: { create: vi.fn().mockResolvedValue({ id: 'evt' }), update: vi.fn() },
@@ -59,7 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.useFakeTimers()
   vi.setSystemTime(NOW)
-  prismaMock.appointment.findFirst.mockResolvedValue(null)
+  prismaMock.appointment.findMany.mockResolvedValue([])
   prismaMock.invoice.findFirst.mockResolvedValue(null)
   prismaMock.treatmentPlan.findMany.mockResolvedValue([])
 })
@@ -73,7 +73,7 @@ describe('runDailyPatientTagDerivation — backlog safety on activation', () => 
     const patient = backlogPatient()
     prismaMock.patient.findMany.mockResolvedValue([patient])
     // The lastCompletedAt lookup happens per-patient inside the loop.
-    prismaMock.appointment.findFirst.mockResolvedValue({ startAt: new Date(NOW.getTime() - 190 * 86_400_000) })
+    prismaMock.appointment.findMany.mockResolvedValue([{ startAt: new Date(NOW.getTime() - 190 * 86_400_000), service: { name: 'Periodontal Maintenance' } }])
 
     const result = await runDailyPatientTagDerivation()
 
@@ -86,7 +86,7 @@ describe('runDailyPatientTagDerivation — backlog safety on activation', () => 
     const patient = backlogPatient({ recallStatus: 'OVERDUE_180_PLUS' })
     prismaMock.patient.findMany.mockResolvedValue([patient])
     // 400 days past due -> OVERDUE_180_PLUS, matches stored value.
-    prismaMock.appointment.findFirst.mockResolvedValue({ startAt: new Date(NOW.getTime() - (180 + 400) * 86_400_000) })
+    prismaMock.appointment.findMany.mockResolvedValue([{ startAt: new Date(NOW.getTime() - (180 + 400) * 86_400_000), service: { name: 'Periodontal Maintenance' } }])
 
     const result = await runDailyPatientTagDerivation()
 
@@ -110,7 +110,7 @@ describe('runDailyPatientTagDerivation — backlog safety on activation', () => 
   it('DOES write and emit recall_status_changed for a genuine future transition into DUE (prospective enrollment path stays intact)', async () => {
     const patient = backlogPatient({ recallStatus: 'NOT_DUE' }) // stored value has not caught up yet
     prismaMock.patient.findMany.mockResolvedValue([patient])
-    prismaMock.appointment.findFirst.mockResolvedValue({ startAt: new Date(NOW.getTime() - 190 * 86_400_000) }) // computes to DUE
+    prismaMock.appointment.findMany.mockResolvedValue([{ startAt: new Date(NOW.getTime() - 190 * 86_400_000), service: { name: 'Periodontal Maintenance' } }]) // computes to DUE
     prismaMock.patient.findUniqueOrThrow.mockResolvedValue(patient)
     prismaMock.patient.update.mockResolvedValue({ ...patient, recallStatus: 'DUE' })
 
