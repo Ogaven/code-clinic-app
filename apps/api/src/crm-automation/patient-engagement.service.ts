@@ -263,84 +263,41 @@ export interface ReactivationCandidate {
   firstName: string
   lastName: string
   phone: string
-  reason: 'DORMANT_180_PLUS' | 'REPEATED_NO_SHOW' | 'DORMANT_ESTIMATED'
-  recallStatus: string
-  noShowCount: number
-  lateCancelCount: number
-  estimated: boolean
+  reason: 'LAST_VISIT_2_YEARS' | 'LAST_VISIT_3_YEARS' | 'LAST_VISIT_5_YEARS'
+  lastVisitAt: Date
+  yearsSinceVisit: 2 | 3 | 5
 }
 
-// Real historical no-show count, read directly from Appointment rows —
-// independent of Patient.noShowCount, which only started incrementing once
-// recordVisitFlag() was wired into scheduling.ts (2026-09-14) and has no
-// backfill from appointments that predate that. This lets genuinely
-// repeat-no-show patients surface immediately instead of waiting weeks for
-// the counter to catch up. Real data only — counts actual NO_SHOW rows.
-async function patientsWithRepeatedHistoricalNoShows(): Promise<Set<string>> {
-  const rows = await prisma.$queryRaw<Array<{ patientId: string }>>`
-    SELECT "patientId" FROM appointments WHERE status = 'NO_SHOW' AND "patientId" IS NOT NULL
-    GROUP BY "patientId" HAVING COUNT(*) >= 2
-  `
-  return new Set(rows.map(r => r.patientId))
-}
-
-// C. Reactivation — a coherent view of who's actually disengaged:
-//   1. Confirmed dormant by recall (180+ days overdue on a staff-set interval)
-//   2. Repeat no-show/late-cancel pattern (2+), from either the live rollup
-//      counters OR real historical Appointment.status='NO_SHOW' rows —
-//      whichever shows it, since the rollup counters have no backfill
-//   3. Estimated-dormant: no recallInterval set at all, but genuinely no
-//      completed visit in 180+ days (read-time only, see recallOverview's
-//      estimatedRecallCandidates — never persisted, always flagged)
-// Read-only; the existing recall_dormant_reactivation sequence (patient-tags
-// milestone) stays DRAFT and is never activated from here.
+// Staff-only reactivation audiences, segmented by the most recent COMPLETED
+// appointment of any service. A recent completed visit always excludes a
+// patient even if their historical recall/no-show flags are stale.
+// Buckets are exclusive: 5+ years, 3-<5 years, 2-<3 years.
 export async function reactivationCandidates(): Promise<ReactivationCandidate[]> {
-  const [patients, historicalNoShowIds, estimatedDormant] = await Promise.all([
-    prisma.patient.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { recallStatus: 'OVERDUE_180_PLUS' },
-          { noShowCount: { gte: 2 } },
-          { lateCancelCount: { gte: 2 } },
-        ],
-      },
-      select: { id: true, firstName: true, lastName: true, phone: true, recallStatus: true, noShowCount: true, lateCancelCount: true, tagsUpdatedAt: true },
-      orderBy: { tagsUpdatedAt: 'desc' },
-    }),
-    patientsWithRepeatedHistoricalNoShows(),
-    estimatedRecallCandidates(),
-  ])
-
-  const confirmedIds = new Set(patients.map(p => p.id))
-  const confirmed: ReactivationCandidate[] = patients.map(p => ({
-    id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone,
-    reason: p.recallStatus === 'OVERDUE_180_PLUS' ? 'DORMANT_180_PLUS' : 'REPEATED_NO_SHOW',
-    recallStatus: p.recallStatus, noShowCount: p.noShowCount, lateCancelCount: p.lateCancelCount, estimated: false,
-  }))
-
-  // Real historical no-shows for a patient the live counter missed.
-  const extraHistoricalNoShowIds = [...historicalNoShowIds].filter(id => !confirmedIds.has(id))
-  const extraHistorical = extraHistoricalNoShowIds.length
-    ? await prisma.patient.findMany({
-        where: { id: { in: extraHistoricalNoShowIds }, isActive: true },
-        select: { id: true, firstName: true, lastName: true, phone: true, recallStatus: true, noShowCount: true, lateCancelCount: true },
-      })
-    : []
-  for (const p of extraHistorical) {
-    confirmedIds.add(p.id)
-    confirmed.push({
-      id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone,
-      reason: 'REPEATED_NO_SHOW', recallStatus: p.recallStatus, noShowCount: p.noShowCount, lateCancelCount: p.lateCancelCount, estimated: false,
-    })
-  }
-
-  const estimated: ReactivationCandidate[] = estimatedDormant
-    .filter(p => p.status === 'OVERDUE_180_PLUS' && !confirmedIds.has(p.id))
-    .map(p => ({
-      id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone,
-      reason: 'DORMANT_ESTIMATED', recallStatus: 'NOT_DUE', noShowCount: 0, lateCancelCount: 0, estimated: true,
-    }))
-
-  return [...confirmed, ...estimated]
+  const now = new Date()
+  const cutoff = new Date(now)
+  cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 2)
+  const latestVisits = await prisma.appointment.groupBy({
+    by: ['patientId'],
+    where: { status: 'COMPLETED' },
+    _max: { startAt: true },
+  })
+  const dormant = latestVisits.filter(v => v._max.startAt && v._max.startAt <= cutoff)
+  if (!dormant.length) return []
+  const patients = await prisma.patient.findMany({
+    where: { isActive: true, id: { in: dormant.map(v => v.patientId) } },
+    select: { id: true, firstName: true, lastName: true, phone: true },
+  })
+  const byId = new Map(patients.map(p => [p.id, p]))
+  const three = new Date(now)
+  three.setUTCFullYear(three.getUTCFullYear() - 3)
+  const five = new Date(now)
+  five.setUTCFullYear(five.getUTCFullYear() - 5)
+  return dormant.flatMap(v => {
+    const p = byId.get(v.patientId)
+    const lastVisitAt = v._max.startAt
+    if (!p || !lastVisitAt) return []
+    const yearsSinceVisit: 2 | 3 | 5 = lastVisitAt <= five ? 5 : lastVisitAt <= three ? 3 : 2
+    const reason = yearsSinceVisit === 5 ? 'LAST_VISIT_5_YEARS' : yearsSinceVisit === 3 ? 'LAST_VISIT_3_YEARS' : 'LAST_VISIT_2_YEARS'
+    return [{ ...p, reason, lastVisitAt, yearsSinceVisit }]
+  }).sort((a, b) => a.lastVisitAt.getTime() - b.lastVisitAt.getTime())
 }
