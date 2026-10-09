@@ -297,7 +297,7 @@ export async function reactivationCandidates(): Promise<ReactivationCandidate[]>
     const lastVisitAt = v._max.startAt
     if (!p || !lastVisitAt) return []
     const yearsSinceVisit: 2 | 3 | 5 = lastVisitAt <= five ? 5 : lastVisitAt <= three ? 3 : 2
-    const reason = yearsSinceVisit === 5 ? 'LAST_VISIT_5_YEARS' : yearsSinceVisit === 3 ? 'LAST_VISIT_3_YEARS' : 'LAST_VISIT_2_YEARS'
+    const reason: ReactivationCandidate['reason'] = yearsSinceVisit === 5 ? 'LAST_VISIT_5_YEARS' : yearsSinceVisit === 3 ? 'LAST_VISIT_3_YEARS' : 'LAST_VISIT_2_YEARS'
     return [{ ...p, reason, lastVisitAt, yearsSinceVisit }]
   }).sort((a, b) => a.lastVisitAt.getTime() - b.lastVisitAt.getTime())
 }
