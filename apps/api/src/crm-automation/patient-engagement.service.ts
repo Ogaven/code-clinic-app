@@ -91,13 +91,15 @@ export async function recallOverview(): Promise<{ buckets: RecallBucket[]; total
     where: {
       patientId: { in: confirmed.map(p => p.id) },
       status: 'COMPLETED',
-      service: { name: { in: ['Periodontal Maintenance', 'Recall Hygiene Visit', 'Periodontal Maintenance Recall Hygiene Visit'] } },
     },
-    select: { patientId: true, startAt: true },
+    select: { patientId: true, startAt: true, service: { select: { name: true } } },
     orderBy: { startAt: 'desc' },
   }) : []
   const latestVisitByPatient = new Map<string, Date>()
+  const hygieneServices = new Set(['periodontal maintenance', 'recall hygiene visit', 'periodontal maintenance recall hygiene visit'])
   for (const visit of completedVisits) {
+    const normalized = visit.service.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    if (!hygieneServices.has(normalized)) continue
     if (!latestVisitByPatient.has(visit.patientId)) latestVisitByPatient.set(visit.patientId, visit.startAt)
   }
   const intervalDays: Record<string, number> = { THREE_MONTH: 90, SIX_MONTH: 180, TWELVE_MONTH: 365 }
