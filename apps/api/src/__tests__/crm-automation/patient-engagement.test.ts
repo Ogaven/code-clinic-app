@@ -14,6 +14,7 @@ const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     patient: { findMany: vi.fn() },
     treatmentPlan: { findMany: vi.fn() },
+    patientActivity: { findMany: vi.fn() },
     appointment: { findMany: vi.fn() },
     task: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     $queryRaw: vi.fn(),
@@ -27,6 +28,7 @@ import { recallOverview, treatmentFollowUpList, assignTreatmentFollowUpOwner, re
 beforeEach(() => {
   vi.clearAllMocks()
   prismaMock.$queryRaw.mockResolvedValue([])
+  prismaMock.patientActivity.findMany.mockResolvedValue([])
   prismaMock.appointment.findMany.mockImplementation(async (args: any) => (args.where.patientId?.in ?? []).map((patientId: string) => ({ patientId, startAt: new Date(Date.now() - (patientId === 'p1' ? 190 : 400) * 86_400_000), service: { name: 'Periodontal Maintenance' } })))
 })
 
@@ -152,6 +154,19 @@ describe('treatmentFollowUpList — same source as pipeline Follow Up queue', ()
     ])
     const result = await treatmentFollowUpList()
     expect(result[0].ownerName).toBe('Jane Doe')
+  })
+
+  it('shows the latest staff reminder and count without modifying the dentist follow-up date', async () => {
+    prismaMock.treatmentPlan.findMany.mockResolvedValue([plan])
+    prismaMock.task.findMany.mockResolvedValue([])
+    prismaMock.patientActivity.findMany.mockResolvedValue([
+      { createdAt: new Date('2026-10-01'), metadata: JSON.stringify({ treatmentPlanId: 'plan-1', nextReminderAt: '2026-11-05T09:00:00.000Z' }) },
+      { createdAt: new Date('2026-10-02'), metadata: JSON.stringify({ treatmentPlanId: 'plan-1', nextReminderAt: '2026-11-10T09:00:00.000Z' }) },
+    ])
+    const result = await treatmentFollowUpList()
+    expect(result[0].attemptCount).toBe(2)
+    expect(result[0].nextReminderAt.toISOString()).toBe('2026-11-10T09:00:00.000Z')
+    expect(result[0].followUpAt.toISOString()).toBe('2026-11-01T00:00:00.000Z')
   })
 
   it('does not add unscheduled stale proposals to the Follow Up queue', async () => {
