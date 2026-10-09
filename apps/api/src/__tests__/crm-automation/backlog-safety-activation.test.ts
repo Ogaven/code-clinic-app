@@ -107,7 +107,7 @@ describe('runDailyPatientTagDerivation — backlog safety on activation', () => 
     expect(prismaMock.automationEvent.create).not.toHaveBeenCalled()
   })
 
-  it('DOES write and emit recall_status_changed for a genuine future transition into DUE (prospective enrollment path stays intact)', async () => {
+  it('writes a genuine future DUE transition without enrolling patient messaging by default', async () => {
     const patient = backlogPatient({ recallStatus: 'NOT_DUE' }) // stored value has not caught up yet
     prismaMock.patient.findMany.mockResolvedValue([patient])
     prismaMock.appointment.findMany.mockResolvedValue([{ startAt: new Date(NOW.getTime() - 190 * 86_400_000), service: { name: 'Periodontal Maintenance' } }]) // computes to DUE
@@ -120,8 +120,6 @@ describe('runDailyPatientTagDerivation — backlog safety on activation', () => 
     expect(prismaMock.patient.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'p-backlog-1' }, data: expect.objectContaining({ recallStatus: 'DUE' }) })
     )
-    expect(prismaMock.automationEvent.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ entityType: 'PATIENT', entityId: 'p-backlog-1', eventType: 'recall_status_changed', fromValue: 'NOT_DUE', toValue: 'DUE' }),
-    })
+    expect(prismaMock.automationEvent.create).not.toHaveBeenCalled()
   })
 })
