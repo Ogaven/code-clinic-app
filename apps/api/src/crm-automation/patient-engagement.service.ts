@@ -50,13 +50,15 @@ export interface RecallBucket {
 // time. Read-time only; never persisted to Patient.recallInterval/recallStatus.
 async function estimatedRecallCandidates(): Promise<Array<{ id: string; firstName: string; lastName: string; phone: string; lastCompletedAt: Date; status: string }>> {
   const rows = await prisma.$queryRaw<Array<{ id: string; firstName: string; lastName: string; phone: string; lastCompletedAt: Date }>>`
-    SELECT p.id, p."firstName", p."lastName", p.phone, la."lastCompletedAt"
+    SELECT p.id, p."firstName", p."lastName", p.phone, MAX(a."startAt") AS "lastCompletedAt"
     FROM patients p
-    JOIN (
-      SELECT "patientId", MAX("startAt") AS "lastCompletedAt"
-      FROM appointments WHERE status = 'COMPLETED' GROUP BY "patientId"
-    ) la ON la."patientId" = p.id
+    JOIN appointments a ON a."patientId" = p.id AND a.status = 'COMPLETED'
+    JOIN services s ON s.id = a."serviceId"
     WHERE p."isActive" = true AND p."recallInterval" IS NULL
+      AND LOWER(TRIM(REGEXP_REPLACE(TRIM(s.name), '[^a-zA-Z0-9]+', ' ', 'g'))) IN (
+        'periodontal maintenance', 'recall hygiene visit', 'periodontal maintenance recall hygiene visit'
+      )
+    GROUP BY p.id, p."firstName", p."lastName", p.phone
   `
   const now = new Date()
   return rows
@@ -76,22 +78,28 @@ async function estimatedRecallCandidates(): Promise<Array<{ id: string; firstNam
 export async function recallOverview(): Promise<{ buckets: RecallBucket[]; totalNeedingAttention: number; totalEstimated: number }> {
   const [confirmed, estimated] = await Promise.all([
     prisma.patient.findMany({
-      where:  { isActive: true, recallStatus: { in: ['DUE', 'OVERDUE_30', 'OVERDUE_90', 'OVERDUE_180_PLUS'] } },
+      where:  { isActive: true, recallInterval: { not: null } },
       select: { id: true, firstName: true, lastName: true, phone: true, recallStatus: true, recallInterval: true, tagsUpdatedAt: true },
       orderBy: { tagsUpdatedAt: 'asc' },
     }),
     estimatedRecallCandidates(),
   ])
 
-  // Fetch each confirmed patient's latest completed appointment in one bounded
-  // query. Dates are display-only; no patient tags or appointments are changed.
+  // Only completed hygiene appointments establish a recall baseline.
+  // A subsequent consultation, review or Check & Treat must not reset it.
   const completedVisits = confirmed.length ? await prisma.appointment.findMany({
-    where: { patientId: { in: confirmed.map(p => p.id) }, status: 'COMPLETED' },
-    select: { patientId: true, startAt: true },
+    where: {
+      patientId: { in: confirmed.map(p => p.id) },
+      status: 'COMPLETED',
+    },
+    select: { patientId: true, startAt: true, service: { select: { name: true } } },
     orderBy: { startAt: 'desc' },
   }) : []
   const latestVisitByPatient = new Map<string, Date>()
+  const hygieneServices = new Set(['periodontal maintenance', 'recall hygiene visit', 'periodontal maintenance recall hygiene visit'])
   for (const visit of completedVisits) {
+    const normalized = visit.service.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    if (!hygieneServices.has(normalized)) continue
     if (!latestVisitByPatient.has(visit.patientId)) latestVisitByPatient.set(visit.patientId, visit.startAt)
   }
   const intervalDays: Record<string, number> = { THREE_MONTH: 90, SIX_MONTH: 180, TWELVE_MONTH: 365 }
@@ -100,13 +108,18 @@ export async function recallOverview(): Promise<{ buckets: RecallBucket[]; total
       ? new Date(visit.getTime() + intervalDays[interval] * 86_400_000)
       : null
 
-  const confirmedRows: Array<RecallPatientRow & { status: string }> = confirmed.map(p => ({
-    id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone,
-    recallInterval: p.recallInterval, tagsUpdatedAt: p.tagsUpdatedAt,
-    lastCompletedAt: latestVisitByPatient.get(p.id) ?? null,
-    dueAt: dueAt(latestVisitByPatient.get(p.id) ?? null, p.recallInterval),
-    estimated: false, status: p.recallStatus,
-  }))
+  const now = new Date()
+  const confirmedRows: Array<RecallPatientRow & { status: string }> = confirmed
+    .filter(p => latestVisitByPatient.has(p.id))
+    .map(p => {
+      const lastCompletedAt = latestVisitByPatient.get(p.id)!
+      return {
+        id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone,
+        recallInterval: p.recallInterval, tagsUpdatedAt: p.tagsUpdatedAt,
+        lastCompletedAt, dueAt: dueAt(lastCompletedAt, p.recallInterval),
+        estimated: false, status: computeRecallStatus(p.recallInterval, lastCompletedAt, now),
+      }
+    }).filter(p => p.status !== 'NOT_DUE')
   const estimatedRows: Array<RecallPatientRow & { status: string }> = estimated.map(p => ({
     id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone,
     recallInterval: null, tagsUpdatedAt: p.lastCompletedAt,
