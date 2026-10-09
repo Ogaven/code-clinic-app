@@ -5,6 +5,7 @@
 // Mounted at /crm-automation in main.ts.
 // ─────────────────────────────────────────────────────────────────────────
 import { Router, Request, Response } from 'express'
+import { listTreatmentContactAttempts, recordTreatmentContactAttempt, validateContactAttempt } from '../crm-automation/treatment-contact-attempts.service'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly, clinicalStaff, adminAndReceptionist, accountsOrAdmin } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
@@ -502,6 +503,23 @@ router.get('/patient-engagement/treatment-followup', requireAuth, clinicalStaff,
 router.post('/patient-engagement/treatment-followup/:patientId/assign', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   await assignTreatmentFollowUpOwner(req.params.patientId, req.body.ownerId ?? null)
   res.json({ success: true })
+})
+// Append-only internal outreach log. No automatic messaging or stage changes.
+router.get('/patient-engagement/treatment-followup/plans/:planId/attempts', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
+  try {
+    const attempts = await listTreatmentContactAttempts(req.params.planId)
+    if (!attempts) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    res.json(attempts)
+  } catch { res.status(500).json({ error: 'Failed to load contact attempts' }) }
+})
+router.post('/patient-engagement/treatment-followup/plans/:planId/attempts', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const error = validateContactAttempt(req.body ?? {})
+  if (error) { res.status(400).json({ error }); return }
+  try {
+    const attempt = await recordTreatmentContactAttempt(req.params.planId, req.body, req.user!)
+    if (!attempt) { res.status(404).json({ error: 'Active follow-up treatment plan not found' }); return }
+    res.status(201).json({ id: attempt.id, createdAt: attempt.createdAt })
+  } catch { res.status(500).json({ error: 'Failed to save contact attempt' }) }
 })
 router.get('/patient-engagement/reactivation', requireAuth, clinicalStaff, async (_req: Request, res: Response) => {
   res.json(await reactivationCandidates())
