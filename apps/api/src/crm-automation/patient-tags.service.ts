@@ -59,7 +59,8 @@ export type PatientTagUpdateInput = Partial<
 export async function applyPatientTagUpdate(
   patientId: string,
   updates: PatientTagUpdateInput,
-  actorUserId: string | null // null = system/automated
+  actorUserId: string | null, // null = system/automated
+  options: { suppressRecallAutomationEvent?: boolean } = {}
 ): Promise<Patient> {
   const before = await prisma.patient.findUniqueOrThrow({ where: { id: patientId } })
 
@@ -90,6 +91,9 @@ export async function applyPatientTagUpdate(
 
   for (const field of WATCHED_FIELDS as readonly WatchedField[]) {
     if (!(field in updates)) continue
+    // Historical hygiene-baseline corrections must not enroll patients in
+    // active outbound recall sequences through recall_status_changed events.
+    if (field === 'recallStatus' && options.suppressRecallAutomationEvent) continue
     const fromValue = before[field] as unknown
     const toValue = updated[field] as unknown
     if (fromValue === toValue) continue
@@ -287,11 +291,17 @@ export async function runDailyPatientTagDerivation(): Promise<{ scanned: number;
   let updatedCount = 0
 
   for (const p of patients) {
-    const lastCompleted = await prisma.appointment.findFirst({
-      where:   { patientId: p.id, status: 'COMPLETED' },
+    // A hygiene recall is based only on the latest completed qualifying
+    // hygiene appointment. Other completed visits must not reset this clock.
+    const completedVisits = p.recallInterval ? await prisma.appointment.findMany({
+      where: { patientId: p.id, status: 'COMPLETED' },
       orderBy: { startAt: 'desc' },
-      select:  { startAt: true },
-    })
+      select: { startAt: true, service: { select: { name: true } } },
+    }) : []
+    const hygieneNames = new Set(['periodontal maintenance', 'recall hygiene visit', 'periodontal maintenance recall hygiene visit'])
+    const lastCompletedHygiene = completedVisits.find(visit =>
+      hygieneNames.has(visit.service.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim())
+    )
     const oldestUnpaid = await prisma.invoice.findFirst({
       where:   { patientId: p.id, status: { in: ['UNPAID', 'PARTIAL', 'OVERDUE'] } },
       orderBy: { createdAt: 'asc' },
@@ -304,7 +314,7 @@ export async function runDailyPatientTagDerivation(): Promise<{ scanned: number;
     // trigger elsewhere AND this nightly recomputation.
     const plans = await prisma.treatmentPlan.findMany({ where: { patientId: p.id }, select: { stage: true } })
 
-    const newRecallStatus = computeRecallStatus(p.recallInterval, lastCompleted?.startAt ?? null, now)
+    const newRecallStatus = computeRecallStatus(p.recallInterval, lastCompletedHygiene?.startAt ?? null, now)
     const newBalanceStatus = p.accountBalance > 0 ? 'OWING' : 'CURRENT'
     const newBalanceAgingBucket = newBalanceStatus === 'OWING' ? computeBalanceAgingBucket(oldestUnpaid?.createdAt ?? null, now) : null
     const daysSinceCreated = Math.floor((now.getTime() - p.createdAt.getTime()) / 86_400_000)
@@ -321,7 +331,11 @@ export async function runDailyPatientTagDerivation(): Promise<{ scanned: number;
     if (newTreatmentPlanStatus !== p.treatmentPlanStatus) updates.treatmentPlanStatus = newTreatmentPlanStatus as any
 
     if (Object.keys(updates).length > 0) {
-      await applyPatientTagUpdate(p.id, updates, null)
+      await applyPatientTagUpdate(p.id, updates, null, {
+        // Off by default: daily recalculation is an internal clinical correction,
+        // not authorization to send recall reminders to patients.
+        suppressRecallAutomationEvent: process.env.CRM_DAILY_RECALL_EVENTS_ENABLED !== 'true',
+      })
       updatedCount++
     }
   }
