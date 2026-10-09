@@ -98,6 +98,7 @@ import { processDueScheduledTouches }      from './crm-automation/sequence-dispa
 import { checkLeadSlas }                   from './crm-automation/lead-sla.service'
 import { sweepStaleContactedLeads }        from './crm-automation/lead-stage.service'
 import { runDailyPatientTagDerivation }    from './crm-automation/patient-tags.service'
+import { checkDailyRecallStaffAlerts } from './crm-automation/recall-staff-alerts.service'
 import { ensureDefaultCrmSequences }       from './crm-automation/seed-default-sequences'
 import { processDueReviewRequests }        from './crm-automation/review-request.service'
 import { checkLeadNeedsHelpAlerts }        from './crm-automation/lead-needs-help-alerts.service'
@@ -486,6 +487,13 @@ runStartup().then(() => {
   setInterval(() => {
     runDailyPatientTagDerivation().catch(err => console.error('[CrmPatientTagDerivation] Scheduler error:', err))
   }, TWENTY_FOUR_HOURS)
+  // Staff-only daily recall digest, opt-in until hygiene-only eligibility is verified.
+  // Never sends patient messages. Date-based dedup makes hourly polling safe.
+  if (process.env.CRM_RECALL_STAFF_ALERTS_ENABLED === 'true') {
+    setInterval(() => {
+      checkDailyRecallStaffAlerts().catch(err => console.error('[CrmRecallStaffAlert] Scheduler error:', err))
+    }, ONE_HOUR)
+  }
   // Staff operational alerts — "lead needs help" / "lead follow-up overdue".
   // Hourly matches the other CRM operational sweeps above; each is
   // idempotent (unread-notification dedup), so extra ticks are safe no-ops.
@@ -504,6 +512,9 @@ runStartup().then(() => {
     updatePatientStatuses().catch(err => console.error('[PatientStatus] Initial run error:', err))
     checkAndSendBirthdayAlerts().catch(err => console.error('[Birthday] Initial run error:', err))
     checkAndSendTreatmentFollowUpAlerts().catch(err => console.error('[TreatmentFollowUpAlert] Initial run error:', err))
+    if (process.env.CRM_RECALL_STAFF_ALERTS_ENABLED === 'true') {
+      checkDailyRecallStaffAlerts().catch(err => console.error('[CrmRecallStaffAlert] Initial run error:', err))
+    }
     checkLeadNeedsHelpAlerts().catch(err => console.error('[CrmLeadNeedsHelp] Initial run error:', err))
     checkLeadFollowUpOverdueAlerts().catch(err => console.error('[CrmLeadFollowUpOverdue] Initial run error:', err))
     // Daily derived-tag job has a 24h setInterval below with no initial kick
