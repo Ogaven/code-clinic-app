@@ -6,7 +6,7 @@ const { db } = vi.hoisted(() => ({
     appointment: { findMany: vi.fn() },
     invoice: { findFirst: vi.fn() },
     treatmentPlan: { findMany: vi.fn() },
-    automationEvent: { create: vi.fn(), update: vi.fn() },
+    automationEvent: { create: vi.fn().mockResolvedValue({ id: 'test-event' }), update: vi.fn() },
     sequenceDefinition: { findMany: vi.fn() },
     collectionsCase: { findUnique: vi.fn() },
     sequenceEnrollment: { findMany: vi.fn() },
