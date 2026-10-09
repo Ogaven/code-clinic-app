@@ -26,7 +26,7 @@ import { recallOverview, treatmentFollowUpList, assignTreatmentFollowUpOwner, re
 beforeEach(() => {
   vi.clearAllMocks()
   prismaMock.$queryRaw.mockResolvedValue([])
-  prismaMock.appointment.findMany.mockImplementation(async (args: any) => (args.where.patientId?.in ?? []).map((patientId: string) => ({ patientId, startAt: new Date(Date.now() - 400 * 86_400_000), service: { name: 'Periodontal Maintenance' } })))
+  prismaMock.appointment.findMany.mockImplementation(async (args: any) => (args.where.patientId?.in ?? []).map((patientId: string) => ({ patientId, startAt: new Date(Date.now() - (patientId === 'p1' ? 190 : 400) * 86_400_000), service: { name: 'Periodontal Maintenance' } })))
 })
 
 describe('recallOverview — confirmed bucket (unchanged behavior)', () => {
