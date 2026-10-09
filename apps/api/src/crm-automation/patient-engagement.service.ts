@@ -78,7 +78,7 @@ async function estimatedRecallCandidates(): Promise<Array<{ id: string; firstNam
 export async function recallOverview(): Promise<{ buckets: RecallBucket[]; totalNeedingAttention: number; totalEstimated: number }> {
   const [confirmed, estimated] = await Promise.all([
     prisma.patient.findMany({
-      where:  { isActive: true, recallStatus: { in: ['DUE', 'OVERDUE_30', 'OVERDUE_90', 'OVERDUE_180_PLUS'] } },
+      where:  { isActive: true, recallInterval: { not: null } },
       select: { id: true, firstName: true, lastName: true, phone: true, recallStatus: true, recallInterval: true, tagsUpdatedAt: true },
       orderBy: { tagsUpdatedAt: 'asc' },
     }),
