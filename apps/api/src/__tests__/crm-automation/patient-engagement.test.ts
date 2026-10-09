@@ -26,7 +26,7 @@ import { recallOverview, treatmentFollowUpList, assignTreatmentFollowUpOwner, re
 beforeEach(() => {
   vi.clearAllMocks()
   prismaMock.$queryRaw.mockResolvedValue([])
-  prismaMock.appointment.findMany.mockResolvedValue([])
+  prismaMock.appointment.findMany.mockImplementation(async (args: any) => (args.where.patientId?.in ?? []).map((patientId: string) => ({ patientId, startAt: new Date(Date.now() - 400 * 86_400_000) })))
 })
 
 describe('recallOverview — confirmed bucket (unchanged behavior)', () => {
@@ -44,12 +44,26 @@ describe('recallOverview — confirmed bucket (unchanged behavior)', () => {
     expect(result.totalEstimated).toBe(0)
   })
 
-  it('never activates or touches any sequence — this is a pure read', async () => {
-    prismaMock.patient.findMany.mockResolvedValue([])
+  it('only reads completed hygiene visits for confirmed recall candidates', async () => {
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 'p1', firstName: 'A', lastName: 'B', phone: '1', recallStatus: 'DUE', recallInterval: 'SIX_MONTH', tagsUpdatedAt: new Date() },
+    ])
     await recallOverview()
-    expect(prismaMock.patient.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ recallStatus: { in: ['DUE', 'OVERDUE_30', 'OVERDUE_90', 'OVERDUE_180_PLUS'] } }) })
-    )
+    expect(prismaMock.appointment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        status: 'COMPLETED',
+        service: { name: { in: ['Periodontal Maintenance', 'Recall Hygiene Visit', 'Periodontal Maintenance Recall Hygiene Visit'] } },
+      }),
+    }))
+  })
+
+  it('excludes patients with no qualifying hygiene visit despite an old recall tag', async () => {
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 'p1', firstName: 'A', lastName: 'B', phone: '1', recallStatus: 'DUE', recallInterval: 'SIX_MONTH', tagsUpdatedAt: new Date() },
+    ])
+    prismaMock.appointment.findMany.mockResolvedValue([])
+    const result = await recallOverview()
+    expect(result.totalNeedingAttention).toBe(0)
   })
 
   it('confirmed patients are never flagged estimated', async () => {
@@ -72,6 +86,7 @@ describe('recallOverview — read-time estimated bucket (recallInterval never ba
       { id: 'p-est', firstName: 'Est', lastName: 'Imated', phone: '9', lastCompletedAt: wellOverAYearAgo },
     ])
     const result = await recallOverview()
+    expect(prismaMock.$queryRaw.mock.calls[0][0].join(' ')).toContain('recall hygiene visit')
     const overdue180 = result.buckets.find(b => b.key === 'OVERDUE_180_PLUS')!
     expect(overdue180.count).toBe(1)
     expect(overdue180.patients[0].id).toBe('p-est')
