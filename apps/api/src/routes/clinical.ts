@@ -533,13 +533,19 @@ router.post('/patients/:id/staff-instructions', requireAuth, clinicalStaff, asyn
       },
     })
     // In-app record is durable; OS push contains no patient details.
-    await notifyUsers({
-      userIds: recipientId === req.user!.id ? [] : [recipientId],
-      type: 'SYSTEM', title: 'New internal staff instruction',
-      body: 'A colleague sent you an internal patient instruction. Open the patient record to respond.',
-      pushBody: 'You have a new internal staff instruction.',
-      href: `/patients/${patient.id}`, category: 'patient.staff_instruction',
-    })
+    try {
+      await notifyUsers({
+        userIds: recipientId === req.user!.id ? [] : [recipientId],
+        type: 'SYSTEM', title: 'New internal staff instruction',
+        body: 'A colleague sent you an internal patient instruction. Open the patient record to respond.',
+        pushBody: 'You have a new internal staff instruction.',
+        href: recipient.role === 'DOCTOR' ? `/doctor/patients/${patient.id}` :
+          recipient.role === 'RECEPTIONIST' ? `/receptionist/patients/${patient.id}` : `/patients/${patient.id}`,
+        category: 'patient.staff_instruction',
+      })
+    } catch (notificationError) {
+      console.error('[StaffInstructions] notification failed after instruction saved', notificationError)
+    }
     res.status(201).json({ id: row.id, createdAt: row.createdAt })
   } catch (error) {
     console.error('[StaffInstructions] create failed', error)
