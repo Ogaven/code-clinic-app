@@ -66,6 +66,7 @@ export async function isAgentEnabled(conversationId: string): Promise<boolean> {
     where:  { id: conversationId },
     select: { agentEnabled: true },
   })
-  // Default true if conversation not found (shouldn't happen but safe fallback)
-  return conv?.agentEnabled ?? true
+  // Missing conversations must not trigger an unsolicited agent response.
+  // Fail closed until a valid conversation record explicitly permits the agent.
+  return conv?.agentEnabled === true
 }
