@@ -445,6 +445,111 @@ router.delete('/patients/:id/documents/:docId', requireAuth, clinicalStaff, asyn
   }
 })
 
+// ─── STAFF-ONLY PATIENT INSTRUCTIONS ──────────────────────────────────────
+// Stored as typed patient activities; never returned by patient-facing messaging APIs.
+// The existing doctor/patient authorization middleware applies to every route.
+const STAFF_INSTRUCTION = 'STAFF_INTERNAL_INSTRUCTION'
+const STAFF_INSTRUCTION_HANDLED = 'STAFF_INTERNAL_INSTRUCTION_HANDLED'
+const STAFF_ROLES = ['DOCTOR', 'RECEPTIONIST', 'ADMIN']
+
+router.get('/patients/:id/staff-instructions', requireAuth, clinicalStaff, async (req, res) => {
+  try {
+    const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, select: { id: true } })
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+    const rows = await prisma.patientActivity.findMany({
+      where: { patientId: patient.id, action: { in: [STAFF_INSTRUCTION, STAFF_INSTRUCTION_HANDLED] } },
+      orderBy: { createdAt: 'asc' },
+      take: 500,
+    })
+    const messages = rows.map(row => {
+      let data: Record<string, unknown> = {}
+      try { data = JSON.parse(row.metadata || '{}') } catch { /* legacy malformed metadata */ }
+      return { id: row.id, userId: row.userId, userName: row.userName, action: row.action, createdAt: row.createdAt, ...data }
+    })
+    res.json(messages)
+  } catch (error) {
+    console.error('[StaffInstructions] read failed', error)
+    res.status(500).json({ error: 'Failed to fetch staff instructions' })
+  }
+})
+
+router.post('/patients/:id/staff-instructions', requireAuth, clinicalStaff, async (req, res) => {
+  try {
+    const body = typeof req.body?.message === 'string' ? req.body.message.trim() : ''
+    const recipientId = typeof req.body?.recipientId === 'string' ? req.body.recipientId : ''
+    const replyToId = typeof req.body?.replyToId === 'string' ? req.body.replyToId : null
+    if (!body || body.length > 4000 || !recipientId) {
+      res.status(400).json({ error: 'A recipient and message of up to 4000 characters are required' }); return
+    }
+    const [patient, recipient] = await Promise.all([
+      prisma.patient.findUnique({ where: { id: req.params.id }, select: { id: true } }),
+      prisma.user.findUnique({ where: { id: recipientId }, select: { id: true, role: true, isActive: true } }),
+    ])
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+    if (!recipient || !recipient.isActive || !STAFF_ROLES.includes(recipient.role)) {
+      res.status(400).json({ error: 'Choose an active doctor, receptionist or admin' }); return
+    }
+    if (replyToId) {
+      const parent = await prisma.patientActivity.findFirst({
+        where: { id: replyToId, patientId: patient.id, action: STAFF_INSTRUCTION },
+        select: { id: true },
+      })
+      if (!parent) { res.status(400).json({ error: 'Reply target not found for this patient' }); return }
+    }
+    const row = await prisma.patientActivity.create({
+      data: {
+        patientId: patient.id, userId: req.user!.id,
+        userName: `${req.user!.firstName} ${req.user!.lastName}`,
+        action: STAFF_INSTRUCTION,
+        metadata: JSON.stringify({ message: body, recipientId, replyToId }),
+      },
+    })
+    // In-app record is durable; OS push contains no patient details.
+    await notifyUsers({
+      userIds: recipientId === req.user!.id ? [] : [recipientId],
+      type: 'SYSTEM', title: 'New internal staff instruction',
+      body: 'A colleague sent you an internal patient instruction. Open the patient record to respond.',
+      pushBody: 'You have a new internal staff instruction.',
+      href: `/patients/${patient.id}`, category: 'patient.staff_instruction',
+    })
+    res.status(201).json({ id: row.id, createdAt: row.createdAt })
+  } catch (error) {
+    console.error('[StaffInstructions] create failed', error)
+    res.status(500).json({ error: 'Failed to send staff instruction' })
+  }
+})
+
+router.post('/patients/:id/staff-instructions/:instructionId/handled', requireAuth, clinicalStaff, async (req, res) => {
+  try {
+    const instruction = await prisma.patientActivity.findFirst({
+      where: { id: req.params.instructionId, patientId: req.params.id, action: STAFF_INSTRUCTION },
+      select: { id: true, metadata: true },
+    })
+    if (!instruction) { res.status(404).json({ error: 'Instruction not found' }); return }
+    let recipientId = ''
+    try { recipientId = JSON.parse(instruction.metadata || '{}').recipientId || '' } catch { /* ignore */ }
+    if (req.user!.role !== 'ADMIN' && req.user!.id !== recipientId && req.user!.id !== '') {
+      res.status(403).json({ error: 'Only the assigned recipient or admin may mark this handled' }); return
+    }
+    const existing = await prisma.patientActivity.findMany({
+      where: { patientId: req.params.id, action: STAFF_INSTRUCTION_HANDLED },
+      select: { metadata: true },
+    })
+    if (existing.some(row => {
+      try { return JSON.parse(row.metadata || '{}').instructionId === instruction.id } catch { return false }
+    })) { res.json({ handled: true }); return }
+    const row = await prisma.patientActivity.create({
+      data: { patientId: req.params.id, userId: req.user!.id,
+        userName: `${req.user!.firstName} ${req.user!.lastName}`,
+        action: STAFF_INSTRUCTION_HANDLED, metadata: JSON.stringify({ instructionId: instruction.id }) },
+    })
+    res.json({ handled: true, id: row.id })
+  } catch (error) {
+    console.error('[StaffInstructions] handled failed', error)
+    res.status(500).json({ error: 'Failed to update instruction' })
+  }
+})
+
 // ─── ACTIVITY ─────────────────────────────────────────────────────────────
 
 // GET /clinical/patients/:id/activity
