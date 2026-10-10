@@ -479,10 +479,11 @@ router.get('/patients/:id/staff-instructions', requireAuth, clinicalStaff, async
     if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
     const rows = await prisma.patientActivity.findMany({
       where: { patientId: patient.id, action: { in: [STAFF_INSTRUCTION, STAFF_INSTRUCTION_HANDLED] } },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take: 500,
     })
-    const messages = rows.map(row => {
+    // Fetch the most recent events, then restore chronological display order.
+    const messages = rows.reverse().map(row => {
       let data: Record<string, unknown> = {}
       try { data = JSON.parse(row.metadata || '{}') } catch { /* legacy malformed metadata */ }
       return { ...data, id: row.id, userId: row.userId, userName: row.userName, action: row.action, createdAt: row.createdAt }
