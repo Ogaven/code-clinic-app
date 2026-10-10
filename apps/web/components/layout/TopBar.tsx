@@ -37,7 +37,10 @@ const NAV: NavLink[] = [
     { label: 'Staff List', href: '/employees' }, { label: 'Attendance', href: '/admin/staff/attendance' },
     { label: 'Permissions', href: '/admin/staff/permissions' },
   ] },
-  { label: 'Treatments', children: [{ label: 'Treatment Pipeline', href: '/treatment-pipeline' }] },
+  { label: 'Treatments', children: [
+    { label: 'Treatment Pipeline', href: '/treatment-pipeline' },
+    { label: 'Treatment Coordination', href: '/treatment-coordination' },
+  ] },
   { label: 'Billing', children: [
     { label: 'Stocks', href: '/stocks' },
   ] },
