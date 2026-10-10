@@ -1908,7 +1908,7 @@ export default function PatientProfilePage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const tp = searchParams.get('tab') as ActiveTab | null
-    const valid: ActiveTab[] = ['timeline','overview','appointments','dental','perio','treatment','notes','billing','documents','activity','audit','crm']
+    const valid: ActiveTab[] = ['timeline','overview','appointments','dental','perio','treatment','notes','billing','documents','activity','audit','crm','staff']
     return tp && valid.includes(tp) ? tp : 'timeline'
   })
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
