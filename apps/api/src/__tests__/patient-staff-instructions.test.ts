@@ -14,6 +14,7 @@ beforeAll(async () => {
   process.env.DATABASE_URL ??= 'postgresql://user:pass@localhost:5432/test'
   process.env.JWT_SECRET ??= 'x'.repeat(32)
   process.env.JWT_REFRESH_SECRET ??= 'y'.repeat(32)
+  vi.doMock('openai', () => ({ default: class OpenAITestStub { constructor() {} } }))
   vi.doMock('../lib/prisma', () => ({ prisma }))
   vi.doMock('../services/storage/r2', () => ({ getPublicUrl: vi.fn(), uploadAvatar: vi.fn() }))
   vi.doMock('../services/notification.service', () => ({ notifyUsers: vi.fn().mockResolvedValue(undefined) }))
