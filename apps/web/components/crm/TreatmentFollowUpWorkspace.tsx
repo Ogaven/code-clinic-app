@@ -37,10 +37,12 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
   const [error, setError] = useState('')
 
   async function openAttempts(planId: string) {
-    setSelectedPlan(planId); setError('')
-    const response = await fetch(`${API}/crm-automation/patient-engagement/treatment-followup/plans/${planId}/attempts`, { headers: authH })
-    if (response.ok) setAttempts(await response.json())
-    else setError('Unable to load contact history')
+    setSelectedPlan(planId); setError(''); setAttempts([])
+    try {
+      const response = await fetch(`${API}/crm-automation/patient-engagement/treatment-followup/plans/${planId}/attempts`, { headers: authH })
+      if (response.ok) setAttempts(await response.json())
+      else setError('Unable to load contact history')
+    } catch { setError('Unable to load contact history') }
   }
 
   async function saveAttempt() {
@@ -119,7 +121,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
                       <div className="text-[11px] text-gray-400">{p.phone}</div>
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-white/70"><div className="font-semibold">{p.procedure}</div><div className="text-xs">{p.followUpReason || "No follow-up reason recorded"}</div>{p.dentistNote && <div className="text-xs">Dentist: {p.dentistNote}</div>}{p.followUpNote && <div className="text-xs">Follow-up: {p.followUpNote}</div>}</td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-white/60"><div>{new Date(p.nextReminderAt).toLocaleDateString()}</div><div className="text-xs">Original: {new Date(p.followUpAt).toLocaleDateString()}</div><div className="text-xs">{p.attemptCount} contact attempts</div>{new Date(p.nextReminderAt).getTime() <= Date.now() && <span className="text-xs font-semibold text-orange-700">Due / overdue</span>}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-white/60"><div>{new Date(p.nextReminderAt).toLocaleDateString()}</div><div className="text-xs">Original: {new Date(p.followUpAt).toLocaleDateString()}</div><div className="text-xs">{p.attemptCount} contact attempts · {Math.min(p.attemptCount, 3)}/3 minimum logged</div>{new Date(p.nextReminderAt).getTime() <= Date.now() && <span className="text-xs font-semibold text-orange-700">Due / overdue</span>}</td>
                     <td className="px-4 py-3">
                       <select
                         value={p.ownerId ?? ''}
@@ -141,7 +143,8 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
       )}
       {selectedPlan && <div className="rounded-2xl border border-emerald-200 dark:border-white/10 p-5 space-y-3 bg-white dark:bg-white/5">
         <div className="flex justify-between"><h2 className="font-bold text-gray-800 dark:text-white">Contact attempts — {attempts.length} recorded</h2><button type="button" onClick={() => setSelectedPlan(null)} className="text-sm underline">Close</button></div>
-        <p className="text-xs text-gray-500">Each attempt is saved separately with staff attribution. No messages are sent and no treatment stages change.</p>
+        <p className="text-xs text-gray-500">Each attempt is saved separately with staff attribution. Record at least three distinct outreach attempts before considering a manual move to Consultation or On Hold. No messages are sent and no treatment stages change.</p>
+        <p className="text-xs font-semibold text-emerald-700">{Math.min(attempts.length, 3)} of 3 minimum attempts recorded{attempts.length < 3 ? ` · ${3 - attempts.length} remaining` : ' · minimum met'}. Staff must review the outcome before changing a treatment stage manually.</p>
         {attempts.map((a: any, i: number) => <div key={a.id} className="border-b border-gray-100 dark:border-white/10 py-2 text-sm">
           <strong>Attempt {i + 1}</strong> — {a.method} / {a.outcome} — {new Date(a.attemptedAt).toLocaleString()} — {a.staffName}
           <div>{a.comment}</div>{a.nextReminderAt && <div className="text-xs">Next reminder: {new Date(a.nextReminderAt).toLocaleString()}</div>}
