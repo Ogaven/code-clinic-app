@@ -14,7 +14,7 @@ import {
   countTreatmentFollowUpAttempts,
 } from '../../crm-automation/treatment-followup-transition-guard.service'
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => { vi.clearAllMocks() })
 
 describe('treatment follow-up transition guard', () => {
   it('allows unrelated treatment plans without an active follow-up', async () => {
