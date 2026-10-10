@@ -11,6 +11,7 @@ import {
 import { cn, formatUGX, formatPhone, getInitials } from '@/lib/utils'
 import AvatarUpload from '@/components/ui/AvatarUpload'
 import TimelineTab from '@/components/patients/TimelineTab'
+import PatientStaffInstructions from '@/components/patients/PatientStaffInstructions'
 import RecentAiConversation from '@/components/patients/RecentAiConversation'
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -30,7 +31,7 @@ interface ToothState {
   history?: { date: string; changeType: string; item: string; oldStatus?: string; newStatus: string }[]
 }
 
-type ActiveTab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline'
+type ActiveTab = 'staff' | 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline'
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -1856,6 +1857,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
 
   const tabs: { key: ActiveTab; label: string; icon: React.ElementType }[] = [
     { key: 'timeline',     label: 'Timeline',       icon: Activity   },
+    { key: 'staff',        label: 'Staff Messages', icon: FileText },
     { key: 'overview',     label: 'Overview',        icon: User       },
     { key: 'appointments', label: 'Appointments',    icon: Calendar   },
     { key: 'dental',       label: 'Dental Chart',    icon: Activity   },
@@ -1877,6 +1879,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
       case 'billing': return <BillingTab patient={patient} token={token} />
       case 'documents': return <DocumentsTab patientId={id!} token={token} />
       case 'activity': return <ActivityTab patientId={id!} token={token} />
+      case 'staff': return <PatientStaffInstructions patientId={id!} token={token} />
       case 'timeline': return <TimelineTab patientId={id!} />
     }
   }
