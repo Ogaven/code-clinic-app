@@ -76,6 +76,13 @@ export async function enrollEntityInSequence(
 ): Promise<EnrollResult> {
   const entity = await fetchEntity(entityType, entityId)
   if (!entity) return { enrolled: false, reason: 'entity_not_found' }
+  // Recall enrollment is clinical, not just a CRM tag: reject stale or
+  // manually changed statuses unless a qualifying completed hygiene visit
+  // and staff-set interval independently establish that the patient is due.
+  if (entityType === 'PATIENT' && sequence.triggerEventType === 'recall_status_changed') {
+    const { isConfirmedRecallDue } = await import('./recall-eligibility.service')
+    if (!(await isConfirmedRecallDue(entityId))) return { enrolled: false, reason: 'excluded' }
+  }
 
   const exclusionRule = safeParse<Record<string, FieldMatcher>>(sequence.exclusionRule)
   if (exclusionRule && ruleMatchesEntity(exclusionRule, entity)) {
