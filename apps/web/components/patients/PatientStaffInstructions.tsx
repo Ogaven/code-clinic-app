@@ -11,6 +11,7 @@ export default function PatientStaffInstructions({ patientId, token }: { patient
   const [message, setMessage] = useState('')
   const [replyTo, setReplyTo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [viewer, setViewer] = useState<{ id: string; role: string } | null>(null)
   const [error, setError] = useState('')
   const url = `${ROOT}${patientId}/staff-instructions`
   const refresh = useCallback(async () => {
@@ -21,9 +22,12 @@ export default function PatientStaffInstructions({ patientId, token }: { patient
     setEntries(await items.json())
     setPeople(await staff.json())
   }, [token, url])
+  useEffect(() => {
+    try { const u = JSON.parse(localStorage.getItem('cc_user') || '{}'); setViewer({ id: u.id, role: u.role }) } catch { setViewer(null) }
+  }, [])
   useEffect(() => { refresh().catch(e => setError(e.message)) }, [refresh])
   async function post() {
-    if (!token || !recipient || !message.trim()) return
+    if (!token || !recipient || !message.trim() || busy) return
     setBusy(true); setError('')
     try {
       const response = await fetch(url, { method: 'POST',
@@ -35,7 +39,7 @@ export default function PatientStaffInstructions({ patientId, token }: { patient
     finally { setBusy(false) }
   }
   async function markHandled(id: string) {
-    if (!token) return
+    if (!token || busy) return
     setBusy(true); setError('')
     try {
       const response = await fetch(`${url}/${id}/handled`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
@@ -54,8 +58,8 @@ export default function PatientStaffInstructions({ patientId, token }: { patient
       <p className="whitespace-pre-wrap break-words dark:text-white">{e.message}</p>
       <p className="text-xs text-gray-500">To: {people.find(p => p.id === e.recipientId)?.firstName || 'Staff'} {e.replyToId ? '· Reply' : ''}</p>
       <div className="flex gap-4 text-sm">
-        <button type="button" className="text-blue-600" onClick={() => { setReplyTo(e.id); setRecipient(e.userId) }}>Reply</button>
-        {handled.has(e.id) ? <span className="text-green-600">Handled</span> : <button type="button" disabled={busy} className="text-green-600 disabled:opacity-50" onClick={() => markHandled(e.id)}>Mark handled</button>}
+        {(viewer?.role === 'ADMIN' || viewer?.id === e.userId || viewer?.id === e.recipientId) && <button type="button" className="text-blue-600" onClick={() => { setReplyTo(e.id); setRecipient(e.userId) }}>Reply</button>}
+        {handled.has(e.id) ? <span className="text-green-600">Handled</span> : (viewer?.role === 'ADMIN' || viewer?.id === e.recipientId) ? <button type="button" disabled={busy} className="text-green-600 disabled:opacity-50" onClick={() => markHandled(e.id)}>Mark handled</button> : <span className="text-gray-500">Pending</span>}
       </div>
     </article>)}
     <div className="border rounded-xl p-4 space-y-3 dark:border-white/10">
