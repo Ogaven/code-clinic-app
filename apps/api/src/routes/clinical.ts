@@ -577,6 +577,9 @@ router.get('/patients/:id/activity', requireAuth, async (req, res) => {
 router.post('/patients/:id/activity', requireAuth, clinicalStaff, async (req, res) => {
   try {
     const { action, metadata } = req.body
+    if (action === STAFF_INSTRUCTION || action === STAFF_INSTRUCTION_HANDLED) {
+      res.status(400).json({ error: 'Use the internal staff instruction workflow' }); return
+    }
     await logActivity(req.params.id, req.user!.id, `${req.user!.firstName} ${req.user!.lastName}`, action, metadata)
     res.status(201).json({ message: 'Logged' })
   } catch (e) {
