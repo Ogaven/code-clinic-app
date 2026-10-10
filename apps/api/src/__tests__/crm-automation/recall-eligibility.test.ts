@@ -5,7 +5,7 @@ vi.mock('../../lib/prisma', () => ({ prisma: prismaMock }))
 import { isConfirmedRecallDue } from '../../crm-automation/recall-eligibility.service'
 
 describe('clinical recall outbound gate', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('allows only a confirmed qualifying hygiene recall', async () => {
     prismaMock.$queryRaw.mockResolvedValue([{ eligible: true }])
