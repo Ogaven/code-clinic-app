@@ -452,6 +452,27 @@ const STAFF_INSTRUCTION = 'STAFF_INTERNAL_INSTRUCTION'
 const STAFF_INSTRUCTION_HANDLED = 'STAFF_INTERNAL_INSTRUCTION_HANDLED'
 const STAFF_ROLES = ['DOCTOR', 'RECEPTIONIST', 'ADMIN']
 
+router.get('/patients/:id/staff-instructions/recipients', requireAuth, clinicalStaff, async (req, res) => {
+  try {
+    const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, select: { id: true } })
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+    const users = await prisma.user.findMany({
+      where: { isActive: true, role: { in: ['ADMIN', 'DOCTOR', 'RECEPTIONIST'] } },
+      select: { id: true, firstName: true, lastName: true, role: true, doctor: { select: { id: true } } },
+    })
+    const doctorIds = users.flatMap(user => user.doctor ? [user.doctor.id] : [])
+    const appointments = await prisma.appointment.findMany({
+      where: { patientId: patient.id, doctorId: { in: doctorIds } }, select: { doctorId: true },
+    })
+    const assigned = new Set(appointments.map(appointment => appointment.doctorId))
+    res.json(users.filter(user => user.role !== 'DOCTOR' || (user.doctor && assigned.has(user.doctor.id)))
+      .map(({ id, firstName, lastName, role }) => ({ id, firstName, lastName, role })))
+  } catch (error) {
+    console.error('[StaffInstructions] recipient lookup failed', error)
+    res.status(500).json({ error: 'Failed to list recipients' })
+  }
+})
+
 router.get('/patients/:id/staff-instructions', requireAuth, clinicalStaff, async (req, res) => {
   try {
     const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, select: { id: true } })
