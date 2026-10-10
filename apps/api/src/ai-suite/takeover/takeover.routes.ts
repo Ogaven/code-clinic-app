@@ -313,7 +313,7 @@ router.get('/posts', adminAndReceptionist, async (req, res) => {
       where: { channel },
       orderBy: { updatedAt: 'desc' },
       include: {
-        messages: { orderBy: { createdAt: 'asc' } },
+        messages: { where: { role: { in: ['USER', 'AGENT'] } }, orderBy: { createdAt: 'asc' } },
       },
     })
 
