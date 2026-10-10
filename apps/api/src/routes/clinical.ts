@@ -452,6 +452,49 @@ const STAFF_INSTRUCTION = 'STAFF_INTERNAL_INSTRUCTION'
 const STAFF_INSTRUCTION_HANDLED = 'STAFF_INTERNAL_INSTRUCTION_HANDLED'
 const STAFF_ROLES = ['DOCTOR', 'RECEPTIONIST', 'ADMIN']
 
+// Admin-only clinic-wide worklist. This endpoint deliberately returns internal events only.
+router.get('/staff-instructions/worklist', requireAuth, async (req, res) => {
+  if (req.user?.role !== 'ADMIN') { res.status(403).json({ error: 'Admin access required' }); return }
+  try {
+    const rows = await prisma.patientActivity.findMany({
+      where: { action: { in: [STAFF_INSTRUCTION, STAFF_INSTRUCTION_HANDLED] } },
+      orderBy: { createdAt: 'desc' },
+      take: 2000,
+      select: { id: true, patientId: true, userId: true, userName: true, action: true, metadata: true, createdAt: true },
+    })
+    const handled = new Set<string>()
+    const instructions: Array<Record<string, unknown>> = []
+    for (const row of rows) {
+      let data: Record<string, unknown> = {}
+      try { data = JSON.parse(row.metadata || '{}') } catch { /* malformed legacy data */ }
+      if (row.action === STAFF_INSTRUCTION_HANDLED) {
+        if (typeof data.instructionId === 'string') handled.add(data.instructionId)
+      } else {
+        instructions.push({ id: row.id, patientId: row.patientId, userId: row.userId,
+          userName: row.userName, createdAt: row.createdAt, message: data.message,
+          recipientId: data.recipientId, replyToId: data.replyToId })
+      }
+    }
+    // Resolve status from the full selected window, not the order of event appearance.
+    const patientIds = [...new Set(instructions.map(row => String(row.patientId)))]
+    const recipientIds = [...new Set(instructions.map(row => String(row.recipientId || '')).filter(Boolean))]
+    const [patients, recipients] = await Promise.all([
+      prisma.patient.findMany({ where: { id: { in: patientIds } }, select: { id: true, firstName: true, lastName: true } }),
+      prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { id: true, firstName: true, lastName: true } }),
+    ])
+    const patientNames = new Map(patients.map(p => [p.id, [p.firstName, p.lastName].filter(Boolean).join(' ')]))
+    const recipientNames = new Map(recipients.map(p => [p.id, [p.firstName, p.lastName].filter(Boolean).join(' ')]))
+    res.json({ items: instructions.map(row => ({
+      ...row, handled: handled.has(String(row.id)),
+      patientName: patientNames.get(String(row.patientId)) || 'Patient',
+      recipientName: recipientNames.get(String(row.recipientId)) || 'Staff',
+    })), limited: rows.length === 2000 })
+  } catch (error) {
+    console.error('[StaffInstructions] worklist failed', error)
+    res.status(500).json({ error: 'Failed to load treatment coordination worklist' })
+  }
+})
+
 router.get('/patients/:id/staff-instructions/recipients', requireAuth, clinicalStaff, async (req, res) => {
   try {
     const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, select: { id: true } })
