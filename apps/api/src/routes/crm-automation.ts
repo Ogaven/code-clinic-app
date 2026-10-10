@@ -9,7 +9,7 @@ import { listTreatmentContactAttempts, recordTreatmentContactAttempt, validateCo
 import { requireAuth } from '../middleware/auth'
 import { adminOnly, clinicalStaff, adminAndReceptionist, accountsOrAdmin } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
-import { requireDoctorPatientAccess } from '../lib/doctor-access'
+import { requireDoctorPatientAccess, patientVisibleToUser } from '../lib/doctor-access'
 import { applyPatientTagUpdate, runDailyPatientTagDerivation, type PatientTagUpdateInput } from '../crm-automation/patient-tags.service'
 import { recordConsent, getConsentHistory, type ConsentSource, type ConsentStatus } from '../crm-automation/consent-log.service'
 import { assignCollectionsOwner, listCollectionsCases, realOutstandingBalancePatients } from '../crm-automation/collections.service'
@@ -507,6 +507,16 @@ router.post('/patient-engagement/treatment-followup/:patientId/assign', requireA
 // Append-only internal outreach log. No automatic messaging or stage changes.
 router.get('/patient-engagement/treatment-followup/plans/:planId/attempts', requireAuth, clinicalStaff, async (req: Request, res: Response) => {
   try {
+    // Doctors may read only histories belonging to their own patients.
+    // Resolve the plan's patient ID first; never pass a plan ID to the patient guard.
+    if (req.user!.role === 'DOCTOR') {
+      const plan = await prisma.treatmentPlan.findUnique({
+        where: { id: req.params.planId }, select: { patientId: true },
+      })
+      if (!plan || !(await patientVisibleToUser(prisma, req.user!, plan.patientId))) {
+        res.status(404).json({ error: 'Treatment plan not found' }); return
+      }
+    }
     const attempts = await listTreatmentContactAttempts(req.params.planId)
     if (!attempts) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     res.json(attempts)
