@@ -563,7 +563,7 @@ router.post('/patients/:id/staff-instructions/:instructionId/handled', requireAu
 router.get('/patients/:id/activity', requireAuth, async (req, res) => {
   try {
     const activities = await prisma.patientActivity.findMany({
-      where: { patientId: req.params.id },
+      where: { patientId: req.params.id, action: { notIn: [STAFF_INSTRUCTION, STAFF_INSTRUCTION_HANDLED] } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     })
