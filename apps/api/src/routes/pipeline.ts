@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma'
 import { authenticatedDoctorId } from '../lib/doctor-access'
 import { checkAndConvertLeadOnTreatmentStart, checkAndConvertLeadsForPatients } from '../crm-automation/lead-patient-link.service'
 import { syncTreatmentPlanStatusFromPipeline } from '../crm-automation/patient-tags.service'
+import { checkTreatmentFollowUpTransition } from '../crm-automation/treatment-followup-transition-guard.service'
 import { logAudit } from '../services/audit.service'
 import { notifyUsers } from '../services/notification.service'
 import { parseFollowUpFields, NON_ACTIONABLE_STATUSES } from '../utils/treatment-followup'
@@ -83,6 +84,15 @@ const VALID_STAGES = [
 // (apps/web/.../patients/[id]/page.tsx) and Case Acceptance's report (reports.ts).
 // Kept in sync deliberately — this is the shared source of truth all three read.
 const VALID_STATUSES = ['Planned', 'In Progress', 'Completed', 'On Hold', 'Declined', 'Cancelled']
+
+function followUpAttemptError(attemptCount: number, minimumAttempts: number) {
+  return {
+    error: `Record at least ${minimumAttempts} contact attempts before moving an active treatment follow-up to Consultation or On Hold`,
+    code: 'TREATMENT_FOLLOWUP_ATTEMPTS_REQUIRED',
+    attemptCount,
+    minimumAttempts,
+  }
+}
 
 // ── Africa/Kampala calendar boundaries ──────────────────────────────────────
 // Kampala is a fixed UTC+3 offset with no DST, so "local midnight" for any
@@ -304,8 +314,18 @@ router.patch('/treatment/:id/stage', requireAuth, async (req, res) => {
     // an actual A->B change, never a no-op re-save of the same stage.
     const before = await prisma.treatmentPlan.findFirst({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
-      select: { stage: true, patientId: true },
+      select: { id: true, stage: true, patientId: true, followUpAt: true },
     })
+    if (!before) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+
+    // Only active follow-up cases are gated. Returning to Consultation is a
+    // manual follow-up disposition, so require the clinic's three separately
+    // recorded contact attempts before allowing the transition.
+    if (stage === 'Consulted' && before.stage !== stage && before.followUpAt) {
+      const check = await checkTreatmentFollowUpTransition(before)
+      if (!check.allowed) { res.status(409).json(followUpAttemptError(check.attemptCount, check.minimumAttempts)); return }
+    }
+
     const result = await prisma.treatmentPlan.updateMany({ where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) }, data: { stage } })
     if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: req.params.id, entityName: `Pipeline stage -> ${stage}`, req })
@@ -313,7 +333,7 @@ router.patch('/treatment/:id/stage', requireAuth, async (req, res) => {
     // Staff operational notification — patient accepted treatment, reception
     // needs to schedule it. Only on the actual transition into this stage,
     // never re-fired for a plan that was already there.
-    if (before && before.stage !== stage && stage === 'Accepted & Unscheduled') {
+    if (before.stage !== stage && stage === 'Accepted & Unscheduled') {
       notifyTreatmentNeedsScheduling(before.patientId).catch(() => {})
     }
 
@@ -353,8 +373,19 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
     // be detected as an actual A->B change below (updateMany doesn't return rows).
     const before = await prisma.treatmentPlan.findFirst({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
-      select: { doctorId: true, patientId: true },
+      select: { id: true, doctorId: true, patientId: true, status: true, followUpAt: true },
     })
+    if (!before) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+
+    // A plan can be put On Hold and assigned its first follow-up in the same
+    // request. That initial setup must remain possible. The three-attempt gate
+    // applies only when an already-active follow-up case is manually moved to
+    // On Hold after outreach has begun.
+    if (status === 'On Hold' && before.status !== status && before.followUpAt) {
+      const check = await checkTreatmentFollowUpTransition(before)
+      if (!check.allowed) { res.status(409).json(followUpAttemptError(check.attemptCount, check.minimumAttempts)); return }
+    }
+
     const result = await prisma.treatmentPlan.updateMany({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
       data:  { status, ...followUpData },
@@ -364,7 +395,7 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
 
     // Staff operational notification — a clinician was newly assigned/
     // reassigned to this case in the same request that changed status.
-    if (before && 'doctorId' in followUpData && followUpData.doctorId && followUpData.doctorId !== before.doctorId) {
+    if ('doctorId' in followUpData && followUpData.doctorId && followUpData.doctorId !== before.doctorId) {
       notifyDoctorAssigned(followUpData.doctorId, before.patientId).catch(() => {})
     }
 
@@ -491,6 +522,17 @@ router.patch('/treatment/bulk-status', requireAuth, async (req, res) => {
     const doctorId = await authenticatedDoctorId(prisma, req.user!)
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
 
+    if (status === 'On Hold') {
+      const plansToCheck = await prisma.treatmentPlan.findMany({
+        where: { id: { in: ids }, ...(doctorId ? { doctorId } : {}), followUpAt: { not: null }, status: { not: 'On Hold' } },
+        select: { id: true, patientId: true, followUpAt: true },
+      })
+      for (const plan of plansToCheck) {
+        const check = await checkTreatmentFollowUpTransition(plan)
+        if (!check.allowed) { res.status(409).json({ ...followUpAttemptError(check.attemptCount, check.minimumAttempts), treatmentPlanId: plan.id }); return }
+      }
+    }
+
     // CRM Automation (Part N) — fetch the affected patients BEFORE the bulk
     // write (updateMany doesn't return rows), so a bulk "In Progress" move
     // auto-converts a matching QUALIFIED lead per affected patient exactly
@@ -548,6 +590,17 @@ router.patch('/treatment/bulk', requireAuth, async (req, res) => {
     if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
     const doctorId = await authenticatedDoctorId(prisma, req.user!)
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+
+    if (stage === 'Consulted') {
+      const plansToCheck = await prisma.treatmentPlan.findMany({
+        where: { id: { in: ids }, ...(doctorId ? { doctorId } : {}), followUpAt: { not: null }, stage: { not: 'Consulted' } },
+        select: { id: true, patientId: true, followUpAt: true },
+      })
+      for (const plan of plansToCheck) {
+        const check = await checkTreatmentFollowUpTransition(plan)
+        if (!check.allowed) { res.status(409).json({ ...followUpAttemptError(check.attemptCount, check.minimumAttempts), treatmentPlanId: plan.id }); return }
+      }
+    }
 
     // CRM Automation (Part C) — fetched before the write, same shape as bulk-status.
     const affectedPatientIdsForSync = await prisma.treatmentPlan.findMany({
