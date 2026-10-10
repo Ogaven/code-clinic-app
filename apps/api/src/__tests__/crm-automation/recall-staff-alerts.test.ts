@@ -12,7 +12,7 @@ describe('staff-only recall digest', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     prismaMock.$queryRaw.mockResolvedValue([{ count: 2n }])
-    prismaMock.user.findMany.mockResolvedValue([{ id: 'admin-1' }])
+    prismaMock.user.findMany.mockResolvedValue([{ id: 'admin-1', role: 'ADMIN' }])
     prismaMock.notification.findFirst.mockResolvedValue(null)
     prismaMock.notification.create.mockResolvedValue({ id: 'notice-1' })
   })
@@ -29,10 +29,23 @@ describe('staff-only recall digest', () => {
     expect(sql).toContain('p."recallInterval"')
     expect(prismaMock.user.findMany).toHaveBeenCalledWith({
       where: { isActive: true, role: { in: ['ADMIN', 'RECEPTIONIST'] } },
-      select: { id: true },
+      select: { id: true, role: true },
     })
     expect(prismaMock.notification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ userId: 'admin-1', type: 'SYSTEM', href: '/crm/recall' }),
+    })
+  })
+
+  it('links receptionist alerts to the receptionist recall workspace', async () => {
+    prismaMock.user.findMany.mockResolvedValue([{ id: 'reception-1', role: 'RECEPTIONIST' }])
+    const result = await checkDailyRecallStaffAlerts(new Date('2026-10-09T06:00:00Z'))
+    expect(result).toEqual({ confirmedDue: 2, notified: 1 })
+    expect(prismaMock.notification.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({ userId: 'reception-1', href: '/receptionist/crm/recall' }),
+      select: { id: true },
+    })
+    expect(prismaMock.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ userId: 'reception-1', href: '/receptionist/crm/recall' }),
     })
   })
 

@@ -34,12 +34,12 @@ export async function checkDailyRecallStaffAlerts(now = new Date()): Promise<{ c
   if (confirmedDue === 0) return { confirmedDue, notified: 0 }
   const recipients = await prisma.user.findMany({
     where: { isActive: true, role: { in: ['ADMIN', 'RECEPTIONIST'] } },
-    select: { id: true },
+    select: { id: true, role: true },
   })
   const title = `Daily recall review · ${day}`
-  const href = '/crm/recall'
   let notified = 0
   for (const user of recipients) {
+    const href = user.role === 'RECEPTIONIST' ? '/receptionist/crm/recall' : '/crm/recall'
     const existing = await prisma.notification.findFirst({ where: { userId: user.id, title, href }, select: { id: true } })
     if (existing) continue
     await prisma.notification.create({
