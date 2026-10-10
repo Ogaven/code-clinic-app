@@ -489,6 +489,13 @@ router.post('/patients/:id/staff-instructions', requireAuth, clinicalStaff, asyn
     if (!recipient || !recipient.isActive || !STAFF_ROLES.includes(recipient.role)) {
       res.status(400).json({ error: 'Choose an active doctor, receptionist or admin' }); return
     }
+    if (recipient.role === 'DOCTOR') {
+      const doctorId = await prisma.doctor.findUnique({ where: { userId: recipient.id }, select: { id: true } })
+      const assigned = doctorId && await prisma.appointment.findFirst({
+        where: { doctorId: doctorId.id, patientId: patient.id }, select: { id: true },
+      })
+      if (!assigned) { res.status(400).json({ error: 'The selected doctor is not assigned to this patient' }); return }
+    }
     if (replyToId) {
       const parent = await prisma.patientActivity.findFirst({
         where: { id: replyToId, patientId: patient.id, action: STAFF_INSTRUCTION },
@@ -528,7 +535,7 @@ router.post('/patients/:id/staff-instructions/:instructionId/handled', requireAu
     if (!instruction) { res.status(404).json({ error: 'Instruction not found' }); return }
     let recipientId = ''
     try { recipientId = JSON.parse(instruction.metadata || '{}').recipientId || '' } catch { /* ignore */ }
-    if (req.user!.role !== 'ADMIN' && req.user!.id !== recipientId && req.user!.id !== '') {
+    if (req.user!.role !== 'ADMIN' && req.user!.id !== recipientId) {
       res.status(403).json({ error: 'Only the assigned recipient or admin may mark this handled' }); return
     }
     const existing = await prisma.patientActivity.findMany({
