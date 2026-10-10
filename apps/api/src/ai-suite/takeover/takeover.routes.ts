@@ -290,11 +290,17 @@ router.patch('/channel-toggles', adminAndReceptionist, async (req, res) => {
 })
 
 // GET /ai-suite/conversations/:conversationId/messages
-// Returns all messages for a conversation in chronological order.
+// Default inbox timeline contains customer-visible USER/AGENT messages only.
+// Staff may explicitly request internal SYSTEM audit events via ?includeInternal=true.
+// Never expose internal notes through the default message timeline.
 router.get('/conversations/:conversationId/messages', adminAndReceptionist, async (req, res) => {
   try {
+    const includeInternal = req.query.includeInternal === 'true'
     const messages = await prisma.aiMessage.findMany({
-      where:   { conversationId: req.params.conversationId },
+      where: {
+        conversationId: req.params.conversationId,
+        ...(includeInternal ? {} : { role: { in: ['USER', 'AGENT'] } }),
+      },
       orderBy: { createdAt: 'asc' },
     })
     res.json(messages)
