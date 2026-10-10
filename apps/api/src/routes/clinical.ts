@@ -485,7 +485,7 @@ router.get('/patients/:id/staff-instructions', requireAuth, clinicalStaff, async
     const messages = rows.map(row => {
       let data: Record<string, unknown> = {}
       try { data = JSON.parse(row.metadata || '{}') } catch { /* legacy malformed metadata */ }
-      return { id: row.id, userId: row.userId, userName: row.userName, action: row.action, createdAt: row.createdAt, ...data }
+      return { ...data, id: row.id, userId: row.userId, userName: row.userName, action: row.action, createdAt: row.createdAt }
     })
     res.json(messages)
   } catch (error) {
