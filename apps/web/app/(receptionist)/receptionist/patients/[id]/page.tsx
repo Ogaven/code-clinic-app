@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import TimelineTab from '@/components/patients/TimelineTab'
+import PatientStaffInstructions from '@/components/patients/PatientStaffInstructions'
 import GuardianSection from '@/components/patients/GuardianSection'
 import RecentAiConversation from '@/components/patients/RecentAiConversation'
 import CrmTagsTab from '@/components/patients/CrmTagsTab'
@@ -18,10 +19,11 @@ import { formatDob, ageFromDob } from '@/lib/dob'
 
 const toProperCase = (str: string) => str.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 
-type Tab = 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline' | 'crm'
+type Tab = 'staff' | 'overview' | 'appointments' | 'dental' | 'perio' | 'treatment' | 'notes' | 'billing' | 'documents' | 'activity' | 'timeline' | 'crm'
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'timeline',      label: 'Timeline',        icon: Activity   },
+  { key: 'staff',         label: 'Staff Messages',  icon: FileText   },
   { key: 'overview',      label: 'Overview',        icon: User       },
   { key: 'appointments',  label: 'Appointments',    icon: Calendar   },
   { key: 'dental',        label: 'Dental Chart',    icon: Star       },
@@ -1683,6 +1685,7 @@ ${notesHtml || '<p class="empty">No notes recorded for this patient.</p>'}
         {tab === 'billing'      && <BillingTab patientId={id} patient={patient} />}
         {tab === 'documents'    && <DocumentsTab patientId={id} />}
         {tab === 'activity'     && <ActivityTab patientId={id} />}
+        {tab === 'staff'        && <PatientStaffInstructions patientId={id} token={token} />}
         {tab === 'timeline'     && <TimelineTab patientId={id} />}
         {tab === 'crm'          && <CrmTagsTab patientId={id} token={token} />}
       </div>
