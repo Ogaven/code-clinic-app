@@ -83,6 +83,21 @@ export async function processDueScheduledTouches(limit = 200): Promise<{ process
       continue
     }
 
+    // Re-check clinical eligibility immediately before any recall send.
+    // A booked hygiene visit, interval removal, deactivation, or stale tag
+    // must prevent an already-enrolled patient from receiving a recall.
+    if (touch.patientId && touch.touchTemplate.sequence.triggerEventType === 'recall_status_changed') {
+      const { isConfirmedRecallDue } = await import('./recall-eligibility.service')
+      if (!(await isConfirmedRecallDue(touch.patientId))) {
+        await prisma.scheduledTouch.update({
+          where: { id: touch.id },
+          data: { status: 'SKIPPED', resultDetail: 'recall_clinical_eligibility_not_confirmed' },
+        })
+        skipped++
+        continue
+      }
+    }
+
     const recipient = await resolveRecipient(touch)
     if (!recipient) {
       await prisma.scheduledTouch.update({
