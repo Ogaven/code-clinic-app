@@ -22,7 +22,7 @@ const pageTitles: Record<string, string> = {
   '/ai-suite/knowledge-base': 'Knowledge Base', '/ai-suite/settings': 'AI Settings', '/ai-suite/followup-dashboard': 'Follow-ups',
   '/ai-suite/confirmation-dashboard': 'Confirmations', '/ai-suite/analytics': 'Analytics & Costs', '/campaigns': 'Campaigns',
   '/leads': 'Leads', '/quiz-funnels': 'Quiz Funnels', '/treatment-pipeline': 'Treatment Pipeline', '/referrals': 'Referrals', '/settings': 'Settings',
-  '/profile': 'My Profile',
+  '/treatment-coordination': 'Treatment Coordination', '/profile': 'My Profile',
   '/crm': 'CRM', '/crm/needs-attention': 'Needs Attention', '/crm/follow-ups': 'Follow-ups',
   '/crm/sources': 'Sources & Campaigns', '/crm/revenue': 'Revenue', '/crm/reports': 'CRM Reports',
 }
