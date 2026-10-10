@@ -520,9 +520,17 @@ router.post('/patients/:id/staff-instructions', requireAuth, clinicalStaff, asyn
     if (replyToId) {
       const parent = await prisma.patientActivity.findFirst({
         where: { id: replyToId, patientId: patient.id, action: STAFF_INSTRUCTION },
-        select: { id: true },
+        select: { id: true, userId: true, metadata: true },
       })
       if (!parent) { res.status(400).json({ error: 'Reply target not found for this patient' }); return }
+      let parentRecipientId = ''
+      try { parentRecipientId = JSON.parse(parent.metadata || '{}').recipientId || '' } catch { /* ignore */ }
+      if (req.user!.role !== 'ADMIN' && req.user!.id !== parent.userId && req.user!.id !== parentRecipientId) {
+        res.status(403).json({ error: 'Only participants or admin may reply to this instruction' }); return
+      }
+      if (req.user!.role !== 'ADMIN' && recipientId !== parent.userId && recipientId !== parentRecipientId) {
+        res.status(400).json({ error: 'Replies must stay between the original participants' }); return
+      }
     }
     const row = await prisma.patientActivity.create({
       data: {
