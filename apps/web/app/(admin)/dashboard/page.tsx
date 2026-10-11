@@ -389,29 +389,6 @@ export default function DashboardPage() {
   return (
     <div className="animate-fade-in space-y-3">
 
-      {/* Treatment coordination belongs to Admin: no separate staff role or login. */}
-      <section aria-label="Treatment coordination" className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-gray-900">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Treatment Coordination</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Admin workspaces for recalls, patient contact attempts and treatment cases. Staff review and act manually.</p>
-          </div>
-          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-400/10 dark:text-blue-200">Admin · Internal only</span>
-        </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {[
-            { title: 'Recall worklist', detail: 'Review hygiene recalls due and overdue', href: '/crm/recall' },
-            { title: 'Treatment follow-ups', detail: 'Review dentist notes, contact attempts and reminders', href: '/crm/treatment-followup' },
-            { title: 'On Hold & pipeline', detail: 'Review treatment plans and their current status', href: '/treatment-pipeline' },
-          ].map(item => (
-            <Link key={item.href} href={item.href} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 p-3 transition hover:border-blue-300 hover:bg-blue-50/50 dark:border-white/10 dark:hover:bg-white/5">
-              <span><span className="block text-sm font-semibold text-gray-800 dark:text-white">{item.title}</span><span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{item.detail}</span></span>
-              <ArrowUpRight size={16} className="shrink-0 text-blue-600" />
-            </Link>
-          ))}
-        </div>
-      </section>
-
       {/* ═══ ROW 1 — Welcome + actions | KPI | KPI | KPI ═══ */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_1fr_1fr_1fr]">
         <div className="flex flex-col justify-center">
@@ -450,7 +427,7 @@ export default function DashboardPage() {
             all-time snapshot of the current pipeline, not a "today" figure. */}
         <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Treatment Pipeline <span className="font-normal normal-case text-gray-400 dark:text-white/30">· All time</span></p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Treatment Coordination <span className="font-normal normal-case text-gray-400 dark:text-white/30">· All time</span></p>
             <Link href="/treatment-pipeline" className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-300"><ArrowUpRight size={13} /></Link>
           </div>
           <div className="mt-2 flex items-center gap-3">
