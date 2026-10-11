@@ -40,9 +40,9 @@ export default function TreatmentCoordinationPage() {
           <h3 className="font-semibold">Treatment follow-ups →</h3>
           <p className="mt-2 text-sm text-gray-500">Dentist instructions, reminder dates, patient contacts and documented follow-up attempts.</p>
         </Link>
-        <Link href="/treatment-pipeline" className="rounded-xl border p-4 hover:border-teal-600 hover:shadow-sm dark:border-white/10 dark:text-white">
+        <Link href="/treatment-pipeline?followUpFilter=on_hold" className="rounded-xl border p-4 hover:border-teal-600 hover:shadow-sm dark:border-white/10 dark:text-white">
           <h3 className="font-semibold">On-hold treatments →</h3>
-          <p className="mt-2 text-sm text-gray-500">Open the treatment pipeline and select the On Hold filter to review paused cases.</p>
+          <p className="mt-2 text-sm text-gray-500">Open the treatment pipeline with the On Hold filter applied to review paused cases.</p>
         </Link>
       </div>
     </section>
