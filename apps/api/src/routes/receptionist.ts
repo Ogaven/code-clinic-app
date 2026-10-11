@@ -238,6 +238,62 @@ router.put('/notifications/mark-read', requireAuth, async (req, res) => {
 })
 
 // ─── POST /receptionist/messages/send ────────────────────────
+// Internal one-to-one staff messaging. Every conversation is scoped to two users.
+router.get('/staff-messages/contacts', requireAuth, async (req, res) => {
+  try {
+    const role = req.user!.role
+    if (!['DOCTOR', 'ADMIN', 'RECEPTIONIST'].includes(role)) return res.status(403).json({ error: 'Forbidden' })
+    const roles = role === 'DOCTOR' ? ['ADMIN', 'RECEPTIONIST'] : ['DOCTOR', ...(role === 'ADMIN' ? ['RECEPTIONIST'] : ['ADMIN'])]
+    const users = await prisma.user.findMany({ where: { role: { in: roles as any }, isActive: true }, select: { id: true, firstName: true, lastName: true, role: true }, orderBy: [{ firstName: 'asc' }] })
+    res.json(users)
+  } catch { res.status(500).json({ error: 'Failed to load staff contacts' }) }
+})
+
+router.post('/staff-messages/send', requireAuth, async (req, res) => {
+  try {
+    const senderRole = req.user!.role
+    const { toUserId, body } = req.body
+    if (!['DOCTOR', 'ADMIN', 'RECEPTIONIST'].includes(senderRole)) return res.status(403).json({ error: 'Forbidden' })
+    if (typeof body !== 'string' || !body.trim() || body.length > 5000) return res.status(400).json({ error: 'Message must contain 1–5000 characters' })
+    if (typeof toUserId !== 'string' || toUserId === req.user!.id) return res.status(400).json({ error: 'Select a recipient' })
+    const recipient = await prisma.user.findFirst({ where: { id: toUserId, isActive: true }, select: { id: true, role: true } })
+    const allowed = senderRole === 'DOCTOR' ? ['ADMIN', 'RECEPTIONIST'] : senderRole === 'ADMIN' ? ['DOCTOR', 'RECEPTIONIST'] : ['DOCTOR', 'ADMIN']
+    if (!recipient || !allowed.includes(recipient.role)) return res.status(403).json({ error: 'Recipient not permitted' })
+    const msg = await (prisma as any).internalMessage.create({
+      data: { fromUserId: req.user!.id, toUserId: recipient.id, subject: 'Staff Communication', body: body.trim() },
+    })
+    await (prisma as any).notification.create({
+      data: { userId: recipient.id, type: 'MESSAGE', title: `Message from ${req.user!.firstName} ${req.user!.lastName}`, body: body.trim().slice(0, 120), href: recipient.role === 'DOCTOR' ? '/doctor/communication' : recipient.role === 'ADMIN' ? '/communication' : '/receptionist/communication' },
+    })
+    res.json(msg)
+  } catch { res.status(500).json({ error: 'Failed to send message' }) }
+})
+
+router.get('/staff-messages', requireAuth, async (req, res) => {
+  try {
+    if (!['DOCTOR', 'ADMIN', 'RECEPTIONIST'].includes(req.user!.role)) return res.status(403).json({ error: 'Forbidden' })
+    const userId = req.user!.id
+    // Legacy role-wide messages intentionally excluded from private chats.
+    const msgs = await (prisma as any).internalMessage.findMany({
+      where: { OR: [{ fromUserId: userId, toUserId: { not: null } }, { toUserId: userId }] },
+      orderBy: { createdAt: 'asc' }, take: 500,
+    })
+    const userIds = [...new Set(msgs.flatMap((m: any) => [m.fromUserId, m.toUserId].filter(Boolean)))] as string[]
+    const users = userIds.length ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, firstName: true, lastName: true, role: true } }) : []
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]))
+    res.json(msgs.map((m: any) => ({ ...m, fromUser: userMap[m.fromUserId] || null, toUser: m.toUserId ? userMap[m.toUserId] || null : null })))
+  } catch { res.status(500).json({ error: 'Failed to fetch messages' }) }
+})
+
+router.put('/staff-messages/:id/read', requireAuth, async (req, res) => {
+  try {
+    const msg = await (prisma as any).internalMessage.findFirst({ where: { id: req.params.id, toUserId: req.user!.id } })
+    if (!msg) return res.status(404).json({ error: 'Message not found' })
+    await (prisma as any).internalMessage.update({ where: { id: msg.id }, data: { isRead: true } })
+    res.json({ success: true })
+  } catch { res.status(500).json({ error: 'Failed to mark message read' }) }
+})
+
 router.post('/messages/send', requireAuth, async (req, res) => {
   try {
     const { toRole, toUserId, subject, body, patientTag } = req.body
