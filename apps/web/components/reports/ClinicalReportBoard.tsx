@@ -307,10 +307,10 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
       '',
       `✅ Total Scheduled: ${m.totalScheduled}`,
       `✅ Appointments Attended: ${m.appointmentsAttended}`,
-      `👁️ Patients Seen: ${m.totalSeen}`,
+      
       `🆕 New Patients: ${m.newPatients}`,
       `🔄 Active Patients: ${m.returningPatients}`,
-      `🔍 Review / Recall Visits: ${m.reviews} (attended appointments, not unique patients)`,
+      `🔍 Review Visits: ${m.reviews} (attended appointments, not unique patients)`,
       `✔️ Confirmed: ${m.confirmed}`,
       `⏳ Pending: ${m.pending}`,
       `❌ Cancelled: ${m.cancelled}`,
@@ -347,14 +347,12 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
       tooltip: 'Appointment reconciliation: Attended appointments + Confirmed + Pending + Cancelled + Rescheduled + No-Shows = Total Scheduled.' },
     { label: 'Appointments Attended',       value: m.appointmentsAttended,    color: '#059669', Icon: CheckCircle2,
       tooltip: 'Attended appointment count used in the Total Scheduled reconciliation. One patient can have more than one attended appointment.' },
-    { label: 'Patients Seen',               value: m.totalSeen,               color: '#10B981', Icon: UserCheck,
-      tooltip: 'Unique patients who attended at least one appointment in this period. Equals New Patients + Active Patients.' },
     { label: 'New Patients',                value: m.newPatients,             color: '#8B5CF6', Icon: UserPlus,
       tooltip: 'Patients whose very first attended visit at Code Clinic falls inside this period.' },
     { label: 'Active Patients',             value: m.returningPatients,       color: '#3B82F6', Icon: Users,
       tooltip: 'Existing Code Clinic patients (attended before this period) who attended again during this period.' },
-    { label: 'Review / Recall Visits',      value: m.reviews,                 color: '#F59E0B', Icon: RotateCcw,
-      tooltip: 'Number of attended review/recall appointments, not unique patients. These visits are already included in Appointments Attended; patients are counted distinctly in Patients Seen.' },
+    { label: 'Review Visits',      value: m.reviews,                 color: '#F59E0B', Icon: RotateCcw,
+      tooltip: 'Number of attended review appointments, not unique patients. These visits are already included in Appointments Attended; ' },
     { label: 'Confirmed',                   value: m.confirmed,               color: '#14B8A6', Icon: CheckCircle2, status: 'CONFIRMED' },
     { label: 'Pending',                     value: m.pending,                 color: '#94A3B8', Icon: Clock,        status: 'PENDING'   },
     { label: 'Cancelled',                   value: m.cancelled,               color: '#EF4444', Icon: XCircle,      status: 'CANCELLED' },
@@ -367,7 +365,7 @@ export default function ClinicalReportBoard({ patientBasePath = '/patients', bac
   ]
 
   const appointmentStats = STATS.filter(s => ['Total Scheduled', 'Appointments Attended', 'Confirmed', 'Pending', 'Cancelled', 'Rescheduled', 'No-Shows'].includes(s.label))
-  const patientStats = STATS.filter(s => ['Patients Seen', 'New Patients', 'Active Patients', 'Review / Recall Visits'].includes(s.label))
+  const patientStats = STATS.filter(s => ['New Patients', 'Active Patients', 'Review / Recall Visits'].includes(s.label))
 
   const weekEnd = weekStart ? addDays(weekStart, 6) : ''
 

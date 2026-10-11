@@ -391,7 +391,7 @@ router.get('/clinical', requireAuth, async (req, res) => {
     // subset of totalSeen, never double-counted against the reconciled
     // Confirmed/Pending/Cancelled/No-show/Seen buckets that sum to
     // totalScheduled above.
-    const reviews           = appts.filter((a: any) => ATTENDED_STATUSES.includes(a.status) && isReviewOrRecall(a.service)).length
+    const reviews           = appts.filter((a: any) => ATTENDED_STATUSES.includes(a.status) && isReview(a.service)).length
 
     // Cancelled / No-show that haven't rebooked any future appointment, plus
     // Pending appointments whose scheduled time has already passed without
@@ -493,7 +493,7 @@ router.get('/clinical', requireAuth, async (req, res) => {
       seen: [...patientRows.entries()].filter(([id]) => classifiedIds.has(id)).map(([, a]) => toRow(a)),
       new: [...patientRows.entries()].filter(([id]) => newIds.has(id)).map(([, a]) => toRow(a)),
       active: [...patientRows.entries()].filter(([id]) => returningIds.has(id)).map(([, a]) => toRow(a)),
-      reviews: (appts as any[]).filter(a => ATTENDED_STATUSES.includes(a.status) && isReviewOrRecall(a.service)).map(toRow),
+      reviews: (appts as any[]).filter(a => ATTENDED_STATUSES.includes(a.status) && isReview(a.service)).map(toRow),
     }
 
     res.json({
