@@ -39,7 +39,6 @@ const NAV: NavLink[] = [
   ] },
   { label: 'Treatments', children: [
     { label: 'Treatment Pipeline', href: '/treatment-pipeline' },
-    { label: 'Treatment Coordination', href: '/treatment-coordination' },
   ] },
   { label: 'Billing', children: [
     { label: 'Stocks', href: '/stocks' },
@@ -67,7 +66,6 @@ const NAV: NavLink[] = [
     { label: 'Patient Engagement', href: '/crm/recall', children: [
       { label: 'Recall', href: '/crm/recall' },
       { label: 'Treatment Follow-up', href: '/crm/treatment-followup' },
-      { label: 'Reactivation', href: '/crm/reactivation' },
       { label: 'Waitlist', href: '/waitlist' },
       { label: 'Reviews', href: '/crm/reviews' },
       { label: 'Collections', href: '/crm/collections' },

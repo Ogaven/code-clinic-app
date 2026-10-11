@@ -103,7 +103,6 @@ const NAV: NavLink[] = [
     { label: 'Patient Engagement', href: '/receptionist/crm/recall', permKey: 'patients', children: [
       { label: 'Recall', href: '/receptionist/crm/recall', permKey: 'patients' },
       { label: 'Treatment Follow-up', href: '/receptionist/crm/treatment-followup', permKey: 'patients' },
-      { label: 'Reactivation', href: '/receptionist/crm/reactivation', permKey: 'patients' },
       { label: 'Waitlist', href: '/receptionist/waitlist', permKey: 'patients' },
     ] },
   ] },
