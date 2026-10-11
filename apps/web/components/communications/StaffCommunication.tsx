@@ -25,8 +25,8 @@ export default function StaffCommunication({ role }: { role: Role }) {
     try {
       const headers = { Authorization: `Bearer ${token}` }
       const [cr, mr] = await Promise.all([
-        fetch('/api-proxy/receptionist/messages/contacts', { headers, cache: 'no-store' }),
-        fetch('/api-proxy/receptionist/messages', { headers, cache: 'no-store' }),
+        fetch('/api-proxy/receptionist/staff-messages/contacts', { headers, cache: 'no-store' }),
+        fetch('/api-proxy/receptionist/staff-messages', { headers, cache: 'no-store' }),
       ])
       if (!cr.ok || !mr.ok) throw Error('Sync failed')
       const [people, items] = await Promise.all([cr.json(), mr.json()])
@@ -56,7 +56,7 @@ export default function StaffCommunication({ role }: { role: Role }) {
     if (!unread.length) return
     const token = localStorage.getItem('cc_token')
     if (!token) return
-    void Promise.all(unread.map(m => fetch(`/api-proxy/receptionist/messages/${encodeURIComponent(m.id)}/read`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } })))
+    void Promise.all(unread.map(m => fetch(`/api-proxy/receptionist/staff-messages/${encodeURIComponent(m.id)}/read`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` } })))
       .then(() => setMessages(current => current.map(m => unread.some(u => u.id === m.id) ? { ...m, isRead: true } : m)))
   }, [selected, messages, me])
   async function send() {
@@ -66,7 +66,7 @@ export default function StaffCommunication({ role }: { role: Role }) {
     setBusy(true)
     const body = draft.trim()
     try {
-      const res = await fetch('/api-proxy/receptionist/messages/send', { method: 'POST',
+      const res = await fetch('/api-proxy/receptionist/staff-messages/send', { method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ toUserId: selected, body }) })
       if (!res.ok) throw Error('Send failed')
