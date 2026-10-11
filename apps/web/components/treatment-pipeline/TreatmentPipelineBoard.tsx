@@ -199,6 +199,11 @@ export default function TreatmentPipelineBoard({
   const [doctorFilter,   setDoctorFilter]   = useState('all')
   const [stageFilter,    setStageFilter]    = useState('all')
   const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilterKey>('all')
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('followUpFilter') === 'on_hold') {
+      setFollowUpFilter('on_hold')
+    }
+  }, [])
   const [doctors,        setDoctors]        = useState<Doctor[]>([])
   const [detailPlan,     setDetailPlan]     = useState<Plan | null>(null)
   const userRole = typeof window !== 'undefined' ? (JSON.parse(localStorage.getItem('cc_user') || '{}').role || '') : ''
