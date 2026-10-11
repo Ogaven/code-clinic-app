@@ -28,6 +28,24 @@ export default function TreatmentCoordinationPage() {
       <div><h1 className="text-2xl font-bold dark:text-white">Treatment Coordination</h1><p className="text-sm text-gray-500">Private patient-linked instructions between clinic staff. Never sent to patients.</p></div>
       <button type="button" onClick={() => { setLoading(true); void refresh() }} className="rounded-lg border px-4 py-2 text-sm dark:text-white">Refresh</button>
     </header>
+    <section aria-label="Treatment coordinator reports" className="space-y-3">
+      <h2 className="text-lg font-bold dark:text-white">Clinical coordination reports</h2>
+      <p className="text-sm text-gray-500">Open the live worklists directly. These are staff-only views and do not send patient messages.</p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Link href="/crm/recall" className="rounded-xl border p-4 hover:border-teal-600 hover:shadow-sm dark:border-white/10 dark:text-white">
+          <h3 className="font-semibold">Recall report →</h3>
+          <p className="mt-2 text-sm text-gray-500">Due and overdue hygiene recall patients, with confirmed and estimated intervals clearly distinguished.</p>
+        </Link>
+        <Link href="/crm/treatment-followup" className="rounded-xl border p-4 hover:border-teal-600 hover:shadow-sm dark:border-white/10 dark:text-white">
+          <h3 className="font-semibold">Treatment follow-ups →</h3>
+          <p className="mt-2 text-sm text-gray-500">Dentist instructions, reminder dates, patient contacts and documented follow-up attempts.</p>
+        </Link>
+        <Link href="/treatment-pipeline?status=ON_HOLD" className="rounded-xl border p-4 hover:border-teal-600 hover:shadow-sm dark:border-white/10 dark:text-white">
+          <h3 className="font-semibold">On-hold treatments →</h3>
+          <p className="mt-2 text-sm text-gray-500">Open the treatment pipeline to review cases currently on hold.</p>
+        </Link>
+      </div>
+    </section>
     <div className="grid grid-cols-2 gap-3">
       <div className="rounded-xl border p-4 dark:border-white/10"><p className="text-sm text-gray-500">Pending instructions</p><p className="text-3xl font-bold dark:text-white">{pending}</p></div>
       <div className="rounded-xl border p-4 dark:border-white/10"><p className="text-sm text-gray-500">Handled instructions</p><p className="text-3xl font-bold dark:text-white">{items.length - pending}</p></div>
