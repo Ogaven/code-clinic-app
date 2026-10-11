@@ -244,7 +244,7 @@ router.get('/messages/contacts', requireAuth, async (req, res) => {
     const role = req.user!.role
     if (!['DOCTOR', 'ADMIN', 'RECEPTIONIST'].includes(role)) return res.status(403).json({ error: 'Forbidden' })
     const roles = role === 'DOCTOR' ? ['ADMIN', 'RECEPTIONIST'] : ['DOCTOR', ...(role === 'ADMIN' ? ['RECEPTIONIST'] : ['ADMIN'])]
-    const users = await prisma.user.findMany({ where: { role: { in: roles as any }, isActive: true }, select: { id: true, firstName: true, lastName: true, role: true, avatarUrl: true }, orderBy: [{ firstName: 'asc' }] })
+    const users = await prisma.user.findMany({ where: { role: { in: roles as any }, isActive: true }, select: { id: true, firstName: true, lastName: true, role: true }, orderBy: [{ firstName: 'asc' }] })
     res.json(users)
   } catch { res.status(500).json({ error: 'Failed to load staff contacts' }) }
 })
