@@ -40,6 +40,7 @@ interface DashTrend {
 }
 interface PipelineEntry { count: number; totalUGX: number }
 interface DentalData { pipeline: Record<string, PipelineEntry> }
+interface TreatmentQueueSummary { followUps: Array<{ id: string }> }
 interface Appt {
   id: string; startAt: string; endAt?: string; status: string
   patient: { firstName: string; lastName: string }
@@ -67,7 +68,6 @@ const PIPELINE_STATUSES = [
   { key: 'In Progress', label: 'In Progress', color: '#D97706' },
   { key: 'Completed', label: 'Completed', color: '#059669' },
   { key: 'On Hold', label: 'On Hold', color: '#CA8A04' },
-  { key: 'Declined', label: 'Declined', color: '#E11D48' },
   { key: 'Cancelled', label: 'Cancelled', color: '#9CA3AF' },
 ]
 
@@ -231,6 +231,7 @@ export default function DashboardPage() {
   const [dashData, setDashData] = useState<DashData | null>(null)
   const [trend, setTrend] = useState<DashTrend | null>(null)
   const [dentalData, setDentalData] = useState<DentalData | null>(null)
+  const [treatmentQueue, setTreatmentQueue] = useState<TreatmentQueueSummary | null>(null)
   const [weekAppts, setWeekAppts] = useState<Appt[] | null>(null)
   const [todayAppts, setTodayAppts] = useState<Appt[] | null>(null)
   const [upcoming, setUpcoming] = useState<Appt[] | null>(null)
@@ -266,6 +267,13 @@ export default function DashboardPage() {
 
     fetch('/api-proxy/clinical/analytics/dental-dashboard', { headers: auth })
       .then(r => r.json()).then(d => { if (d && !d.error) setDentalData(d) }).catch(() => {})
+
+    // Same all-period follow-up queue used by the Treatment Pipeline board.
+    // Follow-ups overlap treatment statuses, so they are NOT added to the unique treatment total.
+    fetch('/api-proxy/pipeline/treatment?period=all', { headers: auth })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d?.followUps)) setTreatmentQueue({ followUps: d.followUps }) })
+      .catch(() => {})
 
     // This week's date range (Mon–Sun), real appointments, reused endpoint —
     // powers both the "Appointments This Week" breakdown and nothing else.
@@ -436,6 +444,10 @@ export default function DashboardPage() {
             <DistributionBar segments={pipelineCounts} total={pipelineTotal} />
           </div>
           <ChipLegend items={pipelineCounts} loading={!dentalData} />
+          <Link href="/treatment-pipeline" className="mt-2 flex items-center justify-between rounded-lg bg-violet-50 px-2 py-1.5 text-[11px] font-semibold text-violet-800 hover:bg-violet-100 dark:bg-violet-400/10 dark:text-violet-200">
+            <span>Follow Up · outstanding queue</span>
+            <span>{treatmentQueue ? treatmentQueue.followUps.length : '—'} <ArrowUpRight size={11} className="inline" /></span>
+          </Link>
         </div>
 
         {/* Card 3 — Patient Live Flow: same header language, real patient journey
