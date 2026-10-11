@@ -239,7 +239,7 @@ router.put('/notifications/mark-read', requireAuth, async (req, res) => {
 
 // ─── POST /receptionist/messages/send ────────────────────────
 // Internal one-to-one staff messaging. Every conversation is scoped to two users.
-router.get('/messages/contacts', requireAuth, async (req, res) => {
+router.get('/staff-messages/contacts', requireAuth, async (req, res) => {
   try {
     const role = req.user!.role
     if (!['DOCTOR', 'ADMIN', 'RECEPTIONIST'].includes(role)) return res.status(403).json({ error: 'Forbidden' })
@@ -249,7 +249,7 @@ router.get('/messages/contacts', requireAuth, async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to load staff contacts' }) }
 })
 
-router.post('/messages/send', requireAuth, async (req, res) => {
+router.post('/staff-messages/send', requireAuth, async (req, res) => {
   try {
     const senderRole = req.user!.role
     const { toUserId, body } = req.body
@@ -269,7 +269,7 @@ router.post('/messages/send', requireAuth, async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to send message' }) }
 })
 
-router.get('/messages', requireAuth, async (req, res) => {
+router.get('/staff-messages', requireAuth, async (req, res) => {
   try {
     if (!['DOCTOR', 'ADMIN', 'RECEPTIONIST'].includes(req.user!.role)) return res.status(403).json({ error: 'Forbidden' })
     const userId = req.user!.id
@@ -285,13 +285,118 @@ router.get('/messages', requireAuth, async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to fetch messages' }) }
 })
 
-router.put('/messages/:id/read', requireAuth, async (req, res) => {
+router.put('/staff-messages/:id/read', requireAuth, async (req, res) => {
   try {
     const msg = await (prisma as any).internalMessage.findFirst({ where: { id: req.params.id, toUserId: req.user!.id } })
     if (!msg) return res.status(404).json({ error: 'Message not found' })
     await (prisma as any).internalMessage.update({ where: { id: msg.id }, data: { isRead: true } })
     res.json({ success: true })
   } catch { res.status(500).json({ error: 'Failed to mark message read' }) }
+})
+
+router.post('/messages/send', requireAuth, async (req, res) => {
+  try {
+    const { toRole, toUserId, subject, body, patientTag } = req.body
+    const msg = await (prisma as any).internalMessage.create({
+      data: {
+        fromUserId: req.user!.id,
+        toRole,
+        toUserId,
+        subject,
+        body,
+        patientTag,
+      },
+    })
+
+    // Create notifications for recipients
+    if (toRole) {
+      const recipients = await prisma.user.findMany({ where: { role: toRole, isActive: true } })
+      await Promise.all(recipients.map((u) =>
+        (prisma as any).notification.create({
+          data: {
+            userId: u.id,
+            type: 'MESSAGE',
+            title: `Message from ${req.user!.firstName} ${req.user!.lastName}`,
+            body: body.slice(0, 120),
+            href: '/receptionist/communications',
+          },
+        })
+      ))
+    } else if (toUserId) {
+      await (prisma as any).notification.create({
+        data: {
+          userId: toUserId,
+          type: 'MESSAGE',
+          title: `Message from ${req.user!.firstName} ${req.user!.lastName}`,
+          body: body.slice(0, 120),
+          href: '/receptionist/communications',
+        },
+      })
+    }
+
+    res.json(msg)
+  } catch {
+    res.status(500).json({ error: 'Failed to send message' })
+  }
+})
+
+// ─── GET /receptionist/messages ──────────────────────────────
+router.get('/messages', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user!.id
+    const role   = req.user!.role
+
+    let where: any
+
+    if (role === 'RECEPTIONIST' || role === 'ADMIN') {
+      // Receptionists/admins see ALL messages to or from any doctor
+      const doctorUsers = await prisma.user.findMany({
+        where: { role: 'DOCTOR', isActive: true },
+        select: { id: true },
+      })
+      const doctorIds = doctorUsers.map(u => u.id)
+      where = {
+        OR: [
+          { fromUserId: { in: doctorIds } },
+          { toUserId:   { in: doctorIds } },
+        ],
+      }
+    } else {
+      // Doctors see their own messages only
+      where = {
+        OR: [
+          { fromUserId: userId },
+          { toUserId: userId },
+          { toRole: role },
+        ],
+      }
+    }
+
+    const msgs = await (prisma as any).internalMessage.findMany({
+      where,
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    })
+
+    // Enrich with sender/recipient names
+    const userIds = [...new Set([
+      ...msgs.map((m: any) => m.fromUserId),
+      ...msgs.map((m: any) => m.toUserId).filter(Boolean),
+    ])] as string[]
+    const users = userIds.length > 0 ? await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, firstName: true, lastName: true, role: true },
+    }) : []
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]))
+
+    res.json(msgs.map((m: any) => ({
+      ...m,
+      fromUser: userMap[m.fromUserId] || null,
+      toUser:   m.toUserId ? (userMap[m.toUserId] || null) : null,
+    })))
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch messages' })
+  }
 })
 
 // ─── GET /receptionist/agent-prompts ─────────────────────────
