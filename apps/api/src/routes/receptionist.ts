@@ -1,4 +1,7 @@
 import { Router } from 'express'
+import multer from 'multer'
+import { randomUUID } from 'crypto'
+import { uploadFile, downloadFile, isR2Configured } from '../services/storage/r2'
 import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
 
@@ -239,6 +242,50 @@ router.put('/notifications/mark-read', requireAuth, async (req, res) => {
 
 // ─── POST /receptionist/messages/send ────────────────────────
 // Internal one-to-one staff messaging. Every conversation is scoped to two users.
+// Attachments are encoded as a versioned payload in the existing message body.
+// No database migration or public file URL is needed.
+const STAFF_MEDIA_PREFIX = '__STAFF_MEDIA_V1__:'
+const staffUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
+const staffMediaTypes = new Set(['image/jpeg','image/png','image/webp','image/gif','application/pdf','audio/webm','audio/ogg','audio/mpeg','audio/mp4','audio/wav','video/mp4','video/webm','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/plain'])
+const staffRoles = ['DOCTOR','ADMIN','RECEPTIONIST']
+const staffAllowed = (from: string, to: string) => from === 'DOCTOR' ? ['ADMIN','RECEPTIONIST'].includes(to) : from === 'ADMIN' ? ['DOCTOR','RECEPTIONIST'].includes(to) : from === 'RECEPTIONIST' ? ['DOCTOR','ADMIN'].includes(to) : false
+
+router.post('/staff-messages/attachment', requireAuth, staffUpload.single('file'), async (req, res) => {
+  try {
+    const sender = req.user!
+    if (!staffRoles.includes(sender.role)) return res.status(403).json({ error: 'Forbidden' })
+    const toUserId = req.body.toUserId
+    const recipient = typeof toUserId === 'string' ? await prisma.user.findFirst({ where: { id: toUserId, isActive: true }, select: { id: true, role: true } }) : null
+    if (!recipient || recipient.id === sender.id || !staffAllowed(sender.role, recipient.role)) return res.status(403).json({ error: 'Recipient not permitted' })
+    const file = req.file
+    if (!file || !staffMediaTypes.has(file.mimetype)) return res.status(400).json({ error: 'Unsupported attachment format' })
+    // Local /uploads URLs are publicly served. Require private R2 for staff media.
+    if (!isR2Configured()) return res.status(503).json({ error: 'Private attachment storage is not configured' })
+    const key = `staff-messages/${randomUUID()}`
+    await uploadFile(file.buffer, file.mimetype, key)
+    const body = STAFF_MEDIA_PREFIX + JSON.stringify({ key, name: file.originalname.slice(0,160), mime: file.mimetype, size: file.size })
+    const msg = await prisma.internalMessage.create({ data: { fromUserId: sender.id, toUserId: recipient.id, subject: 'Staff Attachment', body } })
+    res.json(msg)
+  } catch (error) {
+    if (error instanceof multer.MulterError) return res.status(413).json({ error: 'Attachment exceeds 20 MB limit' })
+    res.status(500).json({ error: 'Attachment upload failed' })
+  }
+})
+
+router.get('/staff-messages/:id/attachment', requireAuth, async (req, res) => {
+  try {
+    const msg = await prisma.internalMessage.findFirst({ where: { id: req.params.id, OR: [{ fromUserId: req.user!.id }, { toUserId: req.user!.id }] } })
+    if (!msg || !msg.body.startsWith(STAFF_MEDIA_PREFIX)) return res.status(404).json({ error: 'Attachment not found' })
+    const media = JSON.parse(msg.body.slice(STAFF_MEDIA_PREFIX.length))
+    if (typeof media.key !== 'string' || !media.key.startsWith('staff-messages/')) return res.status(404).json({ error: 'Attachment not found' })
+    const bytes = await downloadFile(media.key)
+    res.setHeader('Content-Type', media.mime)
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(media.name)}`)
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.send(bytes)
+  } catch { res.status(500).json({ error: 'Could not retrieve attachment' }) }
+})
+
 router.get('/staff-messages/contacts', requireAuth, async (req, res) => {
   try {
     const role = req.user!.role
