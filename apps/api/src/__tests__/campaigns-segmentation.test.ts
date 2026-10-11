@@ -34,8 +34,8 @@ beforeEach(() => {
 })
 
 describe('BROADCAST_SEGMENTS', () => {
-  it('is narrowed to exactly All/Active/New — the redesigned primary selector', () => {
-    expect(BROADCAST_SEGMENTS).toEqual(['ALL', 'ACTIVE', 'NEW'])
+  it('includes All/Active/New and three reactivation audiences', () => {
+    expect(BROADCAST_SEGMENTS).toEqual(['ALL', 'ACTIVE', 'NEW', 'REACTIVATION_2', 'REACTIVATION_3', 'REACTIVATION_5'])
   })
 })
 
