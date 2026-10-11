@@ -115,8 +115,8 @@ const NAV: NavLink[] = [
     // separate standalone route, matching Receptionist's existing
     // single-page-with-tabs Reports architecture.
     { label: 'Daily / Weekly Reports', href: '/receptionist/reports?tab=clinical', permKey: 'reports' },
+    { label: 'Communication', href: '/receptionist/communication' },
   ] },
-  { label: 'Communication', href: '/receptionist/communication' },
 ]
 
 const TYPE_DOT: Record<string, string> = { APPOINTMENT: '#29ABE2', INVOICE: '#F59E0B', AI: '#10B981', SYSTEM: '#6B7280', PATIENT_FLOW: '#8B5CF6' }
