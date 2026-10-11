@@ -265,6 +265,9 @@ router.post('/staff-messages/attachment', requireAuth, staffUpload.single('file'
     await uploadFile(file.buffer, file.mimetype, key)
     const body = STAFF_MEDIA_PREFIX + JSON.stringify({ key, name: file.originalname.slice(0,160), mime: file.mimetype, size: file.size })
     const msg = await prisma.internalMessage.create({ data: { fromUserId: sender.id, toUserId: recipient.id, subject: 'Staff Attachment', body } })
+    try {
+      await prisma.notification.create({ data: { userId: recipient.id, type: 'MESSAGE', title: `Attachment from ${sender.firstName} ${sender.lastName}`, body: file.originalname.slice(0,120), href: recipient.role === 'DOCTOR' ? '/doctor/communication' : recipient.role === 'ADMIN' ? '/communication' : '/receptionist/communication' } })
+    } catch { /* Message already persisted; notification failure must not cause duplicate uploads on retry */ }
     res.json(msg)
   } catch (error) {
     if (error instanceof multer.MulterError) return res.status(413).json({ error: 'Attachment exceeds 20 MB limit' })
@@ -279,8 +282,10 @@ router.get('/staff-messages/:id/attachment', requireAuth, async (req, res) => {
     const media = JSON.parse(msg.body.slice(STAFF_MEDIA_PREFIX.length))
     if (typeof media.key !== 'string' || !media.key.startsWith('staff-messages/')) return res.status(404).json({ error: 'Attachment not found' })
     const bytes = await downloadFile(media.key)
-    res.setHeader('Content-Type', media.mime)
-    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(media.name)}`)
+    res.setHeader('Content-Type', staffMediaTypes.has(media.mime) ? media.mime : 'application/octet-stream')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
+    res.setHeader('Content-Disposition', `${media.mime === 'application/pdf' || media.mime.startsWith('image/') || media.mime.startsWith('audio/') || media.mime.startsWith('video/') ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(media.name)}`)
     res.setHeader('Cache-Control', 'private, no-store')
     res.send(bytes)
   } catch { res.status(500).json({ error: 'Could not retrieve attachment' }) }
