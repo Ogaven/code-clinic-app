@@ -31,6 +31,9 @@ const BROADCAST_SEGMENTS = [
   { value: 'ALL',    label: 'All Patients' },
   { value: 'ACTIVE', label: 'Active Patients' },
   { value: 'NEW',    label: 'New Patients' },
+  { value: 'REACTIVATION_2', label: 'Reactivation · Last seen 2–3 years ago' },
+  { value: 'REACTIVATION_3', label: 'Reactivation · Last seen 3–5 years ago' },
+  { value: 'REACTIVATION_5', label: 'Reactivation · Last seen 5+ years ago' },
 ]
 
 const NEW_PRESETS: { value: 'today' | 'week' | 'month' | 'year' | 'custom'; label: string }[] = [
@@ -139,7 +142,7 @@ export default function CampaignsPage() {
     setCountLoading(true)
     setSegCount(null)
     try {
-      const effRegisteredPreset = opts?.registeredPreset ?? registeredPreset
+      const effRegisteredPreset = seg.startsWith('REACTIVATION_') ? 'any' : (opts?.registeredPreset ?? registeredPreset)
       const params = buildSegmentCountParams(
         seg, opts?.preset || newPreset, opts?.from ?? newFrom, opts?.to ?? newTo,
         effRegisteredPreset === 'any' ? undefined : effRegisteredPreset,
@@ -311,6 +314,7 @@ export default function CampaignsPage() {
 
   const handleSegment = (seg: string) => {
     setSegment(seg)
+    if (seg.startsWith('REACTIVATION_')) { setRegisteredPreset('any'); setRegisteredFrom(''); setRegisteredTo('') }
     if (seg === 'NEW') {
       setNewPreset('today'); setNewFrom(''); setNewTo('')
       fetchCount(seg, { preset: 'today' })
@@ -357,7 +361,7 @@ export default function CampaignsPage() {
         body.preset = newPreset
         if (newPreset === 'custom') { body.from = newFrom; body.to = newTo }
       }
-      if (registeredPreset !== 'any') {
+      if (registeredPreset !== 'any' && !segment.startsWith('REACTIVATION_')) {
         body.registeredPreset = registeredPreset
         if (registeredPreset === 'custom') { body.registeredFrom = registeredFrom; body.registeredTo = registeredTo }
       }
@@ -808,7 +812,8 @@ export default function CampaignsPage() {
                 </div>
               )}
 
-              {/* Date Added — independent of segment, combinable with All/Active/New alike */}
+              {/* Date Added is not applicable to reactivation, which uses the last completed visit. */}
+              {!segment.startsWith('REACTIVATION_') && (
               <div className="mt-4">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Date Added</p>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -841,6 +846,7 @@ export default function CampaignsPage() {
                   </div>
                 )}
               </div>
+              )}
 
               <div className="mt-2 h-6 flex items-center">
                 {countLoading ? (
