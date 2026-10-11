@@ -29,6 +29,7 @@ const NAV: Nav[] = [
     { label: 'Knowledge Base', href: '/doctor/ai-suite/knowledge' },
   ] },
   { label: 'Reports', children: [{ label: 'Treatment Pipeline', href: '/doctor/reports/treatment-pipeline' }] },
+  { label: 'Communication', href: '/doctor/communication' },
 ]
 
 export default function DoctorTopBar({ user, theme, onTheme, install }: { user: UserInfo | null; theme: AppTheme; onTheme: (theme: AppTheme, dark: boolean) => void; install?: PwaInstallState }) {
