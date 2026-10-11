@@ -11,6 +11,7 @@ import {
 } from '../utils/kampala-time'
 import { isKampalaBirthdayToday, kampalaAgeTurningToday } from '../utils/birthday-match'
 import { getChannelConsentStatus } from '../crm-automation/consent-log.service'
+import { reactivationCandidates } from '../crm-automation/patient-engagement.service'
 
 // Kenya WABA has no billing block and APPROVED templates — use it for all birthday sends
 const KENYA_PHONE_NUMBER_ID = '1163288503545718'
@@ -44,7 +45,7 @@ const SEGMENT_LABELS: Record<string, string> = {
 // established definition (patient.status, computed by patient-status.service
 // — a completed appointment within the last 90 days) unchanged; NEW is a
 // different kind of segment entirely — see newPatientIdsForSpec() below.
-export const BROADCAST_SEGMENTS = ['ALL', 'ACTIVE', 'NEW']
+export const BROADCAST_SEGMENTS = ['ALL', 'ACTIVE', 'NEW', 'REACTIVATION_2', 'REACTIVATION_3', 'REACTIVATION_5']
 
 export type RangePreset = 'today' | 'week' | 'month' | 'year' | 'custom'
 
@@ -129,7 +130,23 @@ export function segmentWhere(segment: string, registeredRange?: Range | null): a
   return where
 }
 
+function reactivationYears(segment: string): 2 | 3 | 5 | null {
+  if (segment === 'REACTIVATION_2') return 2
+  if (segment === 'REACTIVATION_3') return 3
+  if (segment === 'REACTIVATION_5') return 5
+  return null
+}
+
+async function reactivationAudience(segment: string): Promise<Array<{ id: string; phone: string }>> {
+  const years = reactivationYears(segment)
+  if (years === null) return []
+  return (await reactivationCandidates())
+    .filter(p => p.yearsSinceVisit === years && p.phone.trim().length > 0)
+    .map(p => ({ id: p.id, phone: p.phone }))
+}
+
 async function patientsForSpec(spec: SegmentSpec): Promise<Array<{ id: string; phone: string }>> {
+  if (reactivationYears(spec.segment) !== null) return reactivationAudience(spec.segment)
   const registeredRange = resolveRegisteredRange(spec)
   if (spec.segment === 'NEW') {
     const ids = await newPatientIdsForSpec(spec)
@@ -298,6 +315,11 @@ router.get('/segment-count', requireAuth, adminAndReceptionist, async (req, res)
     const registeredError = validateCustomRange(registeredParams.registeredPreset, registeredParams.registeredFrom, registeredParams.registeredTo)
     if (registeredError) { res.status(400).json({ error: registeredError }); return }
 
+    if (reactivationYears(segment) !== null) {
+      if (registeredParams.registeredPreset) { res.status(400).json({ error: 'Date Added filters cannot be combined with reactivation audiences' }); return }
+      res.json({ count: (await reactivationAudience(segment)).length })
+      return
+    }
     if (segment === 'NEW') {
       const newError = validateCustomRange(req.query.preset as RangePreset | undefined, req.query.from, req.query.to)
       if (newError) { res.status(400).json({ error: newError }); return }
@@ -337,6 +359,7 @@ router.post('/whatsapp/broadcast', requireAuth, adminAndReceptionist, async (req
     if (!message || typeof message !== 'string' || !message.trim()) {
       res.status(400).json({ error: 'Message is required' }); return
     }
+    if (reactivationYears(segment) !== null && req.body.registeredPreset) { res.status(400).json({ error: 'Date Added filters cannot be combined with reactivation audiences' }); return }
     const newRangeError = segment === 'NEW' ? validateCustomRange(preset, from, to) : null
     if (newRangeError) { res.status(400).json({ error: newRangeError }); return }
 
