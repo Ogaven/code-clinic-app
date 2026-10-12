@@ -2697,6 +2697,14 @@ export async function getAgentReplyV2OpenAI(
     ])
 
     const isPlaceholderName = patient?.firstName?.toLowerCase() === 'whatsapp' || patient?.lastName?.toLowerCase() === 'patient'
+    // Staff-confirmed website visitor names are conversation-scoped, not patient
+    // identities. Never match them to patient records or reuse across sessions.
+    const websiteVisitorName = channel === 'WEBSITE'
+      ? (await prisma.aiConversation.findUnique({
+          where: { id: conversationId },
+          select: { channel: true, displayName: true },
+        }))?.displayName?.trim() || null
+      : null
     const patientName = isPlaceholderName ? 'there' : getGreetingName(patient)
     // Both scoped strictly to this resolved patient.id (never a fuzzy/name
     // match) — resolveTextingPatient() above is the only identity decision
@@ -2765,7 +2773,9 @@ export async function getAgentReplyV2OpenAI(
       `CLINIC STATUS RIGHT NOW: ${isOpen ? 'OPEN' : 'CLOSED'}`,
       `CLINIC HOURS:\n${hoursTable}`,
       '',
-      isPlaceholderName
+      channel === 'WEBSITE' && websiteVisitorName
+        ? `WEBSITE VISITOR NAME: ${websiteVisitorName} — this name was saved for this website conversation. Address the visitor by this name, but do not treat it as a verified patient identity.`
+        : isPlaceholderName
         ? `PATIENT NAME: unknown — their real name is not on file. If you need to address them or add their name to a booking, ask naturally once: "What's your name? 😊" — NEVER say "your name is showing as...", "on our system...", "in our records...", or quote any internal value. Just ask warmly.`
         : patientIsMinor && minorPatientContext
           ? `PATIENT NAME: (minor — see MINOR PATIENT context below — do NOT greet them as "${patientName}", that is the child's name)`
