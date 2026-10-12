@@ -102,16 +102,25 @@ router.post('/leads', requireAuth, adminAndReceptionist, async (req: Request, re
 // Read-only preview for historical booking reconciliation. Do not silently
 // rewrite lead stages or infer identity from a shared family phone number.
 // Only an existing explicit patient link can qualify for this preview.
-router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, async (_req: Request, res: Response) => {
+router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   try {
+    const pageParam = req.query.page
+    const page = typeof pageParam === 'string' && /^[1-9]\\d{0,5}$/.test(pageParam) ? Number(pageParam) : 1
+    if (pageParam !== undefined && (typeof pageParam !== 'string' || !/^[1-9]\\d{0,5}$/.test(pageParam))) {
+      return res.status(400).json({ error: 'page must be a positive integer (up to 6 digits)' })
+    }
+    const limit = 200
+    const where = {
+      convertedToPatientId: { not: null },
+      status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] },
+    }
+    const total = await prisma.lead.count({ where })
     const leads = await prisma.lead.findMany({
-      where: {
-        convertedToPatientId: { not: null },
-        status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] },
-      },
+      where,
       select: { id: true, status: true, convertedToPatientId: true, createdAt: true },
-      orderBy: { updatedAt: 'desc' },
-      take: 200,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      skip: (page - 1) * limit,
+      take: limit,
     })
     const candidates = []
     for (const lead of leads) {
@@ -134,7 +143,7 @@ router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, a
         })
       }
     }
-    res.json({ readOnly: true, scanned: leads.length, limit: 200, candidates })
+    res.json({ readOnly: true, scanned: leads.length, total, page, limit, hasMore: page * limit < total, candidates })
   } catch {
     res.status(500).json({ error: 'Failed to preview lead reconciliation' })
   }
