@@ -109,7 +109,7 @@ router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, a
         convertedToPatientId: { not: null },
         status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] },
       },
-      select: { id: true, status: true, convertedToPatientId: true },
+      select: { id: true, status: true, convertedToPatientId: true, createdAt: true },
       orderBy: { updatedAt: 'desc' },
       take: 200,
     })
@@ -117,8 +117,13 @@ router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, a
     for (const lead of leads) {
       if (!lead.convertedToPatientId) continue
       const booking = await prisma.appointment.findFirst({
-        where: { patientId: lead.convertedToPatientId, status: { not: 'CANCELLED' } },
+        where: {
+          patientId: lead.convertedToPatientId,
+          status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+          createdAt: { gte: lead.createdAt },
+        },
         select: { id: true },
+        orderBy: { createdAt: 'asc' },
       })
       if (booking) {
         candidates.push({
