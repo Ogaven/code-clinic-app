@@ -478,8 +478,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 } else {
                   console.warn('[WhatsApp] Private R2 storage not configured; original voice note not retained')
                 }
-                const ts      = Date.now()
-                const oggPath = `/tmp/voice-${ts}.ogg`
+                const oggPath = `/tmp/voice-${randomUUID()}.ogg`
                 try {
                   fs.writeFileSync(oggPath, Buffer.from(media.buffer))
 
