@@ -26,6 +26,13 @@ vi.mock('../../services/agent/guards/anti-hallucination', () => ({
   antiHallucinationGuard: vi.fn().mockResolvedValue({ safe: true }),
 }))
 
+// Handoff retrieval now runs for visitors without patient records as well.
+// Keep this failure-escalation test isolated from unrelated handback DB queries.
+vi.mock('../ai-suite/agent/patient-context.service', () => ({
+  buildPatientContextSummary: vi.fn().mockResolvedValue(''),
+  getPendingHandoffNote: vi.fn().mockResolvedValue(null),
+}))
+
 const FALLBACK_TEXT = `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
 
 const prismaMock = {
