@@ -39,22 +39,27 @@ export async function handbackConversation(
   staffId: string,
   summary?: string
 ): Promise<void> {
-  await prisma.aiConversation.update({
-    where: { id: conversationId },
-    data: {
-      agentEnabled: true,
-      status:       'ACTIVE',
-    },
-  })
-
-  await prisma.aiMessage.create({
-    data: {
-      conversationId,
-      role:     'SYSTEM',
-      content:  summary ? `Agent resumed by staff. Handoff notes: ${summary}` : 'Agent resumed by staff.',
-      metadata: JSON.stringify({ staffId, summary: summary || null, handedBackAt: new Date().toISOString() }),
-    },
-  })
+  // Resume and record the staff instructions atomically. Without a
+  // transaction, a failed audit write could enable Sarah with no handback
+  // context, while clinical alert deduplication would still consider the
+  // previous concern unresolved.
+  await prisma.$transaction([
+    prisma.aiConversation.update({
+      where: { id: conversationId },
+      data: {
+        agentEnabled: true,
+        status:       'ACTIVE',
+      },
+    }),
+    prisma.aiMessage.create({
+      data: {
+        conversationId,
+        role:     'SYSTEM',
+        content:  summary ? `Agent resumed by staff. Handoff notes: ${summary}` : 'Agent resumed by staff.',
+        metadata: JSON.stringify({ staffId, summary: summary || null, handedBackAt: new Date().toISOString() }),
+      },
+    }),
+  ])
 
   console.log(`[Takeover] Conversation ${conversationId} handed back to agent by staff ${staffId}`)
 }
