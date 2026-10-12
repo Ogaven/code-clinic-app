@@ -308,8 +308,8 @@ router.delete('/conversations/:conversationId', adminAndReceptionist, async (req
 // Staff can correct an unidentified website visitor's name without creating
 // a patient record or guessing an identity from unstructured chat messages.
 router.patch('/conversations/:conversationId/display-name', adminAndReceptionist, async (req, res) => {
-  const displayName = typeof req.body?.displayName === 'string' ? req.body.displayName.trim().replace(/\\s+/g, ' ') : ''
-  if (!displayName || displayName.length > 100 || /[\\r\\n<>]/.test(displayName)) {
+  const displayName = typeof req.body?.displayName === 'string' ? req.body.displayName.trim().replace(/\s+/g, ' ') : ''
+  if (!displayName || displayName.length > 100 || /[\r\n<>]/.test(displayName)) {
     res.status(400).json({ error: 'A valid visitor name (1–100 characters) is required' })
     return
   }
