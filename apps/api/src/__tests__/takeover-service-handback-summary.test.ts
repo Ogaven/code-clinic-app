@@ -14,6 +14,9 @@ const store = vi.hoisted(() => ({
 
 vi.mock('../lib/prisma', () => ({
   prisma: {
+    // Execute the mocked Prisma operations in sequence, matching the array
+    // transaction contract used by handbackConversation.
+    $transaction: vi.fn(async (operations: Promise<any>[]) => Promise.all(operations)),
     aiConversation: {
       update: vi.fn(async ({ where, data }: any) => {
         const conv = store.conversations.get(where.id) ?? {}
