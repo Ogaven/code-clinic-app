@@ -96,7 +96,7 @@ function flush(from: string): void {
     )
   }
 
-  processInbound(from, combined, lastWamid, entry.phoneNumberId, entry.messages.length === 1 ? entry.messages[0].metadata : undefined).catch((err: unknown) => {
+  // Do not collapse multiple recordings into a single message: each audio attachment\n  // needs its own message row and metadata for playback. Plain text keeps debounce batching.\n  if (entry.messages.some(m => m.metadata)) {\n    for (const m of entry.messages) {\n      processInbound(from, m.text, m.wamid, entry.phoneNumberId, m.metadata).catch((err: unknown) => {\n        console.error('[MessageBuffer] voice-note processing failed:', err instanceof Error ? err.message : String(err))\n      })\n    }\n    return\n  }\n  processInbound(from, combined, lastWamid, entry.phoneNumberId).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[MessageBuffer] processInbound error for ${from}:`, msg)
   })
