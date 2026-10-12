@@ -705,6 +705,10 @@ export async function checkAndSendAppointmentConfirmations(forceRun = false): Pr
 // caller has not booked, and sends the cc_missed_call_followup template.
 
 export async function checkAndSendMissedCallFollowups(): Promise<void> {
+  // Disabled: short or unanswered calls must not trigger unsolicited WhatsApp.
+  // Retain the scheduled entry point so existing callers remain compatible.
+  return
+
   const now         = new Date()
   const windowStart = new Date(now.getTime() - 35 * 60 * 1000)  // 35 min window (5 min buffer)
 
