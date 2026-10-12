@@ -233,14 +233,28 @@ router.post('/leads/:id/verify-patient-booking', requireAuth, requireRole('ADMIN
     })
     if (!appointment) return res.status(409).json({ error: 'No eligible appointment for this patient and lead' })
 
-    // Compare-and-set prevents two staff from linking the same lead concurrently.
+    // Compare-and-set prevents concurrent staff verification from overwriting a link.
     const linked = await prisma.lead.updateMany({
       where: { id: lead.id, convertedToPatientId: null, status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] } },
       data: { convertedToPatientId: patient.id },
     })
     if (linked.count !== 1) return res.status(409).json({ error: 'Lead changed during verification; refresh and retry' })
-    // Use the canonical transition path (stage history + nurture exit).
-    const converted = await convertLeadOnBooking(lead.id)
+    // The existing canonical wrapper records LeadStageHistory and stops nurture.
+    // If it fails, remove only the link this request created; do not overwrite
+    // a link that another operator may have subsequently changed.
+    let converted
+    try {
+      converted = await convertLeadOnBooking(lead.id)
+    } catch (conversionError) {
+      const latest = await prisma.lead.findUnique({ where: { id: lead.id }, select: { status: true } })
+      if (latest && latest.status !== 'CONVERTED') {
+        await prisma.lead.updateMany({
+          where: { id: lead.id, convertedToPatientId: patient.id, status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] } },
+          data: { convertedToPatientId: null },
+        })
+      }
+      throw conversionError
+    }
     res.json({ success: true, leadId: converted.id, stage: converted.status, patientId: patient.id, appointmentId })
   } catch (error) {
     console.error('[CRM] Verified booking reconciliation failed:', error)
