@@ -129,8 +129,15 @@ router.get('/conversations', adminAndReceptionist, async (req, res) => {
       return `${firstName} ${lastName}`.trim().replace(/\s+\.\s*$/, '').trim()
     }
 
+    // A website widget can create a session before the visitor actually
+    // writes. Keep those empty/greeting-only sessions out of the staff inbox.
+    // This is presentation filtering only: no messages or audit rows are deleted.
+    const visibleConversations = conversations.filter(c =>
+      c.channel !== 'WEBSITE' || c.messages.some(m => m.role === 'USER')
+    )
+
     res.json(
-      conversations.map(c => {
+      visibleConversations.map(c => {
         let postCaption: string | null = null
         if (c.channel === 'FACEBOOK_COMMENT' || c.channel === 'INSTAGRAM_COMMENT') {
           for (const msg of c.messages) {
