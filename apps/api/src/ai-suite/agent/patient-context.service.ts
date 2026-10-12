@@ -139,7 +139,7 @@ async function buildHandoffContext(patientId: string, takenOverAt: Date, handedB
 // stale/confusing. "Already replied since" is determined by comparing
 // timestamps, not by mutating/consuming the message, so this stays safe to
 // call on every incoming message without extra state.
-export async function getPendingHandoffNote(conversationId: string, patientId: string): Promise<string | null> {
+export async function getPendingHandoffNote(conversationId: string, patientId?: string): Promise<string | null> {
   const [lastAgentMsg, lastHandback] = await Promise.all([
     prisma.aiMessage.findFirst({ where: { conversationId, role: 'AGENT' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
     prisma.aiMessage.findFirst({
@@ -162,7 +162,7 @@ export async function getPendingHandoffNote(conversationId: string, patientId: s
     orderBy: { createdAt: 'desc' },
     select: { createdAt: true },
   })
-  const autoActions = lastTakeover
+  const autoActions = lastTakeover && patientId
     ? await buildHandoffContext(patientId, lastTakeover.createdAt, lastHandback.createdAt)
     : ''
 

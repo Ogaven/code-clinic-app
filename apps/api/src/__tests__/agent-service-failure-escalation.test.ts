@@ -26,6 +26,14 @@ vi.mock('../../services/agent/guards/anti-hallucination', () => ({
   antiHallucinationGuard: vi.fn().mockResolvedValue({ safe: true }),
 }))
 
+// This suite exercises provider-failure escalation, not handback context.
+// Isolate the independent handback reader so its conversation queries do not
+// consume the sequential Prisma mocks used to model failure history.
+vi.mock('../ai-suite/agent/patient-context.service', () => ({
+  buildPatientContextSummary: vi.fn().mockResolvedValue(''),
+  getPendingHandoffNote: vi.fn().mockResolvedValue(null),
+}))
+
 const FALLBACK_TEXT = `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
 
 const prismaMock = {
