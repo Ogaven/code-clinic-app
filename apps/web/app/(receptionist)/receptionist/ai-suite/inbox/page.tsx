@@ -1311,7 +1311,7 @@ function InboxPage() {
                   style={isAgent
                     ? { background: '#d9fdd3', borderBottomRightRadius: 4, color: '#111' }
                     : { background: '#fff',    borderBottomLeftRadius:  4, color: '#111' }}>
-                  {media === 'audio' && msg.metadata?.includes('voiceNote') && conv.channel === 'WHATSAPP' ? <VoiceNotePlayer conversationId={conv.id} messageId={msg.id} content={msg.content} /> : media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
+                  {media === 'audio' && msg.metadata?.includes('voiceNoteAvailable') && conv.channel === 'WHATSAPP' ? <VoiceNotePlayer conversationId={conv.id} messageId={msg.id} content={msg.content} /> : media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                   <div className={cn('flex items-center gap-1 mt-0.5', isAgent ? 'justify-end' : 'justify-start')}>
                     <span className="text-[10px] text-gray-400">{msgTimestamp(msg.createdAt)}</span>
                     {isAgent && <MsgStatus status={msg.status} />}
