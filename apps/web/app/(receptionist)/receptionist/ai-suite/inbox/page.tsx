@@ -784,10 +784,14 @@ function CommentPostView({ channel, accent, onMobileBack }: { channel: 'FB_COMME
       const res = await fetch(`${API}/ai-suite/posts?channel=${apiChannel}`, { headers: authH() })
       if (!res.ok) return
       const data: PostThread[] = await res.json()
-      setPosts(data)
+      // Avoid remounts/repaints every five seconds when the server payload
+      // has not changed; preserve the selected post and in-progress drafts.
+      setPosts(previous => JSON.stringify(previous) === JSON.stringify(data) ? previous : data)
       if (selPostId.current) {
         const updated = data.find(p => p.postId === selPostId.current)
-        if (updated) setSelPost(updated)
+        if (updated) setSelPost(previous =>
+          previous && JSON.stringify(previous) === JSON.stringify(updated) ? previous : updated
+        )
       }
     } catch {} finally { setLoading(false) }
   }, [apiChannel])
