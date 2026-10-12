@@ -2700,10 +2700,11 @@ export async function getAgentReplyV2OpenAI(
     // Staff-confirmed website visitor names are conversation-scoped, not patient
     // identities. Never match them to patient records or reuse across sessions.
     const websiteVisitorName = channel === 'WEBSITE'
-      ? (await prisma.aiConversation.findUnique({
+      ? await prisma.aiConversation.findUnique({
           where: { id: conversationId },
           select: { channel: true, displayName: true },
-        }))?.displayName?.trim() || null
+        }).then(conv => conv?.channel === 'WEBSITE' ? conv.displayName?.trim() || null : null)
+          .catch(() => null)
       : null
     const patientName = isPlaceholderName ? 'there' : getGreetingName(patient)
     // Both scoped strictly to this resolved patient.id (never a fuzzy/name
