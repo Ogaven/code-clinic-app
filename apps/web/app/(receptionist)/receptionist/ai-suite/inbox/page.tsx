@@ -1209,14 +1209,26 @@ function InboxPage() {
     setClinicalAlertUnresolved(false)
     if (!sel?.id) return
     let cancelled = false
-    fetch(`${API}/ai-suite/clinical-alerts/${encodeURIComponent(sel.id)}/status`, { headers: authH() })
-      .then(async response => {
+    let inFlight = false
+    const conversationId = sel.id
+    const refreshClinicalAlert = async () => {
+      if (inFlight || cancelled) return
+      inFlight = true
+      try {
+        const response = await fetch(`${API}/ai-suite/clinical-alerts/${encodeURIComponent(conversationId)}/status`, { headers: authH() })
         if (!response.ok) throw new Error('Unable to load clinical alert status')
-        return response.json()
-      })
-      .then(data => { if (!cancelled) setClinicalAlertUnresolved(Boolean(data.unresolved)) })
-      .catch(() => { if (!cancelled) setClinicalAlertUnresolved(false) })
-    return () => { cancelled = true }
+        const data = await response.json()
+        if (!cancelled) setClinicalAlertUnresolved(Boolean(data.unresolved))
+      } catch {
+        // Preserve the last known status on transient network failures.
+        // A failed refresh must not make an unresolved clinical alert disappear.
+      } finally {
+        inFlight = false
+      }
+    }
+    void refreshClinicalAlert()
+    const interval = setInterval(() => { void refreshClinicalAlert() }, 15000)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [sel?.id])
 
   async function confirmClinicalResolution(note: string) {
