@@ -7,15 +7,7 @@
 // does not match the expected number of params" before the message ever
 // reaches the patient.
 //
-// This file proves:
-//  1. checkAndSendMissedCallFollowups now calls sendWhatsAppTemplate with
-//     an EMPTY parameter array for cc_missed_call_followup.
-//  2. processAfterHoursQueue's MISSED_CALL_FOLLOWUP branch does the same.
-//  3. processAfterHoursQueue's OTHER branch (MORNING_FOLLOWUP, a different,
-//     unverified template) is UNCHANGED — still passes [name] — proving
-//     this fix stayed scoped to cc_missed_call_followup only.
-
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+// This file verifies the standalone missed-call template parameters and\n// that the unsolicited morning/missed-call queue dispatcher is disabled.\n\nimport { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
@@ -114,35 +106,15 @@ describe('checkAndSendMissedCallFollowups — cc_missed_call_followup param mism
   })
 })
 
-describe('processAfterHoursQueue — MISSED_CALL_FOLLOWUP branch uses cc_missed_call_followup correctly', () => {
-  it('sends cc_missed_call_followup with zero params for a MISSED_CALL_FOLLOWUP entry', async () => {
+describe('processAfterHoursQueue — unsolicited queue disabled', () => {
+  it.each(['MISSED_CALL_FOLLOWUP', 'MORNING_FOLLOWUP'])('never sends queued %s messages', async (agentMode) => {
     store.outboundQueue.push({
-      id: 'q-1', agentMode: 'MISSED_CALL_FOLLOWUP', status: 'PENDING', scheduledFor: new Date(Date.now() - 1000),
+      id: 'q-1', agentMode, status: 'PENDING', scheduledFor: new Date(Date.now() - 1000),
       phoneNumber: '+256700000002', patient: makePatient({ id: 'patient-2', phone: '+256700000002' }),
     })
     const { processAfterHoursQueue } = await import('../ai-suite/scheduler/followup.service')
-
     await processAfterHoursQueue()
-
-    expect(sendWhatsAppTemplateMock).toHaveBeenCalledTimes(1)
-    const [, templateName, params] = sendWhatsAppTemplateMock.mock.calls[0]
-    expect(templateName).toBe('cc_missed_call_followup')
-    expect(params).toEqual([])
-  })
-
-  it('leaves the UNRELATED MORNING_FOLLOWUP branch unchanged — still passes [name] to its own (different, unverified) template', async () => {
-    process.env.WA_TEMPLATE_AFTER_HOURS_NAME = 'cc_after_hours_morning'
-    store.outboundQueue.push({
-      id: 'q-2', agentMode: 'MORNING_FOLLOWUP', status: 'PENDING', scheduledFor: new Date(Date.now() - 1000),
-      phoneNumber: '+256700000003', patient: makePatient({ id: 'patient-3', phone: '+256700000003', firstName: 'Mike' }),
-    })
-    const { processAfterHoursQueue } = await import('../ai-suite/scheduler/followup.service')
-
-    await processAfterHoursQueue()
-
-    expect(sendWhatsAppTemplateMock).toHaveBeenCalledTimes(1)
-    const [, templateName, params] = sendWhatsAppTemplateMock.mock.calls[0]
-    expect(templateName).toBe('cc_after_hours_morning')
-    expect(params).toEqual(['Mike']) // unchanged — this fix never touched this branch
+    expect(sendWhatsAppTemplateMock).not.toHaveBeenCalled()
+    expect(sendWhatsAppMessageMock).not.toHaveBeenCalled()
   })
 })
