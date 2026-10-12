@@ -4,7 +4,7 @@
 //   never a client-supplied body field, on BOTH takeover and handback
 //   (handback previously captured no staffId at all — asymmetric with
 //   takeover).
-// - handback accepts an optional free-text `summary`, trimmed and capped.
+// - handback requires a nonempty free-text `summary`, trimmed and capped.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import express from 'express'
@@ -53,13 +53,13 @@ describe('POST /ai-suite/takeover/:conversationId', () => {
 })
 
 describe('POST /ai-suite/handback/:conversationId', () => {
-  it('derives staffId from the authenticated session and passes no summary when the body is empty', async () => {
+  it('rejects an empty summary without calling the handback service', async () => {
     const res = await fetch(`${origin}/handback/conv-1`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-    expect(res.status).toBe(200)
-    expect(handbackConversation).toHaveBeenCalledWith('conv-1', 'staff-42', undefined)
+    expect(res.status).toBe(400)
+    expect(handbackConversation).not.toHaveBeenCalled()
   })
 
-  it('passes a trimmed optional summary through to handbackConversation', async () => {
+  it('passes a trimmed required summary through to handbackConversation', async () => {
     await fetch(`${origin}/handback/conv-1`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ summary: '  Patient wanted a filling, booked Tuesday 8am.  ' }),
@@ -77,11 +77,12 @@ describe('POST /ai-suite/handback/:conversationId', () => {
     expect(passedSummary.length).toBe(1000)
   })
 
-  it('a whitespace-only summary is treated as no summary', async () => {
-    await fetch(`${origin}/handback/conv-1`, {
+  it('rejects whitespace-only summary', async () => {
+    const res = await fetch(`${origin}/handback/conv-1`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ summary: '   ' }),
     })
-    expect(handbackConversation).toHaveBeenCalledWith('conv-1', 'staff-42', undefined)
+    expect(res.status).toBe(400)
+    expect(handbackConversation).not.toHaveBeenCalled()
   })
 })

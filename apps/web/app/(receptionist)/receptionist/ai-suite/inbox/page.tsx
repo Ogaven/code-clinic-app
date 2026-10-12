@@ -1112,6 +1112,7 @@ function InboxPage() {
   }
 
   async function confirmHandback(summary: string) {
+    if (!summary.trim()) return
     if (!sel) return
     setHandbackOpen(false)
     await fetch(`${API}/ai-suite/handback/${sel.id}`, {
@@ -1599,7 +1600,7 @@ function HandBackModal({ onClose, onConfirm }: { onClose: () => void; onConfirm:
       <div className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="px-4 pt-4 pb-3 border-b border-gray-100">
           <p className="text-sm font-bold text-gray-900">Hand Back to Sarah</p>
-          <p className="text-xs text-gray-500 mt-0.5">Optionally tell Sarah what happened — she'll continue from here instead of starting over.</p>
+          <p className="text-xs text-gray-500 mt-0.5">Tell Sarah how you resolved the patient's concern. This note is required so she does not reopen an issue that staff already handled.</p>
         </div>
         <div className="p-4">
           <textarea
@@ -1614,8 +1615,8 @@ function HandBackModal({ onClose, onConfirm }: { onClose: () => void; onConfirm:
         </div>
         <div className="flex gap-2 px-4 pb-4">
           <button
-            disabled={submitting}
-            onClick={async () => { setSubmitting(true); await onConfirm(summary.trim()) }}
+            disabled={submitting || !summary.trim()}
+            onClick={async () => { if (!summary.trim()) return; setSubmitting(true); await onConfirm(summary.trim()) }}
             className="flex-1 px-4 py-2 text-sm font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 disabled:opacity-50">
             {submitting ? 'Handing back…' : 'Hand Back'}
           </button>
