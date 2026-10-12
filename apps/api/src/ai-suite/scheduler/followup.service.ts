@@ -247,81 +247,13 @@ export async function checkAndSendFollowups(): Promise<void> {
 // Runs every hour. Finds MORNING_FOLLOWUP entries scheduled for <= now and sends
 // a warm "good morning" check-in to patients who messaged after hours.
 
+// Disabled intentionally: missed-call and after-hours follow-up queue entries were
+// generating unsolicited WhatsApp template messages after the AI or staff had
+// already handled the conversation. Preserve queued records for audit; never
+// dispatch these entries or fall back to free-form WhatsApp messages.
+// Appointment reminders and clinical follow-ups are separate workflows.
 export async function processAfterHoursQueue(): Promise<void> {
-  const now = new Date()
-
-  const entries = await prisma.outboundQueue.findMany({
-    where: {
-      agentMode:    { in: ['MORNING_FOLLOWUP', 'MISSED_CALL_FOLLOWUP'] },
-      status:       'PENDING',
-      scheduledFor: { lte: now },
-    },
-    include: {
-      patient: { select: { id: true, firstName: true, lastName: true, phone: true, dob: true, nextOfKinName: true, nextOfKinRelation: true } },
-    },
-    take: 50,
-  })
-
-  if (entries.length === 0) return
-  console.log(`[AfterHoursQueue] Processing ${entries.length} morning follow-up(s)`)
-
-  for (const entry of entries) {
-    if (entry.patient?.id && !(await hasOutboundConsent(entry.patient.id))) {
-      console.log(`[AfterHoursQueue] Skipping ${entry.patient.firstName} — opted out of bot communications`)
-      continue
-    }
-
-    const minor             = isMinor(entry.patient?.dob)
-    const guardianFirstName = minor && entry.patient?.nextOfKinName
-      ? getGreetingName({ firstName: entry.patient.nextOfKinName, lastName: '' })
-      : null
-    const patientName = getGreetingName(entry.patient) || 'there'
-    const name        = minor && guardianFirstName
-      ? guardianTitle(entry.patient?.nextOfKinRelation, guardianFirstName)
-      : minor ? 'there' : patientName
-
-    let templateName: string | undefined
-    let templateParams: string[]
-    let message: string
-
-    if (entry.agentMode === 'MISSED_CALL_FOLLOWUP') {
-      templateName = process.env.WA_TEMPLATE_MISSED_CALL_NAME || 'cc_missed_call_followup'
-      // The approved cc_missed_call_followup body has ZERO {{1}}-style
-      // placeholders (confirmed against the live Meta template definition)
-      // — a fixed generic message, not personalized by name. Sending any
-      // parameter mismatches Meta's expected count and is rejected with
-      // #132000 before the freeform fallback below ever gets a chance.
-      templateParams = []
-      message = `Hello ${name} 😊 We are now open at Code Clinic. We noticed your message last night, how can we help you today?`
-    } else {
-      templateName = process.env.WA_TEMPLATE_AFTER_HOURS_NAME
-      templateParams = [name]
-      message = `Hello ${name}, good morning 😊 Code Clinic is now open. You messaged us last night, how can we help you today?`
-    }
-
-    try {
-      if (templateName) {
-        try {
-          await sendWhatsAppTemplate(entry.phoneNumber, templateName, templateParams)
-        } catch {
-          await sendWhatsAppMessage(entry.phoneNumber, message)
-        }
-      } else {
-        await sendWhatsAppMessage(entry.phoneNumber, message)
-      }
-      await prisma.outboundQueue.update({
-        where: { id: entry.id },
-        data:  { status: 'COMPLETED', outcome: 'Morning follow-up sent', lastAttempted: now },
-      })
-      console.log(`[AfterHoursQueue] Sent morning follow-up to ${entry.phoneNumber}`)
-    } catch (err: any) {
-      console.error(`[AfterHoursQueue] Send failed for ${entry.phoneNumber}:`, err.message)
-      await prisma.outboundQueue.update({
-        where: { id: entry.id },
-        data:  { attempts: { increment: 1 }, lastAttempted: now },
-      })
-    }
-  }
+  return
 }
 
 // ── checkAndSendPostAppointmentFollowups ──────────────────────────────────────
