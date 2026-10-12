@@ -39,6 +39,15 @@ interface ReconciliationCandidate {
   appointmentId: string
 }
 
+interface UnlinkedBookingCandidate {
+  leadId: string
+  leadName: string | null
+  currentStage: string
+  source: string
+  ambiguous: boolean
+  matchingPatients: { patientId: string; patientName: string; appointmentId: string }[]
+}
+
 interface ConversationSummary {
   id: string
   channel: string
@@ -222,6 +231,31 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
   const [qualifyIntent, setQualifyIntent] = useState('')
   const [losing,     setLosing]     = useState<Lead | null>(null)
   const [lostReason, setLostReason] = useState('')
+
+  const [unlinkedOpen, setUnlinkedOpen] = useState(false)
+  const [unlinkedLoading, setUnlinkedLoading] = useState(false)
+  const [unlinkedError, setUnlinkedError] = useState('')
+  const [unlinkedCandidates, setUnlinkedCandidates] = useState<UnlinkedBookingCandidate[]>([])
+  const [unlinkedPage, setUnlinkedPage] = useState(1)
+  const [unlinkedTotal, setUnlinkedTotal] = useState(0)
+  const [unlinkedHasMore, setUnlinkedHasMore] = useState(false)
+
+  async function loadUnlinkedReview(page: number) {
+    setUnlinkedLoading(true)
+    setUnlinkedError('')
+    try {
+      const response = await fetch(`${API}/crm/leads/unlinked-booking-review?page=${page}`, { headers: authH as any })
+      if (!response.ok) throw new Error(`Could not load unlinked review (HTTP ${response.status})`)
+      const data = await response.json()
+      if (data.readOnly !== true || !Array.isArray(data.candidates)) throw new Error('Unexpected review response')
+      setUnlinkedCandidates(data.candidates)
+      setUnlinkedPage(data.page)
+      setUnlinkedTotal(data.total)
+      setUnlinkedHasMore(Boolean(data.hasMore))
+    } catch (error) {
+      setUnlinkedError(error instanceof Error ? error.message : 'Could not load unlinked review')
+    } finally { setUnlinkedLoading(false) }
+  }
 
   const [reviewOpen, setReviewOpen] = useState(false)
   const [reviewLoading, setReviewLoading] = useState(false)
@@ -530,6 +564,22 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
               })}</tbody></table></div>}
           </>}
           <div className="flex items-center gap-2"><button type="button" disabled={reviewLoading || reviewPage <= 1} onClick={() => void loadReconciliationPage(reviewPage - 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Previous</button><button type="button" disabled={reviewLoading || !reviewHasMore} onClick={() => void loadReconciliationPage(reviewPage + 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Next</button><button type="button" disabled={reviewLoading} onClick={() => void loadReconciliationPage(reviewPage)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Refresh</button></div>
+        </div>}
+      </section>
+
+      <section className="rounded-2xl border border-amber-100 dark:border-amber-500/20 bg-white dark:bg-white/5 p-4">
+        <div className="flex flex-wrap justify-between items-center gap-3">
+          <div><h2 className="text-sm font-bold text-gray-800 dark:text-white">Review unlinked booked leads</h2>
+            <p className="text-xs text-gray-500 mt-1">Possible phone-number matches only. Shared family numbers require identity checks. No leads are changed.</p></div>
+          <button type="button" onClick={() => { if (!unlinkedOpen) void loadUnlinkedReview(1); setUnlinkedOpen(!unlinkedOpen) }} className="rounded-xl border border-amber-200 px-4 py-2 text-sm font-semibold text-amber-700 dark:text-amber-300">{unlinkedOpen ? 'Close unlinked review' : 'Find possible bookings'}</button>
+        </div>
+        {unlinkedOpen && <div className="mt-4 space-y-3">
+          {unlinkedLoading ? <p className="text-sm text-gray-500">Checking possible matches…</p> : unlinkedError ? <p role="alert" className="text-sm text-red-600">{unlinkedError}</p> : <>
+            <p className="text-xs text-gray-500">Page {unlinkedPage} · {unlinkedTotal} unlinked leads to scan across all pages · {unlinkedCandidates.length} possible booked leads on this page.</p>
+            {unlinkedCandidates.length === 0 ? <p className="text-sm text-gray-500">No possible bookings found on this page. Check further pages if available.</p> :
+              <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b"><th className="py-2">Lead</th><th>Stage</th><th>Possible patient / appointment</th><th>Review status</th></tr></thead><tbody>{unlinkedCandidates.map(candidate => <tr key={candidate.leadId} className="border-b border-gray-100 dark:border-white/10"><td className="py-2">{candidate.leadName || leads.find(l => l.id === candidate.leadId)?.phone || candidate.leadId}</td><td>{candidate.currentStage}</td><td>{candidate.matchingPatients.map(p => <div key={p.patientId}>{p.patientName} · appointment {p.appointmentId.slice(0, 8)}…</div>)}</td><td className="text-amber-700 dark:text-amber-300">{candidate.ambiguous ? 'Multiple patients share phone — verify identity' : 'Phone match — verify identity'}</td></tr>)}</tbody></table></div>}
+          </>}
+          <div className="flex gap-2"><button type="button" disabled={unlinkedLoading || unlinkedPage <= 1} onClick={() => void loadUnlinkedReview(unlinkedPage - 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Previous</button><button type="button" disabled={unlinkedLoading || !unlinkedHasMore} onClick={() => void loadUnlinkedReview(unlinkedPage + 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Next</button><button type="button" disabled={unlinkedLoading} onClick={() => void loadUnlinkedReview(unlinkedPage)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Refresh</button></div>
         </div>}
       </section>
 
