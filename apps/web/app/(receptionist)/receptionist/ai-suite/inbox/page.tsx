@@ -1025,10 +1025,14 @@ function InboxPage() {
       if (ch.toUpperCase() === 'WEBSITE' && !websiteNameBackfillAttempted.current) {
         websiteNameBackfillAttempted.current = true
         try {
-          await fetch(`${API}/ai-suite/conversations/website-name-backfill`, {
+          const response = await fetch(`${API}/ai-suite/conversations/website-name-backfill`, {
             method: 'POST', headers: authH(true),
           })
+          // An unsuccessful HTTP response is not a completed backfill.
+          // Permit a later retry when staff revisit the Website channel.
+          if (!response.ok) websiteNameBackfillAttempted.current = false
         } catch {
+          websiteNameBackfillAttempted.current = false
           // Backfill must never prevent staff from loading the inbox.
         }
       }
