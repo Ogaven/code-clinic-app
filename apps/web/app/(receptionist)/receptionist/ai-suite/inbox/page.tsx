@@ -959,6 +959,9 @@ function InboxPage() {
   const [showArchived, setShowArchived] = useState(false)
   const [showNewChat,  setShowNewChat]  = useState(false)
   const [handbackOpen, setHandbackOpen] = useState(false)
+  const [clinicalAlertUnresolved, setClinicalAlertUnresolved] = useState(false)
+  const [clinicalResolveOpen, setClinicalResolveOpen] = useState(false)
+  const [clinicalResolveError, setClinicalResolveError] = useState('')
   const pendingSelectId = useRef<string | null>(null)
   const listPanelRef    = useRef<HTMLDivElement>(null)
 
@@ -1202,6 +1205,38 @@ function InboxPage() {
     fetchConvs()
   }
 
+  useEffect(() => {
+    setClinicalAlertUnresolved(false)
+    if (!sel?.id) return
+    let cancelled = false
+    fetch(`${API}/ai-suite/clinical-alerts/${encodeURIComponent(sel.id)}/status`, { headers: authH() })
+      .then(async response => {
+        if (!response.ok) throw new Error('Unable to load clinical alert status')
+        return response.json()
+      })
+      .then(data => { if (!cancelled) setClinicalAlertUnresolved(Boolean(data.unresolved)) })
+      .catch(() => { if (!cancelled) setClinicalAlertUnresolved(false) })
+    return () => { cancelled = true }
+  }, [sel?.id])
+
+  async function confirmClinicalResolution(note: string) {
+    if (!sel?.id || !note.trim()) return
+    setClinicalResolveError('')
+    try {
+      const response = await fetch(`${API}/ai-suite/clinical-alerts/${encodeURIComponent(sel.id)}/resolve`, {
+        method: 'POST', headers: authH(true), body: JSON.stringify({ note: note.trim() }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'Could not resolve clinical alert')
+      }
+      setClinicalAlertUnresolved(false)
+      setClinicalResolveOpen(false)
+    } catch (error) {
+      setClinicalResolveError(error instanceof Error ? error.message : 'Could not resolve clinical alert')
+    }
+  }
+
   function selectConv(conv: Conversation) {
     setSel(conv); setMobileView('chat')
     const apiVal = CHANNELS.find(c => c.key === channel)!.apiVal
@@ -1334,6 +1369,12 @@ function InboxPage() {
             )}
           </div>
         </div>
+        {clinicalAlertUnresolved && (
+          <button onClick={() => { setClinicalResolveError(''); setClinicalResolveOpen(true) }}
+            className="flex-shrink-0 rounded-xl border border-rose-300 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-800">
+            Resolve clinical alert
+          </button>
+        )}
         <div className="flex-shrink-0"><ChatMenu sel={sel} onChanged={handleConvChanged} /></div>
         <button onClick={toggleTakeover}
           className="flex-shrink-0 flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-90"
@@ -1660,6 +1701,15 @@ function InboxPage() {
         <NewChatModal onClose={() => setShowNewChat(false)} onCreated={handleNewChatCreated} />
       )}
 
+      {clinicalResolveOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <h2 className="text-base font-bold text-gray-900">Resolve clinical alert</h2>
+            <p className="mt-2 text-sm text-gray-600">Confirm that staff have addressed the clinical concern. This is separate from handing the conversation back to Sarah.</p>
+            <ClinicalResolutionForm error={clinicalResolveError} onCancel={() => setClinicalResolveOpen(false)} onConfirm={confirmClinicalResolution} />
+          </div>
+        </div>
+      )}
       {handbackOpen && (
         <HandBackModal onClose={() => setHandbackOpen(false)} onConfirm={confirmHandback} />
       )}
@@ -1673,6 +1723,29 @@ function InboxPage() {
 // (getPendingHandoffNote in patient-context.service.ts) so she doesn't
 // re-ask questions or contradict what staff already did. Never required —
 // confirming with a blank field just resumes her, same as before.
+function ClinicalResolutionForm({ error, onCancel, onConfirm }: {
+  error: string; onCancel: () => void; onConfirm: (note: string) => Promise<void>
+}) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  return (
+    <form onSubmit={async e => { e.preventDefault(); if (!note.trim() || busy) return; setBusy(true); try { await onConfirm(note) } finally { setBusy(false) } }} className="mt-4 space-y-3">
+      <label className="block text-xs font-semibold text-gray-700" htmlFor="clinical-resolution-note">Resolution note (required)</label>
+      <textarea id="clinical-resolution-note" autoFocus required maxLength={1000} value={note}
+        onChange={e => setNote(e.target.value)} rows={4}
+        className="w-full rounded-lg border border-gray-300 p-2 text-sm text-gray-900"
+        placeholder="Describe how the concern was handled and any follow-up arranged." />
+      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancel} className="rounded-lg border px-3 py-2 text-sm">Cancel</button>
+        <button type="submit" disabled={!note.trim() || busy} className="rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+          {busy ? 'Saving…' : 'Confirm resolution'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
 function HandBackModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (summary: string) => void }) {
   const [summary, setSummary] = useState('')
   const [submitting, setSubmitting] = useState(false)
