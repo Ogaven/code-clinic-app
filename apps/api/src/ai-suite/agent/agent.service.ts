@@ -1439,21 +1439,21 @@ async function alertStaffOfConcern(params: {
   channel?:       string
 }): Promise<void> {
   try {
-    // An unresolved concern remains alerted until staff hand back the conversation.
+    // An unresolved concern remains alerted until staff explicitly resolve it.
     // The former two-hour window generated repeat notifications for the same case.
-    const [lastAlert, lastHandback] = await Promise.all([
+    const [lastAlert, lastResolution] = await Promise.all([
       prisma.aiMessage.findFirst({
         where: { conversationId: params.conversationId, role: 'SYSTEM', content: { contains: 'STAFF_ALERTED' } },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       }),
       prisma.aiMessage.findFirst({
-        where: { conversationId: params.conversationId, role: 'SYSTEM', content: { startsWith: 'Agent resumed by staff.' } },
+        where: { conversationId: params.conversationId, role: 'SYSTEM', content: { startsWith: 'CLINICAL_ALERT_RESOLVED:' } },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       }),
     ])
-    if (lastAlert && (!lastHandback || lastAlert.createdAt > lastHandback.createdAt)) return
+    if (lastAlert && (!lastResolution || lastAlert.createdAt > lastResolution.createdAt)) return
 
     // Resolve patient name from DB; fall back to phone number
     const patient = await prisma.patient.findFirst({
@@ -1607,20 +1607,20 @@ export async function getAgentReply(
     clearBookingState(from)
     console.log(`[Agent] Clinical concern detected for ${from}: "${latestMessage.slice(0, 80)}"`)
 
-    // Keep Sarah's follow-up wording aligned with the alert lifecycle.
-    const [recentAlert, lastHandback] = await Promise.all([
+    // Keep Sarah's follow-up wording aligned with explicit clinical resolution.
+    const [recentAlert, lastResolution] = await Promise.all([
       prisma.aiMessage.findFirst({
         where: { conversationId, role: 'SYSTEM', content: { contains: 'STAFF_ALERTED' } },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       }),
       prisma.aiMessage.findFirst({
-        where: { conversationId, role: 'SYSTEM', content: { startsWith: 'Agent resumed by staff.' } },
+        where: { conversationId, role: 'SYSTEM', content: { startsWith: 'CLINICAL_ALERT_RESOLVED:' } },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       }),
     ])
-    const staffAlreadyAlerted = !!recentAlert && (!lastHandback || recentAlert.createdAt > lastHandback.createdAt)
+    const staffAlreadyAlerted = !!recentAlert && (!lastResolution || recentAlert.createdAt > lastResolution.createdAt)
 
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
     const lastFollowupMsg = await prisma.aiMessage.findFirst({
@@ -2484,21 +2484,21 @@ async function executeV2Tool(
       }
 
       case 'flag_clinical_concern': {
-        // Match the alert/handback lifecycle used by alertStaffOfConcern.
+        // Match the explicit clinical resolution lifecycle used by alertStaffOfConcern.
         // A time-based check would re-alert the same unresolved concern.
-        const [recentFlag, lastHandback] = await Promise.all([
+        const [recentFlag, lastResolution] = await Promise.all([
           prisma.aiMessage.findFirst({
             where: { conversationId, role: 'SYSTEM', content: { contains: 'STAFF_ALERTED' } },
             orderBy: { createdAt: 'desc' },
             select: { createdAt: true },
           }),
           prisma.aiMessage.findFirst({
-            where: { conversationId, role: 'SYSTEM', content: { startsWith: 'Agent resumed by staff.' } },
+            where: { conversationId, role: 'SYSTEM', content: { startsWith: 'CLINICAL_ALERT_RESOLVED:' } },
             orderBy: { createdAt: 'desc' },
             select: { createdAt: true },
           }),
         ])
-        if (recentFlag && (!lastHandback || recentFlag.createdAt > lastHandback.createdAt)) {
+        if (recentFlag && (!lastResolution || recentFlag.createdAt > lastResolution.createdAt)) {
           return JSON.stringify({ alerted: false, alreadyNotified: true, clinicStatus: isClinicOpenNow() ? 'open' : 'closed' })
         }
         await alertStaffOfConcern({ conversationId, patientPhone: from, message: toolInput.summary as string, sarahAdvice: toolInput.sarahAdvice as string | undefined, channel })

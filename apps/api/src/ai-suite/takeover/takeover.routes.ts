@@ -59,6 +59,47 @@ router.post('/handback/:conversationId', adminAndReceptionist, async (req, res) 
   }
 })
 
+// POST /ai-suite/clinical-alerts/:conversationId/resolve
+// Clinical resolution is independent of handing control back to Sarah.
+// Record the explicit staff decision without modifying unrelated escalations.
+router.post('/clinical-alerts/:conversationId/resolve', adminAndReceptionist, async (req, res) => {
+  try {
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 1000) : ''
+    if (!note) return res.status(400).json({ error: 'A clinical resolution note is required' })
+    const conversation = await prisma.aiConversation.findUnique({
+      where: { id: req.params.conversationId },
+      select: { id: true },
+    })
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' })
+    const latestAlert = await prisma.aiMessage.findFirst({
+      where: { conversationId: conversation.id, role: 'SYSTEM', content: { startsWith: 'STAFF_ALERTED:' } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    })
+    if (!latestAlert) return res.status(409).json({ error: 'No clinical alert exists for this conversation' })
+    const latestResolution = await prisma.aiMessage.findFirst({
+      where: { conversationId: conversation.id, role: 'SYSTEM', content: { startsWith: 'CLINICAL_ALERT_RESOLVED:' } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    })
+    if (latestResolution && latestResolution.createdAt >= latestAlert.createdAt) {
+      return res.status(409).json({ error: 'The latest clinical alert has already been resolved' })
+    }
+    await prisma.aiMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'SYSTEM',
+        content: 'CLINICAL_ALERT_RESOLVED: staff confirmed resolution',
+        metadata: JSON.stringify({ staffId: req.user!.id, note, resolvedAt: new Date().toISOString() }),
+      },
+    })
+    res.json({ success: true })
+  } catch (err: any) {
+    console.error('[Takeover] clinical alert resolution error:', err.message)
+    res.status(500).json({ error: 'Failed to resolve clinical alert' })
+  }
+})
+
 // GET /ai-suite/conversations
 // Returns conversations filtered by ?channel=whatsapp|instagram|facebook|website
 // By default excludes archived conversations; ?archived=true returns only archived ones.
