@@ -207,6 +207,11 @@ function lastActivityLabel(iso?: string): string | null {
 }
 
 // ── Media bubble ───────────────────────────────────────────────────────────────
+// Provider template identifiers are delivery metadata, not patient-facing chat text.
+// Hide only standalone placeholder messages; never remove genuine message history.
+function isTemplateArtifact(content: string): boolean {
+  return /^\\[Template:\\s*[a-z0-9_\\-]+\\](?:\\s+[^\\r\\n]{1,100})?$/i.test(content.trim())
+}
 function parseBubble(content: string) {
   if (content.startsWith('__MEDIA_IMAGE__:'))                                    return 'image'
   if (/\[Patient sent an image\]|\[image\]/i.test(content))                      return 'image'
@@ -1267,10 +1272,10 @@ function InboxPage() {
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-400" /></div>
         )}
-        {msgs.map((msg, i) => {
+        {msgs.filter(msg => !isTemplateArtifact(msg.content)).map((msg, i, visibleMsgs) => {
           const isAgent  = msg.role === 'AGENT'
           const media    = parseBubble(msg.content)
-          const showTime = i === msgs.length - 1 || msgs[i + 1]?.role !== msg.role
+          const showTime = i === visibleMsgs.length - 1 || visibleMsgs[i + 1]?.role !== msg.role
           return (
             <div key={msg.id} className={cn('flex', isAgent ? 'justify-end' : 'justify-start')}>
               <div className="min-w-0 max-w-[85%] sm:max-w-[68%]">
