@@ -7,7 +7,10 @@
 // does not match the expected number of params" before the message ever
 // reaches the patient.
 //
-// This file verifies the standalone missed-call template parameters and\n// that the unsolicited morning/missed-call queue dispatcher is disabled.\n\nimport { beforeEach, describe, expect, it, vi } from 'vitest'
+// This file verifies the standalone missed-call template parameters and
+// that the unsolicited morning/missed-call queue dispatcher is disabled.
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
