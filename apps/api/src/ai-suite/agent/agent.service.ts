@@ -1439,17 +1439,21 @@ async function alertStaffOfConcern(params: {
   channel?:       string
 }): Promise<void> {
   try {
-    // Dedup: don't fire again if already alerted (and not yet resolved) within 2 hours
-    const recentAlert = await prisma.aiMessage.findFirst({
-      where: {
-        conversationId: params.conversationId,
-        role:           'SYSTEM',
-        content:        { contains: 'STAFF_ALERTED' },
-        NOT:            { content: { contains: '(RESOLVED)' } },
-        createdAt:      { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
-      },
-    })
-    if (recentAlert) return
+    // An unresolved concern remains alerted until staff hand back the conversation.
+    // The former two-hour window generated repeat notifications for the same case.
+    const [lastAlert, lastHandback] = await Promise.all([
+      prisma.aiMessage.findFirst({
+        where: { conversationId: params.conversationId, role: 'SYSTEM', content: { contains: 'STAFF_ALERTED' } },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+      prisma.aiMessage.findFirst({
+        where: { conversationId: params.conversationId, role: 'SYSTEM', content: { startsWith: 'Agent resumed by staff.' } },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+    ])
+    if (lastAlert && (!lastHandback || lastAlert.createdAt > lastHandback.createdAt)) return
 
     // Resolve patient name from DB; fall back to phone number
     const patient = await prisma.patient.findFirst({
@@ -1597,17 +1601,20 @@ export async function getAgentReply(
     clearBookingState(from)
     console.log(`[Agent] Clinical concern detected for ${from}: "${latestMessage.slice(0, 80)}"`)
 
-    // Check if staff was already alerted (and not yet resolved) within the dedup window
-    const recentAlert = await prisma.aiMessage.findFirst({
-      where: {
-        conversationId,
-        role:      'SYSTEM',
-        content:   { contains: 'STAFF_ALERTED' },
-        NOT:       { content: { contains: '(RESOLVED)' } },
-        createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
-      },
-    })
-    const staffAlreadyAlerted = !!recentAlert
+    // Keep Sarah's follow-up wording aligned with the alert lifecycle.
+    const [recentAlert, lastHandback] = await Promise.all([
+      prisma.aiMessage.findFirst({
+        where: { conversationId, role: 'SYSTEM', content: { contains: 'STAFF_ALERTED' } },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+      prisma.aiMessage.findFirst({
+        where: { conversationId, role: 'SYSTEM', content: { startsWith: 'Agent resumed by staff.' } },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+    ])
+    const staffAlreadyAlerted = !!recentAlert && (!lastHandback || recentAlert.createdAt > lastHandback.createdAt)
 
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
     const lastFollowupMsg = await prisma.aiMessage.findFirst({
