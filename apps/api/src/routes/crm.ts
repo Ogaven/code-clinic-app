@@ -155,7 +155,7 @@ router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, a
 router.get('/leads/unlinked-booking-review', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   try {
     const rawPage = req.query.page
-    if (rawPage !== undefined && (typeof rawPage !== 'string' || !/^[1-9]\\d{0,5}$/.test(rawPage))) {
+    if (rawPage !== undefined && (typeof rawPage !== 'string' || !/^[1-9]\d{0,5}$/.test(rawPage))) {
       return res.status(400).json({ error: 'page must be a positive integer (up to 6 digits)' })
     }
     const page = rawPage ? Number(rawPage) : 1
@@ -172,7 +172,7 @@ router.get('/leads/unlinked-booking-review', requireAuth, adminAndReceptionist, 
     const candidates = []
     for (const lead of leads) {
       // Exclude session IDs, Meta PSIDs and other non-telephone identifiers.
-      if (!lead.phone || !/^\\+?256[0-9]{9}$|^0[0-9]{9}$/.test(lead.phone)) continue
+      if (!lead.phone || !/^\+?256[0-9]{9}$|^0[0-9]{9}$/.test(lead.phone)) continue
       const patients = await prisma.patient.findMany({
         where: { phone: { in: phoneVariants(lead.phone) } },
         select: { id: true, firstName: true, lastName: true },
