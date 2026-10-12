@@ -99,6 +99,42 @@ router.post('/leads', requireAuth, adminAndReceptionist, async (req: Request, re
   }
 })
 
+// Read-only preview for historical booking reconciliation. Do not silently
+// rewrite lead stages or infer identity from a shared family phone number.
+// Only an existing explicit patient link can qualify for this preview.
+router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, async (_req: Request, res: Response) => {
+  try {
+    const leads = await prisma.lead.findMany({
+      where: {
+        convertedToPatientId: { not: null },
+        status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] },
+      },
+      select: { id: true, status: true, convertedToPatientId: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 200,
+    })
+    const candidates = []
+    for (const lead of leads) {
+      if (!lead.convertedToPatientId) continue
+      const booking = await prisma.appointment.findFirst({
+        where: { patientId: lead.convertedToPatientId, status: { not: 'CANCELLED' } },
+        select: { id: true },
+      })
+      if (booking) {
+        candidates.push({
+          leadId: lead.id,
+          currentStage: lead.status,
+          patientId: lead.convertedToPatientId,
+          appointmentId: booking.id,
+        })
+      }
+    }
+    res.json({ readOnly: true, scanned: leads.length, limit: 200, candidates })
+  } catch {
+    res.status(500).json({ error: 'Failed to preview lead reconciliation' })
+  }
+})
+
 router.get('/leads/:id', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   try {
     const lead = await prisma.lead.findUnique({ where: { id: req.params.id } })
