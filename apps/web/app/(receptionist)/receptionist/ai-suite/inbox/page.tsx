@@ -210,7 +210,11 @@ function lastActivityLabel(iso?: string): string | null {
 // Provider template identifiers are delivery metadata, not patient-facing chat text.
 // Hide only standalone placeholder messages; never remove genuine message history.
 function isTemplateArtifact(content: string): boolean {
-  return /^\\[Template:\\s*[a-z0-9_\\-]+\\](?:\\s+[^\\r\\n]{1,100})?$/i.test(content.trim())
+  const value = content.trim()
+  // Standalone internal template markers (with optional contact label or metadata).
+  // Never suppress a real message containing ordinary prose around the marker.
+  return /^\[\s*Template\s*:\s*[^\]\r\n]+\](?:\s*(?:[-–|:]\s*)?(?:[\w .+'-]{1,100}))?$/i.test(value)
+    || /^\[\s*(?:WhatsApp|WA)\s+Template\s*:\s*[^\]\r\n]+\]$/i.test(value)
 }
 function parseBubble(content: string) {
   if (content.startsWith('__MEDIA_IMAGE__:'))                                    return 'image'
@@ -958,7 +962,7 @@ function InboxPage() {
       if (prevConvsRef.current.size > 0 && document.hidden && Notification.permission === 'granted') {
         for (const conv of deduped) {
           const lm = conv.lastMessage
-          if (!lm || lm.role !== 'USER') continue
+          if (!lm || lm.role !== 'USER' || isTemplateArtifact(lm.content)) continue
           const prev = prevConvsRef.current.get(conv.id)
           if (prev && lm.createdAt > prev) {
             const name    = convLabel(conv, channel)
@@ -1196,7 +1200,7 @@ function InboxPage() {
           const last    = conv.lastMessage
           const time    = fmtTime(last?.createdAt ?? conv.updatedAt)
           const active  = sel?.id === conv.id
-          const preview = last ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No messages'
+          const preview = last && !isTemplateArtifact(last.content) ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No patient message preview'
           const ws     = getWorkState(conv)
           const wsMeta = WORK_STATE_META[ws]
           const isLead = isLeadConversation(conv)
