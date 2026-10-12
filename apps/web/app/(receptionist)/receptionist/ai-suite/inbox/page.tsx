@@ -643,7 +643,8 @@ function fireInboxNotification(title: string, body: string, conversationId: stri
   if (!('Notification' in window) || Notification.permission !== 'granted') return
   const path = window.location.pathname
   const base = path.includes('/receptionist/') ? '/receptionist/ai-suite/inbox' : '/ai-suite/inbox'
-  const url = `${base}?channel=${encodeURIComponent(channel)}&conversationId=${encodeURIComponent(conversationId)}`
+  const channelParam = CHANNELS.find(c => c.key === channel)?.apiVal ?? 'whatsapp'
+  const url = `${base}?channel=${encodeURIComponent(channelParam)}&conv=${encodeURIComponent(conversationId)}`
   const opts: NotificationOptions = { body, icon: '/icon.png', badge: '/icon.png', tag: `inbox-message-${conversationId}`, data: { url } }
   if (navigator.serviceWorker?.controller) {
     navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts)).catch(() => {})
