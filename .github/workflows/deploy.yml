@@ -61,7 +61,10 @@ jobs:
           fi
 
   deploy-api:
-    needs: classify
+    # Both release scripts use the same server-side deployment lock. Wait for
+    # the web release to finish instead of racing and aborting API deployment.
+    needs: [classify, deploy-web]
+    if: always() && needs.classify.result == 'success' && needs.classify.outputs.api_changed == 'true' && (needs.deploy-web.result == 'success' || needs.deploy-web.result == 'skipped')
     if: needs.classify.outputs.api_changed == 'true'
     runs-on: ubuntu-latest
     steps:
