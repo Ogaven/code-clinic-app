@@ -87,8 +87,7 @@ function flush(from: string): void {
 
   if (!entry.messages.length) return
 
-  const combined  = entry.messages.map(m => m.text).join('
-')
+  const combined  = entry.messages.map(m => m.text).join('\n')
   const lastWamid = entry.messages[entry.messages.length - 1].wamid
 
   if (entry.messages.length > 1) {
