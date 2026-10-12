@@ -678,12 +678,26 @@ function CommentThread({ conv, onRefresh }: { conv: PostConv; onRefresh: () => v
   }
 
   async function doToggle() {
+    if (toggling) return
+    // Comment conversations must obey the same mandatory handback-note rule
+    // as direct messages. Cancelling leaves Sarah paused.
+    const summary = conv.agentEnabled ? null : window.prompt(
+      'Before Sarah resumes, describe what was resolved and what she should do next:'
+    )?.trim()
+    if (!conv.agentEnabled && !summary) return
     setToggling(true)
     const ep = conv.agentEnabled ? 'takeover' : 'handback'
     try {
-      await fetch(`${API}/ai-suite/${ep}/${conv.id}`, { method: 'POST', headers: authH() })
+      const response = await fetch(`${API}/ai-suite/${ep}/${conv.id}`, {
+        method: 'POST',
+        headers: authH(!conv.agentEnabled),
+        ...(!conv.agentEnabled ? { body: JSON.stringify({ summary: summary!.slice(0, 1000) }) } : {}),
+      })
+      if (!response.ok) throw new Error('Unable to change Sarah\'s takeover status. Please try again.')
       onRefresh()
-    } catch {} finally { setToggling(false) }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Unable to update conversation')
+    } finally { setToggling(false) }
   }
 
   return (
