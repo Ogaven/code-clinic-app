@@ -857,6 +857,6 @@ export async function sendWhatsAppTemplate(
   console.log(`[WhatsApp] Template '${templateName}' sent to +${normalizedTo} (wamid: ${msgId})`)
   const logText = `[Template: ${templateName}] ${params.join(' | ')}`
   logOutboundMessage(to, logText, templateName)
-  if (logToConversation) logAgentMessageToConversation(to, logText, msgId !== 'unknown' ? msgId : undefined)
+  // Template identifiers belong in the outbound audit log, not in the patient\n  // conversation as fake human-readable messages. Callers that need a visible\n  // clinical message already persist their own actual content separately.\n  // Keep logToConversation in the signature for existing callers.\n  void logToConversation
   return msgId
 }
