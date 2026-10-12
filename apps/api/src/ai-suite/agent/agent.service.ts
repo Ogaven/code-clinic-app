@@ -1526,7 +1526,13 @@ async function alertStaffOfConcern(params: {
     })
     // Open the exact flagged conversation rather than the generic inbox.
     // Channel values must match the inbox's ?channel= API filter.
-    const alertChannel = (params.channel ?? 'WHATSAPP').toUpperCase()
+    // Legacy getAgentReply callers do not pass a channel. Resolve it from the
+    // conversation so Facebook/Instagram/website alerts do not open WhatsApp.
+    const sourceConversation = params.channel ? null : await prisma.aiConversation.findUnique({
+      where: { id: params.conversationId },
+      select: { channel: true },
+    })
+    const alertChannel = (params.channel ?? sourceConversation?.channel ?? 'WHATSAPP').toUpperCase()
     const inboxChannel = alertChannel === 'FACEBOOK' || alertChannel === 'FB_DM' ? 'facebook'
       : alertChannel === 'INSTAGRAM' || alertChannel === 'IG_DM' ? 'instagram'
       : alertChannel === 'FACEBOOK_COMMENT' || alertChannel === 'FB_COMMENTS' ? 'facebook_comment'
