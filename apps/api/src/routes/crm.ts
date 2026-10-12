@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth'
 import { requireRole, adminAndReceptionist } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { phoneVariants } from '../utils/phone'
+import { emitAutomationEvent, exitActiveEnrollments } from '../crm-automation/automation-events.service'
 import { findOrCreateLeadForChannel, handleNewLeadCreated } from '../crm-automation/lead-intake.service'
 import {
   transitionLeadStage,
@@ -233,29 +234,44 @@ router.post('/leads/:id/verify-patient-booking', requireAuth, requireRole('ADMIN
     })
     if (!appointment) return res.status(409).json({ error: 'No eligible appointment for this patient and lead' })
 
-    // Compare-and-set prevents concurrent staff verification from overwriting a link.
-    const linked = await prisma.lead.updateMany({
-      where: { id: lead.id, convertedToPatientId: null, status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] } },
-      data: { convertedToPatientId: patient.id },
+    // Link, stage, and audit history are one database transaction. A failed
+    // history insert rolls back both mutations, leaving no partial conversion.
+    // The conditional update prevents competing staff requests from linking
+    // the same lead twice.
+    const converted = await prisma.$transaction(async tx => {
+      const linked = await tx.lead.updateMany({
+        where: { id: lead.id, convertedToPatientId: null, status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] } },
+        data: { convertedToPatientId: patient.id, status: 'CONVERTED', stage: 'CONVERTED' },
+      })
+      if (linked.count !== 1) return null
+      await tx.leadStageHistory.create({
+        data: {
+          leadId: lead.id,
+          fromStage: lead.status,
+          toStage: 'CONVERTED',
+          changedBy: req.user!.id,
+          trigger: 'MANUAL',
+          reason: 'staff_verified_patient_booking',
+        },
+      })
+      return tx.lead.findUniqueOrThrow({ where: { id: lead.id } })
     })
-    if (linked.count !== 1) return res.status(409).json({ error: 'Lead changed during verification; refresh and retry' })
-    // The existing canonical wrapper records LeadStageHistory and stops nurture.
-    // If it fails, remove only the link this request created; do not overwrite
-    // a link that another operator may have subsequently changed.
-    let converted
+    if (!converted) return res.status(409).json({ error: 'Lead changed during verification; refresh and retry' })
+
+    // Post-commit automation is best-effort. A downstream event error must
+    // not report a failed conversion after the database already committed.
     try {
-      converted = await convertLeadOnBooking(lead.id)
-    } catch (conversionError) {
-      const latest = await prisma.lead.findUnique({ where: { id: lead.id }, select: { status: true } })
-      if (latest && latest.status !== 'CONVERTED') {
-        await prisma.lead.updateMany({
-          where: { id: lead.id, convertedToPatientId: patient.id, status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] } },
-          data: { convertedToPatientId: null },
-        })
-      }
-      throw conversionError
+      await exitActiveEnrollments('LEAD', lead.id, 'EXITED_BOOKED', 'appointment_booked')
+      await emitAutomationEvent({
+        entityType: 'LEAD', entityId: lead.id, eventType: 'lead_stage_changed',
+        fromValue: lead.status, toValue: 'CONVERTED',
+        metadata: { trigger: 'MANUAL', reason: 'staff_verified_patient_booking' },
+      })
+    } catch (automationError) {
+      console.error('[CRM] Verified booking converted; post-commit automation requires review:', automationError)
     }
     res.json({ success: true, leadId: converted.id, stage: converted.status, patientId: patient.id, appointmentId })
+
   } catch (error) {
     console.error('[CRM] Verified booking reconciliation failed:', error)
     res.status(500).json({ error: 'Failed to reconcile verified booking; check the lead before retrying' })
