@@ -638,12 +638,14 @@ function NewChatModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
 }
 
 // ── Inbox push notification ────────────────────────────────────────────────────
-function fireInboxNotification(title: string, body: string) {
+function fireInboxNotification(title: string, body: string, conversationId: string, channel: ChannelKey) {
   if (typeof window === 'undefined') return
   if (!('Notification' in window) || Notification.permission !== 'granted') return
   const path = window.location.pathname
-  const url  = path.includes('/receptionist/') ? '/receptionist/ai-suite/inbox' : '/ai-suite/inbox'
-  const opts: NotificationOptions = { body, icon: '/icon.png', badge: '/icon.png', tag: 'inbox-message', data: { url } }
+  const base = path.includes('/receptionist/') ? '/receptionist/ai-suite/inbox' : '/ai-suite/inbox'
+  const channelParam = CHANNELS.find(c => c.key === channel)?.apiVal ?? 'whatsapp'
+  const url = `${base}?channel=${encodeURIComponent(channelParam)}&conv=${encodeURIComponent(conversationId)}`
+  const opts: NotificationOptions = { body, icon: '/icon.png', badge: '/icon.png', tag: `inbox-message-${conversationId}`, data: { url } }
   if (navigator.serviceWorker?.controller) {
     navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts)).catch(() => {})
     return
@@ -1005,7 +1007,7 @@ function InboxPage() {
           if (prev && lm.createdAt > prev) {
             const name    = convLabel(conv, channel)
             const preview = name + ': ' + lm.content.replace(/\n/g, ' ').slice(0, 60)
-            fireInboxNotification('New Message — Code Clinic', preview)
+            fireInboxNotification('New Message — Code Clinic', preview, conv.id, channel)
           }
         }
       }
@@ -1037,12 +1039,25 @@ function InboxPage() {
     fetchConvs()
   }
 
+  const lastMessageRequest = useRef(0)
   const fetchMsgs = useCallback(async (id: string) => {
-    setLoadingM(true)
+    const requestId = ++lastMessageRequest.current
+    // Only show the loading state when switching threads, not on every poll.
+    if (prevConvId.current !== id) setLoadingM(true)
     try {
       const res = await fetch(`${API}/ai-suite/conversations/${id}/messages`, { headers: authH() })
-      if (res.ok) setMsgs(await res.json())
-    } catch {} finally { setLoadingM(false) }
+      if (!res.ok || requestId !== lastMessageRequest.current) return
+      const incoming: Message[] = await res.json()
+      if (requestId !== lastMessageRequest.current) return
+      setMsgs(previous => {
+        if (previous.length === incoming.length && previous.every((m, i) =>
+          m.id === incoming[i].id && m.content === incoming[i].content && m.createdAt === incoming[i].createdAt
+        )) return previous
+        return incoming
+      })
+    } catch {} finally {
+      if (requestId === lastMessageRequest.current) setLoadingM(false)
+    }
   }, [])
 
   useEffect(() => {
