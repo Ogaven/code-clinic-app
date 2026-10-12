@@ -65,7 +65,6 @@ jobs:
     # the web release to finish instead of racing and aborting API deployment.
     needs: [classify, deploy-web]
     if: always() && needs.classify.result == 'success' && needs.classify.outputs.api_changed == 'true' && (needs.deploy-web.result == 'success' || needs.deploy-web.result == 'skipped')
-    if: needs.classify.outputs.api_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
