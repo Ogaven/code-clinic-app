@@ -240,3 +240,13 @@ ssh root@46.101.255.243 'cat > /var/www/codeclinic/.deploy-state.json <<EOF
 {"api_sha": "<sha>", "web_sha": "<sha>", "web_build_id": "<build-id>", "updated_at": "<iso8601>"}
 EOF'
 ```
+
+
+## Deployment retry — 2026-10-12
+
+A documentation-only push to `main` was requested to re-trigger the existing
+`Deploy to Production` GitHub Actions workflow after clinical-alert PR #200
+merged. The workflow classifies the live API/web release SHAs and deploys only
+runtime differences. This marker does not alter application code, run database
+migrations, or send patient communications. Verify the workflow result and
+live health checks before declaring production up to date.
