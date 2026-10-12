@@ -49,6 +49,7 @@ router.post('/takeover/:conversationId', adminAndReceptionist, async (req, res) 
 router.post('/handback/:conversationId', adminAndReceptionist, async (req, res) => {
   try {
     const summary = typeof req.body?.summary === 'string' && req.body.summary.trim() ? req.body.summary.trim().slice(0, 1000) : undefined
+    if (!summary) return res.status(400).json({ error: 'A resolution note is required before handing back to the AI' })
     await handbackConversation(req.params.conversationId, req.user!.id, summary)
     res.json({ success: true })
   } catch (err: any) {
