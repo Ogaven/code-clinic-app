@@ -2653,6 +2653,25 @@ export async function getAgentReplyV2OpenAI(
   }
 
   try {
+    // Capture only a visitor's explicit self-introduction. Never infer names
+    // from arbitrary chat content, and never create or link patient records.
+    if (channel === 'WEBSITE') {
+      const introduction = latestMessage.trim().match(
+        /^(?:hi[,! ]+|hello[,! ]+|hey[,! ]+)?(?:my name is|i am|i'm|call me)\s+([a-z][a-z' -]{1,59})[.! ]*$/i
+      )
+      const name = introduction?.[1]?.trim().replace(/\s+/g, ' ')
+      if (name && name.length <= 60 && name.split(' ').length <= 4 &&
+          !/\b(?:looking|interested|asking|wondering|here|trying|calling|booking|having|feeling|not|fine|okay|good|sick|in pain)\b/i.test(name)) {
+        try {
+          await prisma.aiConversation.updateMany({
+            where: { id: conversationId, channel: 'WEBSITE', displayName: null },
+            data: { displayName: name },
+          })
+        } catch {
+          // Identity enrichment is optional: never block a patient reply.
+        }
+      }
+    }
     const lastAgentMsg = await prisma.aiMessage.findFirst({
       where:   { conversationId, role: 'AGENT' },
       orderBy: { createdAt: 'desc' },
