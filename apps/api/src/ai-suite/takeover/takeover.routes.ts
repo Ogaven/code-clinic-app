@@ -282,7 +282,7 @@ router.post('/conversations/website-name-backfill', adminAndReceptionist, async 
           }
         }
         if (candidate && candidate.length <= 60 && candidate.split(' ').length <= 4 &&
-            !/\b(?:looking|interested|asking|wondering|here|trying|calling|booking|having|feeling|not|fine|okay|good|sick|in pain)\b/i.test(candidate)) {
+            !/\b(?:looking|interested|asking|wondering|here|trying|calling|booking|having|feeling|not|fine|okay|good|sick|in pain|yes|no|sure|thanks|thank you|please|hello|hi|hey|hullo|hallo|morning|afternoon|evening|alright|right|correct|exactly|maybe|later|today|tomorrow)\b/i.test(candidate)) {
           name = candidate
           break
         }
