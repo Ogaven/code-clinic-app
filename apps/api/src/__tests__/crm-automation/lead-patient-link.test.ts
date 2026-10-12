@@ -28,8 +28,15 @@ describe('resolveQualifiedLeadForPatient — matching order (no name-only matchi
     expect(lead?.id).toBe('lead-1')
     expect(prismaMock.lead.findFirst).toHaveBeenCalledTimes(1)
     expect(prismaMock.lead.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { convertedToPatientId: 'patient-1', status: 'QUALIFIED' },
+      where: { convertedToPatientId: 'patient-1', status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] } },
     }))
+  })
+
+  it('tier 1: accepts a missed-qualification lead only when explicitly linked to this patient', async () => {
+    prismaMock.lead.findFirst.mockResolvedValueOnce({ id: 'lead-new', status: 'NEW', convertedToPatientId: 'patient-1' })
+    const lead = await resolveQualifiedLeadForPatient({ id: 'patient-1', phone: '+256700000000' })
+    expect(lead?.id).toBe('lead-new')
+    expect(prismaMock.lead.findFirst).toHaveBeenCalledTimes(1)
   })
 
   it('tier 2: falls back to a normalized-phone match when no explicit link exists', async () => {
