@@ -244,6 +244,52 @@ router.get('/conversations', adminAndReceptionist, async (req, res) => {
   }
 })
 
+// POST /ai-suite/conversations/website-name-backfill
+// Authorized, idempotent backfill of *explicit* visitor introductions only.
+// Never guesses from AI replies, changes patient identities, or overwrites names.
+router.post('/conversations/website-name-backfill', adminAndReceptionist, async (_req, res) => {
+  try {
+    const candidates = await prisma.aiConversation.findMany({
+      where: { channel: 'WEBSITE', displayName: null },
+      select: {
+        id: true,
+        messages: {
+          where: { role: 'USER' },
+          orderBy: { createdAt: 'asc' },
+          take: 80,
+          select: { content: true },
+        },
+      },
+      take: 1000,
+    })
+    let renamed = 0
+    for (const conversation of candidates) {
+      let name: string | null = null
+      for (const message of conversation.messages) {
+        const match = message.content.trim().match(
+          /^(?:hi[,! ]+|hello[,! ]+|hey[,! ]+)?(?:my name is|i am|i'm|call me)\s+([a-z][a-z' -]{1,59})[.! ]*$/i
+        )
+        const candidate = match?.[1]?.trim().replace(/\s+/g, ' ')
+        if (candidate && candidate.length <= 60 && candidate.split(' ').length <= 4 &&
+            !/\b(?:looking|interested|asking|wondering|here|trying|calling|booking|having|feeling|not|fine|okay|good|sick|in pain)\b/i.test(candidate)) {
+          name = candidate
+          break
+        }
+      }
+      if (!name) continue
+      const result = await prisma.aiConversation.updateMany({
+        where: { id: conversation.id, channel: 'WEBSITE', displayName: null },
+        data: { displayName: name },
+      })
+      renamed += result.count
+    }
+    res.json({ success: true, scanned: candidates.length, renamed })
+  } catch (err: any) {
+    console.error('[Takeover] website name backfill failed:', err.message)
+    res.status(500).json({ error: 'Could not update website visitor names' })
+  }
+})
+
 // POST /ai-suite/conversations
 // Staff starts a new outbound WhatsApp conversation to a number not yet in the system.
 // Reuses an existing ACTIVE conversation for the number if one already exists (same
