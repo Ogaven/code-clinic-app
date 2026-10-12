@@ -1013,9 +1013,22 @@ function InboxPage() {
     return Array.from(map.values()).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
   }
 
+  // Run the authorized, idempotent historical name recovery once per inbox
+  // session. Never repeat it on the 15-second conversation polling cycle.
+  const websiteNameBackfillAttempted = useRef(false)
   const fetchConvs = useCallback(async () => {
     try {
       const ch  = CHANNELS.find(c => c.key === channel)?.apiVal || 'whatsapp'
+      if (ch.toUpperCase() === 'WEBSITE' && !websiteNameBackfillAttempted.current) {
+        websiteNameBackfillAttempted.current = true
+        try {
+          await fetch(`${API}/ai-suite/conversations/website-name-backfill`, {
+            method: 'POST', headers: authH(true),
+          })
+        } catch {
+          // Backfill must never prevent staff from loading the inbox.
+        }
+      }
       const res = await fetch(`${API}/ai-suite/conversations?channel=${ch}${showArchived ? '&archived=true' : ''}`, { headers: authH() })
       if (!res.ok) return
       const data: Conversation[] = await res.json()
