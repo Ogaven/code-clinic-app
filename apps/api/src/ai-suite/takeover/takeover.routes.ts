@@ -59,6 +59,39 @@ router.post('/handback/:conversationId', adminAndReceptionist, async (req, res) 
   }
 })
 
+// GET /ai-suite/clinical-alerts/:conversationId/status
+// Read-only state for a staff resolution control. Handback does not resolve an alert.
+router.get('/clinical-alerts/:conversationId/status', adminAndReceptionist, async (req, res) => {
+  try {
+    const conversation = await prisma.aiConversation.findUnique({
+      where: { id: req.params.conversationId },
+      select: { id: true },
+    })
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' })
+    const [latestAlert, latestResolution] = await Promise.all([
+      prisma.aiMessage.findFirst({
+        where: { conversationId: conversation.id, role: 'SYSTEM', content: { startsWith: 'STAFF_ALERTED:' } },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+      prisma.aiMessage.findFirst({
+        where: { conversationId: conversation.id, role: 'SYSTEM', content: { startsWith: 'CLINICAL_ALERT_RESOLVED:' } },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+    ])
+    res.json({
+      hasAlert: Boolean(latestAlert),
+      unresolved: Boolean(latestAlert && (!latestResolution || latestAlert.createdAt > latestResolution.createdAt)),
+      lastAlertAt: latestAlert?.createdAt ?? null,
+      lastResolvedAt: latestResolution?.createdAt ?? null,
+    })
+  } catch (err: any) {
+    console.error('[Takeover] clinical alert status error:', err.message)
+    res.status(500).json({ error: 'Failed to fetch clinical alert status' })
+  }
+})
+
 // POST /ai-suite/clinical-alerts/:conversationId/resolve
 // Clinical resolution is independent of handing control back to Sarah.
 // Record the explicit staff decision without modifying unrelated escalations.
