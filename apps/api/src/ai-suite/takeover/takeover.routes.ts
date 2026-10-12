@@ -254,10 +254,10 @@ router.post('/conversations/website-name-backfill', adminAndReceptionist, async 
       select: {
         id: true,
         messages: {
-          where: { role: 'USER' },
+          where: { role: { in: ['USER', 'AGENT'] } },
           orderBy: { createdAt: 'asc' },
-          take: 80,
-          select: { content: true },
+          take: 160,
+          select: { content: true, role: true },
         },
       },
       take: 1000,
@@ -266,10 +266,21 @@ router.post('/conversations/website-name-backfill', adminAndReceptionist, async 
     for (const conversation of candidates) {
       let name: string | null = null
       for (const message of conversation.messages) {
+        if (message.role !== 'USER') continue
         const match = message.content.trim().match(
           /^(?:hi[,! ]+|hello[,! ]+|hey[,! ]+)?(?:my name is|i am|i'm|call me)\s+([a-z][a-z' -]{1,59})[.! ]*$/i
         )
-        const candidate = match?.[1]?.trim().replace(/\s+/g, ' ')
+        let candidate = match?.[1]?.trim().replace(/\s+/g, ' ')
+        // A standalone answer can be a name only if Sarah just asked.
+        if (!candidate && message.role === 'USER' &&
+            /^[a-z][a-z' -]{1,59}[.! ]*$/i.test(message.content.trim())) {
+          const index = conversation.messages.indexOf(message)
+          const preceding = conversation.messages[index - 1]
+          if (preceding?.role === 'AGENT' &&
+              /(?:what(?:'s| is) your name|may i (?:have|know) your name|could you (?:tell me|share) your name)/i.test(preceding.content)) {
+            candidate = message.content.trim().replace(/[.! ]+$/, '').replace(/\s+/g, ' ')
+          }
+        }
         if (candidate && candidate.length <= 60 && candidate.split(' ').length <= 4 &&
             !/\b(?:looking|interested|asking|wondering|here|trying|calling|booking|having|feeling|not|fine|okay|good|sick|in pain)\b/i.test(candidate)) {
           name = candidate
