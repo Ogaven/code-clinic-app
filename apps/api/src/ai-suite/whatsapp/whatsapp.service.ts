@@ -185,16 +185,16 @@ function isClinicOpen(): boolean {
 // runs as a single PM2 fork-mode process — no cross-process coordination needed.
 const inFlightByPhone = new Map<string, Promise<void>>()
 
-export function processInbound(from: string, text: string, wamid: string, phoneNumberId?: string): Promise<void> {
+export function processInbound(from: string, text: string, wamid: string, phoneNumberId?: string, metadata?: string): Promise<void> {
   const key   = from.startsWith('+') ? from : `+${from}`
   const prior = inFlightByPhone.get(key) ?? Promise.resolve()
-  const run   = prior.catch(() => {}).then(() => processInboundLocked(from, text, wamid, phoneNumberId))
+  const run   = prior.catch(() => {}).then(() => processInboundLocked(from, text, wamid, phoneNumberId, metadata))
   inFlightByPhone.set(key, run)
   run.finally(() => { if (inFlightByPhone.get(key) === run) inFlightByPhone.delete(key) })
   return run
 }
 
-async function processInboundLocked(from: string, text: string, wamid: string, phoneNumberId?: string): Promise<void> {
+async function processInboundLocked(from: string, text: string, wamid: string, phoneNumberId?: string, metadata?: string): Promise<void> {
   // Normalize to E.164: Meta webhook delivers numbers WITHOUT '+' (e.g. 256785703926).
   // Africa's Talking delivers WITH '+'. Always use the '+' form so every DB lookup matches.
   from = normalizePhone(from)
@@ -346,6 +346,7 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
         conversationId: conversation.id,
         role:           'USER',
         content:        text,
+        metadata:       metadata || undefined,
         wamid:          wamid || undefined,
       },
     })
