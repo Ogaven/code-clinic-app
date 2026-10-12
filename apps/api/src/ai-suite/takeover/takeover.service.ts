@@ -70,3 +70,28 @@ export async function isAgentEnabled(conversationId: string): Promise<boolean> {
   // Fail closed until a valid conversation record explicitly permits the agent.
   return conv?.agentEnabled === true
 }
+
+
+// Read the latest staff handback note without consuming or deleting clinical history.
+// Only the most recent handback is relevant; a subsequent takeover supersedes it.
+export async function getPendingHandoffNote(conversationId: string): Promise<string | null> {
+  const messages = await prisma.aiMessage.findMany({
+    where: { conversationId, role: 'SYSTEM' },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    select: { content: true, metadata: true },
+  })
+
+  for (const message of messages) {
+    if (message.content.startsWith('Conversation taken over by staff')) return null
+    if (!message.content.startsWith('Agent resumed by staff.')) continue
+    try {
+      const metadata = message.metadata ? JSON.parse(message.metadata) : null
+      const note = metadata?.summary
+      return typeof note === 'string' && note.trim() ? note.trim() : null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
