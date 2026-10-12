@@ -241,6 +241,40 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
   const [unlinkedHasMore, setUnlinkedHasMore] = useState(false)
   const [expandedUnlinkedLeadId, setExpandedUnlinkedLeadId] = useState<string | null>(null)
 
+  const [verificationTarget, setVerificationTarget] = useState<{ leadId: string; patientId: string; appointmentId: string; patientName: string } | null>(null)
+  const [verificationName, setVerificationName] = useState('')
+  const [verificationConfirmed, setVerificationConfirmed] = useState(false)
+  const [verificationBusy, setVerificationBusy] = useState(false)
+  const [verificationError, setVerificationError] = useState('')
+  const [verificationSuccess, setVerificationSuccess] = useState('')
+
+  async function submitVerifiedLink() {
+    if (!verificationTarget || !verificationConfirmed || verificationBusy) return
+    setVerificationBusy(true)
+    setVerificationError('')
+    setVerificationSuccess('')
+    try {
+      const response = await fetch(`${API}/crm/leads/${encodeURIComponent(verificationTarget.leadId)}/verify-patient-booking`, {
+        method: 'POST',
+        headers: { ...authH, 'Content-Type': 'application/json' } as HeadersInit,
+        body: JSON.stringify({
+          patientId: verificationTarget.patientId,
+          appointmentId: verificationTarget.appointmentId,
+          confirmedPatientName: verificationName,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || data.success !== true) throw new Error(data.error || 'Verification failed')
+      setVerificationSuccess(`Lead verified and moved to ${data.stage}. Refreshing review.`)
+      setVerificationTarget(null)
+      setVerificationName('')
+      setVerificationConfirmed(false)
+      await Promise.all([loadUnlinkedReview(unlinkedPage), load()])
+    } catch (error) {
+      setVerificationError(error instanceof Error ? error.message : 'Verification failed. Review the lead before retrying.')
+    } finally { setVerificationBusy(false) }
+  }
+
   async function loadUnlinkedReview(page: number) {
     setUnlinkedLoading(true)
     setUnlinkedError('')
@@ -596,10 +630,24 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
                     <p className="font-semibold">{p.patientName}</p>
                     <p className="font-mono break-all">Patient ID: {p.patientId}</p>
                     <p className="font-mono break-all">Appointment ID: {p.appointmentId}</p>
+                    {currentUser.role === 'ADMIN' && <button type="button" className="mt-2 rounded-lg border border-amber-300 px-3 py-1.5 font-semibold" onClick={() => { setVerificationTarget({ leadId: candidate.leadId, patientId: p.patientId, appointmentId: p.appointmentId, patientName: p.patientName }); setVerificationName(''); setVerificationConfirmed(false); setVerificationError(''); setVerificationSuccess('') }}>Verify &amp; Link Patient</button>}
                   </div>)}
                 </td></tr>}
               </Fragment>)}</tbody></table></div>}
           </>}
+          {verificationSuccess && <p role="status" className="text-sm text-green-700">{verificationSuccess}</p>}
+          {verificationTarget && <div className="rounded-xl border-2 border-amber-400 p-4 space-y-3">
+            <h3 className="font-bold text-sm">Confirm patient identity before conversion</h3>
+            <p className="text-xs">Check the actual patient record and appointment with the clinic. A phone match or name match alone does not establish identity. This action links the lead and moves it to Converted.</p>
+            <p className="text-xs">Patient: <strong>{verificationTarget.patientName}</strong> · Appointment: {verificationTarget.appointmentId}</p>
+            <label className="block text-xs font-semibold">Type the patient's full name exactly as shown in the record
+              <input className="mt-1 w-full rounded-lg border p-2 text-sm dark:bg-gray-900" value={verificationName} onChange={e => setVerificationName(e.target.value)} autoComplete="off" />
+            </label>
+            <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={verificationConfirmed} onChange={e => setVerificationConfirmed(e.target.checked)} /> I personally checked the patient identity and appointment against the clinic record and confirm this is the correct person.</label>
+            {verificationError && <p role="alert" className="text-xs text-red-600">{verificationError}</p>}
+            <div className="flex gap-2"><button type="button" disabled={verificationBusy || !verificationConfirmed || verificationName.trim().toLowerCase().replace(/\\s+/g, ' ') !== verificationTarget.patientName.trim().toLowerCase().replace(/\\s+/g, ' ')} onClick={() => void submitVerifiedLink()} className="rounded-lg bg-amber-700 text-white px-3 py-2 text-xs disabled:opacity-40">{verificationBusy ? 'Verifying…' : 'Confirm identity, link & convert'}</button>
+              <button type="button" disabled={verificationBusy} onClick={() => { setVerificationTarget(null); setVerificationError('') }} className="rounded-lg border px-3 py-2 text-xs">Cancel</button></div>
+          </div>}
           <div className="flex gap-2"><button type="button" disabled={unlinkedLoading || unlinkedPage <= 1} onClick={() => void loadUnlinkedReview(unlinkedPage - 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Previous</button><button type="button" disabled={unlinkedLoading || !unlinkedHasMore} onClick={() => void loadUnlinkedReview(unlinkedPage + 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Next</button><button type="button" disabled={unlinkedLoading} onClick={() => void loadUnlinkedReview(unlinkedPage)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Refresh</button></div>
         </div>}
       </section>
