@@ -69,6 +69,9 @@ router.get('/conversations', adminAndReceptionist, async (req, res) => {
     const wantsArchived = req.query.archived === 'true'
     const where: any = {
       ...(channelParam ? { channel: channelParam } : {}),
+      // Only website sessions with a real visitor message belong in the inbox.
+      // Query the full message relation rather than just the last two replies.
+      NOT: { channel: 'WEBSITE', messages: { none: { role: 'USER' } } },
       archivedAt: wantsArchived ? { not: null } : null,
     }
     const conversations = await prisma.aiConversation.findMany({
@@ -129,15 +132,8 @@ router.get('/conversations', adminAndReceptionist, async (req, res) => {
       return `${firstName} ${lastName}`.trim().replace(/\s+\.\s*$/, '').trim()
     }
 
-    // A website widget can create a session before the visitor actually
-    // writes. Keep those empty/greeting-only sessions out of the staff inbox.
-    // This is presentation filtering only: no messages or audit rows are deleted.
-    const visibleConversations = conversations.filter(c =>
-      c.channel !== 'WEBSITE' || c.messages.some(m => m.role === 'USER')
-    )
-
     res.json(
-      visibleConversations.map(c => {
+      conversations.map(c => {
         let postCaption: string | null = null
         if (c.channel === 'FACEBOOK_COMMENT' || c.channel === 'INSTAGRAM_COMMENT') {
           for (const msg of c.messages) {
