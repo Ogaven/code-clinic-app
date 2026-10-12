@@ -7,8 +7,8 @@
 // does not match the expected number of params" before the message ever
 // reaches the patient.
 //
-// This file verifies the standalone missed-call template parameters and
-// that the unsolicited morning/missed-call queue dispatcher is disabled.
+// This file verifies that both standalone and queued unsolicited missed-call
+// WhatsApp follow-ups remain disabled.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -77,35 +77,18 @@ function makePatient(overrides: Partial<any> = {}) {
   }
 }
 
-describe('checkAndSendMissedCallFollowups — cc_missed_call_followup param mismatch', () => {
-  it('sends the template with an EMPTY parameter array (the approved body has no placeholders)', async () => {
+describe('checkAndSendMissedCallFollowups — unsolicited messages disabled', () => {
+  it('does not query short calls or send any WhatsApp message', async () => {
     store.agentLogs.push({
       id: 'log-1', channel: 'VOICE', callSid: 'CA1', durationSec: 5, patientId: 'patient-1',
       createdAt: new Date(), patient: makePatient(),
     })
     const { checkAndSendMissedCallFollowups } = await import('../ai-suite/scheduler/followup.service')
-
     await checkAndSendMissedCallFollowups()
-
-    expect(sendWhatsAppTemplateMock).toHaveBeenCalledTimes(1)
-    const [, templateName, params] = sendWhatsAppTemplateMock.mock.calls[0]
-    expect(templateName).toBe('cc_missed_call_followup')
-    expect(params).toEqual([])
-  })
-
-  it('respects WA_TEMPLATE_MISSED_CALL_NAME override for the template NAME, but still sends zero params', async () => {
-    process.env.WA_TEMPLATE_MISSED_CALL_NAME = 'cc_missed_call_followup_v2'
-    store.agentLogs.push({
-      id: 'log-2', channel: 'VOICE', callSid: 'CA2', durationSec: 3, patientId: 'patient-1',
-      createdAt: new Date(), patient: makePatient(),
-    })
-    const { checkAndSendMissedCallFollowups } = await import('../ai-suite/scheduler/followup.service')
-
-    await checkAndSendMissedCallFollowups()
-
-    const [, templateName, params] = sendWhatsAppTemplateMock.mock.calls[0]
-    expect(templateName).toBe('cc_missed_call_followup_v2')
-    expect(params).toEqual([])
+    const { prisma } = await import('../lib/prisma')
+    expect(prisma.agentLog.findMany).not.toHaveBeenCalled()
+    expect(sendWhatsAppTemplateMock).not.toHaveBeenCalled()
+    expect(sendWhatsAppMessageMock).not.toHaveBeenCalled()
   })
 })
 
