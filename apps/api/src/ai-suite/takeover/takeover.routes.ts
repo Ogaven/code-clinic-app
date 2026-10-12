@@ -305,9 +305,9 @@ router.get('/conversations/:conversationId/messages', adminAndReceptionist, asyn
       },
       orderBy: { createdAt: 'asc' },
     })
-    res.json(messages)
+    // Do not send private object-storage keys to the browser. Playback is obtained\n    // separately through the authorized short-lived URL endpoint.\n    res.json(messages.map(m => {\n      let voiceNoteAvailable = false\n      if (m.metadata) {\n        try { voiceNoteAvailable = !!(JSON.parse(m.metadata) as { voiceNote?: { storageKey?: string } }).voiceNote?.storageKey } catch {}\n      }\n      return { ...m, metadata: voiceNoteAvailable ? JSON.stringify({ voiceNoteAvailable: true }) : m.metadata }\n    }))
   } catch (err: any) {
-    console.error('[Takeover] messages fetch error:', err.message)
+    console.error('[Takeover] messages fetch error:, err.message)
     res.status(500).json({ error: 'Failed to fetch messages' })
   }
 })
