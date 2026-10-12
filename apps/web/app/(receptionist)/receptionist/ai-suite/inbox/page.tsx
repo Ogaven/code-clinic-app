@@ -133,6 +133,9 @@ function formatPhoneDisplay(raw: string): string {
 
 // Returns a human-readable label for the conversation list.
 function convLabel(conv: Conversation, channel: ChannelKey): string {
+  // Website identity is conversation-scoped; do not let a linked patient name
+  // override the name the visitor explicitly gave Sarah in this session.
+  if (channel === 'WEBSITE' && conv.displayName) return conv.displayName
   if (conv.patientName) return conv.patientName
   if (channel === 'WHATSAPP' && conv.waDisplayName) return conv.waDisplayName
   if (conv.displayName) return conv.displayName
