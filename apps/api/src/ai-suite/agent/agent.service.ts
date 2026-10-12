@@ -2478,17 +2478,21 @@ async function executeV2Tool(
       }
 
       case 'flag_clinical_concern': {
-        // Check dedup before alerting — if already fired within 2h, tell Claude not to re-escalate
-        const recentFlag = await prisma.aiMessage.findFirst({
-          where: {
-            conversationId,
-            role:    'SYSTEM',
-            content: { contains: 'STAFF_ALERTED' },
-            NOT:     { content: { contains: '(RESOLVED)' } },
-            createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
-          },
-        })
-        if (recentFlag) {
+        // Match the alert/handback lifecycle used by alertStaffOfConcern.
+        // A time-based check would re-alert the same unresolved concern.
+        const [recentFlag, lastHandback] = await Promise.all([
+          prisma.aiMessage.findFirst({
+            where: { conversationId, role: 'SYSTEM', content: { contains: 'STAFF_ALERTED' } },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+          }),
+          prisma.aiMessage.findFirst({
+            where: { conversationId, role: 'SYSTEM', content: { startsWith: 'Agent resumed by staff.' } },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+          }),
+        ])
+        if (recentFlag && (!lastHandback || recentFlag.createdAt > lastHandback.createdAt)) {
           return JSON.stringify({ alerted: false, alreadyNotified: true, clinicStatus: isClinicOpenNow() ? 'open' : 'closed' })
         }
         await alertStaffOfConcern({ conversationId, patientPhone: from, message: toolInput.summary as string, sarahAdvice: toolInput.sarahAdvice as string | undefined, channel })
