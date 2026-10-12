@@ -646,7 +646,7 @@ function isClinicalConcern(message: string): boolean {
   // Match complete words/phrases only: e.g. "painting" must not match "pain",
   // and "soreness" must not match "sore". Preserve actual symptom matches.
   return CLINICAL_CONCERN_PATTERNS.some(kw => {
-    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\  return CLINICAL_CONCERN_PATTERNS.some(kw => lower.includes(kw))')
+    const escaped = kw
     return new RegExp(`\\b${escaped}\\b`, 'i').test(lower)
   })
 }
