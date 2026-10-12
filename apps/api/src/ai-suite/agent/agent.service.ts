@@ -1575,7 +1575,7 @@ async function alertStaffOfConcern(params: {
       data: {
         patientId:   patient?.id,
         phoneNumber: params.patientPhone,
-        channel:     params.channel ?? 'WHATSAPP',
+        channel:     alertChannel,
         reason:      `Sarah escalated — ${params.message.slice(0, 300)}`,
         status:      'PENDING',
       },
