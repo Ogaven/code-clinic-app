@@ -1249,6 +1249,27 @@ function InboxPage() {
     }
   }
 
+  async function renameWebsiteVisitor() {
+    if (!sel || sel.channel !== 'WEBSITE') return
+    const proposed = window.prompt('Visitor name', sel.displayName || '')
+    if (proposed === null) return
+    const displayName = proposed.trim().replace(/\s+/g, ' ')
+    if (!displayName || displayName.length > 100 || /[\r\n<>]/.test(displayName)) {
+      window.alert('Enter a valid visitor name of 1–100 characters.')
+      return
+    }
+    try {
+      const response = await fetch(`${API}/ai-suite/conversations/${encodeURIComponent(sel.id)}/display-name`, {
+        method: 'PATCH', headers: authH(true), body: JSON.stringify({ displayName }),
+      })
+      if (!response.ok) throw new Error('Could not save visitor name')
+      setSel(previous => previous?.id === sel.id ? { ...previous, displayName } : previous)
+      setConvs(previous => previous.map(conv => conv.id === sel.id ? { ...conv, displayName } : conv))
+    } catch {
+      window.alert('Could not save visitor name. Please try again.')
+    }
+  }
+
   function selectConv(conv: Conversation) {
     setSel(conv); setMobileView('chat')
     const apiVal = CHANNELS.find(c => c.key === channel)!.apiVal
@@ -1545,6 +1566,12 @@ function InboxPage() {
         <Avatar name={convLabel(sel, channel)} size={40} pictureUrl={sel.profilePictureUrl} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{convLabel(sel, channel)}</p>
+          {channel === 'WEBSITE' && (
+            <button type="button" onClick={renameWebsiteVisitor}
+              className="text-xs text-blue-600 hover:underline dark:text-blue-400">
+              Edit visitor name
+            </button>
+          )}
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-400">
             <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 font-medium text-gray-500 dark:bg-white/10 dark:text-slate-300">
               {sel.agentEnabled ? '🤖 AI handling' : '👤 Human handling'}

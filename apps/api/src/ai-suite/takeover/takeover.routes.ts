@@ -304,6 +304,39 @@ router.delete('/conversations/:conversationId', adminAndReceptionist, async (req
   }
 })
 
+// PATCH /ai-suite/conversations/:conversationId/display-name
+// Staff can correct an unidentified website visitor's name without creating
+// a patient record or guessing an identity from unstructured chat messages.
+router.patch('/conversations/:conversationId/display-name', adminAndReceptionist, async (req, res) => {
+  const displayName = typeof req.body?.displayName === 'string' ? req.body.displayName.trim().replace(/\s+/g, ' ') : ''
+  if (!displayName || displayName.length > 100 || /[\r\n<>]/.test(displayName)) {
+    res.status(400).json({ error: 'A valid visitor name (1–100 characters) is required' })
+    return
+  }
+  try {
+    const existing = await prisma.aiConversation.findUnique({
+      where: { id: req.params.conversationId },
+      select: { id: true, channel: true },
+    })
+    if (!existing) {
+      res.status(404).json({ error: 'Conversation not found' })
+      return
+    }
+    if (existing.channel !== 'WEBSITE') {
+      res.status(400).json({ error: 'Visitor name editing is available for website conversations only' })
+      return
+    }
+    await prisma.aiConversation.update({
+      where: { id: existing.id },
+      data: { displayName } as any,
+    })
+    res.json({ success: true, displayName })
+  } catch (err: any) {
+    console.error('[Takeover] visitor name update error:', err.message)
+    res.status(500).json({ error: 'Failed to update visitor name' })
+  }
+})
+
 // PATCH /ai-suite/conversations/:conversationId/archive
 router.patch('/conversations/:conversationId/archive', adminAndReceptionist, async (req, res) => {
   try {
