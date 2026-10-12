@@ -2659,7 +2659,24 @@ export async function getAgentReplyV2OpenAI(
       const introduction = latestMessage.trim().match(
         /^(?:hi[,! ]+|hello[,! ]+|hey[,! ]+)?(?:my name is|i am|i'm|call me)\s+([a-z][a-z' -]{1,59})[.! ]*$/i
       )
-      const name = introduction?.[1]?.trim().replace(/\s+/g, ' ')
+      let name = introduction?.[1]?.trim().replace(/\s+/g, ' ')
+      // A direct answer to Sarah's name question is also an introduction.
+      // Only accept a short standalone name when her immediately preceding
+      // reply explicitly asked for it.
+      if (!name && /^[a-z][a-z' -]{1,59}[.! ]*$/i.test(latestMessage.trim())) {
+        try {
+          const previousReply = await prisma.aiMessage.findFirst({
+            where: { conversationId, role: 'AGENT' },
+            orderBy: { createdAt: 'desc' },
+            select: { content: true },
+          })
+          if (previousReply && /(?:what(?:'s| is) your name|may i (?:have|know) your name|could you (?:tell me|share) your name)/i.test(previousReply.content)) {
+            name = latestMessage.trim().replace(/[.! ]+$/, '').replace(/\s+/g, ' ')
+          }
+        } catch {
+          // Missing name context must not interrupt the conversation.
+        }
+      }
       if (name && name.length <= 60 && name.split(' ').length <= 4 &&
           !/\b(?:looking|interested|asking|wondering|here|trying|calling|booking|having|feeling|not|fine|okay|good|sick|in pain)\b/i.test(name)) {
         try {
