@@ -664,6 +664,17 @@ type PostThread = { postId: string; caption: string | null; thumbnailUrl: string
 // ── Single commenter thread inside a post ─────────────────────────────────────
 function CommentThread({ conv, onRefresh }: { conv: PostConv; onRefresh: () => void }) {
   const [reply,    setReply]    = useState('')
+  const [sendError, setSendError] = useState('')
+  const draftKey = `cc-comment-draft:${conv.id}`
+  useEffect(() => {
+    try { setReply(sessionStorage.getItem(draftKey) || '') } catch { setReply('') }
+  }, [draftKey])
+  useEffect(() => {
+    try {
+      if (reply) sessionStorage.setItem(draftKey, reply)
+      else sessionStorage.removeItem(draftKey)
+    } catch { /* storage may be unavailable */ }
+  }, [draftKey, reply])
   const [sending,  setSending]  = useState(false)
   const [toggling, setToggling] = useState(false)
   const name = conv.displayName || 'Anonymous'
@@ -672,11 +683,14 @@ function CommentThread({ conv, onRefresh }: { conv: PostConv; onRefresh: () => v
     if (!reply.trim() || sending) return
     setSending(true)
     try {
-      await fetch(`${API}/ai-suite/conversations/${conv.id}/send`, {
+      const response = await fetch(`${API}/ai-suite/conversations/${conv.id}/send`, {
         method: 'POST', headers: authH(true), body: JSON.stringify({ text: reply.trim() }),
       })
-      setReply(''); onRefresh()
-    } catch {} finally { setSending(false) }
+      if (!response.ok) throw new Error('Reply was not sent. Your draft has been kept; please retry.')
+      setReply(''); setSendError(''); onRefresh()
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : 'Reply was not sent. Please retry.')
+    } finally { setSending(false) }
   }
 
   async function doToggle() {
@@ -738,9 +752,10 @@ function CommentThread({ conv, onRefresh }: { conv: PostConv; onRefresh: () => v
           )
         })}
       </div>
+      {!conv.agentEnabled && sendError && <p role="alert" className="px-4 pt-2 text-xs text-red-600">{sendError}</p>}
       {!conv.agentEnabled && (
         <div className="px-4 pb-3 flex items-end gap-2 border-t border-gray-50 pt-2">
-          <textarea value={reply} onChange={e => setReply(e.target.value)}
+          <textarea value={reply} onChange={e => { setReply(e.target.value); setSendError('') }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply() } }}
             placeholder="Reply publicly as Code Clinic…" rows={1}
             className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-xl resize-none outline-none focus:border-blue-400 bg-gray-50 placeholder-gray-400" />
