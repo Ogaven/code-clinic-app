@@ -149,6 +149,57 @@ router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, a
   }
 })
 
+// Read-only discovery for historical leads without an explicit patient link.
+// A phone match is evidence for staff review, never proof of patient identity:
+// family members can share a number. Never mutate stages or create links here.
+router.get('/leads/unlinked-booking-review', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  try {
+    const rawPage = req.query.page
+    if (rawPage !== undefined && (typeof rawPage !== 'string' || !/^[1-9]\\d{0,5}$/.test(rawPage))) {
+      return res.status(400).json({ error: 'page must be a positive integer (up to 6 digits)' })
+    }
+    const page = rawPage ? Number(rawPage) : 1
+    const limit = 50
+    const where = { convertedToPatientId: null, status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] } }
+    const total = await prisma.lead.count({ where })
+    const leads = await prisma.lead.findMany({
+      where,
+      select: { id: true, name: true, phone: true, status: true, createdAt: true, source: true },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      skip: (page - 1) * limit,
+      take: limit,
+    })
+    const candidates = []
+    for (const lead of leads) {
+      // Exclude session IDs, Meta PSIDs and other non-telephone identifiers.
+      if (!lead.phone || !/^\\+?256[0-9]{9}$|^0[0-9]{9}$/.test(lead.phone)) continue
+      const patients = await prisma.patient.findMany({
+        where: { phone: { in: phoneVariants(lead.phone) } },
+        select: { id: true, firstName: true, lastName: true },
+        take: 10,
+      })
+      if (patients.length === 0) continue
+      const matches = []
+      for (const patient of patients) {
+        const booking = await prisma.appointment.findFirst({
+          where: { patientId: patient.id, createdAt: { gte: lead.createdAt }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } },
+          select: { id: true },
+          orderBy: { createdAt: 'asc' },
+        })
+        if (booking) matches.push({ patientId: patient.id, patientName: [patient.firstName, patient.lastName].filter(Boolean).join(' '), appointmentId: booking.id })
+      }
+      if (matches.length > 0) candidates.push({
+        leadId: lead.id, leadName: lead.name, currentStage: lead.status, source: lead.source,
+        matchType: 'PHONE_REVIEW_ONLY', ambiguous: patients.length !== 1,
+        matchingPatients: matches,
+      })
+    }
+    res.json({ readOnly: true, requiresManualVerification: true, scanned: leads.length, total, page, limit, hasMore: page * limit < total, candidates })
+  } catch {
+    res.status(500).json({ error: 'Failed to review unlinked bookings' })
+  }
+})
+
 router.get('/leads/:id', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   try {
     const lead = await prisma.lead.findUnique({ where: { id: req.params.id } })
