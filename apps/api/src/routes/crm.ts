@@ -294,6 +294,11 @@ router.get('/leads/:id', requireAuth, adminAndReceptionist, async (req: Request,
 // way, so LeadStageHistory is always recorded.
 router.patch('/leads/:id', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   const { status, score, notes, name, phone, email, lastMessage, convertedToPatientId, assignedTo, reason, intent } = req.body
+  // Patient linkage must pass through a dedicated, validated conversion or verification route.
+  // Reject even null here to prevent silent unlinking of an already-converted lead.
+  if (convertedToPatientId !== undefined) {
+    return res.status(400).json({ error: 'Patient linkage cannot be changed through generic lead updates; use the verified booking or conversion workflow' })
+  }
   try {
     if (status !== undefined) {
       // Stage-transition failures here are always business-rule violations
@@ -331,7 +336,6 @@ router.patch('/leads/:id', requireAuth, adminAndReceptionist, async (req: Reques
     if (phone               !== undefined) data.phone = phone
     if (email               !== undefined) data.email = email
     if (lastMessage         !== undefined) data.lastMessage = lastMessage
-    if (convertedToPatientId !== undefined) data.convertedToPatientId = convertedToPatientId
     // assignedTo stores a User.id (the same id space the frontend already
     // reads from GET /employees and from the logged-in user's own record) —
     // validated here since Lead.assignedTo carries no Prisma foreign key.
