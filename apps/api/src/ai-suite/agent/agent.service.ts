@@ -2672,13 +2672,13 @@ export async function getAgentReplyV2OpenAI(
     // Both scoped strictly to this resolved patient.id (never a fuzzy/name
     // match) — resolveTextingPatient() above is the only identity decision
     // made for this reply, so a wrong patient here can't cross-contaminate.
-    const [guardianContext, patientContextSummary, handoffNote] = patient
-      ? await Promise.all([
-          getGuardianDependentsContext(patient.id),
-          buildPatientContextSummary(patient.id),
-          getPendingHandoffNote(conversationId, patient.id),
-        ])
-      : ['', '', null]
+    // Handoff instructions belong to the conversation, not only to a matched
+    // patient record. Website visitors and social DMs must receive them too.
+    const [guardianContext, patientContextSummary, handoffNote] = await Promise.all([
+      patient ? getGuardianDependentsContext(patient.id) : Promise.resolve(''),
+      patient ? buildPatientContextSummary(patient.id) : Promise.resolve(''),
+      getPendingHandoffNote(conversationId, patient?.id),
+    ])
 
     const patientIsMinor = !isPlaceholderName && patient?.dob ? isMinor(patient.dob) : false
     let minorPatientContext = ''
