@@ -1515,6 +1515,16 @@ async function alertStaffOfConcern(params: {
     const staff = await prisma.user.findMany({
       where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
     })
+    // Open the exact flagged conversation rather than the generic inbox.
+    // Channel values must match the inbox's ?channel= API filter.
+    const alertChannel = (params.channel ?? 'WHATSAPP').toUpperCase()
+    const inboxChannel = alertChannel === 'FACEBOOK' || alertChannel === 'FB_DM' ? 'facebook'
+      : alertChannel === 'INSTAGRAM' || alertChannel === 'IG_DM' ? 'instagram'
+      : alertChannel === 'FACEBOOK_COMMENT' || alertChannel === 'FB_COMMENTS' ? 'facebook_comment'
+      : alertChannel === 'INSTAGRAM_COMMENT' || alertChannel === 'IG_COMMENTS' ? 'instagram_comment'
+      : alertChannel === 'WEBSITE' || alertChannel === 'WEB' ? 'website'
+      : 'whatsapp'
+    const inboxUrl = `/receptionist/ai-suite/inbox?channel=${encodeURIComponent(inboxChannel)}&conv=${encodeURIComponent(params.conversationId)}`
     const pushTitle = 'Patient needs attention'
     const pushBody  = 'A patient concern was flagged — tap to view.'
     await Promise.all(staff.map(async u => {
@@ -1524,10 +1534,10 @@ async function alertStaffOfConcern(params: {
           type:   'SYSTEM',
           title:  `Patient concern — ${patientName}`,
           body:   alertText,
-          href:   '/receptionist/ai-suite/inbox',
+          href:   inboxUrl,
         },
       })
-      sendPushToUser(u.id, { title: pushTitle, body: pushBody, url: '/receptionist/ai-suite/inbox' }).catch(() => {})
+      sendPushToUser(u.id, { title: pushTitle, body: pushBody, url: inboxUrl }).catch(() => {})
     }))
 
     // 3. Dedup marker + staff-relay linking — SYSTEM role excluded from Sarah's context window
