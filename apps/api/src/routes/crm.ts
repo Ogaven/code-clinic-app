@@ -117,8 +117,13 @@ router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, a
     for (const lead of leads) {
       if (!lead.convertedToPatientId) continue
       const booking = await prisma.appointment.findFirst({
-        where: {\n          patientId: lead.convertedToPatientId,\n          status: { notIn: ['CANCELLED', 'NO_SHOW'] },\n          createdAt: { gte: lead.createdAt },\n        },
-        select: { id: true },\n        orderBy: { createdAt: 'asc' },
+        where: {
+          patientId: lead.convertedToPatientId,
+          status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+          createdAt: { gte: lead.createdAt },
+        },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
       })
       if (booking) {
         candidates.push({
