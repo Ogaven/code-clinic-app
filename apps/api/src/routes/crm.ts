@@ -200,6 +200,54 @@ router.get('/leads/unlinked-booking-review', requireAuth, adminAndReceptionist, 
   }
 })
 
+// Explicit staff-confirmed historical reconciliation. Never infer identity from phone alone.
+// Require the exact reviewed patient, appointment, and typed full name before writing.
+router.post('/leads/:id/verify-patient-booking', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
+  const { patientId, appointmentId, confirmedPatientName } = req.body ?? {}
+  if (typeof patientId !== 'string' || !patientId.trim() ||
+      typeof appointmentId !== 'string' || !appointmentId.trim() ||
+      typeof confirmedPatientName !== 'string' || !confirmedPatientName.trim()) {
+    return res.status(400).json({ error: 'Patient, appointment and typed patient name are required' })
+  }
+  try {
+    const lead = await prisma.lead.findUnique({ where: { id: req.params.id } })
+    if (!lead) return res.status(404).json({ error: 'Lead not found' })
+    if (lead.convertedToPatientId || !['NEW', 'CONTACTED', 'QUALIFIED'].includes(lead.status)) {
+      return res.status(409).json({ error: 'Lead is already linked or no longer eligible' })
+    }
+    const patient = await prisma.patient.findUnique({
+      where: { id: patientId }, select: { id: true, firstName: true, lastName: true, phone: true },
+    })
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+    const expectedName = [patient.firstName, patient.lastName].filter(Boolean).join(' ').trim().replace(/\\s+/g, ' ').toLowerCase()
+    if (confirmedPatientName.trim().replace(/\\s+/g, ' ').toLowerCase() !== expectedName) {
+      return res.status(400).json({ error: 'Typed name does not match the selected patient' })
+    }
+    if (!lead.phone || !phoneVariants(lead.phone).includes(patient.phone)) {
+      return res.status(409).json({ error: 'Lead and patient phone numbers do not match; investigate manually' })
+    }
+    const appointment = await prisma.appointment.findFirst({
+      where: { id: appointmentId, patientId, createdAt: { gte: lead.createdAt },
+        status: { notIn: ['CANCELLED', 'NO_SHOW'] } },
+      select: { id: true },
+    })
+    if (!appointment) return res.status(409).json({ error: 'No eligible appointment for this patient and lead' })
+
+    // Compare-and-set prevents two staff from linking the same lead concurrently.
+    const linked = await prisma.lead.updateMany({
+      where: { id: lead.id, convertedToPatientId: null, status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] } },
+      data: { convertedToPatientId: patient.id },
+    })
+    if (linked.count !== 1) return res.status(409).json({ error: 'Lead changed during verification; refresh and retry' })
+    // Use the canonical transition path (stage history + nurture exit).
+    const converted = await convertLeadOnBooking(lead.id)
+    res.json({ success: true, leadId: converted.id, stage: converted.status, patientId: patient.id, appointmentId })
+  } catch (error) {
+    console.error('[CRM] Verified booking reconciliation failed:', error)
+    res.status(500).json({ error: 'Failed to reconcile verified booking; check the lead before retrying' })
+  }
+})
+
 router.get('/leads/:id', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   try {
     const lead = await prisma.lead.findUnique({ where: { id: req.params.id } })
