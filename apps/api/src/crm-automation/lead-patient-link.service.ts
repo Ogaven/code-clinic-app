@@ -18,15 +18,15 @@ import { convertLeadOnBooking } from './lead-stage.service'
 import type { Lead, Patient } from '@prisma/client'
 
 export async function resolveQualifiedLeadForPatient(patient: Pick<Patient, 'id' | 'phone'>): Promise<Lead | null> {
-  // Tier 1 — explicit link
+  // Tier 1 — explicit patient link is authoritative, even if a previous\n  // qualification step was missed. Never revive LOST/CONVERTED leads.\n  // Tier 1 — explicit link
   const explicit = await prisma.lead.findFirst({
-    where:   { convertedToPatientId: patient.id, status: 'QUALIFIED' },
+    where:   { convertedToPatientId: patient.id, status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] } },
     orderBy: { updatedAt: 'desc' },
   })
   if (explicit) return explicit
 
   // Tier 2 — normalized phone match, QUALIFIED leads only (matching a
-  // CONTACTED or NEW lead here would force-qualify it, which Part N
+  // CONTACTED or NEW lead here would risk converting a family member, which Part N
   // explicitly does not ask for — booking/treatment-start only converts a
   // lead that's already QUALIFIED).
   if (!patient.phone) return null
