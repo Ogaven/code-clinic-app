@@ -2678,7 +2678,7 @@ export async function getAgentReplyV2OpenAI(
         }
       }
       if (name && name.length <= 60 && name.split(' ').length <= 4 &&
-          !/\b(?:looking|interested|asking|wondering|here|trying|calling|booking|having|feeling|not|fine|okay|good|sick|in pain)\b/i.test(name)) {
+          !/\b(?:looking|interested|asking|wondering|here|trying|calling|booking|having|feeling|not|fine|okay|good|sick|in pain|yes|no|sure|thanks|thank you|please|hello|hi|hey|hullo|hallo|morning|afternoon|evening|alright|right|correct|exactly|maybe|later|today|tomorrow)\b/i.test(name)) {
         try {
           await prisma.aiConversation.updateMany({
             where: { id: conversationId, channel: 'WEBSITE', displayName: null },
