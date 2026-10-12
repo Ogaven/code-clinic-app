@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import {
   Plus, Search, RefreshCw, UserCheck, Trash2, X, CheckCircle2, AlertCircle,
   Phone, Mail, MessageSquare, ExternalLink, Clock, Tag,
@@ -239,6 +239,7 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
   const [unlinkedPage, setUnlinkedPage] = useState(1)
   const [unlinkedTotal, setUnlinkedTotal] = useState(0)
   const [unlinkedHasMore, setUnlinkedHasMore] = useState(false)
+  const [expandedUnlinkedLeadId, setExpandedUnlinkedLeadId] = useState<string | null>(null)
 
   async function loadUnlinkedReview(page: number) {
     setUnlinkedLoading(true)
@@ -577,7 +578,27 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
           {unlinkedLoading ? <p className="text-sm text-gray-500">Checking possible matches…</p> : unlinkedError ? <p role="alert" className="text-sm text-red-600">{unlinkedError}</p> : <>
             <p className="text-xs text-gray-500">Page {unlinkedPage} · {unlinkedTotal} unlinked leads to scan across all pages · {unlinkedCandidates.length} possible booked leads on this page.</p>
             {unlinkedCandidates.length === 0 ? <p className="text-sm text-gray-500">No possible bookings found on this page. Check further pages if available.</p> :
-              <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b"><th className="py-2">Lead</th><th>Stage</th><th>Possible patient / appointment</th><th>Review status</th></tr></thead><tbody>{unlinkedCandidates.map(candidate => <tr key={candidate.leadId} className="border-b border-gray-100 dark:border-white/10"><td className="py-2">{candidate.leadName || leads.find(l => l.id === candidate.leadId)?.phone || candidate.leadId}</td><td>{candidate.currentStage}</td><td>{candidate.matchingPatients.map(p => <div key={p.patientId}>{p.patientName} · appointment {p.appointmentId.slice(0, 8)}…</div>)}</td><td className="text-amber-700 dark:text-amber-300">{candidate.ambiguous ? 'Multiple patients share phone — verify identity' : 'Phone match — verify identity'}</td></tr>)}</tbody></table></div>}
+              <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b"><th className="py-2">Lead</th><th>Stage</th><th>Possible patient / appointment</th><th>Review status</th></tr></thead><tbody>{unlinkedCandidates.map(candidate => <Fragment key={candidate.leadId}>
+                <tr className="border-b border-gray-100 dark:border-white/10">
+                  <td className="py-2">{candidate.leadName || leads.find(l => l.id === candidate.leadId)?.phone || candidate.leadId}</td>
+                  <td>{candidate.currentStage}</td>
+                  <td>{candidate.matchingPatients.map(p => <div key={p.patientId}>{p.patientName} · appointment {p.appointmentId.slice(0, 8)}…</div>)}</td>
+                  <td className="py-2">
+                    <div className="text-amber-700 dark:text-amber-300">{candidate.ambiguous ? 'Multiple patients share phone — verify identity' : 'Phone match — verify identity'}</div>
+                    <button type="button" aria-expanded={expandedUnlinkedLeadId === candidate.leadId} onClick={() => setExpandedUnlinkedLeadId(expandedUnlinkedLeadId === candidate.leadId ? null : candidate.leadId)} className="mt-1 rounded-lg border border-amber-200 px-2 py-1 font-medium text-amber-800 dark:text-amber-300">{expandedUnlinkedLeadId === candidate.leadId ? 'Hide details' : 'Inspect matches'}</button>
+                  </td>
+                </tr>
+                {expandedUnlinkedLeadId === candidate.leadId && <tr className="border-b border-amber-200 bg-amber-50/50 dark:bg-amber-950/20"><td colSpan={4} className="p-3">
+                  <p className="font-semibold">Identity verification required before linking or converting</p>
+                  <p className="mt-1 text-gray-600 dark:text-gray-300">Confirm the patient's full name and appointment against the clinic record. A shared phone number alone is not sufficient evidence. This inspection does not modify any records.</p>
+                  <p className="mt-2 font-mono break-all">Lead ID: {candidate.leadId}</p>
+                  {candidate.matchingPatients.map(p => <div key={p.patientId} className="mt-2 rounded-lg border border-amber-200 p-2">
+                    <p className="font-semibold">{p.patientName}</p>
+                    <p className="font-mono break-all">Patient ID: {p.patientId}</p>
+                    <p className="font-mono break-all">Appointment ID: {p.appointmentId}</p>
+                  </div>)}
+                </td></tr>}
+              </Fragment>)}</tbody></table></div>}
           </>}
           <div className="flex gap-2"><button type="button" disabled={unlinkedLoading || unlinkedPage <= 1} onClick={() => void loadUnlinkedReview(unlinkedPage - 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Previous</button><button type="button" disabled={unlinkedLoading || !unlinkedHasMore} onClick={() => void loadUnlinkedReview(unlinkedPage + 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Next</button><button type="button" disabled={unlinkedLoading} onClick={() => void loadUnlinkedReview(unlinkedPage)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Refresh</button></div>
         </div>}
