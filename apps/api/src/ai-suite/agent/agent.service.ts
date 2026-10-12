@@ -623,10 +623,10 @@ const CLINICAL_CONCERN_PATTERNS = [
   'tasting', 'tastes', 'taste weird', 'sweet taste', 'bitter taste', 'tasting sweet', 'tasting bitter',
   'feels wrong', 'feeling wrong', 'something wrong', 'went wrong', 'something feels',
   'worried', 'scared', 'anxious',
-  'help me', 'i need help',
+  'help me now', 'urgent help',
   'infection', 'infected', 'abscess',
   'sensitive to', 'sensitivity',
-  'had a filling', 'got a filling', 'had a root canal', 'had an extraction', 'had a cleaning', 'had treatment',
+  // Treatment history alone is not evidence of a current clinical problem.
   'broken tooth', 'chipped tooth', 'cracked tooth', 'fell out', 'knocked out',
   'side effect', 'reaction to',
   'emergency', 'urgent help',
@@ -643,7 +643,12 @@ function isClinicalConcern(message: string): boolean {
   const isEducationQuestion = /^(why|how|what|does|can|do|is|are|will|should)\b/i.test(lower)
   const hasUrgency = /\b(right now|currently|today|this morning|this evening|wont stop|won't stop|can't stop|cant stop|getting worse|worse and worse|spreading|emergency|urgent|please help|help me now|i'm scared|im scared)\b/.test(lower)
   if (isEducationQuestion && !hasUrgency) return false
-  return CLINICAL_CONCERN_PATTERNS.some(kw => lower.includes(kw))
+  // Match complete words/phrases only: e.g. "painting" must not match "pain",
+  // and "soreness" must not match "sore". Preserve actual symptom matches.
+  return CLINICAL_CONCERN_PATTERNS.some(kw => {
+    const escaped = kw
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(lower)
+  })
 }
 
 async function getNextOpeningInfo(): Promise<{ dayName: string; time: string }> {
