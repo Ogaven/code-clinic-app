@@ -207,6 +207,15 @@ function lastActivityLabel(iso?: string): string | null {
 }
 
 // ── Media bubble ───────────────────────────────────────────────────────────────
+// Provider template identifiers are delivery metadata, not patient-facing chat text.
+// Hide only standalone placeholder messages; never remove genuine message history.
+function isTemplateArtifact(content: string): boolean {
+  const value = content.trim()
+  // Standalone internal template markers (with optional contact label or metadata).
+  // Never suppress a real message containing ordinary prose around the marker.
+  return /^\[\s*Template\s*:\s*[^\]\r\n]+\](?:\s*(?:[-–|:]\s*)?(?:[\w .+'-]{1,100}))?$/i.test(value)
+    || /^\[\s*(?:WhatsApp|WA)\s+Template\s*:\s*[^\]\r\n]+\]$/i.test(value)
+}
 function parseBubble(content: string) {
   if (content.startsWith('__MEDIA_IMAGE__:'))                                    return 'image'
   if (/\[Patient sent an image\]|\[image\]/i.test(content))                      return 'image'
@@ -953,7 +962,7 @@ function InboxPage() {
       if (prevConvsRef.current.size > 0 && document.hidden && Notification.permission === 'granted') {
         for (const conv of deduped) {
           const lm = conv.lastMessage
-          if (!lm || lm.role !== 'USER') continue
+          if (!lm || lm.role !== 'USER' || isTemplateArtifact(lm.content)) continue
           const prev = prevConvsRef.current.get(conv.id)
           if (prev && lm.createdAt > prev) {
             const name    = convLabel(conv, channel)
@@ -1191,7 +1200,7 @@ function InboxPage() {
           const last    = conv.lastMessage
           const time    = fmtTime(last?.createdAt ?? conv.updatedAt)
           const active  = sel?.id === conv.id
-          const preview = last ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No messages'
+          const preview = last && !isTemplateArtifact(last.content) ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No patient message preview'
           const ws     = getWorkState(conv)
           const wsMeta = WORK_STATE_META[ws]
           const isLead = isLeadConversation(conv)
@@ -1267,10 +1276,10 @@ function InboxPage() {
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-400" /></div>
         )}
-        {msgs.map((msg, i) => {
+        {msgs.filter(msg => !isTemplateArtifact(msg.content)).map((msg, i, visibleMsgs) => {
           const isAgent  = msg.role === 'AGENT'
           const media    = parseBubble(msg.content)
-          const showTime = i === msgs.length - 1 || msgs[i + 1]?.role !== msg.role
+          const showTime = i === visibleMsgs.length - 1 || visibleMsgs[i + 1]?.role !== msg.role
           return (
             <div key={msg.id} className={cn('flex', isAgent ? 'justify-end' : 'justify-start')}>
               <div className="min-w-0 max-w-[85%] sm:max-w-[68%]">
