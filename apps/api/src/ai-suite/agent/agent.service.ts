@@ -2699,13 +2699,20 @@ export async function getAgentReplyV2OpenAI(
     const isPlaceholderName = patient?.firstName?.toLowerCase() === 'whatsapp' || patient?.lastName?.toLowerCase() === 'patient'
     // Staff-confirmed website visitor names are conversation-scoped, not patient
     // identities. Never match them to patient records or reuse across sessions.
-    const websiteVisitorName = channel === 'WEBSITE'
-      ? await prisma.aiConversation.findUnique({
+    let websiteVisitorName: string | null = null
+    if (channel === 'WEBSITE') {
+      try {
+        const websiteConversation = await prisma.aiConversation.findUnique({
           where: { id: conversationId },
           select: { channel: true, displayName: true },
-        }).then(conv => conv?.channel === 'WEBSITE' ? conv.displayName?.trim() || null : null)
-          .catch(() => null)
-      : null
+        })
+        if (websiteConversation?.channel === 'WEBSITE') {
+          websiteVisitorName = websiteConversation.displayName?.trim() || null
+        }
+      } catch {
+        // Visitor name enrichment must never interrupt an actual patient reply.
+      }
+    }
     const patientName = isPlaceholderName ? 'there' : getGreetingName(patient)
     // Both scoped strictly to this resolved patient.id (never a fuzzy/name
     // match) — resolveTextingPatient() above is the only identity decision
