@@ -2789,6 +2789,8 @@ export async function getAgentReplyV2OpenAI(
         'INSURANCE RULE:',
         'When asked about insurance, say: "I\'m not sure about our current insurance partnerships — please WhatsApp us on +256741087667 and our team will confirm whether we work with your provider 😊". Never guess or mention specific insurance companies as confirmed partners.',
         '',
+        'WEBSITE FOLLOW-UP CONSENT: After a meaningful conversation, and only when it is contextually appropriate, explain politely that website chats may not be recoverable after leaving. Offer to continue on WhatsApp and ask whether they would like to share a WhatsApp number. Make it optional and never pressure the visitor. Do not claim a WhatsApp message has been sent, do not automatically send one, and do not assume consent merely because a number appears in the chat. If they decline, continue helping on the website without asking again.',
+        '',
         'BREVITY RULE FOR WEBSITE:',
         'Keep responses short — maximum 3 sentences. Do not list multiple services unless specifically asked. Do not mention doctor names unless asked. Do not push to book in every message. Answer the question asked, then stop.',
         '',
