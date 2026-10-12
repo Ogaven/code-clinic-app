@@ -1636,11 +1636,8 @@ export async function getAgentReply(
   const isVoucherRequest = /\bvoucher\b|\bgift card\b|\bgift certificate\b|\bgift for\b|\bgift to someone\b/i.test(latestMessage)
   if (isVoucherRequest) {
     console.log(`[Agent] Gift voucher request from ${from}: "${latestMessage.slice(0, 80)}"`)
-    alertStaffOfConcern({
-      conversationId,
-      patientPhone: from,
-      message:      latestMessage,
-    }).catch(() => {})
+    // Voucher enquiries are routine commercial requests, not clinical concerns.
+    // Do not create a PATIENT NEEDS ATTENTION alert for these messages.
     return `That's so thoughtful! 🎁 Let me have our team get back to you with the details on gift vouchers — they'll reach out shortly!`
   }
 
