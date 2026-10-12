@@ -6,6 +6,7 @@ import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { requireAuth } from '../../middleware/auth'
 import { adminAndReceptionist } from '../../middleware/rbac'
 import { authenticatedDoctorId } from '../../lib/doctor-access'
+import { getSignedDownloadUrl } from '../../services/storage/r2'
 
 const router = Router()
 
@@ -304,10 +305,38 @@ router.get('/conversations/:conversationId/messages', adminAndReceptionist, asyn
       },
       orderBy: { createdAt: 'asc' },
     })
-    res.json(messages)
+    // Do not send private object-storage keys to the browser. Playback is obtained
+    // separately through the authorized short-lived URL endpoint.
+    res.json(messages.map(m => {
+      let voiceNoteAvailable = false
+      if (m.metadata) {
+        try { voiceNoteAvailable = !!(JSON.parse(m.metadata) as { voiceNote?: { storageKey?: string } }).voiceNote?.storageKey } catch {}
+      }
+      return { ...m, metadata: voiceNoteAvailable ? JSON.stringify({ voiceNoteAvailable: true }) : m.metadata }
+    }))
   } catch (err: any) {
     console.error('[Takeover] messages fetch error:', err.message)
     res.status(500).json({ error: 'Failed to fetch messages' })
+  }
+})
+
+// GET /ai-suite/conversations/:conversationId/messages/:messageId/voice-note
+// Authorized staff only; verify the message belongs to the requested conversation.
+router.get('/conversations/:conversationId/messages/:messageId/voice-note', adminAndReceptionist, async (req, res) => {
+  try {
+    const message = await prisma.aiMessage.findFirst({
+      where: { id: req.params.messageId, conversationId: req.params.conversationId, role: 'USER' },
+      select: { metadata: true },
+    })
+    if (!message?.metadata) { res.sendStatus(404); return }
+    const metadata = JSON.parse(message.metadata) as { voiceNote?: { storageKey?: string } }
+    const key = metadata.voiceNote?.storageKey
+    if (!key || !/^ai-suite\/whatsapp-voice\/[a-f0-9-]+\.ogg$/.test(key)) { res.sendStatus(404); return }
+    const url = await getSignedDownloadUrl(key, 120)
+    res.json({ url, expiresIn: 120 })
+  } catch (err) {
+    console.error('[Takeover] Voice note access failed:', err instanceof Error ? err.message : 'unknown')
+    res.status(500).json({ error: 'Unable to access voice note' })
   }
 })
 

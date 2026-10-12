@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express'
 import OpenAI from 'openai'
 import * as fs from 'fs'
+import { randomUUID } from 'crypto'
+import { isR2Configured, uploadFile } from '../../services/storage/r2'
 import { processInbound, sendWhatsAppMessage } from './whatsapp.service'
 import { enqueueMessage } from './message-buffer'
 import { handleStaffReply, STAFF_NUMBER, type AlertMeta } from './staff-relay.service'
@@ -458,11 +460,25 @@ router.post('/webhook', async (req: Request, res: Response) => {
           // ── Audio / Voice note → Whisper transcription → Sarah flow ──────────
           if (msg.type === 'audio' && msg.audio?.id) {
             let handled = false
+            let savedVoiceMetadata: string | undefined
             try {
               const media = await downloadWhatsAppMedia(msg.audio.id)
               if (media) {
-                const ts      = Date.now()
-                const oggPath = `/tmp/voice-${ts}.ogg`
+                // Keep the original recording private. Never expose R2 keys to public clients.
+                let voiceMetadata: string | undefined
+                if (isR2Configured()) {
+                  try {
+                    const key = `ai-suite/whatsapp-voice/${randomUUID()}.ogg`
+                    await uploadFile(Buffer.from(media.buffer), media.mimeType || 'audio/ogg', key)
+                    voiceMetadata = JSON.stringify({ voiceNote: { storageKey: key, mimeType: media.mimeType || 'audio/ogg' } })
+                    savedVoiceMetadata = voiceMetadata
+                  } catch (storageErr) {
+                    console.error('[WhatsApp] Voice note secure storage failed:', storageErr instanceof Error ? storageErr.message : 'unknown error')
+                  }
+                } else {
+                  console.warn('[WhatsApp] Private R2 storage not configured; original voice note not retained')
+                }
+                const oggPath = `/tmp/voice-${randomUUID()}.ogg`
                 try {
                   fs.writeFileSync(oggPath, Buffer.from(media.buffer))
 
@@ -481,7 +497,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
                   if (transcription) {
                     console.log('[Whisper] Transcribed:', transcription.slice(0, 80))
-                    enqueueMessage(from, `[Voice note]: ${transcription}`, msg.id)
+                    enqueueMessage(from, `[Voice note]: ${transcription}`, msg.id, undefined, voiceMetadata)
                     handled = true
                   }
                 } finally {
@@ -492,6 +508,10 @@ router.post('/webhook', async (req: Request, res: Response) => {
               console.warn('[Whisper] Transcription failed:', err)
             }
 
+            if (!handled && savedVoiceMetadata) {
+              enqueueMessage(from, '[Patient sent a voice note — transcription unavailable]', msg.id, undefined, savedVoiceMetadata)
+              handled = true
+            }
             if (!handled) {
               await sendDirectReply(
                 from,

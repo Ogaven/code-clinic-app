@@ -31,7 +31,7 @@ type Conversation = {
   lastMessage: { id: string; role: string; content: string; createdAt: string; metadata?: string | null } | null
   createdAt: string; updatedAt: string
 }
-type Message = { id: string; role: 'USER' | 'AGENT'; content: string; createdAt: string; status?: string | null; wamid?: string | null }
+type Message = { id: string; role: 'USER' | 'AGENT'; content: string; createdAt: string; status?: string | null; wamid?: string | null; metadata?: string | null }
 
 // ── Channel config ─────────────────────────────────────────────────────────────
 type ChannelKey = 'WHATSAPP' | 'INSTAGRAM' | 'FACEBOOK' | 'WEBSITE' | 'FB_COMMENTS' | 'IG_COMMENTS'
@@ -219,7 +219,7 @@ function isTemplateArtifact(content: string): boolean {
 function parseBubble(content: string) {
   if (content.startsWith('__MEDIA_IMAGE__:'))                                    return 'image'
   if (/\[Patient sent an image\]|\[image\]/i.test(content))                      return 'image'
-  if (/\[Patient sent an audio\]|\[audio\]|\[voice\]/i.test(content))           return 'audio'
+  if (/\[Voice note\]|\[Patient sent a voice note\]|\[Patient sent an audio\]|\[audio\]|\[voice\]/i.test(content))           return 'audio'
   if (/\[Patient sent a video\]|\[video\]/i.test(content))                      return 'video'
   if (/\[Patient sent a document\]|\[document\]|\[file\]/i.test(content))       return 'document'
   if (/\[Patient sent a sticker\]/i.test(content))                               return 'sticker'
@@ -262,6 +262,30 @@ function MediaBubble({ type, content }: { type: string; content?: string }) {
       <Icon size={15} /><span className="text-xs font-semibold">{label}</span>
     </div>
   )
+}
+
+function VoiceNotePlayer({ conversationId, messageId, content }: { conversationId: string; messageId: string; content: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(false)
+  async function loadAudio() {
+    setLoading(true)
+    setError(false)
+    try {
+      const res = await fetch(`${API}/ai-suite/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/voice-note`, { headers: authH() })
+      if (!res.ok) throw new Error('Audio unavailable')
+      const data = await res.json() as { url: string }
+      setUrl(data.url)
+    } catch { setError(true) } finally { setLoading(false) }
+  }
+  return <div className="flex flex-col gap-2">
+    {url ? <audio controls preload="none" src={url} className="max-w-full w-[240px]" /> :
+      <button type="button" onClick={loadAudio} disabled={loading} className="text-xs font-semibold underline text-left">
+        {loading ? 'Loading original voice note…' : '▶ Play original voice note'}
+      </button>}
+    {error && <span className="text-xs text-red-600">Recording unavailable. Please use the transcript below.</span>}
+    {content.startsWith('[Voice note]:') && <span className="text-xs opacity-75">AI transcript (may contain errors): {content.slice(13).trim()}</span>}
+  </div>
 }
 
 function MsgStatus({ status }: { status?: string | null }) {
@@ -1287,7 +1311,7 @@ function InboxPage() {
                   style={isAgent
                     ? { background: '#d9fdd3', borderBottomRightRadius: 4, color: '#111' }
                     : { background: '#fff',    borderBottomLeftRadius:  4, color: '#111' }}>
-                  {media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
+                  {media === 'audio' && msg.metadata?.includes('voiceNoteAvailable') && conv.channel === 'WHATSAPP' ? <VoiceNotePlayer conversationId={conv.id} messageId={msg.id} content={msg.content} /> : media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                   <div className={cn('flex items-center gap-1 mt-0.5', isAgent ? 'justify-end' : 'justify-start')}>
                     <span className="text-[10px] text-gray-400">{msgTimestamp(msg.createdAt)}</span>
                     {isAgent && <MsgStatus status={msg.status} />}

@@ -69,7 +69,7 @@ async function markWamidSeenDb(wamid: string): Promise<void> {
 
 // ── Message buffer ─────────────────────────────────────────────────────────────
 interface BufferEntry {
-  messages:       Array<{ text: string; wamid: string }>
+  messages:       Array<{ text: string; wamid: string; metadata?: string }>
   phoneNumberId?: string
   debounceTimer:  ReturnType<typeof setTimeout>
   maxTimer:       ReturnType<typeof setTimeout>
@@ -96,35 +96,45 @@ function flush(from: string): void {
     )
   }
 
+  // Do not collapse multiple recordings into a single message: each audio attachment
+  // needs its own message row and metadata for playback. Plain text keeps debounce batching.
+  if (entry.messages.some(m => m.metadata)) {
+    for (const m of entry.messages) {
+      processInbound(from, m.text, m.wamid, entry.phoneNumberId, m.metadata).catch((err: unknown) => {
+        console.error('[MessageBuffer] voice-note processing failed:', err instanceof Error ? err.message : String(err))
+      })
+    }
+    return
+  }
   processInbound(from, combined, lastWamid, entry.phoneNumberId).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[MessageBuffer] processInbound error for ${from}:`, msg)
   })
 }
 
-function _doBuffer(from: string, text: string, wamid: string, phoneNumberId?: string): void {
+function _doBuffer(from: string, text: string, wamid: string, phoneNumberId?: string, metadata?: string): void {
   const existing = buffer.get(from)
   if (existing) {
     clearTimeout(existing.debounceTimer)
-    existing.messages.push({ text, wamid })
+    existing.messages.push({ text, wamid, metadata })
     existing.debounceTimer = setTimeout(() => flush(from), DEBOUNCE_MS)
   } else {
     const debounceTimer = setTimeout(() => flush(from), DEBOUNCE_MS)
     const maxTimer      = setTimeout(() => flush(from), MAX_WAIT_MS)
-    buffer.set(from, { messages: [{ text, wamid }], phoneNumberId, debounceTimer, maxTimer })
+    buffer.set(from, { messages: [{ text, wamid, metadata }], phoneNumberId, debounceTimer, maxTimer })
   }
 }
 
-async function _checkDbThenBuffer(from: string, text: string, wamid: string, phoneNumberId?: string): Promise<void> {
+async function _checkDbThenBuffer(from: string, text: string, wamid: string, phoneNumberId?: string, metadata?: string): Promise<void> {
   if (await isWamidSeenDb(wamid)) {
     console.log(`[MessageBuffer] Duplicate wamid ...${wamid.slice(-16)} from ${from} — skipping (dedup:db, post-restart)`)
     return
   }
   void markWamidSeenDb(wamid)
-  _doBuffer(from, text, wamid, phoneNumberId)
+  _doBuffer(from, text, wamid, phoneNumberId, metadata)
 }
 
-export function enqueueMessage(from: string, text: string, wamid: string, phoneNumberId?: string): void {
+export function enqueueMessage(from: string, text: string, wamid: string, phoneNumberId?: string, metadata?: string): void {
   // Layer 1 — sync memory check (covers same-process dual-webhook arrivals)
   if (isWamidSeenMemory(wamid)) {
     console.log(`[MessageBuffer] Duplicate wamid ...${wamid.slice(-16)} from ${from} — skipping (dedup:memory)`)
@@ -134,5 +144,5 @@ export function enqueueMessage(from: string, text: string, wamid: string, phoneN
   markWamidSeenMemory(wamid)
 
   // Layer 2 — async DB check (covers post-restart arrivals); caller signature stays void
-  void _checkDbThenBuffer(from, text, wamid, phoneNumberId)
+  void _checkDbThenBuffer(from, text, wamid, phoneNumberId, metadata)
 }
