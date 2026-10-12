@@ -32,6 +32,13 @@ interface Lead {
   lossReason?:        string | null
 }
 
+interface ReconciliationCandidate {
+  leadId: string
+  currentStage: string
+  patientId: string
+  appointmentId: string
+}
+
 interface ConversationSummary {
   id: string
   channel: string
@@ -215,6 +222,33 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
   const [qualifyIntent, setQualifyIntent] = useState('')
   const [losing,     setLosing]     = useState<Lead | null>(null)
   const [lostReason, setLostReason] = useState('')
+
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [reviewError, setReviewError] = useState('')
+  const [reviewCandidates, setReviewCandidates] = useState<ReconciliationCandidate[]>([])
+  const [reviewTotal, setReviewTotal] = useState(0)
+  const [reviewPage, setReviewPage] = useState(1)
+  const [reviewHasMore, setReviewHasMore] = useState(false)
+
+  async function loadReconciliationPage(page: number) {
+    setReviewLoading(true)
+    setReviewError('')
+    try {
+      const response = await fetch(`${API}/crm/leads/reconciliation-preview?page=${page}`, { headers: authH as any })
+      if (!response.ok) throw new Error(`Could not load review (HTTP ${response.status})`)
+      const data = await response.json()
+      if (data.readOnly !== true || !Array.isArray(data.candidates)) throw new Error('Unexpected review response')
+      setReviewCandidates(data.candidates)
+      setReviewTotal(data.total ?? 0)
+      setReviewPage(data.page ?? page)
+      setReviewHasMore(Boolean(data.hasMore))
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : 'Could not load review')
+    } finally {
+      setReviewLoading(false)
+    }
+  }
 
   // Add form
   const [form, setForm] = useState({ name: '', phone: '', email: '', source: 'WALKIN', notes: '' })
@@ -472,6 +506,32 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
           </button>
         </div>
       </div>
+
+      {/* Historical booking review is intentionally read-only. A matched appointment
+          is not permission to change patient or lead data automatically. */}
+      <section className="rounded-2xl border border-sky-100 dark:border-sky-500/20 bg-white dark:bg-white/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-gray-800 dark:text-white">Historical booked leads review</h2>
+            <p className="text-xs text-gray-500 dark:text-white/50 mt-1">Check leads with an explicit patient link and a qualifying appointment. Review only — no stages are changed.</p>
+          </div>
+          <button type="button" onClick={() => { if (!reviewOpen) void loadReconciliationPage(1); setReviewOpen(!reviewOpen) }}
+            className="rounded-xl border border-sky-200 dark:border-sky-500/30 px-4 py-2 text-sm font-semibold text-sky-700 dark:text-sky-300">
+            {reviewOpen ? 'Close review' : 'Review booked leads'}
+          </button>
+        </div>
+        {reviewOpen && <div className="mt-4 space-y-3">
+          {reviewLoading ? <p className="text-sm text-gray-500">Checking appointments…</p> : reviewError ? <p role="alert" className="text-sm text-red-600">{reviewError}</p> : <>
+            <p className="text-xs text-gray-500">Page {reviewPage} · {reviewTotal} explicitly linked leads to scan across all pages · {reviewCandidates.length} qualifying appointments on this page. This is not the total number of conversions needed.</p>
+            {reviewCandidates.length === 0 ? <p className="text-sm text-gray-500">No qualifying booked leads found on this page.</p> :
+              <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-gray-100 dark:border-white/10"><th className="py-2">Lead</th><th>Current stage</th><th>Patient link</th><th>Appointment</th></tr></thead><tbody>{reviewCandidates.map(candidate => {
+                const lead = leads.find(item => item.id === candidate.leadId)
+                return <tr key={candidate.leadId} className="border-b border-gray-100 dark:border-white/10"><td className="py-2">{lead?.name || lead?.phone || candidate.leadId}</td><td>{candidate.currentStage}</td><td className="font-mono">{candidate.patientId.slice(0, 8)}…</td><td className="font-mono">{candidate.appointmentId.slice(0, 8)}…</td></tr>
+              })}</tbody></table></div>}
+          </>}
+          <div className="flex items-center gap-2"><button type="button" disabled={reviewLoading || reviewPage <= 1} onClick={() => void loadReconciliationPage(reviewPage - 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Previous</button><button type="button" disabled={reviewLoading || !reviewHasMore} onClick={() => void loadReconciliationPage(reviewPage + 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Next</button><button type="button" disabled={reviewLoading} onClick={() => void loadReconciliationPage(reviewPage)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Refresh</button></div>
+        </div>}
+      </section>
 
       {/* Pipeline summary */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
