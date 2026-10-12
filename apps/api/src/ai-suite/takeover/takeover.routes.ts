@@ -69,6 +69,9 @@ router.get('/conversations', adminAndReceptionist, async (req, res) => {
     const wantsArchived = req.query.archived === 'true'
     const where: any = {
       ...(channelParam ? { channel: channelParam } : {}),
+      // Only website sessions with a real visitor message belong in the inbox.
+      // Query the full message relation rather than just the last two replies.
+      NOT: { channel: 'WEBSITE', messages: { none: { role: 'USER' } } },
       archivedAt: wantsArchived ? { not: null } : null,
     }
     const conversations = await prisma.aiConversation.findMany({
