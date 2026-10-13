@@ -36,6 +36,8 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
   const [gbpAccount, setGbpAccount] = useState('')
   const [gbpLocation, setGbpLocation] = useState('')
   const [gbpReviews, setGbpReviews] = useState<{ averageRating: number | null; totalReviewCount: number; reviews: { reviewId: string; reviewer?: string; starRating?: string; comment?: string; createTime?: string; reviewReply?: string | null }[]; nextPageToken?: string | null } | null>(null)
+  const [reviewAlertStatus, setReviewAlertStatus] = useState<{ baselineEstablished: boolean; initializedLocations: number; lastInitializedAt: string | null } | null>(null)
+  const [reviewAlertStatusError, setReviewAlertStatusError] = useState(false)
   const [gbpBusy, setGbpBusy] = useState(false)
   const [gbpError, setGbpError] = useState('')
   const [gbpNextPage, setGbpNextPage] = useState<string | null>(null)
@@ -109,6 +111,21 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
 
   useEffect(() => { void loadGbpConnection() }, [])
 
+  useEffect(() => {
+    let active = true
+    const checkStatus = async () => {
+      try {
+        const status = await gbpGet('review-alerts/status')
+        if (active) { setReviewAlertStatus(status); setReviewAlertStatusError(false) }
+      } catch {
+        if (active) setReviewAlertStatusError(true)
+      }
+    }
+    void checkStatus()
+    const interval = window.setInterval(() => { void checkStatus() }, 5 * 60 * 1000)
+    return () => { active = false; window.clearInterval(interval) }
+  }, [])
+
   // Read-only live polling while the Reviews workspace is open. A location
   // must be explicitly selected (or uniquely identified as Code Clinic).
   // No background job, database writes, or review replies are involved.
@@ -176,6 +193,14 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
                 <section className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
             <h2 className="text-sm font-bold text-gray-800 dark:text-white">Google Business Profile — Live Reviews</h2>
             <p className="text-xs text-gray-500">Google reviews load automatically when a location is selected and refresh every five minutes while this page is open. They are separate from the clinic's internal patient feedback and review-request logs. No replies are published from this screen.</p>
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs dark:border-white/10 dark:bg-white/5">
+              <p className="font-semibold text-gray-800 dark:text-white">New Google review notifications</p>
+              {reviewAlertStatusError ? <p className="mt-1 text-amber-700">Monitoring status could not be checked. Please retry later.</p> :
+                !reviewAlertStatus ? <p className="mt-1 text-gray-500">Checking notification monitoring…</p> :
+                reviewAlertStatus.baselineEstablished ?
+                  <p className="mt-1 text-green-700">Initial review baseline recorded for {reviewAlertStatus.initializedLocations} location(s). New reviews are checked every five minutes. Notification delivery has not been verified by this status.</p> :
+                  <p className="mt-1 text-amber-700">No review baseline has been recorded yet. The server will retry its Google review check automatically.</p>}
+            </div>
             {gbpError && <p role="alert" className="text-sm text-red-600">{gbpError}</p>}
             {!gbpStatus ? <p className="text-xs text-gray-500">Checking Google connection…</p> :
               !gbpStatus.connected ? <div className="space-y-2">
