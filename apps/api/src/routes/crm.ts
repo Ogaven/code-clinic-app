@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma'
 import { phoneVariants } from '../utils/phone'
 import { verifiedPatientNameMatches, verifiedLeadPhoneMatches, eligibleVerifiedLead } from '../crm-automation/verified-booking-guards'
 import { linkVerifiedBookingInTransaction } from '../crm-automation/verified-booking-transaction'
+import { previewHistoricalReconciliation } from '../crm-automation/historical-reconciliation-preview.service'
 import { emitAutomationEvent, exitActiveEnrollments } from '../crm-automation/automation-events.service'
 import { findOrCreateLeadForChannel, handleNewLeadCreated } from '../crm-automation/lead-intake.service'
 import {
@@ -105,6 +106,15 @@ router.post('/leads', requireAuth, adminAndReceptionist, async (req: Request, re
 // Read-only preview for historical booking reconciliation. Do not silently
 // rewrite lead stages or infer identity from a shared family phone number.
 // Only an existing explicit patient link can qualify for this preview.
+router.get('/leads/automatic-reconciliation-summary', requireAuth, requireRole('ADMIN'), async (_req: Request, res: Response) => {
+  try {
+    res.json(await previewHistoricalReconciliation())
+  } catch (error) {
+    console.error('[CRM] Historical reconciliation summary failed:', error)
+    res.status(500).json({ error: 'Failed to preview historical reconciliation' })
+  }
+})
+
 router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   try {
     const pageParam = req.query.page
