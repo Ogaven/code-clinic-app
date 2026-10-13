@@ -676,6 +676,36 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
         {unlinkedOpen && <div className="mt-4 space-y-3">
           {unlinkedLoading ? <p className="text-sm text-gray-500">Checking possible matches…</p> : unlinkedError ? <p role="alert" className="text-sm text-red-600">{unlinkedError}</p> : <>
             <p className="text-xs text-gray-500">Automatically scanned {unlinkedTotal} unlinked leads · {unlinkedCandidates.length} possible booked leads requiring identity verification.</p>
+            {unlinkedCandidates.length > 0 && <button type="button" onClick={() => window.print()} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-300">Print / Save mapping PDF</button>}
+            <div id="clinic-mapping-print" className="hidden">
+              <h1>Code Clinic — Historical Lead / Patient Mapping</h1>
+              <p>CONFIDENTIAL — For authorized clinic staff only. Generated {new Date().toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}. Possible matches: {unlinkedCandidates.length}. Unlinked leads scanned: {unlinkedTotal}.</p>
+              <p>Phone and name similarities are NOT proof of identity. Verify against the clinic's patient and appointment records. Do not convert without independent confirmation.</p>
+              <table><thead><tr><th>Lead / Stage</th><th>Suggested patient</th><th>Booking date / status</th><th>Staff decision and verification</th></tr></thead>
+                <tbody>{unlinkedCandidates.flatMap(candidate => candidate.matchingPatients.map(patient =>
+                  <tr key={candidate.leadId + patient.patientId}>
+                    <td>{candidate.leadName || 'Unnamed lead'} ({candidate.currentStage})<div className="print-id">{candidate.leadId}</div></td>
+                    <td>{patient.patientName}<div className="print-id">{patient.patientId}</div>{candidate.ambiguous ? 'SHARED PHONE — MULTIPLE PATIENTS' : 'Phone candidate — verify'}</td>
+                    <td>{patient.appointmentStartAt ? new Date(patient.appointmentStartAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }) : 'Date unavailable'} · {patient.appointmentStatus || 'Unknown'}<div className="print-id">{patient.appointmentId}</div></td>
+                    <td>☐ Confirmed ☐ Rejected ☐ Investigate<br />Evidence checked: __________________<br />Staff: ______________ Date: __________</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              <p>Supervisor name: ____________________ Signature: ____________________ Date: __________</p>
+              <p>Only authorized administrators may perform final CRM linkage after independently verifying identity and appointment evidence.</p>
+            </div>
+            <style jsx global>{`@media print {
+              body * { visibility: hidden !important; }
+              #clinic-mapping-print, #clinic-mapping-print * { visibility: visible !important; }
+              #clinic-mapping-print { display: block !important; position: absolute; top: 0; left: 0; width: 100%; color: #111; background: white; font: 11px Arial, sans-serif; }
+              #clinic-mapping-print h1 { font-size: 20px; margin-bottom: 10px; }
+              #clinic-mapping-print p { margin: 8px 0; }
+              #clinic-mapping-print table { width: 100%; border-collapse: collapse; }
+              #clinic-mapping-print th, #clinic-mapping-print td { border: 1px solid #777; padding: 8px; vertical-align: top; text-align: left; }
+              #clinic-mapping-print tr { break-inside: avoid; }
+              #clinic-mapping-print .print-id { font-size: 8px; overflow-wrap: anywhere; margin: 4px 0; }
+              @page { size: A4 landscape; margin: 12mm; }
+            }`}</style>
             {unlinkedCandidates.length === 0 ? <p className="text-sm text-gray-500">No possible bookings found across the scanned leads.</p> :
               <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b"><th className="py-2">Lead</th><th>Stage</th><th>Possible patient / appointment</th><th>Review status</th></tr></thead><tbody>{unlinkedCandidates.map(candidate => <Fragment key={candidate.leadId}>
                 <tr className="border-b border-gray-100 dark:border-white/10">
