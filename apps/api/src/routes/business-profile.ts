@@ -547,7 +547,7 @@ router.put('/reviews/:reviewId/reply', requireAuth, adminOnly, async (req, res) 
   const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : ''
   const reviewId = req.params.reviewId
   if (!/^accounts\/\d+$/.test(accountId) || !/^locations\/\d+$/.test(locationId) ||
-      !/^[A-Za-z0-9_-]{1,200}$/.test(reviewId) || !comment || comment.length > 4096) {
+      (!reviewId || reviewId.length > 500 || /[\/\\?#\u0000-\u001f\u007f]/.test(reviewId)) || !comment || comment.length > 4096) {
     return res.status(400).json({ error: 'invalid_params', message: 'A valid account, location, review and reply (up to 4096 characters) are required.' })
   }
   const ready = await getReadyAuth()
