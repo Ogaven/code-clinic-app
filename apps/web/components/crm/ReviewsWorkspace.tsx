@@ -176,16 +176,7 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
                   </select>
                 </label>
                 <button type="button" disabled={gbpBusy || !gbpAccount || !gbpLocation} onClick={() => void loadGbpReviews()} className="rounded-lg bg-blue-700 text-white px-3 py-2 text-xs font-semibold disabled:opacity-40">{gbpBusy ? 'Loading…' : 'Load / Refresh Google Reviews'}</button>
-                {gbpReviews && <div className="space-y-3">
-                  <p className="font-semibold text-sm">{typeof gbpReviews.averageRating === 'number' ? gbpReviews.averageRating.toFixed(1) : '—'} / 5 · {gbpReviews.totalReviewCount} Google reviews</p>
-                  {gbpReviews.reviews.map(review => <article key={review.reviewId} className="border-t pt-3 text-sm">
-                    <div className="flex justify-between gap-2"><strong>{review.reviewer || 'Google reviewer'}</strong><span className="text-xs text-gray-500">{review.createTime ? new Date(review.createTime).toLocaleDateString('en-UG') : ''}</span></div>
-                    <p className="text-amber-600 text-xs">{({ ONE: '★☆☆☆☆', TWO: '★★☆☆☆', THREE: '★★★☆☆', FOUR: '★★★★☆', FIVE: '★★★★★' } as Record<string, string>)[review.starRating || ''] || 'No rating'}</p>
-                    {review.comment && <p className="mt-1 whitespace-pre-wrap">{review.comment}</p>}
-                    {review.reviewReply && <p className="mt-2 text-xs text-gray-500">Clinic reply: {review.reviewReply}</p>}
-                  </article>)}
-                  {gbpNextPage && <button type="button" disabled={gbpBusy} onClick={() => void loadGbpReviews(gbpNextPage)} className="rounded-lg border px-3 py-2 text-xs font-semibold">Load more Google reviews</button>}
-                </div>}
+
               </>}
           </section>
 
