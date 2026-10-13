@@ -730,7 +730,7 @@ export async function checkNewGoogleReviewAlerts(): Promise<void> {
         const resource = account.name + '/' + location.name
         const prefix = 'gbp_review_alert:' + createHash('sha256').update(resource).digest('hex') + ':'
         const baselineKey = prefix + 'baseline'
-        const baselineRows = await prisma.$queryRaw<{ value: string }[]>\`SELECT value FROM app_settings WHERE key = ${baselineKey} LIMIT 1\`
+        const baselineRows = await prisma.$queryRaw<{ value: string }[]>`SELECT value FROM app_settings WHERE key = ${baselineKey} LIMIT 1`
         const existingBaseline = baselineRows.length ? Date.parse(baselineRows[0].value) : NaN
         const isFirstScan = !Number.isFinite(existingBaseline)
         const baseline = isFirstScan ? new Date() : new Date(existingBaseline)
@@ -752,7 +752,7 @@ export async function checkNewGoogleReviewAlerts(): Promise<void> {
         }
         if (isFirstScan) {
           // Atomic first-writer-wins baseline across multiple API processes.
-          await prisma.$executeRaw\`INSERT INTO app_settings (key, value, "updatedAt") VALUES (${baselineKey}, ${baseline.toISOString()}, NOW()) ON CONFLICT (key) DO NOTHING\`
+          await prisma.$executeRaw`INSERT INTO app_settings (key, value, "updatedAt") VALUES (${baselineKey}, ${baseline.toISOString()}, NOW()) ON CONFLICT (key) DO NOTHING`
           console.log('[GBP Review Alerts] Established baseline for location', location.name)
           continue
         }
@@ -770,11 +770,11 @@ export async function checkNewGoogleReviewAlerts(): Promise<void> {
           const body = stars ? 'A new ' + stars + '-star Google review needs your attention.' : 'A new Google review needs your attention.'
           const href = '/crm/reviews'
           const notified = await prisma.$transaction(async tx => {
-            const claimed = await tx.$queryRaw<{ key: string }[]>\`
+            const claimed = await tx.$queryRaw<{ key: string }[]>`
               INSERT INTO app_settings (key, value, "updatedAt")
               VALUES (${claimKey}, ${String(review.createTime)}, NOW())
               ON CONFLICT (key) DO NOTHING RETURNING key
-            \`
+            `
             if (!claimed.length) return false
             await tx.notification.createMany({
               data: recipients.map(user => ({ userId: user.id, type: 'MESSAGE', title, body, href })),
