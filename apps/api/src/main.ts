@@ -26,7 +26,7 @@ import campaignsRouter, { runScheduledCampaigns } from './routes/campaigns'
 import pipelineRouter from './routes/pipeline'
 import developerRouter from './routes/developer'
 import integrationsRouter from './routes/integrations'
-import businessProfileRouter from './routes/business-profile'
+import businessProfileRouter, { checkNewGoogleReviewAlerts } from './routes/business-profile'
 import receptionistRouter from './routes/receptionist'
 import assistantRouter from './routes/assistant'
 import agentRouter from './routes/agent'
@@ -451,6 +451,11 @@ runStartup().then(() => {
   // checkAndSendAppointmentConfirmations disabled — reminder.service.ts covers this with better dedup
   // setInterval(() => { checkAndSendAppointmentConfirmations().catch(...) }, ONE_HOUR)
 
+  // Google review alerts — staff-only, baseline + dedup persisted in app_settings.
+  setInterval(() => {
+    checkNewGoogleReviewAlerts().catch(err => console.error('[GBP Review Alerts] Scheduler error:', err))
+  }, 5 * 60 * 1000)
+
   // Scheduled campaigns — check every 5 minutes
   const FIVE_MINUTES = 5 * 60 * 1000
   setInterval(() => {
@@ -515,6 +520,7 @@ runStartup().then(() => {
     if (process.env.CRM_RECALL_STAFF_ALERTS_ENABLED === 'true') {
       checkDailyRecallStaffAlerts().catch(err => console.error('[CrmRecallStaffAlert] Initial run error:', err))
     }
+    checkNewGoogleReviewAlerts().catch(err => console.error('[GBP Review Alerts] Initial run error:', err))
     checkLeadNeedsHelpAlerts().catch(err => console.error('[CrmLeadNeedsHelp] Initial run error:', err))
     checkLeadFollowUpOverdueAlerts().catch(err => console.error('[CrmLeadFollowUpOverdue] Initial run error:', err))
     // Daily derived-tag job has a 24h setInterval below with no initial kick
