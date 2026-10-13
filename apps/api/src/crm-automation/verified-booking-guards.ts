@@ -1,7 +1,7 @@
 import { phoneVariants } from '../utils/phone'
 
 export function verifiedPatientNameMatches(typedName: string, firstName: string | null, lastName: string | null): boolean {
-  const normalize = (value: string) => value.trim().replace(/\\s+/g, ' ').toLowerCase()
+  const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase()
   const expected = [firstName, lastName].filter(Boolean).join(' ')
   return normalize(typedName) === normalize(expected)
 }
