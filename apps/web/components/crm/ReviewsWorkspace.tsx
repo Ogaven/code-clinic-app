@@ -87,6 +87,38 @@ export default function ReviewsWorkspace() {
 
   useEffect(() => { void loadGbpConnection() }, [])
 
+  // Read-only live polling while the Reviews workspace is open. A location
+  // must be explicitly selected (or uniquely identified as Code Clinic).
+  // No background job, database writes, or review replies are involved.
+  useEffect(() => {
+    if (!gbpStatus?.connected || !gbpAccount || !gbpLocation) return
+    let active = true
+    let pending = false
+    const refresh = async () => {
+      if (pending || !active || document.visibilityState === 'hidden') return
+      pending = true
+      try {
+        const query = new URLSearchParams({ accountId: gbpAccount, locationId: gbpLocation, pageSize: '50' })
+        const response = await fetch(`${API}/business-profile/reviews?${query.toString()}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('cc_token')}` },
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data.message || data.error || 'Google reviews unavailable')
+        if (active) {
+          setGbpReviews(data)
+          setGbpNextPage(data.nextPageToken || null)
+          setGbpError('')
+        }
+      } catch (error: any) {
+        if (active) setGbpError(error.message || 'Google reviews unavailable')
+      } finally { pending = false }
+    }
+    void refresh()
+    const interval = window.setInterval(() => { void refresh() }, 5 * 60 * 1000)
+    return () => { active = false; window.clearInterval(interval) }
+  }, [gbpStatus?.connected, gbpAccount, gbpLocation])
+
+
 
   useEffect(() => {
     Promise.all([
@@ -128,7 +160,7 @@ export default function ReviewsWorkspace() {
 
           <section className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
             <h2 className="text-sm font-bold text-gray-800 dark:text-white">Google Business Profile — Live Reviews</h2>
-            <p className="text-xs text-gray-500">Google reviews are fetched directly from your connected Business Profile. They are separate from the clinic's internal patient feedback and review-request logs. No replies are published from this screen.</p>
+            <p className="text-xs text-gray-500">Google reviews load automatically when a location is selected and refresh every five minutes while this page is open. They are separate from the clinic's internal patient feedback and review-request logs. No replies are published from this screen.</p>
             {gbpError && <p role="alert" className="text-sm text-red-600">{gbpError}</p>}
             {!gbpStatus ? <p className="text-xs text-gray-500">Checking Google connection…</p> :
               !gbpStatus.connected ? <div className="space-y-2">
