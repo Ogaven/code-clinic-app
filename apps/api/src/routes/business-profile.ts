@@ -796,4 +796,24 @@ export async function checkNewGoogleReviewAlerts(): Promise<void> {
   }
 }
 
+// Admin-only, read-only status of the Google review alert baseline.
+router.get('/review-alerts/status', requireAuth, adminOnly, async (_req, res) => {
+  try {
+    const rows = await prisma.appSetting.findMany({
+      where: { key: { startsWith: 'gbp_review_alert:', endsWith: ':baseline' } },
+      select: { value: true, updatedAt: true },
+    })
+    return res.json({
+      enabled: true,
+      pollIntervalMinutes: 5,
+      baselineEstablished: rows.length > 0,
+      initializedLocations: rows.length,
+      lastInitializedAt: rows.length ? rows.map(row => row.updatedAt.toISOString()).sort().pop() : null,
+    })
+  } catch (error: any) {
+    console.error('[GBP Review Alerts] Status lookup failed:', error?.message || error)
+    return res.status(500).json({ error: 'Could not read review notification status.' })
+  }
+})
+
 export default router
