@@ -152,7 +152,7 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
 
   return mode === 'settings' ? (
     <div className="w-full max-w-5xl space-y-6">
-      <div><h1 className="text-2xl font-bold dark:text-white">Review Settings</h1><p className="text-sm text-gray-500">Manage the Google Business Profile connection and review-request configuration. These settings are separate from the Reviews gallery.</p></div>
+      <div><Link href="/crm/reviews" className="mb-4 inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:border-white/10 dark:text-blue-300">← Back to Reviews</Link><h1 className="text-2xl font-bold dark:text-white">Review Settings</h1><p className="text-sm text-gray-500">Manage the Google Business Profile connection and review-request configuration. These settings are separate from the Reviews gallery.</p></div>
                 <section className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
             <h2 className="text-sm font-bold text-gray-800 dark:text-white">Google Business Profile — Live Reviews</h2>
             <p className="text-xs text-gray-500">Google reviews load automatically when a location is selected and refresh every five minutes while this page is open. They are separate from the clinic's internal patient feedback and review-request logs. No replies are published from this screen.</p>
