@@ -275,18 +275,31 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
     } finally { setVerificationBusy(false) }
   }
 
-  async function loadUnlinkedReview(page: number) {
+  async function loadUnlinkedReview(_page: number) {
     setUnlinkedLoading(true)
     setUnlinkedError('')
     try {
-      const response = await fetch(`${API}/crm/leads/unlinked-booking-review?page=${page}`, { headers: authH as any })
-      if (!response.ok) throw new Error(`Could not load unlinked review (HTTP ${response.status})`)
-      const data = await response.json()
-      if (data.readOnly !== true || !Array.isArray(data.candidates)) throw new Error('Unexpected review response')
-      setUnlinkedCandidates(data.candidates)
-      setUnlinkedPage(data.page)
-      setUnlinkedTotal(data.total)
-      setUnlinkedHasMore(Boolean(data.hasMore))
+      // Automatically scan all pages so staff review only actual candidates.
+      // This is discovery only: phone matches never trigger conversion.
+      const all: UnlinkedBookingCandidate[] = []
+      let page = 1
+      let total = 0
+      let hasMore = true
+      while (hasMore) {
+        const response = await fetch(`${API}/crm/leads/unlinked-booking-review?page=${page}`, { headers: authH as any })
+        if (!response.ok) throw new Error(`Could not load unlinked review (HTTP ${response.status})`)
+        const data = await response.json()
+        if (data.readOnly !== true || !Array.isArray(data.candidates)) throw new Error('Unexpected review response')
+        all.push(...data.candidates)
+        total = data.total
+        hasMore = Boolean(data.hasMore)
+        page += 1
+        if (page > 10000) throw new Error('Review pagination exceeded safety limit')
+      }
+      setUnlinkedCandidates(all)
+      setUnlinkedPage(1)
+      setUnlinkedTotal(total)
+      setUnlinkedHasMore(false)
     } catch (error) {
       setUnlinkedError(error instanceof Error ? error.message : 'Could not load unlinked review')
     } finally { setUnlinkedLoading(false) }
@@ -610,8 +623,8 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
         </div>
         {unlinkedOpen && <div className="mt-4 space-y-3">
           {unlinkedLoading ? <p className="text-sm text-gray-500">Checking possible matches…</p> : unlinkedError ? <p role="alert" className="text-sm text-red-600">{unlinkedError}</p> : <>
-            <p className="text-xs text-gray-500">Page {unlinkedPage} · {unlinkedTotal} unlinked leads to scan across all pages · {unlinkedCandidates.length} possible booked leads on this page.</p>
-            {unlinkedCandidates.length === 0 ? <p className="text-sm text-gray-500">No possible bookings found on this page. Check further pages if available.</p> :
+            <p className="text-xs text-gray-500">Automatically scanned {unlinkedTotal} unlinked leads · {unlinkedCandidates.length} possible booked leads requiring identity verification.</p>
+            {unlinkedCandidates.length === 0 ? <p className="text-sm text-gray-500">No possible bookings found across the scanned leads.</p> :
               <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b"><th className="py-2">Lead</th><th>Stage</th><th>Possible patient / appointment</th><th>Review status</th></tr></thead><tbody>{unlinkedCandidates.map(candidate => <Fragment key={candidate.leadId}>
                 <tr className="border-b border-gray-100 dark:border-white/10">
                   <td className="py-2">{candidate.leadName || leads.find(l => l.id === candidate.leadId)?.phone || candidate.leadId}</td>
