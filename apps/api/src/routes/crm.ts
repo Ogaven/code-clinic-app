@@ -262,13 +262,18 @@ router.post('/leads/:id/verify-patient-booking', requireAuth, requireRole('ADMIN
     // not report a failed conversion after the database already committed.
     try {
       await exitActiveEnrollments('LEAD', lead.id, 'EXITED_BOOKED', 'appointment_booked')
+    } catch (automationError) {
+      console.error('[CRM] Verified booking converted; nurture exit requires review:', automationError)
+    }
+    // Event delivery must still be attempted if nurture cleanup fails.
+    try {
       await emitAutomationEvent({
         entityType: 'LEAD', entityId: lead.id, eventType: 'lead_stage_changed',
         fromValue: lead.status, toValue: 'CONVERTED',
         metadata: { trigger: 'MANUAL', reason: 'staff_verified_patient_booking' },
       })
     } catch (automationError) {
-      console.error('[CRM] Verified booking converted; post-commit automation requires review:', automationError)
+      console.error('[CRM] Verified booking converted; stage event requires review:', automationError)
     }
     res.json({ success: true, leadId: converted.id, stage: converted.status, patientId: patient.id, appointmentId })
 
