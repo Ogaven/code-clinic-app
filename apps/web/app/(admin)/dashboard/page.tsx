@@ -239,6 +239,7 @@ export default function DashboardPage() {
   const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
   const [growthRevenue, setGrowthRevenue] = useState<GrowthCrmRevenue | null>(null)
   const [satisfaction, setSatisfaction] = useState<SatisfactionSummary | null>(null)
+  const [googleRating, setGoogleRating] = useState<{ averageRating: number; totalReviewCount: number } | null>(null)
   const [growthPeriod, setGrowthPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month')
   const [dashError, setDashError] = useState(false)
 
@@ -258,6 +259,28 @@ export default function DashboardPage() {
     const token = localStorage.getItem('cc_token')
     if (!token) return
     const auth = { Authorization: `Bearer ${token}` }
+    // Google reviews are public feedback, distinct from internal post-visit ratings.
+    // Resolve the authorized Code Clinic location without storing provider credentials.
+    const googleGet = async (path: string) => {
+      const response = await fetch('/api-proxy/business-profile/' + path, { headers: auth })
+      if (!response.ok) throw new Error('Google reviews unavailable')
+      return response.json()
+    }
+    void (async () => {
+      try {
+        const locations = await googleGet('locations')
+        const candidates = (locations.results || []).flatMap((entry: any) =>
+          (entry.locations || []).map((location: any) => ({ account: entry.account, location }))
+        )
+        const clinic = candidates.find((entry: any) => /code clinic/i.test(entry.location.title || '')) || (candidates.length === 1 ? candidates[0] : null)
+        if (!clinic) return
+        const query = new URLSearchParams({ accountId: clinic.account, locationId: clinic.location.name })
+        const summary = await googleGet('reviews/summary?' + query.toString())
+        if (summary.connected !== false && typeof summary.averageRating === 'number')
+          setGoogleRating({ averageRating: summary.averageRating, totalReviewCount: summary.totalReviewCount || 0 })
+      } catch { /* Keep the dashboard available if GBP is disconnected. */ }
+    })()
+
 
     fetch('/api-proxy/clinical/analytics/dashboard', { headers: auth })
       .then(r => r.json()).then(d => { if (d?.metrics) setDashData(d); else setDashError(true) }).catch(() => setDashError(true))
@@ -484,21 +507,20 @@ export default function DashboardPage() {
       {/* ═══ ROW 2 — Patient Satisfaction | Financial Snapshot | CRM Growth ═══ */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[0.85fr_1.6fr_0.85fr]">
 
-        {/* Patient Satisfaction — real internal Code Clinic post-visit feedback.
-            Google Reviews remain separate until that provider data is available. */}
-        <CompactCard title="Patient Satisfaction" action={<span className="rounded-full bg-gray-50 px-2 py-0.5 text-[9px] font-bold text-gray-500 dark:bg-white/5 dark:text-white/40">Code Clinic Feedback</span>}>
-          <div className="flex items-center justify-between px-1 text-[10px] font-semibold text-gray-400 dark:text-white/25">
-            <span>{(satisfaction?.total ?? 0) > 0 ? `${satisfaction!.total} rating${satisfaction!.total === 1 ? '' : 's'}` : 'No ratings yet'}</span>
-            <span>{(satisfaction?.total ?? 0) > 0 && satisfaction?.satisfactionPct != null ? `${satisfaction.satisfactionPct}% satisfied` : ' '}</span>
+        {/* Google rating is fetched from the authorized Business Profile; internal feedback stays separate. */}
+        <Link href="/crm/reviews" className="block min-w-0 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md dark:border-white/10 dark:bg-white/5" aria-label="Open Google patient reviews">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-white">Patient Reviews</p>
+            <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300">View reviews ↗</span>
           </div>
-          <SatisfactionGauge pct={satisfaction?.satisfactionPct ?? null} ratingLabel={(satisfaction?.total ?? 0) > 0 && satisfaction?.averageRating != null ? satisfaction.averageRating.toFixed(1) : '—'} />
-          <div className="-mt-2 text-center">
-            <p className="mx-auto max-w-[210px] text-[10px] font-semibold leading-snug text-gray-500 dark:text-slate-400">
-              {(satisfaction?.total ?? 0) > 0 ? `${satisfaction!.satisfiedCount} patient${satisfaction!.satisfiedCount === 1 ? '' : 's'} rated their visit 4–5 stars` : 'Internal post-visit ratings will appear here as patients respond'}
-            </p>
-            <p className="mt-2 text-[9px] font-medium text-gray-300 dark:text-white/25">Google Reviews remain separate</p>
+          <p className="mt-1 text-[10px] text-gray-500">Google Business Profile</p>
+          <div className="mt-5 text-center">
+            <p className="text-5xl font-extrabold text-clinic-navy dark:text-white">{googleRating ? googleRating.averageRating.toFixed(1) : '—'}<span className="text-lg font-medium text-gray-400"> / 5</span></p>
+            <p className="mt-3 text-xl tracking-wide text-amber-500">★★★★★</p>
+            <p className="mt-3 text-xs font-semibold text-gray-600 dark:text-gray-300">{googleRating ? `${googleRating.totalReviewCount} Google reviews` : 'Google reviews unavailable'}</p>
+            <p className="mt-5 text-[10px] text-gray-500">Internal post-visit feedback: {(satisfaction?.total ?? 0) > 0 && satisfaction?.averageRating != null ? `${satisfaction.averageRating.toFixed(1)}/5 from ${satisfaction.total} responses` : 'No ratings yet'}</p>
           </div>
-        </CompactCard>
+        </Link>
 
         {/* Financial Snapshot — DEMO DATA, see comment above. Custom header
             (not CompactCard's) because the growth badge sits beside the
