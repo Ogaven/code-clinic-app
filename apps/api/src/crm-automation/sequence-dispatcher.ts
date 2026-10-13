@@ -64,6 +64,12 @@ async function resolveRecipient(touch: DueTouch): Promise<{ to: string; firstNam
   return null
 }
 
+// Pure eligibility guard, kept independently testable so converted leads
+// never re-enter the outbound nurture path through a stale enrollment.
+export function shouldStopLeadNurture(lead: { status: string; convertedToPatientId: string | null } | null): boolean {
+  return !lead || lead.status === 'CONVERTED' || !!lead.convertedToPatientId
+}
+
 export async function processDueScheduledTouches(limit = 200): Promise<{ processed: number; sent: number; dryRun: number; skipped: number }> {
   const due = (await prisma.scheduledTouch.findMany({
     where:   { status: 'PENDING', scheduledFor: { lte: new Date() } },
@@ -91,7 +97,7 @@ export async function processDueScheduledTouches(limit = 200): Promise<{ process
         where: { id: touch.enrollment.leadId },
         select: { status: true, convertedToPatientId: true },
       })
-      if (!currentLead || currentLead.status === 'CONVERTED' || currentLead.convertedToPatientId) {
+      if (shouldStopLeadNurture(currentLead)) {
         await prisma.$transaction(async tx => {
           await tx.scheduledTouch.updateMany({
             where: { id: touch.id, status: 'PENDING' },
