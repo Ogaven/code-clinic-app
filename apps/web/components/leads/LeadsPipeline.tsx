@@ -57,7 +57,7 @@ interface UnlinkedBookingCandidate {
   currentStage: string
   source: string
   ambiguous: boolean
-  matchingPatients: { patientId: string; patientName: string; appointmentId: string }[]
+  matchingPatients: { patientId: string; patientName: string; appointmentId: string; appointmentStartAt?: string; appointmentStatus?: string; evidence?: string; requiresStaffIdentityVerification?: boolean }[]
 }
 
 interface ConversationSummary {
@@ -681,7 +681,7 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
                 <tr className="border-b border-gray-100 dark:border-white/10">
                   <td className="py-2">{candidate.leadName || leads.find(l => l.id === candidate.leadId)?.phone || candidate.leadId}</td>
                   <td>{candidate.currentStage}</td>
-                  <td>{candidate.matchingPatients.map(p => <div key={p.patientId}>{p.patientName} · appointment {p.appointmentId.slice(0, 8)}…</div>)}</td>
+                  <td>{candidate.matchingPatients.map(p => <div key={p.patientId}>{p.patientName} · {p.appointmentStartAt ? new Date(p.appointmentStartAt).toLocaleDateString('en-UG', { timeZone: 'Africa/Kampala', year: 'numeric', month: 'short', day: 'numeric' }) : 'Date unavailable'} · {p.appointmentStatus || 'Status unavailable'}</div>)}</td>
                   <td className="py-2">
                     <div className="text-amber-700 dark:text-amber-300">{candidate.ambiguous ? 'Multiple patients share phone — verify identity' : 'Phone match — verify identity'}</div>
                     <button type="button" aria-expanded={expandedUnlinkedLeadId === candidate.leadId} onClick={() => setExpandedUnlinkedLeadId(expandedUnlinkedLeadId === candidate.leadId ? null : candidate.leadId)} className="mt-1 rounded-lg border border-amber-200 px-2 py-1 font-medium text-amber-800 dark:text-amber-300">{expandedUnlinkedLeadId === candidate.leadId ? 'Hide details' : 'Inspect matches'}</button>
@@ -693,8 +693,8 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
                   <p className="mt-2 font-mono break-all">Lead ID: {candidate.leadId}</p>
                   {candidate.matchingPatients.map(p => <div key={p.patientId} className="mt-2 rounded-lg border border-amber-200 p-2">
                     <p className="font-semibold">{p.patientName}</p>
-                    <p className="font-mono break-all">Patient ID: {p.patientId}</p>
-                    <p className="font-mono break-all">Appointment ID: {p.appointmentId}</p>
+                    <p>Appointment: {p.appointmentStartAt ? new Date(p.appointmentStartAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala', dateStyle: 'medium', timeStyle: 'short' }) : 'Date unavailable'} · {p.appointmentStatus || 'Status unavailable'}</p>
+                    <details className="mt-1 text-xs"><summary className="cursor-pointer">Technical record IDs</summary><p className="font-mono break-all">Patient ID: {p.patientId}</p><p className="font-mono break-all">Appointment ID: {p.appointmentId}</p></details>
                     {currentUser.role === 'ADMIN' && <button type="button" className="mt-2 rounded-lg border border-amber-300 px-3 py-1.5 font-semibold" onClick={() => { setVerificationTarget({ leadId: candidate.leadId, patientId: p.patientId, appointmentId: p.appointmentId, patientName: p.patientName }); setVerificationName(''); setVerificationConfirmed(false); setVerificationError(''); setVerificationSuccess('') }}>Verify &amp; Link Patient</button>}
                   </div>)}
                 </td></tr>}

@@ -189,21 +189,32 @@ router.get('/leads/unlinked-booking-review', requireAuth, adminAndReceptionist, 
       const patients = await prisma.patient.findMany({
         where: { phone: { in: phoneVariants(lead.phone) } },
         select: { id: true, firstName: true, lastName: true },
-        take: 10,
+        take: 11,
       })
       if (patients.length === 0) continue
       const matches = []
       for (const patient of patients) {
         const booking = await prisma.appointment.findFirst({
           where: { patientId: patient.id, createdAt: { gte: lead.createdAt }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } },
-          select: { id: true },
+          select: { id: true, startAt: true, status: true, createdAt: true },
           orderBy: { createdAt: 'asc' },
         })
-        if (booking) matches.push({ patientId: patient.id, patientName: [patient.firstName, patient.lastName].filter(Boolean).join(' '), appointmentId: booking.id })
+        if (booking) matches.push({
+          patientId: patient.id,
+          patientName: [patient.firstName, patient.lastName].filter(Boolean).join(' '),
+          appointmentId: booking.id,
+          appointmentStartAt: booking.startAt,
+          appointmentStatus: booking.status,
+          // The matching phone is a discovery signal, not identity verification.
+          evidence: 'PHONE_MATCH_WITH_QUALIFYING_BOOKING',
+          requiresStaffIdentityVerification: true,
+        })
       }
       if (matches.length > 0) candidates.push({
         leadId: lead.id, leadName: lead.name, currentStage: lead.status, source: lead.source,
         matchType: 'PHONE_REVIEW_ONLY', ambiguous: patients.length !== 1,
+        patientCandidateCountAtLeast: patients.length, patientCandidatesTruncated: patients.length > 10,
+        requiresStaffIdentityVerification: true,
         matchingPatients: matches,
       })
     }
