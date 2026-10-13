@@ -40,6 +40,9 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
   const [gbpError, setGbpError] = useState('')
   const [gbpNextPage, setGbpNextPage] = useState<string | null>(null)
   const [selectedReview, setSelectedReview] = useState<NonNullable<typeof gbpReviews>['reviews'][number] | null>(null)
+  const [replyDraft, setReplyDraft] = useState('')
+  const [replyBusy, setReplyBusy] = useState(false)
+  const [replyError, setReplyError] = useState('')
 
   async function gbpGet(path: string) {
     const response = await fetch(`${API}/business-profile/${path}`, { headers: { Authorization: `Bearer ${localStorage.getItem('cc_token')}` } })
@@ -72,6 +75,23 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
       if (!data.url || !/^https:\/\/accounts\.google\.com\//.test(data.url)) throw new Error('Unexpected Google authorization URL')
       window.location.assign(data.url)
     } catch (e: any) { setGbpError(e.message || 'Unable to connect Google') ; setGbpBusy(false) }
+  }
+
+  async function publishReply() {
+    if (!selectedReview || !gbpAccount || !gbpLocation || !replyDraft.trim() || replyBusy) return
+    setReplyBusy(true); setReplyError('')
+    try {
+      const response = await fetch(`${API}/business-profile/reviews/${encodeURIComponent(selectedReview.reviewId)}/reply`, {
+        method: 'PUT', headers: authH, body: JSON.stringify({ accountId: gbpAccount, locationId: gbpLocation, comment: replyDraft.trim() }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.message || 'Google could not publish this reply')
+      const updated = { ...selectedReview, reviewReply: result.comment || replyDraft.trim() }
+      setSelectedReview(updated)
+      setGbpReviews(previous => previous ? { ...previous, reviews: previous.reviews.map(item => item.reviewId === updated.reviewId ? updated : item) } : previous)
+      setReplyDraft(updated.reviewReply || '')
+    } catch (e: any) { setReplyError(e.message || 'Unable to publish reply') }
+    finally { setReplyBusy(false) }
   }
 
   async function loadGbpReviews(nextToken?: string) {
@@ -152,7 +172,7 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
 
   return mode === 'settings' ? (
     <div className="w-full max-w-5xl space-y-6">
-      <div><h1 className="text-2xl font-bold dark:text-white">Review Settings</h1><p className="text-sm text-gray-500">Manage the Google Business Profile connection and review-request configuration. These settings are separate from the Reviews gallery.</p></div>
+      <div><Link href="/crm/reviews" className="mb-4 inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:border-white/10 dark:text-blue-300">← Back to Reviews</Link><h1 className="text-2xl font-bold dark:text-white">Review Settings</h1><p className="text-sm text-gray-500">Manage the Google Business Profile connection and review-request configuration. These settings are separate from the Reviews gallery.</p></div>
                 <section className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
             <h2 className="text-sm font-bold text-gray-800 dark:text-white">Google Business Profile — Live Reviews</h2>
             <p className="text-xs text-gray-500">Google reviews load automatically when a location is selected and refresh every five minutes while this page is open. They are separate from the clinic's internal patient feedback and review-request logs. No replies are published from this screen.</p>
@@ -254,7 +274,7 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
       </div>}
       {!gbpStatus ? <p className="text-sm text-gray-500">Checking Google connection…</p> : !gbpStatus.connected ? <p className="text-sm text-gray-500">Google Business Profile is not connected. <Link className="text-blue-600 underline" href="/crm/settings">Configure in Review settings</Link>.</p> : !gbpLocation ? <p className="text-sm text-gray-500">Select a business location in <Link className="text-blue-600 underline" href="/crm/settings">Review settings</Link>.</p> : !gbpReviews ? <p className="text-sm text-gray-500">Loading Google reviews…</p> : null}
       {gbpReviews && <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {gbpReviews.reviews.map(review => <button key={review.reviewId} type="button" onClick={() => setSelectedReview(review)} className="text-left rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-5 shadow-sm hover:shadow-md hover:border-blue-200 transition-all flex flex-col gap-3 min-h-48">
+        {gbpReviews.reviews.map(review => <button key={review.reviewId} type="button" onClick={() => { setSelectedReview(review); setReplyDraft(review.reviewReply || ''); setReplyError('') }} className="text-left rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-5 shadow-sm hover:shadow-md hover:border-blue-200 transition-all flex flex-col gap-3 min-h-48">
           <div className="flex items-start justify-between gap-3"><strong className="text-sm text-gray-900 dark:text-white">{review.reviewer || 'Google reviewer'}</strong><span className="shrink-0 text-xs text-gray-400">{review.createTime ? new Date(review.createTime).toLocaleDateString('en-UG') : ''}</span></div>
           <span className="text-amber-500 tracking-wide">{({ ONE: '★☆☆☆☆', TWO: '★★☆☆☆', THREE: '★★★☆☆', FOUR: '★★★★☆', FIVE: '★★★★★' } as Record<string, string>)[review.starRating || ''] || 'No rating'}</span>
           <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-4 whitespace-pre-wrap">{review.comment || 'No written comment'}</p>
@@ -267,7 +287,13 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
           <div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-bold dark:text-white">{selectedReview.reviewer || 'Google reviewer'}</h2><p className="text-xs text-gray-500">{selectedReview.createTime ? new Date(selectedReview.createTime).toLocaleDateString('en-UG') : ''}</p></div><button type="button" onClick={() => setSelectedReview(null)} aria-label="Close review" className="rounded-full p-2 hover:bg-gray-100 dark:hover:bg-white/10 dark:text-white"><X size={22}/></button></div>
           <p className="text-amber-500 text-xl">{({ ONE: '★☆☆☆☆', TWO: '★★☆☆☆', THREE: '★★★☆☆', FOUR: '★★★★☆', FIVE: '★★★★★' } as Record<string, string>)[selectedReview.starRating || ''] || 'No rating'}</p>
           <p className="whitespace-pre-wrap text-sm leading-7 text-gray-700 dark:text-gray-200">{selectedReview.comment || 'No written comment'}</p>
-          {selectedReview.reviewReply && <div className="rounded-xl bg-gray-50 dark:bg-white/5 p-4"><p className="text-xs font-semibold text-gray-500 mb-2">Clinic reply</p><p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">{selectedReview.reviewReply}</p></div>}
+          <div className="rounded-xl bg-gray-50 dark:bg-white/5 p-4 space-y-3">
+            <label htmlFor="gbp-review-reply" className="block text-sm font-semibold dark:text-white">{selectedReview.reviewReply ? 'Edit clinic reply' : 'Respond to this review'}</label>
+            <textarea id="gbp-review-reply" value={replyDraft} onChange={e => setReplyDraft(e.target.value)} maxLength={4096} rows={4} className="w-full rounded-xl border border-gray-200 p-3 text-sm dark:bg-slate-800 dark:border-white/10 dark:text-white" placeholder="Write a professional public reply…"/>
+            {replyError && <p role="alert" className="text-sm text-red-600">{replyError}</p>}
+            <p className="text-xs text-gray-500">Your reply will be publicly posted to Google after you confirm. No reply is sent automatically.</p>
+            <button type="button" disabled={replyBusy || !replyDraft.trim() || replyDraft.trim() === (selectedReview.reviewReply || '')} onClick={() => { if (window.confirm('Publish this reply publicly on Google Business Profile?')) void publishReply() }} className="rounded-xl bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{replyBusy ? 'Publishing…' : selectedReview.reviewReply ? 'Update public reply' : 'Publish public reply'}</button>
+          </div>
         </section>
       </div>}
     </div>
