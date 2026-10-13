@@ -4,6 +4,7 @@ import { requireRole, adminAndReceptionist } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { phoneVariants } from '../utils/phone'
 import { verifiedPatientNameMatches, verifiedLeadPhoneMatches, eligibleVerifiedLead } from '../crm-automation/verified-booking-guards'
+import { linkVerifiedBookingInTransaction } from '../crm-automation/verified-booking-transaction'
 import { emitAutomationEvent, exitActiveEnrollments } from '../crm-automation/automation-events.service'
 import { findOrCreateLeadForChannel, handleNewLeadCreated } from '../crm-automation/lead-intake.service'
 import {
@@ -238,24 +239,9 @@ router.post('/leads/:id/verify-patient-booking', requireAuth, requireRole('ADMIN
     // history insert rolls back both mutations, leaving no partial conversion.
     // The conditional update also requires the exact stage originally reviewed,
     // so concurrent stage changes cannot produce incorrect history entries.
-    const converted = await prisma.$transaction(async tx => {
-      const linked = await tx.lead.updateMany({
-        where: { id: lead.id, convertedToPatientId: null, status: lead.status, stage: lead.stage },
-        data: { convertedToPatientId: patient.id, status: 'CONVERTED', stage: 'CONVERTED' },
-      })
-      if (linked.count !== 1) return null
-      await tx.leadStageHistory.create({
-        data: {
-          leadId: lead.id,
-          fromStage: lead.status,
-          toStage: 'CONVERTED',
-          changedBy: req.user!.id,
-          trigger: 'MANUAL',
-          reason: 'staff_verified_patient_booking',
-        },
-      })
-      return tx.lead.findUniqueOrThrow({ where: { id: lead.id } })
-    })
+    const converted = await prisma.$transaction(tx =>
+      linkVerifiedBookingInTransaction(tx, lead, patient.id, req.user!.id),
+    )
     if (!converted) return res.status(409).json({ error: 'Lead changed during verification; refresh and retry' })
 
     // Post-commit automation is best-effort. A downstream event error must
