@@ -29,6 +29,64 @@ export default function ReviewsWorkspace() {
   const [forbidden, setForbidden] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [gbpStatus, setGbpStatus] = useState<{ connected: boolean; configured?: boolean; message?: string } | null>(null)
+  const [gbpAccounts, setGbpAccounts] = useState<{ name: string; accountName?: string }[]>([])
+  const [gbpLocations, setGbpLocations] = useState<{ account: string; locations: { name: string; title?: string }[] }[]>([])
+  const [gbpAccount, setGbpAccount] = useState('')
+  const [gbpLocation, setGbpLocation] = useState('')
+  const [gbpReviews, setGbpReviews] = useState<{ averageRating: number | null; totalReviewCount: number; reviews: { reviewId: string; reviewer?: string; starRating?: string; comment?: string; createTime?: string; reviewReply?: string | null }[]; nextPageToken?: string | null } | null>(null)
+  const [gbpBusy, setGbpBusy] = useState(false)
+  const [gbpError, setGbpError] = useState('')
+  const [gbpNextPage, setGbpNextPage] = useState<string | null>(null)
+
+  async function gbpGet(path: string) {
+    const response = await fetch(`${API}/business-profile/${path}`, { headers: { Authorization: `Bearer ${localStorage.getItem('cc_token')}` } })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.message || data.error || 'Google Business Profile request failed')
+    return data
+  }
+
+  async function loadGbpConnection() {
+    setGbpBusy(true); setGbpError('')
+    try {
+      const status = await gbpGet('status')
+      setGbpStatus(status)
+      if (!status.connected) return
+      const [accounts, locations] = await Promise.all([gbpGet('accounts'), gbpGet('locations')])
+      setGbpAccounts(accounts.accounts || [])
+      setGbpLocations(locations.results || [])
+      const available = (locations.results || []).flatMap((item: { account: string; locations?: { name: string; title?: string }[] }) =>
+        (item.locations || []).map(location => ({ account: item.account, ...location })))
+      const chosen = available.find((location: { title?: string }) => /code clinic/i.test(location.title || ''))
+      if (chosen) { setGbpAccount(chosen.account); setGbpLocation(chosen.name) }
+    } catch (e: any) { setGbpError(e.message || 'Unable to load Google Business Profile') }
+    finally { setGbpBusy(false) }
+  }
+
+  async function connectGbp() {
+    setGbpBusy(true); setGbpError('')
+    try {
+      const data = await gbpGet('auth-url?returnTo=/crm/reviews')
+      if (!data.url || !/^https:\/\/accounts\.google\.com\//.test(data.url)) throw new Error('Unexpected Google authorization URL')
+      window.location.assign(data.url)
+    } catch (e: any) { setGbpError(e.message || 'Unable to connect Google') ; setGbpBusy(false) }
+  }
+
+  async function loadGbpReviews(nextToken?: string) {
+    if (!gbpAccount || !gbpLocation) return
+    setGbpBusy(true); setGbpError('')
+    try {
+      const query = new URLSearchParams({ accountId: gbpAccount, locationId: gbpLocation, pageSize: '50' })
+      if (nextToken) query.set('pageToken', nextToken)
+      const result = await gbpGet(`reviews?${query.toString()}`)
+      setGbpReviews(previous => nextToken && previous ? { ...result, reviews: [...previous.reviews, ...(result.reviews || [])] } : result)
+      setGbpNextPage(result.nextPageToken || null)
+    } catch (e: any) { setGbpError(e.message || 'Unable to fetch Google reviews') }
+    finally { setGbpBusy(false) }
+  }
+
+  useEffect(() => { void loadGbpConnection() }, [])
+
 
   useEffect(() => {
     Promise.all([
@@ -67,6 +125,42 @@ export default function ReviewsWorkspace() {
 
       {loading ? <p className="text-sm text-gray-400 dark:text-white/40">Loading…</p> : (
         <>
+
+          <section className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
+            <h2 className="text-sm font-bold text-gray-800 dark:text-white">Google Business Profile — Live Reviews</h2>
+            <p className="text-xs text-gray-500">Google reviews are fetched directly from your connected Business Profile. They are separate from the clinic's internal patient feedback and review-request logs. No replies are published from this screen.</p>
+            {gbpError && <p role="alert" className="text-sm text-red-600">{gbpError}</p>}
+            {!gbpStatus ? <p className="text-xs text-gray-500">Checking Google connection…</p> :
+              !gbpStatus.connected ? <div className="space-y-2">
+                <p className="text-xs text-amber-700">{gbpStatus.configured ? 'Google Business Profile needs administrator authorization.' : 'Google Business Profile OAuth credentials must first be configured on the API server.'}</p>
+                <button type="button" disabled={gbpBusy || !gbpStatus.configured} onClick={() => void connectGbp()} className="rounded-lg bg-blue-700 text-white px-3 py-2 text-xs font-semibold disabled:opacity-40">Connect Google Business Profile</button>
+              </div> : <>
+                <p className="text-xs text-green-700">Google account authorized. Select the Code Clinic business location.</p>
+                <label className="block text-xs">Business account
+                  <select value={gbpAccount} onChange={e => { setGbpAccount(e.target.value); setGbpLocation(''); setGbpReviews(null) }} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-900">
+                    <option value="">Choose account</option>
+                    {gbpAccounts.map(a => <option key={a.name} value={a.name}>{a.accountName || a.name}</option>)}
+                  </select>
+                </label>
+                <label className="block text-xs">Business location
+                  <select value={gbpLocation} onChange={e => { setGbpLocation(e.target.value); setGbpReviews(null); setGbpNextPage(null) }} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-900">
+                    <option value="">Choose location</option>
+                    {gbpLocations.filter(item => item.account === gbpAccount).flatMap(item => item.locations.map(location => <option key={location.name} value={location.name}>{location.title || location.name}</option>))}
+                  </select>
+                </label>
+                <button type="button" disabled={gbpBusy || !gbpAccount || !gbpLocation} onClick={() => void loadGbpReviews()} className="rounded-lg bg-blue-700 text-white px-3 py-2 text-xs font-semibold disabled:opacity-40">{gbpBusy ? 'Loading…' : 'Load / Refresh Google Reviews'}</button>
+                {gbpReviews && <div className="space-y-3">
+                  <p className="font-semibold text-sm">{gbpReviews.averageRating ?? '—'} / 5 · {gbpReviews.totalReviewCount} Google reviews</p>
+                  {gbpReviews.reviews.map(review => <article key={review.reviewId} className="border-t pt-3 text-sm">
+                    <div className="flex justify-between gap-2"><strong>{review.reviewer || 'Google reviewer'}</strong><span className="text-xs text-gray-500">{review.createTime ? new Date(review.createTime).toLocaleDateString('en-UG') : ''}</span></div>
+                    <p className="text-amber-600 text-xs">{review.starRating?.replace(/_/g, ' ') || 'No rating'}</p>
+                    {review.comment && <p className="mt-1 whitespace-pre-wrap">{review.comment}</p>}
+                    {review.reviewReply && <p className="mt-2 text-xs text-gray-500">Clinic reply: {review.reviewReply}</p>}
+                  </article>)}
+                  {gbpNextPage && <button type="button" disabled={gbpBusy} onClick={() => void loadGbpReviews(gbpNextPage)} className="rounded-lg border px-3 py-2 text-xs font-semibold">Load more Google reviews</button>}
+                </div>}
+              </>}
+          </section>
           {overview && (
             <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
               <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50 mb-1">Patient Feedback (in-app ratings)</p>
