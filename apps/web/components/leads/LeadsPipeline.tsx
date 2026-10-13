@@ -32,6 +32,18 @@ interface Lead {
   lossReason?:        string | null
 }
 
+interface HistoricalReconciliationSummary {
+  readOnly: true
+  autoConversionEnabled: false
+  scanned: number
+  eligible: number
+  manualReview: number
+  unmatched: number
+  skipped: number
+  reasons: Record<string, number>
+  provenanceStatus: string
+}
+
 interface ReconciliationCandidate {
   leadId: string
   currentStage: string
@@ -303,6 +315,23 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
     } catch (error) {
       setUnlinkedError(error instanceof Error ? error.message : 'Could not load unlinked review')
     } finally { setUnlinkedLoading(false) }
+  }
+
+  const [historicalSummary, setHistoricalSummary] = useState<HistoricalReconciliationSummary | null>(null)
+  const [historicalSummaryLoading, setHistoricalSummaryLoading] = useState(false)
+  const [historicalSummaryError, setHistoricalSummaryError] = useState('')
+  async function loadHistoricalSummary() {
+    setHistoricalSummaryLoading(true)
+    setHistoricalSummaryError('')
+    try {
+      const response = await fetch(`${API}/crm/leads/automatic-reconciliation-summary`, { headers: authH as any })
+      if (!response.ok) throw new Error(`Summary unavailable (HTTP ${response.status})`)
+      const data = await response.json()
+      if (data.readOnly !== true || data.autoConversionEnabled !== false) throw new Error('Unexpected reconciliation safety state')
+      setHistoricalSummary(data as HistoricalReconciliationSummary)
+    } catch (error) {
+      setHistoricalSummaryError(error instanceof Error ? error.message : 'Could not load summary')
+    } finally { setHistoricalSummaryLoading(false) }
   }
 
   const [reviewOpen, setReviewOpen] = useState(false)
@@ -588,6 +617,29 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
           </button>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-sky-100 dark:border-sky-500/20 bg-white dark:bg-white/5 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-gray-800 dark:text-white">Historical reconciliation overview</h2>
+            <p className="text-xs text-gray-500 dark:text-white/50 mt-1">Full-dataset assessment. Patient identity must be independently verified before conversion.</p>
+          </div>
+          <button type="button" disabled={historicalSummaryLoading} onClick={() => void loadHistoricalSummary()}
+            className="rounded-xl border border-sky-200 dark:border-sky-500/30 px-4 py-2 text-sm font-semibold text-sky-700 dark:text-sky-300 disabled:opacity-50">
+            {historicalSummaryLoading ? 'Scanning historical leads…' : historicalSummary ? 'Refresh summary' : 'Scan all leads'}
+          </button>
+        </div>
+        {historicalSummaryError && <p role="alert" className="text-sm text-red-600">{historicalSummaryError}</p>}
+        {historicalSummary && <>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">{([
+            ['Scanned', historicalSummary.scanned], ['Manual review', historicalSummary.manualReview],
+            ['Unmatched', historicalSummary.unmatched], ['Skipped', historicalSummary.skipped],
+            ['Verified eligible', historicalSummary.eligible],
+          ] as const).map(([label, count]) => <div key={label} className="rounded-lg bg-gray-50 dark:bg-white/5 p-3"><p className="text-xs text-gray-500">{label}</p><p className="text-lg font-bold dark:text-white">{count}</p></div>)}</div>
+          <p className="text-xs text-amber-700 dark:text-amber-300">Automatic conversion disabled: existing patient links lack independent verification provenance. Phone matches require staff review.</p>
+          <details className="text-xs text-gray-600 dark:text-white/60"><summary className="cursor-pointer font-semibold">Classification reasons</summary><ul className="mt-2 space-y-1">{Object.entries(historicalSummary.reasons).map(([reason, count]) => <li key={reason}>{reason.replaceAll('_', ' ')}: {count}</li>)}</ul></details>
+        </>}
+      </section>
 
       {/* Historical booking review is intentionally read-only. A matched appointment
           is not permission to change patient or lead data automatically. */}
