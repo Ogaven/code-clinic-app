@@ -540,6 +540,33 @@ router.get('/reviews', requireAuth, adminOnly, async (req, res) => {
   }
 })
 
+// Publish or update a reply on an existing Google review. Explicit admin action only.
+router.put('/reviews/:reviewId/reply', requireAuth, adminOnly, async (req, res) => {
+  const accountId = typeof req.body?.accountId === 'string' ? req.body.accountId : ''
+  const locationId = typeof req.body?.locationId === 'string' ? req.body.locationId : ''
+  const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : ''
+  const reviewId = req.params.reviewId
+  if (!/^accounts\\/\\d+$/.test(accountId) || !/^locations\\/\\d+$/.test(locationId) ||
+      !/^[A-Za-z0-9_-]{1,200}$/.test(reviewId) || !comment || comment.length > 4096) {
+    return res.status(400).json({ error: 'invalid_params', message: 'A valid account, location, review and reply (up to 4096 characters) are required.' })
+  }
+  const ready = await getReadyAuth()
+  if ('error' in ready) return res.status(ready.status).json(ready)
+  try {
+    const url = `https://mybusiness.googleapis.com/v4/${accountId}/${locationId}/reviews/${encodeURIComponent(reviewId)}/reply`
+    const result: any = await withTimeout(
+      ready.auth.request({ url, method: 'PUT', data: { comment } }),
+      GOOGLE_API_TIMEOUT_MS, 'reviews.updateReply',
+    )
+    reviewSummaryCache.clear()
+    res.json({ comment: result.data?.comment || comment, updateTime: result.data?.updateTime || null })
+  } catch (e: any) {
+    console.error('[GBP] reviews.updateReply failed:', e.message)
+    const formatted = formatGoogleError(e, 'reviews.updateReply')
+    res.status(formatted.status).json(formatted)
+  }
+})
+
 // ─── GET /business-profile/reviews/summary?accountId=&locationId= ──────
 // What the future Dashboard/CRM should consume — never the full review
 // feed. Always resolves with a coherent connection/status shape (200) so a
