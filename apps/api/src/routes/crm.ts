@@ -236,11 +236,11 @@ router.post('/leads/:id/verify-patient-booking', requireAuth, requireRole('ADMIN
 
     // Link, stage, and audit history are one database transaction. A failed
     // history insert rolls back both mutations, leaving no partial conversion.
-    // The conditional update prevents competing staff requests from linking
-    // the same lead twice.
+    // The conditional update also requires the exact stage originally reviewed,
+    // so concurrent stage changes cannot produce incorrect history entries.
     const converted = await prisma.$transaction(async tx => {
       const linked = await tx.lead.updateMany({
-        where: { id: lead.id, convertedToPatientId: null, status: { in: ['NEW', 'CONTACTED', 'QUALIFIED'] } },
+        where: { id: lead.id, convertedToPatientId: null, status: lead.status, stage: lead.stage },
         data: { convertedToPatientId: patient.id, status: 'CONVERTED', stage: 'CONVERTED' },
       })
       if (linked.count !== 1) return null
