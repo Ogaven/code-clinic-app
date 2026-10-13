@@ -8,7 +8,8 @@
 // request is ever sent from this page.
 
 import { useEffect, useState } from 'react'
-import { Star, Info } from 'lucide-react'
+import { Star, Info, X, Settings2 } from 'lucide-react'
+import Link from 'next/link'
 
 interface ReviewConfig { id?: string; delayHours: number; isActive: boolean; gbpPlaceId: string | null; reviewLinkOverride: string | null }
 interface FeedbackEntry { id: string; patientId: string; patientName: string; rating: number; comment: string | null; channel: string; submittedAt: string }
@@ -17,7 +18,7 @@ interface ReviewsOverview {
   reviewRequests: { totalCount: number; byStatus: Record<string, number> }
 }
 
-export default function ReviewsWorkspace() {
+export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews' | 'settings' }) {
   const API = '/api-proxy'
   const token = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
   const authH = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
@@ -38,6 +39,7 @@ export default function ReviewsWorkspace() {
   const [gbpBusy, setGbpBusy] = useState(false)
   const [gbpError, setGbpError] = useState('')
   const [gbpNextPage, setGbpNextPage] = useState<string | null>(null)
+  const [selectedReview, setSelectedReview] = useState<NonNullable<typeof gbpReviews>['reviews'][number] | null>(null)
 
   async function gbpGet(path: string) {
     const response = await fetch(`${API}/business-profile/${path}`, { headers: { Authorization: `Bearer ${localStorage.getItem('cc_token')}` } })
@@ -148,17 +150,10 @@ export default function ReviewsWorkspace() {
     </div>
   }
 
-  return (
-    <div className="space-y-4 max-w-xl">
-      <div>
-        <h1 className="text-xl font-extrabold text-gray-800 dark:text-white flex items-center gap-2"><Star size={20} className="text-amber-500" /> Reviews</h1>
-        <p className="text-sm text-gray-500 dark:text-white/50">Real patient feedback, outbound Google-review requests, and post-visit review request configuration.</p>
-      </div>
-
-      {loading ? <p className="text-sm text-gray-400 dark:text-white/40">Loading…</p> : (
-        <>
-
-          <section className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
+  return mode === 'settings' ? (
+    <div className="w-full max-w-5xl space-y-6">
+      <div><h1 className="text-2xl font-bold dark:text-white">Review Settings</h1><p className="text-sm text-gray-500">Manage the Google Business Profile connection and review-request configuration. These settings are separate from the Reviews gallery.</p></div>
+                <section className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
             <h2 className="text-sm font-bold text-gray-800 dark:text-white">Google Business Profile — Live Reviews</h2>
             <p className="text-xs text-gray-500">Google reviews load automatically when a location is selected and refresh every five minutes while this page is open. They are separate from the clinic's internal patient feedback and review-request logs. No replies are published from this screen.</p>
             {gbpError && <p role="alert" className="text-sm text-red-600">{gbpError}</p>}
@@ -181,47 +176,27 @@ export default function ReviewsWorkspace() {
                   </select>
                 </label>
                 <button type="button" disabled={gbpBusy || !gbpAccount || !gbpLocation} onClick={() => void loadGbpReviews()} className="rounded-lg bg-blue-700 text-white px-3 py-2 text-xs font-semibold disabled:opacity-40">{gbpBusy ? 'Loading…' : 'Load / Refresh Google Reviews'}</button>
-                {gbpReviews && <div className="space-y-3">
-                  <p className="font-semibold text-sm">{typeof gbpReviews.averageRating === 'number' ? gbpReviews.averageRating.toFixed(1) : '—'} / 5 · {gbpReviews.totalReviewCount} Google reviews</p>
-                  {gbpReviews.reviews.map(review => <article key={review.reviewId} className="border-t pt-3 text-sm">
-                    <div className="flex justify-between gap-2"><strong>{review.reviewer || 'Google reviewer'}</strong><span className="text-xs text-gray-500">{review.createTime ? new Date(review.createTime).toLocaleDateString('en-UG') : ''}</span></div>
-                    <p className="text-amber-600 text-xs">{({ ONE: '★☆☆☆☆', TWO: '★★☆☆☆', THREE: '★★★☆☆', FOUR: '★★★★☆', FIVE: '★★★★★' } as Record<string, string>)[review.starRating || ''] || 'No rating'}</p>
-                    {review.comment && <p className="mt-1 whitespace-pre-wrap">{review.comment}</p>}
-                    {review.reviewReply && <p className="mt-2 text-xs text-gray-500">Clinic reply: {review.reviewReply}</p>}
-                  </article>)}
-                  {gbpNextPage && <button type="button" disabled={gbpBusy} onClick={() => void loadGbpReviews(gbpNextPage)} className="rounded-lg border px-3 py-2 text-xs font-semibold">Load more Google reviews</button>}
-                </div>}
+
               </>}
           </section>
-          {overview && (
-            <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50 mb-1">Patient Feedback (in-app ratings)</p>
-              <p className="text-xs text-gray-400 dark:text-white/30 mb-3">Star ratings and comments patients send back via WhatsApp after a visit — a different concept from the outbound Google-review requests configured below.</p>
-              {overview.feedback.totalCount === 0 ? (
-                <p className="text-sm text-gray-400 dark:text-white/40">No patient feedback has been received yet.</p>
+
+                {overview && (
+    
+              <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50 mb-1">Outbound Google-Review Requests</p>
+              {overview.reviewRequests.totalCount === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-white/40">No review requests have been sent yet — this stays empty until "Send review requests" is turned on below.</p>
               ) : (
-                <>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-2xl font-extrabold text-gray-800 dark:text-white">{overview.feedback.averageRating ?? '—'}</span>
-                    <span className="text-xs text-gray-400">avg / 5, from {overview.feedback.totalCount} rating(s)</span>
-                  </div>
-                  <div className="divide-y divide-gray-50 dark:divide-white/5">
-                    {overview.feedback.recent.map(f => (
-                      <div key={f.id} className="py-2 flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-700 dark:text-white/80">{f.patientName} <span className="text-amber-500">{'★'.repeat(f.rating)}{'☆'.repeat(5 - f.rating)}</span></p>
-                          {f.comment && <p className="text-xs text-gray-500 dark:text-white/50 mt-0.5">{f.comment}</p>}
-                        </div>
-                        <span className="text-[11px] text-gray-400 whitespace-nowrap">{new Date(f.submittedAt).toLocaleDateString()}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(overview.reviewRequests.byStatus).map(([status, count]) => (
+                    <span key={status} className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-white/70">{status.replace(/_/g, ' ').toLowerCase()}: {count}</span>
+                  ))}
+                </div>
               )}
             </div>
           )}
 
-          {overview && (
+                  {overview && (
             <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
               <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50 mb-1">Outbound Google-Review Requests</p>
               {overview.reviewRequests.totalCount === 0 ? (
@@ -236,7 +211,7 @@ export default function ReviewsWorkspace() {
             </div>
           )}
 
-        <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
+      <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
           {error && <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg p-3">{error}</div>}
           <label className="flex items-center justify-between text-sm">
             <span className="font-semibold text-gray-700 dark:text-white/80">Send review requests</span>
@@ -265,8 +240,36 @@ export default function ReviewsWorkspace() {
             {saving ? 'Saving…' : 'Save Changes'}
           </button>
         </div>
-        </>
-      )}
+    </div>
+  ) : (
+    <div className="w-full max-w-none space-y-6 pb-12">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><Star className="text-amber-500" size={24}/> Reviews</h1><p className="text-sm text-gray-500">Patient reviews from Google Business Profile</p></div>
+        <Link href="/crm/settings" className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-white/10 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-white hover:bg-gray-50 dark:hover:bg-white/10"><Settings2 size={16}/> Review settings</Link>
+      </div>
+      {gbpError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{gbpError}</p>}
+      {gbpReviews && <div className="flex flex-wrap gap-3">
+        <div className="rounded-2xl border border-gray-100 bg-white dark:bg-white/5 dark:border-white/10 p-5 min-w-44"><p className="text-xs text-gray-500">Google rating</p><p className="text-3xl font-extrabold dark:text-white">{typeof gbpReviews.averageRating === 'number' ? gbpReviews.averageRating.toFixed(1) : '—'}<span className="text-base font-medium text-gray-400"> / 5</span></p><p className="text-amber-500">★★★★★</p></div>
+        <div className="rounded-2xl border border-gray-100 bg-white dark:bg-white/5 dark:border-white/10 p-5 min-w-44"><p className="text-xs text-gray-500">Google reviews</p><p className="text-3xl font-extrabold dark:text-white">{gbpReviews.totalReviewCount}</p><p className="text-xs text-gray-400">Total published</p></div>
+      </div>}
+      {!gbpStatus ? <p className="text-sm text-gray-500">Checking Google connection…</p> : !gbpStatus.connected ? <p className="text-sm text-gray-500">Google Business Profile is not connected. <Link className="text-blue-600 underline" href="/crm/settings">Configure in Review settings</Link>.</p> : !gbpLocation ? <p className="text-sm text-gray-500">Select a business location in <Link className="text-blue-600 underline" href="/crm/settings">Review settings</Link>.</p> : !gbpReviews ? <p className="text-sm text-gray-500">Loading Google reviews…</p> : null}
+      {gbpReviews && <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {gbpReviews.reviews.map(review => <button key={review.reviewId} type="button" onClick={() => setSelectedReview(review)} className="text-left rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-5 shadow-sm hover:shadow-md hover:border-blue-200 transition-all flex flex-col gap-3 min-h-48">
+          <div className="flex items-start justify-between gap-3"><strong className="text-sm text-gray-900 dark:text-white">{review.reviewer || 'Google reviewer'}</strong><span className="shrink-0 text-xs text-gray-400">{review.createTime ? new Date(review.createTime).toLocaleDateString('en-UG') : ''}</span></div>
+          <span className="text-amber-500 tracking-wide">{({ ONE: '★☆☆☆☆', TWO: '★★☆☆☆', THREE: '★★★☆☆', FOUR: '★★★★☆', FIVE: '★★★★★' } as Record<string, string>)[review.starRating || ''] || 'No rating'}</span>
+          <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-4 whitespace-pre-wrap">{review.comment || 'No written comment'}</p>
+          <span className="mt-auto text-xs font-semibold text-blue-600">Read full review →</span>
+        </button>)}
+      </div>}
+      {gbpNextPage && <div className="flex justify-center"><button type="button" disabled={gbpBusy} onClick={() => void loadGbpReviews(gbpNextPage)} className="rounded-xl border bg-white px-5 py-3 text-sm font-semibold disabled:opacity-50 dark:bg-white/5 dark:text-white">{gbpBusy ? 'Loading…' : 'Load more reviews'}</button></div>}
+      {selectedReview && <div role="presentation" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onMouseDown={e => { if (e.target === e.currentTarget) setSelectedReview(null) }}>
+        <section role="dialog" aria-modal="true" aria-label="Full Google review" className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4">
+          <div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-bold dark:text-white">{selectedReview.reviewer || 'Google reviewer'}</h2><p className="text-xs text-gray-500">{selectedReview.createTime ? new Date(selectedReview.createTime).toLocaleDateString('en-UG') : ''}</p></div><button type="button" onClick={() => setSelectedReview(null)} aria-label="Close review" className="rounded-full p-2 hover:bg-gray-100 dark:hover:bg-white/10 dark:text-white"><X size={22}/></button></div>
+          <p className="text-amber-500 text-xl">{({ ONE: '★☆☆☆☆', TWO: '★★☆☆☆', THREE: '★★★☆☆', FOUR: '★★★★☆', FIVE: '★★★★★' } as Record<string, string>)[selectedReview.starRating || ''] || 'No rating'}</p>
+          <p className="whitespace-pre-wrap text-sm leading-7 text-gray-700 dark:text-gray-200">{selectedReview.comment || 'No written comment'}</p>
+          {selectedReview.reviewReply && <div className="rounded-xl bg-gray-50 dark:bg-white/5 p-4"><p className="text-xs font-semibold text-gray-500 mb-2">Clinic reply</p><p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">{selectedReview.reviewReply}</p></div>}
+        </section>
+      </div>}
     </div>
   )
 }
