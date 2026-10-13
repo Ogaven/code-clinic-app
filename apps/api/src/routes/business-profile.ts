@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { google } from 'googleapis'
-import { randomBytes, createCipheriv, createDecipheriv } from 'crypto'
+import { randomBytes, createCipheriv, createDecipheriv, createHash } from 'crypto'
+import { sendPushToUser } from '../services/push.service'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
@@ -698,5 +699,101 @@ router.get('/verify', requireAuth, adminOnly, async (_req, res) => {
   console.log('[GBP] verify finished in %dms — accounts=%d locations=%d reviewsAccessible=%s', Date.now() - verifyStart, report.accountsFound, report.locationsFound, report.reviewsAccessible)
   res.json(report)
 })
+
+
+/**
+ * Poll Google reviews from the API process (not a browser tab).
+ * First successful scan establishes a durable timestamp baseline: old reviews
+ * never generate a notification. Per-review claims and notification inserts
+ * share a transaction to avoid duplicate alerts after restarts or concurrent ticks.
+ * No patient messages are sent.
+ */
+let reviewAlertScanRunning = false
+export async function checkNewGoogleReviewAlerts(): Promise<void> {
+  if (reviewAlertScanRunning) return
+  reviewAlertScanRunning = true
+  try {
+    const ready = await getReadyAuth()
+    if ('error' in ready) return
+    const mbam = google.mybusinessaccountmanagement({ version: 'v1', auth: ready.auth })
+    const accounts: any = await withTimeout(mbam.accounts.list({}), GOOGLE_API_TIMEOUT_MS, 'review-alert.accounts')
+    const mbbi = google.mybusinessbusinessinformation({ version: 'v1', auth: ready.auth })
+    for (const account of accounts.data.accounts || []) {
+      if (!account.name || !/^accounts\/\d+$/.test(account.name)) continue
+      const locations: any = await withTimeout(
+        mbbi.accounts.locations.list({ parent: account.name, readMask: 'name,title', pageSize: 100 }),
+        GOOGLE_API_TIMEOUT_MS, 'review-alert.locations',
+      )
+      for (const location of locations.data.locations || []) {
+        if (!location.name || !/^locations\/\d+$/.test(location.name)) continue
+        if (!(location.title || '').toLowerCase().includes('code clinic')) continue
+        const resource = account.name + '/' + location.name
+        const prefix = 'gbp_review_alert:' + createHash('sha256').update(resource).digest('hex') + ':'
+        const baselineKey = prefix + 'baseline'
+        const baselineRows = await prisma.$queryRaw<{ value: string }[]>\`SELECT value FROM app_settings WHERE key = ${baselineKey} LIMIT 1\`
+        const existingBaseline = baselineRows.length ? Date.parse(baselineRows[0].value) : NaN
+        const isFirstScan = !Number.isFinite(existingBaseline)
+        const baseline = isFirstScan ? new Date() : new Date(existingBaseline)
+        let pageToken: string | undefined
+        const reviews: any[] = []
+        // Walk recent pages rather than relying on just the first 20 results.
+        // Never acknowledge unseen reviews when Google returns an error.
+        for (let page = 0; page < 10; page++) {
+          const qs = new URLSearchParams({ pageSize: '100' })
+          if (pageToken) qs.set('pageToken', pageToken)
+          const result: any = await withTimeout(
+            ready.auth.request({ url: 'https://mybusiness.googleapis.com/v4/' + resource + '/reviews?' + qs.toString(), method: 'GET' }),
+            GOOGLE_API_TIMEOUT_MS, 'review-alert.reviews',
+          )
+          const batch: any[] = result.data.reviews || []
+          reviews.push(...batch)
+          pageToken = result.data.nextPageToken
+          if (!pageToken) break
+        }
+        if (isFirstScan) {
+          // Atomic first-writer-wins baseline across multiple API processes.
+          await prisma.$executeRaw\`INSERT INTO app_settings (key, value, "updatedAt") VALUES (${baselineKey}, ${baseline.toISOString()}, NOW()) ON CONFLICT (key) DO NOTHING\`
+          console.log('[GBP Review Alerts] Established baseline for location', location.name)
+          continue
+        }
+        const recipients = await prisma.user.findMany({
+          where: { isActive: true, role: 'ADMIN' },
+          select: { id: true },
+        })
+        if (!recipients.length) continue
+        for (const review of reviews) {
+          const created = Date.parse(review.createTime || '')
+          if (!review.reviewId || !Number.isFinite(created) || created <= baseline.getTime()) continue
+          const claimKey = prefix + createHash('sha256').update(String(review.reviewId)).digest('hex')
+          const stars = ({ ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 } as Record<string, number>)[review.starRating] || null
+          const title = 'New Google review'
+          const body = stars ? 'A new ' + stars + '-star Google review needs your attention.' : 'A new Google review needs your attention.'
+          const href = '/crm/reviews'
+          const notified = await prisma.$transaction(async tx => {
+            const claimed = await tx.$queryRaw<{ key: string }[]>\`
+              INSERT INTO app_settings (key, value, "updatedAt")
+              VALUES (${claimKey}, ${String(review.createTime)}, NOW())
+              ON CONFLICT (key) DO NOTHING RETURNING key
+            \`
+            if (!claimed.length) return false
+            await tx.notification.createMany({
+              data: recipients.map(user => ({ userId: user.id, type: 'MESSAGE', title, body, href })),
+            })
+            return true
+          })
+          if (notified) {
+            for (const user of recipients) {
+              sendPushToUser(user.id, { title, body, url: href }).catch(() => {})
+            }
+          }
+        }
+      }
+    }
+  } catch (error: any) {
+    console.error('[GBP Review Alerts] Poll failed:', error?.message || error)
+  } finally {
+    reviewAlertScanRunning = false
+  }
+}
 
 export default router
