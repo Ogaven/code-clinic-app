@@ -83,7 +83,22 @@ jobs:
       - name: Push schema to test DB
         run: pnpm --filter database exec prisma db push --skip-generate
 
+      # A second, disposable database exists only inside this CI job's
+      # PostgreSQL service. Never point this at the production DATABASE_URL.
+      - name: Create isolated CRM integration database
+        run: psql postgresql://postgres:testpass@localhost:5432/codeclinic_test -v ON_ERROR_STOP=1 -c "CREATE DATABASE codeclinic_ci_integration;"
+
+      - name: Enable pgvector in isolated CRM integration database
+        run: psql "${DATABASE_URL%/*}/codeclinic_ci_integration" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Apply schema to isolated CRM integration database
+        env:
+          DATABASE_URL: postgresql://postgres:testpass@localhost:5432/codeclinic_ci_integration
+        run: pnpm --filter database exec prisma db push --skip-generate
+
       - name: Run unit tests
+        env:
+          CRM_INTEGRATION_DATABASE_URL: postgresql://postgres:testpass@localhost:5432/codeclinic_ci_integration
         run: pnpm --filter api exec vitest run --reporter=verbose
 
       - name: Upload coverage
