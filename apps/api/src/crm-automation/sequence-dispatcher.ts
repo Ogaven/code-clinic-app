@@ -83,6 +83,34 @@ export async function processDueScheduledTouches(limit = 200): Promise<{ process
       continue
     }
 
+    // Fail closed for leads already converted to patients, even if a prior
+    // post-commit enrollment-exit attempt failed. Never send lead nurture to
+    // a converted patient. Cancel this pending touch and repair enrollment.
+    if (touch.enrollment.leadId) {
+      const currentLead = await prisma.lead.findUnique({
+        where: { id: touch.enrollment.leadId },
+        select: { status: true, convertedToPatientId: true },
+      })
+      if (!currentLead || currentLead.status === 'CONVERTED' || currentLead.convertedToPatientId) {
+        await prisma.$transaction(async tx => {
+          await tx.scheduledTouch.updateMany({
+            where: { id: touch.id, status: 'PENDING' },
+            data: { status: 'CANCELLED', resultDetail: 'lead_converted_or_missing' },
+          })
+          await tx.sequenceEnrollment.updateMany({
+            where: { id: touch.enrollmentId, status: 'ACTIVE' },
+            data: { status: 'EXITED_BOOKED', exitReason: 'lead_converted_recovery', exitedAt: new Date() },
+          })
+          await tx.scheduledTouch.updateMany({
+            where: { enrollmentId: touch.enrollmentId, status: 'PENDING' },
+            data: { status: 'CANCELLED', resultDetail: 'lead_converted_recovery' },
+          })
+        })
+        skipped++
+        continue
+      }
+    }
+
     // Re-check clinical eligibility immediately before any recall send.
     // A booked hygiene visit, interval removal, deactivation, or stale tag
     // must prevent an already-enrolled patient from receiving a recall.
