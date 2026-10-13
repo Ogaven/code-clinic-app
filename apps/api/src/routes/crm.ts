@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth'
 import { requireRole, adminAndReceptionist } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { phoneVariants } from '../utils/phone'
+import { verifiedPatientNameMatches, verifiedLeadPhoneMatches, eligibleVerifiedLead } from '../crm-automation/verified-booking-guards'
 import { emitAutomationEvent, exitActiveEnrollments } from '../crm-automation/automation-events.service'
 import { findOrCreateLeadForChannel, handleNewLeadCreated } from '../crm-automation/lead-intake.service'
 import {
@@ -213,18 +214,17 @@ router.post('/leads/:id/verify-patient-booking', requireAuth, requireRole('ADMIN
   try {
     const lead = await prisma.lead.findUnique({ where: { id: req.params.id } })
     if (!lead) return res.status(404).json({ error: 'Lead not found' })
-    if (lead.convertedToPatientId || !['NEW', 'CONTACTED', 'QUALIFIED'].includes(lead.status)) {
+    if (!eligibleVerifiedLead(lead)) {
       return res.status(409).json({ error: 'Lead is already linked or no longer eligible' })
     }
     const patient = await prisma.patient.findUnique({
       where: { id: patientId }, select: { id: true, firstName: true, lastName: true, phone: true },
     })
     if (!patient) return res.status(404).json({ error: 'Patient not found' })
-    const expectedName = [patient.firstName, patient.lastName].filter(Boolean).join(' ').trim().replace(/\\s+/g, ' ').toLowerCase()
-    if (confirmedPatientName.trim().replace(/\\s+/g, ' ').toLowerCase() !== expectedName) {
+    if (!verifiedPatientNameMatches(confirmedPatientName, patient.firstName, patient.lastName)) {
       return res.status(400).json({ error: 'Typed name does not match the selected patient' })
     }
-    if (!lead.phone || !phoneVariants(lead.phone).includes(patient.phone)) {
+    if (!verifiedLeadPhoneMatches(lead.phone, patient.phone)) {
       return res.status(409).json({ error: 'Lead and patient phone numbers do not match; investigate manually' })
     }
     const appointment = await prisma.appointment.findFirst({
