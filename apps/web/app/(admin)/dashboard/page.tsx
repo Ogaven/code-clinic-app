@@ -510,15 +510,24 @@ export default function DashboardPage() {
         {/* Google rating is fetched from the authorized Business Profile; internal feedback stays separate. */}
         <Link href="/crm/reviews" className="block min-w-0 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md dark:border-white/10 dark:bg-white/5" aria-label="Open Google patient reviews">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-white">Patient Reviews</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-white">Patient Satisfaction</p>
             <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300">View reviews ↗</span>
           </div>
           <p className="mt-1 text-[10px] text-gray-500">Google Business Profile</p>
-          <div className="mt-5 text-center">
-            <p className="text-5xl font-extrabold text-clinic-navy dark:text-white">{googleRating ? googleRating.averageRating.toFixed(1) : '—'}<span className="text-lg font-medium text-gray-400"> / 5</span></p>
-            <p className="mt-3 text-xl tracking-wide text-amber-500">★★★★★</p>
-            <p className="mt-3 text-xs font-semibold text-gray-600 dark:text-gray-300">{googleRating ? `${googleRating.totalReviewCount} Google reviews` : 'Google reviews unavailable'}</p>
-            <p className="mt-5 text-[10px] text-gray-500">Internal post-visit feedback: {(satisfaction?.total ?? 0) > 0 && satisfaction?.averageRating != null ? `${satisfaction.averageRating.toFixed(1)}/5 from ${satisfaction.total} responses` : 'No ratings yet'}</p>
+          <div className="mt-5 flex flex-col items-center">
+            <div className="relative w-full max-w-[260px]" role="img" aria-label={googleRating ? `Google rating ${googleRating.averageRating.toFixed(1)} out of 5` : 'Google rating unavailable'}>
+              <svg viewBox="0 0 240 145" className="w-full" aria-hidden="true">
+                <path d="M 25 120 A 95 95 0 0 1 215 120" fill="none" stroke="#e5e7eb" strokeWidth="19" strokeLinecap="round" />
+                <path d="M 25 120 A 95 95 0 0 1 215 120" fill="none" stroke="#1d4ed8" strokeWidth="19" strokeLinecap="round" pathLength="100"
+                  strokeDasharray={`${Math.max(0, Math.min(100, (googleRating?.averageRating ?? 0) * 20))} 100`} />
+              </svg>
+              <div className="absolute inset-x-0 bottom-0 text-center">
+                <p className="text-4xl font-extrabold text-clinic-navy dark:text-white">{googleRating ? googleRating.averageRating.toFixed(1) : '—'}<span className="text-base font-medium text-gray-400"> / 5</span></p>
+              </div>
+            </div>
+            <p className="mt-2 text-xl tracking-wide text-amber-500" aria-hidden="true">★★★★★</p>
+            <p className="mt-2 text-xs font-semibold text-gray-600 dark:text-gray-300">{googleRating ? `${googleRating.totalReviewCount} Google reviews` : 'Google reviews unavailable'}</p>
+            <p className="mt-4 text-[10px] text-gray-500">Internal post-visit feedback: {(satisfaction?.total ?? 0) > 0 && satisfaction?.averageRating != null ? `${satisfaction.averageRating.toFixed(1)}/5 from ${satisfaction.total} responses` : 'No ratings yet'}</p>
           </div>
         </Link>
 
