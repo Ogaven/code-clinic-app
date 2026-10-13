@@ -196,7 +196,22 @@ export default function ReviewsWorkspace({ mode = 'reviews' }: { mode?: 'reviews
             </div>
           )}
 
-        <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
+                  {overview && (
+            <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-white/50 mb-1">Outbound Google-Review Requests</p>
+              {overview.reviewRequests.totalCount === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-white/40">No review requests have been sent yet — this stays empty until "Send review requests" is turned on below.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(overview.reviewRequests.byStatus).map(([status, count]) => (
+                    <span key={status} className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-white/70">{status.replace(/_/g, ' ').toLowerCase()}: {count}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+      <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 space-y-3">
           {error && <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg p-3">{error}</div>}
           <label className="flex items-center justify-between text-sm">
             <span className="font-semibold text-gray-700 dark:text-white/80">Send review requests</span>
