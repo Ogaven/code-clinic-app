@@ -21,7 +21,9 @@ const { submitWalkInIntakeMock, prismaMock, sendPushToUserMock } = vi.hoisted(()
   submitWalkInIntakeMock: vi.fn(),
   prismaMock: {
     appointment: { update: vi.fn().mockResolvedValue({}) },
-    patientActivity: { create: vi.fn().mockResolvedValue({}) },
+    patientActivity: { create: vi.fn().mockResolvedValue({ id: 'activity-1' }) },
+    walkInSheetOutbox: { create: vi.fn().mockResolvedValue({ id: 'outbox-1' }) },
+    $transaction: vi.fn(),
     user: { findMany: vi.fn().mockResolvedValue([]) },
     notification: { create: vi.fn().mockResolvedValue({}) },
   },
@@ -56,6 +58,7 @@ function fakeRes() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof prismaMock) => Promise<unknown>) => callback(prismaMock))
   submitWalkInIntakeMock.mockResolvedValue({
     patient: { id: 'p-1', firstName: 'Jane', lastName: 'Doe' },
     outcome: 'CREATED',
@@ -106,4 +109,42 @@ describe('POST /pre-visit/submit — email/referralSource', () => {
       expect.objectContaining({ email: 'jane@example.com', referralSource: 'Facebook' }),
     )
   })
+})
+
+describe('POST /pre-visit/submit — Sheets outbox resilience', () => {
+  it('queues one outbox task linked to the saved walk-in activity', async () => {
+    const { default: previsitRouter } = await import('../routes/previsit')
+    const handler = findHandler(previsitRouter, 'post', '/submit')
+    const res = fakeRes()
+    await handler({ body: { phone: '0772000000', firstName: 'Jane', lastName: 'Doe' } }, res)
+    expect(prismaMock.walkInSheetOutbox.create).toHaveBeenCalledWith({
+      data: { activityId: 'activity-1', patientId: 'p-1' },
+    })
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
+  })
+
+  it('preserves registration when the Sheets outbox insert fails', async () => {
+    const { default: previsitRouter } = await import('../routes/previsit')
+    const handler = findHandler(previsitRouter, 'post', '/submit')
+    const res = fakeRes()
+    prismaMock.walkInSheetOutbox.create.mockRejectedValueOnce(new Error('Outbox table unavailable'))
+    await handler({ body: { phone: '0772000000', firstName: 'Jane', lastName: 'Doe' } }, res)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
+    expect(prismaMock.patientActivity.create).toHaveBeenCalledTimes(2)
+    expect(prismaMock.patientActivity.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({ metadata: expect.stringContaining('sheetExportPendingReconciliation') }),
+    })
+  })
+  it('preserves registration even when the fallback activity insert also fails', async () => {
+    const { default: previsitRouter } = await import('../routes/previsit')
+    const handler = findHandler(previsitRouter, 'post', '/submit')
+    const res = fakeRes()
+    prismaMock.walkInSheetOutbox.create.mockRejectedValueOnce(new Error('Outbox unavailable'))
+    prismaMock.patientActivity.create
+      .mockResolvedValueOnce({ id: 'activity-1' })
+      .mockRejectedValueOnce(new Error('Activity unavailable'))
+    await handler({ body: { phone: '0772000000', firstName: 'Jane', lastName: 'Doe' } }, res)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
+  })
+
 })

@@ -36,6 +36,7 @@ import knowledgeRouter from './routes/knowledge'
 import setupRouter from './routes/setup'
 import clinicalRouter from './routes/clinical'
 import previsitRouter from './routes/previsit'
+import { deliverWalkInSheetOutbox } from './services/walkin-sheets-export.service'
 import quickbooksRouter from './routes/quickbooks'
 import stocksRouter from './routes/stocks'
 import webhooksRouter from './routes/webhooks'
@@ -537,6 +538,21 @@ runStartup().then(() => {
     // Never enrolls or sends anything by itself; see seed-default-sequences.ts.
     ensureDefaultCrmSequences().catch(err => console.error('[CrmDefaultSequences] Initial run error:', err))
   }, 2 * 60 * 1000)
+
+  // Explicitly opt-in after Google credentials, worksheet headers and consent
+  // have been reviewed. Each tick is guarded against overlapping runs.
+  if (process.env.WALKIN_SHEETS_EXPORT_ENABLED === 'true') {
+    let running = false
+    const tick = async () => {
+      if (running) return
+      running = true
+      try { await deliverWalkInSheetOutbox() }
+      catch (error) { logger.error({ error }, 'Walk-in Google Sheets export failed') }
+      finally { running = false }
+    }
+    setInterval(() => { void tick() }, 60_000)
+    void tick()
+  }
 
   app.listen(PORT, () => {
     logger.info({
