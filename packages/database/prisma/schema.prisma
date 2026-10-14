@@ -1952,3 +1952,21 @@ model BacklogCampaignRun {
 
   @@map("backlog_campaign_runs")
 }
+
+// Durable walk-in export outbox. No medical notes, DOB or clinical history
+// are copied into this table; exports reference a patient ID and intake event.
+model WalkInSheetOutbox {
+  id           String    @id @default(cuid())
+  activityId   String    @unique
+  patientId    String
+  status       String    @default("PENDING")
+  attempts     Int       @default(0)
+  nextAttemptAt DateTime @default(now())
+  exportedAt   DateTime?
+  lastError    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@map("walkin_sheet_outbox")
+}
