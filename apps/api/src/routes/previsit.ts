@@ -163,15 +163,23 @@ router.post('/submit', async (req, res) => {
       // Walk-in QR intake — no appointment yet. Always log on the patient's
       // timeline (not just when a chief complaint was given) so the Walk-In
       // Intake page has a reliable feed of recent submissions + outcomes.
-      await prisma.patientActivity.create({
-        data: {
-          patientId: patient.id,
-          userId:    'pre-visit-form',
-          userName:  'Pre-Visit Form (Self-Service)',
-          action:    'Submitted walk-in intake form',
-          metadata:  JSON.stringify({ outcome, conflicts, note: note || undefined }),
-        },
-      }).catch(() => {})
+      // Record the walk-in event and its Sheets delivery task atomically.
+      // If the Sheets worker is offline, the queued task survives restarts.
+      // The unique activityId prevents duplicate outbox entries for an event.
+      await prisma.$transaction(async tx => {
+        const activity = await tx.patientActivity.create({
+          data: {
+            patientId: patient.id,
+            userId:    'pre-visit-form',
+            userName:  'Pre-Visit Form (Self-Service)',
+            action:    'Submitted walk-in intake form',
+            metadata:  JSON.stringify({ outcome, conflicts, note: note || undefined }),
+          },
+        })
+        await tx.walkInSheetOutbox.create({
+          data: { activityId: activity.id, patientId: patient.id },
+        })
+      })
 
       // Fire-and-forget — never blocks the visitor's response, and never
       // contacts the walk-in patient themselves (staff only).
