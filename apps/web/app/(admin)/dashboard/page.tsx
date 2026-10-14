@@ -515,13 +515,13 @@ export default function DashboardPage() {
           </div>
           <p className="mt-1 text-[10px] text-gray-500">Google Business Profile</p>
           <div className="mt-5 flex flex-col items-center">
-            <div className="relative w-full max-w-[260px]" role="img" aria-label={googleRating ? `Google rating ${googleRating.averageRating.toFixed(1)} out of 5` : 'Google rating unavailable'}>
+            <div className="relative w-full max-w-[280px]" role="img" aria-label={googleRating ? `Google rating ${googleRating.averageRating.toFixed(1)} out of 5` : 'Google rating unavailable'}>
               <svg viewBox="0 0 240 145" className="w-full" aria-hidden="true">
-                <path d="M 25 120 A 95 95 0 0 1 215 120" fill="none" stroke="#e5e7eb" strokeWidth="19" strokeLinecap="round" />
-                <path d="M 25 120 A 95 95 0 0 1 215 120" fill="none" stroke="#1d4ed8" strokeWidth="19" strokeLinecap="round" pathLength="100"
+                <path d="M 25 120 A 95 95 0 0 1 215 120" fill="none" stroke="#e5e7eb" strokeWidth="26" strokeLinecap="round" />
+                <path d="M 25 120 A 95 95 0 0 1 215 120" fill="none" stroke="#1d4ed8" strokeWidth="26" strokeLinecap="round" pathLength="100"
                   strokeDasharray={`${Math.max(0, Math.min(100, (googleRating?.averageRating ?? 0) * 20))} 100`} />
               </svg>
-              <div className="absolute inset-x-0 bottom-0 text-center">
+              <div className="absolute inset-x-0 bottom-[13px] text-center">
                 <p className="text-4xl font-extrabold text-clinic-navy dark:text-white">{googleRating ? googleRating.averageRating.toFixed(1) : '—'}<span className="text-base font-medium text-gray-400"> / 5</span></p>
               </div>
             </div>
