@@ -46,15 +46,6 @@ function timeAgo(value: string) {
   return `${Math.floor(mins / 1440)}d ago`
 }
 
-function waitForImage(src: string): Promise<void> {
-  return new Promise(resolve => {
-    const img = new window.Image()
-    img.onload = () => resolve()
-    img.onerror = () => resolve()
-    img.src = src
-  })
-}
-
 export interface WalkInIntakePanelProps {
   /** '/patients' for Admin, '/receptionist/patients' for Receptionist — used to link back to the patient list and into individual patient profiles. */
   basePath: string
@@ -128,79 +119,30 @@ export default function WalkInIntakePanel({ basePath, requiredRoles, fallbackHre
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [ready]) // eslint-disable-line
 
-  // ── Branded flyer composition ───────────────────────────────
+  // ── Exact artwork supplied by Code Clinic ───────────────────────
+  // The artwork is stored as a static image, not rebuilt with HTML/CSS.
+  // The QR code is already printed within the supplied image.
+  const flyerArtwork = '/images/code-clinic-walk-in-flyer.jpg'
+
   async function composeFlyer(): Promise<HTMLCanvasElement> {
-    const res = await fetch('/api-proxy/pre-visit/qr?size=1024', { headers: authHeaders() })
-    if (!res.ok) throw new Error('Failed to generate high-resolution QR')
-    const { qrDataUrl, url } = await res.json()
-
-    if (url !== 'https://codeclinicemr.com/pre-visit') {
-      throw new Error('Unexpected registration URL; flyer was not generated')
-    }
-
-    await waitForImage('/logo.png')
-    const { default: html2canvas } = await import('html2canvas')
-    const container = document.createElement('div')
-    // Portrait print layout modelled on the clinic's existing blue reception card.
-    // The QR image comes directly from the live /pre-visit/qr API, never artwork.
-    // Reference-fidelity proportions: restrained type at top, QR centred in the
-    // purple dental-pattern field, scalloped divider, compact white footer.
-    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;height:1120px;overflow:hidden;background:#fff;font-family:Arial,Helvetica,sans-serif;'
-    const dentalPattern = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="890" viewBox="0 0 800 890" style="position:absolute;inset:0;opacity:.085">
-      <g fill="none" stroke="#adb5df" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
-        <path d="M60 50q-25 0-20 31l10 24q8 16 16-3l8-13 9 13q10 20 17-5l8-24Q110 48 84 51l-12 8z"/>
-        <path d="M625 110q-26-10-31 13l-4 23q-3 20 11 11l15-13 7 20q9 18 18-5l9-27q7-23-18-23z"/>
-        <path d="M365 225q-32-9-30 23l8 28q6 18 18 0l8-16 8 16q13 19 19-7l6-25q0-24-28-21z"/>
-        <path d="M120 340q-28-5-27 21l7 24q8 17 17 0l8-13 8 15q10 15 18-10l4-21q-3-20-26-17z"/>
-        <path d="M670 350q-27-8-28 20l8 24q7 15 16 0l9-14 9 15q11 13 18-10l4-25q-4-18-26-10z"/>
-        <path d="M65 650q-26-6-27 20l7 25q9 18 18-2l9-14 9 14q11 18 17-8l5-23q-4-20-28-12z"/>
-        <path d="M535 650q-25-8-26 18l7 26q8 16 17-1l9-14 9 16q10 16 18-10l4-24q-5-19-27-11z"/>
-        <rect x="20" y="195" width="57" height="28" rx="14" transform="rotate(-24 20 195)"/><path d="M36 182l13 31"/>
-        <rect x="695" y="245" width="59" height="28" rx="14" transform="rotate(29 695 245)"/><path d="M733 252l-14 25"/>
-        <path d="M205 100h47m-23-23v47M760 520h-46m23-23v46M260 725h-42m21-21v42"/>
-        <circle cx="175" cy="520" r="29"/><circle cx="175" cy="520" r="12"/>
-        <path d="M695 710q-15-25-35-5q-20 22 8 39l27 19 28-20q25-20 5-39q-19-18-33 6z"/>
-        <path d="M245 815q-13-27-35-8q-20 21 7 39l28 20 28-21q26-19 5-39q-20-16-33 9z"/>
-      </g></svg>`
-    container.innerHTML = `
-      <div style="height:880px;position:relative;background:#303b84;color:#fff;overflow:hidden">
-        ${dentalPattern}
-        <div style="position:absolute;top:79px;left:99px;text-align:left">
-          <h1 style="font-size:43px;line-height:1.15;font-weight:800;letter-spacing:-.6px;margin:0;color:#eaf5ec">
-            Please Scan &amp;<br/>Fill the Contact Form<br/><span style="color:#c6eced">before taking the seat</span>
-          </h1>
-        </div>
-        <div style="position:absolute;top:349px;left:202px;width:396px;height:405px">
-          <div style="position:absolute;top:0;left:0;width:396px;height:405px;box-sizing:border-box;border:12px solid #70b8d1;border-radius:42px;padding:31px;background:transparent">
-            <div style="width:100%;height:100%;box-sizing:border-box;background:#fffbe9;border-radius:23px;padding:10px">
-              <img src="${qrDataUrl}" alt="Code Clinic registration QR code" style="width:100%;height:100%;object-fit:contain;display:block;image-rendering:pixelated"/>
-            </div>
-          </div>
-          <div style="position:absolute;top:-28px;left:84px;width:228px;height:58px;border-radius:15px;background:#70b8d1;color:#e7f6f2;font-size:33px;line-height:58px;font-weight:900;text-align:center">SCAN ME</div>
-        </div>
-        <div style="position:absolute;bottom:-1px;left:0;right:0;height:25px;background:radial-gradient(circle at 39px 27px,#fff 27px,transparent 28px) repeat-x;background-size:78px 54px"></div>
-      </div>
-      <div style="height:240px;box-sizing:border-box;padding:51px 63px 25px;display:flex;align-items:center;justify-content:space-between;gap:24px;background:#fff">
-        <img src="/logo.png" alt="Code Clinic" style="width:410px;max-height:125px;object-fit:contain;object-position:left center" />
-        <div style="font-size:14px;color:#2b3665;line-height:1.35;min-width:222px;text-align:left">
-          <div style="font-weight:700;color:#5b96b4">● ● ◎ @codeclinic</div>
-          <div style="font-weight:700">www.codeclinic.ug</div>
-          <div style="margin-top:23px">✆ +256 394 836 298</div>
-          <div>✆ +256 709 740 457</div>
-        </div>
-      </div>`
-    document.body.appendChild(container)
-    try {
-      await Promise.all(Array.from(container.querySelectorAll('img')).map(img =>
-        img.complete ? Promise.resolve() : new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve()
-          img.onerror = () => reject(new Error('Flyer image failed to load'))
-        })
-      ))
-      return await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
-    } finally {
-      container.remove()
-    }
+    const img = new window.Image()
+    img.src = flyerArtwork
+    await new Promise<void>((resolve, reject) => {
+      if (img.complete) {
+        if (img.naturalWidth > 0) resolve()
+        else reject(new Error('Original flyer artwork is missing'))
+        return
+      }
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('Original flyer artwork is missing'))
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Unable to prepare flyer')
+    ctx.drawImage(img, 0, 0)
+    return canvas
   }
 
   async function downloadFlyerPng() {
