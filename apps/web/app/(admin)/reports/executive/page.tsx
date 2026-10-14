@@ -35,6 +35,64 @@ function GoogleReviewSummary() {
   <p className="mt-3 text-xs text-gray-500">Google public reviews are distinct from internal patient feedback. Google Search and Maps performance metrics will appear separately when their API access is verified.</p>
  </div>
 }
+type GoogleMetricSeries = {dailyMetric?:string;timeSeries?:{datedValues?:{date?:{year?:number;month?:number;day?:number};value?:string}[]}}
+function GooglePerformance({period}:{period:Period}) {
+ const [state,setState]=useState<{loading:boolean;error:string;series:GoogleMetricSeries[];dates:string}>({loading:true,error:'',series:[],dates:''})
+ useEffect(()=>{
+  let active=true
+  setState({loading:true,error:'',series:[],dates:''})
+  const run=async()=>{
+   try{
+    const headers={Authorization:`Bearer ${localStorage.getItem('cc_token')||''}`}
+    const get=async(path:string)=>{const response=await fetch(`/api-proxy/business-profile/${path}`,{headers});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||data.error||'Google metrics unavailable');return data}
+    const status=await get('status')
+    if(!status.connected)throw new Error('Connect Google Business Profile in Review Settings')
+    const locations=await get('locations')
+    const all=(locations.results||[]).flatMap((group:{locations?:{name:string;title?:string}[]})=>group.locations||[])
+    const location=all.find((item:{title?:string})=>/code clinic/i.test(item.title||''))
+    if(!location?.name)throw new Error('Code Clinic location not found in Google Business Profile')
+    const today=new Date()
+    const end=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),today.getUTCDate()-1))
+    const start=period==='monthly'?new Date(Date.UTC(end.getUTCFullYear(),end.getUTCMonth(),1)):new Date(end.getTime()-6*86400000)
+    const iso=(date:Date)=>date.toISOString().slice(0,10)
+    const params=new URLSearchParams({locationId:location.name,startDate:iso(start),endDate:iso(end)})
+    const data=await get(`performance?${params.toString()}`)
+    if(active)setState({loading:false,error:'',series:Array.isArray(data.metrics)?data.metrics:[],dates:`${iso(start)} to ${iso(end)}`})
+   }catch(error){if(active)setState({loading:false,error:error instanceof Error?error.message:'Google performance unavailable',series:[],dates:''})}
+  }
+  void run()
+  return()=>{active=false}
+ },[period])
+ const metric=(name:string):number|null=>{
+  const series=state.series.find(item=>item.dailyMetric===name)
+  if(!series?.timeSeries?.datedValues)return null
+  return series.timeSeries.datedValues.reduce((sum,item)=>sum+(Number(item.value)||0),0)
+ }
+ const impressionKeys=['BUSINESS_IMPRESSIONS_DESKTOP_MAPS','BUSINESS_IMPRESSIONS_DESKTOP_SEARCH','BUSINESS_IMPRESSIONS_MOBILE_MAPS','BUSINESS_IMPRESSIONS_MOBILE_SEARCH']
+ const impressions=impressionKeys.map(metric)
+ const totalImpressions=impressions.every(v=>v!==null)?impressions.reduce<number>((sum,v)=>sum+(v||0),0):null
+ const items:[string,number|null][]=[
+  ['Google Search & Maps impressions',totalImpressions],
+  ['Phone call clicks',metric('CALL_CLICKS')],
+  ['Direction requests',metric('BUSINESS_DIRECTION_REQUESTS')],
+  ['Website clicks',metric('WEBSITE_CLICKS')],
+  ['Business Profile bookings',metric('BUSINESS_BOOKINGS')],
+  ['Business Profile conversations',metric('BUSINESS_CONVERSATIONS')],
+  ['Search · mobile',impressions[3]],
+  ['Maps · mobile',impressions[2]],
+  ['Search · desktop',impressions[1]],
+  ['Maps · desktop',impressions[0]],
+ ]
+ return <div className="mt-4 rounded-xl border border-slate-200 dark:border-white/10 p-4">
+  <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Google Search & Maps performance</h3>
+  <p className="mt-1 text-xs text-gray-500">Read-only Google Business Profile metrics · {period==='monthly'?'month to yesterday':'last seven completed days'}</p>
+  {state.loading?<p className="mt-3 text-sm text-gray-500">Loading Google performance…</p>:state.error?<p className="mt-3 text-sm text-amber-700 dark:text-amber-300">Unavailable: {state.error}. No zero values are assumed.</p>:<>
+   <p className="mt-2 text-xs text-gray-500">{state.dates}</p>
+   <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">{items.map(([label,value])=><Card key={label} label={label} value={value===null?'Unavailable':fmt(value)}/>)}</div>
+   <p className="mt-3 text-xs text-gray-500">These are Google profile actions and impressions, not clinic appointment bookings or Sarah AI conversations. Missing Google metrics are shown as unavailable.</p>
+  </>}
+ </div>
+}
 function Callout({title,items,tone}:{title:string,items:string[],tone:'win'|'opportunity'|'attention'}) {
  const cls=tone==='win'?'border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/10 dark:border-emerald-800/40 dark:text-emerald-300':tone==='opportunity'?'border-blue-200 bg-blue-50 text-blue-800 dark:bg-blue-900/10 dark:border-blue-800/40 dark:text-blue-300':'border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-900/10 dark:border-amber-800/40 dark:text-amber-300'
  return <div className={`rounded-2xl border p-5 ${cls}`}><h3 className="font-black">{title}</h3>{items.length?<ul className="mt-3 space-y-2 text-sm list-disc pl-5">{items.map(x=><li key={x}>{x}</li>)}</ul>:<p className="mt-2 text-sm opacity-70">No items recorded for this period.</p>}</div>
@@ -124,6 +182,7 @@ export default function ExecutiveReportPage() {
       </div>
      </div>
      <GoogleReviewSummary />
+     <GooglePerformance period={period} />
     </Section>
    </div>
 
