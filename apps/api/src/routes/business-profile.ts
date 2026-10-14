@@ -532,7 +532,9 @@ router.get('/performance', requireAuth, adminOnly, async (req, res) => {
     // Preserve the original metric identifiers and daily values, including
     // missing time series. Missing metrics must never be represented as zero.
     return res.json({ source: 'google_business_profile_performance', locationId, startDate, endDate,
-      metrics: response.data?.multiDailyMetricTimeSeries || [] })
+      metrics: (response.data?.multiDailyMetricTimeSeries || []).flatMap((group: any) =>
+        Array.isArray(group.dailyMetricTimeSeries) ? group.dailyMetricTimeSeries :
+        group.dailyMetric ? [group] : []), })
   } catch (e: any) {
     const formatted = formatGoogleError(e, 'performance.fetchMultiDailyMetricsTimeSeries')
     return res.status(formatted.status).json(formatted)
