@@ -1970,3 +1970,12 @@ model WalkInSheetOutbox {
   @@index([status, nextAttemptAt])
   @@map("walkin_sheet_outbox")
 }
+
+model WalkInSheetExportLease {
+  id          String   @id
+  owner       String?
+  expiresAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("walkin_sheet_export_lease")
+}
