@@ -182,7 +182,9 @@ router.get('/', requireAuth, async (req, res) => {
 
     // Build filter clause
     const filterWhere: any = {}
-    if (filter === 'record_only') {
+    if (filter === 'with_photo') {
+      filterWhere.avatarR2Key = { not: null }
+    } else if (filter === 'record_only') {
       // No completed appointments of any kind
       filterWhere.appointments = { none: { status: { in: ['COMPLETED', 'DEPARTED', 'SESSION_COMPLETE'] } } }
     } else if (filter === 'new_patient') {
