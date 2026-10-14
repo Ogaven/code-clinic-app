@@ -479,6 +479,66 @@ router.get('/locations', requireAuth, adminOnly, async (req, res) => {
   }
 })
 
+// GET /business-profile/performance?locationId=locations/123&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+// Read-only, daily Google Search/Maps metrics. The Performance API is independent
+// of public review counts and may require separate Google API enablement.
+router.get('/performance', requireAuth, adminOnly, async (req, res) => {
+  const locationId = String(req.query.locationId || '')
+  const startDate = String(req.query.startDate || '')
+  const endDate = String(req.query.endDate || '')
+  const parseDate = (value: string) => {
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return null
+    const date = new Date(value + 'T00:00:00Z')
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value ? date : null
+  }
+  const start = parseDate(startDate)
+  const end = parseDate(endDate)
+  if (!/^locations\\/\\d+$/.test(locationId) || !start || !end || end < start ||
+      end.getTime() - start.getTime() > 93 * 86400000) {
+    return res.status(400).json({ error: 'invalid_params', message: 'Supply a numeric location resource and valid startDate/endDate (maximum 94 calendar days).' })
+  }
+  const ready = await getReadyAuth()
+  if ('error' in ready) return res.status(ready.status).json(ready)
+
+  const metrics = [
+    'BUSINESS_IMPRESSIONS_DESKTOP_MAPS',
+    'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH',
+    'BUSINESS_IMPRESSIONS_MOBILE_MAPS',
+    'BUSINESS_IMPRESSIONS_MOBILE_SEARCH',
+    'CALL_CLICKS',
+    'WEBSITE_CLICKS',
+    'BUSINESS_DIRECTION_REQUESTS',
+    'BUSINESS_BOOKINGS',
+    'BUSINESS_CONVERSATIONS',
+  ]
+  const params = new URLSearchParams()
+  metrics.forEach(metric => params.append('dailyMetrics', metric))
+  const addDate = (prefix: string, value: Date) => {
+    params.set(prefix + '.year', String(value.getUTCFullYear()))
+    params.set(prefix + '.month', String(value.getUTCMonth() + 1))
+    params.set(prefix + '.day', String(value.getUTCDate()))
+  }
+  addDate('dailyRange.startDate', start)
+  addDate('dailyRange.endDate', end)
+  try {
+    const response: any = await withTimeout(
+      ready.auth.request({
+        url: `https://businessprofileperformance.googleapis.com/v1/${locationId}:fetchMultiDailyMetricsTimeSeries?${params.toString()}`,
+        method: 'GET',
+      }),
+      GOOGLE_API_TIMEOUT_MS,
+      'performance.fetchMultiDailyMetricsTimeSeries',
+    )
+    // Preserve the original metric identifiers and daily values, including
+    // missing time series. Missing metrics must never be represented as zero.
+    return res.json({ source: 'google_business_profile_performance', locationId, startDate, endDate,
+      metrics: response.data?.multiDailyMetricTimeSeries || [] })
+  } catch (e: any) {
+    const formatted = formatGoogleError(e, 'performance.fetchMultiDailyMetricsTimeSeries')
+    return res.status(formatted.status).json(formatted)
+  }
+})
+
 // ─── GET /business-profile/reviews?accountId=&locationId=&pageSize=&pageToken= ──
 // Diagnostic only — returns one page of Google's real review data for a
 // location. Never auto-paginates the full history; caller must pass
