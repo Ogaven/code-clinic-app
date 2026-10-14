@@ -322,7 +322,7 @@ export default function DashboardPage() {
       .then(r => r.ok ? r.json() : null).then(d => { if (d && typeof d.total === 'number') setSatisfaction(d) }).catch(() => {})
 
     // Only display real uploaded patient photographs in the satisfaction card.
-    fetch('/api-proxy/patients?limit=100', { headers: auth })
+    fetch('/api-proxy/patients?filter=with_photo&limit=5', { headers: auth })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         const rows = Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : []
@@ -530,11 +530,11 @@ export default function DashboardPage() {
                 <path d="M 25 120 A 95 95 0 0 1 215 120" fill="none" stroke="#1d4ed8" strokeWidth="26" strokeLinecap="round" pathLength="100"
                   strokeDasharray={`${Math.max(0, Math.min(100, (googleRating?.averageRating ?? 0) * 20))} 100`} />
               </svg>
-              <div className="absolute inset-x-0 bottom-[13px] text-center">
+              <div className="absolute inset-x-0 bottom-[20px] text-center">
                 <p className="text-6xl font-black tracking-tighter leading-none text-clinic-navy dark:text-white">{googleRating ? googleRating.averageRating.toFixed(1) : '—'}<span className="text-base font-medium text-gray-400"> / 5</span></p>
               </div>
             </div>
-            <p className="mt-2 text-xl tracking-wide text-amber-500" aria-hidden="true">★★★★★</p>
+            <p className="-mt-1 text-2xl leading-none tracking-wide text-amber-500" aria-hidden="true">★★★★★</p>
             <p className="mt-2 text-xs font-semibold text-gray-600 dark:text-gray-300">{googleRating ? `${googleRating.totalReviewCount} Google reviews` : 'Google reviews unavailable'}</p>
             {/* Patient-profile preview, not a representation of individual Google reviewers. */}
             <div className="mt-3 flex items-center justify-center" aria-label="Code Clinic patient profiles">
