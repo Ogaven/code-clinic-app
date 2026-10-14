@@ -9,6 +9,7 @@ const SHEET_GID = 1741829078
 const EXISTING_HEADERS = { surname: 'Surname', givenName: 'Given Name', contact: 'Contact' }
 const EVENT_ID_HEADER = 'Code Clinic EMR Intake Event ID' // Reserved column Q; staff must approve and add header before enabling.
 const EVENT_ID_COLUMN_INDEX = 16
+const GOOGLE_REQUEST_TIMEOUT_MS = 30_000
 
 function cell(value: unknown): string {
   const text = String(value ?? '')
@@ -25,6 +26,8 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
   const sheets = google.sheets({ version: 'v4', auth })
   // A database lease serializes the Google Sheets read-before-append step
   // across all API instances. A stale lease expires after 30 minutes.
+  // Every Google request has a 30-second timeout and a run handles at most
+  // 10 tasks; the lease duration is deliberately much longer than a run.
   const owner = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`
   const acquired = await prisma.walkInSheetExportLease.updateMany({
     where: { id: 'walkin-sheets', expiresAt: { lte: new Date() } },
@@ -32,7 +35,7 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
   })
   if (!acquired.count) return { processed: 0, skipped: true }
   try {
-  const metadata = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID, fields: 'sheets(properties(sheetId,title))' })
+  const metadata = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID, fields: 'sheets(properties(sheetId,title))' }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS })
   const title = metadata.data.sheets?.find(sheet => sheet.properties?.sheetId === SHEET_GID)?.properties?.title
   if (!title) throw new Error('Walk-in worksheet gid not found; refusing to write to another tab')
   const range = `'${title.replace(/'/g, "''")}'!A:Q`
@@ -54,10 +57,10 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
     })
     if (claimed.count !== 1) continue
     try {
-      const existing = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range })
+      const existing = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS })
       const rows = existing.data.values || []
-      // Never overwrite the user's existing worksheet or install headers
-      // automatically. Staff must explicitly approve the seven-column schema.
+      // Never overwrite the existing worksheet or its historical form
+      // headers. The owner must explicitly approve the reserved Q1 header.
       const header = rows[0] || []
       if (header[1] !== EXISTING_HEADERS.surname || header[2] !== EXISTING_HEADERS.givenName ||
           header[3] !== EXISTING_HEADERS.contact || header[EVENT_ID_COLUMN_INDEX] !== EVENT_ID_HEADER) {
@@ -80,7 +83,7 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
             cell(patient.referralSource), '', '', '', cell(patient.nextOfKinPhone),
             '', '', '', task.activityId,
           ]] },
-        })
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS })
       }
       await prisma.walkInSheetOutbox.update({ where: { id: task.id }, data: { status: 'EXPORTED', exportedAt: new Date(), lastError: null } })
       processed++
