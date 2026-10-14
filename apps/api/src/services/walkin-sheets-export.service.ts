@@ -51,6 +51,13 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
   })
   let processed = 0
   for (const task of pending) {
+    // Renew the lease before each item, and stop if another instance has
+    // taken ownership. A slow batch cannot continue writing on an old lease.
+    const renewed = await prisma.walkInSheetExportLease.updateMany({
+      where: { id: 'walkin-sheets', owner, expiresAt: { gt: new Date() } },
+      data: { expiresAt: new Date(Date.now() + 30 * 60_000) },
+    })
+    if (renewed.count !== 1) throw new Error('Walk-in Sheets export lease lost; stopping batch')
     const claimed = await prisma.walkInSheetOutbox.updateMany({
       where: { id: task.id, status: task.status, attempts: task.attempts },
       data: { status: 'PROCESSING', attempts: { increment: 1 } },
