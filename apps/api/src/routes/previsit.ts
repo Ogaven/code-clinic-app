@@ -166,20 +166,38 @@ router.post('/submit', async (req, res) => {
       // Record the walk-in event and its Sheets delivery task atomically.
       // If the Sheets worker is offline, the queued task survives restarts.
       // The unique activityId prevents duplicate outbox entries for an event.
-      await prisma.$transaction(async tx => {
-        const activity = await tx.patientActivity.create({
+      // A spreadsheet integration must never turn a successfully saved
+      // patient registration into an HTTP 500. The export outbox is
+      // best-effort until the migration has been safely deployed.
+      try {
+        await prisma.$transaction(async tx => {
+          const activity = await tx.patientActivity.create({
+            data: {
+              patientId: patient.id,
+              userId:    'pre-visit-form',
+              userName:  'Pre-Visit Form (Self-Service)',
+              action:    'Submitted walk-in intake form',
+              metadata:  JSON.stringify({ outcome, conflicts, note: note || undefined }),
+            },
+          })
+          await tx.walkInSheetOutbox.create({
+            data: { activityId: activity.id, patientId: patient.id },
+          })
+        })
+      } catch (outboxError) {
+        console.error('[PreVisit] Walk-in outbox enqueue failed:', outboxError instanceof Error ? outboxError.message : 'unknown error')
+        // Preserve the existing walk-in timeline when the export table is
+        // unavailable, so intake still succeeds and staff can reconcile it.
+        await prisma.patientActivity.create({
           data: {
             patientId: patient.id,
-            userId:    'pre-visit-form',
-            userName:  'Pre-Visit Form (Self-Service)',
-            action:    'Submitted walk-in intake form',
-            metadata:  JSON.stringify({ outcome, conflicts, note: note || undefined }),
+            userId: 'pre-visit-form',
+            userName: 'Pre-Visit Form (Self-Service)',
+            action: 'Submitted walk-in intake form',
+            metadata: JSON.stringify({ outcome, conflicts, note: note || undefined, sheetExportPendingReconciliation: true }),
           },
-        })
-        await tx.walkInSheetOutbox.create({
-          data: { activityId: activity.id, patientId: patient.id },
-        })
-      })
+        }).catch(error => console.error('[PreVisit] Walk-in activity fallback failed:', error))
+      }
 
       // Fire-and-forget — never blocks the visitor's response, and never
       // contacts the walk-in patient themselves (staff only).
