@@ -71,6 +71,16 @@ function GooglePerformance({period}:{period:Period}) {
  const impressionKeys=['BUSINESS_IMPRESSIONS_DESKTOP_MAPS','BUSINESS_IMPRESSIONS_DESKTOP_SEARCH','BUSINESS_IMPRESSIONS_MOBILE_MAPS','BUSINESS_IMPRESSIONS_MOBILE_SEARCH']
  const impressions=impressionKeys.map(metric)
  const totalImpressions=impressions.every(v=>v!==null)?impressions.reduce<number>((sum,v)=>sum+(v||0),0):null
+ const impressionSeries=state.series.filter(item=>impressionKeys.includes(item.dailyMetric||''))
+ const days=new Map<string,number>()
+ impressionSeries.forEach(series=>(series.timeSeries?.datedValues||[]).forEach(point=>{
+  const date=point.date
+  if(!date?.year||!date.month||!date.day)return
+  const key=`${date.year}-${String(date.month).padStart(2,'0')}-${String(date.day).padStart(2,'0')}`
+  days.set(key,(days.get(key)||0)+(Number(point.value)||0))
+ }))
+ const chartDays=[...days.entries()].sort(([a],[b])=>a.localeCompare(b))
+ const chartMax=Math.max(1,...chartDays.map(([,value])=>value))
  const items:[string,number|null][]=[
   ['Google Search & Maps impressions',totalImpressions],
   ['Phone call clicks',metric('CALL_CLICKS')],
@@ -89,6 +99,7 @@ function GooglePerformance({period}:{period:Period}) {
   {state.loading?<p className="mt-3 text-sm text-gray-500">Loading Google performance…</p>:state.error?<p className="mt-3 text-sm text-amber-700 dark:text-amber-300">Unavailable: {state.error}. No zero values are assumed.</p>:<>
    <p className="mt-2 text-xs text-gray-500">{state.dates}</p>
    <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">{items.map(([label,value])=><Card key={label} label={label} value={value===null?'Unavailable':fmt(value)}/>)}</div>
+   {chartDays.length>0&&<div className="mt-5"><h4 className="mb-2 text-xs font-bold uppercase text-gray-500">Daily Search & Maps impressions</h4><div className="flex h-36 items-end gap-1 overflow-x-auto border-b border-slate-200 pb-1" role="img" aria-label="Daily Google Search and Maps impressions bar chart">{chartDays.map(([day,value])=><div key={day} title={`${day}: ${fmt(value)} impressions`} className="min-w-2 flex-1 rounded-t bg-cyan-500" style={{height:`${Math.max(3,100*value/chartMax)}%`}} />)}</div><div className="mt-1 flex justify-between text-[10px] text-gray-500"><span>{chartDays[0][0]}</span><span>{chartDays[chartDays.length-1][0]}</span></div></div>}
    <p className="mt-3 text-xs text-gray-500">These are Google profile actions and impressions, not clinic appointment bookings or Sarah AI conversations. Missing Google metrics are shown as unavailable.</p>
   </>}
  </div>
