@@ -541,6 +541,49 @@ router.get('/performance', requireAuth, adminOnly, async (req, res) => {
   }
 })
 
+// GET /business-profile/search-keywords?locationId=locations/123&month=YYYY-MM
+// Google returns monthly search terms only when the location has enough data.
+// No keywords are synthesized when Google's privacy thresholds suppress them.
+router.get('/search-keywords', requireAuth, adminOnly, async (req, res) => {
+  const locationId = String(req.query.locationId || '')
+  const month = String(req.query.month || '')
+  if (!/^locations\/\d+$/.test(locationId) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    return res.status(400).json({ error: 'invalid_params', message: 'Supply a numeric Google location and month in YYYY-MM format.' })
+  }
+  const [year, monthNumber] = month.split('-').map(Number)
+  const selected = new Date(Date.UTC(year, monthNumber - 1, 1))
+  if (selected > new Date()) return res.status(400).json({ error: 'invalid_params', message: 'Future months are not available.' })
+  const ready = await getReadyAuth()
+  if ('error' in ready) return res.status(ready.status).json(ready)
+  try {
+    const params = new URLSearchParams({
+      'monthlyRange.startMonth.year': String(year),
+      'monthlyRange.startMonth.month': String(monthNumber),
+      'monthlyRange.endMonth.year': String(year),
+      'monthlyRange.endMonth.month': String(monthNumber),
+      pageSize: '100',
+    })
+    const response: any = await withTimeout(
+      ready.auth.request({
+        url: `https://businessprofileperformance.googleapis.com/v1/${locationId}/searchkeywords/impressions/monthly?${params.toString()}`,
+        method: 'GET',
+      }),
+      GOOGLE_API_TIMEOUT_MS,
+      'performance.listSearchKeywordImpressionsMonthly',
+    )
+    return res.json({
+      source: 'google_business_profile_performance',
+      locationId, month,
+      keywords: response.data?.searchKeywordsCounts || [],
+      nextPageToken: response.data?.nextPageToken || null,
+      note: 'Search keyword impression counts may be thresholded or omitted by Google.',
+    })
+  } catch (e: any) {
+    const formatted = formatGoogleError(e, 'performance.listSearchKeywordImpressionsMonthly')
+    return res.status(formatted.status).json(formatted)
+  }
+})
+
 // ─── GET /business-profile/reviews?accountId=&locationId=&pageSize=&pageToken= ──
 // Diagnostic only — returns one page of Google's real review data for a
 // location. Never auto-paginates the full history; caller must pass
