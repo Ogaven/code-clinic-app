@@ -42,14 +42,17 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
   // Repair activities saved by the intake fallback when the outbox table
   // was temporarily unavailable. These are explicitly marked events only;
   // do not backfill unrelated or historical patient activities.
+  // Restrict reconciliation to a rolling window. Otherwise the oldest
+  // already-repaired 100 activities can permanently starve newer events.
   const fallbackActivities = await prisma.patientActivity.findMany({
     where: {
       userId: 'pre-visit-form',
       action: 'Submitted walk-in intake form',
+      createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60_000) },
       metadata: { contains: '"sheetExportPendingReconciliation":true' },
     },
     select: { id: true, patientId: true },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     take: 100,
   })
   if (fallbackActivities.length) {
