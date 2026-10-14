@@ -80,7 +80,7 @@ function GooglePerformance({period}:{period:Period}) {
   return series.timeSeries.datedValues.reduce((sum,item)=>sum+(Number(item.value)||0),0)
  }
  const impressionKeys=['BUSINESS_IMPRESSIONS_DESKTOP_MAPS','BUSINESS_IMPRESSIONS_DESKTOP_SEARCH','BUSINESS_IMPRESSIONS_MOBILE_MAPS','BUSINESS_IMPRESSIONS_MOBILE_SEARCH']
- const impressions=impressionKeys.map(metric)
+ const impressions=impressionKeys.map(key=>metric(key))
  const totalImpressions=impressions.every(v=>v!==null)?impressions.reduce<number>((sum,v)=>sum+(v||0),0):null
  const impressionSeries=state.series.filter(item=>impressionKeys.includes(item.dailyMetric||''))
  const days=new Map<string,number>()
