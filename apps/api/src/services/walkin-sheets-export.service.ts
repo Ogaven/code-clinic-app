@@ -74,6 +74,12 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
         throw new Error('Existing Form Responses 2 headers or reserved column Q do not match; staff must approve and add the event ID header before export')
       }
       if (!rows.slice(1).some(row => row[EVENT_ID_COLUMN_INDEX] === task.activityId)) {
+        // Reconfirm ownership immediately before any external write. A
+        // worker that has lost its lease must not append a spreadsheet row.
+        const stillOwner = await prisma.walkInSheetExportLease.count({
+          where: { id: 'walkin-sheets', owner, expiresAt: { gt: new Date() } },
+        })
+        if (stillOwner !== 1) throw new Error('Walk-in Sheets export lease lost before append')
         const [activity, patient] = await Promise.all([
           prisma.patientActivity.findUnique({ where: { id: task.activityId } }),
           prisma.patient.findUnique({ where: { id: task.patientId } }),
