@@ -37,10 +37,10 @@ function GoogleReviewSummary() {
 }
 type GoogleMetricSeries = {dailyMetric?:string;timeSeries?:{datedValues?:{date?:{year?:number;month?:number;day?:number};value?:string}[]}}
 function GooglePerformance({period}:{period:Period}) {
- const [state,setState]=useState<{loading:boolean;error:string;series:GoogleMetricSeries[];dates:string}>({loading:true,error:'',series:[],dates:''})
+ const [state,setState]=useState<{loading:boolean;error:string;series:GoogleMetricSeries[];previous:GoogleMetricSeries[];dates:string;previousDates:string}>({loading:true,error:'',series:[],previous:[],dates:'',previousDates:''})
  useEffect(()=>{
   let active=true
-  setState({loading:true,error:'',series:[],dates:''})
+  setState({loading:true,error:'',series:[],previous:[],dates:'',previousDates:''})
   const run=async()=>{
    try{
     const headers={Authorization:`Bearer ${localStorage.getItem('cc_token')||''}`}
@@ -57,14 +57,25 @@ function GooglePerformance({period}:{period:Period}) {
     const iso=(date:Date)=>date.toISOString().slice(0,10)
     const params=new URLSearchParams({locationId:location.name,startDate:iso(start),endDate:iso(end)})
     const data=await get(`performance?${params.toString()}`)
-    if(active)setState({loading:false,error:'',series:Array.isArray(data.metrics)?data.metrics:[],dates:`${iso(start)} to ${iso(end)}`})
-   }catch(error){if(active)setState({loading:false,error:error instanceof Error?error.message:'Google performance unavailable',series:[],dates:''})}
+    const duration=end.getTime()-start.getTime()+86400000
+    const previousEnd=new Date(start.getTime()-86400000)
+    const previousStart=new Date(previousEnd.getTime()-duration+86400000)
+    let previous:GoogleMetricSeries[]=[]
+    let previousDates='Previous period unavailable'
+    try{
+     const previousParams=new URLSearchParams({locationId:location.name,startDate:iso(previousStart),endDate:iso(previousEnd)})
+     const prior=await get(`performance?${previousParams.toString()}`)
+     previous=Array.isArray(prior.metrics)?prior.metrics:[]
+     previousDates=`${iso(previousStart)} to ${iso(previousEnd)}`
+    }catch{/* The current period remains available if comparison fails. */}
+    if(active)setState({loading:false,error:'',series:Array.isArray(data.metrics)?data.metrics:[],previous,dates:`${iso(start)} to ${iso(end)}`,previousDates})
+   }catch(error){if(active)setState({loading:false,error:error instanceof Error?error.message:'Google performance unavailable',series:[],previous:[],dates:'',previousDates:''})}
   }
   void run()
   return()=>{active=false}
  },[period])
- const metric=(name:string):number|null=>{
-  const series=state.series.find(item=>item.dailyMetric===name)
+ const metric=(name:string,source:GoogleMetricSeries[]=state.series):number|null=>{
+  const series=source.find(item=>item.dailyMetric===name)
   if(!series?.timeSeries?.datedValues)return null
   return series.timeSeries.datedValues.reduce((sum,item)=>sum+(Number(item.value)||0),0)
  }
@@ -81,24 +92,28 @@ function GooglePerformance({period}:{period:Period}) {
  }))
  const chartDays=[...days.entries()].sort(([a],[b])=>a.localeCompare(b))
  const chartMax=Math.max(1,...chartDays.map(([,value])=>value))
- const items:[string,number|null][]=[
-  ['Google Search & Maps impressions',totalImpressions],
-  ['Phone call clicks',metric('CALL_CLICKS')],
-  ['Direction requests',metric('BUSINESS_DIRECTION_REQUESTS')],
-  ['Website clicks',metric('WEBSITE_CLICKS')],
-  ['Business Profile bookings',metric('BUSINESS_BOOKINGS')],
-  ['Business Profile conversations',metric('BUSINESS_CONVERSATIONS')],
-  ['Search · mobile',impressions[3]],
-  ['Maps · mobile',impressions[2]],
-  ['Search · desktop',impressions[1]],
-  ['Maps · desktop',impressions[0]],
+ const priorImpressions=impressionKeys.map(key=>metric(key,state.previous))
+ const priorTotal=priorImpressions.every(value=>value!==null)?priorImpressions.reduce<number>((sum,value)=>sum+(value||0),0):null
+ const priorMetric=(name:string)=>name==='IMPRESSIONS_TOTAL'?priorTotal:metric(name,state.previous)
+ const comparison=(current:number|null,prior:number|null)=>current===null||prior===null?'No comparison':prior===0?(current===0?'No change':'No prior baseline'):`${current>=prior?'+':''}${(((current-prior)/prior)*100).toFixed(1)}% vs previous`
+ const items:[string,number|null,string][]=[
+  ['Google Search & Maps impressions',totalImpressions, 'IMPRESSIONS_TOTAL'],
+  ['Phone call clicks',metric('CALL_CLICKS'), 'CALL_CLICKS'],
+  ['Direction requests',metric('BUSINESS_DIRECTION_REQUESTS'), 'BUSINESS_DIRECTION_REQUESTS'],
+  ['Website clicks',metric('WEBSITE_CLICKS'), 'WEBSITE_CLICKS'],
+  ['Business Profile bookings',metric('BUSINESS_BOOKINGS'), 'BUSINESS_BOOKINGS'],
+  ['Business Profile conversations',metric('BUSINESS_CONVERSATIONS'), 'BUSINESS_CONVERSATIONS'],
+  ['Search · mobile',impressions[3], 'BUSINESS_IMPRESSIONS_MOBILE_SEARCH'],
+  ['Maps · mobile',impressions[2], 'BUSINESS_IMPRESSIONS_MOBILE_MAPS'],
+  ['Search · desktop',impressions[1], 'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH'],
+  ['Maps · desktop',impressions[0], 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS'],
  ]
  return <div className="mt-4 rounded-xl border border-slate-200 dark:border-white/10 p-4">
   <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Google Search & Maps performance</h3>
   <p className="mt-1 text-xs text-gray-500">Read-only Google Business Profile metrics · {period==='monthly'?'month to yesterday':'last seven completed days'}</p>
   {state.loading?<p className="mt-3 text-sm text-gray-500">Loading Google performance…</p>:state.error?<p className="mt-3 text-sm text-amber-700 dark:text-amber-300">Unavailable: {state.error}. No zero values are assumed.</p>:<>
-   <p className="mt-2 text-xs text-gray-500">{state.dates}</p>
-   <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">{items.map(([label,value])=><Card key={label} label={label} value={value===null?'Unavailable':fmt(value)}/>)}</div>
+   <p className="mt-2 text-xs text-gray-500">Current: {state.dates} · Comparison: {state.previousDates}</p>
+   <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">{items.map(([label,value,key])=><Card key={label} label={label} value={value===null?'Unavailable':fmt(value)} sub={comparison(value,priorMetric(key))}/>)}</div>
    {chartDays.length>0&&<div className="mt-5"><h4 className="mb-2 text-xs font-bold uppercase text-gray-500">Daily Search & Maps impressions</h4><div className="flex h-36 items-end gap-1 overflow-x-auto border-b border-slate-200 pb-1" role="img" aria-label="Daily Google Search and Maps impressions bar chart">{chartDays.map(([day,value])=><div key={day} title={`${day}: ${fmt(value)} impressions`} className="min-w-2 flex-1 rounded-t bg-cyan-500" style={{height:`${Math.max(3,100*value/chartMax)}%`}} />)}</div><div className="mt-1 flex justify-between text-[10px] text-gray-500"><span>{chartDays[0][0]}</span><span>{chartDays[chartDays.length-1][0]}</span></div></div>}
    <p className="mt-3 text-xs text-gray-500">These are Google profile actions and impressions, not clinic appointment bookings or Sarah AI conversations. Missing Google metrics are shown as unavailable.</p>
   </>}
