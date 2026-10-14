@@ -529,6 +529,7 @@ router.get('/reviews', requireAuth, adminOnly, async (req, res) => {
         starRating:  rev.starRating,
         comment:     rev.comment,
         reviewer:    rev.reviewer?.displayName,
+        reviewerProfilePhotoUrl: rev.reviewer?.profilePhotoUrl || null,
         createTime:  rev.createTime,
         updateTime:  rev.updateTime,
         reviewReply: rev.reviewReply?.comment || null,
