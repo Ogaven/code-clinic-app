@@ -237,7 +237,7 @@ export default function DashboardPage() {
   const [upcoming, setUpcoming] = useState<Appt[] | null>(null)
   const [aiSnapshot, setAiSnapshot] = useState<AiSnapshot | null>(null)
   const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
-  const [photoPatients, setPhotoPatients] = useState<MiniPatient[]>([])
+  const [reviewerPhotos, setReviewerPhotos] = useState<{ reviewId: string; name: string; url: string }[]>([])
   const [growthRevenue, setGrowthRevenue] = useState<GrowthCrmRevenue | null>(null)
   const [satisfaction, setSatisfaction] = useState<SatisfactionSummary | null>(null)
   const [googleRating, setGoogleRating] = useState<{ averageRating: number; totalReviewCount: number } | null>(null)
@@ -279,6 +279,15 @@ export default function DashboardPage() {
         const summary = await googleGet('reviews/summary?' + query.toString())
         if (summary.connected !== false && typeof summary.averageRating === 'number')
           setGoogleRating({ averageRating: summary.averageRating, totalReviewCount: summary.totalReviewCount || 0 })
+        // Use actual public Google reviewer photographs, not patient record avatars.
+        // Request up to 50 reviews because some Google reviewers have no public photo.
+        const reviewsQuery = new URLSearchParams({ accountId: clinic.account, locationId: clinic.location.name, pageSize: '50' })
+        const reviewData = await googleGet('reviews?' + reviewsQuery.toString())
+        const photos = (Array.isArray(reviewData?.reviews) ? reviewData.reviews : [])
+          .filter((review: any) => typeof review.reviewerProfilePhotoUrl === 'string' && /^https:\/\//i.test(review.reviewerProfilePhotoUrl))
+          .slice(0, 5)
+          .map((review: any) => ({ reviewId: String(review.reviewId), name: String(review.reviewer || 'Google reviewer'), url: review.reviewerProfilePhotoUrl as string }))
+        setReviewerPhotos(photos)
       } catch { /* Keep the dashboard available if GBP is disconnected. */ }
     })()
 
@@ -320,14 +329,6 @@ export default function DashboardPage() {
 
     fetch('/api-proxy/receptionist/patient-satisfaction', { headers: auth })
       .then(r => r.ok ? r.json() : null).then(d => { if (d && typeof d.total === 'number') setSatisfaction(d) }).catch(() => {})
-
-    // Only display real uploaded patient photographs in the satisfaction card.
-    fetch('/api-proxy/patients?filter=with_photo&limit=5', { headers: auth })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        const rows = Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : []
-        setPhotoPatients(rows.filter((p: MiniPatient) => typeof p.avatarUrl === 'string' && p.avatarUrl.trim()).slice(0, 5))
-      }).catch(() => {})
 
     Object.entries(CATEGORY_FILTERS).forEach(([key, filter]) => {
       const qs = filter ? `filter=${filter}&limit=3` : 'limit=3'
@@ -536,14 +537,16 @@ export default function DashboardPage() {
             </div>
             <p className="-mt-1 text-2xl leading-none tracking-wide text-amber-500" aria-hidden="true">★★★★★</p>
             <p className="mt-2 text-xs font-semibold text-gray-600 dark:text-gray-300">{googleRating ? `${googleRating.totalReviewCount} Google reviews` : 'Google reviews unavailable'}</p>
-            {/* Patient-profile preview, not a representation of individual Google reviewers. */}
-            <div className="mt-3 flex items-center justify-center" aria-label="Code Clinic patient profiles">
-              <div className="flex -space-x-3">
-                {photoPatients.map(p => (
-                  <Avatar key={p.id} firstName={p.firstName} lastName={p.lastName} avatarUrl={p.avatarUrl} size="lg" />
-                ))}
+            {/* Public Google reviewer portraits; never substitute clinic patient photos. */}
+            {reviewerPhotos.length > 0 && (
+              <div className="mt-3 flex items-center justify-center" aria-label="Photos of Google reviewers">
+                <div className="flex -space-x-3">
+                  {reviewerPhotos.map(review => (
+                    <img key={review.reviewId} src={review.url} alt={review.name} title={review.name} referrerPolicy="no-referrer" className="h-14 w-14 flex-shrink-0 rounded-full border-[3px] border-white object-cover shadow-sm dark:border-slate-800" />
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </Link>
 
