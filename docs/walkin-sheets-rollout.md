@@ -47,8 +47,8 @@ Only the fields listed above are sent. Blank fields are **not** evidence that th
 Set `WALKIN_SHEETS_EXPORT_ENABLED=false` and restart the API. This stops new Sheets writes without disabling walk-in registration or deleting pending tasks. Do not roll back database migrations while application code depends on them.
 
 ## Known limitations and safeguards
-- The database lease is 30 minutes; a stalled operation running beyond expiry can overlap a new worker. Enforce Google request timeouts/lease renewal or an explicit max worker lifetime before production.
+- The database lease is 30 minutes, is renewed before each queued event, and ownership is rechecked immediately before appending. Google API calls have 30-second timeouts. A process stalled beyond lease expiry still requires monitoring; Sheets does not offer atomic check-and-append.
 - Google Sheets has no atomic check-and-append operation; exact-once delivery cannot be guaranteed under every failure mode. Intake activity IDs and pre-append scanning mitigate duplicates.
-- If both outbox and activity recording fail, patient registration still succeeds but export reconciliation needs manual investigation. Never silently claim a row was exported.
+- If the outbox insert fails but the fallback patient activity is recorded, the worker attempts automatic reconciliation for flagged activities from the past 30 days. Older flagged activities, or submissions for which both the outbox and activity recording fail, require manual investigation. Never silently claim a row was exported.
 - Existing form fields not represented in the EMR intake model remain blank. Do not infer missing medical or contact data.
 - No production Sheet writes have been performed as part of this PR.
