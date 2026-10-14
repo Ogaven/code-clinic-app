@@ -143,29 +143,50 @@ export default function WalkInIntakePanel({ basePath, requiredRoles, fallbackHre
     const container = document.createElement('div')
     // Portrait print layout modelled on the clinic's existing blue reception card.
     // The QR image comes directly from the live /pre-visit/qr API, never artwork.
+    // Reference-fidelity proportions: restrained type at top, QR centred in the
+    // purple dental-pattern field, scalloped divider, compact white footer.
     container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;height:1120px;overflow:hidden;background:#fff;font-family:Arial,Helvetica,sans-serif;'
+    const dentalPattern = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="890" viewBox="0 0 800 890" style="position:absolute;inset:0;opacity:.105">
+      <g fill="none" stroke="#b8c4ec" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M60 50q-25 0-20 31l10 24q8 16 16-3l8-13 9 13q10 20 17-5l8-24Q110 48 84 51l-12 8z"/>
+        <path d="M625 110q-26-10-31 13l-4 23q-3 20 11 11l15-13 7 20q9 18 18-5l9-27q7-23-18-23z"/>
+        <path d="M365 225q-32-9-30 23l8 28q6 18 18 0l8-16 8 16q13 19 19-7l6-25q0-24-28-21z"/>
+        <path d="M120 340q-28-5-27 21l7 24q8 17 17 0l8-13 8 15q10 15 18-10l4-21q-3-20-26-17z"/>
+        <path d="M670 350q-27-8-28 20l8 24q7 15 16 0l9-14 9 15q11 13 18-10l4-25q-4-18-26-10z"/>
+        <path d="M65 650q-26-6-27 20l7 25q9 18 18-2l9-14 9 14q11 18 17-8l5-23q-4-20-28-12z"/>
+        <path d="M535 650q-25-8-26 18l7 26q8 16 17-1l9-14 9 16q10 16 18-10l4-24q-5-19-27-11z"/>
+        <rect x="20" y="195" width="57" height="28" rx="14" transform="rotate(-24 20 195)"/><path d="M36 182l13 31"/>
+        <rect x="695" y="245" width="59" height="28" rx="14" transform="rotate(29 695 245)"/><path d="M733 252l-14 25"/>
+        <path d="M205 100h47m-23-23v47M760 520h-46m23-23v46M260 725h-42m21-21v42"/>
+        <circle cx="175" cy="520" r="29"/><circle cx="175" cy="520" r="12"/>
+        <path d="M695 710q-15-25-35-5q-20 22 8 39l27 19 28-20q25-20 5-39q-19-18-33 6z"/>
+        <path d="M245 815q-13-27-35-8q-20 21 7 39l28 20 28-21q26-19 5-39q-20-16-33 9z"/>
+      </g></svg>`
     container.innerHTML = `
-      <div style="height:865px;position:relative;background:linear-gradient(145deg,#122875 0%,#1746a0 54%,#12347c 100%);color:white;text-align:center;overflow:hidden">
-        <div style="position:absolute;inset:0;opacity:.13;background-image:radial-gradient(circle at 15% 20%,#6ed7ff 0 4px,transparent 5px),radial-gradient(circle at 85% 65%,#6ed7ff 0 5px,transparent 6px);background-size:125px 145px"></div>
-        <div style="position:relative;padding:78px 55px 0">
-          <h1 style="font-size:48px;line-height:1.2;font-weight:900;letter-spacing:-1px;margin:0;color:#fff">Please Scan &amp;<br/>Fill the Contact Form<br/><span style="color:#8be3ff">before taking your seat</span></h1>
-          <div style="width:480px;margin:62px auto 0;position:relative;border:12px solid #30bdf3;border-radius:42px;padding:32px 26px 24px;background:#164394">
-            <div style="position:absolute;top:-36px;left:96px;right:96px;border-radius:16px;background:#26baf0;color:#fff;font-size:34px;font-weight:900;line-height:66px">SCAN ME</div>
-            <div style="background:#fff;border-radius:22px;padding:18px">
-              <img src="${qrDataUrl}" alt="Scan to register at Code Clinic" style="width:100%;height:auto;display:block;image-rendering:pixelated" />
+      <div style="height:892px;position:relative;background:#303c86;color:#fff;overflow:hidden">
+        ${dentalPattern}
+        <div style="position:relative;padding:73px 83px 0;text-align:left">
+          <h1 style="font-size:41px;line-height:1.17;font-weight:800;letter-spacing:-.5px;margin:0;color:#eef5e8">
+            Please Scan &amp;<br/>Fill the Contact Form<br/><span style="color:#c7ecf0">before taking the seat</span>
+          </h1>
+        </div>
+        <div style="position:relative;width:440px;margin:95px auto 0">
+          <div style="height:410px;box-sizing:border-box;border:11px solid #64b9d5;border-radius:43px;padding:32px;background:#303c86">
+            <div style="background:#fff9df;border-radius:22px;padding:12px;height:100%;box-sizing:border-box">
+              <img src="${qrDataUrl}" alt="Code Clinic walk-in registration QR" style="display:block;width:100%;height:100%;object-fit:contain;image-rendering:pixelated"/>
             </div>
           </div>
-          <p style="font-size:20px;font-weight:700;color:#d8f5ff;margin:32px 0 0">Scan with your phone camera to register</p>
+          <div style="position:absolute;top:-25px;left:89px;width:262px;height:52px;box-sizing:border-box;border-radius:15px;background:#64b9d5;color:#e9f6f3;font-size:33px;font-weight:900;text-align:center;line-height:52px">SCAN ME</div>
         </div>
-        <div style="position:absolute;bottom:-1px;left:0;right:0;height:26px;background:radial-gradient(circle at 24px 27px,#fff 25px,transparent 26px) repeat-x;background-size:48px 48px"></div>
+        <div style="position:absolute;bottom:-1px;left:0;right:0;height:23px;background:radial-gradient(circle at 40px 24px,#fff 24px,transparent 25px) repeat-x;background-size:80px 47px"></div>
       </div>
-      <div style="height:255px;box-sizing:border-box;padding:52px 46px 25px;display:flex;align-items:center;justify-content:space-between;gap:22px;background:#fff">
-        <img src="/logo.png" alt="Code Clinic" style="width:320px;max-height:115px;object-fit:contain;object-position:left center" />
-        <div style="font-size:19px;color:#163782;font-weight:700;line-height:1.55;text-align:left">
-          <div style="font-size:18px;color:#159fd8">Facebook · Instagram · X</div>
-          <div>www.codeclinic.ug</div>
-          <div style="margin-top:10px">☎ +256 394 836 298</div>
-          <div>☎ +256 709 740 457</div>
+      <div style="height:228px;box-sizing:border-box;padding:57px 65px 34px;display:flex;align-items:center;justify-content:space-between;gap:36px;background:#fff">
+        <img src="/logo.png" alt="Code Clinic" style="width:380px;max-height:120px;object-fit:contain;object-position:left center" />
+        <div style="font-size:15px;color:#273c80;line-height:1.35;min-width:230px;text-align:left">
+          <div style="font-weight:700;color:#548eae">● 𝕏  ◎ @codeclinic</div>
+          <div style="font-weight:600">www.codeclinic.ug</div>
+          <div style="margin-top:21px">✆ +256 394 836 298</div>
+          <div>✆ +256 709 740 457</div>
         </div>
       </div>`
     document.body.appendChild(container)
