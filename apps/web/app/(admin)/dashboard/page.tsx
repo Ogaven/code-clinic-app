@@ -522,12 +522,19 @@ export default function DashboardPage() {
                   strokeDasharray={`${Math.max(0, Math.min(100, (googleRating?.averageRating ?? 0) * 20))} 100`} />
               </svg>
               <div className="absolute inset-x-0 bottom-[13px] text-center">
-                <p className="text-4xl font-extrabold text-clinic-navy dark:text-white">{googleRating ? googleRating.averageRating.toFixed(1) : '—'}<span className="text-base font-medium text-gray-400"> / 5</span></p>
+                <p className="text-5xl font-extrabold tracking-tight text-clinic-navy dark:text-white">{googleRating ? googleRating.averageRating.toFixed(1) : '—'}<span className="text-base font-medium text-gray-400"> / 5</span></p>
               </div>
             </div>
             <p className="mt-2 text-xl tracking-wide text-amber-500" aria-hidden="true">★★★★★</p>
             <p className="mt-2 text-xs font-semibold text-gray-600 dark:text-gray-300">{googleRating ? `${googleRating.totalReviewCount} Google reviews` : 'Google reviews unavailable'}</p>
-            <p className="mt-4 text-[10px] text-gray-500">Internal post-visit feedback: {(satisfaction?.total ?? 0) > 0 && satisfaction?.averageRating != null ? `${satisfaction.averageRating.toFixed(1)}/5 from ${satisfaction.total} responses` : 'No ratings yet'}</p>
+            {/* Patient-profile preview, not a representation of individual Google reviewers. */}
+            <div className="mt-3 flex items-center justify-center" aria-label="Code Clinic patient profiles">
+              <div className="flex -space-x-2">
+                {(avatars.total ?? []).slice(0, 5).map(p => (
+                  <Avatar key={p.id} firstName={p.firstName} lastName={p.lastName} avatarUrl={p.avatarUrl} size="xs" />
+                ))}
+              </div>
+            </div>
           </div>
         </Link>
 
