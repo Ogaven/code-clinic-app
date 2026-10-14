@@ -119,6 +119,38 @@ function GooglePerformance({period}:{period:Period}) {
   </>}
  </div>
 }
+function GoogleSearchKeywords() {
+ const [state,setState]=useState<{loading:boolean;error:string;keywords:{searchKeyword?:string;insightsValue?:{value?:string;threshold?:string}}[];month:string}>({loading:true,error:'',keywords:[],month:''})
+ useEffect(()=>{
+  let active=true
+  const run=async()=>{
+   try{
+    const headers={Authorization:`Bearer ${localStorage.getItem('cc_token')||''}`}
+    const get=async(path:string)=>{const response=await fetch(`/api-proxy/business-profile/${path}`,{headers});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||data.error||'Google keywords unavailable');return data}
+    const status=await get('status')
+    if(!status.connected)throw new Error('Google Business Profile not connected')
+    const locations=await get('locations')
+    const all=(locations.results||[]).flatMap((group:{locations?:{name:string;title?:string}[]})=>group.locations||[])
+    const location=all.find((item:{title?:string})=>/code clinic/i.test(item.title||''))
+    if(!location?.name)throw new Error('Code Clinic location not found')
+    const now=new Date()
+    const previousMonth=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-1,1))
+    const month=previousMonth.toISOString().slice(0,7)
+    const params=new URLSearchParams({locationId:location.name,month})
+    const data=await get(`search-keywords?${params.toString()}`)
+    if(active)setState({loading:false,error:'',keywords:Array.isArray(data.keywords)?data.keywords:[],month})
+   }catch(error){if(active)setState({loading:false,error:error instanceof Error?error.message:'Google search keywords unavailable',keywords:[],month:''})}
+  }
+  void run()
+  return()=>{active=false}
+ },[])
+ return <div className="mt-4 rounded-xl border border-slate-200 dark:border-white/10 p-4">
+  <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Google discovery search terms</h3>
+  <p className="mt-1 text-xs text-gray-500">Previous completed calendar month · {state.month||'Loading'}</p>
+  {state.loading?<p className="mt-3 text-sm text-gray-500">Loading Google search terms…</p>:state.error?<p className="mt-3 text-sm text-amber-700 dark:text-amber-300">Unavailable: {state.error}</p>:state.keywords.length===0?<p className="mt-3 text-sm text-gray-500">Google did not provide search keyword data for this month.</p>:<div className="mt-3 space-y-2">{state.keywords.slice(0,20).map((item,index)=><div key={index} className="flex items-center justify-between gap-4 border-b border-slate-100 py-2 text-sm dark:border-white/10"><span className="text-gray-700 dark:text-white">{item.searchKeyword||'Unspecified term'}</span><strong className="text-clinic-navy dark:text-white">{item.insightsValue?.value!=null?fmt(Number(item.insightsValue.value)):item.insightsValue?.threshold?`Under ${item.insightsValue.threshold}`:'Unavailable'}</strong></div>)}</div>}
+  <p className="mt-2 text-xs text-gray-500">Search impressions may be withheld or thresholded by Google. These are not patient enquiries or booked appointments.</p>
+ </div>
+}
 function Callout({title,items,tone}:{title:string,items:string[],tone:'win'|'opportunity'|'attention'}) {
  const cls=tone==='win'?'border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/10 dark:border-emerald-800/40 dark:text-emerald-300':tone==='opportunity'?'border-blue-200 bg-blue-50 text-blue-800 dark:bg-blue-900/10 dark:border-blue-800/40 dark:text-blue-300':'border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-900/10 dark:border-amber-800/40 dark:text-amber-300'
  return <div className={`rounded-2xl border p-5 ${cls}`}><h3 className="font-black">{title}</h3>{items.length?<ul className="mt-3 space-y-2 text-sm list-disc pl-5">{items.map(x=><li key={x}>{x}</li>)}</ul>:<p className="mt-2 text-sm opacity-70">No items recorded for this period.</p>}</div>
@@ -209,6 +241,7 @@ export default function ExecutiveReportPage() {
      </div>
      <GoogleReviewSummary />
      <GooglePerformance period={period} />
+     <GoogleSearchKeywords />
     </Section>
    </div>
 
