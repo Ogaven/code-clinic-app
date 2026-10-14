@@ -9,6 +9,32 @@ const trend = (n:number|null|undefined) => n == null ? 'No prior baseline' : `${
 function Card({label,value,sub}:{label:string,value:string|number,sub?:string}) { return <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-5 shadow-sm"><p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{label}</p><p className="mt-2 text-2xl font-black text-clinic-navy dark:text-white">{value}</p>{sub && <p className="mt-1 text-xs text-gray-400">{sub}</p>}</div> }
 function Section({title,icon:Icon,children}:{title:string,icon:any,children:any}) { return <section className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 overflow-hidden"><div className="flex items-center gap-2 border-b border-gray-100 dark:border-white/10 px-5 py-4"><Icon size={17} className="text-cyan-500"/><h2 className="font-black text-gray-800 dark:text-white">{title}</h2></div><div className="p-5">{children}</div></section> }
 function Rows({rows}:{rows:[string,any][]}) { return <div className="grid sm:grid-cols-2 gap-x-8">{rows.map(([k,v]) => <div key={k} className="flex justify-between gap-4 py-2.5 border-b border-gray-50 dark:border-white/5 text-sm"><span className="text-gray-500 dark:text-white/50">{k}</span><strong className="text-gray-800 dark:text-white text-right">{v}</strong></div>)}</div> }
+function GoogleReviewSummary() {
+ const [state,setState]=useState<{rating:number|null;count:number|null;error:string;loading:boolean}>({rating:null,count:null,error:'',loading:true})
+ useEffect(()=>{
+  let active=true
+  const headers={Authorization:`Bearer ${localStorage.getItem('cc_token') || ''}`}
+  const get=async (path:string)=>{const response=await fetch(`/api-proxy/business-profile/${path}`,{headers});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||data.error||'Google Business Profile unavailable');return data}
+  ;(async()=>{try{
+   const status=await get('status')
+   if(!status.connected)throw new Error('Google Business Profile is not connected')
+   const locations=await get('locations')
+   const available=(locations.results||[]).flatMap((item:{account:string;locations?:{name:string;title?:string}[]})=>(item.locations||[]).map(location=>({account:item.account,...location})))
+   const chosen=available.find((location:{title?:string})=>/code clinic/i.test(location.title||''))
+   if(!chosen)throw new Error('Code Clinic Google location is not available')
+   const params=new URLSearchParams({accountId:chosen.account,locationId:chosen.name})
+   const summary=await get(`reviews/summary?${params.toString()}`)
+   if(summary.averageRating==null||summary.reason)throw new Error('Google review metrics are currently unavailable')
+   if(active)setState({rating:Number(summary.averageRating),count:Number(summary.totalReviewCount),error:'',loading:false})
+  }catch(error){if(active)setState({rating:null,count:null,error:error instanceof Error?error.message:'Google reviews unavailable',loading:false})}})()
+  return()=>{active=false}
+ },[])
+ return <div className="mt-4 rounded-xl border border-blue-100 dark:border-white/10 bg-blue-50/40 dark:bg-white/5 p-4">
+  <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-bold text-clinic-navy dark:text-white">Google public reviews</h3><Link href="/crm/reviews" className="text-sm font-semibold text-blue-700 dark:text-blue-300 underline">Open Google reviews</Link></div>
+  {state.loading?<p className="mt-2 text-sm text-gray-500">Loading Google review summary…</p>:state.error?<p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Unavailable: {state.error}. No zero values have been assumed.</p>:<div className="mt-3 grid grid-cols-2 gap-3"><Card label="Google rating" value={state.rating!.toFixed(1)+' / 5'}/><Card label="Public Google reviews" value={state.count!}/></div>}
+  <p className="mt-3 text-xs text-gray-500">Google public reviews are distinct from internal patient feedback. Google Search and Maps performance metrics will appear separately when their API access is verified.</p>
+ </div>
+}
 function Callout({title,items,tone}:{title:string,items:string[],tone:'win'|'opportunity'|'attention'}) {
  const cls=tone==='win'?'border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/10 dark:border-emerald-800/40 dark:text-emerald-300':tone==='opportunity'?'border-blue-200 bg-blue-50 text-blue-800 dark:bg-blue-900/10 dark:border-blue-800/40 dark:text-blue-300':'border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-900/10 dark:border-amber-800/40 dark:text-amber-300'
  return <div className={`rounded-2xl border p-5 ${cls}`}><h3 className="font-black">{title}</h3>{items.length?<ul className="mt-3 space-y-2 text-sm list-disc pl-5">{items.map(x=><li key={x}>{x}</li>)}</ul>:<p className="mt-2 text-sm opacity-70">No items recorded for this period.</p>}</div>
@@ -97,10 +123,7 @@ export default function ExecutiveReportPage() {
        <p className="mt-3 text-xs text-gray-400">This is outbound request activity, not the number of public Google reviews received.</p>
       </div>
      </div>
-     <div className="mt-4 rounded-xl border border-dashed border-amber-200 dark:border-amber-400/20 bg-amber-50/60 dark:bg-amber-400/5 p-4">
-      <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Google public review performance</p>
-      <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-200/60">Live Google rating, public review count and recent-review performance are intentionally not shown in this management report until Google Business Profile review access is available. A missing Google API result must never be presented as “0 reviews”.</p>
-     </div>
+     <GoogleReviewSummary />
     </Section>
    </div>
 
