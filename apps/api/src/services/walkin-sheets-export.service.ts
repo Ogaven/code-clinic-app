@@ -24,6 +24,12 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
   const title = metadata.data.sheets?.find(sheet => sheet.properties?.sheetId === SHEET_GID)?.properties?.title
   if (!title) throw new Error('Walk-in worksheet gid not found; refusing to write to another tab')
   const range = `'${title.replace(/'/g, "''")}'!A:G`
+  // Recover work claimed by a process that crashed before acknowledging Sheets.
+  // A retry checks the event ID in the sheet before appending again.
+  await prisma.walkInSheetOutbox.updateMany({
+    where: { status: 'PROCESSING', updatedAt: { lt: new Date(Date.now() - 15 * 60_000) } },
+    data: { status: 'RETRY', nextAttemptAt: new Date() },
+  })
   const pending = await prisma.walkInSheetOutbox.findMany({
     where: { status: { in: ['PENDING', 'RETRY'] }, nextAttemptAt: { lte: new Date() } },
     orderBy: { createdAt: 'asc' }, take: 10,
@@ -38,13 +44,10 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
     try {
       const existing = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range })
       const rows = existing.data.values || []
-      if (!rows.length) {
-        await sheets.spreadsheets.values.update({
-          spreadsheetId: SPREADSHEET_ID, range: `'${title.replace(/'/g, "''")}'!A1:G1`,
-          valueInputOption: 'RAW', requestBody: { values: [COLUMNS] },
-        })
-      } else if (COLUMNS.some((column, index) => rows[0]?.[index] !== column)) {
-        throw new Error('Worksheet headers do not match approved export schema')
+      // Never overwrite the user's existing worksheet or install headers
+      // automatically. Staff must explicitly approve the seven-column schema.
+      if (!rows.length || COLUMNS.some((column, index) => rows[0]?.[index] !== column)) {
+        throw new Error('Worksheet must contain the approved seven-column header row; refusing to overwrite existing data')
       }
       if (!rows.slice(1).some(row => row[0] === task.activityId)) {
         const [activity, patient] = await Promise.all([
