@@ -279,16 +279,30 @@ export default function DashboardPage() {
         const summary = await googleGet('reviews/summary?' + query.toString())
         if (summary.connected !== false && typeof summary.averageRating === 'number')
           setGoogleRating({ averageRating: summary.averageRating, totalReviewCount: summary.totalReviewCount || 0 })
-        // Use actual public Google reviewer photographs, not patient record avatars.
-        // Request up to 50 reviews because some Google reviewers have no public photo.
-        const reviewsQuery = new URLSearchParams({ accountId: clinic.account, locationId: clinic.location.name, pageSize: '50' })
-        const reviewData = await googleGet('reviews?' + reviewsQuery.toString())
-        const photos = (Array.isArray(reviewData?.reviews) ? reviewData.reviews : [])
-          .filter((review: any) => typeof review.reviewerProfilePhotoUrl === 'string' && /^https:\/\//i.test(review.reviewerProfilePhotoUrl))
-          .slice(0, 5)
-          .map((review: any) => ({ reviewId: String(review.reviewId), name: String(review.reviewer || 'Google reviewer'), url: review.reviewerProfilePhotoUrl as string }))
-        setReviewerPhotos(photos)
-      } catch { /* Keep the dashboard available if GBP is disconnected. */ }
+        // Use only actual public Google reviewer photos, never patient records.
+        // Google may omit photos on recent reviews; scan at most four pages.
+        const photos: { reviewId: string; name: string; url: string }[] = []
+        let pageToken: string | null = null
+        for (let page = 0; page < 4 && photos.length < 5; page++) {
+          const reviewsQuery = new URLSearchParams({ accountId: clinic.account, locationId: clinic.location.name, pageSize: '50' })
+          if (pageToken) reviewsQuery.set('pageToken', pageToken)
+          const reviewData = await googleGet('reviews?' + reviewsQuery.toString())
+          const reviews = Array.isArray(reviewData?.reviews) ? reviewData.reviews : []
+          for (const review of reviews) {
+            if (photos.length >= 5) break
+            const url = review?.reviewerProfilePhotoUrl
+            if (typeof url !== 'string' || !/^https:\/\//i.test(url)) continue
+            const reviewId = String(review.reviewId || '')
+            if (!reviewId || photos.some(photo => photo.reviewId === reviewId)) continue
+            photos.push({ reviewId, name: String(review.reviewer || 'Google reviewer'), url })
+          }
+          // Show partial results even if a later page fails.
+          setReviewerPhotos([...photos])
+          const next = typeof reviewData?.nextPageToken === 'string' ? reviewData.nextPageToken : null
+          if (!next || next === pageToken) break
+          pageToken = next
+        }
+      } catch (error) {\n        // Keep the dashboard usable while making failures diagnosable without leaking tokens.\n        console.warn('[Dashboard] Google reviewer photos unavailable', error instanceof Error ? error.message : 'Unknown error')\n      }
     })()
 
 
