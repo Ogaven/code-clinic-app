@@ -487,13 +487,13 @@ router.get('/performance', requireAuth, adminOnly, async (req, res) => {
   const startDate = String(req.query.startDate || '')
   const endDate = String(req.query.endDate || '')
   const parseDate = (value: string) => {
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return null
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
     const date = new Date(value + 'T00:00:00Z')
     return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value ? date : null
   }
   const start = parseDate(startDate)
   const end = parseDate(endDate)
-  if (!/^locations\\/\\d+$/.test(locationId) || !start || !end || end < start ||
+  if (!/^locations\/\d+$/.test(locationId) || !start || !end || end < start ||
       end.getTime() - start.getTime() > 93 * 86400000) {
     return res.status(400).json({ error: 'invalid_params', message: 'Supply a numeric location resource and valid startDate/endDate (maximum 94 calendar days).' })
   }
