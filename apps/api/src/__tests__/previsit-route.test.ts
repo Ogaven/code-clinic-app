@@ -135,4 +135,16 @@ describe('POST /pre-visit/submit — Sheets outbox resilience', () => {
       data: expect.objectContaining({ metadata: expect.stringContaining('sheetExportPendingReconciliation') }),
     })
   })
+  it('preserves registration even when the fallback activity insert also fails', async () => {
+    const { default: previsitRouter } = await import('../routes/previsit')
+    const handler = findHandler(previsitRouter, 'post', '/submit')
+    const res = fakeRes()
+    prismaMock.walkInSheetOutbox.create.mockRejectedValueOnce(new Error('Outbox unavailable'))
+    prismaMock.patientActivity.create
+      .mockResolvedValueOnce({ id: 'activity-1' })
+      .mockRejectedValueOnce(new Error('Activity unavailable'))
+    await handler({ body: { phone: '0772000000', firstName: 'Jane', lastName: 'Doe' } }, res)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
+  })
+
 })
