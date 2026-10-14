@@ -20,6 +20,15 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
   if (!email || !privateKey) throw new Error('Walk-in Sheets service account credentials not configured')
   const auth = new google.auth.JWT({ email, key: privateKey, scopes: ['https://www.googleapis.com/auth/spreadsheets'] })
   const sheets = google.sheets({ version: 'v4', auth })
+  // A database lease serializes the Google Sheets read-before-append step
+  // across all API instances. A stale lease expires after 30 minutes.
+  const owner = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+  const acquired = await prisma.walkInSheetExportLease.updateMany({
+    where: { id: 'walkin-sheets', expiresAt: { lte: new Date() } },
+    data: { owner, expiresAt: new Date(Date.now() + 30 * 60_000) },
+  })
+  if (!acquired.count) return { processed: 0, skipped: true }
+  try {
   const metadata = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID, fields: 'sheets(properties(sheetId,title))' })
   const title = metadata.data.sheets?.find(sheet => sheet.properties?.sheetId === SHEET_GID)?.properties?.title
   if (!title) throw new Error('Walk-in worksheet gid not found; refusing to write to another tab')
@@ -76,4 +85,10 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
     }
   }
   return { processed, skipped: false }
+  } finally {
+    await prisma.walkInSheetExportLease.updateMany({
+      where: { id: 'walkin-sheets', owner },
+      data: { owner: null, expiresAt: new Date(0) },
+    }).catch(error => console.error('[WalkInSheets] Failed to release export lease:', error))
+  }
 }
