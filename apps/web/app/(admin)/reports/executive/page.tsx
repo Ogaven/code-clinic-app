@@ -9,6 +9,148 @@ const trend = (n:number|null|undefined) => n == null ? 'No prior baseline' : `${
 function Card({label,value,sub}:{label:string,value:string|number,sub?:string}) { return <div className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-5 shadow-sm"><p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{label}</p><p className="mt-2 text-2xl font-black text-clinic-navy dark:text-white">{value}</p>{sub && <p className="mt-1 text-xs text-gray-400">{sub}</p>}</div> }
 function Section({title,icon:Icon,children}:{title:string,icon:any,children:any}) { return <section className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 overflow-hidden"><div className="flex items-center gap-2 border-b border-gray-100 dark:border-white/10 px-5 py-4"><Icon size={17} className="text-cyan-500"/><h2 className="font-black text-gray-800 dark:text-white">{title}</h2></div><div className="p-5">{children}</div></section> }
 function Rows({rows}:{rows:[string,any][]}) { return <div className="grid sm:grid-cols-2 gap-x-8">{rows.map(([k,v]) => <div key={k} className="flex justify-between gap-4 py-2.5 border-b border-gray-50 dark:border-white/5 text-sm"><span className="text-gray-500 dark:text-white/50">{k}</span><strong className="text-gray-800 dark:text-white text-right">{v}</strong></div>)}</div> }
+function GoogleReviewSummary() {
+ const [state,setState]=useState<{rating:number|null;count:number|null;error:string;loading:boolean}>({rating:null,count:null,error:'',loading:true})
+ useEffect(()=>{
+  let active=true
+  const headers={Authorization:`Bearer ${localStorage.getItem('cc_token') || ''}`}
+  const get=async (path:string)=>{const response=await fetch(`/api-proxy/business-profile/${path}`,{headers});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||data.error||'Google Business Profile unavailable');return data}
+  ;(async()=>{try{
+   const status=await get('status')
+   if(!status.connected)throw new Error('Google Business Profile is not connected')
+   const locations=await get('locations')
+   const available=(locations.results||[]).flatMap((item:{account:string;locations?:{name:string;title?:string}[]})=>(item.locations||[]).map(location=>({account:item.account,...location})))
+   const chosen=available.find((location:{title?:string})=>/code clinic/i.test(location.title||''))
+   if(!chosen)throw new Error('Code Clinic Google location is not available')
+   const params=new URLSearchParams({accountId:chosen.account,locationId:chosen.name})
+   const summary=await get(`reviews/summary?${params.toString()}`)
+   if(summary.averageRating==null||summary.reason)throw new Error('Google review metrics are currently unavailable')
+   if(active)setState({rating:Number(summary.averageRating),count:Number(summary.totalReviewCount),error:'',loading:false})
+  }catch(error){if(active)setState({rating:null,count:null,error:error instanceof Error?error.message:'Google reviews unavailable',loading:false})}})()
+  return()=>{active=false}
+ },[])
+ return <div className="mt-4 rounded-xl border border-blue-100 dark:border-white/10 bg-blue-50/40 dark:bg-white/5 p-4">
+  <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-bold text-clinic-navy dark:text-white">Google public reviews</h3><Link href="/crm/reviews" className="text-sm font-semibold text-blue-700 dark:text-blue-300 underline">Open Google reviews</Link></div>
+  {state.loading?<p className="mt-2 text-sm text-gray-500">Loading Google review summary…</p>:state.error?<p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Unavailable: {state.error}. No zero values have been assumed.</p>:<div className="mt-3 grid grid-cols-2 gap-3"><Card label="Google rating" value={state.rating!.toFixed(1)+' / 5'}/><Card label="Public Google reviews" value={state.count!}/></div>}
+  <p className="mt-3 text-xs text-gray-500">Google public reviews are distinct from internal patient feedback. Google Search and Maps performance metrics will appear separately when their API access is verified.</p>
+ </div>
+}
+type GoogleMetricSeries = {dailyMetric?:string;timeSeries?:{datedValues?:{date?:{year?:number;month?:number;day?:number};value?:string}[]}}
+function GooglePerformance({period}:{period:Period}) {
+ const [state,setState]=useState<{loading:boolean;error:string;series:GoogleMetricSeries[];previous:GoogleMetricSeries[];dates:string;previousDates:string}>({loading:true,error:'',series:[],previous:[],dates:'',previousDates:''})
+ useEffect(()=>{
+  let active=true
+  setState({loading:true,error:'',series:[],previous:[],dates:'',previousDates:''})
+  const run=async()=>{
+   try{
+    const headers={Authorization:`Bearer ${localStorage.getItem('cc_token')||''}`}
+    const get=async(path:string)=>{const response=await fetch(`/api-proxy/business-profile/${path}`,{headers});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||data.error||'Google metrics unavailable');return data}
+    const status=await get('status')
+    if(!status.connected)throw new Error('Connect Google Business Profile in Review Settings')
+    const locations=await get('locations')
+    const all=(locations.results||[]).flatMap((group:{locations?:{name:string;title?:string}[]})=>group.locations||[])
+    const location=all.find((item:{title?:string})=>/code clinic/i.test(item.title||''))
+    if(!location?.name)throw new Error('Code Clinic location not found in Google Business Profile')
+    const today=new Date()
+    const end=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),today.getUTCDate()-1))
+    const start=period==='monthly'?new Date(Date.UTC(end.getUTCFullYear(),end.getUTCMonth(),1)):new Date(end.getTime()-6*86400000)
+    const iso=(date:Date)=>date.toISOString().slice(0,10)
+    const params=new URLSearchParams({locationId:location.name,startDate:iso(start),endDate:iso(end)})
+    const data=await get(`performance?${params.toString()}`)
+    const duration=end.getTime()-start.getTime()+86400000
+    const previousEnd=new Date(start.getTime()-86400000)
+    const previousStart=new Date(previousEnd.getTime()-duration+86400000)
+    let previous:GoogleMetricSeries[]=[]
+    let previousDates='Previous period unavailable'
+    try{
+     const previousParams=new URLSearchParams({locationId:location.name,startDate:iso(previousStart),endDate:iso(previousEnd)})
+     const prior=await get(`performance?${previousParams.toString()}`)
+     previous=Array.isArray(prior.metrics)?prior.metrics:[]
+     previousDates=`${iso(previousStart)} to ${iso(previousEnd)}`
+    }catch{/* The current period remains available if comparison fails. */}
+    if(active)setState({loading:false,error:'',series:Array.isArray(data.metrics)?data.metrics:[],previous,dates:`${iso(start)} to ${iso(end)}`,previousDates})
+   }catch(error){if(active)setState({loading:false,error:error instanceof Error?error.message:'Google performance unavailable',series:[],previous:[],dates:'',previousDates:''})}
+  }
+  void run()
+  return()=>{active=false}
+ },[period])
+ const metric=(name:string,source:GoogleMetricSeries[]=state.series):number|null=>{
+  const series=source.find(item=>item.dailyMetric===name)
+  if(!series?.timeSeries?.datedValues)return null
+  return series.timeSeries.datedValues.reduce((sum,item)=>sum+(Number(item.value)||0),0)
+ }
+ const impressionKeys=['BUSINESS_IMPRESSIONS_DESKTOP_MAPS','BUSINESS_IMPRESSIONS_DESKTOP_SEARCH','BUSINESS_IMPRESSIONS_MOBILE_MAPS','BUSINESS_IMPRESSIONS_MOBILE_SEARCH']
+ const impressions=impressionKeys.map(metric)
+ const totalImpressions=impressions.every(v=>v!==null)?impressions.reduce<number>((sum,v)=>sum+(v||0),0):null
+ const impressionSeries=state.series.filter(item=>impressionKeys.includes(item.dailyMetric||''))
+ const days=new Map<string,number>()
+ impressionSeries.forEach(series=>(series.timeSeries?.datedValues||[]).forEach(point=>{
+  const date=point.date
+  if(!date?.year||!date.month||!date.day)return
+  const key=`${date.year}-${String(date.month).padStart(2,'0')}-${String(date.day).padStart(2,'0')}`
+  days.set(key,(days.get(key)||0)+(Number(point.value)||0))
+ }))
+ const chartDays=[...days.entries()].sort(([a],[b])=>a.localeCompare(b))
+ const chartMax=Math.max(1,...chartDays.map(([,value])=>value))
+ const priorImpressions=impressionKeys.map(key=>metric(key,state.previous))
+ const priorTotal=priorImpressions.every(value=>value!==null)?priorImpressions.reduce<number>((sum,value)=>sum+(value||0),0):null
+ const priorMetric=(name:string)=>name==='IMPRESSIONS_TOTAL'?priorTotal:metric(name,state.previous)
+ const comparison=(current:number|null,prior:number|null)=>current===null||prior===null?'No comparison':prior===0?(current===0?'No change':'No prior baseline'):`${current>=prior?'+':''}${(((current-prior)/prior)*100).toFixed(1)}% vs previous`
+ const items:[string,number|null,string][]=[
+  ['Google Search & Maps impressions',totalImpressions, 'IMPRESSIONS_TOTAL'],
+  ['Phone call clicks',metric('CALL_CLICKS'), 'CALL_CLICKS'],
+  ['Direction requests',metric('BUSINESS_DIRECTION_REQUESTS'), 'BUSINESS_DIRECTION_REQUESTS'],
+  ['Website clicks',metric('WEBSITE_CLICKS'), 'WEBSITE_CLICKS'],
+  ['Business Profile bookings',metric('BUSINESS_BOOKINGS'), 'BUSINESS_BOOKINGS'],
+  ['Business Profile conversations',metric('BUSINESS_CONVERSATIONS'), 'BUSINESS_CONVERSATIONS'],
+  ['Search · mobile',impressions[3], 'BUSINESS_IMPRESSIONS_MOBILE_SEARCH'],
+  ['Maps · mobile',impressions[2], 'BUSINESS_IMPRESSIONS_MOBILE_MAPS'],
+  ['Search · desktop',impressions[1], 'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH'],
+  ['Maps · desktop',impressions[0], 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS'],
+ ]
+ return <div className="mt-4 rounded-xl border border-slate-200 dark:border-white/10 p-4">
+  <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Google Search & Maps performance</h3>
+  <p className="mt-1 text-xs text-gray-500">Read-only Google Business Profile metrics · {period==='monthly'?'month to yesterday':'last seven completed days'}</p>
+  {state.loading?<p className="mt-3 text-sm text-gray-500">Loading Google performance…</p>:state.error?<p className="mt-3 text-sm text-amber-700 dark:text-amber-300">Unavailable: {state.error}. No zero values are assumed.</p>:<>
+   <p className="mt-2 text-xs text-gray-500">Current: {state.dates} · Comparison: {state.previousDates}</p>
+   <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">{items.map(([label,value,key])=><Card key={label} label={label} value={value===null?'Unavailable':fmt(value)} sub={comparison(value,priorMetric(key))}/>)}</div>
+   {chartDays.length>0&&<div className="mt-5"><h4 className="mb-2 text-xs font-bold uppercase text-gray-500">Daily Search & Maps impressions</h4><div className="flex h-36 items-end gap-1 overflow-x-auto border-b border-slate-200 pb-1" role="img" aria-label="Daily Google Search and Maps impressions bar chart">{chartDays.map(([day,value])=><div key={day} title={`${day}: ${fmt(value)} impressions`} className="min-w-2 flex-1 rounded-t bg-cyan-500" style={{height:`${Math.max(3,100*value/chartMax)}%`}} />)}</div><div className="mt-1 flex justify-between text-[10px] text-gray-500"><span>{chartDays[0][0]}</span><span>{chartDays[chartDays.length-1][0]}</span></div></div>}
+   <p className="mt-3 text-xs text-gray-500">These are Google profile actions and impressions, not clinic appointment bookings or Sarah AI conversations. Missing Google metrics are shown as unavailable.</p>
+  </>}
+ </div>
+}
+function GoogleSearchKeywords() {
+ const [state,setState]=useState<{loading:boolean;error:string;keywords:{searchKeyword?:string;insightsValue?:{value?:string;threshold?:string}}[];month:string}>({loading:true,error:'',keywords:[],month:''})
+ useEffect(()=>{
+  let active=true
+  const run=async()=>{
+   try{
+    const headers={Authorization:`Bearer ${localStorage.getItem('cc_token')||''}`}
+    const get=async(path:string)=>{const response=await fetch(`/api-proxy/business-profile/${path}`,{headers});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||data.error||'Google keywords unavailable');return data}
+    const status=await get('status')
+    if(!status.connected)throw new Error('Google Business Profile not connected')
+    const locations=await get('locations')
+    const all=(locations.results||[]).flatMap((group:{locations?:{name:string;title?:string}[]})=>group.locations||[])
+    const location=all.find((item:{title?:string})=>/code clinic/i.test(item.title||''))
+    if(!location?.name)throw new Error('Code Clinic location not found')
+    const now=new Date()
+    const previousMonth=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-1,1))
+    const month=previousMonth.toISOString().slice(0,7)
+    const params=new URLSearchParams({locationId:location.name,month})
+    const data=await get(`search-keywords?${params.toString()}`)
+    if(active)setState({loading:false,error:'',keywords:Array.isArray(data.keywords)?data.keywords:[],month})
+   }catch(error){if(active)setState({loading:false,error:error instanceof Error?error.message:'Google search keywords unavailable',keywords:[],month:''})}
+  }
+  void run()
+  return()=>{active=false}
+ },[])
+ return <div className="mt-4 rounded-xl border border-slate-200 dark:border-white/10 p-4">
+  <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Google discovery search terms</h3>
+  <p className="mt-1 text-xs text-gray-500">Previous completed calendar month · {state.month||'Loading'}</p>
+  {state.loading?<p className="mt-3 text-sm text-gray-500">Loading Google search terms…</p>:state.error?<p className="mt-3 text-sm text-amber-700 dark:text-amber-300">Unavailable: {state.error}</p>:state.keywords.length===0?<p className="mt-3 text-sm text-gray-500">Google did not provide search keyword data for this month.</p>:<div className="mt-3 space-y-2">{state.keywords.slice(0,20).map((item,index)=><div key={index} className="flex items-center justify-between gap-4 border-b border-slate-100 py-2 text-sm dark:border-white/10"><span className="text-gray-700 dark:text-white">{item.searchKeyword||'Unspecified term'}</span><strong className="text-clinic-navy dark:text-white">{item.insightsValue?.value!=null?fmt(Number(item.insightsValue.value)):item.insightsValue?.threshold?`Under ${item.insightsValue.threshold}`:'Unavailable'}</strong></div>)}</div>}
+  <p className="mt-2 text-xs text-gray-500">Search impressions may be withheld or thresholded by Google. These are not patient enquiries or booked appointments.</p>
+ </div>
+}
 function Callout({title,items,tone}:{title:string,items:string[],tone:'win'|'opportunity'|'attention'}) {
  const cls=tone==='win'?'border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/10 dark:border-emerald-800/40 dark:text-emerald-300':tone==='opportunity'?'border-blue-200 bg-blue-50 text-blue-800 dark:bg-blue-900/10 dark:border-blue-800/40 dark:text-blue-300':'border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-900/10 dark:border-amber-800/40 dark:text-amber-300'
  return <div className={`rounded-2xl border p-5 ${cls}`}><h3 className="font-black">{title}</h3>{items.length?<ul className="mt-3 space-y-2 text-sm list-disc pl-5">{items.map(x=><li key={x}>{x}</li>)}</ul>:<p className="mt-2 text-sm opacity-70">No items recorded for this period.</p>}</div>
@@ -97,10 +239,9 @@ export default function ExecutiveReportPage() {
        <p className="mt-3 text-xs text-gray-400">This is outbound request activity, not the number of public Google reviews received.</p>
       </div>
      </div>
-     <div className="mt-4 rounded-xl border border-dashed border-amber-200 dark:border-amber-400/20 bg-amber-50/60 dark:bg-amber-400/5 p-4">
-      <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Google public review performance</p>
-      <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-200/60">Live Google rating, public review count and recent-review performance are intentionally not shown in this management report until Google Business Profile review access is available. A missing Google API result must never be presented as “0 reviews”.</p>
-     </div>
+     <GoogleReviewSummary />
+     <GooglePerformance period={period} />
+     <GoogleSearchKeywords />
     </Section>
    </div>
 
