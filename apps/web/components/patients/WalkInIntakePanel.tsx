@@ -146,8 +146,8 @@ export default function WalkInIntakePanel({ basePath, requiredRoles, fallbackHre
     // Reference-fidelity proportions: restrained type at top, QR centred in the
     // purple dental-pattern field, scalloped divider, compact white footer.
     container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;height:1120px;overflow:hidden;background:#fff;font-family:Arial,Helvetica,sans-serif;'
-    const dentalPattern = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="890" viewBox="0 0 800 890" style="position:absolute;inset:0;opacity:.21">
-      <g fill="none" stroke="#6fc4f0" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+    const dentalPattern = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="890" viewBox="0 0 800 890" style="position:absolute;inset:0;opacity:.085">
+      <g fill="none" stroke="#adb5df" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
         <path d="M60 50q-25 0-20 31l10 24q8 16 16-3l8-13 9 13q10 20 17-5l8-24Q110 48 84 51l-12 8z"/>
         <path d="M625 110q-26-10-31 13l-4 23q-3 20 11 11l15-13 7 20q9 18 18-5l9-27q7-23-18-23z"/>
         <path d="M365 225q-32-9-30 23l8 28q6 18 18 0l8-16 8 16q13 19 19-7l6-25q0-24-28-21z"/>
@@ -163,38 +163,30 @@ export default function WalkInIntakePanel({ basePath, requiredRoles, fallbackHre
         <path d="M245 815q-13-27-35-8q-20 21 7 39l28 20 28-21q26-19 5-39q-20-16-33 9z"/>
       </g></svg>`
     container.innerHTML = `
-      <div style="height:900px;position:relative;background:radial-gradient(ellipse at 52% 42%,#0069ca 0%,#0055b5 48%,#06489f 100%);color:#fff;overflow:hidden">
+      <div style="height:880px;position:relative;background:#303b84;color:#fff;overflow:hidden">
         ${dentalPattern}
-        <div style="position:absolute;top:116px;left:69px;width:65px;height:8px;border-radius:8px;background:#8ee7ff;transform:rotate(38deg)"></div>
-        <div style="position:absolute;top:143px;left:48px;width:52px;height:8px;border-radius:8px;background:#8ee7ff;transform:rotate(28deg)"></div>
-        <div style="position:absolute;top:116px;right:69px;width:65px;height:8px;border-radius:8px;background:#8ee7ff;transform:rotate(-38deg)"></div>
-        <div style="position:absolute;top:143px;right:48px;width:52px;height:8px;border-radius:8px;background:#8ee7ff;transform:rotate(-28deg)"></div>
-        <div style="position:relative;padding:115px 28px 0;text-align:center">
-          <h1 style="font-size:48px;line-height:1.15;font-weight:900;letter-spacing:-1.2px;margin:0;color:#fff">
-            Please Scan &amp;<br/>Fill the Contact Form<br/><span style="color:#8ceaff">before taking the seat</span>
+        <div style="position:absolute;top:79px;left:99px;text-align:left">
+          <h1 style="font-size:43px;line-height:1.15;font-weight:800;letter-spacing:-.6px;margin:0;color:#eaf5ec">
+            Please Scan &amp;<br/>Fill the Contact Form<br/><span style="color:#c6eced">before taking the seat</span>
           </h1>
         </div>
-        <div style="position:relative;width:470px;margin:80px auto 0">
-          <div style="height:450px;box-sizing:border-box;border:14px solid #23c5f6;border-radius:43px;padding:29px 25px;background:transparent">
-            <div style="background:#fff;border-radius:22px;padding:16px;height:100%;box-sizing:border-box">
-              <img src="${qrDataUrl}" alt="Code Clinic walk-in registration QR" style="display:block;width:100%;height:100%;object-fit:contain;image-rendering:pixelated"/>
+        <div style="position:absolute;top:349px;left:202px;width:396px;height:405px">
+          <div style="position:absolute;top:0;left:0;width:396px;height:405px;box-sizing:border-box;border:12px solid #70b8d1;border-radius:42px;padding:31px;background:transparent">
+            <div style="width:100%;height:100%;box-sizing:border-box;background:#fffbe9;border-radius:23px;padding:10px">
+              <img src="${qrDataUrl}" alt="Code Clinic registration QR code" style="width:100%;height:100%;object-fit:contain;display:block;image-rendering:pixelated"/>
             </div>
           </div>
-          <div style="position:absolute;top:-34px;left:85px;width:300px;height:66px;box-sizing:border-box;border-radius:17px;background:#22c3f4;color:white;font-size:37px;font-weight:900;text-align:center;line-height:66px">SCAN ME</div>
+          <div style="position:absolute;top:-28px;left:84px;width:228px;height:58px;border-radius:15px;background:#70b8d1;color:#e7f6f2;font-size:33px;line-height:58px;font-weight:900;text-align:center">SCAN ME</div>
         </div>
-        <div style="position:absolute;left:63px;top:525px;width:75px;height:9px;border-radius:9px;background:#90e8ff;transform:rotate(40deg)"></div>
-        <div style="position:absolute;left:64px;top:599px;width:75px;height:9px;border-radius:9px;background:#90e8ff;transform:rotate(-27deg)"></div>
-        <div style="position:absolute;right:63px;top:525px;width:75px;height:9px;border-radius:9px;background:#90e8ff;transform:rotate(-40deg)"></div>
-        <div style="position:absolute;right:64px;top:599px;width:75px;height:9px;border-radius:9px;background:#90e8ff;transform:rotate(27deg)"></div>
-        <div style="position:absolute;bottom:-1px;left:0;right:0;height:34px;background:radial-gradient(circle at 37px 38px,#fff 37px,transparent 38px) repeat-x;background-size:74px 74px"></div>
+        <div style="position:absolute;bottom:-1px;left:0;right:0;height:25px;background:radial-gradient(circle at 39px 27px,#fff 27px,transparent 28px) repeat-x;background-size:78px 54px"></div>
       </div>
-      <div style="height:220px;box-sizing:border-box;padding:42px 40px 26px;display:flex;align-items:center;justify-content:space-between;gap:28px;background:#fff">
-        <img src="/logo.png" alt="Code Clinic" style="width:405px;max-height:128px;object-fit:contain;object-position:left center" />
-        <div style="font-size:16px;color:#0b338e;line-height:1.35;min-width:248px;text-align:left">
-          <div style="font-weight:800;white-space:nowrap"><span style="color:#04a7e8">● ● ◎</span> @codeclinic</div>
-          <div style="font-size:19px;font-weight:800">www.codeclinic.ug</div>
-          <div style="margin-top:20px">☎ +256 394 836 298</div>
-          <div>☎ +256 709 740 457</div>
+      <div style="height:240px;box-sizing:border-box;padding:51px 63px 25px;display:flex;align-items:center;justify-content:space-between;gap:24px;background:#fff">
+        <img src="/logo.png" alt="Code Clinic" style="width:410px;max-height:125px;object-fit:contain;object-position:left center" />
+        <div style="font-size:14px;color:#2b3665;line-height:1.35;min-width:222px;text-align:left">
+          <div style="font-weight:700;color:#5b96b4">● ● ◎ @codeclinic</div>
+          <div style="font-weight:700">www.codeclinic.ug</div>
+          <div style="margin-top:23px">✆ +256 394 836 298</div>
+          <div>✆ +256 709 740 457</div>
         </div>
       </div>`
     document.body.appendChild(container)
