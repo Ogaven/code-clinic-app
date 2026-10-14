@@ -302,7 +302,10 @@ export default function DashboardPage() {
           if (!next || next === pageToken) break
           pageToken = next
         }
-      } catch (error) {\n        // Keep the dashboard usable while making failures diagnosable without leaking tokens.\n        console.warn('[Dashboard] Google reviewer photos unavailable', error instanceof Error ? error.message : 'Unknown error')\n      }
+      } catch (error) { 
+        // Keep the dashboard usable while making failures diagnosable without leaking tokens.
+        console.warn('[Dashboard] Google reviewer photos unavailable', error instanceof Error ? error.message : 'Unknown error')
+      }
     })()
 
 
