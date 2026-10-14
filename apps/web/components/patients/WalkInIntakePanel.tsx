@@ -134,28 +134,51 @@ export default function WalkInIntakePanel({ basePath, requiredRoles, fallbackHre
     if (!res.ok) throw new Error('Failed to generate high-resolution QR')
     const { qrDataUrl, url } = await res.json()
 
+    if (url !== 'https://codeclinicemr.com/pre-visit') {
+      throw new Error('Unexpected registration URL; flyer was not generated')
+    }
+
     await waitForImage('/logo.png')
-
     const { default: html2canvas } = await import('html2canvas')
-
     const container = document.createElement('div')
-    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:#ffffff;padding:56px 48px;display:flex;flex-direction:column;align-items:center;gap:22px;font-family:Arial,Helvetica,sans-serif;'
+    // Portrait print layout modelled on the clinic's existing blue reception card.
+    // The QR image comes directly from the live /pre-visit/qr API, never artwork.
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;height:1120px;overflow:hidden;background:#fff;font-family:Arial,Helvetica,sans-serif;'
     container.innerHTML = `
-      <img src="/logo.png" style="height:52px;object-fit:contain" />
-      <h1 style="font-size:26px;font-weight:900;color:#1A237E;margin:6px 0 0;text-align:center;letter-spacing:-0.01em">Walk-In Patient Registration</h1>
-      <img src="${qrDataUrl}" style="width:440px;height:440px;border:10px solid #1A237E;border-radius:28px;padding:10px;background:#fff" />
-      <p style="font-size:19px;font-weight:700;color:#0f172a;text-align:center;margin:4px 0 0">Scan to register before your appointment</p>
-      <p style="font-size:13px;color:#64748b;text-align:center;max-width:520px;margin:0;word-break:break-all">${url}</p>
-      <div style="width:100%;height:6px;background:linear-gradient(90deg,#1A237E,#29ABE2);border-radius:3px;margin-top:10px"></div>
-      <p style="font-size:13px;font-weight:800;color:#1A237E;text-align:center;margin:0;letter-spacing:0.04em">CODE CLINIC</p>
-    `
+      <div style="height:865px;position:relative;background:linear-gradient(145deg,#122875 0%,#1746a0 54%,#12347c 100%);color:white;text-align:center;overflow:hidden">
+        <div style="position:absolute;inset:0;opacity:.13;background-image:radial-gradient(circle at 15% 20%,#6ed7ff 0 4px,transparent 5px),radial-gradient(circle at 85% 65%,#6ed7ff 0 5px,transparent 6px);background-size:125px 145px"></div>
+        <div style="position:relative;padding:78px 55px 0">
+          <h1 style="font-size:48px;line-height:1.2;font-weight:900;letter-spacing:-1px;margin:0;color:#fff">Please Scan &amp;<br/>Fill the Contact Form<br/><span style="color:#8be3ff">before taking your seat</span></h1>
+          <div style="width:480px;margin:62px auto 0;position:relative;border:12px solid #30bdf3;border-radius:42px;padding:32px 26px 24px;background:#164394">
+            <div style="position:absolute;top:-36px;left:96px;right:96px;border-radius:16px;background:#26baf0;color:#fff;font-size:34px;font-weight:900;line-height:66px">SCAN ME</div>
+            <div style="background:#fff;border-radius:22px;padding:18px">
+              <img src="${qrDataUrl}" alt="Scan to register at Code Clinic" style="width:100%;height:auto;display:block;image-rendering:pixelated" />
+            </div>
+          </div>
+          <p style="font-size:20px;font-weight:700;color:#d8f5ff;margin:32px 0 0">Scan with your phone camera to register</p>
+        </div>
+        <div style="position:absolute;bottom:-1px;left:0;right:0;height:26px;background:radial-gradient(circle at 24px 27px,#fff 25px,transparent 26px) repeat-x;background-size:48px 48px"></div>
+      </div>
+      <div style="height:255px;box-sizing:border-box;padding:52px 46px 25px;display:flex;align-items:center;justify-content:space-between;gap:22px;background:#fff">
+        <img src="/logo.png" alt="Code Clinic" style="width:320px;max-height:115px;object-fit:contain;object-position:left center" />
+        <div style="font-size:19px;color:#163782;font-weight:700;line-height:1.55;text-align:left">
+          <div style="font-size:18px;color:#159fd8">Facebook · Instagram · X</div>
+          <div>www.codeclinic.ug</div>
+          <div style="margin-top:10px">☎ +256 394 836 298</div>
+          <div>☎ +256 709 740 457</div>
+        </div>
+      </div>`
     document.body.appendChild(container)
-    // Give the inline <img> tags (logo + QR data URL) a beat to paint before snapshotting.
-    await new Promise(r => setTimeout(r, 150))
     try {
+      await Promise.all(Array.from(container.querySelectorAll('img')).map(img =>
+        img.complete ? Promise.resolve() : new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve()
+          img.onerror = () => reject(new Error('Flyer image failed to load'))
+        })
+      ))
       return await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
     } finally {
-      document.body.removeChild(container)
+      container.remove()
     }
   }
 
