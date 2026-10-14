@@ -39,6 +39,28 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
   const title = metadata.data.sheets?.find(sheet => sheet.properties?.sheetId === SHEET_GID)?.properties?.title
   if (!title) throw new Error('Walk-in worksheet gid not found; refusing to write to another tab')
   const range = `'${title.replace(/'/g, "''")}'!A:Q`
+  // Repair activities saved by the intake fallback when the outbox table
+  // was temporarily unavailable. These are explicitly marked events only;
+  // do not backfill unrelated or historical patient activities.
+  const fallbackActivities = await prisma.patientActivity.findMany({
+    where: {
+      userId: 'pre-visit-form',
+      action: 'Submitted walk-in intake form',
+      metadata: { contains: '"sheetExportPendingReconciliation":true' },
+    },
+    select: { id: true, patientId: true },
+    orderBy: { createdAt: 'asc' },
+    take: 100,
+  })
+  if (fallbackActivities.length) {
+    await prisma.walkInSheetOutbox.createMany({
+      data: fallbackActivities.map(activity => ({
+        activityId: activity.id,
+        patientId: activity.patientId,
+      })),
+      skipDuplicates: true,
+    })
+  }
   // Recover work claimed by a process that crashed before acknowledging Sheets.
   // A retry checks the event ID in the sheet before appending again.
   await prisma.walkInSheetOutbox.updateMany({
