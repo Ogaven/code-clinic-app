@@ -5,7 +5,10 @@ import { prisma } from '../lib/prisma'
 // worksheet access, data minimization and retention have been approved.
 const SPREADSHEET_ID = '1xlTWS4OaVWnHfebV0FggFij56Ai9uzHc6GMVR7MhqX4'
 const SHEET_GID = 1741829078
-const COLUMNS = ['Intake event ID', 'Submitted at (UTC)', 'Patient number', 'First name', 'Last name', 'Phone', 'Intake outcome']
+// Existing Google Form Responses 2 columns A:P are preserved exactly.
+const EXISTING_HEADERS = { surname: 'Surname', givenName: 'Given Name', contact: 'Contact' }
+const EVENT_ID_HEADER = 'Code Clinic EMR Intake Event ID' // Reserved column Q; staff must approve and add header before enabling.
+const EVENT_ID_COLUMN_INDEX = 16
 
 function cell(value: unknown): string {
   const text = String(value ?? '')
@@ -32,7 +35,7 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
   const metadata = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID, fields: 'sheets(properties(sheetId,title))' })
   const title = metadata.data.sheets?.find(sheet => sheet.properties?.sheetId === SHEET_GID)?.properties?.title
   if (!title) throw new Error('Walk-in worksheet gid not found; refusing to write to another tab')
-  const range = `'${title.replace(/'/g, "''")}'!A:G`
+  const range = `'${title.replace(/'/g, "''")}'!A:Q`
   // Recover work claimed by a process that crashed before acknowledging Sheets.
   // A retry checks the event ID in the sheet before appending again.
   await prisma.walkInSheetOutbox.updateMany({
@@ -55,22 +58,28 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
       const rows = existing.data.values || []
       // Never overwrite the user's existing worksheet or install headers
       // automatically. Staff must explicitly approve the seven-column schema.
-      if (!rows.length || COLUMNS.some((column, index) => rows[0]?.[index] !== column)) {
-        throw new Error('Worksheet must contain the approved seven-column header row; refusing to overwrite existing data')
+      const header = rows[0] || []
+      if (header[1] !== EXISTING_HEADERS.surname || header[2] !== EXISTING_HEADERS.givenName ||
+          header[3] !== EXISTING_HEADERS.contact || header[EVENT_ID_COLUMN_INDEX] !== EVENT_ID_HEADER) {
+        throw new Error('Existing Form Responses 2 headers or reserved column Q do not match; staff must approve and add the event ID header before export')
       }
-      if (!rows.slice(1).some(row => row[0] === task.activityId)) {
+      if (!rows.slice(1).some(row => row[EVENT_ID_COLUMN_INDEX] === task.activityId)) {
         const [activity, patient] = await Promise.all([
           prisma.patientActivity.findUnique({ where: { id: task.activityId } }),
           prisma.patient.findUnique({ where: { id: task.patientId } }),
         ])
         if (!activity || !patient) throw new Error('Referenced intake activity or patient not found')
-        let outcome = ''
-        try { outcome = String(JSON.parse(activity.metadata || '{}').outcome || '') } catch { /* no outcome */ }
         await sheets.spreadsheets.values.append({
           spreadsheetId: SPREADSHEET_ID, range, valueInputOption: 'RAW',
           insertDataOption: 'INSERT_ROWS',
-          requestBody: { values: [[task.activityId, activity.createdAt.toISOString(),
-            patient.patientNumber, cell(patient.firstName), cell(patient.lastName), cell(patient.phone), cell(outcome)]] },
+          // Match existing Google Form Responses 2 columns without rewriting
+          // legacy rows. Column Q is an explicitly reserved dedupe key.
+          requestBody: { values: [[
+            activity.createdAt.toISOString(), cell(patient.lastName), cell(patient.firstName),
+            cell(patient.phone), '', cell(patient.email), cell(patient.address), '',
+            cell(patient.referralSource), '', '', '', cell(patient.nextOfKinPhone),
+            '', '', '', task.activityId,
+          ]] },
         })
       }
       await prisma.walkInSheetOutbox.update({ where: { id: task.id }, data: { status: 'EXPORTED', exportedAt: new Date(), lastError: null } })
