@@ -39,10 +39,15 @@ export async function completeRoutineWithDeepSeek(messages: RoutineMessage[]): P
     temperature: 0.3,
     max_tokens: 256,
   })
+  const usage = response.usage
+  if (!usage || !Number.isSafeInteger(usage.prompt_tokens) || usage.prompt_tokens <= 0 ||
+      !Number.isSafeInteger(usage.completion_tokens) || usage.completion_tokens < 0) {
+    throw new Error('DeepSeek response missing valid billable token usage')
+  }
   return {
     text: response.choices[0]?.message?.content ?? '',
     model: response.model,
-    inputTokens: response.usage?.prompt_tokens ?? 0,
-    outputTokens: response.usage?.completion_tokens ?? 0,
+    inputTokens: usage.prompt_tokens,
+    outputTokens: usage.completion_tokens,
   }
 }
