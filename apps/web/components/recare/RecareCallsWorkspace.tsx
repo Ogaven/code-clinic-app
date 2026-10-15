@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 
+type Weekly = { start: string; totals: { contacted: number; answered: number; booked: number; came: number; rescheduled: number }; calls: Call[] }
 type Call = {
   id: string; patientId: string; contactMethod: string; contactedAt: string;
   reached: string; appointmentSet: boolean; appointmentDate: string | null;
@@ -19,6 +20,9 @@ export default function RecareCallsWorkspace() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [weekStart, setWeekStart] = useState('')
+  const [weekly, setWeekly] = useState<Weekly | null>(null)
+  const [weeklyError, setWeeklyError] = useState('')
   const token = () => typeof window === 'undefined' ? '' : localStorage.getItem('cc_token') || ''
   const refresh = useCallback(async () => {
     try {
@@ -44,6 +48,28 @@ export default function RecareCallsWorkspace() {
     }, 250)
     return () => { clearTimeout(id); controller.abort() }
   }, [search])
+  async function loadWeekly() {
+    if (!weekStart) return
+    setWeeklyError('')
+    try {
+      const r = await fetch(`/api-proxy/crm-automation/patient-engagement/recare-calls/weekly?start=${encodeURIComponent(weekStart)}`, { headers: { Authorization: `Bearer ${token()}` } })
+      if (!r.ok) throw new Error('Unable to load weekly report')
+      setWeekly(await r.json())
+    } catch (e) { setWeeklyError(e instanceof Error ? e.message : 'Unable to load weekly report') }
+  }
+  function exportWeeklyCsv() {
+    if (!weekly) return
+    const escapeCsv = (value: unknown) => '"' + String(value ?? '').replace(/"/g, '""') + '"'
+    const rows = [
+      ['Patient ID','Patient name','Contacted','Method','Reached','Booked','Attendance','Recorded by'],
+      ...weekly.calls.map(c => [c.patient.id, `${c.patient.firstName} ${c.patient.lastName}`, c.contactedAt, c.contactMethod, c.reached, c.appointmentSet ? 'Yes' : 'No', c.attendance, c.recordedByName]),
+    ]
+    const csv = rows.map(row => row.map(escapeCsv).join(',')).join('\\r\\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url; a.download = `recare-week-${weekly.start}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setError('')
     if (!form.patientId || !form.contactedAt) { setError('Select a patient and contact date.'); return }
@@ -87,6 +113,17 @@ export default function RecareCallsWorkspace() {
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <button disabled={saving || !form.patientId} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving?'Saving…':'Save recare call'}</button>
     </form>
+    <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
+      <h2 className="font-bold dark:text-white">Weekly recare report</h2>
+      <p className="text-xs text-gray-500">Select the first day of a seven-day period (Kampala time). Counts reflect recorded outreach entries, not unique patients.</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className={label}>Week starting<input type="date" className={field} value={weekStart} onChange={e => { setWeekStart(e.target.value); setWeekly(null) }} /></label>
+        <button onClick={()=>void loadWeekly()} disabled={!weekStart} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Load report</button>
+        {weekly && <button onClick={exportWeeklyCsv} className="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:text-white">Export CSV</button>}
+      </div>
+      {weeklyError && <p role="alert" className="text-sm text-red-600">{weeklyError}</p>}
+      {weekly && <div className="grid grid-cols-2 gap-3 md:grid-cols-5">{Object.entries(weekly.totals).map(([name, value])=><div key={name} className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800"><p className="text-xs capitalize text-gray-500">{name}</p><p className="text-2xl font-bold dark:text-white">{value}</p></div>)}</div>}
+    </section>
     <section className="overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">
       <div className="flex items-center justify-between p-4"><h2 className="font-bold dark:text-white">Recent recare contacts</h2><button onClick={()=>void refresh()} className="text-sm text-blue-600">Refresh</button></div>
       {loading ? <p className="p-4 text-sm">Loading…</p> : calls.length===0 ? <p className="p-4 text-sm text-gray-500">No recare calls recorded yet.</p> :
