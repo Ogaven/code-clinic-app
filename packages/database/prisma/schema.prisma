@@ -1986,6 +1986,7 @@ model AiBudgetMonth {
   monthKey         String   @id @map("month_key")
   openaiSpentUsd   Decimal  @default(0) @db.Decimal(14, 8) @map("openai_spent_usd")
   deepseekSpentUsd Decimal  @default(0) @db.Decimal(14, 8) @map("deepseek_spent_usd")
+  historicallyReconciled Boolean @default(false) @map("historically_reconciled")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   reservations     AiBudgetReservation[]
