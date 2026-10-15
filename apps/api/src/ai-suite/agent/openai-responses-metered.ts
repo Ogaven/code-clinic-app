@@ -21,7 +21,7 @@ export async function executeMeteredOpenAiResponses(
     reserveUsd: billing.reserveUsd,
     actualCostUsd: billing.actualCostUsd,
     execute: async () => {
-      const response = await client.responses.create(request)
+      const response = await client.responses.create({ ...request, stream: false })
       return { response, usage: parseOpenAiResponsesUsage(response) }
     },
   })
