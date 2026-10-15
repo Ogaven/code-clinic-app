@@ -1,11 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { PhoneCall, usePathname } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, CalendarDays, Users, UserCog,
+  LayoutDashboard, CalendarDays, Users, UserCog, PhoneCall,
   Wallet, Receipt, ShoppingBag, CreditCard, FileBarChart,
   Bot, Settings, HeadphonesIcon,
   ChevronLeft, ChevronRight, BookOpen, Package,
