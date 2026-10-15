@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs'
 const source = readFileSync(require.resolve('./whatsapp.routes.ts'), 'utf8')
 
 describe('WhatsApp paid AI callsite inventory', () => {
-  it('tracks the two unmetered OpenAI Responses requests for patient media', () => {
+  it('tracks the two guarded OpenAI Responses requests for patient media', () => {
     // Update this baseline only when each request is moved behind durable metering.
-    expect(source.match(/openai\.responses\.create\s*\(/g) ?? []).toHaveLength(2)
+    expect(source.match(/openai\.responses\.create\s*\(/g) ?? []).toHaveLength(0)
+    expect(source.match(/executeAgentOpenAiResponse\s*\(\s*openai\s*,/g) ?? []).toHaveLength(2)
   })
 
   it('tracks the unmetered Whisper transcription HTTP endpoint', () => {
