@@ -169,6 +169,21 @@ export default function ExecutiveReportPage() {
   {loading?<div className="py-24 text-center text-gray-400">Building business impact report from live clinic records…</div>:data&&<>
    <div className="rounded-3xl p-7 !text-white" style={{background:'linear-gradient(135deg,#0c1e50,#1A237E 55%,#29ABE2)'}}><p className="text-xs uppercase tracking-[.2em] !text-cyan-100 font-bold">Code Clinic · {data.period.kind} business impact brief</p><h2 className="text-3xl font-black mt-2 !text-white">{data.period.label}</h2><p className="mt-2 text-sm !text-blue-50">Compared with {data.period.previousLabel} · Generated {new Date(data.generatedAt).toLocaleString()}</p></div>
 
+   <section aria-label="Executive decision summary" className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 p-5">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-black text-clinic-navy dark:text-white">Executive decision summary</h2><p className="mt-1 text-xs text-gray-500">Recorded outcomes for this reporting period — no demo financial figures or estimated savings</p></div><span className="rounded-full bg-sky-50 dark:bg-sky-900/20 px-3 py-1 text-xs font-semibold text-sky-700 dark:text-sky-200">Live clinic records</span></div>
+    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+     <Card label="Appointment show-up" value={c.appointments.showRate+'%'} sub={fmt(c.appointments.attended)+' attended / '+fmt(c.appointments.scheduled)+' scheduled'}/>
+     <Card label="Treatment acceptance" value={c.treatment.acceptanceRate+'%'} sub={fmt(c.treatment.accepted)+' accepted treatment plans'}/>
+     <Card label="Recorded collections" value={money(c.finance.collectedUGX)} sub="Clinic payment records only; QuickBooks not reconciled"/>
+     <Card label="Unresolved treatment opportunity" value={money(c.treatment.moneyAtRiskUGX)} sub="Period-cohort money at risk; not guaranteed revenue"/>
+    </div>
+    <div className="mt-4 grid gap-3 lg:grid-cols-3">
+     <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/10 p-4"><h3 className="text-sm font-bold text-emerald-800 dark:text-emerald-300">What is working</h3><p className="mt-2 text-sm text-gray-700 dark:text-gray-200">{data.wins?.[0] || 'No verified business win identified for this period.'}</p></div>
+     <div className="rounded-xl bg-blue-50 dark:bg-blue-900/10 p-4"><h3 className="text-sm font-bold text-blue-800 dark:text-blue-300">Where to grow</h3><p className="mt-2 text-sm text-gray-700 dark:text-gray-200">{data.opportunities?.[0] || 'No specific revenue opportunity identified for this period.'}</p></div>
+     <div className="rounded-xl bg-amber-50 dark:bg-amber-900/10 p-4"><h3 className="text-sm font-bold text-amber-800 dark:text-amber-300">Needs management attention</h3><p className="mt-2 text-sm text-gray-700 dark:text-gray-200">{data.attention?.[0] || 'No specific management alert identified for this period.'}</p></div>
+    </div>
+   </section>
+
    <div><h2 className="text-sm font-black uppercase tracking-wider text-gray-500 mb-3">Business impact at a glance</h2><div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
     <Card label="Leads captured" value={c.crm.funnel.leadCount} sub={trend(cmp.leadsPct)}/>
     <Card label="Paying clients attributed" value={c.crm.funnel.payingClientCount} sub={trend(cmp.payingClientsPct)}/>
