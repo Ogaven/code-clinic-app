@@ -487,6 +487,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
                   const formData  = new FormData()
                   formData.append('file', audioBlob, 'voice.ogg')
                   formData.append('model', 'whisper-1')
+                  // Do not set a forced language or translate endpoint: preserve local-language speech.
 
                   const whisperRes    = await fetch('https://api.openai.com/v1/audio/transcriptions', {
                     method:  'POST',
@@ -497,7 +498,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
                   const transcription = typeof result.text === 'string' ? result.text.trim() : null
 
                   if (transcription) {
-                    console.log('[Whisper] Transcribed:', transcription.slice(0, 80))
+                    console.log('[Whisper] Transcription received; original audio retained when private storage is available')
                     enqueueMessage(from, `[Voice note]: ${transcription}`, msg.id, undefined, voiceMetadata)
                     handled = true
                   }
