@@ -699,7 +699,7 @@ router.get('/patient-engagement/recare-calls/weekly', requireAuth, adminAndRecep
     res.status(400).json({ error: 'Provide start as YYYY-MM-DD' }); return
   }
   const startAt = new Date(`${start}T00:00:00+03:00`)
-  if (Number.isNaN(startAt.getTime()) || new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Kampala', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(startAt).filter(p => p.type !== 'literal').map(p => p.value).join('-') !== start) {
+  if (Number.isNaN(startAt.getTime()) || new Date(`${start}T00:00:00Z`).toISOString().slice(0, 10) !== start) {
     res.status(400).json({ error: 'Invalid calendar date' }); return
   }
   const endAt = new Date(startAt.getTime() + 7 * 86400000)
