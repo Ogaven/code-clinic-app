@@ -32,7 +32,7 @@ import { retrieveSharedClinicKnowledge } from '../knowledge/shared-retrieval'
 // Feature-gated billing integration for the five agent Responses call sites.
 // Keep off until October charges, database migrations, verified model pricing,
 // and all other billable application entry points have been reconciled.
-async function executeAgentOpenAiResponse(
+export async function executeAgentOpenAiResponse(
   client: OpenAI,
   request: Parameters<OpenAI['responses']['create']>[0],
 ) {
