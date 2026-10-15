@@ -388,6 +388,7 @@ model Patient {
   patientSponsors       PatientSponsor[]
   patientConsents       PatientConsent[]
   botMessageLogs        BotMessageLog[]
+  recareCallEntries     RecareCallEntry[]
 
   // ── CRM Automation relations (additive) ──
   sequenceEnrollments   SequenceEnrollment[]
@@ -2020,4 +2021,28 @@ model AiBudgetAlert {
   @@unique([monthKey, level], map: "ai_budget_alerts_month_level_key")
   @@index([status, createdAt], map: "ai_budget_alerts_status_created_idx")
   @@map("ai_budget_alerts")
+}
+
+// Recare outreach is linked to existing EMR patients, never keyed by names.
+// Every attempt is an immutable historical row; staff can add a correction
+// rather than silently overwriting previous contact history.
+model RecareCallEntry {
+  id                 String   @id @default(uuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  contactMethod      String
+  contactedAt        DateTime
+  calledByUserId     String
+  reached            String
+  appointmentSet     Boolean  @default(false)
+  appointmentDate    DateTime?
+  attendanceOutcome  String?
+  rescheduledDate    DateTime?
+  comment            String?
+  createdAt          DateTime @default(now())
+
+  @@index([patientId, contactedAt])
+  @@index([contactedAt])
+  @@index([calledByUserId])
+  @@map("recare_call_entries")
 }
