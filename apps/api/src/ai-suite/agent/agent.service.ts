@@ -39,13 +39,23 @@ async function executeAgentOpenAiResponse(
   if (process.env.AI_METERED_OPENAI_ENABLED !== 'true') {
     return client.responses.create({ ...request, stream: false })
   }
-  const reserveUsd = Number(process.env.AI_OPENAI_REQUEST_RESERVE_USD)
-  const inputRate = Number(process.env.AI_OPENAI_INPUT_USD_PER_MILLION)
-  const outputRate = Number(process.env.AI_OPENAI_OUTPUT_USD_PER_MILLION)
-  const cachedRate = Number(process.env.AI_OPENAI_CACHED_INPUT_USD_PER_MILLION)
-  if (![reserveUsd, inputRate, outputRate, cachedRate].every(x => Number.isFinite(x) && x > 0)) {
-    throw new Error('Metered OpenAI requires verified positive pricing and reservation')
+  // Multiple models are used by Sarah. Never apply one model's rates to another.
+  // Pricing and per-request reserves must be verified for each model separately.
+  const model = request.model
+  const pricingJson = process.env.AI_OPENAI_VERIFIED_MODEL_PRICING_JSON
+  if (!pricingJson || !model) throw new Error('Verified model-specific OpenAI pricing required')
+  let pricing: Record<string, { reserveUsd: number; inputRate: number; outputRate: number; cachedRate: number }>
+  try {
+    pricing = JSON.parse(pricingJson) as typeof pricing
+  } catch {
+    throw new Error('Invalid verified OpenAI model pricing configuration')
   }
+  const selected = pricing?.[model]
+  if (!selected || ![selected.reserveUsd, selected.inputRate, selected.outputRate, selected.cachedRate]
+    .every(x => typeof x === 'number' && Number.isFinite(x) && x > 0)) {
+    throw new Error('Missing verified pricing or reservation for OpenAI model: ' + model)
+  }
+  const { reserveUsd, inputRate, outputRate, cachedRate } = selected
   const { result } = await executeMeteredOpenAiResponses(prisma, client, request, {
     reserveUsd,
     actualCostUsd: usage => (
