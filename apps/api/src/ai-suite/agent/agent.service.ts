@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { executeMeteredOpenAiResponses } from './openai-responses-metered'
 import {
   getAvailableSlots,
   getServices,
@@ -26,6 +27,35 @@ import { sendWhatsAppMessage, sendWhatsAppTemplate, containsPhrase } from '../wh
 import { sendPushToUser } from '../../services/push.service'
 import { buildPatientContextSummary, getPendingHandoffNote } from './patient-context.service'
 import { retrieveSharedClinicKnowledge } from '../knowledge/shared-retrieval'
+
+
+// Feature-gated billing integration for the five agent Responses call sites.
+// Keep off until October charges, database migrations, verified model pricing,
+// and all other billable application entry points have been reconciled.
+async function executeAgentOpenAiResponse(
+  client: OpenAI,
+  request: Parameters<OpenAI['responses']['create']>[0],
+) {
+  if (process.env.AI_METERED_OPENAI_ENABLED !== 'true') {
+    return client.responses.create({ ...request, stream: false })
+  }
+  const reserveUsd = Number(process.env.AI_OPENAI_REQUEST_RESERVE_USD)
+  const inputRate = Number(process.env.AI_OPENAI_INPUT_USD_PER_MILLION)
+  const outputRate = Number(process.env.AI_OPENAI_OUTPUT_USD_PER_MILLION)
+  const cachedRate = Number(process.env.AI_OPENAI_CACHED_INPUT_USD_PER_MILLION)
+  if (![reserveUsd, inputRate, outputRate, cachedRate].every(x => Number.isFinite(x) && x > 0)) {
+    throw new Error('Metered OpenAI requires verified positive pricing and reservation')
+  }
+  const { result } = await executeMeteredOpenAiResponses(prisma, client, request, {
+    reserveUsd,
+    actualCostUsd: usage => (
+      ((usage.inputTokens - (usage.cachedInputTokens ?? 0)) * inputRate +
+        (usage.cachedInputTokens ?? 0) * cachedRate +
+        usage.outputTokens * outputRate) / 1_000_000
+    ),
+  })
+  return result.response
+}
 
 function sanitizeIncomingMessage(content: string): string {
   if (content.startsWith('__MEDIA_IMAGE__:')) {
@@ -721,7 +751,7 @@ async function respondToTangentThenRedirect(
   if (!apiKey) return pendingPromptText
   try {
     const client = new OpenAI({ apiKey })
-    const response = await client.responses.create({
+    const response = await executeAgentOpenAiResponse(client, {
       model:      'gpt-5.6-luna',
       input: [
         { role: 'system', content: `You are Sarah, a warm dental assistant at Code Clinic. Give a brief (1-2 sentence), friendly, informative answer using general dental knowledge. Do NOT state clinic-specific prices, doctor names, or availability unless certain. No em dashes. No markdown.` },
@@ -741,7 +771,7 @@ async function respondToClinicalFollowUp(message: string): Promise<string> {
   if (!apiKey) return `Our team's on it and will be in touch soon 🙏`
   try {
     const client = new OpenAI({ apiKey })
-    const response = await client.responses.create({
+    const response = await executeAgentOpenAiResponse(client, {
       model:      'gpt-5.6-luna',
       input: [
         { role: 'system', content: `You are Sarah, a warm dental assistant at Code Clinic. The patient previously reported a clinical concern and our team has already been notified. Answer their follow-up question with 1-2 friendly sentences using general dental knowledge. If it fits naturally at the end, add: "Our team's on it and will be in touch soon 🙏" - only if it flows well. Do NOT say you've alerted the team again. No em dashes. No markdown.` },
@@ -1816,7 +1846,7 @@ export async function getAgentReply(
       `CONVERSATION HISTORY: ${context.conversationHistory ? 'Shown in the messages above — you already know this person. Do NOT re-introduce yourself.' : 'No prior messages — this is the first contact.'}`,
     ].join('\n')
 
-    const response = await client.responses.create({
+    const response = await executeAgentOpenAiResponse(client, {
       model: 'gpt-5.6-sol',
       input: [
         { role: 'system', content: staticSystem },
@@ -2913,7 +2943,7 @@ export async function getAgentReplyV2OpenAI(
 
     for (let iter = 0; iter < 8; iter++) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response: any = await client.responses.create({
+      const response: any = await executeAgentOpenAiResponse(client, {
         model:             OPENAI_WEBSITE_MODEL,
         input,
         tools:             OPENAI_V2_TOOLS,
@@ -3250,7 +3280,7 @@ RULES (mandatory):
     const client = new OpenAI({ apiKey })
     for (let iter = 0; iter < 3; iter++) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response: any = await client.responses.create({
+      const response: any = await executeAgentOpenAiResponse(client, {
         model:             OPENAI_COMMENT_MODEL,
         input,
         tools:             OPENAI_COMMENT_TOOLS,
