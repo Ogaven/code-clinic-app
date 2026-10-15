@@ -43,7 +43,7 @@ describe('OpenAI metered request gateway', () => {
       reserveUsd: 0.02, actualCostUsd: () => 0.004, execute,
     })
     expect(result.actualUsd).toBe(0.004)
-    expect(result.result.output).toBe('ok')
+    expect(result.result.usage.inputTokens).toBe(120)
     expect(mocks.reserveBudgetAtomic).toHaveBeenCalledWith(db, expect.objectContaining({ provider: 'openai' }))
     expect(mocks.settleBudgetAtomic).toHaveBeenCalledWith(db, expect.objectContaining({ actualUsd: 0.004 }))
     expect(mocks.markBudgetOutcomeUnknown).not.toHaveBeenCalled()
