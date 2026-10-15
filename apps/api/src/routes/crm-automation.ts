@@ -690,6 +690,45 @@ const recareCallSchema = z.object({
   comment: z.string().max(2000).nullable().optional(),
 }).strict()
 
+
+// Weekly recare summary is calculated from the persisted outreach ledger.
+// Inclusive Kampala calendar dates; caller metrics count individual outreach entries.
+router.get('/patient-engagement/recare-calls/weekly', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const start = typeof req.query.start === 'string' ? req.query.start : ''
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(start)) {
+    res.status(400).json({ error: 'Provide start as YYYY-MM-DD' }); return
+  }
+  const startAt = new Date(`${start}T00:00:00+03:00`)
+  if (Number.isNaN(startAt.getTime()) || startAt.toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala', year: 'numeric', month: '2-digit', day: '2-digit' }) !== start) {
+    res.status(400).json({ error: 'Invalid calendar date' }); return
+  }
+  const endAt = new Date(startAt.getTime() + 7 * 86400000)
+  try {
+    const calls = await prisma.patientRecareCall.findMany({
+      where: { contactedAt: { gte: startAt, lt: endAt } },
+      orderBy: { contactedAt: 'asc' },
+      select: {
+        id: true, contactedAt: true, contactMethod: true, reached: true, appointmentSet: true,
+        attendance: true, appointmentDate: true, rescheduledDate: true, recordedByName: true,
+        patient: { select: { id: true, firstName: true, lastName: true } },
+      },
+    })
+    res.json({
+      start, endExclusive: endAt.toISOString(),
+      totals: {
+        contacted: calls.length,
+        answered: calls.filter(c => c.reached === 'Yes').length,
+        booked: calls.filter(c => c.appointmentSet).length,
+        came: calls.filter(c => c.attendance === 'CAME').length,
+        rescheduled: calls.filter(c => c.attendance === 'RESCHEDULED').length,
+      },
+      calls,
+    })
+  } catch {
+    res.status(500).json({ error: 'Failed to load weekly recare report' })
+  }
+})
+
 // Staff-only recare call ledger. Every entry is linked to an existing EMR patient;
 // this endpoint does not create patients or send outbound communications.
 router.get('/patient-engagement/recare-calls', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
