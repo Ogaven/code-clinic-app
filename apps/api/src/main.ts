@@ -10,6 +10,8 @@ import { generalLimiter } from './middleware/rateLimit'
 import { runStartup } from './startup'
 import { logger } from './lib/logger'
 import { prisma } from './lib/prisma'
+import { dispatchPendingAiBudgetAlerts } from './ai-suite/agent/ai-budget-alert-dispatcher'
+import { aiBudgetAlertMailConfigFromEnv, createAiBudgetAlertEmailDelivery } from './ai-suite/agent/ai-budget-alert-email'
 
 // Routes
 import authRouter from './routes/auth'
@@ -389,6 +391,32 @@ runStartup().then(() => {
   // Management report delivery is fail-closed: schedules exist, but no email is
   // sent unless EXECUTIVE_REPORT_RECIPIENTS contains valid addresses.
   startExecutiveReportScheduler()
+
+  // AI budget alerts: separate explicit opt-in from AI routing. Do not enable
+  // until all ledger migrations have been applied and staff SMTP is verified.
+  if (process.env.AI_BUDGET_ALERT_EMAIL_ENABLED === 'true') {
+    const mailConfig = aiBudgetAlertMailConfigFromEnv(process.env)
+    if (!mailConfig) {
+      logger.warn('AI budget alert email disabled: incomplete SMTP configuration')
+    } else {
+      const deliver = createAiBudgetAlertEmailDelivery(mailConfig)
+      let running = false
+      const tick = async () => {
+        if (running) return
+        running = true
+        try {
+          const result = await dispatchPendingAiBudgetAlerts(prisma, deliver)
+          if (result.failed > 0) logger.warn({ failed: result.failed }, 'AI budget email delivery retry pending')
+        } catch (error) {
+          logger.error({ error }, 'AI budget email dispatch failed')
+        } finally {
+          running = false
+        }
+      }
+      setInterval(() => { void tick() }, 5 * 60 * 1000)
+      // No immediate send on API startup; first attempt occurs after five minutes.
+    }
+  }
 
   // SIP voice — connects to drachtio-server (no-op if DRACHTIO_HOST is not set)
   initializeSIP()
