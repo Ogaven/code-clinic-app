@@ -92,7 +92,7 @@ function flush(from: string): void {
 
   if (entry.messages.length > 1) {
     console.log(
-      `[MessageBuffer] Batching ${entry.messages.length} msgs from ${from}: "${combined.slice(0, 120)}"`
+      `[MessageBuffer] Batching ${entry.messages.length} inbound messages (contents redacted)`
     )
   }
 
