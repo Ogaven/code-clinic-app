@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { evaluateAiBudget } from './ai-budget-policy'
 import { newlyCrossedAiBudgetAlerts, type AiBudgetAlertLevel } from './ai-budget-alerts'
@@ -81,9 +82,17 @@ export async function settleBudgetAtomic(
       WHERE request_id = ${args.requestId}
     `
     const previousTotalUsd = usd(months[0].openai_spent_usd) + usd(months[0].deepseek_spent_usd)
+    const alerts = newlyCrossedAiBudgetAlerts(previousTotalUsd, previousTotalUsd + args.actualUsd)
+    for (const level of alerts) {
+      await tx.$executeRaw`
+        INSERT INTO ai_budget_alerts(id, month_key, level)
+        VALUES (${randomUUID()}, ${args.month}, ${level})
+        ON CONFLICT (month_key, level) DO NOTHING
+      `
+    }
     return {
       overrun: args.actualUsd > usd(rows[0].reserved_usd),
-      alerts: newlyCrossedAiBudgetAlerts(previousTotalUsd, previousTotalUsd + args.actualUsd),
+      alerts,
     }
   }, { timeout: 10000 })
 }

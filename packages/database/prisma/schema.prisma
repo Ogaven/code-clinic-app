@@ -2008,3 +2008,16 @@ model AiBudgetReservation {
   @@index([monthKey, status], map: "ai_budget_reservations_month_status_idx")
   @@map("ai_budget_reservations")
 }
+
+model AiBudgetAlert {
+  id        String   @id @default(uuid())
+  monthKey  String   @map("month_key")
+  level     String
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  sentAt    DateTime? @map("sent_at") @db.Timestamptz(6)
+
+  @@unique([monthKey, level], map: "ai_budget_alerts_month_level_key")
+  @@index([status, createdAt], map: "ai_budget_alerts_status_created_idx")
+  @@map("ai_budget_alerts")
+}
