@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { listPendingAiBudgetAlerts } from './ai-budget-alert-outbox'
+import { acknowledgeDeliveredAiBudgetAlert, listPendingAiBudgetAlerts } from './ai-budget-alert-outbox'
 
 describe('pending AI budget alert reader', () => {
   it('reads only pending alerts in bounded batches without mutating them', async () => {
@@ -23,5 +23,27 @@ describe('pending AI budget alert reader', () => {
       { id: 'x', monthKey: '2026-10', level: 'unexpected', createdAt: new Date() },
     ])
     await expect(listPendingAiBudgetAlerts({ aiBudgetAlert: { findMany } } as any)).rejects.toThrow()
+  })
+})
+
+describe('AI budget alert delivery acknowledgement', () => {
+  it('marks only a pending alert as sent after confirmed delivery', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+    const deliveredAt = new Date('2026-10-15T12:00:00Z')
+    const result = await acknowledgeDeliveredAiBudgetAlert({ aiBudgetAlert: { updateMany } } as any, 'alert-1', deliveredAt)
+    expect(result).toBe(true)
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: 'alert-1', status: 'PENDING' },
+      data: { status: 'SENT', sentAt: deliveredAt },
+    })
+  })
+  it('is idempotent for already acknowledged alerts', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 })
+    expect(await acknowledgeDeliveredAiBudgetAlert({ aiBudgetAlert: { updateMany } } as any, 'alert-1')).toBe(false)
+  })
+  it('rejects invalid ids before updating', async () => {
+    const updateMany = vi.fn()
+    await expect(acknowledgeDeliveredAiBudgetAlert({ aiBudgetAlert: { updateMany } } as any, ' ')).rejects.toThrow()
+    expect(updateMany).not.toHaveBeenCalled()
   })
 })

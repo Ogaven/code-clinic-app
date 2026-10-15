@@ -31,3 +31,23 @@ export async function listPendingAiBudgetAlerts(
     return { ...row, level: row.level }
   })
 }
+
+/**
+ * Acknowledge only after an authenticated notification dispatcher confirms
+ * delivery. Conditional update makes repeated acknowledgements harmless.
+ * Never call before delivery; failed sends must remain PENDING for retry.
+ */
+export async function acknowledgeDeliveredAiBudgetAlert(
+  db: Pick<PrismaClient, 'aiBudgetAlert'>,
+  alertId: string,
+  deliveredAt = new Date(),
+): Promise<boolean> {
+  if (!alertId.trim() || !Number.isFinite(deliveredAt.getTime())) {
+    throw new Error('Invalid AI budget alert acknowledgement')
+  }
+  const result = await db.aiBudgetAlert.updateMany({
+    where: { id: alertId, status: 'PENDING' },
+    data: { status: 'SENT', sentAt: deliveredAt },
+  })
+  return result.count === 1
+}
