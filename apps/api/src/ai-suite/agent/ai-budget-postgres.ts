@@ -27,11 +27,14 @@ export async function reserveBudgetAtomic(
   const month = monthKey(args.now ?? new Date())
   return db.$transaction(async tx => {
     await tx.$executeRaw`INSERT INTO ai_budget_months(month_key) VALUES (${month}) ON CONFLICT DO NOTHING`
-    const rows = await tx.$queryRaw<{ openai_spent_usd: Prisma.Decimal; deepseek_spent_usd: Prisma.Decimal }[]>`
-      SELECT openai_spent_usd, deepseek_spent_usd FROM ai_budget_months
+    const rows = await tx.$queryRaw<{ openai_spent_usd: Prisma.Decimal; deepseek_spent_usd: Prisma.Decimal; historically_reconciled: boolean }[]>`
+      SELECT openai_spent_usd, deepseek_spent_usd, historically_reconciled FROM ai_budget_months
       WHERE month_key = ${month} FOR UPDATE
     `
     if (rows.length !== 1) throw new Error('AI budget month ledger unavailable')
+    if (rows[0].historically_reconciled !== true) {
+      throw new AiBudgetExceededError('historical_spending_not_reconciled')
+    }
     const outstanding = await tx.$queryRaw<{ provider: string; reserved_usd: Prisma.Decimal }[]>`
       SELECT provider, reserved_usd FROM ai_budget_reservations
       WHERE month_key = ${month} AND status IN ('RESERVED', 'UNKNOWN')
