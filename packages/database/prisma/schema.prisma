@@ -1979,3 +1979,31 @@ model WalkInSheetExportLease {
 
   @@map("walkin_sheet_export_lease")
 }
+
+
+// Hybrid AI monthly cost ledger. No prompts, PHI or patient identifiers.
+model AiBudgetMonth {
+  monthKey         String   @id @map("month_key")
+  openaiSpentUsd   Decimal  @default(0) @db.Decimal(14, 8) @map("openai_spent_usd")
+  deepseekSpentUsd Decimal  @default(0) @db.Decimal(14, 8) @map("deepseek_spent_usd")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  reservations     AiBudgetReservation[]
+
+  @@map("ai_budget_months")
+}
+
+model AiBudgetReservation {
+  requestId   String        @id @map("request_id")
+  monthKey    String        @map("month_key")
+  month       AiBudgetMonth @relation(fields: [monthKey], references: [monthKey])
+  provider    String
+  reservedUsd Decimal       @db.Decimal(14, 8) @map("reserved_usd")
+  actualUsd   Decimal?      @db.Decimal(14, 8) @map("actual_usd")
+  status      String        @default("RESERVED")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([monthKey, status], map: "ai_budget_reservations_month_status_idx")
+  @@map("ai_budget_reservations")
+}
