@@ -37,6 +37,7 @@ export async function completeRoutineWithDeepSeek(messages: RoutineMessage[]): P
     model: config.deepseekModel,
     messages,
     temperature: 0.3,
+    max_tokens: 256,
   })
   return {
     text: response.choices[0]?.message?.content ?? '',
