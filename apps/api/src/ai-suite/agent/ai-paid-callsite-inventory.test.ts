@@ -11,7 +11,9 @@ describe('agent paid OpenAI Responses call-site inventory', () => {
   it('requires review when the number of direct Responses calls changes', () => {
     const source = readFileSync(resolve(__dirname, 'agent.service.ts'), 'utf8')
     const calls = source.match(/client\.responses\.create\s*\(/g) ?? []
-    expect(calls).toHaveLength(5)
+    expect(calls).toHaveLength(1)
+    const meteredCalls = source.match(/executeAgentOpenAiResponse\s*\(\s*client\s*,/g) ?? []
+    expect(meteredCalls).toHaveLength(5)
   })
 
   it('keeps the hybrid routing disabled by default in production configuration', () => {
