@@ -35,7 +35,7 @@ export async function runMeteredPublicDeepSeekFaq(
       { role: 'system', content: 'Answer only with public general information. If the answer is not certain, say that clinic staff should confirm. Do not invent clinic hours, services, prices, availability or clinical advice.' },
       { role: 'user', content: route.approvedPrompt },
     ])
-    const actualUsd = pricing.actualCostUsd(reply)
+    // Missing or malformed usage must never be booked as zero-cost success.\n    if (!Number.isSafeInteger(reply.inputTokens) || reply.inputTokens <= 0 ||\n        !Number.isSafeInteger(reply.outputTokens) || reply.outputTokens < 0) {\n      throw new Error('Missing or invalid DeepSeek provider token usage')\n    }\n    const actualUsd = pricing.actualCostUsd(reply)
     if (!Number.isFinite(actualUsd) || actualUsd < 0) throw new Error('Unverifiable provider cost')
     const settlement = await settleBudgetAtomic(db, {
       requestId, month: reservation.month, actualUsd,
