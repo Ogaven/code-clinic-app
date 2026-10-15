@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client'
 import { evaluateAiBudget } from './ai-budget-policy'
+import { newlyCrossedAiBudgetAlerts, type AiBudgetAlertLevel } from './ai-budget-alerts'
 import type { AiProvider } from './provider-config'
 
 /**
@@ -56,12 +57,12 @@ export async function reserveBudgetAtomic(
 export async function settleBudgetAtomic(
   db: SqlExecutor,
   args: { requestId: string; month: string; actualUsd: number },
-): Promise<{ overrun: boolean }> {
+): Promise<{ overrun: boolean; alerts: AiBudgetAlertLevel[] }> {
   if (!Number.isFinite(args.actualUsd) || args.actualUsd < 0) throw new Error('Invalid actual AI cost')
   return db.$transaction(async tx => {
     // Same lock order as reservation: month first, reservation second.
-    const months = await tx.$queryRaw<{ month_key: string }[]>`
-      SELECT month_key FROM ai_budget_months WHERE month_key = ${args.month} FOR UPDATE
+    const months = await tx.$queryRaw<{ month_key: string; openai_spent_usd: Prisma.Decimal; deepseek_spent_usd: Prisma.Decimal }[]>`
+      SELECT month_key, openai_spent_usd, deepseek_spent_usd FROM ai_budget_months WHERE month_key = ${args.month} FOR UPDATE
     `
     if (months.length !== 1) throw new Error('AI budget month not found')
     const rows = await tx.$queryRaw<{ provider: string; reserved_usd: Prisma.Decimal; status: string }[]>`
@@ -79,7 +80,11 @@ export async function settleBudgetAtomic(
       UPDATE ai_budget_reservations SET status = 'SETTLED', actual_usd = ${args.actualUsd}, updated_at = now()
       WHERE request_id = ${args.requestId}
     `
-    return { overrun: args.actualUsd > usd(rows[0].reserved_usd) }
+    const previousTotalUsd = usd(months[0].openai_spent_usd) + usd(months[0].deepseek_spent_usd)
+    return {
+      overrun: args.actualUsd > usd(rows[0].reserved_usd),
+      alerts: newlyCrossedAiBudgetAlerts(previousTotalUsd, previousTotalUsd + args.actualUsd),
+    }
   }, { timeout: 10000 })
 }
 
