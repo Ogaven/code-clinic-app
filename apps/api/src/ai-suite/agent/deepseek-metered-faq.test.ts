@@ -61,6 +61,13 @@ describe('metered public FAQ isolation', () => {
     expect(mock.settleBudgetAtomic).not.toHaveBeenCalled()
   })
 
+  it('keeps funds reserved if provider omits token usage', async () => {
+    mock.completeRoutineWithDeepSeek.mockResolvedValue({ text: 'Hello', inputTokens: 0, outputTokens: 0 })
+    await expect(runMeteredPublicDeepSeekFaq(db, 'clinic_location', pricing)).rejects.toThrow('Missing or invalid DeepSeek provider token usage')
+    expect(mock.settleBudgetAtomic).not.toHaveBeenCalled()
+    expect(mock.markBudgetOutcomeUnknown).toHaveBeenCalledOnce()
+  })
+
   it('rejects missing price reservation before provider calls', async () => {
     await expect(runMeteredPublicDeepSeekFaq(db, 'clinic_location', { ...pricing, reserveUsd: 0 })).rejects.toThrow('Invalid verified pricing')
     expect(mock.reserveBudgetAtomic).not.toHaveBeenCalled()
