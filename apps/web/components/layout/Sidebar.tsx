@@ -12,12 +12,18 @@ import {
   ListChecks, Inbox, Phone, Mic, AlertCircle,
   ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
   Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2, ScrollText, UserPlus, Shield,
-  ClipboardList, BarChart2, HelpCircle, Zap, Clock,
+  ClipboardList, BarChart2, HelpCircle, Zap, Clock, CalendarClock,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 interface NavItem  { label: string; href: string; icon: React.ElementType; sub?: NavItem[] }
 interface NavGroup { label?: string; items: NavItem[] }
+
+const PATIENTS_SUB: NavItem[] = [
+  { label: 'Patient Directory', href: '/patients', icon: Users },
+  { label: 'Walk-in QR', href: '/patients/walk-in', icon: ClipboardList },
+  { label: 'Recall Worklist', href: '/crm/recall', icon: CalendarClock },
+]
 
 const AI_SUITE_SUB: NavItem[] = [
   { label: 'Agent Control',          href: '/ai-suite',                        icon: Bot },
@@ -40,7 +46,7 @@ const adminNav: NavGroup[] = [
       { label: 'Scheduling',   href: '/scheduling',   icon: CalendarDays },
       { label: 'Appointments', href: '/appointments', icon: ListChecks },
       { label: 'Waitlist',     href: '/waitlist',     icon: Clock },
-      { label: 'Patients',     href: '/patients',     icon: Users },
+      { label: 'Patients',     href: '/patients',     icon: Users, sub: PATIENTS_SUB },
       { label: 'Staff List',        href: '/employees',             icon: UserCog },
       { label: 'Staff Permissions', href: '/admin/staff/permissions', icon: Shield },
       { label: 'Audit Log',         href: '/audit-log',              icon: ScrollText },
@@ -252,7 +258,7 @@ export default function Sidebar({ role = 'ADMIN', dark = false }: { role?: strin
                     )}
                   </Link>
 
-                  {/* Sub-items (AI Suite sub-nav) */}
+                  {/* Sub-items for expandable navigation groups */}
                   {showSub && item.sub?.map(sub => {
                     const SubIcon = sub.icon
                     const subActive = pathname === sub.href
