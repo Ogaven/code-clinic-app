@@ -16,16 +16,16 @@ function GoogleReviewSummary() {
   const headers={Authorization:`Bearer ${localStorage.getItem('cc_token') || ''}`}
   const get=async (path:string)=>{const response=await fetch(`/api-proxy/business-profile/${path}`,{headers});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||data.error||'Google Business Profile unavailable');return data}
   ;(async()=>{try{
-   const status=await get('status')
-   if(!status.connected)throw new Error('Google Business Profile is not connected')
+   // Match the dashboard's proven location resolution and summary validation.
+   // A stale status flag or informational reason must not hide valid public ratings.
    const locations=await get('locations')
    const available=(locations.results||[]).flatMap((item:{account:string;locations?:{name:string;title?:string}[]})=>(item.locations||[]).map(location=>({account:item.account,...location})))
-   const chosen=available.find((location:{title?:string})=>/code clinic/i.test(location.title||''))
+   const chosen=available.find((location:{title?:string})=>/code clinic/i.test(location.title||'')) || (available.length===1?available[0]:null)
    if(!chosen)throw new Error('Code Clinic Google location is not available')
    const params=new URLSearchParams({accountId:chosen.account,locationId:chosen.name})
    const summary=await get(`reviews/summary?${params.toString()}`)
-   if(summary.averageRating==null||summary.reason)throw new Error('Google review metrics are currently unavailable')
-   if(active)setState({rating:Number(summary.averageRating),count:Number(summary.totalReviewCount),error:'',loading:false})
+   if(summary.connected===false||typeof summary.averageRating!=='number'||!Number.isFinite(summary.averageRating))throw new Error('Google review metrics are currently unavailable')
+   if(active)setState({rating:summary.averageRating,count:typeof summary.totalReviewCount==='number'?summary.totalReviewCount:0,error:'',loading:false})
   }catch(error){if(active)setState({rating:null,count:null,error:error instanceof Error?error.message:'Google reviews unavailable',loading:false})}})()
   return()=>{active=false}
  },[])
