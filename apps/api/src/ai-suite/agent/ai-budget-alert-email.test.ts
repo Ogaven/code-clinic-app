@@ -20,6 +20,6 @@ describe('AI budget alert email configuration', () => {
   })
   it('rejects invalid ports and header injection', () => {
     expect(aiBudgetAlertMailConfigFromEnv({ ...env, AI_BUDGET_ALERT_SMTP_PORT: '0' } as NodeJS.ProcessEnv)).toBeNull()
-    expect(aiBudgetAlertMailConfigFromEnv({ ...env, AI_BUDGET_ALERT_EMAIL_TO: 'admin@example.test\\r\\nBcc: bad@example.test' } as NodeJS.ProcessEnv)).toBeNull()
+    expect(aiBudgetAlertMailConfigFromEnv({ ...env, AI_BUDGET_ALERT_EMAIL_TO: 'admin@example.test\r\nBcc: bad@example.test' } as NodeJS.ProcessEnv)).toBeNull()
   })
 })
