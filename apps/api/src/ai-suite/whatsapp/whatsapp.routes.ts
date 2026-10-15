@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
 import OpenAI from 'openai'
+import { executeAgentOpenAiResponse } from '../agent/agent.service'
 import * as fs from 'fs'
 import { randomUUID } from 'crypto'
 import { isR2Configured, uploadFile } from '../../services/storage/r2'
@@ -533,7 +534,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 const mimeType = media.mimeType || 'image/jpeg'
 
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const visionRes: any = await openai.responses.create({
+                const visionRes: any = await executeAgentOpenAiResponse(openai, {
                   model: 'gpt-5.6-luna',
                   input: [{
                     role: 'user',
@@ -586,7 +587,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 }
 
                 if (extractedText) {
-                  const docRes = await openai.responses.create({
+                  const docRes = await executeAgentOpenAiResponse(openai, {
                     model: 'gpt-5.6-luna',
                     input: [{
                       role:    'user',
