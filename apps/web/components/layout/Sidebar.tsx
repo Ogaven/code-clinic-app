@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { PhoneCall, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import {
@@ -23,6 +23,7 @@ const PATIENTS_SUB: NavItem[] = [
   { label: 'Patient Directory', href: '/patients', icon: Users },
   { label: 'Walk-in QR', href: '/patients/walk-in', icon: ClipboardList },
   { label: 'Recall Worklist', href: '/crm/recall', icon: CalendarClock },
+  { label: 'Recare Calls Tracker', href: '/patients/recare', icon: PhoneCall },
 ]
 
 const AI_SUITE_SUB: NavItem[] = [
