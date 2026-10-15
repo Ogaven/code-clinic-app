@@ -282,11 +282,11 @@ function VoiceNotePlayer({ conversationId, messageId, content }: { conversationI
     } catch { setError(true) } finally { setLoading(false) }
   }
   return <div className="flex flex-col gap-2">
-    {url ? <audio controls preload="none" src={url} className="max-w-full w-[240px]" /> :
-      <button type="button" onClick={loadAudio} disabled={loading} className="text-xs font-semibold underline text-left">
-        {loading ? 'Loading original voice note…' : '▶ Play original voice note'}
-      </button>}
-    {error && <span className="text-xs text-red-600">Recording unavailable. Please use the transcript below.</span>}
+    {url && !error ? <audio controls preload="none" src={url} onError={() => { setError(true); setUrl(null) }} className="max-w-full w-[240px]" /> : null}
+    <button type="button" onClick={loadAudio} disabled={loading} className="text-xs font-semibold underline text-left">
+      {loading ? 'Loading original voice note…' : url && !error ? '↻ Refresh voice note link' : '▶ Play original voice note'}
+    </button>
+    {error && <span className="text-xs text-red-600">Recording unavailable or link expired. Refresh the voice note link to try again.</span>}
     {content.startsWith('[Voice note]:') && <span className="text-xs opacity-75">AI transcript (may contain errors): {content.slice(13).trim()}</span>}
   </div>
 }
