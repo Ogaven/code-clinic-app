@@ -133,7 +133,8 @@ export default function RecareCallsWorkspace() {
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <button disabled={saving || !form.patientId} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving?'Saving…':'Save recare call'}</button>
     </form>
-    <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
+    </>}
+    {tab === 'weekly' && <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
       <h2 className="font-bold dark:text-white">Weekly recare report</h2>
       <p className="text-xs text-gray-500">Select the first day of a seven-day period (Kampala time). Counts reflect recorded outreach entries, not unique patients.</p>
       <div className="flex flex-wrap items-end gap-3">
@@ -143,12 +144,12 @@ export default function RecareCallsWorkspace() {
       </div>
       {weeklyError && <p role="alert" className="text-sm text-red-600">{weeklyError}</p>}
       {weekly && <div className="grid grid-cols-2 gap-3 md:grid-cols-5">{Object.entries(weekly.totals).map(([name, value])=><div key={name} className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800"><p className="text-xs capitalize text-gray-500">{name}</p><p className="text-2xl font-bold dark:text-white">{value}</p></div>)}</div>}
-    </section>
+    </section>}
     {tab === 'tracker' && <section className="overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">
       <div className="flex flex-wrap items-center justify-between gap-3 p-4"><div><h2 className="font-bold text-teal-800 dark:text-teal-300">Recorded Recare Contacts</h2><p className="text-xs text-gray-500">Showing {visibleCalls.length} of the {calls.length} most recent entries. This is not yet the full historical overdue recall list.</p></div><button onClick={()=>void refresh()} className="text-sm text-blue-600">Refresh</button></div>
       <div className="flex flex-wrap gap-3 px-4 pb-4"><input aria-label="Search recorded patients" value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Search patient name…" className={field + ' max-w-sm'} /><select aria-label="Filter recare outcomes" value={outcomeFilter} onChange={e=>setOutcomeFilter(e.target.value)} className={field + ' max-w-xs'}><option value="ALL">All outcomes</option>{outcomes.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
       {loading ? <p className="p-4 text-sm">Loading…</p> : visibleCalls.length===0 ? <p className="p-4 text-sm text-gray-500">No recare calls recorded yet.</p> :
       <table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-gray-50 text-gray-600 dark:bg-gray-800"><tr>{['Patient','Contacted','Method','Response','Booked','Attendance','Recorded by','Notes'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>{visibleCalls.map(c=><tr key={c.id} className="border-t border-gray-100 dark:border-white/10"><td className="p-3"><Link className="text-blue-600 hover:underline" href={`/patients/${c.patientId}`}>{c.patient.firstName} {c.patient.lastName}</Link></td><td className="p-3">{new Date(c.contactedAt).toLocaleString('en-UG')}</td><td className="p-3">{c.contactMethod}</td><td className="p-3">{c.reached}</td><td className="p-3">{c.appointmentSet?'Yes':'No'}</td><td className="p-3">{c.attendance}</td><td className="p-3">{c.recordedByName}</td><td className="p-3">{c.comment||'—'}</td></tr>)}</tbody></table>}
-    </section>
+    </section>}
   </div>
 }
