@@ -133,6 +133,7 @@ export default function TopBar({ title, user, theme, onThemeChange, install }: T
   const router = useRouter()
   const searchInput = useRef<HTMLInputElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [dismissedNav, setDismissedNav] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
@@ -266,13 +267,13 @@ export default function TopBar({ title, user, theme, onThemeChange, install }: T
 
         <nav className="mx-auto hidden h-12 items-center gap-0.5 rounded-full border border-white/70 bg-white/60 px-2.5 shadow-[0_8px_28px_rgba(15,23,42,0.08)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.06] xl:flex" aria-label="Primary navigation">
           {navItems.map(item => (
-            <div key={item.label} className="group/item relative h-full" tabIndex={item.children ? 0 : undefined}>
+            <div key={item.label} className="group/item relative h-full" tabIndex={item.children ? 0 : undefined} onMouseLeave={() => setDismissedNav(null)} onClickCapture={() => { if (item.children) setDismissedNav(item.label) }}>
               {item.href ? (
                 <Link href={item.href} className={navItemCls(isActive(pathname, item))}>{item.label}</Link>
               ) : (
                 <button className={navItemCls(isActive(pathname, item))} aria-haspopup="menu">{item.label}</button>
               )}
-              {item.children && <Dropdown item={item} pathname={pathname} />}
+              {item.children && dismissedNav !== item.label && <Dropdown item={item} pathname={pathname} />}
             </div>
           ))}
         </nav>
