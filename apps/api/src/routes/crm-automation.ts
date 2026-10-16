@@ -695,7 +695,7 @@ const recareCallSchema = z.object({
 // Inclusive Kampala calendar dates; caller metrics count individual outreach entries.
 router.get('/patient-engagement/recare-calls/weekly', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   const start = typeof req.query.start === 'string' ? req.query.start : ''
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(start)) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) {
     res.status(400).json({ error: 'Provide start as YYYY-MM-DD' }); return
   }
   const startAt = new Date(`${start}T00:00:00+03:00`)
