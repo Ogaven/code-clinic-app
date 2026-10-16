@@ -64,7 +64,7 @@ export default function RecareCallsWorkspace() {
       ['Patient ID','Patient name','Contacted','Method','Reached','Booked','Attendance','Recorded by'],
       ...weekly.calls.map(c => [c.patient.id, `${c.patient.firstName} ${c.patient.lastName}`, c.contactedAt, c.contactMethod, c.reached, c.appointmentSet ? 'Yes' : 'No', c.attendance, c.recordedByName]),
     ]
-    const csv = rows.map(row => row.map(escapeCsv).join(',')).join('\\r\\n')
+    const csv = rows.map(row => row.map(escapeCsv).join(',')).join('\r\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     const a = document.createElement('a')
     a.href = url; a.download = `recare-week-${weekly.start}.csv`; a.click()
