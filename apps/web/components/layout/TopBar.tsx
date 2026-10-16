@@ -31,7 +31,10 @@ const roleLabels: Record<string, string> = {
 
 const NAV: NavLink[] = [
   { label: 'Overview', href: '/dashboard' },
-  { label: 'Patients', href: '/patients' },
+  { label: 'Patients', href: '/patients', children: [
+    { label: 'Patients', href: '/patients' },
+    { label: 'Patients Recare Calls Tracker', href: '/patients/recare' },
+  ] },
   { label: 'Appointments', href: '/scheduling' },
   { label: 'Staff', children: [
     { label: 'Staff List', href: '/employees' }, { label: 'Attendance', href: '/admin/staff/attendance' },
