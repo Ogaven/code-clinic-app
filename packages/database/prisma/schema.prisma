@@ -388,6 +388,7 @@ model Patient {
   patientSponsors       PatientSponsor[]
   patientConsents       PatientConsent[]
   botMessageLogs        BotMessageLog[]
+  recareCalls           PatientRecareCall[]
 
   // ── CRM Automation relations (additive) ──
   sequenceEnrollments   SequenceEnrollment[]
@@ -410,6 +411,30 @@ model Patient {
   @@index([balanceStatus])
   @@index([providerId])
   @@map("patients")
+}
+
+
+// Staff-entered patient recare outreach, linked to an existing EMR patient.
+// Append-only calls retain their own author and timestamp; no automatic messaging.
+model PatientRecareCall {
+  id              String    @id @default(uuid())
+  patientId       String
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  contactMethod   String
+  contactedAt     DateTime
+  reached         String
+  appointmentSet  Boolean   @default(false)
+  appointmentDate DateTime?
+  attendance      String    @default("PENDING")
+  rescheduledDate DateTime?
+  comment         String?
+  recordedById    String
+  recordedByName  String
+  createdAt       DateTime  @default(now())
+
+  @@index([patientId, contactedAt])
+  @@index([contactedAt])
+  @@map("patient_recare_calls")
 }
 
 model Service {

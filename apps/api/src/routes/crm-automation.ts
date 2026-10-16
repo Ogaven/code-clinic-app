@@ -5,6 +5,7 @@
 // Mounted at /crm-automation in main.ts.
 // ─────────────────────────────────────────────────────────────────────────
 import { Router, Request, Response } from 'express'
+import { z } from 'zod'
 import { listTreatmentContactAttempts, recordTreatmentContactAttempt, validateContactAttempt } from '../crm-automation/treatment-contact-attempts.service'
 import { requireAuth } from '../middleware/auth'
 import { adminOnly, clinicalStaff, adminAndReceptionist, accountsOrAdmin } from '../middleware/rbac'
@@ -674,6 +675,110 @@ router.post('/waitlist/:id/cancel', requireAuth, adminAndReceptionist, async (re
 router.post('/waitlist/:id/fulfilled', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   await markWaitlistEntryFulfilled(req.params.id)
   res.json({ success: true })
+})
+
+
+const recareCallSchema = z.object({
+  patientId: z.string().uuid(),
+  contactMethod: z.enum(['Call', 'Text', 'WhatsApp', 'Other']),
+  contactedAt: z.string().datetime({ offset: true }),
+  reached: z.enum(['Yes', 'No', 'Not Tried']),
+  appointmentSet: z.boolean(),
+  appointmentDate: z.string().datetime({ offset: true }).nullable().optional(),
+  attendance: z.enum(['PENDING', 'CAME', 'NO_SHOW', 'RESCHEDULED', 'CANCELED']).default('PENDING'),
+  rescheduledDate: z.string().datetime({ offset: true }).nullable().optional(),
+  comment: z.string().max(2000).nullable().optional(),
+}).strict()
+
+
+// Weekly recare summary is calculated from the persisted outreach ledger.
+// Inclusive Kampala calendar dates; caller metrics count individual outreach entries.
+router.get('/patient-engagement/recare-calls/weekly', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const start = typeof req.query.start === 'string' ? req.query.start : ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+    res.status(400).json({ error: 'Provide start as YYYY-MM-DD' }); return
+  }
+  const startAt = new Date(`${start}T00:00:00+03:00`)
+  if (Number.isNaN(startAt.getTime()) || new Date(`${start}T00:00:00Z`).toISOString().slice(0, 10) !== start) {
+    res.status(400).json({ error: 'Invalid calendar date' }); return
+  }
+  const endAt = new Date(startAt.getTime() + 7 * 86400000)
+  try {
+    const calls = await prisma.patientRecareCall.findMany({
+      where: { contactedAt: { gte: startAt, lt: endAt } },
+      orderBy: { contactedAt: 'asc' },
+      select: {
+        id: true, contactedAt: true, contactMethod: true, reached: true, appointmentSet: true,
+        attendance: true, appointmentDate: true, rescheduledDate: true, recordedByName: true,
+        patient: { select: { id: true, firstName: true, lastName: true } },
+      },
+    })
+    res.json({
+      start, endExclusive: endAt.toISOString(),
+      totals: {
+        contacted: calls.length,
+        answered: calls.filter(c => c.reached === 'Yes').length,
+        booked: calls.filter(c => c.appointmentSet).length,
+        came: calls.filter(c => c.attendance === 'CAME').length,
+        rescheduled: calls.filter(c => c.attendance === 'RESCHEDULED').length,
+      },
+      calls,
+    })
+  } catch {
+    res.status(500).json({ error: 'Failed to load weekly recare report' })
+  }
+})
+
+// Staff-only recare call ledger. Every entry is linked to an existing EMR patient;
+// this endpoint does not create patients or send outbound communications.
+router.get('/patient-engagement/recare-calls', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const patientId = typeof req.query.patientId === 'string' ? req.query.patientId : undefined
+  if (patientId && !z.string().uuid().safeParse(patientId).success) {
+    res.status(400).json({ error: 'Invalid patient ID' }); return
+  }
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200)
+  try {
+    const calls = await prisma.patientRecareCall.findMany({
+      where: patientId ? { patientId } : undefined,
+      orderBy: [{ contactedAt: 'desc' }, { createdAt: 'desc' }],
+      take: limit,
+      include: { patient: { select: { id: true, firstName: true, lastName: true, phone: true } } },
+    })
+    res.json({ calls })
+  } catch {
+    res.status(500).json({ error: 'Failed to load recare calls' })
+  }
+})
+
+router.post('/patient-engagement/recare-calls', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const parsed = recareCallSchema.safeParse(req.body)
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid recare call details' }); return }
+  const input = parsed.data
+  if (input.attendance === 'RESCHEDULED' && !input.rescheduledDate) {
+    res.status(400).json({ error: 'Rescheduled date is required' }); return
+  }
+  try {
+    const patient = await prisma.patient.findUnique({ where: { id: input.patientId }, select: { id: true } })
+    if (!patient) { res.status(404).json({ error: 'Patient not found' }); return }
+    const call = await prisma.patientRecareCall.create({
+      data: {
+        patientId: input.patientId,
+        contactMethod: input.contactMethod,
+        contactedAt: new Date(input.contactedAt),
+        reached: input.reached,
+        appointmentSet: input.appointmentSet,
+        appointmentDate: input.appointmentDate ? new Date(input.appointmentDate) : null,
+        attendance: input.attendance,
+        rescheduledDate: input.rescheduledDate ? new Date(input.rescheduledDate) : null,
+        comment: input.comment ?? null,
+        recordedById: req.user!.id,
+        recordedByName: [req.user!.firstName, req.user!.lastName].filter(Boolean).join(' '),
+      },
+    })
+    res.status(201).json({ call })
+  } catch {
+    res.status(500).json({ error: 'Failed to record recare call' })
+  }
 })
 
 export default router

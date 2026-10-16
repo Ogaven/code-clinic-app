@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, CalendarDays, Users, UserCog,
+  LayoutDashboard, CalendarDays, Users, UserCog, PhoneCall,
   Wallet, Receipt, ShoppingBag, CreditCard, FileBarChart,
   Bot, Settings, HeadphonesIcon,
   ChevronLeft, ChevronRight, BookOpen, Package,
@@ -23,6 +23,7 @@ const PATIENTS_SUB: NavItem[] = [
   { label: 'Patient Directory', href: '/patients', icon: Users },
   { label: 'Walk-in QR', href: '/patients/walk-in', icon: ClipboardList },
   { label: 'Recall Worklist', href: '/crm/recall', icon: CalendarClock },
+  { label: 'Recare Calls Tracker', href: '/patients/recare', icon: PhoneCall },
 ]
 
 const AI_SUITE_SUB: NavItem[] = [
