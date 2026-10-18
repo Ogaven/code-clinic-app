@@ -18,6 +18,7 @@ export default function RecareCallsWorkspace() {
   const [visits, setVisits] = useState<Visit[]>([])
   const [visitError, setVisitError] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('ALL')
+  const [repeatOnly, setRepeatOnly] = useState(false)
   const [tab, setTab] = useState<'tracker' | 'weekly'>('tracker')
   const [contactSearch, setContactSearch] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState('ALL')
@@ -123,6 +124,13 @@ export default function RecareCallsWorkspace() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save call') }
     finally { setSaving(false) }
   }
+  const visibleVisits = visits.filter(p =>
+    (priorityFilter === 'ALL' || p.priority === priorityFilter) &&
+    (!repeatOnly || p.totalVisits >= 2) &&
+    `${p.firstName} ${p.lastName}`.toLowerCase().includes(contactSearch.toLowerCase())
+  ).sort((a, b) => (b.daysSince ?? -1) - (a.daysSince ?? -1))
+  const repeatPatients = visits.filter(p => p.totalVisits >= 2).length
+  const overduePatients = visits.filter(p => p.priority === 'High' || p.priority === 'Medium').length
   const visibleCalls = calls.filter(c => {
     const name = `${c.patient.firstName} ${c.patient.lastName}`.toLowerCase()
     return (!contactSearch || name.includes(contactSearch.toLowerCase())) && (outcomeFilter === 'ALL' || c.attendance === outcomeFilter)
@@ -147,10 +155,11 @@ export default function RecareCallsWorkspace() {
     </section>
     <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
       <h2 className="font-bold text-teal-800 dark:text-teal-300">EMR Visit Summary & Recall Priorities</h2>
-      <p className="text-xs text-gray-500">Verified EMR completed appointments only. Shows up to 100 recently updated patients; not the historic periodontal therapy file. Priority bands are provisional time-since-visit categories, not prescribed recall intervals.</p>
-      <div className="flex flex-wrap gap-3"><input className={field + ' max-w-xs'} value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Find patient…" aria-label="Find patient in visit summary"/><select className={field + ' max-w-xs'} value={priorityFilter} onChange={e=>setPriorityFilter(e.target.value)} aria-label="Filter visit priority"><option value="ALL">All priorities</option>{['High','Medium','Low','Recent'].map(p=><option key={p}>{p}</option>)}</select></div>
+      <p className="text-xs text-gray-500">Verified EMR completed appointments only. Shows up to 100 recently updated patients, sorted by days since last visit; not a clinic-wide exhaustive overdue list or the historic periodontal therapy file. Priority bands are provisional time-since-visit categories, not prescribed recall intervals.</p>
+      <div className="flex flex-wrap gap-3"><input className={field + ' max-w-xs'} value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Find patient…" aria-label="Find patient in visit summary"/><select className={field + ' max-w-xs'} value={priorityFilter} onChange={e=>setPriorityFilter(e.target.value)} aria-label="Filter visit priority"><option value="ALL">All priorities</option>{['High','Medium','Low','Recent'].map(p=><option key={p}>{p}</option>)}</select><label className="flex items-center gap-2 text-sm dark:text-white"><input type="checkbox" checked={repeatOnly} onChange={e=>setRepeatOnly(e.target.checked)}/>Repeat patients only</label></div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[['Patients in summary',visits.length],['Repeat patients',repeatPatients],['180+ days since visit',overduePatients],['Matching filters',visibleVisits.length]].map(([name,count])=><div key={name} className="rounded-lg bg-teal-50 p-3 dark:bg-gray-800"><p className="text-xs text-gray-600 dark:text-gray-300">{name}</p><p className="text-xl font-bold text-teal-800 dark:text-teal-300">{count}</p></div>)}</div>
       {visitError && <p role="alert" className="text-sm text-red-600">{visitError}</p>}
-      <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-sm"><thead className="bg-teal-50 text-teal-900 dark:bg-gray-800 dark:text-teal-200"><tr>{['Patient','Repeat?','Total visits','First visit','Last visit','Days since','Priority'].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{visits.filter(p=>(priorityFilter==='ALL'||p.priority===priorityFilter)&&`${p.firstName} ${p.lastName}`.toLowerCase().includes(contactSearch.toLowerCase())).map(p=><tr key={p.id} className="border-t border-gray-100 dark:border-white/10"><td className="p-3"><Link href={`/patients/${p.id}`} className="text-blue-600 hover:underline">{p.firstName} {p.lastName}</Link></td><td className="p-3">{p.totalVisits>=2?'Yes':'No'}</td><td className="p-3">{p.totalVisits}</td><td className="p-3">{p.firstVisit?new Date(p.firstVisit).toLocaleDateString('en-UG'):'—'}</td><td className="p-3">{p.lastVisit?new Date(p.lastVisit).toLocaleDateString('en-UG'):'—'}</td><td className="p-3">{p.daysSince??'—'}</td><td className="p-3">{p.priority}</td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-sm"><thead className="bg-teal-50 text-teal-900 dark:bg-gray-800 dark:text-teal-200"><tr>{['Patient','Repeat?','Total visits','First visit','Last visit','Days since','Priority'].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{visibleVisits.map(p=><tr key={p.id} className="border-t border-gray-100 dark:border-white/10"><td className="p-3"><Link href={`/patients/${p.id}`} className="text-blue-600 hover:underline">{p.firstName} {p.lastName}</Link></td><td className="p-3">{p.totalVisits>=2?'Yes':'No'}</td><td className="p-3">{p.totalVisits}</td><td className="p-3">{p.firstVisit?new Date(p.firstVisit).toLocaleDateString('en-UG'):'—'}</td><td className="p-3">{p.lastVisit?new Date(p.lastVisit).toLocaleDateString('en-UG'):'—'}</td><td className="p-3">{p.daysSince??'—'}</td><td className="p-3">{p.priority}</td></tr>)}</tbody></table></div>
       {visits.length===0&&!visitError&&<p className="text-xs text-gray-500">No verified completed-visit summary entries returned.</p>}
     </section>
     <form onSubmit={submit} className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
