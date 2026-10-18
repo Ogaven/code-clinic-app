@@ -750,7 +750,7 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
     const patientIds = page.map(g => g.patientId)
     const patientRows = await prisma.patient.findMany({
       where: { id: { in: patientIds } },
-      select: { id: true, firstName: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true, recareCalls: { orderBy: [{ contactedAt: 'desc' }, { createdAt: 'desc' }], take: 1, select: { contactMethod: true, contactedAt: true, reached: true, appointmentSet: true, appointmentDate: true, attendance: true, rescheduledDate: true, recordedByName: true, comment: true } } },
     })
     const patientById = new Map(patientRows.map(p => [p.id, p]))
     const now = Date.now()
@@ -766,6 +766,7 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
         const daysSince = last ? Math.max(0, Math.floor((now - last.getTime()) / 86400000)) : null
         return [{
           id: p.id, firstName: p.firstName, lastName: p.lastName,
+          latestRecareCall: p.recareCalls[0] ?? null,
           totalVisits: g._count.id, firstVisit: first?.toISOString() ?? null,
           lastVisit: last?.toISOString() ?? null, daysSince,
           priority: daysSince === null ? 'Unknown' : daysSince >= 365 ? 'High' : daysSince >= 180 ? 'Medium' : daysSince >= 90 ? 'Low' : 'Recent',
