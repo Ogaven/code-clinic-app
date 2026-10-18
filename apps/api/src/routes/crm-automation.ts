@@ -733,6 +733,8 @@ router.get('/patient-engagement/recare-calls/weekly', requireAuth, adminAndRecep
 // It deliberately excludes the unverified historic HTML export and avoids name-based joins.
 router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200)
+  const offset = Number(req.query.offset ?? 0)
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) { res.status(400).json({ error: 'Invalid recare offset' }); return }
   try {
     const completedStatuses = ['COMPLETED', 'SESSION_COMPLETE', 'DEPARTED'] as const
     const grouped = await prisma.appointment.groupBy({
@@ -740,9 +742,12 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
       where: { status: { in: [...completedStatuses] }, startAt: { lte: new Date() } },
       _count: { id: true }, _min: { startAt: true }, _max: { startAt: true },
       orderBy: [{ _max: { startAt: 'asc' } }, { patientId: 'asc' }],
-      take: limit,
+      skip: offset,
+      take: limit + 1,
     })
-    const patientIds = grouped.map(g => g.patientId)
+    const hasMore = grouped.length > limit
+    const page = grouped.slice(0, limit)
+    const patientIds = page.map(g => g.patientId)
     const patientRows = await prisma.patient.findMany({
       where: { id: { in: patientIds } },
       select: { id: true, firstName: true, lastName: true },
@@ -752,7 +757,8 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
     res.json({
       source: 'EMR_COMPLETED_APPOINTMENTS',
       scope: 'Oldest last completed appointment first across EMR patients; up to 200 patients, not the historic periodontal therapy export',
-      patients: grouped.flatMap(g => {
+      pagination: { offset, limit, hasMore, nextOffset: hasMore ? offset + limit : null },
+      patients: page.flatMap(g => {
         const p = patientById.get(g.patientId)
         if (!p) return []
         const first = g._min.startAt
