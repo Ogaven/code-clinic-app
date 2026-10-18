@@ -729,6 +729,45 @@ router.get('/patient-engagement/recare-calls/weekly', requireAuth, adminAndRecep
   }
 })
 
+// Recare visit summary derived from existing EMR appointment records only.
+// It deliberately excludes the unverified historic HTML export and avoids name-based joins.
+router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200)
+  try {
+    const patients = await prisma.patient.findMany({
+      where: { appointments: { some: { status: { in: ['COMPLETED', 'SESSION_COMPLETE', 'DEPARTED'] } } } },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+      select: {
+        id: true, firstName: true, lastName: true,
+        appointments: {
+          where: { status: { in: ['COMPLETED', 'SESSION_COMPLETE', 'DEPARTED'] } },
+          select: { startAt: true },
+          orderBy: { startAt: 'asc' },
+        },
+      },
+    })
+    const now = Date.now()
+    res.json({
+      source: 'EMR_COMPLETED_APPOINTMENTS',
+      scope: 'Recent updated patients with recorded completed visits; not the historic periodontal therapy export',
+      patients: patients.map(p => {
+        const dates = p.appointments.map(a => a.startAt.toISOString())
+        const last = p.appointments[p.appointments.length - 1]?.startAt
+        const daysSince = last ? Math.max(0, Math.floor((now - last.getTime()) / 86400000)) : null
+        return {
+          id: p.id, firstName: p.firstName, lastName: p.lastName,
+          totalVisits: dates.length, firstVisit: dates[0] || null,
+          lastVisit: dates[dates.length - 1] || null, daysSince,
+          priority: daysSince === null ? 'Unknown' : daysSince >= 365 ? 'High' : daysSince >= 180 ? 'Medium' : daysSince >= 90 ? 'Low' : 'Recent',
+        }
+      }),
+    })
+  } catch {
+    res.status(500).json({ error: 'Failed to load recare visit summary' })
+  }
+})
+
 // Staff-only recare call ledger. Every entry is linked to an existing EMR patient;
 // this endpoint does not create patients or send outbound communications.
 router.get('/patient-engagement/recare-calls', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
