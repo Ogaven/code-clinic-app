@@ -734,12 +734,19 @@ router.get('/patient-engagement/recare-calls/weekly', requireAuth, adminAndRecep
 router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200)
   const offset = Number(req.query.offset ?? 0)
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : ''
+  if (search.length > 100) { res.status(400).json({ error: 'Search is too long' }); return }
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) { res.status(400).json({ error: 'Invalid recare offset' }); return }
   try {
     const completedStatuses = ['COMPLETED', 'SESSION_COMPLETE', 'DEPARTED'] as const
+    const matchingPatients = search ? await prisma.patient.findMany({
+      where: { OR: [{ firstName: { contains: search, mode: 'insensitive' } }, { lastName: { contains: search, mode: 'insensitive' } }, { id: { equals: search } }] },
+      select: { id: true },
+    }) : null
     const grouped = await prisma.appointment.groupBy({
       by: ['patientId'],
-      where: { status: { in: [...completedStatuses] }, startAt: { lte: new Date() } },
+      where: { status: { in: [...completedStatuses] }, startAt: { lte: new Date() },
+        ...(matchingPatients ? { patientId: { in: matchingPatients.map(p => p.id) } } : {}) },
       _count: { id: true }, _min: { startAt: true }, _max: { startAt: true },
       orderBy: [{ _max: { startAt: 'asc' } }, { patientId: 'asc' }],
       skip: offset,
@@ -752,6 +759,19 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
       where: { id: { in: patientIds } },
       select: { id: true, firstName: true, lastName: true },
     })
+    // Fetch latest outreach for every patient on this page, independent of the
+    // clinic-wide recent-call limit. Never infer contact history by name/phone.
+    const pageCalls = patientIds.length ? await prisma.patientRecareCall.findMany({
+      where: { patientId: { in: patientIds } },
+      orderBy: [{ contactedAt: 'desc' }, { createdAt: 'desc' }],
+      select: { patientId: true, contactedAt: true, contactMethod: true, reached: true,
+        recordedByName: true, appointmentSet: true, appointmentDate: true,
+        attendance: true, rescheduledDate: true, comment: true },
+    }) : []
+    const latestCallByPatient = new Map<string, (typeof pageCalls)[number]>()
+    for (const call of pageCalls) {
+      if (!latestCallByPatient.has(call.patientId)) latestCallByPatient.set(call.patientId, call)
+    }
     const patientById = new Map(patientRows.map(p => [p.id, p]))
     const now = Date.now()
     res.json({
@@ -768,6 +788,7 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
           id: p.id, firstName: p.firstName, lastName: p.lastName,
           totalVisits: g._count.id, firstVisit: first?.toISOString() ?? null,
           lastVisit: last?.toISOString() ?? null, daysSince,
+          latestRecareCall: latestCallByPatient.get(p.id) ?? null,
           priority: daysSince === null ? 'Unknown' : daysSince >= 365 ? 'High' : daysSince >= 180 ? 'Medium' : daysSince >= 90 ? 'Low' : 'Recent',
         }]
       }),
