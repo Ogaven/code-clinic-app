@@ -63,6 +63,14 @@ export default function RecareCallsWorkspace() {
     }, 250)
     return () => { clearTimeout(id); controller.abort() }
   }, [search])
+  function shiftWeek(days: number) {
+    if (!weekStart) return
+    const d = new Date(`${weekStart}T12:00:00Z`)
+    if (Number.isNaN(d.getTime())) return
+    d.setUTCDate(d.getUTCDate() + days)
+    setWeekStart(d.toISOString().slice(0, 10))
+    setWeekly(null)
+  }
   async function loadWeekly() {
     if (!weekStart) return
     setWeeklyError('')
@@ -159,11 +167,15 @@ export default function RecareCallsWorkspace() {
       <p className="text-xs text-gray-500">Select the first day of a seven-day period (Kampala time). Counts reflect recorded outreach entries, not unique patients.</p>
       <div className="flex flex-wrap items-end gap-3">
         <label className={label}>Week starting<input type="date" className={field} value={weekStart} onChange={e => { setWeekStart(e.target.value); setWeekly(null) }} /></label>
+        <button type="button" onClick={()=>shiftWeek(-7)} disabled={!weekStart} className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:text-white">← Previous week</button>
+        <button type="button" onClick={()=>shiftWeek(7)} disabled={!weekStart} className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:text-white">Next week →</button>
         <button onClick={()=>void loadWeekly()} disabled={!weekStart} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Load report</button>
         {weekly && <button onClick={exportWeeklyCsv} className="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:text-white">Export CSV</button>}
       </div>
       {weeklyError && <p role="alert" className="text-sm text-red-600">{weeklyError}</p>}
       {weekly && <div className="grid grid-cols-2 gap-3 md:grid-cols-5">{Object.entries(weekly.totals).map(([name, value])=><div key={name} className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800"><p className="text-xs capitalize text-gray-500">{name}</p><p className="text-2xl font-bold dark:text-white">{value}</p></div>)}</div>}
+      {weekly && <div className="overflow-x-auto"><h3 className="mb-2 font-semibold dark:text-white">Patient outreach this week</h3><table className="w-full min-w-[850px] text-left text-sm"><thead className="bg-teal-50 text-teal-900 dark:bg-gray-800 dark:text-teal-200"><tr>{['Patient','Contacted','Method','Response','Booked','Attendance','Staff'].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{weekly.calls.map(c=><tr key={c.id} className="border-t border-gray-100 dark:border-white/10"><td className="p-3"><Link className="text-blue-600 hover:underline" href={`/patients/${c.patient.id}`}>{c.patient.firstName} {c.patient.lastName}</Link></td><td className="p-3">{new Date(c.contactedAt).toLocaleDateString('en-UG')}</td><td className="p-3">{c.contactMethod}</td><td className="p-3">{c.reached}</td><td className="p-3">{c.appointmentSet?'Yes':'No'}</td><td className="p-3">{c.attendance}</td><td className="p-3">{c.recordedByName}</td></tr>)}</tbody></table>{weekly.calls.length===0&&<p className="p-3 text-sm text-gray-500">No outreach recorded for this period.</p>}</div>}
+      {weekly && <div className="space-y-2"><h3 className="font-semibold dark:text-white">Staff outreach activity</h3><div className="flex flex-wrap gap-2">{Object.entries(weekly.calls.reduce<Record<string,number>>((acc,c)=>{acc[c.recordedByName]=(acc[c.recordedByName]||0)+1;return acc},{})).map(([name,count])=><span key={name} className="rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-gray-800 dark:text-white">{name}: {count} contacts</span>)}{weekly.calls.length===0&&<span className="text-sm text-gray-500">No staff activity recorded.</span>}</div></div>}
     </section>}
     {tab === 'tracker' && <section className="overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">
       <div className="flex flex-wrap items-center justify-between gap-3 p-4"><div><h2 className="font-bold text-teal-800 dark:text-teal-300">Recorded Recare Contacts</h2><p className="text-xs text-gray-500">Showing {visibleCalls.length} of the {calls.length} most recent entries. This is not yet the full historical overdue recall list.</p></div><button onClick={()=>void refresh()} className="text-sm text-blue-600">Refresh</button></div>
