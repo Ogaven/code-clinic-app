@@ -93,6 +93,16 @@ export default function RecareCallsWorkspace() {
     a.href = url; a.download = `recare-week-${weekly.start}.csv`; a.click()
     URL.revokeObjectURL(url)
   }
+  function printWeeklyReport() {
+    if (!weekly) return
+    const safe = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+    const rows = weekly.calls.map(c => '<tr>' + [`${c.patient.firstName} ${c.patient.lastName}`, new Date(c.contactedAt).toLocaleDateString('en-UG'), c.contactMethod, c.reached, c.appointmentSet ? 'Yes' : 'No', c.attendance, c.recordedByName].map(v => `<td>${safe(v)}</td>`).join('') + '</tr>').join('')
+    const staff = Object.entries(weekly.calls.reduce<Record<string, number>>((a, c) => { a[c.recordedByName] = (a[c.recordedByName] || 0) + 1; return a }, {})).map(([name, count]) => `<li>${safe(name)}: ${count} contacts</li>`).join('')
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Recare weekly report ${safe(weekly.start)}</title><style>body{font:13px Arial,sans-serif;padding:24px;color:#123}h1{color:#126b64}table{border-collapse:collapse;width:100%;margin-top:16px}td,th{border:1px solid #ddd;padding:7px;text-align:left}th{background:#edf7f5}ul{line-height:1.8}@page{size:A4 landscape;margin:12mm}</style></head><body><h1>Code Clinic — Weekly Recare Report</h1><p>Week starting ${safe(weekly.start)} (Kampala time). Counts represent outreach entries, not unique patients.</p><p>Contacted: ${weekly.totals.contacted} · Answered: ${weekly.totals.answered} · Booked: ${weekly.totals.booked} · Came: ${weekly.totals.came} · Rescheduled: ${weekly.totals.rescheduled}</p><h2>Patient outreach</h2><table><thead><tr><th>Patient</th><th>Contacted</th><th>Method</th><th>Response</th><th>Booked</th><th>Attendance</th><th>Staff</th></tr></thead><tbody>${rows}</tbody></table><h2>Staff activity</h2><ul>${staff}</ul><p>Confidential patient information — authorized staff only.</p></body></html>`
+    const popup = window.open('', '_blank')
+    if (!popup) { setWeeklyError('Allow pop-ups to print or save the weekly report as PDF.'); return }
+    popup.document.open(); popup.document.write(html); popup.document.close(); popup.focus(); popup.print()
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setError('')
     if (!form.patientId || !form.contactedAt) { setError('Select a patient and contact date.'); return }
@@ -171,6 +181,7 @@ export default function RecareCallsWorkspace() {
         <button type="button" onClick={()=>shiftWeek(7)} disabled={!weekStart} className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:text-white">Next week →</button>
         <button onClick={()=>void loadWeekly()} disabled={!weekStart} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Load report</button>
         {weekly && <button onClick={exportWeeklyCsv} className="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:text-white">Export CSV</button>}
+        {weekly && <button type="button" onClick={printWeeklyReport} className="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:text-white">Print / Save PDF</button>}
       </div>
       {weeklyError && <p role="alert" className="text-sm text-red-600">{weeklyError}</p>}
       {weekly && <div className="grid grid-cols-2 gap-3 md:grid-cols-5">{Object.entries(weekly.totals).map(([name, value])=><div key={name} className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800"><p className="text-xs capitalize text-gray-500">{name}</p><p className="text-2xl font-bold dark:text-white">{value}</p></div>)}</div>}
