@@ -739,7 +739,6 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
     const visits = await prisma.appointment.groupBy({
       by: ['patientId'],
       where: {
-        patientId: { not: null },
         startAt: { lte: new Date() },
         status: { in: ['COMPLETED', 'SESSION_COMPLETE', 'DEPARTED'] },
       },
@@ -749,7 +748,7 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
       orderBy: { _max: { startAt: 'asc' } },
       take: limit,
     })
-    const patientIds = visits.map(v => v.patientId).filter((id): id is string => !!id)
+    const patientIds = visits.map(v => v.patientId)
     const patients = await prisma.patient.findMany({
       where: { id: { in: patientIds } },
       select: { id: true, firstName: true, lastName: true },
@@ -760,14 +759,14 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
       source: 'EMR_COMPLETED_APPOINTMENTS',
       scope: 'Clinic-wide ranking of oldest last completed EMR appointment; response limited to the first requested patients, not the historic periodontal therapy export',
       patients: visits.flatMap(v => {
-        const p = patientById.get(v.patientId || '')
+        const p = patientById.get(v.patientId)
         if (!p) return []
-        const first = v._min.startAt
-        const last = v._max.startAt
+        const first = v._min?.startAt
+        const last = v._max?.startAt
         const daysSince = last ? Math.max(0, Math.floor((now - last.getTime()) / 86400000)) : null
         return [{
           id: p.id, firstName: p.firstName, lastName: p.lastName,
-          totalVisits: v._count.id, firstVisit: first?.toISOString() || null,
+          totalVisits: v._count?.id ?? 0, firstVisit: first?.toISOString() || null,
           lastVisit: last?.toISOString() || null, daysSince,
           priority: daysSince === null ? 'Unknown' : daysSince >= 365 ? 'High' : daysSince >= 180 ? 'Medium' : daysSince >= 90 ? 'Low' : 'Recent',
         }]
