@@ -743,15 +743,28 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
       where: { OR: [{ firstName: { contains: search, mode: 'insensitive' } }, { lastName: { contains: search, mode: 'insensitive' } }, { id: { equals: search } }] },
       select: { id: true },
     }) : null
+    const visitWhere = { status: { in: [...completedStatuses] }, startAt: { lte: new Date() },
+      ...(matchingPatients ? { patientId: { in: matchingPatients.map(p => p.id) } } : {}) }
     const grouped = await prisma.appointment.groupBy({
       by: ['patientId'],
-      where: { status: { in: [...completedStatuses] }, startAt: { lte: new Date() },
-        ...(matchingPatients ? { patientId: { in: matchingPatients.map(p => p.id) } } : {}) },
+      where: visitWhere,
       _count: { id: true }, _min: { startAt: true }, _max: { startAt: true },
       orderBy: [{ _max: { startAt: 'asc' } }, { patientId: 'asc' }],
       skip: offset,
       take: limit + 1,
     })
+    // Clinic-wide counts are calculated before pagination and respect patient search.
+    // These are provisional visit-age bands, not clinically prescribed recall intervals.
+    const allVisitGroups = await prisma.appointment.groupBy({
+      by: ['patientId'], where: visitWhere,
+      _count: { id: true }, _max: { startAt: true },
+    })
+    const summaryNow = Date.now()
+    const totals = {
+      patients: allVisitGroups.length,
+      repeatPatients: allVisitGroups.filter(g => g._count.id >= 2).length,
+      days180Plus: allVisitGroups.filter(g => g._max.startAt && summaryNow - g._max.startAt.getTime() >= 180 * 86400000).length,
+    }
     const hasMore = grouped.length > limit
     const page = grouped.slice(0, limit)
     const patientIds = page.map(g => g.patientId)
@@ -778,6 +791,7 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
       source: 'EMR_COMPLETED_APPOINTMENTS',
       scope: 'Oldest last completed appointment first across EMR patients; up to 200 patients, not the historic periodontal therapy export',
       pagination: { offset, limit, hasMore, nextOffset: hasMore ? offset + limit : null },
+      totals,
       patients: page.flatMap(g => {
         const p = patientById.get(g.patientId)
         if (!p) return []

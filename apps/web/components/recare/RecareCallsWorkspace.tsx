@@ -16,6 +16,7 @@ function toISO(value: string) { return value ? new Date(value).toISOString() : n
 export default function RecareCallsWorkspace() {
   const [calls, setCalls] = useState<Call[]>([])
   const [visits, setVisits] = useState<Visit[]>([])
+  const [clinicTotals, setClinicTotals] = useState<{patients:number;repeatPatients:number;days180Plus:number}|null>(null)
   const [visitOffset, setVisitOffset] = useState(0)
   const [visitHasMore, setVisitHasMore] = useState(false)
   const [visitLoading, setVisitLoading] = useState(false)
@@ -56,8 +57,8 @@ export default function RecareCallsWorkspace() {
     setVisitError('')
     fetch(`/api-proxy/crm-automation/patient-engagement/recare-visit-summary?limit=100&offset=${visitOffset}&search=${encodeURIComponent(visitSearch)}`, { headers: { Authorization: `Bearer ${token()}` } })
       .then(async r => { if (!r.ok) throw new Error('Could not load visit summary'); return r.json() })
-      .then(data => { if (active) { setVisits(data.patients || []); setVisitHasMore(Boolean(data.pagination?.hasMore)) } })
-      .catch(() => { if (active) { setVisitError('Visit summary unavailable'); setVisits([]); setVisitHasMore(false) } })
+      .then(data => { if (active) { setVisits(data.patients || []); setClinicTotals(data.totals || null); setVisitHasMore(Boolean(data.pagination?.hasMore)) } })
+      .catch(() => { if (active) { setVisitError('Visit summary unavailable'); setVisits([]); setClinicTotals(null); setVisitHasMore(false) } })
       .finally(() => { if (active) setVisitLoading(false) })
     return () => { active = false }
   }, [visitOffset, visitSearch])
@@ -145,9 +146,7 @@ export default function RecareCallsWorkspace() {
     const previous = latestCallByPatient.get(call.patientId)
     if (!previous || new Date(call.contactedAt).getTime() > new Date(previous.contactedAt).getTime()) latestCallByPatient.set(call.patientId, call)
   }
-  const repeatPatients = visits.filter(p => p.totalVisits >= 2).length
-  const overduePatients = visits.filter(p => p.priority === 'High' || p.priority === 'Medium').length
-  const visibleCalls = calls.filter(c => {
+    const visibleCalls = calls.filter(c => {
     const name = `${c.patient.firstName} ${c.patient.lastName}`.toLowerCase()
     return (!contactSearch || name.includes(contactSearch.toLowerCase())) && (outcomeFilter === 'ALL' || c.attendance === outcomeFilter)
   })
@@ -171,9 +170,9 @@ export default function RecareCallsWorkspace() {
     </section>
     <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
       <h2 className="font-bold text-teal-800 dark:text-teal-300">EMR Visit Summary & Recall Priorities</h2>
-      <p className="text-xs text-gray-500">Verified EMR completed appointments only. Shows 100 patients per page, ordered clinic-wide by oldest last completed appointment; counts and priority filters apply only to this page; patient-name search searches all eligible EMR patients or historic periodontal therapy file. Outreach columns show the latest recorded contact for each patient on this page, including older contacts. Priority bands are provisional time-since-visit categories, not prescribed recall intervals.</p>
+      <p className="text-xs text-gray-500">Verified EMR completed appointments only. Shows 100 patients per page, ordered clinic-wide by oldest last completed appointment; clinic-wide totals respect patient-name search; priority filters and matching counts apply to the current page or historic periodontal therapy file. Outreach columns show the latest recorded contact for each patient on this page, including older contacts. Priority bands are provisional time-since-visit categories, not prescribed recall intervals.</p>
       <div className="flex flex-wrap gap-3"><input className={field + ' max-w-xs'} value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Find patient…" aria-label="Find patient in visit summary"/><select className={field + ' max-w-xs'} value={priorityFilter} onChange={e=>setPriorityFilter(e.target.value)} aria-label="Filter visit priority"><option value="ALL">All priorities</option>{['High','Medium','Low','Recent'].map(p=><option key={p}>{p}</option>)}</select><label className="flex items-center gap-2 text-sm dark:text-white"><input type="checkbox" checked={repeatOnly} onChange={e=>setRepeatOnly(e.target.checked)}/>Repeat patients only</label></div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[['Patients in summary',visits.length],['Repeat patients',repeatPatients],['180+ days since visit',overduePatients],['Matching filters',visibleVisits.length]].map(([name,count])=><div key={name} className="rounded-lg bg-teal-50 p-3 dark:bg-gray-800"><p className="text-xs text-gray-600 dark:text-gray-300">{name}</p><p className="text-xl font-bold text-teal-800 dark:text-teal-300">{count}</p></div>)}</div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[['Clinic-wide patients',clinicTotals?.patients ?? '—'],['Clinic-wide repeat patients',clinicTotals?.repeatPatients ?? '—'],['Clinic-wide 180+ days',clinicTotals?.days180Plus ?? '—'],['Matches on this page',visibleVisits.length]].map(([name,count])=><div key={name} className="rounded-lg bg-teal-50 p-3 dark:bg-gray-800"><p className="text-xs text-gray-600 dark:text-gray-300">{name}</p><p className="text-xl font-bold text-teal-800 dark:text-teal-300">{count}</p></div>)}</div>
       {visitError && <p role="alert" className="text-sm text-red-600">{visitError}</p>}
       <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-sm"><thead className="bg-teal-50 text-teal-900 dark:bg-gray-800 dark:text-teal-200"><tr>{['Patient','Repeat?','Total visits','First visit','Last visit','Days since','Priority','Last contact','Method','Reached','Called by','Booked?','Appointment date','Attendance','Rescheduled','Comment'].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{visibleVisits.map(p=><tr key={p.id} className="border-t border-gray-100 dark:border-white/10"><td className="p-3"><Link href={`/patients/${p.id}`} className="text-blue-600 hover:underline">{p.firstName} {p.lastName}</Link></td><td className="p-3">{p.totalVisits>=2?'Yes':'No'}</td><td className="p-3">{p.totalVisits}</td><td className="p-3">{p.firstVisit?new Date(p.firstVisit).toLocaleDateString('en-UG'):'—'}</td><td className="p-3">{p.lastVisit?new Date(p.lastVisit).toLocaleDateString('en-UG'):'—'}</td><td className="p-3">{p.daysSince??'—'}</td><td className="p-3">{p.priority}</td>{(()=>{const c=p.latestRecareCall;const date=(v:string|null|undefined)=>v?new Date(v).toLocaleDateString('en-UG'):'—';return <><td className="p-3">{date(c?.contactedAt)}</td><td className="p-3">{c?.contactMethod??'—'}</td><td className="p-3">{c?.reached??'—'}</td><td className="p-3">{c?.recordedByName??'—'}</td><td className="p-3">{c?c.appointmentSet?'Yes':'No':'—'}</td><td className="p-3">{date(c?.appointmentDate)}</td><td className="p-3">{c?.attendance??'—'}</td><td className="p-3">{date(c?.rescheduledDate)}</td><td className="max-w-64 truncate p-3" title={c?.comment??''}>{c?.comment??'—'}</td></>})()}</tr>)}</tbody></table></div>
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm dark:text-white"><span>Showing page {Math.floor(visitOffset / 100) + 1} · {visits.length} patients {visitLoading ? '· Loading…' : ''}</span><div className="flex gap-2"><button type="button" disabled={visitOffset===0||visitLoading} onClick={()=>setVisitOffset(n=>Math.max(0,n-100))} className="rounded-lg border px-3 py-2 disabled:opacity-40">Previous 100</button><button type="button" disabled={!visitHasMore||visitLoading} onClick={()=>setVisitOffset(n=>n+100)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Next 100</button></div></div>
