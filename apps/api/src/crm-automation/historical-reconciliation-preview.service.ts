@@ -8,7 +8,7 @@ import { classifyHistoricalReconciliation } from './historical-reconciliation-cl
  * never assert patientLinkVerified from a bare convertedToPatientId.
  */
 export async function previewHistoricalReconciliation() {
-  const summary = { scanned: 0, eligible: 0, manualReview: 0, unmatched: 0, skipped: 0 }
+  const summary = { scanned: 0, eligible: 0, manualReview: 0, unmatched: 0, skipped: 0, failures: 0 }
   const reasons: Record<string, number> = {}
   let cursor: string | undefined
   while (true) {
@@ -19,6 +19,7 @@ export async function previewHistoricalReconciliation() {
     })
     if (!leads.length) break
     for (const lead of leads) {
+      try {
       let appointmentPatientId: string | null = null
       let appointmentCreatedAt: Date | null = null
       let appointmentStatus: string | null = null
@@ -52,6 +53,14 @@ export async function previewHistoricalReconciliation() {
       else if (decision.classification === 'UNMATCHED') summary.unmatched++
       else summary.skipped++
       reasons[decision.reason] = (reasons[decision.reason] ?? 0) + 1
+      } catch (error) {
+        // A single malformed or inaccessible record must not hide the rest of the audit.
+        // Do not log patient identifiers or record contents.
+        summary.scanned++
+        summary.failures++
+        reasons['record_scan_failed'] = (reasons['record_scan_failed'] ?? 0) + 1
+        console.error('[CRM] Historical reconciliation record scan failed', error instanceof Error ? error.name : 'UnknownError')
+      }
     }
     cursor = leads[leads.length - 1].id
   }
