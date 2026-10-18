@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 
+type Visit = { id: string; firstName: string; lastName: string; totalVisits: number; firstVisit: string | null; lastVisit: string | null; daysSince: number | null; priority: string }
 type Weekly = { start: string; totals: { contacted: number; answered: number; booked: number; came: number; rescheduled: number }; calls: Call[] }
 type Call = {
   id: string; patientId: string; contactMethod: string; contactedAt: string;
@@ -14,6 +15,9 @@ const empty = { patientId: '', contactMethod: 'Call', contactedAt: '', reached: 
 function toISO(value: string) { return value ? new Date(value).toISOString() : null }
 export default function RecareCallsWorkspace() {
   const [calls, setCalls] = useState<Call[]>([])
+  const [visits, setVisits] = useState<Visit[]>([])
+  const [visitError, setVisitError] = useState('')
+  const [priorityFilter, setPriorityFilter] = useState('ALL')
   const [tab, setTab] = useState<'tracker' | 'weekly'>('tracker')
   const [contactSearch, setContactSearch] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState('ALL')
@@ -37,6 +41,14 @@ export default function RecareCallsWorkspace() {
     finally { setLoading(false) }
   }, [])
   useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    let active = true
+    fetch('/api-proxy/crm-automation/patient-engagement/recare-visit-summary', { headers: { Authorization: `Bearer ${token()}` } })
+      .then(async r => { if (!r.ok) throw new Error('Could not load visit summary'); return r.json() })
+      .then(data => { if (active) setVisits(data.patients || []) })
+      .catch(() => { if (active) setVisitError('Visit summary unavailable') })
+    return () => { active = false }
+  }, [])
   useEffect(() => {
     if (search.trim().length < 2) { setPatients([]); return }
     const controller = new AbortController()
@@ -114,6 +126,14 @@ export default function RecareCallsWorkspace() {
       <h2 className="font-bold text-teal-800 dark:text-teal-300">Recare Outcomes</h2>
       <p className="text-xs text-gray-500">Based on the most recent {calls.length} recorded contacts. Select an outcome to filter the list.</p>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">{outcomes.map(([value, label]) => <button key={value} type="button" onClick={() => setOutcomeFilter(f => f === value ? 'ALL' : value)} className={`rounded-lg border p-3 text-left ${outcomeFilter === value ? 'border-teal-600 bg-teal-50 dark:bg-teal-900/30' : 'border-gray-200 dark:border-white/10'}`}><div className="text-2xl font-bold text-teal-800 dark:text-teal-300">{calls.filter(c => c.attendance === value).length}</div><div className="text-xs text-gray-600 dark:text-gray-300">{label}</div></button>)}</div>
+    </section>
+    <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
+      <h2 className="font-bold text-teal-800 dark:text-teal-300">EMR Visit Summary & Recall Priorities</h2>
+      <p className="text-xs text-gray-500">Verified EMR completed appointments only. Shows up to 100 recently updated patients; not the historic periodontal therapy file. Priority bands are provisional time-since-visit categories, not prescribed recall intervals.</p>
+      <div className="flex flex-wrap gap-3"><input className={field + ' max-w-xs'} value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Find patient…" aria-label="Find patient in visit summary"/><select className={field + ' max-w-xs'} value={priorityFilter} onChange={e=>setPriorityFilter(e.target.value)} aria-label="Filter visit priority"><option value="ALL">All priorities</option>{['High','Medium','Low','Recent'].map(p=><option key={p}>{p}</option>)}</select></div>
+      {visitError && <p role="alert" className="text-sm text-red-600">{visitError}</p>}
+      <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-sm"><thead className="bg-teal-50 text-teal-900 dark:bg-gray-800 dark:text-teal-200"><tr>{['Patient','Repeat?','Total visits','First visit','Last visit','Days since','Priority'].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{visits.filter(p=>(priorityFilter==='ALL'||p.priority===priorityFilter)&&`${p.firstName} ${p.lastName}`.toLowerCase().includes(contactSearch.toLowerCase())).map(p=><tr key={p.id} className="border-t border-gray-100 dark:border-white/10"><td className="p-3"><Link href={`/patients/${p.id}`} className="text-blue-600 hover:underline">{p.firstName} {p.lastName}</Link></td><td className="p-3">{p.totalVisits>=2?'Yes':'No'}</td><td className="p-3">{p.totalVisits}</td><td className="p-3">{p.firstVisit?new Date(p.firstVisit).toLocaleDateString('en-UG'):'—'}</td><td className="p-3">{p.lastVisit?new Date(p.lastVisit).toLocaleDateString('en-UG'):'—'}</td><td className="p-3">{p.daysSince??'—'}</td><td className="p-3">{p.priority}</td></tr>)}</tbody></table></div>
+      {visits.length===0&&!visitError&&<p className="text-xs text-gray-500">No verified completed-visit summary entries returned.</p>}
     </section>
     <form onSubmit={submit} className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
       <h2 className="font-bold dark:text-white">Record a recare contact</h2>
