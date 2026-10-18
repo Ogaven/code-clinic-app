@@ -734,33 +734,43 @@ router.get('/patient-engagement/recare-calls/weekly', requireAuth, adminAndRecep
 router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200)
   try {
-    const patients = await prisma.patient.findMany({
-      where: { appointments: { some: { status: { in: ['COMPLETED', 'SESSION_COMPLETE', 'DEPARTED'] } } } },
-      orderBy: { updatedAt: 'desc' },
-      take: limit,
-      select: {
-        id: true, firstName: true, lastName: true,
-        appointments: {
-          where: { status: { in: ['COMPLETED', 'SESSION_COMPLETE', 'DEPARTED'] } },
-          select: { startAt: true },
-          orderBy: { startAt: 'asc' },
-        },
+    // Aggregate across all completed EMR appointments BEFORE applying the limit.
+    // Ordering by oldest last visit yields a genuinely clinic-wide overdue ranking.
+    const visits = await prisma.appointment.groupBy({
+      by: ['patientId'],
+      where: {
+        patientId: { not: null },
+        startAt: { lte: new Date() },
+        status: { in: ['COMPLETED', 'SESSION_COMPLETE', 'DEPARTED'] },
       },
+      _count: { id: true },
+      _min: { startAt: true },
+      _max: { startAt: true },
+      orderBy: { _max: { startAt: 'asc' } },
+      take: limit,
     })
+    const patientIds = visits.map(v => v.patientId).filter((id): id is string => !!id)
+    const patients = await prisma.patient.findMany({
+      where: { id: { in: patientIds } },
+      select: { id: true, firstName: true, lastName: true },
+    })
+    const patientById = new Map(patients.map(p => [p.id, p]))
     const now = Date.now()
     res.json({
       source: 'EMR_COMPLETED_APPOINTMENTS',
-      scope: 'Recent updated patients with recorded completed visits; not the historic periodontal therapy export',
-      patients: patients.map(p => {
-        const dates = p.appointments.map(a => a.startAt.toISOString())
-        const last = p.appointments[p.appointments.length - 1]?.startAt
+      scope: 'Clinic-wide ranking of oldest last completed EMR appointment; response limited to the first requested patients, not the historic periodontal therapy export',
+      patients: visits.flatMap(v => {
+        const p = patientById.get(v.patientId || '')
+        if (!p) return []
+        const first = v._min.startAt
+        const last = v._max.startAt
         const daysSince = last ? Math.max(0, Math.floor((now - last.getTime()) / 86400000)) : null
-        return {
+        return [{
           id: p.id, firstName: p.firstName, lastName: p.lastName,
-          totalVisits: dates.length, firstVisit: dates[0] || null,
-          lastVisit: dates[dates.length - 1] || null, daysSince,
+          totalVisits: v._count.id, firstVisit: first?.toISOString() || null,
+          lastVisit: last?.toISOString() || null, daysSince,
           priority: daysSince === null ? 'Unknown' : daysSince >= 365 ? 'High' : daysSince >= 180 ? 'Medium' : daysSince >= 90 ? 'Low' : 'Recent',
-        }
+        }]
       }),
     })
   } catch {
