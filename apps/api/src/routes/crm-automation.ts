@@ -752,6 +752,19 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
       where: { id: { in: patientIds } },
       select: { id: true, firstName: true, lastName: true },
     })
+    // Fetch latest outreach for every patient on this page, independent of the
+    // clinic-wide recent-call limit. Never infer contact history by name/phone.
+    const pageCalls = patientIds.length ? await prisma.patientRecareCall.findMany({
+      where: { patientId: { in: patientIds } },
+      orderBy: [{ contactedAt: 'desc' }, { createdAt: 'desc' }],
+      select: { patientId: true, contactedAt: true, contactMethod: true, reached: true,
+        recordedByName: true, appointmentSet: true, appointmentDate: true,
+        attendance: true, rescheduledDate: true, comment: true },
+    }) : []
+    const latestCallByPatient = new Map<string, (typeof pageCalls)[number]>()
+    for (const call of pageCalls) {
+      if (!latestCallByPatient.has(call.patientId)) latestCallByPatient.set(call.patientId, call)
+    }
     const patientById = new Map(patientRows.map(p => [p.id, p]))
     const now = Date.now()
     res.json({
@@ -768,6 +781,7 @@ router.get('/patient-engagement/recare-visit-summary', requireAuth, adminAndRece
           id: p.id, firstName: p.firstName, lastName: p.lastName,
           totalVisits: g._count.id, firstVisit: first?.toISOString() ?? null,
           lastVisit: last?.toISOString() ?? null, daysSince,
+          latestRecareCall: latestCallByPatient.get(p.id) ?? null,
           priority: daysSince === null ? 'Unknown' : daysSince >= 365 ? 'High' : daysSince >= 180 ? 'Medium' : daysSince >= 90 ? 'Low' : 'Recent',
         }]
       }),
