@@ -26,6 +26,7 @@ export default function RecareCallsWorkspace() {
   const [tab, setTab] = useState<'tracker' | 'weekly'>('tracker')
   const [contactSearch, setContactSearch] = useState('')
   const [visitSearch, setVisitSearch] = useState('')
+  const [visitRefreshKey, setVisitRefreshKey] = useState(0)
   const [outcomeFilter, setOutcomeFilter] = useState('ALL')
   const [form, setForm] = useState(empty)
   const [search, setSearch] = useState('')
@@ -61,7 +62,7 @@ export default function RecareCallsWorkspace() {
       .catch(() => { if (active) { setVisitError('Visit summary unavailable'); setVisits([]); setClinicTotals(null); setVisitHasMore(false) } })
       .finally(() => { if (active) setVisitLoading(false) })
     return () => { active = false }
-  }, [visitOffset, visitSearch])
+  }, [visitOffset, visitSearch, visitRefreshKey])
   useEffect(() => {
     if (search.trim().length < 2) { setPatients([]); return }
     const controller = new AbortController()
@@ -134,7 +135,7 @@ export default function RecareCallsWorkspace() {
       if (!r.ok) { const data = await r.json().catch(() => ({})); throw new Error(data.error || 'Could not save call') }
       setForm(empty); setSearch(''); setPatients([]); setWeekly(null); await refresh()
       setVisitOffset(0)
-      setVisitSearch(current => current === contactSearch.trim() ? `${current} ` : contactSearch.trim())
+      setVisitRefreshKey(n => n + 1)
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save call') }
     finally { setSaving(false) }
   }
