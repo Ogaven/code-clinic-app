@@ -24,6 +24,7 @@ export default function RecareCallsWorkspace() {
   const [repeatOnly, setRepeatOnly] = useState(false)
   const [tab, setTab] = useState<'tracker' | 'weekly'>('tracker')
   const [contactSearch, setContactSearch] = useState('')
+  const [visitSearch, setVisitSearch] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState('ALL')
   const [form, setForm] = useState(empty)
   const [search, setSearch] = useState('')
@@ -46,16 +47,20 @@ export default function RecareCallsWorkspace() {
   }, [])
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => {
+    const timeout = setTimeout(() => { setVisitOffset(0); setVisitSearch(contactSearch.trim()) }, 300)
+    return () => clearTimeout(timeout)
+  }, [contactSearch])
+  useEffect(() => {
     let active = true
     setVisitLoading(true)
     setVisitError('')
-    fetch(`/api-proxy/crm-automation/patient-engagement/recare-visit-summary?limit=100&offset=${visitOffset}`, { headers: { Authorization: `Bearer ${token()}` } })
+    fetch(`/api-proxy/crm-automation/patient-engagement/recare-visit-summary?limit=100&offset=${visitOffset}&search=${encodeURIComponent(visitSearch)}`, { headers: { Authorization: `Bearer ${token()}` } })
       .then(async r => { if (!r.ok) throw new Error('Could not load visit summary'); return r.json() })
       .then(data => { if (active) { setVisits(data.patients || []); setVisitHasMore(Boolean(data.pagination?.hasMore)) } })
       .catch(() => { if (active) { setVisitError('Visit summary unavailable'); setVisits([]); setVisitHasMore(false) } })
       .finally(() => { if (active) setVisitLoading(false) })
     return () => { active = false }
-  }, [visitOffset])
+  }, [visitOffset, visitSearch])
   useEffect(() => {
     if (search.trim().length < 2) { setPatients([]); return }
     const controller = new AbortController()
@@ -133,7 +138,7 @@ export default function RecareCallsWorkspace() {
   const visibleVisits = visits.filter(p =>
     (priorityFilter === 'ALL' || p.priority === priorityFilter) &&
     (!repeatOnly || p.totalVisits >= 2) &&
-    `${p.firstName} ${p.lastName}`.toLowerCase().includes(contactSearch.toLowerCase())
+    true
   ).sort((a, b) => (b.daysSince ?? -1) - (a.daysSince ?? -1))
   const latestCallByPatient = new Map<string, Call>()
   for (const call of calls) {
@@ -166,7 +171,7 @@ export default function RecareCallsWorkspace() {
     </section>
     <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
       <h2 className="font-bold text-teal-800 dark:text-teal-300">EMR Visit Summary & Recall Priorities</h2>
-      <p className="text-xs text-gray-500">Verified EMR completed appointments only. Shows 100 patients per page, ordered clinic-wide by oldest last completed appointment; counts and filters apply only to this page, not the entire clinic or historic periodontal therapy file. Outreach columns show the latest recorded contact for each patient on this page, including older contacts. Priority bands are provisional time-since-visit categories, not prescribed recall intervals.</p>
+      <p className="text-xs text-gray-500">Verified EMR completed appointments only. Shows 100 patients per page, ordered clinic-wide by oldest last completed appointment; counts and priority filters apply only to this page; patient-name search searches all eligible EMR patients or historic periodontal therapy file. Outreach columns show the latest recorded contact for each patient on this page, including older contacts. Priority bands are provisional time-since-visit categories, not prescribed recall intervals.</p>
       <div className="flex flex-wrap gap-3"><input className={field + ' max-w-xs'} value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Find patient…" aria-label="Find patient in visit summary"/><select className={field + ' max-w-xs'} value={priorityFilter} onChange={e=>setPriorityFilter(e.target.value)} aria-label="Filter visit priority"><option value="ALL">All priorities</option>{['High','Medium','Low','Recent'].map(p=><option key={p}>{p}</option>)}</select><label className="flex items-center gap-2 text-sm dark:text-white"><input type="checkbox" checked={repeatOnly} onChange={e=>setRepeatOnly(e.target.checked)}/>Repeat patients only</label></div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[['Patients in summary',visits.length],['Repeat patients',repeatPatients],['180+ days since visit',overduePatients],['Matching filters',visibleVisits.length]].map(([name,count])=><div key={name} className="rounded-lg bg-teal-50 p-3 dark:bg-gray-800"><p className="text-xs text-gray-600 dark:text-gray-300">{name}</p><p className="text-xl font-bold text-teal-800 dark:text-teal-300">{count}</p></div>)}</div>
       {visitError && <p role="alert" className="text-sm text-red-600">{visitError}</p>}
