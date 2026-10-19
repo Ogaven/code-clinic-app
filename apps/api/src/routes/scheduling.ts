@@ -1509,6 +1509,50 @@ router.get('/practice-doctor-schedule-minutes', requireAuth, adminOnly, async (r
   }
 })
 
+// Union of blocked intervals per doctor, clipped to the Kampala reporting date.
+// This is a blocked-time observation, not a deduction from verified staffed capacity.
+router.get('/practice-blocked-doctor-minutes', requireAuth, adminOnly, async (req, res) => {
+  const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
+  if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
+  const start = new Date(parsed.data.date + 'T00:00:00+03:00')
+  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+    return res.status(400).json({ error: 'Invalid calendar date' })
+  }
+  const end = new Date(start.getTime() + 86_400_000)
+  try {
+    const blocked = await prisma.blockedTime.findMany({
+      where: { startAt: { lt: end }, endAt: { gt: start }, doctor: { isActive: true } },
+      select: { doctorId: true, startAt: true, endAt: true },
+    })
+    const grouped = new Map<string, { start: number; end: number }[]>()
+    for (const block of blocked) {
+      const a = Math.max(start.getTime(), block.startAt.getTime())
+      const b = Math.min(end.getTime(), block.endAt.getTime())
+      if (b <= a) continue
+      grouped.set(block.doctorId, [...(grouped.get(block.doctorId) ?? []), { start: a, end: b }])
+    }
+    let blockedMinutes = 0
+    for (const intervals of grouped.values()) {
+      const sorted = intervals.sort((a, b) => a.start - b.start)
+      let from = sorted[0].start
+      let to = sorted[0].end
+      for (const interval of sorted.slice(1)) {
+        if (interval.start <= to) to = Math.max(to, interval.end)
+        else { blockedMinutes += (to - from) / 60000; from = interval.start; to = interval.end }
+      }
+      blockedMinutes += (to - from) / 60000
+    }
+    res.json({
+      date: parsed.data.date, doctorsWithBlockedTime: grouped.size,
+      blockedIntervals: blocked.length, uniqueBlockedDoctorMinutes: Math.round(blockedMinutes),
+      staffedCapacityMinutes: null, utilizationPct: null,
+      disclaimer: 'Blocked minutes are clipped to the calendar day and deduplicated per doctor. They are not limited to working hours, so do not subtract this total directly from scheduled doctor hours.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to load blocked doctor minutes' })
+  }
+})
+
 router.get('/booking-settings', requireAuth, async (_req, res) => {
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
