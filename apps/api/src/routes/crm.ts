@@ -594,46 +594,14 @@ router.patch('/leads/:id', requireAuth, adminAndReceptionist, async (req: Reques
 })
 
 // Convert lead to patient
-router.post('/leads/:id/convert', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
-  try {
-    const lead = await prisma.lead.findUnique({ where: { id: req.params.id } })
-    if (!lead) return res.status(404).json({ error: 'Lead not found' })
-    if (lead.status === 'CONVERTED') return res.status(400).json({ error: 'Already converted' })
-
-    // Split name into first/last (best effort)
-    const nameParts   = (lead.name || '').trim().split(/\s+/)
-    const firstName   = nameParts[0] || 'Unknown'
-    const lastName    = nameParts.slice(1).join(' ') || '-'
-
-    // Phone required for patient — use lead phone or placeholder
-    const phone = lead.phone || '+256000000000'
-
-    // Check if patient with this phone already exists
-    let patient = await prisma.patient.findFirst({ where: { phone } })
-    if (!patient) {
-      patient = await prisma.patient.create({
-        data: {
-          firstName,
-          lastName,
-          phone,
-          email:  lead.email  || null,
-          status: 'UPCOMING',
-        },
-      })
-    }
-
-    // Link the patient, then mark CONVERTED through the single write path
-    // (transitionLeadStage via convertLeadOnBooking) so this manual-convert
-    // button produces the same LeadStageHistory row and automation event as
-    // every other route into CONVERTED.
-    await prisma.lead.update({ where: { id: lead.id }, data: { convertedToPatientId: patient.id } })
-    const updated = await convertLeadOnBooking(lead.id)
-
-    res.json({ lead: updated, patient })
-  } catch (e) {
-    console.error('[CRM] Convert lead error:', e)
-    res.status(500).json({ error: 'Failed to convert lead' })
-  }
+// Legacy one-click conversion is intentionally disabled. It previously created
+// patients using an unverified phone match or placeholder number, then marked
+// the lead CONVERTED without independent identity and booking evidence.
+// Use the existing verified-patient-booking workflow instead.
+router.post('/leads/:id/convert', requireAuth, adminAndReceptionist, async (_req: Request, res: Response) => {
+  return res.status(409).json({
+    error: 'Direct conversion requires verified patient identity and booking. Use the verified patient-booking workflow.',
+  })
 })
 
 router.delete('/leads/:id', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
