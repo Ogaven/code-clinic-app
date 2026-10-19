@@ -1312,7 +1312,7 @@ router.get('/practice-financial-activity', requireAuth, adminOnly, async (req, r
   const start = new Date(parsed.data.startDate + 'T00:00:00+03:00')
   const end = new Date(parsed.data.endDate + 'T00:00:00+03:00')
   end.setUTCDate(end.getUTCDate() + 1)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() <= start.getTime() || end.getTime() - start.getTime() > 31 * 86_400_000 || start.toISOString().slice(0, 10) !== parsed.data.startDate || new Date(end.getTime() - 86_400_000).toISOString().slice(0, 10) !== parsed.data.endDate) {
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() <= start.getTime() || end.getTime() - start.getTime() > 31 * 86_400_000 || new Date(start.getTime() + 12 * 60 * 60 * 1000).toISOString().slice(0, 10) !== parsed.data.startDate || new Date(end.getTime() - 12 * 60 * 60 * 1000).toISOString().slice(0, 10) !== parsed.data.endDate) {
     return res.status(400).json({ error: 'Date range must be valid and no longer than 31 days' })
   }
   try {
@@ -1348,8 +1348,8 @@ router.get('/practice-production-evidence', requireAuth, adminOnly, async (req, 
   end.setUTCDate(end.getUTCDate() + 1)
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) ||
       end.getTime() <= start.getTime() || end.getTime() - start.getTime() > 31 * 86_400_000 ||
-      start.toISOString().slice(0, 10) !== parsed.data.startDate ||
-      new Date(end.getTime() - 86_400_000).toISOString().slice(0, 10) !== parsed.data.endDate) {
+      new Date(start.getTime() + 12 * 60 * 60 * 1000).toISOString().slice(0, 10) !== parsed.data.startDate ||
+      new Date(end.getTime() - 12 * 60 * 60 * 1000).toISOString().slice(0, 10) !== parsed.data.endDate) {
     return res.status(400).json({ error: 'Invalid calendar date or range longer than 31 days' })
   }
   try {
@@ -1378,7 +1378,7 @@ router.get('/practice-scheduled-demand', requireAuth, adminOnly, async (req, res
   if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
   const start = new Date(parsed.data.date + 'T00:00:00+03:00')
   const end = new Date(start.getTime() + 86_400_000)
-  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+  if (Number.isNaN(start.getTime()) || new Date(start.getTime() + 12 * 60 * 60 * 1000).toISOString().slice(0, 10) !== parsed.data.date) {
     return res.status(400).json({ error: 'Invalid calendar date' })
   }
   try {
@@ -1421,7 +1421,7 @@ router.get('/practice-roster-coverage', requireAuth, adminOnly, async (req, res)
   const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
   if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
   const start = new Date(parsed.data.date + 'T00:00:00+03:00')
-  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+  if (Number.isNaN(start.getTime()) || new Date(start.getTime() + 12 * 60 * 60 * 1000).toISOString().slice(0, 10) !== parsed.data.date) {
     return res.status(400).json({ error: 'Invalid calendar date' })
   }
   const end = new Date(start.getTime() + 86_400_000)
@@ -1466,7 +1466,7 @@ router.get('/practice-doctor-schedule-minutes', requireAuth, adminOnly, async (r
   const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
   if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
   const start = new Date(parsed.data.date + 'T00:00:00+03:00')
-  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+  if (Number.isNaN(start.getTime()) || new Date(start.getTime() + 12 * 60 * 60 * 1000).toISOString().slice(0, 10) !== parsed.data.date) {
     return res.status(400).json({ error: 'Invalid calendar date' })
   }
   const weekday = new Date(parsed.data.date + 'T12:00:00+03:00').getUTCDay()
@@ -1515,7 +1515,7 @@ router.get('/practice-blocked-doctor-minutes', requireAuth, adminOnly, async (re
   const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
   if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
   const start = new Date(parsed.data.date + 'T00:00:00+03:00')
-  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+  if (Number.isNaN(start.getTime()) || new Date(start.getTime() + 12 * 60 * 60 * 1000).toISOString().slice(0, 10) !== parsed.data.date) {
     return res.status(400).json({ error: 'Invalid calendar date' })
   }
   const end = new Date(start.getTime() + 86_400_000)
@@ -1559,7 +1559,7 @@ router.get('/practice-scheduled-block-overlap', requireAuth, adminOnly, async (r
   const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
   if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
   const start = new Date(parsed.data.date + 'T00:00:00+03:00')
-  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+  if (Number.isNaN(start.getTime()) || new Date(start.getTime() + 12 * 60 * 60 * 1000).toISOString().slice(0, 10) !== parsed.data.date) {
     return res.status(400).json({ error: 'Invalid calendar date' })
   }
   const end = new Date(start.getTime() + 86_400_000)
@@ -1626,7 +1626,7 @@ router.get('/practice-special-day-evidence', requireAuth, adminOnly, async (req,
   const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
   if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
   const start = new Date(parsed.data.date + 'T00:00:00+03:00')
-  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+  if (Number.isNaN(start.getTime()) || new Date(start.getTime() + 12 * 60 * 60 * 1000).toISOString().slice(0, 10) !== parsed.data.date) {
     return res.status(400).json({ error: 'Invalid calendar date' })
   }
   try {
