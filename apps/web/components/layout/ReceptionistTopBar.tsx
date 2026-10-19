@@ -54,6 +54,7 @@ const NAV: NavLink[] = [
     // the same Patients list as the real, honest entry point into it.
     { label: 'Billing', href: '/receptionist/patients', permKey: 'patients' },
     { label: 'Walk-In Intake', href: '/receptionist/patients/walk-in', permKey: 'patients' },
+    { label: 'Patient Recare Calls', href: '/receptionist/patients/recare', permKey: 'patients' },
   ] },
   // Direct item, not a dropdown — matches Admin's own top-nav pattern
   // exactly (Appointments -> /scheduling, apps/web/components/layout/TopBar.tsx).
