@@ -1371,6 +1371,51 @@ router.get('/practice-production-evidence', requireAuth, adminOnly, async (req, 
   }
 })
 
+// Scheduled demand, not staffed capacity: uses each booking's actual time span.
+// Overlaps are reported rather than assumed to represent additional chair capacity.
+router.get('/practice-scheduled-demand', requireAuth, adminOnly, async (req, res) => {
+  const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
+  if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
+  const start = new Date(parsed.data.date + 'T00:00:00+03:00')
+  const end = new Date(start.getTime() + 86_400_000)
+  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+    return res.status(400).json({ error: 'Invalid calendar date' })
+  }
+  try {
+    const bookings = await prisma.appointment.findMany({
+      where: {
+        startAt: { lt: end }, endAt: { gt: start },
+        status: { notIn: ['CANCELLED', 'CANCELLED_RESCHEDULED', 'RESCHEDULED', 'NO_SHOW', 'IMPORTED'] },
+      },
+      select: { startAt: true, endAt: true, doctorId: true },
+    })
+    const intervals = bookings.map(b => ({
+      start: Math.max(start.getTime(), b.startAt.getTime()),
+      end: Math.min(end.getTime(), b.endAt.getTime()),
+      doctorId: b.doctorId,
+    })).filter(b => b.end > b.start)
+    const bookedMinutes = Math.round(intervals.reduce((sum, b) => sum + (b.end - b.start) / 60000, 0))
+    const doctorGroups = new Map<string, typeof intervals>()
+    for (const interval of intervals) doctorGroups.set(interval.doctorId, [...(doctorGroups.get(interval.doctorId) ?? []), interval])
+    let overlappingDoctorBookings = 0
+    for (const group of doctorGroups.values()) {
+      const sorted = [...group].sort((a, b) => a.start - b.start)
+      for (let i = 0; i < sorted.length; i++) {
+        if (sorted.slice(0, i).some(previous => previous.end > sorted[i].start)) overlappingDoctorBookings++
+      }
+    }
+    res.json({
+      date: parsed.data.date, scheduledAppointments: intervals.length,
+      bookedMinutes, bookedHours: Math.round(bookedMinutes / 60 * 100) / 100,
+      distinctAssignedDoctors: doctorGroups.size, overlappingDoctorBookings,
+      staffedCapacityMinutes: null, utilizationPct: null,
+      disclaimer: 'Scheduled minutes are booking demand, not actual treatment time or staffed chair capacity. Staff absences, working hours and chair availability are not incorporated.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to load scheduled demand' })
+  }
+})
+
 router.get('/booking-settings', requireAuth, async (_req, res) => {
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
