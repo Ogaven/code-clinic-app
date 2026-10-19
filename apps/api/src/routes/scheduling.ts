@@ -1333,6 +1333,44 @@ router.get('/practice-financial-activity', requireAuth, adminOnly, async (req, r
   }
 })
 
+// Evidence coverage only: appointment completion does not establish billable
+// treatment value. Do not multiply scheduled service prices by completed visits.
+router.get('/practice-production-evidence', requireAuth, adminOnly, async (req, res) => {
+  const parsed = z.object({
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  }).safeParse(req.query)
+  if (!parsed.success || parsed.data.startDate > parsed.data.endDate) {
+    return res.status(400).json({ error: 'Provide valid startDate and endDate (YYYY-MM-DD)' })
+  }
+  const start = new Date(parsed.data.startDate + 'T00:00:00+03:00')
+  const end = new Date(parsed.data.endDate + 'T00:00:00+03:00')
+  end.setUTCDate(end.getUTCDate() + 1)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) ||
+      end.getTime() <= start.getTime() || end.getTime() - start.getTime() > 31 * 86_400_000 ||
+      start.toISOString().slice(0, 10) !== parsed.data.startDate ||
+      new Date(end.getTime() - 86_400_000).toISOString().slice(0, 10) !== parsed.data.endDate) {
+    return res.status(400).json({ error: 'Invalid calendar date or range longer than 31 days' })
+  }
+  try {
+    const completedStatuses = ['COMPLETED', 'DEPARTED'] as const
+    const where = { startAt: { gte: start, lt: end }, status: { in: [...completedStatuses] } }
+    const [completedVisits, linkedVisits, unlinkedVisits] = await Promise.all([
+      prisma.appointment.count({ where }),
+      prisma.appointment.count({ where: { ...where, treatmentPlanId: { not: null } } }),
+      prisma.appointment.count({ where: { ...where, treatmentPlanId: null } }),
+    ])
+    res.json({
+      startDate: parsed.data.startDate, endDate: parsed.data.endDate,
+      completedVisits, linkedToTreatmentPlan: linkedVisits, withoutTreatmentPlan: unlinkedVisits,
+      clinicalProductionUGX: null,
+      disclaimer: 'Counts reflect current appointment status and scheduled date, not a verified historical treatment-completion ledger. Treatment-plan linkage does not prove delivery or price.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to load production evidence coverage' })
+  }
+})
+
 router.get('/booking-settings', requireAuth, async (_req, res) => {
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
