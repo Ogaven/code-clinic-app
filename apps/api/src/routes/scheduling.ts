@@ -1312,12 +1312,12 @@ router.get('/practice-financial-activity', requireAuth, adminOnly, async (req, r
   const start = new Date(parsed.data.startDate + 'T00:00:00+03:00')
   const end = new Date(parsed.data.endDate + 'T00:00:00+03:00')
   end.setUTCDate(end.getUTCDate() + 1)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() - start.getTime() > 32 * 86_400_000) {
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() <= start.getTime() || end.getTime() - start.getTime() > 31 * 86_400_000 || start.toISOString().slice(0, 10) !== parsed.data.startDate || new Date(end.getTime() - 86_400_000).toISOString().slice(0, 10) !== parsed.data.endDate) {
     return res.status(400).json({ error: 'Date range must be valid and no longer than 31 days' })
   }
   try {
     const [invoices, payments] = await Promise.all([
-      prisma.invoice.aggregate({ where: { createdAt: { gte: start, lt: end }, status: { not: 'DRAFT' } }, _sum: { totalUGX: true }, _count: { _all: true } }),
+      prisma.invoice.aggregate({ where: { createdAt: { gte: start, lt: end }, status: { notIn: ['DRAFT', 'CANCELLED'] } }, _sum: { totalUGX: true }, _count: { _all: true } }),
       prisma.payment.aggregate({ where: { paidAt: { gte: start, lt: end } }, _sum: { amountUGX: true }, _count: { _all: true } }),
     ])
     res.json({
