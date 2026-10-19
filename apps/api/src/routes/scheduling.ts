@@ -1260,6 +1260,43 @@ router.post('/import-appointments', requireAuth, adminAndReceptionist, upload.si
 // GET  /scheduling/booking-settings → { allowOverlapping: boolean }
 // POST /scheduling/booking-settings → { allowOverlapping: boolean }
 
+// Manager-controlled production targets are separate from appointment-volume capacity.
+// Values are stored in existing app_settings; no migration or patient write required.
+const practiceGoalSchema = z.object({
+  weekdayProductionGoalUGX: z.number().int().min(0).max(1_000_000_000),
+  saturdayProductionGoalUGX: z.number().int().min(0).max(1_000_000_000),
+})
+
+router.get('/practice-production-goals', requireAuth, async (_req, res) => {
+  try {
+    const rows = await prisma.appSetting.findMany({ where: { key: { in: ['practice_weekday_production_goal_ugx', 'practice_saturday_production_goal_ugx'] } } })
+    const value = (key: string) => {
+      const raw = rows.find(row => row.key === key)?.value
+      if (raw === undefined) return null
+      const parsed = Number(raw)
+      return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null
+    }
+    res.json({ weekdayProductionGoalUGX: value('practice_weekday_production_goal_ugx'), saturdayProductionGoalUGX: value('practice_saturday_production_goal_ugx') })
+  } catch {
+    res.status(500).json({ error: 'Unable to load practice production goals' })
+  }
+})
+
+router.put('/practice-production-goals', requireAuth, adminOnly, auditLog('practice_production_goals'), async (req, res) => {
+  const parsed = practiceGoalSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'Both production goals must be whole UGX amounts between 0 and 1 billion' })
+  const { weekdayProductionGoalUGX, saturdayProductionGoalUGX } = parsed.data
+  try {
+    await prisma.$transaction([
+      prisma.appSetting.upsert({ where: { key: 'practice_weekday_production_goal_ugx' }, create: { key: 'practice_weekday_production_goal_ugx', value: String(weekdayProductionGoalUGX) }, update: { value: String(weekdayProductionGoalUGX) } }),
+      prisma.appSetting.upsert({ where: { key: 'practice_saturday_production_goal_ugx' }, create: { key: 'practice_saturday_production_goal_ugx', value: String(saturdayProductionGoalUGX) }, update: { value: String(saturdayProductionGoalUGX) } }),
+    ])
+    res.json(parsed.data)
+  } catch {
+    res.status(500).json({ error: 'Unable to save practice production goals' })
+  }
+})
+
 router.get('/booking-settings', requireAuth, async (_req, res) => {
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
