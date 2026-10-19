@@ -121,11 +121,14 @@ router.post('/submit', async (req, res) => {
     email, address, district, referralSource,
     nextOfKinName, nextOfKinPhone, nextOfKinRelation,
     allergies, medicalHistory,
-    chiefComplaint, currentMedications,
+    chiefComplaint, currentMedications, referredByContact,
   } = req.body
 
   if (!phone || !firstName || !lastName) {
     res.status(400).json({ error: 'Name and phone are required' }); return
+  }
+  if (!apptId && (!dob || !String(chiefComplaint || '').trim() || !String(referralSource || '').trim() || !String(nextOfKinName || '').trim() || !String(nextOfKinPhone || '').trim() || !String(nextOfKinRelation || '').trim())) {
+    res.status(400).json({ error: 'Please complete the required walk-in contact fields' }); return
   }
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     res.status(400).json({ error: 'Invalid email address' }); return
@@ -149,6 +152,7 @@ router.post('/submit', async (req, res) => {
     const note = [
       chiefComplaint     ? `Chief complaint: ${chiefComplaint}`         : '',
       currentMedications ? `Current medications: ${currentMedications}` : '',
+      referredByContact && !apptId ? `Referral contact (provided by visitor): ${String(referredByContact).slice(0, 200)}` : '',
     ].filter(Boolean).join('\n')
 
     if (apptId) {
