@@ -189,19 +189,15 @@ describe('POST /crm/leads — every new lead is born NEW regardless of client in
   })
 })
 
-describe('POST /crm/leads/:id/convert — routes CONVERTED through convertLeadOnBooking', () => {
-  it('links the patient then calls convertLeadOnBooking instead of writing status directly', async () => {
-    prismaMock.lead.findUnique.mockResolvedValue({ id: 'lead-1', status: 'QUALIFIED', name: 'Jane Doe', phone: '+256700000000', email: null })
-    prismaMock.patient.findFirst.mockResolvedValue(null)
-    prismaMock.patient.create.mockResolvedValue({ id: 'patient-1' })
-    convertLeadOnBooking.mockResolvedValue({ id: 'lead-1', status: 'CONVERTED' })
-
+describe('POST /crm/leads/:id/convert — verified booking required', () => {
+  it('rejects direct conversion without creating or linking patients', async () => {
     const res = await fetch(`${origin}/leads/lead-1/convert`, { method: 'POST' })
-
-    expect(res.status).toBe(200)
-    expect(prismaMock.lead.update).toHaveBeenCalledWith({ where: { id: 'lead-1' }, data: { convertedToPatientId: 'patient-1' } })
-    expect(convertLeadOnBooking).toHaveBeenCalledWith('lead-1')
+    expect(res.status).toBe(409)
     const body = await res.json() as any
-    expect(body.lead.status).toBe('CONVERTED')
+    expect(body.error).toMatch(/verified patient identity and booking/i)
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled()
+    expect(prismaMock.patient.create).not.toHaveBeenCalled()
+    expect(prismaMock.lead.update).not.toHaveBeenCalled()
+    expect(convertLeadOnBooking).not.toHaveBeenCalled()
   })
 })
