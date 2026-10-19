@@ -1297,6 +1297,42 @@ router.put('/practice-production-goals', requireAuth, adminOnly, auditLog('pract
   }
 })
 
+// Financial activity is deliberately labelled separately from clinical production.
+// Invoice creation date is not the date treatment was delivered, and payments
+// received are cash collection, not production. Do not merge these into one KPI.
+router.get('/practice-financial-activity', requireAuth, adminOnly, async (req, res) => {
+  const dateSchema = z.object({
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  })
+  const parsed = dateSchema.safeParse(req.query)
+  if (!parsed.success || parsed.data.startDate > parsed.data.endDate) {
+    return res.status(400).json({ error: 'Provide a valid startDate and endDate (YYYY-MM-DD)' })
+  }
+  const start = new Date(parsed.data.startDate + 'T00:00:00+03:00')
+  const end = new Date(parsed.data.endDate + 'T00:00:00+03:00')
+  end.setUTCDate(end.getUTCDate() + 1)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() - start.getTime() > 32 * 86_400_000) {
+    return res.status(400).json({ error: 'Date range must be valid and no longer than 31 days' })
+  }
+  try {
+    const [invoices, payments] = await Promise.all([
+      prisma.invoice.aggregate({ where: { createdAt: { gte: start, lt: end }, status: { not: 'DRAFT' } }, _sum: { totalUGX: true }, _count: { _all: true } }),
+      prisma.payment.aggregate({ where: { paidAt: { gte: start, lt: end } }, _sum: { amountUGX: true }, _count: { _all: true } }),
+    ])
+    res.json({
+      startDate: parsed.data.startDate, endDate: parsed.data.endDate,
+      invoicedUGX: invoices._sum.totalUGX ?? 0, invoicesCount: invoices._count._all,
+      collectedUGX: payments._sum.amountUGX ?? 0, paymentsCount: payments._count._all,
+      clinicalProductionUGX: null,
+      productionAvailability: 'NOT_TRACKED',
+      disclaimer: 'Invoiced is based on invoice creation date; collected is based on payment date. Neither is verified clinical production.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to load practice financial activity' })
+  }
+})
+
 router.get('/booking-settings', requireAuth, async (_req, res) => {
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
