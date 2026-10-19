@@ -200,6 +200,60 @@ router.post('/leads/:id/verify-historical-intent', requireAuth, requireRole('ADM
   }
 })
 
+// Read-only batch evidence triage. Never mutate lead stages based on stored excerpts.
+// Matching a phone suffix is only a candidate association, not verified identity.
+router.get('/leads/historical-batch-evidence-preview', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
+  const rawPage = req.query.page
+  if (rawPage !== undefined && (typeof rawPage !== 'string' || !/^[1-9]\d{0,5}$/.test(rawPage))) {
+    return res.status(400).json({ error: 'page must be a positive integer' })
+  }
+  const page = rawPage ? Number(rawPage) : 1
+  const pageSize = 50
+  try {
+    const where = { status: { in: ['NEW', 'CONTACTED'] }, convertedToPatientId: null }
+    const [total, leads, conversations] = await Promise.all([
+      prisma.lead.count({ where }),
+      prisma.lead.findMany({ where, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        skip: (page - 1) * pageSize, take: pageSize,
+        select: { id: true, name: true, phone: true, source: true, status: true, lastMessage: true } }),
+      prisma.aiConversation.findMany({ where: { phoneNumber: { not: '' } },
+        select: { id: true, phoneNumber: true } }),
+    ])
+    const results = []
+    for (const lead of leads) {
+      const intent = lead.lastMessage ? detectCrmQualifyingIntent(lead.lastMessage) : null
+      if (!intent) continue
+      const digits = (lead.phone ?? '').replace(/\D/g, '')
+      if (digits.length < 9) {
+        results.push({ leadId: lead.id, leadName: lead.name, source: lead.source, status: lead.status,
+          intent, evidenceStatus: 'NO_PHONE', messageId: null })
+        continue
+      }
+      const suffix = digits.slice(-9)
+      const matched = conversations.filter(c => {
+        const number = c.phoneNumber.replace(/\D/g, '')
+        return number.length >= 9 && number.slice(-9) === suffix
+      })
+      if (matched.length !== 1) {
+        results.push({ leadId: lead.id, leadName: lead.name, source: lead.source, status: lead.status,
+          intent, evidenceStatus: matched.length ? 'AMBIGUOUS_CONVERSATIONS' : 'NO_CONVERSATION', messageId: null })
+        continue
+      }
+      const messages = await prisma.aiMessage.findMany({ where: { conversationId: matched[0].id, role: 'USER' },
+        select: { id: true, content: true }, take: 500, orderBy: { createdAt: 'asc' } })
+      const evidence = messages.find(message => detectCrmQualifyingIntent(message.content) === intent)
+      results.push({ leadId: lead.id, leadName: lead.name, source: lead.source, status: lead.status,
+        intent, evidenceStatus: evidence ? 'INBOUND_MESSAGE_CANDIDATE' : 'NO_MATCHING_INBOUND_INTENT',
+        messageId: evidence?.id ?? null })
+    }
+    res.json({ readOnly: true, stagesChanged: 0, identityVerified: false, page, pageSize, total,
+      hasMore: page * pageSize < total, results })
+  } catch (error) {
+    console.error('[CRM] Historical batch evidence preview failed:', error)
+    res.status(500).json({ error: 'Failed to preview historical evidence' })
+  }
+})
+
 // Historical intent discovery is read-only. A stored lastMessage is a hint,
 // not proof that a real patient replied; staff must inspect the source record.
 router.get('/leads/historical-qualification-preview', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
