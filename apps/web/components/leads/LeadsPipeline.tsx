@@ -350,6 +350,33 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
     intent: string; messageExcerpt: string; createdAt: string
   }>>([])
 
+  const [batchEvidenceLoading, setBatchEvidenceLoading] = useState(false)
+  const [batchEvidenceError, setBatchEvidenceError] = useState('')
+  const [batchEvidencePage, setBatchEvidencePage] = useState<number | null>(null)
+  const [batchEvidenceResults, setBatchEvidenceResults] = useState<Array<{
+    leadId: string; leadName: string | null; source: string; status: string;
+    intent: string; evidenceStatus: string; messageId: string | null
+  }>>([])
+
+  async function previewBatchEvidence() {
+    setBatchEvidenceLoading(true)
+    setBatchEvidenceError('')
+    setBatchEvidenceResults([])
+    setBatchEvidencePage(null)
+    try {
+      const response = await fetch(`${API}/crm/leads/historical-batch-evidence-preview?page=${intentReviewPage}`, { headers: authH as any })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Could not check original inbound messages')
+      if (data.readOnly !== true || data.stagesChanged !== 0 || !Array.isArray(data.results)) {
+        throw new Error('Unexpected evidence review response')
+      }
+      setBatchEvidenceResults(data.results)
+      setBatchEvidencePage(data.page)
+    } catch (error) {
+      setBatchEvidenceError(error instanceof Error ? error.message : 'Could not check original inbound messages')
+    } finally { setBatchEvidenceLoading(false) }
+  }
+
   const [historicalVerify, setHistoricalVerify] = useState<{ leadId: string; leadName: string; intent: string; messageExcerpt: string } | null>(null)
   const [historicalEvidence, setHistoricalEvidence] = useState('')
   const [historicalEvidenceOptions, setHistoricalEvidenceOptions] = useState<Array<{ messageId: string; intent: string; excerpt: string; createdAt: string }>>([])
@@ -737,6 +764,22 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
         {intentReviewOpen && <div className="mt-4 space-y-3">
           {intentReviewLoading ? <p className="text-sm text-gray-500">Reviewing stored messages…</p> : intentReviewError ? <p role="alert" className="text-sm text-red-600">{intentReviewError}</p> : <>
             <p className="text-xs text-gray-500">Page {intentReviewPage} · {intentReviewTotal} leads to scan · {intentReviewCandidates.length} possible intent matches on this page. No stages changed.</p>
+            <div className="space-y-2">
+              <button type="button" disabled={batchEvidenceLoading} onClick={() => void previewBatchEvidence()}
+                className="rounded-xl border border-sky-200 px-4 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300 disabled:opacity-50">
+                {batchEvidenceLoading ? 'Checking inbound evidence…' : 'Check original inbound evidence for this page'}
+              </button>
+              <p className="text-xs text-amber-700 dark:text-amber-300">Read-only check. A matching message is not proof of patient identity. Use Review evidence to confirm each lead individually.</p>
+              {batchEvidenceError && <p role="alert" className="text-xs text-red-600">{batchEvidenceError}</p>}
+              {batchEvidencePage === intentReviewPage && <div className="overflow-x-auto"><table className="w-full text-left text-xs">
+                <thead><tr className="border-b border-gray-100 dark:border-white/10"><th className="py-2">Lead</th><th>Evidence result</th><th>Next step</th></tr></thead>
+                <tbody>{batchEvidenceResults.map(result => <tr key={result.leadId} className="border-b border-gray-100 dark:border-white/10">
+                  <td className="py-2">{result.leadName || result.leadId}</td>
+                  <td>{result.evidenceStatus.replaceAll('_', ' ').toLowerCase()}</td>
+                  <td>{result.evidenceStatus === 'INBOUND_MESSAGE_CANDIDATE' ? 'Review original message and confirm identity' : 'Manual investigation required'}</td>
+                </tr>)}</tbody>
+              </table>{batchEvidenceResults.length === 0 && <p className="py-2 text-xs text-gray-500">No matching candidates on this page.</p>}</div>}
+            </div>
             {intentReviewCandidates.length === 0 ? <p className="text-sm text-gray-500">No candidate messages on this page.</p> :
               <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-gray-100 dark:border-white/10"><th className="py-2">Lead</th><th>Stage</th><th>Possible intent</th><th>Stored message excerpt</th></tr></thead><tbody>
                 {intentReviewCandidates.map(candidate => <tr key={candidate.leadId} className="border-b border-gray-100 dark:border-white/10">
