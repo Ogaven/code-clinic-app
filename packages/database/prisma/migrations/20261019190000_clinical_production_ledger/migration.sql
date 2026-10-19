@@ -28,3 +28,9 @@ ALTER TABLE "clinical_production_entries" ADD CONSTRAINT "clinical_production_en
 -- Optional source references must point to existing clinical records when supplied.
 ALTER TABLE "clinical_production_entries" ADD CONSTRAINT "clinical_production_entries_appointmentId_fkey" FOREIGN KEY ("appointmentId") REFERENCES "appointments"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "clinical_production_entries" ADD CONSTRAINT "clinical_production_entries_treatmentPlanId_fkey" FOREIGN KEY ("treatmentPlanId") REFERENCES "treatment_plans"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- A single delivery can be fully reversed only once. Partial corrections and
+-- aggregate correction limits are enforced transactionally by the future API.
+CREATE UNIQUE INDEX "clinical_production_one_reversal_per_entry_idx"
+  ON "clinical_production_entries"("originalEntryId")
+  WHERE "kind" = 'REVERSAL';
