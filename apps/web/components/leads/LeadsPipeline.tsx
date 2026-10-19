@@ -350,6 +350,30 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
     intent: string; messageExcerpt: string; createdAt: string
   }>>([])
 
+  const [batchEvidenceLoading, setBatchEvidenceLoading] = useState(false)
+  const [batchEvidenceError, setBatchEvidenceError] = useState('')
+  const [batchEvidencePage, setBatchEvidencePage] = useState(0)
+  const [batchEvidenceResults, setBatchEvidenceResults] = useState<Array<{
+    leadId: string; leadName: string | null; source: string; status: string; intent: string;
+    evidenceStatus: string; messageId: string | null
+  }>>([])
+
+  async function loadBatchEvidence(page: number) {
+    setBatchEvidenceLoading(true)
+    setBatchEvidenceError('')
+    try {
+      const response = await fetch(`${API}/crm/leads/historical-batch-evidence-preview?page=${page}`, { headers: authH as any })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Could not load batch evidence')
+      if (data.readOnly !== true || data.stagesChanged !== 0 || data.identityVerified !== false || !Array.isArray(data.results)) {
+        throw new Error('Unexpected historical batch evidence response')
+      }
+      setBatchEvidenceResults(data.results)
+      setBatchEvidencePage(page)
+    } catch (error) { setBatchEvidenceError(error instanceof Error ? error.message : 'Could not load batch evidence') }
+    finally { setBatchEvidenceLoading(false) }
+  }
+
   const [historicalVerify, setHistoricalVerify] = useState<{ leadId: string; leadName: string; intent: string; messageExcerpt: string } | null>(null)
   const [historicalEvidence, setHistoricalEvidence] = useState('')
   const [historicalEvidenceOptions, setHistoricalEvidenceOptions] = useState<Array<{ messageId: string; intent: string; excerpt: string; createdAt: string }>>([])
@@ -733,6 +757,27 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
             className="rounded-xl border border-violet-200 px-4 py-2 text-sm font-semibold text-violet-700 dark:text-violet-300">
             {intentReviewOpen ? 'Close candidates' : 'Find historical intent'}
           </button>
+        </div>
+        <div className="mt-3 space-y-2">
+          <button type="button" onClick={() => void loadBatchEvidence(1)} disabled={batchEvidenceLoading}
+            className="rounded-xl border border-violet-200 px-4 py-2 text-sm font-semibold text-violet-700 dark:text-violet-300 disabled:opacity-50">
+            {batchEvidenceLoading ? 'Checking evidence…' : 'Check batch evidence (read-only)'}
+          </button>
+          {batchEvidenceError && <p role="alert" className="text-xs text-red-600">{batchEvidenceError}</p>}
+          {batchEvidencePage > 0 && <div className="space-y-2">
+            <p className="text-xs text-gray-500">Batch page {batchEvidencePage} · {batchEvidenceResults.length} candidates · no stages changed · identity not independently verified</p>
+            <div className="overflow-x-auto"><table className="w-full text-left text-xs">
+              <thead><tr><th className="p-2">Lead</th><th className="p-2">Current stage</th><th className="p-2">Intent</th><th className="p-2">Evidence result</th></tr></thead>
+              <tbody>{batchEvidenceResults.map(item => <tr key={item.leadId} className="border-t">
+                <td className="p-2 dark:text-white">{item.leadName || item.leadId}</td>
+                <td className="p-2">{item.status}</td>
+                <td className="p-2">{item.intent.replace(/_/g, ' ')}</td>
+                <td className="p-2 font-semibold">{item.evidenceStatus.replace(/_/g, ' ').toLowerCase()}</td>
+              </tr>)}</tbody>
+            </table></div>
+            <button type="button" disabled={batchEvidenceLoading} onClick={() => void loadBatchEvidence(batchEvidencePage + 1)}
+              className="rounded-lg border px-3 py-1.5 text-xs dark:text-white">Check next page</button>
+          </div>}
         </div>
         {intentReviewOpen && <div className="mt-4 space-y-3">
           {intentReviewLoading ? <p className="text-sm text-gray-500">Reviewing stored messages…</p> : intentReviewError ? <p role="alert" className="text-sm text-red-600">{intentReviewError}</p> : <>
