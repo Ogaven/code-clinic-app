@@ -1199,11 +1199,9 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
                     roles here is supplementary only, not the real gate. */}
                 <div className="flex gap-2 pt-1">
                   {viewLead.status !== 'CONVERTED' && viewLead.status !== 'LOST' && (
-                    <button
-                      onClick={() => { setViewLead(null); setConverting(viewLead) }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/15 dark:text-emerald-300 dark:hover:bg-emerald-400/25 transition-colors">
-                      <UserCheck size={14} /> Convert to Patient
-                    </button>
+                    <p className="flex-1 text-xs text-amber-700 dark:text-amber-300 py-2">
+                      Patient conversion requires verified identity and a qualifying booking. Use the verified booking workflow.
+                    </p>
                   )}
                   {canDelete && (
                     <button
