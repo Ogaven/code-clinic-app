@@ -1425,7 +1425,7 @@ router.get('/practice-roster-coverage', requireAuth, adminOnly, async (req, res)
     return res.status(400).json({ error: 'Invalid calendar date' })
   }
   const end = new Date(start.getTime() + 86_400_000)
-  const dayOfWeek = start.getUTCDay()
+  const dayOfWeek = new Date(parsed.data.date + 'T12:00:00+03:00').getUTCDay() // Kampala calendar day, not UTC midnight rollover
   try {
     const [doctors, blocked, attendance] = await Promise.all([
       prisma.doctor.findMany({
