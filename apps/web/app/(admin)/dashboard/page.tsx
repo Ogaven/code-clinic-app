@@ -423,6 +423,13 @@ export default function DashboardPage() {
 
   const weekCounts = WEEK_STATUSES.map(s => ({ ...s, count: (weekAppts ?? []).filter(a => a.status === s.key).length }))
   const weekTotal = weekAppts ? weekAppts.length : 0
+  // Operational demand and attendance are different facts. Never treat future bookings
+  // as no-shows or infer attendance from confirmation alone.
+  const weekBooked = (weekAppts ?? []).filter(a => !['CANCELLED', 'CANCELLED_RESCHEDULED', 'RESCHEDULED', 'NO_SHOW', 'IMPORTED'].includes(a.status)).length
+  const weekAttended = (weekAppts ?? []).filter(a => ['ARRIVED', 'CHECKED_IN', 'WAITING', 'IN_OPERATORY', 'IN_CHAIR', 'WITH_PROVIDER', 'SESSION_COMPLETE', 'CHECKOUT', 'READY_CHECKOUT', 'DEPARTED', 'COMPLETED'].includes(a.status)).length
+  // Reference appointment volume only; not a productivity score or actual staffed capacity.
+  const referenceGoal = 276
+  const bookedPct = Math.round((weekBooked / referenceGoal) * 100)
   const pipelineCounts = PIPELINE_STATUSES.map(s => ({ ...s, count: dentalData ? (dentalData.pipeline[s.key]?.count ?? 0) : 0 }))
   const pipelineTotal = dentalData ? Object.values(dentalData.pipeline).reduce((s, p) => s + p.count, 0) : 0
   const flowCounts = FLOW_STAGES.map(s => ({ ...s, count: (todayAppts ?? []).filter(a => s.statuses.includes(a.status)).length }))
@@ -464,18 +471,25 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Card 1 — Appointments This Week: number+sparkline-bar side by side, chip legend below */}
+        {/* Clinic-wide appointment volume reference, not clinical production. */}
         <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Appointments This Week</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Appointment Performance</p>
             <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-300"><Calendar size={13} /></span>
           </div>
-          <div className="mt-2 flex items-center gap-3">
-            <p className="text-3xl font-extrabold leading-none text-clinic-navy dark:text-white">{weekAppts ? weekTotal : '—'}</p>
-            <div className="h-8 w-px flex-shrink-0 bg-gray-100 dark:bg-white/10" />
-            <DistributionBar segments={weekCounts} total={weekTotal} />
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <p className="text-2xl font-extrabold text-clinic-navy dark:text-white">{weekAppts ? weekBooked : '—'}</p>
+            <span className="text-xs font-semibold text-gray-400">/ {referenceGoal} reference</span>
           </div>
-          <ChipLegend items={weekCounts} loading={!weekAppts} />
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+            <div className="h-full rounded-full bg-cyan-500" style={{ width: `${Math.min(bookedPct, 100)}%` }} />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[11px] text-gray-600 dark:text-slate-300">
+            <span>Booked: <strong>{weekAppts ? weekBooked : '—'}</strong></span>
+            <span>Attended: <strong>{weekAppts ? weekAttended : '—'}</strong></span>
+            <span>{weekAppts ? `${bookedPct}%` : '—'}</span>
+          </div>
+          <p className="mt-1.5 text-[10px] leading-snug text-gray-400 dark:text-slate-400">Volume reference only · 48 per weekday / 36 Saturday. Not a production or staffing-adjusted goal. Imported records are excluded until classified.</p>
         </div>
 
         {/* Card 2 — Treatment Pipeline: same number+bar language, chip legend
