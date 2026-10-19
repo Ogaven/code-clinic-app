@@ -204,7 +204,7 @@ router.post('/leads/:id/verify-historical-intent', requireAuth, requireRole('ADM
 // Matching a phone suffix is only a candidate association, not verified identity.
 router.get('/leads/historical-batch-evidence-preview', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
   const rawPage = req.query.page
-  if (rawPage !== undefined && (typeof rawPage !== 'string' || !/^[1-9]\\d{0,5}$/.test(rawPage))) {
+  if (rawPage !== undefined && (typeof rawPage !== 'string' || !/^[1-9]\d{0,5}$/.test(rawPage))) {
     return res.status(400).json({ error: 'page must be a positive integer' })
   }
   const page = rawPage ? Number(rawPage) : 1
@@ -223,7 +223,7 @@ router.get('/leads/historical-batch-evidence-preview', requireAuth, requireRole(
     for (const lead of leads) {
       const intent = lead.lastMessage ? detectCrmQualifyingIntent(lead.lastMessage) : null
       if (!intent) continue
-      const digits = (lead.phone ?? '').replace(/\\D/g, '')
+      const digits = (lead.phone ?? '').replace(/\D/g, '')
       if (digits.length < 9) {
         results.push({ leadId: lead.id, leadName: lead.name, source: lead.source, status: lead.status,
           intent, evidenceStatus: 'NO_PHONE', messageId: null })
@@ -231,7 +231,7 @@ router.get('/leads/historical-batch-evidence-preview', requireAuth, requireRole(
       }
       const suffix = digits.slice(-9)
       const matched = conversations.filter(c => {
-        const number = c.phoneNumber.replace(/\\D/g, '')
+        const number = c.phoneNumber.replace(/\D/g, '')
         return number.length >= 9 && number.slice(-9) === suffix
       })
       if (matched.length !== 1) {
