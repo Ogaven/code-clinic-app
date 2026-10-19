@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateProductionEntry, isCorrectionWithinDeliveredValue, productionLinksMatchPatient } from '../utils/clinical-production-validation'
+import { validateProductionEntry, isCorrectionWithinDeliveredValue, productionLinksMatchPatient, isMatchingProductionReplay } from '../utils/clinical-production-validation'
 
 const base = { sourceKey: 'unique-123', note: 'Treatment delivered and verified' }
 describe('clinical production validation', () => {
@@ -39,4 +39,12 @@ describe('clinical production link ownership', () => {
   it('rejects treatment plans belonging to another patient', () => {
     expect(productionLinksMatchPatient({ patientId: 'patient-1', treatmentPlanPatientId: 'patient-2' })).toBe(false)
   })
+})
+
+describe('clinical production idempotency', () => {
+  const existing = { patientId: 'patient-1', kind: 'DELIVERY' as const, amountUGX: 200000, originalEntryId: null, appointmentId: null, treatmentPlanId: null, note: 'Verified delivery', deliveredAt: new Date('2026-10-19T09:00:00Z') }
+  it('accepts an identical replay', () => expect(isMatchingProductionReplay(existing, { ...existing })).toBe(true))
+  it('rejects reuse of the same key with a different amount', () => expect(isMatchingProductionReplay(existing, { ...existing, amountUGX: 250000 })).toBe(false))
+  it('rejects reuse of the same key for another patient', () => expect(isMatchingProductionReplay(existing, { ...existing, patientId: 'patient-2' })).toBe(false))
+  it('rejects reuse of the same key for a different treatment date', () => expect(isMatchingProductionReplay(existing, { ...existing, deliveredAt: new Date('2026-10-20T09:00:00Z') })).toBe(false))
 })
