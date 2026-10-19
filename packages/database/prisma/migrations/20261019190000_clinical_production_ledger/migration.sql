@@ -13,7 +13,7 @@ CREATE TABLE "clinical_production_entries" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "clinical_production_entries_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "clinical_production_kind_check" CHECK ("kind" IN ('DELIVERY', 'REVERSAL', 'ADJUSTMENT')),
-  CONSTRAINT "clinical_production_amount_check" CHECK (("kind" = 'DELIVERY' AND "amountUGX" > 0 AND "originalEntryId" IS NULL) OR ("kind" IN ('REVERSAL', 'ADJUSTMENT') AND "amountUGX" <> 0 AND "originalEntryId" IS NOT NULL))
+  CONSTRAINT "clinical_production_amount_check" CHECK (("kind" = 'DELIVERY' AND "amountUGX" > 0 AND "originalEntryId" IS NULL) OR ("kind" = 'REVERSAL' AND "amountUGX" < 0 AND "originalEntryId" IS NOT NULL) OR ("kind" = 'ADJUSTMENT' AND "amountUGX" <> 0 AND "originalEntryId" IS NOT NULL))
 );
 CREATE UNIQUE INDEX "clinical_production_entries_sourceKey_key" ON "clinical_production_entries"("sourceKey");
 CREATE INDEX "clinical_production_entries_deliveredAt_idx" ON "clinical_production_entries"("deliveredAt");
