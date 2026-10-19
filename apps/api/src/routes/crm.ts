@@ -104,6 +104,47 @@ router.post('/leads', requireAuth, adminAndReceptionist, async (req: Request, re
   }
 })
 
+// Historical qualification requires explicit staff confirmation of the source
+// evidence. This does not infer message direction from the lastMessage field.
+router.post('/leads/:id/verify-historical-intent', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
+  const { intent, confirmedMessage, evidenceReference } = req.body ?? {}
+  if (typeof intent !== 'string' || !['asked_pricing', 'asked_availability', 'wants_appointment'].includes(intent) ||
+      confirmedMessage !== true || typeof evidenceReference !== 'string' ||
+      evidenceReference.trim().length < 8 || evidenceReference.length > 500) {
+    return res.status(400).json({ error: 'Valid intent, source-message confirmation, and an evidence reference (8–500 characters) are required' })
+  }
+  try {
+    const lead = await prisma.lead.findUnique({ where: { id: req.params.id }, select: {
+      id: true, status: true, stage: true, lastMessage: true, convertedToPatientId: true,
+    } })
+    if (!lead) return res.status(404).json({ error: 'Lead not found' })
+    if (!['NEW', 'CONTACTED'].includes(lead.status) || lead.stage !== lead.status || lead.convertedToPatientId) {
+      return res.status(409).json({ error: 'Lead is no longer eligible for historical qualification' })
+    }
+    if (!lead.lastMessage || detectCrmQualifyingIntent(lead.lastMessage) !== intent) {
+      return res.status(409).json({ error: 'Stored lead intent no longer matches the reviewed evidence' })
+    }
+    const result = await prisma.$transaction(async tx => {
+      const updated = await tx.lead.updateMany({
+        where: { id: lead.id, status: lead.status, stage: lead.stage, convertedToPatientId: null, lastMessage: lead.lastMessage },
+        data: { status: 'QUALIFIED', stage: 'QUALIFIED', qualifyingIntent: intent },
+      })
+      if (updated.count !== 1) return false
+      await tx.leadStageHistory.create({ data: {
+        leadId: lead.id, fromStage: lead.status, toStage: 'QUALIFIED',
+        changedBy: req.user!.id, trigger: 'MANUAL',
+        reason: 'historical_verified_intent:' + intent + '; evidence: ' + evidenceReference.trim(),
+      } })
+      return true
+    })
+    if (!result) return res.status(409).json({ error: 'Lead changed during verification; refresh and review again' })
+    res.json({ leadId: lead.id, status: 'QUALIFIED', evidenceRecorded: true })
+  } catch (error) {
+    console.error('[CRM] Historical qualification verification failed:', error)
+    res.status(500).json({ error: 'Failed to verify historical qualification' })
+  }
+})
+
 // Historical intent discovery is read-only. A stored lastMessage is a hint,
 // not proof that a real patient replied; staff must inspect the source record.
 router.get('/leads/historical-qualification-preview', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
