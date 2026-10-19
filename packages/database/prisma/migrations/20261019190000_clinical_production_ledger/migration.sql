@@ -24,3 +24,7 @@ CREATE INDEX "clinical_production_entries_originalEntryId_idx" ON "clinical_prod
 ALTER TABLE "clinical_production_entries" ADD CONSTRAINT "clinical_production_entries_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "patients"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "clinical_production_entries" ADD CONSTRAINT "clinical_production_entries_recordedById_fkey" FOREIGN KEY ("recordedById") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "clinical_production_entries" ADD CONSTRAINT "clinical_production_entries_originalEntryId_fkey" FOREIGN KEY ("originalEntryId") REFERENCES "clinical_production_entries"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Optional source references must point to existing clinical records when supplied.
+ALTER TABLE "clinical_production_entries" ADD CONSTRAINT "clinical_production_entries_appointmentId_fkey" FOREIGN KEY ("appointmentId") REFERENCES "appointments"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "clinical_production_entries" ADD CONSTRAINT "clinical_production_entries_treatmentPlanId_fkey" FOREIGN KEY ("treatmentPlanId") REFERENCES "treatment_plans"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
