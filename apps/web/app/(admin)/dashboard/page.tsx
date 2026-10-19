@@ -239,6 +239,8 @@ export default function DashboardPage() {
   const [avatars, setAvatars] = useState<Record<string, MiniPatient[]>>({})
   const [reviewerPhotos, setReviewerPhotos] = useState<{ reviewId: string; name: string; url: string }[]>([])
   const [growthRevenue, setGrowthRevenue] = useState<GrowthCrmRevenue | null>(null)
+  const [practiceFinancial, setPracticeFinancial] = useState<{ invoicedUGX: number; collectedUGX: number; invoicesCount: number; paymentsCount: number } | null>(null)
+  const [practiceFinancialError, setPracticeFinancialError] = useState(false)
   const [satisfaction, setSatisfaction] = useState<SatisfactionSummary | null>(null)
   const [googleRating, setGoogleRating] = useState<{ averageRating: number; totalReviewCount: number } | null>(null)
   const [growthPeriod, setGrowthPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month')
@@ -379,6 +381,22 @@ export default function DashboardPage() {
       .then(d => { if (d?.funnel && d?.revenue) setGrowthRevenue(d) })
       .catch(() => {})
   }, [growthPeriod])
+
+  // Read-only, current Kampala calendar month. Not a clinical production metric.
+  useEffect(() => {
+    if (user?.role !== 'ADMIN') return
+    const token = localStorage.getItem('cc_token')
+    if (!token) return
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Kampala', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+    const startDate = today.slice(0, 7) + '-01'
+    const query = new URLSearchParams({ startDate, endDate: today })
+    let cancelled = false
+    fetch('/api-proxy/scheduling/practice-financial-activity?' + query.toString(), { headers: { Authorization: 'Bearer ' + token } })
+      .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json() })
+      .then(data => { if (!cancelled) setPracticeFinancial(data) })
+      .catch(() => { if (!cancelled) setPracticeFinancialError(true) })
+    return () => { cancelled = true }
+  }, [user?.role])
 
   // Returning/New avatar previews come from the dashboard endpoint's own
   // canonical newIds/returningIds (see clinical.ts) rather than a separate
@@ -544,6 +562,25 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {user?.role === 'ADMIN' && (
+        <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Actual financial activity — month to date</h3>
+              <p className="text-xs text-gray-500">Invoice creation and payment dates (Kampala). Not verified clinical production.</p>
+            </div>
+            <Link href="/settings" className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">Manage production goals</Link>
+          </div>
+          {practiceFinancial ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div><p className="text-xs text-gray-500">Invoiced (excluding drafts/cancellations)</p><p className="text-lg font-bold">{formatUGX(practiceFinancial.invoicedUGX)}</p><p className="text-xs text-gray-400">{practiceFinancial.invoicesCount} invoices</p></div>
+              <div><p className="text-xs text-gray-500">Payments collected</p><p className="text-lg font-bold">{formatUGX(practiceFinancial.collectedUGX)}</p><p className="text-xs text-gray-400">{practiceFinancial.paymentsCount} payments</p></div>
+              <div><p className="text-xs text-gray-500">Verified clinical production</p><p className="text-sm font-semibold text-amber-600">Not yet tracked</p><p className="text-xs text-gray-400">Cannot be inferred from invoices or collections</p></div>
+            </div>
+          ) : <p className="text-sm text-gray-500">{practiceFinancialError ? 'Financial activity unavailable; no figures are being estimated.' : 'Loading recorded financial activity…'}</p>}
+        </section>
+      )}
 
       {/* ═══ ROW 2 — Patient Satisfaction | Financial Snapshot | CRM Growth ═══ */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[0.85fr_1.6fr_0.85fr]">
