@@ -705,7 +705,7 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
             <button type="button" disabled={intentReviewLoading} onClick={() => void loadHistoricalIntentPage(intentReviewPage)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Refresh</button>
           </div>
         </div>}
-      </section>
+      </section>}
 
       {/* Historical booking review is intentionally read-only. A matched appointment
           is not permission to change patient or lead data automatically. */}
