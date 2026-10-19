@@ -36,6 +36,7 @@ export default function SettingsPage() {
       </div>
 
       {user.role === 'ADMIN' ? (
+        <>
         <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
           <h3 className="font-semibold text-clinic-navy dark:text-white">Daily production goals</h3>
           <p className="mt-1 text-xs text-gray-500">Manager-defined UGX goals, independent of appointment volume. These are targets, not recorded production.</p>
@@ -82,6 +83,7 @@ export default function SettingsPage() {
             ))}
           </div>
         </section>
+        </>
       ) : (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 py-16 text-center">
           <span className="grid h-12 w-12 place-items-center rounded-full bg-gray-50 text-gray-300 dark:bg-white/5 dark:text-slate-500">
