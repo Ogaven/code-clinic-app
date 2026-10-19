@@ -1416,6 +1416,51 @@ router.get('/practice-scheduled-demand', requireAuth, adminOnly, async (req, res
   }
 })
 
+// Read-only roster coverage, not an assertion of staffed chair capacity.
+router.get('/practice-roster-coverage', requireAuth, adminOnly, async (req, res) => {
+  const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
+  if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
+  const start = new Date(parsed.data.date + 'T00:00:00+03:00')
+  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+    return res.status(400).json({ error: 'Invalid calendar date' })
+  }
+  const end = new Date(start.getTime() + 86_400_000)
+  const dayOfWeek = start.getUTCDay()
+  try {
+    const [doctors, blocked, attendance] = await Promise.all([
+      prisma.doctor.findMany({
+        where: { isActive: true, user: { isActive: true } },
+        select: { id: true, workingDays: true, workingHours: true, schedules: { where: { dayOfWeek }, select: { isOpen: true, openTime: true, closeTime: true, breaks: true } } },
+      }),
+      prisma.blockedTime.findMany({ where: { startAt: { lt: end }, endAt: { gt: start } }, select: { doctorId: true, startAt: true, endAt: true } }),
+      prisma.staffAttendance.count({ where: { attendanceDate: start, status: 'PRESENT' } }),
+    ])
+    const scheduledDoctorIds: string[] = []
+    const unavailableDoctorIds: string[] = []
+    const parseDays = (raw: string): number[] => {
+      try { const days: unknown = JSON.parse(raw); return Array.isArray(days) ? days.filter((v): v is number => Number.isInteger(v) && v >= 0 && v <= 6) : [] }
+      catch { return [] }
+    }
+    for (const doctor of doctors) {
+      const override = doctor.schedules[0]
+      const works = override ? override.isOpen : parseDays(doctor.workingDays).includes(dayOfWeek)
+      if (!works) continue
+      scheduledDoctorIds.push(doctor.id)
+      if (blocked.some(b => b.doctorId === doctor.id)) unavailableDoctorIds.push(doctor.id)
+    }
+    res.json({
+      date: parsed.data.date, activeDoctors: doctors.length,
+      scheduledDoctors: scheduledDoctorIds.length,
+      doctorsWithAnyBlockedTime: unavailableDoctorIds.length,
+      presentStaffAttendanceRecords: attendance,
+      staffedCapacityMinutes: null, chairCapacity: null, utilizationPct: null,
+      disclaimer: 'Scheduled doctors, blocked periods and staff check-ins are partial evidence only. A blocked interval is not necessarily a full-day absence; staff attendance includes non-doctors. No verified chair capacity or utilization is inferred.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to load roster coverage' })
+  }
+})
+
 router.get('/booking-settings', requireAuth, async (_req, res) => {
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
