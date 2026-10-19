@@ -138,7 +138,7 @@ function PreVisitForm() {
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5 pb-12">
-        {!apptId && <div className="rounded-2xl bg-[#0a285b] p-5 text-white shadow-sm"><h1 className="text-2xl font-bold">Contact Information</h1><p className="mt-1 text-sm text-blue-100">Welcome to Code Clinic. Please complete your contact details below.</p></div>}
+        {!apptId && <img src="/Screenshot%202026-10-19%20at%2007.55.10.png" alt="Code Clinic — Contact Information" className="block w-full h-auto rounded-xl" />}
 
         {/* Appointment banner */}
         {appt && (
