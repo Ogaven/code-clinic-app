@@ -109,7 +109,7 @@ router.post('/leads', requireAuth, adminAndReceptionist, async (req: Request, re
 router.get('/leads/historical-qualification-preview', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
   try {
     const pageParam = req.query.page
-    if (pageParam !== undefined && (typeof pageParam !== 'string' || !/^[1-9]\\d{0,5}$/.test(pageParam))) {
+    if (pageParam !== undefined && (typeof pageParam !== 'string' || !/^[1-9]\d{0,5}$/.test(pageParam))) {
       return res.status(400).json({ error: 'page must be a positive integer' })
     }
     const page = pageParam ? Number(pageParam) : 1
