@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateProductionEntry, isCorrectionWithinDeliveredValue } from '../utils/clinical-production-validation'
+import { validateProductionEntry, isCorrectionWithinDeliveredValue, productionLinksMatchPatient } from '../utils/clinical-production-validation'
 
 const base = { sourceKey: 'unique-123', note: 'Treatment delivered and verified' }
 describe('clinical production validation', () => {
@@ -26,5 +26,17 @@ describe('clinical production validation', () => {
     expect(isCorrectionWithinDeliveredValue(1000, -200, -800)).toBe(true)
     expect(isCorrectionWithinDeliveredValue(1000, -200, -801)).toBe(false)
     expect(isCorrectionWithinDeliveredValue(1000, 0, 50)).toBe(true)
+  })
+})
+
+describe('clinical production link ownership', () => {
+  it('accepts links belonging to the patient', () => {
+    expect(productionLinksMatchPatient({ patientId: 'patient-1', appointmentPatientId: 'patient-1', treatmentPlanPatientId: 'patient-1' })).toBe(true)
+  })
+  it('rejects appointments belonging to another patient', () => {
+    expect(productionLinksMatchPatient({ patientId: 'patient-1', appointmentPatientId: 'patient-2' })).toBe(false)
+  })
+  it('rejects treatment plans belonging to another patient', () => {
+    expect(productionLinksMatchPatient({ patientId: 'patient-1', treatmentPlanPatientId: 'patient-2' })).toBe(false)
   })
 })
