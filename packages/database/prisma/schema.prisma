@@ -506,6 +506,7 @@ model Appointment {
   @@index([status, startAt])
   @@index([treatmentPlanId])
   @@map("appointments")
+  clinicalProductionEntries ClinicalProductionEntry[]
 }
 
 model Invoice {
@@ -1035,7 +1036,9 @@ model ClinicalProductionEntry {
   patientId       String
   patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Restrict)
   appointmentId   String?
+  appointment     Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   treatmentPlanId String?
+  treatmentPlan   TreatmentPlan? @relation(fields: [treatmentPlanId], references: [id], onDelete: Restrict)
   deliveredAt     DateTime
   amountUGX       Int
   kind            String   // DELIVERY | REVERSAL | ADJUSTMENT
@@ -1087,6 +1090,7 @@ model TreatmentPlan {
   @@index([stage])
   @@index([followUpAt])
   @@map("treatment_plans")
+  clinicalProductionEntries ClinicalProductionEntry[]
 }
 
 // Idempotency record for treatment follow-up reminders (due-soon/due-today/overdue),
