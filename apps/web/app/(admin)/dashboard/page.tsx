@@ -425,7 +425,7 @@ export default function DashboardPage() {
   const weekTotal = weekAppts ? weekAppts.length : 0
   // Operational demand and attendance are different facts. Never treat future bookings
   // as no-shows or infer attendance from confirmation alone.
-  const weekBooked = (weekAppts ?? []).filter(a => !['CANCELLED', 'CANCELLED_RESCHEDULED', 'RESCHEDULED', 'NO_SHOW'].includes(a.status)).length
+  const weekBooked = (weekAppts ?? []).filter(a => !['CANCELLED', 'CANCELLED_RESCHEDULED', 'RESCHEDULED', 'NO_SHOW', 'IMPORTED'].includes(a.status)).length
   const weekAttended = (weekAppts ?? []).filter(a => ['ARRIVED', 'CHECKED_IN', 'WAITING', 'IN_OPERATORY', 'IN_CHAIR', 'WITH_PROVIDER', 'SESSION_COMPLETE', 'CHECKOUT', 'READY_CHECKOUT', 'DEPARTED', 'COMPLETED'].includes(a.status)).length
   // Reference appointment volume only; not a productivity score or actual staffed capacity.
   const referenceGoal = 276
@@ -489,7 +489,7 @@ export default function DashboardPage() {
             <span>Attended: <strong>{weekAppts ? weekAttended : '—'}</strong></span>
             <span>{weekAppts ? `${bookedPct}%` : '—'}</span>
           </div>
-          <p className="mt-1.5 text-[10px] leading-snug text-gray-400 dark:text-slate-400">Volume reference only · 48 weekdays / 36 Saturday. Not a production or staffing-adjusted goal.</p>
+          <p className="mt-1.5 text-[10px] leading-snug text-gray-400 dark:text-slate-400">Volume reference only · 48 per weekday / 36 Saturday. Not a production or staffing-adjusted goal. Imported records are excluded until classified.</p>
         </div>
 
         {/* Card 2 — Treatment Pipeline: same number+bar language, chip legend
