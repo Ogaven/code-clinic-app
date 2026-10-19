@@ -339,6 +339,36 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
     } finally { setHistoricalSummaryLoading(false) }
   }
 
+  const [intentReviewOpen, setIntentReviewOpen] = useState(false)
+  const [intentReviewLoading, setIntentReviewLoading] = useState(false)
+  const [intentReviewError, setIntentReviewError] = useState('')
+  const [intentReviewPage, setIntentReviewPage] = useState(1)
+  const [intentReviewTotal, setIntentReviewTotal] = useState(0)
+  const [intentReviewHasMore, setIntentReviewHasMore] = useState(false)
+  const [intentReviewCandidates, setIntentReviewCandidates] = useState<Array<{
+    leadId: string; leadName: string | null; source: string; currentStage: string;
+    intent: string; messageExcerpt: string; createdAt: string
+  }>>([])
+
+  async function loadHistoricalIntentPage(page: number) {
+    setIntentReviewLoading(true)
+    setIntentReviewError('')
+    try {
+      const response = await fetch(`${API}/crm/leads/historical-qualification-preview?page=${page}`, { headers: authH as any })
+      if (!response.ok) throw new Error(`Could not load historical intent (HTTP ${response.status})`)
+      const data = await response.json()
+      if (data.readOnly !== true || data.evidenceVerified !== false || !Array.isArray(data.candidates)) {
+        throw new Error('Unexpected historical intent review response')
+      }
+      setIntentReviewCandidates(data.candidates)
+      setIntentReviewPage(data.page)
+      setIntentReviewTotal(data.total)
+      setIntentReviewHasMore(data.hasMore)
+    } catch (error) {
+      setIntentReviewError(error instanceof Error ? error.message : 'Could not load historical intent')
+    } finally { setIntentReviewLoading(false) }
+  }
+
   const [reviewOpen, setReviewOpen] = useState(false)
   const [reviewLoading, setReviewLoading] = useState(false)
   const [reviewError, setReviewError] = useState('')
@@ -645,6 +675,37 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
           <details className="text-xs text-gray-600 dark:text-white/60"><summary className="cursor-pointer font-semibold">Classification reasons</summary><ul className="mt-2 space-y-1">{Object.entries(historicalSummary.reasons).map(([reason, count]) => <li key={reason}>{reason.replaceAll('_', ' ')}: {count}</li>)}</ul></details>
         </>}
       </section>
+
+      {currentUser.role === 'ADMIN' && <section className="rounded-2xl border border-violet-100 dark:border-violet-500/20 bg-white dark:bg-white/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-gray-800 dark:text-white">Historical qualification candidates</h2>
+            <p className="text-xs text-gray-500 mt-1">Possible intent in stored messages only. Not verified inbound evidence. Review the original conversation before changing any lead stage.</p>
+          </div>
+          <button type="button" onClick={() => { if (!intentReviewOpen) void loadHistoricalIntentPage(1); setIntentReviewOpen(!intentReviewOpen) }}
+            className="rounded-xl border border-violet-200 px-4 py-2 text-sm font-semibold text-violet-700 dark:text-violet-300">
+            {intentReviewOpen ? 'Close candidates' : 'Find historical intent'}
+          </button>
+        </div>
+        {intentReviewOpen && <div className="mt-4 space-y-3">
+          {intentReviewLoading ? <p className="text-sm text-gray-500">Reviewing stored messages…</p> : intentReviewError ? <p role="alert" className="text-sm text-red-600">{intentReviewError}</p> : <>
+            <p className="text-xs text-gray-500">Page {intentReviewPage} · {intentReviewTotal} leads to scan · {intentReviewCandidates.length} possible intent matches on this page. No stages changed.</p>
+            {intentReviewCandidates.length === 0 ? <p className="text-sm text-gray-500">No candidate messages on this page.</p> :
+              <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-gray-100 dark:border-white/10"><th className="py-2">Lead</th><th>Stage</th><th>Possible intent</th><th>Stored message excerpt</th></tr></thead><tbody>
+                {intentReviewCandidates.map(candidate => <tr key={candidate.leadId} className="border-b border-gray-100 dark:border-white/10">
+                  <td className="py-2">{candidate.leadName || candidate.leadId}<div className="text-gray-400">{candidate.source}</div></td>
+                  <td>{candidate.currentStage}</td><td>{candidate.intent.replace(/_/g, ' ')}</td>
+                  <td className="max-w-xs break-words">{candidate.messageExcerpt}</td>
+                </tr>)}
+              </tbody></table></div>}
+          </>}
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={intentReviewLoading || intentReviewPage <= 1} onClick={() => void loadHistoricalIntentPage(intentReviewPage - 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Previous</button>
+            <button type="button" disabled={intentReviewLoading || !intentReviewHasMore} onClick={() => void loadHistoricalIntentPage(intentReviewPage + 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Next</button>
+            <button type="button" disabled={intentReviewLoading} onClick={() => void loadHistoricalIntentPage(intentReviewPage)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Refresh</button>
+          </div>
+        </div>}
+      </section>}
 
       {/* Historical booking review is intentionally read-only. A matched appointment
           is not permission to change patient or lead data automatically. */}

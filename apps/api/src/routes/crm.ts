@@ -14,6 +14,7 @@ import {
   logHumanReply,
   applyQualifyingIntent,
   markLeadLostManually,
+  detectCrmQualifyingIntent,
 } from '../crm-automation/lead-stage.service'
 
 const router = Router()
@@ -100,6 +101,36 @@ router.post('/leads', requireAuth, adminAndReceptionist, async (req: Request, re
     res.status(201).json(lead)
   } catch (e) {
     res.status(500).json({ error: 'Failed to create lead' })
+  }
+})
+
+// Historical intent discovery is read-only. A stored lastMessage is a hint,
+// not proof that a real patient replied; staff must inspect the source record.
+router.get('/leads/historical-qualification-preview', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
+  try {
+    const pageParam = req.query.page
+    if (pageParam !== undefined && (typeof pageParam !== 'string' || !/^[1-9]\\d{0,5}$/.test(pageParam))) {
+      return res.status(400).json({ error: 'page must be a positive integer' })
+    }
+    const page = pageParam ? Number(pageParam) : 1
+    const pageSize = 50
+    const where = { status: { in: ['NEW', 'CONTACTED'] }, convertedToPatientId: null }
+    const [total, leads] = await Promise.all([
+      prisma.lead.count({ where }),
+      prisma.lead.findMany({
+        where, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        skip: (page - 1) * pageSize, take: pageSize,
+        select: { id: true, name: true, source: true, status: true, lastMessage: true, createdAt: true },
+      }),
+    ])
+    const candidates = leads.flatMap(lead => {
+      const intent = lead.lastMessage ? detectCrmQualifyingIntent(lead.lastMessage) : null
+      return intent ? [{ leadId: lead.id, leadName: lead.name, source: lead.source, currentStage: lead.status, intent, messageExcerpt: lead.lastMessage!.slice(0, 240), createdAt: lead.createdAt }] : []
+    })
+    res.json({ readOnly: true, evidenceVerified: false, page, pageSize, total, hasMore: page * pageSize < total, candidates })
+  } catch (error) {
+    console.error('[CRM] Historical qualification preview failed:', error)
+    res.status(500).json({ error: 'Failed to preview historical qualification' })
   }
 })
 
