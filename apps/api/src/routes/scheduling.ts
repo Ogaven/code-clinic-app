@@ -1461,6 +1461,54 @@ router.get('/practice-roster-coverage', requireAuth, adminOnly, async (req, res)
   }
 })
 
+// Gross doctor schedule minutes only: no chair, break, absence or utilization assumptions.
+router.get('/practice-doctor-schedule-minutes', requireAuth, adminOnly, async (req, res) => {
+  const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
+  if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
+  const start = new Date(parsed.data.date + 'T00:00:00+03:00')
+  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+    return res.status(400).json({ error: 'Invalid calendar date' })
+  }
+  const weekday = new Date(parsed.data.date + 'T12:00:00+03:00').getUTCDay()
+  const minutes = (value: unknown): number | null => {
+    if (typeof value !== 'string' || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(value)) return null
+    const [hour, minute] = value.split(':').map(Number)
+    return hour * 60 + minute
+  }
+  try {
+    const doctors = await prisma.doctor.findMany({
+      where: { isActive: true, user: { isActive: true } },
+      select: { workingDays: true, workingHours: true, schedules: { where: { dayOfWeek: weekday }, select: { isOpen: true, openTime: true, closeTime: true, breaks: true } } },
+    })
+    let grossScheduledMinutes = 0
+    let doctorsWithValidHours = 0
+    let doctorsWithUnverifiedHours = 0
+    for (const doctor of doctors) {
+      const override = doctor.schedules[0]
+      let days: unknown = null
+      let hours: unknown = null
+      try { days = JSON.parse(doctor.workingDays); hours = JSON.parse(doctor.workingHours) } catch { /* missing schedule evidence */ }
+      const working = override ? override.isOpen : Array.isArray(days) && days.includes(weekday)
+      if (!working) continue
+      const fallback = hours && typeof hours === 'object' ? hours as { start?: unknown; end?: unknown } : {}
+      const open = minutes(override ? override.openTime : fallback.start)
+      const close = minutes(override ? override.closeTime : fallback.end)
+      if (open === null || close === null || close <= open) { doctorsWithUnverifiedHours++; continue }
+      grossScheduledMinutes += close - open
+      doctorsWithValidHours++
+    }
+    res.json({
+      date: parsed.data.date, doctorsWithValidHours, doctorsWithUnverifiedHours,
+      grossScheduledDoctorMinutes: grossScheduledMinutes,
+      grossScheduledDoctorHours: Math.round(grossScheduledMinutes / 60 * 100) / 100,
+      staffedCapacityMinutes: null, chairCapacity: null, utilizationPct: null,
+      disclaimer: 'Gross scheduled doctor hours exclude breaks, blocked times, absences, special days and chair constraints. They are NOT available clinical capacity; invalid or missing schedules are omitted and counted separately.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to load doctor schedule minutes' })
+  }
+})
+
 router.get('/booking-settings', requireAuth, async (_req, res) => {
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
