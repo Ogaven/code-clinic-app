@@ -211,13 +211,14 @@ router.get('/leads/historical-batch-evidence-preview', requireAuth, requireRole(
   const pageSize = 50
   try {
     const where = { status: { in: ['NEW', 'CONTACTED'] }, convertedToPatientId: null }
-    const [total, leads, conversations] = await Promise.all([
+    const [total, leads, conversations, allLeadPhones] = await Promise.all([
       prisma.lead.count({ where }),
       prisma.lead.findMany({ where, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         skip: (page - 1) * pageSize, take: pageSize,
         select: { id: true, name: true, phone: true, source: true, status: true, lastMessage: true } }),
       prisma.aiConversation.findMany({ where: { phoneNumber: { not: '' } },
         select: { id: true, phoneNumber: true } }),
+      prisma.lead.findMany({ where: { phone: { not: null } }, select: { id: true, phone: true } }),
     ])
     const results = []
     for (const lead of leads) {
@@ -230,6 +231,15 @@ router.get('/leads/historical-batch-evidence-preview', requireAuth, requireRole(
         continue
       }
       const suffix = digits.slice(-9)
+      const matchingLeadCount = allLeadPhones.filter(other => {
+        const number = (other.phone ?? '').replace(/\\D/g, '')
+        return number.length >= 9 && number.slice(-9) === suffix
+      }).length
+      if (matchingLeadCount !== 1) {
+        results.push({ leadId: lead.id, leadName: lead.name, source: lead.source, status: lead.status,
+          intent, evidenceStatus: 'SHARED_LEAD_PHONE', messageId: null })
+        continue
+      }
       const matched = conversations.filter(c => {
         const number = c.phoneNumber.replace(/\D/g, '')
         return number.length >= 9 && number.slice(-9) === suffix
@@ -237,6 +247,13 @@ router.get('/leads/historical-batch-evidence-preview', requireAuth, requireRole(
       if (matched.length !== 1) {
         results.push({ leadId: lead.id, leadName: lead.name, source: lead.source, status: lead.status,
           intent, evidenceStatus: matched.length ? 'AMBIGUOUS_CONVERSATIONS' : 'NO_CONVERSATION', messageId: null })
+        continue
+      }
+      // A uniquely matching phone is still only a candidate association.
+      // In particular, Facebook-originated leads need channel-specific identity proof.
+      if (lead.source === 'FACEBOOK' || lead.source === 'INSTAGRAM') {
+        results.push({ leadId: lead.id, leadName: lead.name, source: lead.source, status: lead.status,
+          intent, evidenceStatus: 'CHANNEL_IDENTITY_UNVERIFIED', messageId: null })
         continue
       }
       const messages = await prisma.aiMessage.findMany({ where: { conversationId: matched[0].id, role: 'USER' },
