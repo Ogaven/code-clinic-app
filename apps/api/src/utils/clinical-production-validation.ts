@@ -35,3 +35,18 @@ export function productionLinksMatchPatient(input: {
   if (input.treatmentPlanPatientId != null && input.treatmentPlanPatientId !== input.patientId) return false
   return true
 }
+
+/** Replay protection: same key with different payload is not an idempotent retry. */
+export function isMatchingProductionReplay(existing: {
+  patientId: string; kind: ProductionKind; amountUGX: number; originalEntryId: string | null;
+  appointmentId: string | null; treatmentPlanId: string | null; note: string; deliveredAt: Date
+}, proposed: {
+  patientId: string; kind: ProductionKind; amountUGX: number; originalEntryId?: string | null;
+  appointmentId?: string | null; treatmentPlanId?: string | null; note: string; deliveredAt: Date
+}): boolean {
+  return existing.patientId === proposed.patientId && existing.kind === proposed.kind &&
+    existing.amountUGX === proposed.amountUGX && existing.originalEntryId === (proposed.originalEntryId ?? null) &&
+    existing.appointmentId === (proposed.appointmentId ?? null) &&
+    existing.treatmentPlanId === (proposed.treatmentPlanId ?? null) &&
+    existing.note === proposed.note && existing.deliveredAt.getTime() === proposed.deliveredAt.getTime()
+}
