@@ -23,3 +23,15 @@ export function isCorrectionWithinDeliveredValue(originalAmountUGX: number, exis
     Number.isSafeInteger(existingCorrectionsUGX) && Number.isSafeInteger(proposedCorrectionUGX) &&
     originalAmountUGX + existingCorrectionsUGX + proposedCorrectionUGX >= 0
 }
+
+/** Verify linked records belong to the same patient before any ledger write. */
+export function productionLinksMatchPatient(input: {
+  patientId: string
+  appointmentPatientId?: string | null
+  treatmentPlanPatientId?: string | null
+}): boolean {
+  if (!input.patientId.trim()) return false
+  if (input.appointmentPatientId != null && input.appointmentPatientId !== input.patientId) return false
+  if (input.treatmentPlanPatientId != null && input.treatmentPlanPatientId !== input.patientId) return false
+  return true
+}
