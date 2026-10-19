@@ -30,6 +30,7 @@ function PreVisitForm() {
     medicalHistory: [] as string[],
     chiefComplaint: '',
     currentMedications: '',
+    referredByContact: '',
   })
 
   useEffect(() => {
@@ -77,6 +78,9 @@ function PreVisitForm() {
     e.preventDefault()
     if (!form.firstName || !form.lastName || !form.phone) {
       setError('Name and phone number are required.'); return
+    }
+    if (!apptId && (!form.dob || !form.chiefComplaint.trim() || !form.referralSource.trim() || !form.nextOfKinName.trim() || !form.nextOfKinRelation.trim() || !form.nextOfKinPhone.trim())) {
+      setError('Please complete the required contact information fields.'); return
     }
     if (form.email && !EMAIL_RE.test(form.email)) {
       setError('Please enter a valid email address.'); return
@@ -128,12 +132,13 @@ function PreVisitForm() {
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-black text-gray-800">Code Clinic</p>
-          <p className="text-[10px] text-gray-400">Pre-Visit Health Form</p>
+          <p className="text-[10px] text-gray-400">{apptId ? 'Pre-Visit Health Form' : 'Contact Information'}</p>
         </div>
         <img src="/logo.png" alt="Code Clinic" className="h-9 w-auto max-w-[140px] object-contain" />
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5 pb-12">
+        {!apptId && <div className="rounded-2xl bg-[#0a285b] p-5 text-white shadow-sm"><h1 className="text-2xl font-bold">Contact Information</h1><p className="mt-1 text-sm text-blue-100">Welcome to Code Clinic. Please complete your contact details below.</p></div>}
 
         {/* Appointment banner */}
         {appt && (
@@ -147,19 +152,19 @@ function PreVisitForm() {
         <form onSubmit={submit} className="space-y-4">
           {/* Personal info */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
-            <h2 className="text-sm font-black text-gray-700 uppercase tracking-wide">Personal Information</h2>
+            <h2 className="text-sm font-black text-gray-700 uppercase tracking-wide">{apptId ? 'Personal Information' : 'Contact information'}</h2>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>First Name *</label>
+                <label className={labelCls}>Given Name *</label>
                 <input required value={form.firstName} onChange={e => setForm(f => ({...f, firstName: e.target.value}))} className={inputCls} placeholder="First name" />
               </div>
               <div>
-                <label className={labelCls}>Last Name *</label>
+                <label className={labelCls}>Surname *</label>
                 <input required value={form.lastName} onChange={e => setForm(f => ({...f, lastName: e.target.value}))} className={inputCls} placeholder="Last name" />
               </div>
             </div>
             <div>
-              <label className={labelCls}>Phone Number *</label>
+              <label className={labelCls}>Contact *</label>
               <input required value={form.phone} onChange={e => setForm(f => ({...f, phone: e.target.value}))} className={inputCls} placeholder="e.g. +256700000000" />
             </div>
             <div>
@@ -176,23 +181,23 @@ function PreVisitForm() {
                 </select>
               </div>
               <div>
-                <label className={labelCls}>Date of Birth</label>
-                <input type="date" value={form.dob} onChange={e => setForm(f => ({...f, dob: e.target.value}))} className={inputCls} />
+                <label className={labelCls}>Date of Birth {!apptId && '*'}</label>
+                <input type="date" required={!apptId} value={form.dob} onChange={e => setForm(f => ({...f, dob: e.target.value}))} className={inputCls} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>Area / Street</label>
+                <label className={labelCls}>Residence</label>
                 <input value={form.address} onChange={e => setForm(f => ({...f, address: e.target.value}))} className={inputCls} placeholder="e.g. Kamwokya" />
               </div>
-              <div>
+              {apptId && <div>
                 <label className={labelCls}>District</label>
                 <input value={form.district} onChange={e => setForm(f => ({...f, district: e.target.value}))} className={inputCls} placeholder="e.g. Kampala" />
-              </div>
+              </div>}
             </div>
             <div>
-              <label className={labelCls}>How did you get to know about us?</label>
-              <select value={form.referralSource} onChange={e => setForm(f => ({...f, referralSource: e.target.value}))} className={inputCls}>
+              <label className={labelCls}>How did you get to know about us? {!apptId && '*'}</label>
+              <select required={!apptId} value={form.referralSource} onChange={e => setForm(f => ({...f, referralSource: e.target.value}))} className={inputCls}>
                 <option value="">Select...</option>
                 {REFERRAL_SOURCES.map(s => (
                   <option key={s} value={s}>{s}</option>
@@ -201,22 +206,23 @@ function PreVisitForm() {
             </div>
           </div>
 
+          {!apptId && <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3"><label className={labelCls}>Please share the contact of the person who notified you about us, if any.</label><input value={form.referredByContact} onChange={e => setForm(f => ({...f, referredByContact: e.target.value}))} className={inputCls} placeholder="Contact (if applicable)" /></div>}
           {/* Next of kin */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
             <h2 className="text-sm font-black text-gray-700 uppercase tracking-wide">Next of Kin</h2>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>Full Name</label>
-                <input value={form.nextOfKinName} onChange={e => setForm(f => ({...f, nextOfKinName: e.target.value}))} className={inputCls} placeholder="Name" />
+                <label className={labelCls}>Next of Kin (Name) *</label>
+                <input required={!apptId} value={form.nextOfKinName} onChange={e => setForm(f => ({...f, nextOfKinName: e.target.value}))} className={inputCls} placeholder="Name" />
               </div>
               <div>
-                <label className={labelCls}>Phone</label>
-                <input value={form.nextOfKinPhone} onChange={e => setForm(f => ({...f, nextOfKinPhone: e.target.value}))} className={inputCls} placeholder="Contact" />
+                <label className={labelCls}>Next of Kin (Contact) *</label>
+                <input required={!apptId} value={form.nextOfKinPhone} onChange={e => setForm(f => ({...f, nextOfKinPhone: e.target.value}))} className={inputCls} placeholder="Contact" />
               </div>
             </div>
             <div>
-              <label className={labelCls}>Relationship</label>
-              <select value={form.nextOfKinRelation} onChange={e => setForm(f => ({...f, nextOfKinRelation: e.target.value}))} className={inputCls}>
+              <label className={labelCls}>Relationship {!apptId && '*'}</label>
+              <select required={!apptId} value={form.nextOfKinRelation} onChange={e => setForm(f => ({...f, nextOfKinRelation: e.target.value}))} className={inputCls}>
                 <option value="">Select...</option>
                 <option>Spouse</option><option>Parent</option><option>Child</option>
                 <option>Sibling</option><option>Friend</option><option>Guardian</option><option>Other</option>
@@ -224,8 +230,8 @@ function PreVisitForm() {
             </div>
           </div>
 
-          {/* Medical history */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
+          {/* Medical history is retained for appointment-linked pre-visit submissions. */}
+          {apptId && <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
             <h2 className="text-sm font-black text-gray-700 uppercase tracking-wide">Medical Information</h2>
             <div>
               <label className={labelCls}>Known Allergies</label>
@@ -253,7 +259,8 @@ function PreVisitForm() {
               <label className={labelCls}>Reason for Visit / Chief Complaint</label>
               <textarea rows={2} value={form.chiefComplaint} onChange={e => setForm(f => ({...f, chiefComplaint: e.target.value}))} className={cn(inputCls, 'resize-none')} placeholder="What brings you in today?" />
             </div>
-          </div>
+          </div>}
+          {!apptId && <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4"><label className={labelCls}>What's your concern? *</label><textarea required rows={3} value={form.chiefComplaint} onChange={e => setForm(f => ({...f, chiefComplaint: e.target.value}))} className={inputCls} placeholder="Tell us what brings you to Code Clinic" /></div>}
 
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
@@ -264,7 +271,7 @@ function PreVisitForm() {
           <button type="submit" disabled={saving}
             className="w-full py-3.5 rounded-2xl text-sm font-black text-white disabled:opacity-60 transition-all hover:-translate-y-0.5 hover:shadow-lg"
             style={{ background: 'linear-gradient(135deg,#1A237E,#29ABE2)' }}>
-            {saving ? <><Loader2 size={14} className="inline animate-spin mr-2" />Submitting...</> : 'Submit Pre-Visit Form'}
+            {saving ? <><Loader2 size={14} className="inline animate-spin mr-2" />Submitting...</> : apptId ? 'Submit Pre-Visit Form' : 'Submit'}
           </button>
         </form>
       </div>

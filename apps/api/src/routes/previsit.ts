@@ -121,7 +121,7 @@ router.post('/submit', async (req, res) => {
     email, address, district, referralSource,
     nextOfKinName, nextOfKinPhone, nextOfKinRelation,
     allergies, medicalHistory,
-    chiefComplaint, currentMedications,
+    chiefComplaint, currentMedications, referredByContact,
   } = req.body
 
   if (!phone || !firstName || !lastName) {
@@ -149,6 +149,7 @@ router.post('/submit', async (req, res) => {
     const note = [
       chiefComplaint     ? `Chief complaint: ${chiefComplaint}`         : '',
       currentMedications ? `Current medications: ${currentMedications}` : '',
+      referredByContact && !apptId ? `Referral contact (provided by visitor): ${String(referredByContact).slice(0, 200)}` : '',
     ].filter(Boolean).join('\n')
 
     if (apptId) {
