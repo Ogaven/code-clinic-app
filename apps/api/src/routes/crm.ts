@@ -357,8 +357,7 @@ router.patch('/leads/:id', requireAuth, adminAndReceptionist, async (req: Reques
             await markLeadLostManually(req.params.id, req.user!.id, reason)
             break
           case 'CONVERTED':
-            await convertLeadOnBooking(req.params.id)
-            break
+            return res.status(400).json({ error: 'Use verified patient booking or lead conversion workflow to move a lead to CONVERTED' })
           default:
             await transitionLeadStage(req.params.id, status, { changedBy: req.user!.id, trigger: 'MANUAL', reason })
         }
