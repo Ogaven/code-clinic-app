@@ -127,9 +127,6 @@ router.post('/submit', async (req, res) => {
   if (!phone || !firstName || !lastName) {
     res.status(400).json({ error: 'Name and phone are required' }); return
   }
-  if (!apptId && (!dob || !String(chiefComplaint || '').trim() || !String(referralSource || '').trim() || !String(nextOfKinName || '').trim() || !String(nextOfKinPhone || '').trim() || !String(nextOfKinRelation || '').trim())) {
-    res.status(400).json({ error: 'Please complete the required walk-in contact fields' }); return
-  }
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     res.status(400).json({ error: 'Invalid email address' }); return
   }
