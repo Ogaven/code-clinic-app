@@ -106,6 +106,31 @@ async function fetchFbUserInfo(
   }
 }
 
+// Instagram messaging identities use Instagram's supported profile fields,
+// not the Facebook Messenger PSID fields (first_name/last_name).
+async function fetchInstagramUserInfo(
+  igsid: string,
+  token: string,
+): Promise<{ name: string | null; pictureUrl: string | null }> {
+  try {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(igsid)}`)
+    url.searchParams.set('fields', 'name,username,profile_pic')
+    url.searchParams.set('access_token', token)
+    const res = await fetch(url.toString())
+    if (!res.ok) {
+      console.warn('[Instagram] Profile information unavailable', { status: res.status })
+      return { name: null, pictureUrl: null }
+    }
+    const data = await res.json() as { name?: string; username?: string; profile_pic?: string }
+    return {
+      name: data.name?.trim() || (data.username ? `@${data.username.replace(/^@/, '')}` : null),
+      pictureUrl: data.profile_pic || null,
+    }
+  } catch {
+    return { name: null, pictureUrl: null }
+  }
+}
+
 // ── Facebook Messenger ────────────────────────────────────────────────────────
 
 // GET /ai-suite/facebook/webhook — Meta webhook verification
@@ -550,7 +575,9 @@ export async function processSocialMessage(
     let resolvedName: string | null = conversation?.displayName ?? null
     let pictureUrl: string | null = conversation?.profilePictureUrl ?? null
     if (dmToken && (!resolvedName || !pictureUrl)) {
-      const info = await fetchFbUserInfo(senderId, dmToken)
+      const info = channel === 'INSTAGRAM'
+        ? await fetchInstagramUserInfo(senderId, dmToken)
+        : await fetchFbUserInfo(senderId, dmToken)
       resolvedName = resolvedName || info.name
       pictureUrl = pictureUrl || info.pictureUrl
     }
