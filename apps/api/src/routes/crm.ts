@@ -130,7 +130,7 @@ router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, a
     const total = await prisma.lead.count({ where })
     const leads = await prisma.lead.findMany({
       where,
-      select: { id: true, status: true, convertedToPatientId: true, createdAt: true },
+      select: { id: true, name: true, phone: true, status: true, convertedToPatientId: true, createdAt: true },
       orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
       skip: (page - 1) * limit,
       take: limit,
@@ -144,11 +144,20 @@ router.get('/leads/reconciliation-preview', requireAuth, adminAndReceptionist, a
           status: { notIn: ['CANCELLED', 'NO_SHOW'] },
           createdAt: { gte: lead.createdAt },
         },
-        select: { id: true },
+        select: { id: true, startAt: true, status: true },
         orderBy: { createdAt: 'asc' },
       })
       if (booking) {
+        const patient = await prisma.patient.findUnique({
+          where: { id: lead.convertedToPatientId },
+          select: { firstName: true, lastName: true },
+        })
         candidates.push({
+          leadName: lead.name,
+          leadPhone: lead.phone,
+          patientName: patient ? [patient.firstName, patient.lastName].filter(Boolean).join(' ') : null,
+          appointmentStartAt: booking.startAt,
+          appointmentStatus: booking.status,
           leadId: lead.id,
           currentStage: lead.status,
           patientId: lead.convertedToPatientId,
