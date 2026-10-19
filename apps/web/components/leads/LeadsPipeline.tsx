@@ -49,6 +49,11 @@ interface ReconciliationCandidate {
   currentStage: string
   patientId: string
   appointmentId: string
+  leadName: string | null
+  leadPhone: string | null
+  patientName: string | null
+  appointmentStartAt: string | null
+  appointmentStatus: string
 }
 
 interface UnlinkedBookingCandidate {
@@ -660,7 +665,7 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
             {reviewCandidates.length === 0 ? <p className="text-sm text-gray-500">No qualifying booked leads found on this page.</p> :
               <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-gray-100 dark:border-white/10"><th className="py-2">Lead</th><th>Current stage</th><th>Patient link</th><th>Appointment</th></tr></thead><tbody>{reviewCandidates.map(candidate => {
                 const lead = leads.find(item => item.id === candidate.leadId)
-                return <tr key={candidate.leadId} className="border-b border-gray-100 dark:border-white/10"><td className="py-2">{lead?.name || lead?.phone || candidate.leadId}</td><td>{candidate.currentStage}</td><td className="font-mono">{candidate.patientId.slice(0, 8)}…</td><td className="font-mono">{candidate.appointmentId.slice(0, 8)}…</td></tr>
+                return <tr key={candidate.leadId} className="border-b border-gray-100 dark:border-white/10"><td className="py-2">{candidate.leadName || lead?.name || candidate.leadPhone || candidate.leadId}</td><td>{candidate.currentStage}</td><td>{candidate.patientName || "Patient name unavailable"}<div className="font-mono text-[10px] text-gray-400">{candidate.patientId.slice(0, 8)}…</div></td><td>{candidate.appointmentStartAt ? new Date(candidate.appointmentStartAt).toLocaleDateString() : "Date unavailable"} · {candidate.appointmentStatus}<div className="font-mono text-[10px] text-gray-400">{candidate.appointmentId.slice(0, 8)}…</div></td></tr>
               })}</tbody></table></div>}
           </>}
           <div className="flex items-center gap-2"><button type="button" disabled={reviewLoading || reviewPage <= 1} onClick={() => void loadReconciliationPage(reviewPage - 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Previous</button><button type="button" disabled={reviewLoading || !reviewHasMore} onClick={() => void loadReconciliationPage(reviewPage + 1)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Next</button><button type="button" disabled={reviewLoading} onClick={() => void loadReconciliationPage(reviewPage)} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">Refresh</button></div>
