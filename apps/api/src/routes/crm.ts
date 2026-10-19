@@ -232,7 +232,7 @@ router.get('/leads/historical-batch-evidence-preview', requireAuth, requireRole(
       }
       const suffix = digits.slice(-9)
       const matchingLeadCount = allLeadPhones.filter(other => {
-        const number = (other.phone ?? '').replace(/\\D/g, '')
+        const number = (other.phone ?? '').replace(/\D/g, '')
         return number.length >= 9 && number.slice(-9) === suffix
       }).length
       if (matchingLeadCount !== 1) {
