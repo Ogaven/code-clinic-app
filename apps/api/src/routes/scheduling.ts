@@ -1621,6 +1621,31 @@ router.get('/practice-scheduled-block-overlap', requireAuth, adminOnly, async (r
   }
 })
 
+// Clinic special-day evidence is reported separately from doctor-level availability.
+router.get('/practice-special-day-evidence', requireAuth, adminOnly, async (req, res) => {
+  const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
+  if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
+  const start = new Date(parsed.data.date + 'T00:00:00+03:00')
+  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+    return res.status(400).json({ error: 'Invalid calendar date' })
+  }
+  try {
+    const specialDay = await prisma.specialDay.findUnique({
+      where: { date: start },
+      select: { type: true, openTime: true, closeTime: true },
+    })
+    res.json({
+      date: parsed.data.date,
+      specialDay: specialDay ? { type: specialDay.type, openTime: specialDay.openTime, closeTime: specialDay.closeTime } : null,
+      affectsClinicSchedule: specialDay?.type === 'DAY_OFF' || specialDay?.type === 'SPECIAL_WORKING',
+      doctorAvailabilityMinutes: null, staffedCapacityMinutes: null,
+      disclaimer: 'Clinic-wide special days are schedule evidence only. They do not verify doctor attendance, chair availability, or individual doctor exceptions. No capacity is inferred.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to load special day evidence' })
+  }
+})
+
 router.get('/booking-settings', requireAuth, async (_req, res) => {
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
