@@ -1553,6 +1553,74 @@ router.get('/practice-blocked-doctor-minutes', requireAuth, adminOnly, async (re
   }
 })
 
+// Intersection of verified daily doctor schedule windows with blocked intervals.
+// Does not account for breaks, attendance, special days or chair constraints.
+router.get('/practice-scheduled-block-overlap', requireAuth, adminOnly, async (req, res) => {
+  const parsed = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.query)
+  if (!parsed.success) return res.status(400).json({ error: 'Provide date (YYYY-MM-DD)' })
+  const start = new Date(parsed.data.date + 'T00:00:00+03:00')
+  if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 10) !== parsed.data.date) {
+    return res.status(400).json({ error: 'Invalid calendar date' })
+  }
+  const end = new Date(start.getTime() + 86_400_000)
+  const weekday = new Date(parsed.data.date + 'T12:00:00+03:00').getUTCDay()
+  const clock = (value: unknown): number | null => {
+    if (typeof value !== 'string' || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(value)) return null
+    const [h, m] = value.split(':').map(Number)
+    return h * 60 + m
+  }
+  try {
+    const [doctors, blocks] = await Promise.all([
+      prisma.doctor.findMany({
+        where: { isActive: true, user: { isActive: true } },
+        select: { id: true, workingDays: true, workingHours: true, schedules: { where: { dayOfWeek: weekday }, select: { isOpen: true, openTime: true, closeTime: true } } },
+      }),
+      prisma.blockedTime.findMany({
+        where: { startAt: { lt: end }, endAt: { gt: start }, doctor: { isActive: true } },
+        select: { doctorId: true, startAt: true, endAt: true },
+      }),
+    ])
+    let grossScheduledMinutes = 0
+    let blockedWithinScheduleMinutes = 0
+    let doctorsWithUnknownHours = 0
+    for (const doctor of doctors) {
+      let days: unknown = null
+      let hours: unknown = null
+      try { days = JSON.parse(doctor.workingDays); hours = JSON.parse(doctor.workingHours) } catch { /* incomplete evidence */ }
+      const schedule = doctor.schedules[0]
+      const working = schedule ? schedule.isOpen : Array.isArray(days) && days.includes(weekday)
+      if (!working) continue
+      const fallback = hours && typeof hours === 'object' ? hours as { start?: unknown; end?: unknown } : {}
+      const open = clock(schedule ? schedule.openTime : fallback.start)
+      const close = clock(schedule ? schedule.closeTime : fallback.end)
+      if (open === null || close === null || close <= open) { doctorsWithUnknownHours++; continue }
+      grossScheduledMinutes += close - open
+      const from = start.getTime() + open * 60000
+      const to = start.getTime() + close * 60000
+      const intervals = blocks.filter(b => b.doctorId === doctor.id).map(b => ({
+        a: Math.max(from, b.startAt.getTime()), b: Math.min(to, b.endAt.getTime()),
+      })).filter(b => b.b > b.a).sort((a, b) => a.a - b.a)
+      if (!intervals.length) continue
+      let a = intervals[0].a
+      let b = intervals[0].b
+      for (const interval of intervals.slice(1)) {
+        if (interval.a <= b) b = Math.max(b, interval.b)
+        else { blockedWithinScheduleMinutes += (b - a) / 60000; a = interval.a; b = interval.b }
+      }
+      blockedWithinScheduleMinutes += (b - a) / 60000
+    }
+    res.json({
+      date: parsed.data.date, grossScheduledMinutes,
+      blockedWithinScheduleMinutes: Math.round(blockedWithinScheduleMinutes),
+      scheduleMinusBlockedMinutes: Math.round(grossScheduledMinutes - blockedWithinScheduleMinutes),
+      doctorsWithUnknownHours, staffedCapacityMinutes: null, utilizationPct: null,
+      disclaimer: 'Schedule-minus-blocked minutes are provisional: breaks, attendance, special days, absences and chair availability are not included. Do not interpret as verified staffed capacity.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to load schedule and block overlap' })
+  }
+})
+
 router.get('/booking-settings', requireAuth, async (_req, res) => {
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: 'allow_overlapping_appointments' } })
