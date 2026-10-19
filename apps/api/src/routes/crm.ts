@@ -104,41 +104,96 @@ router.post('/leads', requireAuth, adminAndReceptionist, async (req: Request, re
   }
 })
 
-// Historical qualification requires explicit staff confirmation of the source
-// evidence. This does not infer message direction from the lastMessage field.
+// Historical qualification must be backed by a real inbound message in a uniquely
+// matched conversation. A lead's lastMessage is not trusted as proof of direction.
+router.get('/leads/:id/historical-intent-evidence', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
+  try {
+    const lead = await prisma.lead.findUnique({ where: { id: req.params.id }, select: {
+      id: true, phone: true, status: true, stage: true, convertedToPatientId: true,
+    } })
+    if (!lead) return res.status(404).json({ error: 'Lead not found' })
+    if (!['NEW', 'CONTACTED'].includes(lead.status) || lead.stage !== lead.status || lead.convertedToPatientId) {
+      return res.status(409).json({ error: 'Lead is not eligible for historical qualification' })
+    }
+    const digits = (lead.phone ?? '').replace(/\D/g, '')
+    if (digits.length < 9) return res.json({ evidenceVerified: false, candidates: [], reason: 'No sufficiently complete lead phone number' })
+    const suffix = digits.slice(-9)
+    const conversations = await prisma.aiConversation.findMany({
+      where: { phoneNumber: { not: '' } },
+      select: { id: true, phoneNumber: true, channel: true },
+    })
+    const matches = conversations.filter(c => {
+      const normalized = c.phoneNumber.replace(/\D/g, '')
+      return normalized.length >= 9 && normalized.slice(-9) === suffix
+    })
+    if (matches.length !== 1) {
+      return res.json({ evidenceVerified: false, candidates: [], reason: matches.length === 0
+        ? 'No matching conversation' : 'Multiple matching conversations; identity needs separate review' })
+    }
+    const messages = await prisma.aiMessage.findMany({
+      where: { conversationId: matches[0].id, role: 'USER' },
+      select: { id: true, content: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      take: 500,
+    })
+    const candidates = messages.flatMap(message => {
+      const intent = detectCrmQualifyingIntent(message.content)
+      return intent ? [{ messageId: message.id, intent, excerpt: message.content.slice(0, 300), createdAt: message.createdAt }] : []
+    })
+    res.json({ evidenceVerified: false, requiresStaffConfirmation: true, candidates })
+  } catch (error) {
+    console.error('[CRM] Historical intent evidence lookup failed:', error)
+    res.status(500).json({ error: 'Failed to retrieve historical intent evidence' })
+  }
+})
+
 router.post('/leads/:id/verify-historical-intent', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
-  const { intent, confirmedMessage, evidenceReference } = req.body ?? {}
-  if (typeof intent !== 'string' || !['asked_pricing', 'asked_availability', 'wants_appointment'].includes(intent) ||
-      confirmedMessage !== true || typeof evidenceReference !== 'string' ||
-      evidenceReference.trim().length < 8 || evidenceReference.length > 500) {
-    return res.status(400).json({ error: 'Valid intent, source-message confirmation, and an evidence reference (8–500 characters) are required' })
+  const { intent, confirmedMessage, messageId } = req.body ?? {}
+  if (!['asked_pricing', 'asked_availability', 'wants_appointment'].includes(intent) ||
+      confirmedMessage !== true || typeof messageId !== 'string' || !messageId.trim()) {
+    return res.status(400).json({ error: 'Select an original inbound message and confirm its qualifying intent' })
   }
   try {
     const lead = await prisma.lead.findUnique({ where: { id: req.params.id }, select: {
-      id: true, status: true, stage: true, lastMessage: true, convertedToPatientId: true,
+      id: true, phone: true, status: true, stage: true, convertedToPatientId: true,
     } })
     if (!lead) return res.status(404).json({ error: 'Lead not found' })
     if (!['NEW', 'CONTACTED'].includes(lead.status) || lead.stage !== lead.status || lead.convertedToPatientId) {
       return res.status(409).json({ error: 'Lead is no longer eligible for historical qualification' })
     }
-    if (!lead.lastMessage || detectCrmQualifyingIntent(lead.lastMessage) !== intent) {
-      return res.status(409).json({ error: 'Stored lead intent no longer matches the reviewed evidence' })
+    const digits = (lead.phone ?? '').replace(/\D/g, '')
+    if (digits.length < 9) return res.status(409).json({ error: 'Lead phone number cannot establish conversation linkage' })
+    const suffix = digits.slice(-9)
+    const conversations = await prisma.aiConversation.findMany({
+      where: { phoneNumber: { not: '' } }, select: { id: true, phoneNumber: true },
+    })
+    const matches = conversations.filter(c => {
+      const normalized = c.phoneNumber.replace(/\D/g, '')
+      return normalized.length >= 9 && normalized.slice(-9) === suffix
+    })
+    if (matches.length !== 1) return res.status(409).json({ error: 'Conversation linkage is missing or ambiguous' })
+    const message = await prisma.aiMessage.findUnique({
+      where: { id: messageId }, select: { id: true, conversationId: true, role: true, content: true },
+    })
+    if (!message || message.role !== 'USER' || message.conversationId !== matches[0].id ||
+        detectCrmQualifyingIntent(message.content) !== intent) {
+      return res.status(409).json({ error: 'Selected inbound message does not verify this intent for this lead' })
     }
     const result = await prisma.$transaction(async tx => {
       const updated = await tx.lead.updateMany({
-        where: { id: lead.id, status: lead.status, stage: lead.stage, convertedToPatientId: null, lastMessage: lead.lastMessage },
+        where: { id: lead.id, status: lead.status, stage: lead.stage, convertedToPatientId: null, phone: lead.phone },
         data: { status: 'QUALIFIED', stage: 'QUALIFIED', qualifyingIntent: intent },
       })
       if (updated.count !== 1) return false
       await tx.leadStageHistory.create({ data: {
         leadId: lead.id, fromStage: lead.status, toStage: 'QUALIFIED',
         changedBy: req.user!.id, trigger: 'MANUAL',
-        reason: 'historical_verified_intent:' + intent + '; evidence: ' + evidenceReference.trim(),
+        reason: 'historical_verified_intent:' + intent + '; inbound_message_id:' + message.id,
       } })
       return true
     })
     if (!result) return res.status(409).json({ error: 'Lead changed during verification; refresh and review again' })
-    res.json({ leadId: lead.id, status: 'QUALIFIED', evidenceRecorded: true })
+    res.json({ leadId: lead.id, status: 'QUALIFIED', evidenceRecorded: true, messageId: message.id })
   } catch (error) {
     console.error('[CRM] Historical qualification verification failed:', error)
     res.status(500).json({ error: 'Failed to verify historical qualification' })

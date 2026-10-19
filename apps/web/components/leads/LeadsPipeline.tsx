@@ -352,18 +352,39 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
 
   const [historicalVerify, setHistoricalVerify] = useState<{ leadId: string; leadName: string; intent: string; messageExcerpt: string } | null>(null)
   const [historicalEvidence, setHistoricalEvidence] = useState('')
+  const [historicalEvidenceOptions, setHistoricalEvidenceOptions] = useState<Array<{ messageId: string; intent: string; excerpt: string; createdAt: string }>>([])
+  const [historicalEvidenceLoading, setHistoricalEvidenceLoading] = useState(false)
+  const [historicalEvidenceReason, setHistoricalEvidenceReason] = useState('')
   const [historicalConfirmed, setHistoricalConfirmed] = useState(false)
   const [historicalVerifyBusy, setHistoricalVerifyBusy] = useState(false)
   const [historicalVerifyError, setHistoricalVerifyError] = useState('')
 
+  async function openHistoricalVerification(candidate: { leadId: string; leadName: string | null; intent: string; messageExcerpt: string }) {
+    setHistoricalVerify({ leadId: candidate.leadId, leadName: candidate.leadName || candidate.leadId, intent: candidate.intent, messageExcerpt: candidate.messageExcerpt })
+    setHistoricalEvidence('')
+    setHistoricalEvidenceOptions([])
+    setHistoricalEvidenceReason('')
+    setHistoricalConfirmed(false)
+    setHistoricalVerifyError('')
+    setHistoricalEvidenceLoading(true)
+    try {
+      const response = await fetch(`${API}/crm/leads/${encodeURIComponent(candidate.leadId)}/historical-intent-evidence`, { headers: authH as any })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Could not retrieve original messages')
+      setHistoricalEvidenceOptions(Array.isArray(data.candidates) ? data.candidates : [])
+      setHistoricalEvidenceReason(data.reason || '')
+    } catch (error) { setHistoricalVerifyError(error instanceof Error ? error.message : 'Could not retrieve original messages') }
+    finally { setHistoricalEvidenceLoading(false) }
+  }
+
   async function submitHistoricalVerification() {
-    if (!historicalVerify || !historicalConfirmed || historicalVerifyBusy || historicalEvidence.trim().length < 8) return
+    if (!historicalVerify || !historicalConfirmed || historicalVerifyBusy || !historicalEvidence) return
     setHistoricalVerifyBusy(true)
     setHistoricalVerifyError('')
     try {
       const response = await fetch(`${API}/crm/leads/${encodeURIComponent(historicalVerify.leadId)}/verify-historical-intent`, {
         method: 'POST', headers: { ...authH, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intent: historicalVerify.intent, confirmedMessage: true, evidenceReference: historicalEvidence.trim() }),
+        body: JSON.stringify({ intent: historicalVerify.intent, confirmedMessage: true, messageId: historicalEvidence }),
       })
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.error || `Verification failed (HTTP ${response.status})`)
@@ -723,7 +744,7 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
                   <td>{candidate.currentStage}</td><td>{candidate.intent.replace(/_/g, ' ')}</td>
                   <td className="max-w-xs break-words">{candidate.messageExcerpt}
                     <button type="button" className="block mt-1 text-violet-700 dark:text-violet-300 underline font-semibold"
-                      onClick={() => { setHistoricalVerify({ leadId: candidate.leadId, leadName: candidate.leadName || candidate.leadId, intent: candidate.intent, messageExcerpt: candidate.messageExcerpt }); setHistoricalEvidence(''); setHistoricalConfirmed(false); setHistoricalVerifyError('') }}>
+                      onClick={() => void openHistoricalVerification(candidate)}>
                       Review evidence
                     </button>
                   </td>
@@ -734,16 +755,24 @@ export default function LeadsPipeline({ inboxPath, initialLeadId, initialSource 
             <h3 className="text-sm font-bold dark:text-white">Verify historical intent: {historicalVerify.leadName}</h3>
             <p className="text-xs text-gray-600 dark:text-white/70">Stored message hint: {historicalVerify.messageExcerpt}</p>
             <p className="text-xs text-amber-800 dark:text-amber-300">Open the original source conversation and verify the message was sent by this lead. This stored excerpt alone is not sufficient evidence.</p>
-            <label className="block text-xs font-semibold dark:text-white">Evidence reference (conversation link, message ID or dated record)</label>
-            <input type="text" value={historicalEvidence} onChange={e => setHistoricalEvidence(e.target.value)} maxLength={500}
-              placeholder="Original conversation and message reference" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" />
+            <label className="block text-xs font-semibold dark:text-white">Original inbound patient message</label>
+            {historicalEvidenceLoading ? <p className="text-xs">Loading original messages…</p> :
+              <select value={historicalEvidence} onChange={e => setHistoricalEvidence(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900">
+                <option value="">Select verified message evidence</option>
+                {historicalEvidenceOptions.filter(option => option.intent === historicalVerify.intent).map(option =>
+                  <option key={option.messageId} value={option.messageId}>{new Date(option.createdAt).toLocaleString()}: {option.excerpt.slice(0, 130)}</option>)}
+              </select>}
+            {historicalEvidenceReason && <p className="text-xs text-amber-800 dark:text-amber-300">{historicalEvidenceReason}</p>}
+            {!historicalEvidenceLoading && historicalEvidenceOptions.filter(option => option.intent === historicalVerify.intent).length === 0 &&
+              <p className="text-xs text-amber-800 dark:text-amber-300">No qualifying original inbound message was found. This lead cannot be verified here.</p>}
             <label className="flex items-start gap-2 text-xs dark:text-white/80">
               <input type="checkbox" checked={historicalConfirmed} onChange={e => setHistoricalConfirmed(e.target.checked)} />
               I checked the original source record and confirmed this was an inbound message from this lead expressing the stated intent.
             </label>
             {historicalVerifyError && <p role="alert" className="text-xs text-red-600">{historicalVerifyError}</p>}
             <div className="flex gap-2">
-              <button type="button" disabled={!historicalConfirmed || historicalEvidence.trim().length < 8 || historicalVerifyBusy}
+              <button type="button" disabled={!historicalConfirmed || !historicalEvidence || historicalVerifyBusy}
                 onClick={() => void submitHistoricalVerification()} className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
                 {historicalVerifyBusy ? 'Verifying…' : 'Confirm and qualify'}
               </button>
