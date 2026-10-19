@@ -125,13 +125,11 @@ describe('PATCH /crm/leads/:id — stage changes dispatch to the canonical wrapp
     expect(transitionLeadStage).not.toHaveBeenCalled()
   })
 
-  it('CONVERTED calls convertLeadOnBooking (exits active enrollments), not transitionLeadStage directly', async () => {
-    convertLeadOnBooking.mockResolvedValue({ id: 'lead-1', status: 'CONVERTED' })
-
+  it('rejects generic CONVERTED updates without verified patient booking evidence', async () => {
     const res = await patch('lead-1', { status: 'CONVERTED' })
 
-    expect(res.status).toBe(200)
-    expect(convertLeadOnBooking).toHaveBeenCalledWith('lead-1')
+    expect(res.status).toBe(400)
+    expect(convertLeadOnBooking).not.toHaveBeenCalled()
     expect(transitionLeadStage).not.toHaveBeenCalled()
   })
 
