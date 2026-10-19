@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth'
 import { requireRole, adminAndReceptionist } from '../middleware/rbac'
 import { prisma } from '../lib/prisma'
 import { phoneVariants } from '../utils/phone'
-import { verifiedPatientNameMatches, verifiedLeadPhoneMatches, eligibleVerifiedLead } from '../crm-automation/verified-booking-guards'
+import { verifiedPatientNameMatches, verifiedLeadPhoneMatches } from '../crm-automation/verified-booking-guards'
 import { linkVerifiedBookingInTransaction } from '../crm-automation/verified-booking-transaction'
 import { previewHistoricalReconciliation } from '../crm-automation/historical-reconciliation-preview.service'
 import { emitAutomationEvent, exitActiveEnrollments } from '../crm-automation/automation-events.service'
@@ -245,8 +245,9 @@ router.post('/leads/:id/verify-patient-booking', requireAuth, requireRole('ADMIN
   try {
     const lead = await prisma.lead.findUnique({ where: { id: req.params.id } })
     if (!lead) return res.status(404).json({ error: 'Lead not found' })
-    if (!eligibleVerifiedLead(lead)) {
-      return res.status(409).json({ error: 'Lead is already linked or no longer eligible' })
+    if (!['NEW', 'CONTACTED', 'QUALIFIED'].includes(lead.status) || lead.stage !== lead.status ||
+        (lead.convertedToPatientId !== null && lead.convertedToPatientId !== patientId)) {
+      return res.status(409).json({ error: 'Lead is no longer eligible or is linked to another patient' })
     }
     const patient = await prisma.patient.findUnique({
       where: { id: patientId }, select: { id: true, firstName: true, lastName: true, phone: true },
@@ -270,7 +271,7 @@ router.post('/leads/:id/verify-patient-booking', requireAuth, requireRole('ADMIN
     // The conditional update also requires the exact stage originally reviewed,
     // so concurrent stage changes cannot produce incorrect history entries.
     const converted = await prisma.$transaction(tx =>
-      linkVerifiedBookingInTransaction(tx, lead, patient.id, req.user!.id),
+      linkVerifiedBookingInTransaction(tx, lead, patient.id, req.user!.id, lead.convertedToPatientId),
     )
     if (!converted) return res.status(409).json({ error: 'Lead changed during verification; refresh and retry' })
 
