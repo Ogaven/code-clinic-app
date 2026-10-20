@@ -28,34 +28,41 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
       where: { channel: { in: ['FACEBOOK', 'INSTAGRAM'] } },
       orderBy: { id: 'asc' },
       take: 11,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      ...(cursor ? { where: { channel: { in: ['FACEBOOK', 'INSTAGRAM'] }, id: { gt: cursor } } } : {}),
       select: { id: true, channel: true, phoneNumber: true, displayName: true, profilePictureUrl: true },
     })
     const batch = rows.slice(0, 10)
     cursor = rows.length > 10 ? batch[batch.length - 1].id : undefined
+    const stats = { scanned: batch.length, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, unavailable: 0 }
     for (const row of batch) {
       const token = tokens[row.channel]
-      if (!token || !row.phoneNumber || (!placeholder(row.displayName) && row.profilePictureUrl)) continue
+      if (!token) { stats.missingToken++; continue }
+      if (!row.phoneNumber || (!placeholder(row.displayName) && row.profilePictureUrl)) continue
+      stats.attempted++
       const profile = row.channel === 'FACEBOOK'
         ? await fetchFbUserInfo(row.phoneNumber, token)
         : await fetchInstagramUserInfo(row.phoneNumber, token)
+      if (!profile.name && !profile.pictureUrl) stats.unavailable++
       const name = profile.name?.trim() || null
       const validName = name && !placeholder(name) ? name : null
       // Conditional writes protect real names/photos against a concurrent
       // webhook update. Only identity fields may be changed.
       if (validName && placeholder(row.displayName)) {
-        await prisma.aiConversation.updateMany({
+        const updated = await prisma.aiConversation.updateMany({
           where: { id: row.id, displayName: row.displayName },
           data: { displayName: validName },
         })
+        stats.namesUpdated += updated.count
       }
       if (profile.pictureUrl && !row.profilePictureUrl) {
-        await prisma.aiConversation.updateMany({
+        const updated = await prisma.aiConversation.updateMany({
           where: { id: row.id, profilePictureUrl: null },
           data: { profilePictureUrl: profile.pictureUrl },
         })
+        stats.photosUpdated += updated.count
       }
     }
+    console.info('[MetaProfileRefresh] Batch summary', stats)
   } catch (error) {
     console.warn('[MetaProfileRefresh] Background refresh skipped:', error instanceof Error ? error.message : 'unknown error')
   } finally {
