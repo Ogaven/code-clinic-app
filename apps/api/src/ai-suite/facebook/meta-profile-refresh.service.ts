@@ -25,10 +25,9 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
       INSTAGRAM: config?.instagramAccessToken || process.env.INSTAGRAM_ACCESS_TOKEN,
     }
     const rows = await prisma.aiConversation.findMany({
-      where: { channel: { in: ['FACEBOOK', 'INSTAGRAM'] } },
+      where: { channel: { in: ['FACEBOOK', 'INSTAGRAM'] }, ...(cursor ? { id: { gt: cursor } } : {}) },
       orderBy: { id: 'asc' },
       take: 11,
-      ...(cursor ? { where: { channel: { in: ['FACEBOOK', 'INSTAGRAM'] }, id: { gt: cursor } } } : {}),
       select: { id: true, channel: true, phoneNumber: true, displayName: true, profilePictureUrl: true },
     })
     const batch = rows.slice(0, 10)
