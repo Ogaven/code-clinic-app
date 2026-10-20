@@ -11,7 +11,7 @@ const payloadSchema = z.object({
   appointmentId: z.string().min(1).optional(),
   treatmentPlanId: z.string().min(1).optional(),
   deliveredAt: z.string().datetime({ offset: true }),
-  amountUGX: z.number().int().safe(),
+  amountUGX: z.number().int().safe().min(-2147483647).max(2147483647),
   kind: z.enum(['DELIVERY', 'REVERSAL', 'ADJUSTMENT']),
   originalEntryId: z.string().min(1).optional(),
   sourceKey: z.string().min(1).max(128),
