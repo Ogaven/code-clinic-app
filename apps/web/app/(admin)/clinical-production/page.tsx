@@ -14,6 +14,12 @@ export default function ClinicalProductionApprovalsPage() {
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
+  const [patientId, setPatientId] = useState('')
+  const [appointmentId, setAppointmentId] = useState('')
+  const [amountUGX, setAmountUGX] = useState('')
+  const [deliveredAt, setDeliveredAt] = useState('')
+  const [deliveryNote, setDeliveryNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   async function load() {
     const token = localStorage.getItem('cc_token')
@@ -54,9 +60,52 @@ export default function ClinicalProductionApprovalsPage() {
     finally { setBusy(null) }
   }
 
+  async function submitDelivery(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const amount = Number(amountUGX)
+    if (!Number.isInteger(amount) || amount < 1 || amount > 2147483647 || !patientId.trim() || deliveryNote.trim().length < 3 || !deliveredAt) {
+      setError('Enter a patient reference, valid delivery time, UGX amount and treatment description.')
+      return
+    }
+    if (!window.confirm('Confirm that treatment was actually delivered? This creates a pending entry requiring another administrator’s approval.')) return
+    setSubmitting(true)
+    setError('')
+    setNotice('')
+    try {
+      const token = localStorage.getItem('cc_token')
+      const response = await fetch('/api-proxy/clinical-production/entries', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({
+          patientId: patientId.trim(), ...(appointmentId.trim() ? { appointmentId: appointmentId.trim() } : {}),
+          deliveredAt: new Date(deliveredAt + '+03:00').toISOString(), amountUGX: amount, kind: 'DELIVERY',
+          sourceKey: crypto.randomUUID(), note: deliveryNote.trim(),
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Unable to submit treatment delivery')
+      setNotice('Treatment delivery submitted for independent approval.')
+      setAmountUGX('')
+      setDeliveryNote('')
+      await load()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Unable to submit treatment delivery') }
+    finally { setSubmitting(false) }
+  }
+
   if (user?.role !== 'ADMIN') return <main className="p-6"><h1 className="text-xl font-bold">Clinical production approvals</h1><p className="mt-3 text-sm">Administrator access required.</p></main>
   return <main className="mx-auto max-w-5xl space-y-5 p-4 md:p-8">
     <div><Link href="/dashboard" className="text-sm text-cyan-700">← Dashboard</Link><h1 className="mt-2 text-2xl font-bold">Clinical production approvals</h1><p className="mt-1 text-sm text-gray-500">Review explicitly recorded treatment delivery and corrections. Recording an entry does not approve it.</p></div>
+    <form onSubmit={event => void submitDelivery(event)} className="space-y-3 rounded-xl border bg-white p-5 dark:bg-slate-900">
+      <h2 className="text-lg font-semibold">Record completed treatment delivery</h2>
+      <p className="text-sm text-gray-500">Use the patient and appointment references from the clinical record. Do not record invoices, bookings or unperformed treatments as delivered production.</p>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="text-sm">Patient ID *<input required value={patientId} onChange={e => setPatientId(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+        <label className="text-sm">Completed appointment ID (optional)<input value={appointmentId} onChange={e => setAppointmentId(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+        <label className="text-sm">Delivered at (Kampala local time) *<input required type="datetime-local" value={deliveredAt} onChange={e => setDeliveredAt(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+        <label className="text-sm">Delivered value (UGX) *<input required type="number" min="1" max="2147483647" step="1" value={amountUGX} onChange={e => setAmountUGX(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+      </div>
+      <label className="block text-sm">Treatment delivered and supporting note *<textarea required minLength={3} maxLength={2000} rows={3} value={deliveryNote} onChange={e => setDeliveryNote(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+      <button type="submit" disabled={submitting} className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{submitting ? 'Submitting…' : 'Submit for approval'}</button>
+    </form>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {notice && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
     {loading ? <p>Loading pending entries…</p> : entries.length === 0 ? <p className="rounded-xl border p-5">No pending entries in the current queue.</p> : <div className="space-y-4">{entries.map(entry => <section key={entry.id} className="rounded-xl border bg-white p-5 shadow-sm dark:bg-slate-900">
