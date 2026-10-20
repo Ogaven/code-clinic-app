@@ -83,4 +83,49 @@ router.post('/entries', requireAuth, adminOnly, async (req, res) => {
   }
 })
 
+const reportSchema = z.object({
+  startDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+  endDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+})
+
+// Read-only verified ledger activity. Report by actual delivery date, not
+// appointment booking date, invoice creation or cash collection.
+router.get('/summary', requireAuth, adminOnly, async (req, res) => {
+  const parsed = reportSchema.safeParse(req.query)
+  if (!parsed.success || parsed.data.startDate > parsed.data.endDate) return res.status(400).json({ error: 'Invalid date range' })
+  const { isValidKampalaCalendarDate } = await import('../utils/practice-kampala-date')
+  if (!isValidKampalaCalendarDate(parsed.data.startDate) || !isValidKampalaCalendarDate(parsed.data.endDate)) {
+    return res.status(400).json({ error: 'Invalid calendar date' })
+  }
+  const start = new Date(parsed.data.startDate + 'T00:00:00+03:00')
+  const end = new Date(parsed.data.endDate + 'T00:00:00+03:00')
+  end.setUTCDate(end.getUTCDate() + 1)
+  if (end.getTime() - start.getTime() > 31 * 86_400_000) return res.status(400).json({ error: 'Maximum reporting range is 31 days' })
+  try {
+    const groups = await prisma.clinicalProductionEntry.groupBy({
+      by: ['kind'], where: { deliveredAt: { gte: start, lt: end } },
+      _sum: { amountUGX: true }, _count: { id: true },
+    })
+    const delivery = groups.find(g => g.kind === 'DELIVERY')
+    const reversal = groups.find(g => g.kind === 'REVERSAL')
+    const adjustment = groups.find(g => g.kind === 'ADJUSTMENT')
+    const deliveryUGX = delivery?._sum.amountUGX ?? 0
+    const reversalUGX = reversal?._sum.amountUGX ?? 0
+    const adjustmentUGX = adjustment?._sum.amountUGX ?? 0
+    return res.json({
+      startDate: parsed.data.startDate, endDate: parsed.data.endDate,
+      deliveryUGX, reversalUGX, adjustmentUGX,
+      netClinicalProductionUGX: deliveryUGX + reversalUGX + adjustmentUGX,
+      deliveryCount: delivery?._count.id ?? 0,
+      reversalCount: reversal?._count.id ?? 0,
+      adjustmentCount: adjustment?._count.id ?? 0,
+      basis: 'STAFF_RECORDED_LEDGER',
+      disclaimer: 'Staff-recorded treatment delivery and corrections; separate from invoices and cash collections.',
+    })
+  } catch (error) {
+    console.error('[ClinicalProduction] Summary failed:', error)
+    return res.status(500).json({ error: 'Unable to retrieve clinical production summary' })
+  }
+})
+
 export default router
