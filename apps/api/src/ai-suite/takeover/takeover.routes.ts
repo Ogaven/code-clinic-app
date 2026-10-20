@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { takeoverConversation, handbackConversation } from './takeover.service'
 import { prisma } from '../../lib/prisma'
-import { fetchPostThumbnail } from '../facebook/facebook.routes'
+import { fetchPostThumbnail, fetchFbUserInfo, fetchInstagramUserInfo } from '../facebook/facebook.routes'
 import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { requireAuth } from '../../middleware/auth'
 import { adminAndReceptionist } from '../../middleware/rbac'
@@ -241,6 +241,53 @@ router.get('/conversations', adminAndReceptionist, async (req, res) => {
   } catch (err: any) {
     console.error('[Takeover] conversations list error:', err.message)
     res.status(500).json({ error: 'Failed to fetch conversations' })
+  }
+})
+
+// POST /ai-suite/conversations/meta-identity-refresh
+// Explicit, authorized, bounded refresh of existing DM identities. Never
+// modifies patient records, message history, or conversation ownership.
+router.post('/conversations/meta-identity-refresh', adminAndReceptionist, async (req, res) => {
+  try {
+    const channel = req.body?.channel
+    if (channel !== 'FACEBOOK' && channel !== 'INSTAGRAM') {
+      return res.status(400).json({ error: 'channel must be FACEBOOK or INSTAGRAM' })
+    }
+    const config = await prisma.aiAgentConfig.findFirst()
+    const token = channel === 'FACEBOOK'
+      ? (config?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN)
+      : (config?.instagramAccessToken || process.env.INSTAGRAM_ACCESS_TOKEN)
+    if (!token) return res.status(409).json({ error: 'Meta channel is not connected' })
+
+    const conversations = await prisma.aiConversation.findMany({
+      where: { channel, phoneNumber: { not: null } },
+      orderBy: { updatedAt: 'desc' },
+      take: 10,
+      select: { id: true, phoneNumber: true, displayName: true, profilePictureUrl: true },
+    })
+    let refreshed = 0
+    let unavailable = 0
+    for (const conversation of conversations) {
+      const senderId = conversation.phoneNumber
+      if (!senderId) continue
+      const info = channel === 'FACEBOOK'
+        ? await fetchFbUserInfo(senderId, token)
+        : await fetchInstagramUserInfo(senderId, token)
+      // Preserve existing verified names and photos. Never replace them with
+      // a numeric Meta identifier or an empty API response.
+      const name = info.name && !/^@?(?:ig_)?\\d+$/.test(info.name) ? info.name : null
+      const patch: { displayName?: string; profilePictureUrl?: string } = {}
+      if (!conversation.displayName && name) patch.displayName = name
+      if (!conversation.profilePictureUrl && info.pictureUrl) patch.profilePictureUrl = info.pictureUrl
+      if (Object.keys(patch).length) {
+        await prisma.aiConversation.update({ where: { id: conversation.id }, data: patch })
+        refreshed++
+      } else unavailable++
+    }
+    res.json({ channel, checked: conversations.length, refreshed, unchanged: unavailable, batchLimit: 10 })
+  } catch (err) {
+    console.error('[Meta identity refresh] failed:', err instanceof Error ? err.message : 'unknown')
+    res.status(500).json({ error: 'Meta identity refresh failed' })
   }
 })
 
