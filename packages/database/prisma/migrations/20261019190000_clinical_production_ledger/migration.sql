@@ -9,9 +9,14 @@ CREATE TABLE "clinical_production_entries" (
   "sourceKey" TEXT NOT NULL,
   "originalEntryId" TEXT,
   "note" TEXT NOT NULL,
+  "approvalStatus" TEXT NOT NULL DEFAULT 'PENDING',
+  "approvedById" TEXT,
+  "approvedAt" TIMESTAMP(3),
+  "approvalNote" TEXT,
   "recordedById" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "clinical_production_entries_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "clinical_production_approval_check" CHECK ("approvalStatus" IN ('PENDING', 'APPROVED', 'REJECTED')),
   CONSTRAINT "clinical_production_kind_check" CHECK ("kind" IN ('DELIVERY', 'REVERSAL', 'ADJUSTMENT')),
   CONSTRAINT "clinical_production_amount_check" CHECK (("kind" = 'DELIVERY' AND "amountUGX" > 0 AND "originalEntryId" IS NULL) OR ("kind" = 'REVERSAL' AND "amountUGX" < 0 AND "originalEntryId" IS NOT NULL) OR ("kind" = 'ADJUSTMENT' AND "amountUGX" <> 0 AND "originalEntryId" IS NOT NULL))
 );
