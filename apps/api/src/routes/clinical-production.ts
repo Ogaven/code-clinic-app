@@ -34,7 +34,7 @@ router.post('/entries', requireAuth, adminOnly, async (req, res) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(726198, 42)`
       const existing = await tx.clinicalProductionEntry.findUnique({ where: { sourceKey: input.sourceKey } })
       if (existing) {
-        const matches = isMatchingProductionReplay(existing, { ...input, deliveredAt })
+        const matches = isMatchingProductionReplay({ ...existing, kind: existing.kind as 'DELIVERY' | 'REVERSAL' | 'ADJUSTMENT' }, { ...input, deliveredAt })
         if (!matches) return { status: 409, error: 'Idempotency key already used for a different entry' }
         return { status: 200, entry: existing }
       }
