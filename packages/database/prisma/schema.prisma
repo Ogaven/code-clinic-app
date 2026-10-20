@@ -1047,6 +1047,10 @@ model ClinicalProductionEntry {
   originalEntry   ClinicalProductionEntry? @relation("ProductionCorrection", fields: [originalEntryId], references: [id], onDelete: Restrict)
   corrections     ClinicalProductionEntry[] @relation("ProductionCorrection")
   note            String
+  approvalStatus  String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  approvedById    String?
+  approvedAt      DateTime?
+  approvalNote    String?
   recordedById    String
   recordedBy      User     @relation(fields: [recordedById], references: [id], onDelete: Restrict)
   createdAt       DateTime @default(now())
