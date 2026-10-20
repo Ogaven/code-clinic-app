@@ -113,12 +113,12 @@ export async function fetchFbUserInfo(
       // (e.g. pages_messaging still in Standard Access)" from "no token" from
       // "PSID not reachable" without this. Logged, not thrown: a missing name/
       // pic must never block the DM itself from being processed.
-      console.error(`[Facebook] Profile fetch failed for PSID ${psid}:`, JSON.stringify(data?.error ?? data))
+      console.warn('[Facebook] Profile lookup rejected', { status: res.status, metaCode: typeof data?.error?.code === 'number' ? data.error.code : null, metaSubcode: typeof data?.error?.error_subcode === 'number' ? data.error.error_subcode : null })
       return { name: null, pictureUrl: null }
     }
     return { name: [data.first_name, data.last_name].filter(Boolean).join(' ').trim() || null, pictureUrl: data.profile_pic ?? null }
   } catch (err: any) {
-    console.error(`[Facebook] Profile fetch error for PSID ${psid}:`, err?.message)
+    console.warn('[Facebook] Profile lookup network failure', { type: err?.name || 'unknown' })
     return { name: null, pictureUrl: null }
   }
 }
@@ -135,7 +135,7 @@ export async function fetchInstagramUserInfo(
     url.searchParams.set('access_token', token)
     const res = await fetch(url.toString())
     if (!res.ok) {
-      console.warn('[Instagram] Profile information unavailable', { status: res.status })
+      console.warn('[Instagram] Profile lookup rejected', { status: res.status })
       return { name: null, pictureUrl: null }
     }
     const data = await res.json() as { name?: string; username?: string; profile_pic?: string }
