@@ -27,6 +27,7 @@ router.post('/entries', requireAuth, adminOnly, async (req, res) => {
   const invalid = validateProductionEntry(input)
   if (invalid) return res.status(400).json({ error: invalid })
   const deliveredAt = new Date(input.deliveredAt)
+  if (deliveredAt.getTime() > Date.now() + 5 * 60_000) return res.status(400).json({ error: 'Delivery date cannot be in the future' })
   try {
     const result = await prisma.$transaction(async tx => {
       // PostgreSQL transaction-scoped advisory lock serializes correction and
@@ -50,7 +51,10 @@ router.post('/entries', requireAuth, adminOnly, async (req, res) => {
       }
       if (input.kind !== 'DELIVERY') {
         const original = await tx.clinicalProductionEntry.findUnique({ where: { id: input.originalEntryId! } })
-        if (!original || original.kind !== 'DELIVERY' || original.patientId !== input.patientId) return { status: 400, error: 'Invalid original delivery' }
+        if (!original || original.kind !== 'DELIVERY' || original.patientId !== input.patientId ||
+          input.appointmentId && input.appointmentId !== original.appointmentId ||
+          input.treatmentPlanId && input.treatmentPlanId !== original.treatmentPlanId ||
+          deliveredAt.getTime() < original.deliveredAt.getTime()) return { status: 400, error: 'Invalid original delivery' }
         const corrections = await tx.clinicalProductionEntry.aggregate({ where: { originalEntryId: original.id }, _sum: { amountUGX: true } })
         const remaining = original.amountUGX + (corrections._sum.amountUGX ?? 0) + input.amountUGX
         if (remaining < 0) return { status: 400, error: 'Correction exceeds delivered value' }
