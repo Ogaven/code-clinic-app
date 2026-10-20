@@ -58,6 +58,8 @@ router.post('/entries', requireAuth, adminOnly, async (req, res) => {
           input.appointmentId && input.appointmentId !== original.appointmentId ||
           input.treatmentPlanId && input.treatmentPlanId !== original.treatmentPlanId ||
           deliveredAt.getTime() < original.deliveredAt.getTime()) return { status: 400, error: 'Invalid original delivery' }
+        // Pending corrections may conflict with this request, but the final approved
+        // balance is always revalidated under the same transaction lock at approval.
         const corrections = await tx.clinicalProductionEntry.aggregate({ where: { originalEntryId: original.id, approvalStatus: 'APPROVED' }, _sum: { amountUGX: true } })
         const remaining = original.amountUGX + (corrections._sum.amountUGX ?? 0) + input.amountUGX
         if (!Number.isSafeInteger(remaining)) return { status: 400, error: 'Correction total exceeds supported UGX range' }
@@ -141,6 +143,7 @@ const approvalSchema = z.object({
 router.post('/entries/:id/decision', requireAuth, adminOnly, async (req, res) => {
   const parsed = approvalSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'Decision and explanation required' })
+  if (!req.params.id || req.params.id.length > 128) return res.status(400).json({ error: 'Invalid entry reference' })
   const entryId = req.params.id
   try {
     const result = await prisma.$transaction(async tx => {
