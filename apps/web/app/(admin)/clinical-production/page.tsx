@@ -103,12 +103,12 @@ export default function ClinicalProductionApprovalsPage() {
       <h2 className="text-lg font-semibold">Record completed treatment delivery</h2>
       <p className="text-sm text-gray-500">Use the patient and appointment references from the clinical record. Do not record invoices, bookings or unperformed treatments as delivered production.</p>
       <div className="grid gap-3 md:grid-cols-2">
-        <label className="text-sm">Patient ID *<input required value={patientId} onChange={e => setPatientId(e.target.value); setSubmissionKey(null)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
-        <label className="text-sm">Completed appointment ID (optional)<input value={appointmentId} onChange={e => setAppointmentId(e.target.value); setSubmissionKey(null)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
-        <label className="text-sm">Delivered at (Kampala local time) *<input required type="datetime-local" value={deliveredAt} onChange={e => setDeliveredAt(e.target.value); setSubmissionKey(null)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
-        <label className="text-sm">Delivered value (UGX) *<input required type="number" min="1" max="2147483647" step="1" value={amountUGX} onChange={e => setAmountUGX(e.target.value); setSubmissionKey(null)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+        <label className="text-sm">Patient ID *<input required value={patientId} onChange={e => { setPatientId(e.target.value); setSubmissionKey(null) }} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+        <label className="text-sm">Completed appointment ID (optional)<input value={appointmentId} onChange={e => { setAppointmentId(e.target.value); setSubmissionKey(null) }} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+        <label className="text-sm">Delivered at (Kampala local time) *<input required type="datetime-local" value={deliveredAt} onChange={e => { setDeliveredAt(e.target.value); setSubmissionKey(null) }} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+        <label className="text-sm">Delivered value (UGX) *<input required type="number" min="1" max="2147483647" step="1" value={amountUGX} onChange={e => { setAmountUGX(e.target.value); setSubmissionKey(null) }} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
       </div>
-      <label className="block text-sm">Treatment delivered and supporting note *<textarea required minLength={3} maxLength={2000} rows={3} value={deliveryNote} onChange={e => setDeliveryNote(e.target.value); setSubmissionKey(null)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+      <label className="block text-sm">Treatment delivered and supporting note *<textarea required minLength={3} maxLength={2000} rows={3} value={deliveryNote} onChange={e => { setDeliveryNote(e.target.value); setSubmissionKey(null) }} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
       <button type="submit" disabled={submitting} className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{submitting ? 'Submitting…' : 'Submit for approval'}</button>
     </form>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
