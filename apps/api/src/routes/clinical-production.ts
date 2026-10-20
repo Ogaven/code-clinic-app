@@ -173,4 +173,23 @@ router.post('/entries/:id/decision', requireAuth, adminOnly, async (req, res) =>
   }
 })
 
+router.get('/entries/pending', requireAuth, adminOnly, async (_req, res) => {
+  try {
+    const entries = await prisma.clinicalProductionEntry.findMany({
+      where: { approvalStatus: 'PENDING' },
+      select: {
+        id: true, patientId: true, appointmentId: true, treatmentPlanId: true,
+        deliveredAt: true, amountUGX: true, kind: true, originalEntryId: true,
+        note: true, recordedById: true, createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 100,
+    })
+    return res.json({ entries, limit: 100 })
+  } catch (error) {
+    console.error('[ClinicalProduction] Pending queue failed:', error)
+    return res.status(500).json({ error: 'Unable to retrieve pending entries' })
+  }
+})
+
 export default router
