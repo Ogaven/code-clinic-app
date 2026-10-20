@@ -103,7 +103,7 @@ router.get('/summary', requireAuth, adminOnly, async (req, res) => {
   if (end.getTime() - start.getTime() > 31 * 86_400_000) return res.status(400).json({ error: 'Maximum reporting range is 31 days' })
   try {
     const groups = await prisma.clinicalProductionEntry.groupBy({
-      by: ['kind'], where: { deliveredAt: { gte: start, lt: end } },
+      by: ['kind'], where: { deliveredAt: { gte: start, lt: end }, approvalStatus: 'APPROVED' },
       _sum: { amountUGX: true }, _count: { id: true },
     })
     const delivery = groups.find(g => g.kind === 'DELIVERY')
@@ -123,8 +123,8 @@ router.get('/summary', requireAuth, adminOnly, async (req, res) => {
       deliveryCount: delivery?._count.id ?? 0,
       reversalCount: reversal?._count.id ?? 0,
       adjustmentCount: adjustment?._count.id ?? 0,
-      basis: 'STAFF_RECORDED_LEDGER',
-      disclaimer: 'Corrections are counted on their recorded effective delivery date. Staff-recorded values are separate from invoices and cash collections; they have not yet undergone a separate approval workflow.',
+      basis: 'APPROVED_CLINICAL_PRODUCTION_LEDGER',
+      disclaimer: 'Corrections are counted on their recorded effective delivery date. Staff-recorded values are separate from invoices and cash collections; only approved entries are included; pending and rejected entries are excluded.',
     })
   } catch (error) {
     console.error('[ClinicalProduction] Summary failed:', error)
