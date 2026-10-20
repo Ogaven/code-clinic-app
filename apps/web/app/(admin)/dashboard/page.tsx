@@ -243,6 +243,7 @@ export default function DashboardPage() {
   const [practiceFinancialError, setPracticeFinancialError] = useState(false)
   const [clinicalProduction, setClinicalProduction] = useState<{ netClinicalProductionUGX: number; deliveryCount: number; reversalCount: number; adjustmentCount: number } | null>(null)
   const [clinicalProductionError, setClinicalProductionError] = useState(false)
+  const [pendingProductionCount, setPendingProductionCount] = useState<number | null>(null)
   const [satisfaction, setSatisfaction] = useState<SatisfactionSummary | null>(null)
   const [googleRating, setGoogleRating] = useState<{ averageRating: number; totalReviewCount: number } | null>(null)
   const [growthPeriod, setGrowthPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month')
@@ -401,6 +402,10 @@ export default function DashboardPage() {
       .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json() })
       .then(data => { if (!cancelled) setClinicalProduction(data) })
       .catch(() => { if (!cancelled) setClinicalProductionError(true) })
+    fetch('/api-proxy/clinical-production/entries/pending', { headers: { Authorization: 'Bearer ' + token } })
+      .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json() })
+      .then(data => { if (!cancelled) setPendingProductionCount(Array.isArray(data.entries) ? data.entries.length : null) })
+      .catch(() => { if (!cancelled) setPendingProductionCount(null) })
     return () => { cancelled = true }
   }, [user?.role])
 
@@ -575,6 +580,7 @@ export default function DashboardPage() {
             <div>
               <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Actual financial activity — month to date</h3>
               <p className="text-xs text-gray-500">Invoices, payments and staff-recorded treatment delivery are separate measures (Kampala).</p>
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{pendingProductionCount === null ? "Approval queue unavailable" : `${pendingProductionCount}${pendingProductionCount === 100 ? "+" : ""} entries awaiting review`}</p>
             </div>
             <Link href="/settings" className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">Manage production goals</Link>
           </div>
