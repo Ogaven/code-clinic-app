@@ -8,7 +8,7 @@ export function validateProductionEntry(input: {
   sourceKey: string
   note: string
 }): string | null {
-  if (!Number.isSafeInteger(input.amountUGX)) return 'Amount must be an integer UGX value'
+  if (!Number.isSafeInteger(input.amountUGX) || Math.abs(input.amountUGX) > 2147483647) return 'Amount must fit the supported PostgreSQL integer UGX range'
   if (input.kind === 'DELIVERY' && (input.amountUGX <= 0 || input.originalEntryId)) return 'Delivery must be positive and cannot reference an original entry'
   if (input.kind === 'REVERSAL' && (input.amountUGX >= 0 || !input.originalEntryId)) return 'Reversal must be negative and reference the original entry'
   if (input.kind === 'ADJUSTMENT' && (input.amountUGX === 0 || !input.originalEntryId)) return 'Adjustment must be nonzero and reference the original entry'
