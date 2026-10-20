@@ -64,7 +64,8 @@ export default function ClinicalProductionApprovalsPage() {
   async function submitDelivery(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const amount = Number(amountUGX)
-    if (!Number.isInteger(amount) || amount < 1 || amount > 2147483647 || !patientId.trim() || deliveryNote.trim().length < 3 || !deliveredAt) {
+    const deliveryInstant = new Date(deliveredAt + '+03:00')
+    if (!Number.isInteger(amount) || amount < 1 || amount > 2147483647 || !patientId.trim() || deliveryNote.trim().length < 3 || !deliveredAt || !Number.isFinite(deliveryInstant.getTime())) {
       setError('Enter a patient reference, valid delivery time, UGX amount and treatment description.')
       return
     }
@@ -80,7 +81,7 @@ export default function ClinicalProductionApprovalsPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify({
           patientId: patientId.trim(), ...(appointmentId.trim() ? { appointmentId: appointmentId.trim() } : {}),
-          deliveredAt: new Date(deliveredAt + '+03:00').toISOString(), amountUGX: amount, kind: 'DELIVERY',
+          deliveredAt: deliveryInstant.toISOString(), amountUGX: amount, kind: 'DELIVERY',
           sourceKey: key, note: deliveryNote.trim(),
         }),
       })
