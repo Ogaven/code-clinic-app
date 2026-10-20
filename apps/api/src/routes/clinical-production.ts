@@ -132,4 +132,45 @@ router.get('/summary', requireAuth, adminOnly, async (req, res) => {
   }
 })
 
+const approvalSchema = z.object({
+  decision: z.enum(['APPROVED', 'REJECTED']),
+  note: z.string().trim().min(3).max(2000),
+}).strict()
+
+// Approval is separate from recording. A different administrator must decide.
+router.post('/entries/:id/decision', requireAuth, adminOnly, async (req, res) => {
+  const parsed = approvalSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'Decision and explanation required' })
+  const entryId = req.params.id
+  try {
+    const result = await prisma.$transaction(async tx => {
+      const entry = await tx.clinicalProductionEntry.findUnique({ where: { id: entryId } })
+      if (!entry) return { status: 404, error: 'Entry not found' }
+      if (entry.approvalStatus !== 'PENDING') return { status: 409, error: 'Entry already reviewed' }
+      if (entry.recordedById === req.user!.id) return { status: 403, error: 'Recorder cannot approve or reject their own entry' }
+      if (entry.kind !== 'DELIVERY' && parsed.data.decision === 'APPROVED') {
+        const original = await tx.clinicalProductionEntry.findUnique({ where: { id: entry.originalEntryId! } })
+        if (!original || original.approvalStatus !== 'APPROVED') {
+          return { status: 409, error: 'Original delivery must be approved before approving a correction' }
+        }
+      }
+      const updated = await tx.clinicalProductionEntry.updateMany({
+        where: { id: entryId, approvalStatus: 'PENDING' },
+        data: { approvalStatus: parsed.data.decision, approvedById: req.user!.id, approvedAt: new Date(), approvalNote: parsed.data.note },
+      })
+      if (updated.count !== 1) return { status: 409, error: 'Entry already reviewed' }
+      await tx.auditLog.create({ data: {
+        userId: req.user!.id, action: 'UPDATE', resource: 'CLINICAL_PRODUCTION', resourceId: entryId,
+        entityType: 'CLINICAL_PRODUCTION', entityId: entryId, actionType: 'STATUS_CHANGE', severity: 'INFO',
+        metadata: JSON.stringify({ decision: parsed.data.decision, note: parsed.data.note }),
+      } })
+      return { status: 200, approvalStatus: parsed.data.decision }
+    })
+    return res.status(result.status).json('error' in result ? { error: result.error } : { approvalStatus: result.approvalStatus })
+  } catch (error) {
+    console.error('[ClinicalProduction] Decision failed:', error)
+    return res.status(500).json({ error: 'Unable to review production entry' })
+  }
+})
+
 export default router
