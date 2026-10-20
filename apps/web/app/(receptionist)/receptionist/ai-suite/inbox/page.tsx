@@ -960,6 +960,8 @@ function InboxPage() {
   const prevConvId     = useRef<string | null>(null)
   const prevConvsRef   = useRef<Map<string, string>>(new Map())
   const [showArchived, setShowArchived] = useState(false)
+  const [metaRefreshing, setMetaRefreshing] = useState(false)
+  const [metaRefreshNotice, setMetaRefreshNotice] = useState('')
   const [showNewChat,  setShowNewChat]  = useState(false)
   const [handbackOpen, setHandbackOpen] = useState(false)
   const [clinicalAlertUnresolved, setClinicalAlertUnresolved] = useState(false)
@@ -1079,6 +1081,39 @@ function InboxPage() {
     setShowArchived(false)
     pendingSelectId.current = id
     fetchConvs()
+  }
+
+  async function refreshMetaContacts() {
+    if (metaRefreshing || (channel !== 'FACEBOOK' && channel !== 'INSTAGRAM')) return
+    setMetaRefreshing(true)
+    setMetaRefreshNotice('')
+    try {
+      let cursor: string | null = null
+      let checked = 0
+      let refreshed = 0
+      // Explicitly bounded to five batches to avoid long-running UI requests.
+      for (let page = 0; page < 5; page++) {
+        const response = await fetch(`${API}/ai-suite/conversations/meta-identity-refresh`, {
+          method: 'POST', headers: authH(true),
+          body: JSON.stringify({ channel, ...(cursor ? { cursor } : {}) }),
+        })
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({})) as { error?: string }
+          throw new Error(error.error || 'Meta profile refresh unavailable')
+        }
+        const result = await response.json() as { checked: number; refreshed: number; nextCursor: string | null }
+        checked += result.checked
+        refreshed += result.refreshed
+        cursor = result.nextCursor
+        if (!cursor) break
+      }
+      setMetaRefreshNotice(`Checked ${checked} contacts; updated ${refreshed}.${cursor ? ' Run again for more.' : ''}`)
+      await fetchConvs()
+    } catch (error) {
+      setMetaRefreshNotice(error instanceof Error ? error.message : 'Unable to refresh Meta contacts')
+    } finally {
+      setMetaRefreshing(false)
+    }
   }
 
   const lastMessageRequest = useRef(0)
@@ -1671,6 +1706,16 @@ function InboxPage() {
           )
         })}
       </div>
+
+      {(channel === 'FACEBOOK' || channel === 'INSTAGRAM') && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-3 py-2 text-xs dark:border-white/10">
+          <button type="button" onClick={refreshMetaContacts} disabled={metaRefreshing}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-700 disabled:opacity-50 dark:text-gray-200">
+            {metaRefreshing ? 'Refreshing contacts…' : 'Refresh Meta contacts'}
+          </button>
+          {metaRefreshNotice && <span role="status" className="text-gray-500 dark:text-gray-300">{metaRefreshNotice}</span>}
+        </div>
+      )}
 
       {/* Screen A (phone only) — vertical channel list, no horizontal icon
           row. Hidden once a channel is picked, and never rendered at md+
