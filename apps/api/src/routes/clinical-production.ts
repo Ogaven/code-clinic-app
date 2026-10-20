@@ -54,11 +54,11 @@ router.post('/entries', requireAuth, adminOnly, async (req, res) => {
       }
       if (input.kind !== 'DELIVERY') {
         const original = await tx.clinicalProductionEntry.findUnique({ where: { id: input.originalEntryId! } })
-        if (!original || original.kind !== 'DELIVERY' || original.patientId !== input.patientId ||
+        if (!original || original.kind !== 'DELIVERY' || original.approvalStatus !== 'APPROVED' || original.patientId !== input.patientId ||
           input.appointmentId && input.appointmentId !== original.appointmentId ||
           input.treatmentPlanId && input.treatmentPlanId !== original.treatmentPlanId ||
           deliveredAt.getTime() < original.deliveredAt.getTime()) return { status: 400, error: 'Invalid original delivery' }
-        const corrections = await tx.clinicalProductionEntry.aggregate({ where: { originalEntryId: original.id }, _sum: { amountUGX: true } })
+        const corrections = await tx.clinicalProductionEntry.aggregate({ where: { originalEntryId: original.id, approvalStatus: 'APPROVED' }, _sum: { amountUGX: true } })
         const remaining = original.amountUGX + (corrections._sum.amountUGX ?? 0) + input.amountUGX
         if (!Number.isSafeInteger(remaining)) return { status: 400, error: 'Correction total exceeds supported UGX range' }
         if (remaining < 0) return { status: 400, error: 'Correction exceeds delivered value' }
