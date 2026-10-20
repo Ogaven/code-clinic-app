@@ -241,6 +241,8 @@ export default function DashboardPage() {
   const [growthRevenue, setGrowthRevenue] = useState<GrowthCrmRevenue | null>(null)
   const [practiceFinancial, setPracticeFinancial] = useState<{ invoicedUGX: number; collectedUGX: number; invoicesCount: number; paymentsCount: number } | null>(null)
   const [practiceFinancialError, setPracticeFinancialError] = useState(false)
+  const [clinicalProduction, setClinicalProduction] = useState<{ netClinicalProductionUGX: number; deliveryCount: number; reversalCount: number; adjustmentCount: number } | null>(null)
+  const [clinicalProductionError, setClinicalProductionError] = useState(false)
   const [satisfaction, setSatisfaction] = useState<SatisfactionSummary | null>(null)
   const [googleRating, setGoogleRating] = useState<{ averageRating: number; totalReviewCount: number } | null>(null)
   const [growthPeriod, setGrowthPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month')
@@ -395,6 +397,10 @@ export default function DashboardPage() {
       .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json() })
       .then(data => { if (!cancelled) setPracticeFinancial(data) })
       .catch(() => { if (!cancelled) setPracticeFinancialError(true) })
+    fetch('/api-proxy/clinical-production/summary?' + query.toString(), { headers: { Authorization: 'Bearer ' + token } })
+      .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json() })
+      .then(data => { if (!cancelled) setClinicalProduction(data) })
+      .catch(() => { if (!cancelled) setClinicalProductionError(true) })
     return () => { cancelled = true }
   }, [user?.role])
 
@@ -568,7 +574,7 @@ export default function DashboardPage() {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Actual financial activity — month to date</h3>
-              <p className="text-xs text-gray-500">Invoice creation and payment dates (Kampala). Not verified clinical production.</p>
+              <p className="text-xs text-gray-500">Invoices, payments and staff-recorded treatment delivery are separate measures (Kampala).</p>
             </div>
             <Link href="/settings" className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">Manage production goals</Link>
           </div>
@@ -576,7 +582,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div><p className="text-xs text-gray-500">Invoiced (excluding drafts/cancellations)</p><p className="text-lg font-bold">{formatUGX(practiceFinancial.invoicedUGX)}</p><p className="text-xs text-gray-400">{practiceFinancial.invoicesCount} invoices</p></div>
               <div><p className="text-xs text-gray-500">Payments collected</p><p className="text-lg font-bold">{formatUGX(practiceFinancial.collectedUGX)}</p><p className="text-xs text-gray-400">{practiceFinancial.paymentsCount} payments</p></div>
-              <div><p className="text-xs text-gray-500">Verified clinical production</p><p className="text-sm font-semibold text-amber-600">Not yet tracked</p><p className="text-xs text-gray-400">Cannot be inferred from invoices or collections</p></div>
+              <div><p className="text-xs text-gray-500">Staff-recorded clinical production</p>{clinicalProduction ? <><p className="text-lg font-bold">{formatUGX(clinicalProduction.netClinicalProductionUGX)}</p><p className="text-xs text-gray-400">{clinicalProduction.deliveryCount} deliveries · {clinicalProduction.reversalCount} reversals · {clinicalProduction.adjustmentCount} adjustments</p></> : <><p className="text-sm font-semibold text-amber-600">Unavailable</p><p className="text-xs text-gray-400">{clinicalProductionError ? 'Ledger reporting is unavailable' : 'Loading ledger records…'}; not inferred from invoices or collections</p></>}</div>
             </div>
           ) : <p className="text-sm text-gray-500">{practiceFinancialError ? 'Financial activity unavailable; no figures are being estimated.' : 'Loading recorded financial activity…'}</p>}
         </section>
