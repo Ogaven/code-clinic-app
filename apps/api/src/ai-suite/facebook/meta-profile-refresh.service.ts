@@ -10,9 +10,9 @@ let running = false
 function placeholder(name: string | null): boolean {
   if (!name) return true
   const value = name.trim()
-  return !value || /^FB User(?:\\s+\\d+)?$/i.test(value)
+  return !value || /^FB User(?:\s+\d+)?$/i.test(value)
     || /^Instagram User$/i.test(value)
-    || /^@?(?:ig_)?\\d+$/i.test(value)
+    || /^@?(?:ig_)?\d+$/i.test(value)
 }
 
 export async function refreshMissingMetaProfiles(): Promise<void> {
