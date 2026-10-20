@@ -367,7 +367,7 @@ export async function processComment(
     let pictureUrl: string | null = conversation?.profilePictureUrl ?? null
     if (channel === 'FACEBOOK_COMMENT' && token && fromId && (!resolvedName || !pictureUrl)) {
       const info = await fetchFbUserInfo(fromId, token)
-      if (info.name && !isPlaceholder(info.name) && isPlaceholder(resolvedName)) resolvedName = info.name
+      resolvedName = resolvedName || info.name
       pictureUrl = pictureUrl || info.pictureUrl
     }
 
