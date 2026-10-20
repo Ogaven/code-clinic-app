@@ -17,7 +17,7 @@ Purpose: verified treatment delivery is separate from invoices and payments. No 
 - Report only approved entries using Kampala delivery dates; separate pending entries.
 - Tests for permissions, replay, negative amounts, invalid links and timezone boundaries.
 
-Current state: PR #366 contains schema, recording, independent approval, pending queue, and approved-only reporting; not merged and no production migration performed.
+Current state: PR #366 contains schema, recording, independent approval, pending queue, and approved-only reporting; not merged and no production migration performed. On 2026-10-20 an isolated PostgreSQL 18 restoration was verified with 4,771 patients and zero ledger entries, and the earlier SQL revision was applied successfully. After this test, the partial reversal index was refined to exclude REJECTED entries; the revised migration must be revalidated on a freshly restored or otherwise disposable database before production rollout. The isolated SQL test did not register a Prisma migration in `_prisma_migrations`.
 
 ## Non-production acceptance tests (required before merge)
 1. Apply the migration to a disposable PostgreSQL database using `prisma migrate deploy`, then verify constraints and Prisma client generation.
@@ -27,10 +27,10 @@ Current state: PR #366 contains schema, recording, independent approval, pending
 5. Verify recorder cannot approve own entry; different administrator can approve with a reason, and the summary then includes exactly that value.
 6. Verify rejection leaves totals unchanged; second decision fails 409; failed audit insert rolls back the approval transaction.
 7. Verify a correction cannot be recorded until the original delivery is approved; test positive and negative adjustments and a full reversal.
-8. Submit two competing corrections concurrently; ensure the sum of approved corrections never exceeds the approved delivery, including reversal races.
+8. Submit two competing corrections concurrently; ensure the sum of approved corrections never exceeds the approved delivery, including reversal races. Reject a reversal and verify that a replacement reversal can be submitted; verify only one non-rejected reversal per original delivery.
 9. Check Kampala midnight boundaries and corrections posted in a later month; reporting is based on effective deliveredAt and may show negative net activity.
 10. Verify admin-only access to all endpoints, expired-token rejection, 31-day reporting limit, and safe error handling.
-11. Confirm an independently restorable production backup and documented rollback plan before applying the additive migration.
+11. Confirm an independently restorable production backup and documented rollback plan before applying the additive migration. Revalidate the final exact migration SQL on a clean isolated database; do not run the edited CREATE INDEX statement over the already-migrated test copy and mistake an index-name conflict for a production problem.
 12. After migration, deploy in a controlled window and verify production health without creating synthetic patient entries.
 
 **Important:** A successful GitHub TypeScript/unit/build pipeline does not replace these database-backed acceptance tests.
