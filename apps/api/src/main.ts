@@ -1,3 +1,4 @@
+import { refreshMissingMetaProfiles } from './ai-suite/facebook/meta-profile-refresh.service'
 import 'dotenv/config'
 import './lib/env' // Validate env vars at startup — exits if required vars are missing
 import express from 'express'
@@ -538,6 +539,12 @@ runStartup().then(() => {
     checkLeadFollowUpOverdueAlerts().catch(err => console.error('[CrmLeadFollowUpOverdue] Scheduler error:', err))
   }, ONE_HOUR)
 
+  // Resolve missing Meta DM names and avatars in the backend, without any
+  // staff-facing button or outbound patient messages. At most ten per hour.
+  setInterval(() => {
+    refreshMissingMetaProfiles().catch(err => console.error('[MetaProfileRefresh] Tick failed:', err))
+  }, ONE_HOUR)
+
   // Run once 2 minutes after startup (gives DB time to settle after migrations)
   setTimeout(() => {
     checkAndSendSameDayReminders().catch(err => console.error('[SameDayReminder] Initial run error:', err))
@@ -552,6 +559,7 @@ runStartup().then(() => {
     checkNewGoogleReviewAlerts().catch(err => console.error('[GBP Review Alerts] Initial run error:', err))
     checkLeadNeedsHelpAlerts().catch(err => console.error('[CrmLeadNeedsHelp] Initial run error:', err))
     checkLeadFollowUpOverdueAlerts().catch(err => console.error('[CrmLeadFollowUpOverdue] Initial run error:', err))
+    refreshMissingMetaProfiles().catch(err => console.error('[MetaProfileRefresh] Initial run error:', err))
     // Daily derived-tag job has a 24h setInterval below with no initial kick
     // of its own — on a host that restarts more often than once every 24h
     // (routine deploys), the timer resets every restart and can go
