@@ -60,6 +60,7 @@ router.post('/entries', requireAuth, adminOnly, async (req, res) => {
           deliveredAt.getTime() < original.deliveredAt.getTime()) return { status: 400, error: 'Invalid original delivery' }
         const corrections = await tx.clinicalProductionEntry.aggregate({ where: { originalEntryId: original.id }, _sum: { amountUGX: true } })
         const remaining = original.amountUGX + (corrections._sum.amountUGX ?? 0) + input.amountUGX
+        if (!Number.isSafeInteger(remaining)) return { status: 400, error: 'Correction total exceeds supported UGX range' }
         if (remaining < 0) return { status: 400, error: 'Correction exceeds delivered value' }
         if (input.kind === 'REVERSAL' && remaining !== 0) return { status: 400, error: 'Reversal must offset the full remaining delivered value' }
       }
