@@ -63,21 +63,38 @@ async function fetchPostCaption(
 }
 
 export async function fetchPostThumbnail(
-  postId:  string,
-  token:   string,
+  postId: string,
+  token: string,
+  channel: 'FACEBOOK_COMMENT' | 'INSTAGRAM_COMMENT' = 'FACEBOOK_COMMENT',
 ): Promise<string | null> {
-  const cached = postThumbnailCache.get(postId)
+  // The same post identifier must never share cached results across channels.
+  const cacheKey = `${channel}:${postId}`
+  const cached = postThumbnailCache.get(cacheKey)
   if (cached && Date.now() - cached.fetchedAt < CAPTION_TTL_MS) return cached.url
   try {
-    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${postId}?fields=full_picture&access_token=${token}`
-    const res  = await fetch(url)
-    if (!res.ok) { postThumbnailCache.set(postId, { url: null, fetchedAt: Date.now() }); return null }
-    const data = await res.json() as any
-    const thumb: string | null = data.full_picture ?? null
-    postThumbnailCache.set(postId, { url: thumb, fetchedAt: Date.now() })
+    const fields = channel === 'INSTAGRAM_COMMENT'
+      ? 'media_url,thumbnail_url,media_type'
+      : 'full_picture'
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(postId)}`)
+    url.searchParams.set('fields', fields)
+    url.searchParams.set('access_token', token)
+    const res = await fetch(url.toString())
+    if (!res.ok) {
+      // Permission failures must not be mistaken for a permanently absent image.
+      return null
+    }
+    const data = await res.json() as {
+      full_picture?: string
+      media_url?: string
+      thumbnail_url?: string
+      media_type?: string
+    }
+    const thumb = channel === 'INSTAGRAM_COMMENT'
+      ? (data.media_type === 'VIDEO' ? data.thumbnail_url || data.media_url : data.media_url || data.thumbnail_url) || null
+      : data.full_picture || null
+    postThumbnailCache.set(cacheKey, { url: thumb, fetchedAt: Date.now() })
     return thumb
   } catch {
-    postThumbnailCache.set(postId, { url: null, fetchedAt: Date.now() })
     return null
   }
 }
