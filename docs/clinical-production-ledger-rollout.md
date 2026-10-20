@@ -17,4 +17,20 @@ Purpose: verified treatment delivery is separate from invoices and payments. No 
 - Report only approved entries using Kampala delivery dates; separate pending entries.
 - Tests for permissions, replay, negative amounts, invalid links and timezone boundaries.
 
-Current state: PR #366 schema-only, not merged, no production migration performed.
+Current state: PR #366 contains schema, recording, independent approval, pending queue, and approved-only reporting; not merged and no production migration performed.
+
+## Non-production acceptance tests (required before merge)
+1. Apply the migration to a disposable PostgreSQL database using `prisma migrate deploy`, then verify constraints and Prisma client generation.
+2. Create a synthetic patient and two authorized test administrators in that disposable environment; never use live patient data.
+3. Verify delivery submission creates PENDING, is absent from approved summary, and replaying the identical sourceKey returns the same entry without a second audit event.
+4. Verify changed payload with the same sourceKey fails 409; wrong-patient appointment and treatment-plan links fail without ledger writes.
+5. Verify recorder cannot approve own entry; different administrator can approve with a reason, and the summary then includes exactly that value.
+6. Verify rejection leaves totals unchanged; second decision fails 409; failed audit insert rolls back the approval transaction.
+7. Verify a correction cannot be recorded until the original delivery is approved; test positive and negative adjustments and a full reversal.
+8. Submit two competing corrections concurrently; ensure the sum of approved corrections never exceeds the approved delivery, including reversal races.
+9. Check Kampala midnight boundaries and corrections posted in a later month; reporting is based on effective deliveredAt and may show negative net activity.
+10. Verify admin-only access to all endpoints, expired-token rejection, 31-day reporting limit, and safe error handling.
+11. Confirm an independently restorable production backup and documented rollback plan before applying the additive migration.
+12. After migration, deploy in a controlled window and verify production health without creating synthetic patient entries.
+
+**Important:** A successful GitHub TypeScript/unit/build pipeline does not replace these database-backed acceptance tests.
