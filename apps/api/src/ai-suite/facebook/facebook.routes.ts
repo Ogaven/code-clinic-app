@@ -100,7 +100,7 @@ export async function fetchPostThumbnail(
 }
 
 // ── Messenger user info fetch (name + profile picture) ────────────────────────
-async function fetchFbUserInfo(
+export async function fetchFbUserInfo(
   psid:  string,
   token: string,
 ): Promise<{ name: string | null; pictureUrl: string | null }> {
@@ -125,7 +125,7 @@ async function fetchFbUserInfo(
 
 // Instagram messaging identities use Instagram's supported profile fields,
 // not the Facebook Messenger PSID fields (first_name/last_name).
-async function fetchInstagramUserInfo(
+export async function fetchInstagramUserInfo(
   igsid: string,
   token: string,
 ): Promise<{ name: string | null; pictureUrl: string | null }> {
