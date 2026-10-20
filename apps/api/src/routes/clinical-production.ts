@@ -144,6 +144,7 @@ router.post('/entries/:id/decision', requireAuth, adminOnly, async (req, res) =>
   const entryId = req.params.id
   try {
     const result = await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(726198, 42)`
       const entry = await tx.clinicalProductionEntry.findUnique({ where: { id: entryId } })
       if (!entry) return { status: 404, error: 'Entry not found' }
       if (entry.approvalStatus !== 'PENDING') return { status: 409, error: 'Entry already reviewed' }
@@ -152,6 +153,21 @@ router.post('/entries/:id/decision', requireAuth, adminOnly, async (req, res) =>
         const original = await tx.clinicalProductionEntry.findUnique({ where: { id: entry.originalEntryId! } })
         if (!original || original.approvalStatus !== 'APPROVED') {
           return { status: 409, error: 'Original delivery must be approved before approving a correction' }
+        }
+      }
+      if (entry.kind !== 'DELIVERY' && parsed.data.decision === 'APPROVED') {
+        const original = await tx.clinicalProductionEntry.findUnique({ where: { id: entry.originalEntryId! } })
+        if (!original) return { status: 409, error: 'Original delivery not found' }
+        const approvedCorrections = await tx.clinicalProductionEntry.aggregate({
+          where: { originalEntryId: original.id, approvalStatus: 'APPROVED' },
+          _sum: { amountUGX: true },
+        })
+        const remaining = original.amountUGX + (approvedCorrections._sum.amountUGX ?? 0) + entry.amountUGX
+        if (!Number.isSafeInteger(remaining) || remaining < 0) {
+          return { status: 409, error: 'Approval would exceed the remaining delivered value' }
+        }
+        if (entry.kind === 'REVERSAL' && remaining !== 0) {
+          return { status: 409, error: 'Reversal must offset the remaining approved delivery value' }
         }
       }
       const updated = await tx.clinicalProductionEntry.updateMany({
