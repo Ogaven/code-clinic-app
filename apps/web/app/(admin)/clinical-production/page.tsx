@@ -96,6 +96,7 @@ export default function ClinicalProductionApprovalsPage() {
     finally { setSubmitting(false) }
   }
 
+  if (user === null) return <main className="p-6"><p>Checking administrator access…</p></main>
   if (user?.role !== 'ADMIN') return <main className="p-6"><h1 className="text-xl font-bold">Clinical production approvals</h1><p className="mt-3 text-sm">Administrator access required.</p></main>
   return <main className="mx-auto max-w-5xl space-y-5 p-4 md:p-8">
     <div><Link href="/dashboard" className="text-sm text-cyan-700">← Dashboard</Link><h1 className="mt-2 text-2xl font-bold">Clinical production approvals</h1><p className="mt-1 text-sm text-gray-500">Review explicitly recorded treatment delivery and corrections. Recording an entry does not approve it.</p></div>
