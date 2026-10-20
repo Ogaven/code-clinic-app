@@ -575,7 +575,9 @@ router.get('/posts', adminAndReceptionist, async (req, res) => {
 
     // Fetch thumbnails for each unique postId (cached)
     const cfg   = await prisma.aiAgentConfig.findFirst()
-    const token = cfg?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || null
+    const token = channel === 'INSTAGRAM_COMMENT'
+      ? (cfg?.instagramAccessToken || process.env.INSTAGRAM_ACCESS_TOKEN || null)
+      : (cfg?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || null)
 
     const sorted = Array.from(postMap.values())
       .sort((a, b) => b.latestAt.getTime() - a.latestAt.getTime())
@@ -583,7 +585,7 @@ router.get('/posts', adminAndReceptionist, async (req, res) => {
     const posts = await Promise.all(sorted.map(async p => ({
       postId:       p.postId,
       caption:      p.caption,
-      thumbnailUrl: token ? await fetchPostThumbnail(p.postId, token) : null,
+      thumbnailUrl: token ? await fetchPostThumbnail(p.postId, token, channel === 'INSTAGRAM_COMMENT' ? 'INSTAGRAM_COMMENT' : 'FACEBOOK_COMMENT') : null,
       latestAt:     p.latestAt,
       commentCount: p.commentCount,
       conversations: Array.from(p.convs.values()).map(({ conv: c, messages, displayName }) => ({
