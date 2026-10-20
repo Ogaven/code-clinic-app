@@ -3,6 +3,11 @@ import { validateProductionEntry, isCorrectionWithinDeliveredValue, productionLi
 
 const base = { sourceKey: 'unique-123', note: 'Treatment delivered and verified' }
 describe('clinical production validation', () => {
+  it('rejects amounts outside the database integer range', () => {
+    expect(validateProductionEntry({ ...base, kind: 'DELIVERY', amountUGX: 2147483648 })).not.toBeNull()
+    expect(validateProductionEntry({ ...base, kind: 'ADJUSTMENT', amountUGX: -2147483648, originalEntryId: 'entry-1' })).not.toBeNull()
+    expect(validateProductionEntry({ ...base, kind: 'DELIVERY', amountUGX: 2147483647 })).toBeNull()
+  })
   it('accepts positive attested delivery', () => expect(validateProductionEntry({ ...base, kind: 'DELIVERY', amountUGX: 250000 })).toBeNull())
   it('rejects unverified zero and negative deliveries', () => {
     expect(validateProductionEntry({ ...base, kind: 'DELIVERY', amountUGX: 0 })).not.toBeNull()
