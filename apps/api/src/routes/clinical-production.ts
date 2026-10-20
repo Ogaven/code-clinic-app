@@ -112,15 +112,19 @@ router.get('/summary', requireAuth, adminOnly, async (req, res) => {
     const deliveryUGX = delivery?._sum.amountUGX ?? 0
     const reversalUGX = reversal?._sum.amountUGX ?? 0
     const adjustmentUGX = adjustment?._sum.amountUGX ?? 0
+    const netClinicalProductionUGX = deliveryUGX + reversalUGX + adjustmentUGX
+    if (![deliveryUGX, reversalUGX, adjustmentUGX, netClinicalProductionUGX].every(Number.isSafeInteger)) {
+      return res.status(500).json({ error: 'Ledger totals exceed supported integer range' })
+    }
     return res.json({
       startDate: parsed.data.startDate, endDate: parsed.data.endDate,
       deliveryUGX, reversalUGX, adjustmentUGX,
-      netClinicalProductionUGX: deliveryUGX + reversalUGX + adjustmentUGX,
+      netClinicalProductionUGX,
       deliveryCount: delivery?._count.id ?? 0,
       reversalCount: reversal?._count.id ?? 0,
       adjustmentCount: adjustment?._count.id ?? 0,
       basis: 'STAFF_RECORDED_LEDGER',
-      disclaimer: 'Staff-recorded treatment delivery and corrections; separate from invoices and cash collections.',
+      disclaimer: 'Corrections are counted on their recorded effective delivery date. Staff-recorded values are separate from invoices and cash collections; they have not yet undergone a separate approval workflow.',
     })
   } catch (error) {
     console.error('[ClinicalProduction] Summary failed:', error)
