@@ -589,13 +589,19 @@ export async function processSocialMessage(
     // Fetch/refresh the person's real Meta identity whenever either field is
     // missing. Previously an existing displayName prevented us from ever
     // back-filling a missing profile photo, leaving many inbox rows generic.
+    // Numeric/generic placeholders are not verified customer names. Retry
+    // resolution when the customer sends another message, without blocking DMs.
+    const isPlaceholder = (name: string | null | undefined) =>
+      !name || /^FB User(?:\s+\d+)?$/i.test(name.trim())
+        || /^Instagram User$/i.test(name.trim())
+        || /^@?(?:ig_)?\d+$/i.test(name.trim())
     let resolvedName: string | null = conversation?.displayName ?? null
     let pictureUrl: string | null = conversation?.profilePictureUrl ?? null
-    if (dmToken && (!resolvedName || !pictureUrl)) {
+    if (dmToken && (isPlaceholder(resolvedName) || !pictureUrl)) {
       const info = channel === 'INSTAGRAM'
         ? await fetchInstagramUserInfo(senderId, dmToken)
         : await fetchFbUserInfo(senderId, dmToken)
-      resolvedName = resolvedName || info.name
+      if (info.name && !isPlaceholder(info.name) && isPlaceholder(resolvedName)) resolvedName = info.name
       pictureUrl = pictureUrl || info.pictureUrl
     }
 
