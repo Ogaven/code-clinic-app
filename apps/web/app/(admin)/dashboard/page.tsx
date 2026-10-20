@@ -581,6 +581,7 @@ export default function DashboardPage() {
               <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Actual financial activity — month to date</h3>
               <p className="text-xs text-gray-500">Invoices, payments and staff-recorded treatment delivery are separate measures (Kampala).</p>
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{pendingProductionCount === null ? "Approval queue unavailable" : `${pendingProductionCount}${pendingProductionCount === 100 ? "+" : ""} entries awaiting review`}</p>
+              <Link href="/clinical-production" className="mt-1 inline-block text-xs font-semibold text-cyan-700 dark:text-cyan-300">Review clinical production entries →</Link>
             </div>
             <Link href="/settings" className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">Manage production goals</Link>
           </div>
