@@ -42,12 +42,15 @@ router.post('/entries', requireAuth, adminOnly, async (req, res) => {
       }
       const [patient, appointment, treatmentPlan] = await Promise.all([
         tx.patient.findUnique({ where: { id: input.patientId }, select: { id: true } }),
-        input.appointmentId ? tx.appointment.findUnique({ where: { id: input.appointmentId }, select: { patientId: true } }) : null,
+        input.appointmentId ? tx.appointment.findUnique({ where: { id: input.appointmentId }, select: { patientId: true, status: true } }) : null,
         input.treatmentPlanId ? tx.treatmentPlan.findUnique({ where: { id: input.treatmentPlanId }, select: { patientId: true } }) : null,
       ])
       if (!patient || (input.appointmentId && !appointment) || (input.treatmentPlanId && !treatmentPlan) ||
         !productionLinksMatchPatient({ patientId: input.patientId, appointmentPatientId: appointment?.patientId, treatmentPlanPatientId: treatmentPlan?.patientId })) {
         return { status: 400, error: 'Invalid patient or linked clinical record' }
+      }
+      if (input.kind === 'DELIVERY' && appointment && !['COMPLETED', 'DEPARTED', 'SESSION_COMPLETE', 'READY_CHECKOUT'].includes(appointment.status)) {
+        return { status: 400, error: 'Linked appointment must have a completed clinical session' }
       }
       if (input.kind !== 'DELIVERY') {
         const original = await tx.clinicalProductionEntry.findUnique({ where: { id: input.originalEntryId! } })
