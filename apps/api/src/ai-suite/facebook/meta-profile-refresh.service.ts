@@ -56,28 +56,44 @@ async function instagramProfileToken(configured?: string | null, fallback?: stri
 // eligible for a match; never infer identity from ordering or email.
 async function facebookParticipantNames(token: string): Promise<Map<string, string>> {
   const names = new Map<string, string>()
+  const pageId = '532091973485208'
+  const firstUrl = new URL(`https://graph.facebook.com/v23.0/${pageId}/conversations`)
+  firstUrl.searchParams.set('fields', 'participants.limit(2){id,name}')
+  firstUrl.searchParams.set('limit', '100')
+  // Bounded pagination ensures older conversations can be considered without
+  // allowing an unbounded API crawl during the periodic background worker.
+  let next: string | undefined = firstUrl.toString()
+  let pages = 0
   try {
-    const url = new URL('https://graph.facebook.com/v23.0/532091973485208/conversations')
-    url.searchParams.set('fields', 'participants.limit(2){id,name}')
-    url.searchParams.set('limit', '100')
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(12000),
-    })
-    if (!response.ok) {
-      console.warn('[MetaProfileRefresh] Facebook participant lookup rejected', { status: response.status })
-      return names
-    }
-    const payload = await response.json() as { data?: Array<{ participants?: { data?: Array<{ id?: string; name?: string }> } }> }
-    for (const conversation of payload.data ?? []) {
-      for (const participant of conversation.participants?.data ?? []) {
-        if (!participant.id || !/^\d+$/.test(participant.id) || participant.id === '532091973485208') continue
-        const name = participant.name?.trim()
-        if (name && !placeholder(name)) names.set(participant.id, name)
+    while (next && pages < 5) {
+      const url = new URL(next)
+      // Never follow a pagination link to an unrelated host.
+      if (url.protocol !== 'https:' || url.hostname !== 'graph.facebook.com') break
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(12000),
+      })
+      if (!response.ok) {
+        console.warn('[MetaProfileRefresh] Facebook participant lookup rejected', { status: response.status, page: pages + 1 })
+        break
       }
+      const payload = await response.json() as {
+        data?: Array<{ participants?: { data?: Array<{ id?: string; name?: string }> } }>
+        paging?: { next?: string }
+      }
+      pages++
+      for (const conversation of payload.data ?? []) {
+        for (const participant of conversation.participants?.data ?? []) {
+          if (!participant.id || !/^\d+$/.test(participant.id) || participant.id === pageId) continue
+          const name = participant.name?.trim()
+          if (name && !placeholder(name)) names.set(participant.id, name)
+        }
+      }
+      next = payload.paging?.next
     }
+    console.info('[MetaProfileRefresh] Facebook participant index', { pages, identities: names.size, hasMore: Boolean(next) })
   } catch {
-    console.warn('[MetaProfileRefresh] Facebook participant lookup unavailable')
+    console.warn('[MetaProfileRefresh] Facebook participant lookup unavailable', { pages })
   }
   return names
 }
@@ -103,6 +119,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
     const fbNames = tokens.FACEBOOK && batch.some(row => row.channel === 'FACEBOOK' && placeholder(row.displayName))
       ? await facebookParticipantNames(tokens.FACEBOOK)
       : new Map<string, string>()
+    let facebookNameMatches = 0
     for (const row of batch) {
       const token = tokens[row.channel]
       if (!token) { stats.missingToken++; continue }
@@ -115,6 +132,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
       if (!profile.name && !profile.pictureUrl) stats.unavailable++
       const name = (row.channel === 'FACEBOOK' ? fbNames.get(row.phoneNumber) : null) || profile.name?.trim() || null
       const validName = name && !placeholder(name) ? name : null
+      if (row.channel === 'FACEBOOK' && row.phoneNumber && fbNames.has(row.phoneNumber)) facebookNameMatches++
       // Conditional writes protect real names/photos against a concurrent
       // webhook update. Only identity fields may be changed.
       if (validName && placeholder(row.displayName)) {
@@ -132,7 +150,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
         stats.photosUpdated += updated.count
       }
     }
-    console.info('[MetaProfileRefresh] Batch summary', stats)
+    console.info('[MetaProfileRefresh] Batch summary', { ...stats, facebookNameMatches })
   } catch (error) {
     console.warn('[MetaProfileRefresh] Background refresh skipped:', error instanceof Error ? error.message : 'unknown error')
   } finally {
