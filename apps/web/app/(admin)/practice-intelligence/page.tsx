@@ -9,6 +9,8 @@ import { Activity, CalendarDays, ClipboardList, Clock3, ShieldCheck, TrendingUp 
  * Reuses the existing admin-only, approved clinical-production summary API.
  * No patient details are fetched and no operational actions are executed here.
  */
+type CapacitySummary = { availableMinutes: number | null; partialKnownAvailableMinutes: number; includedDoctorDays: number; excludedDoctorDays: number; basis: string }
+
 type CapacityReadiness = { activeDoctorCount: number; doctorsWithCompleteSchedules: number; doctorsWithIncompleteSchedules: number; incompleteDayCount: number; recordedBlockedTimeCount: number; recordedSpecialDayCount: number; basis: string }
 
 type AppointmentInsights = { bookedCount: number; bookedMinutes: number; uniqueBookedMinutes: number; overlappingMinutes: number; cancelledCount: number; noShowCount: number; importedCount: number; invalidDurationCount: number; basis: string }
@@ -41,6 +43,8 @@ export default function PracticeIntelligencePage() {
   const [appointmentError, setAppointmentError] = useState('')
   const [capacityReadiness, setCapacityReadiness] = useState<CapacityReadiness | null>(null)
   const [capacityError, setCapacityError] = useState('')
+  const [capacitySummary, setCapacitySummary] = useState<CapacitySummary | null>(null)
+  const [capacitySummaryError, setCapacitySummaryError] = useState('')
   const [summaryError, setSummaryError] = useState('')
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
@@ -72,6 +76,18 @@ export default function PracticeIntelligencePage() {
           throw new Error('The production report did not return verified ledger figures.')
         }
         if (active) setSummary(result)
+        try {
+          const capacityResponse = await fetch(
+            '/api-proxy/scheduling/practice-capacity-summary?startDate=' + startDate + '&endDate=' + endDate,
+            { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' },
+          )
+          if (!capacityResponse.ok) throw new Error('Configured capacity could not be loaded.')
+          const capacity: CapacitySummary = await capacityResponse.json()
+          if (capacity.basis !== 'CONFIGURED_DOCTOR_TIME_MINUS_RECORDED_BLOCKS') throw new Error('Invalid capacity source.')
+          if (active) setCapacitySummary(capacity)
+        } catch {
+          if (active) setCapacitySummaryError('Configured capacity could not be loaded.')
+        }
         try {
           const readinessResponse = await fetch('/api-proxy/scheduling/practice-capacity-readiness', {
             headers: { Authorization: 'Bearer ' + token }, cache: 'no-store',
@@ -217,6 +233,28 @@ export default function PracticeIntelligencePage() {
               </p>
             </>
           ) : <p className="mt-3 text-sm text-gray-500">No schedule readiness data available.</p>}
+      </section>
+
+      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
+        <h2 className="text-lg font-bold text-clinic-navy dark:text-white">Configured available clinical minutes</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-300">
+          Doctor working schedules minus configured breaks, blocked periods and clinic-wide days off.
+        </p>
+        {summaryLoading ? <p className="mt-3 text-sm text-gray-500">Calculating configured time…</p> :
+          capacitySummaryError ? <p className="mt-3 text-sm text-amber-700" role="alert">{capacitySummaryError}</p> :
+          capacitySummary ? (
+            <>
+              <p className="mt-3 text-2xl font-bold text-clinic-navy dark:text-white">
+                {capacitySummary.availableMinutes === null ? 'Unavailable — incomplete configuration' :
+                  capacitySummary.availableMinutes.toLocaleString() + ' minutes'}
+              </p>
+              <p className="mt-2 text-xs text-gray-500">
+                Configured doctor-days evaluated: {capacitySummary.includedDoctorDays}.
+                Doctor-days excluded for incomplete or unsupported configuration: {capacitySummary.excludedDoctorDays}.
+                This is planned availability, not actual attendance or clinical utilization.
+              </p>
+            </>
+          ) : <p className="mt-3 text-sm text-gray-500">No configured capacity data available.</p>}
       </section>
 
       <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
