@@ -33,3 +33,20 @@ export function availableMinutes(working: TimeInterval[], unavailable: TimeInter
   }
   return Math.round(available / 60000)
 }
+
+/**
+ * Converts a configured Kampala local day and HH:mm clock to an instant.
+ * Uganda does not observe DST. Invalid clocks and ranges are rejected.
+ */
+export function kampalaClockInstant(day: string, clock: string): number | null {
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day) || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(clock)) return null
+  const timestamp = Date.parse(day + 'T' + clock + ':00+03:00')
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+export function configuredShift(day: string, openTime: string | null, closeTime: string | null): TimeInterval | null {
+  if (!openTime || !closeTime) return null
+  const start = kampalaClockInstant(day, openTime)
+  const end = kampalaClockInstant(day, closeTime)
+  return start !== null && end !== null && end > start ? { start, end } : null
+}
