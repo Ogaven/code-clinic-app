@@ -99,12 +99,32 @@ describe.skipIf(!isolatedUrl)('clinical production authenticated PostgreSQL inte
     const pendingResponse = await request('/entries', ids.recorder, 'POST', record('audit-rollback', 5000))
     expect(pendingResponse.status).toBe(201)
     const pending = (await pendingResponse.json() as { entry: { id: string } }).entry
-    // Deliberately trigger an audit FK failure by deleting no records: use a
-    // transaction-level database constraint via a temporary trigger, scoped
-    // to this connection would not reach Prisma's pooled transaction. Instead
-    // verify transaction atomicity separately using a rejected invalid action.
-    expect((await decide(pending.id, ids.recorder)).status).toBe(403)
-    expect((await prisma.clinicalProductionEntry.findUnique({ where: { id: pending.id } }))?.approvalStatus).toBe('PENDING')
-    expect(await prisma.auditLog.count({ where: { resourceId: pending.id } })).toBe(1)
+    // A dedicated database trigger forces the audit INSERT to fail after the
+    // approval UPDATE. The request must roll back the UPDATE atomically.
+    // This trigger exists only in the disposable CI database and is removed
+    // in finally even if an assertion fails.
+    await prisma.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION clinical_ledger_ci_reject_audit()
+      RETURNS trigger LANGUAGE plpgsql AS $
+      BEGIN
+        IF NEW.resource = 'CLINICAL_PRODUCTION'
+           AND NEW.resourceId = '${pending.id}' THEN
+          RAISE EXCEPTION 'synthetic audit insert failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $`)
+    await prisma.$executeRawUnsafe(`CREATE TRIGGER clinical_ledger_ci_audit_failure
+      BEFORE INSERT ON audit_logs
+      FOR EACH ROW EXECUTE FUNCTION clinical_ledger_ci_reject_audit()`)
+    try {
+      expect((await decide(pending.id, ids.reviewer)).status).toBe(500)
+      expect((await prisma.clinicalProductionEntry.findUnique({ where: { id: pending.id } }))?.approvalStatus).toBe('PENDING')
+      expect(await prisma.auditLog.count({ where: { resourceId: pending.id } })).toBe(1)
+    } finally {
+      await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS clinical_ledger_ci_audit_failure ON audit_logs')
+      await prisma.$executeRawUnsafe('DROP FUNCTION IF EXISTS clinical_ledger_ci_reject_audit()')
+    }
+    expect((await decide(pending.id, ids.reviewer)).status).toBe(200)
+    expect(await prisma.auditLog.count({ where: { resourceId: pending.id } })).toBe(2)
   })
 })
