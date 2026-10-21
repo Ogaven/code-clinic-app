@@ -11,7 +11,7 @@ let running = false
 // platform-scoped user IDs. Never send them to Meta or mutate them in storage.
 // Only attempt Graph lookups for numeric sender IDs received from webhooks.
 function lookupEligible(id: string | null): boolean {
-  return typeof id === 'string' && /^\\d+$/.test(id)
+  return typeof id === 'string' && /^\d+$/.test(id)
 }
 
 function placeholder(name: string | null): boolean {
