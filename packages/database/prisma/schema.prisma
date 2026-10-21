@@ -195,6 +195,7 @@ model User {
 
   doctor            Doctor?
   auditLogs         AuditLog[]
+  clinicalProductionEntries ClinicalProductionEntry[]
   assistantMessages AssistantMessage[]
   supportTickets    SupportTicket[]
   expenses          Expense[]      @relation("RecordedBy")
@@ -411,6 +412,7 @@ model Patient {
   @@index([balanceStatus])
   @@index([providerId])
   @@map("patients")
+  clinicalProductionEntries ClinicalProductionEntry[]
 }
 
 
@@ -504,6 +506,7 @@ model Appointment {
   @@index([status, startAt])
   @@index([treatmentPlanId])
   @@map("appointments")
+  clinicalProductionEntries ClinicalProductionEntry[]
 }
 
 model Invoice {
@@ -1026,6 +1029,40 @@ model Escalation {
 // CLINICAL FEATURES
 // ─────────────────────────────────────────────
 
+// Explicit, auditable clinical production evidence. No historical backfill is inferred.
+// Corrections are append-only negative adjustments referencing the original entry.
+model ClinicalProductionEntry {
+  id              String   @id @default(cuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  appointmentId   String?
+  appointment     Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  treatmentPlanId String?
+  treatmentPlan   TreatmentPlan? @relation(fields: [treatmentPlanId], references: [id], onDelete: Restrict)
+  deliveredAt     DateTime
+  amountUGX       Int
+  kind            String   // DELIVERY | REVERSAL | ADJUSTMENT
+  sourceKey       String   @unique // caller-generated idempotency key
+  originalEntryId String?
+  originalEntry   ClinicalProductionEntry? @relation("ProductionCorrection", fields: [originalEntryId], references: [id], onDelete: Restrict)
+  corrections     ClinicalProductionEntry[] @relation("ProductionCorrection")
+  note            String
+  approvalStatus  String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  approvedById    String?
+  approvedAt      DateTime?
+  approvalNote    String?
+  recordedById    String
+  recordedBy      User     @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  createdAt       DateTime @default(now())
+
+  @@index([deliveredAt])
+  @@index([patientId, deliveredAt])
+  @@index([appointmentId])
+  @@index([treatmentPlanId])
+  @@index([originalEntryId])
+  @@map("clinical_production_entries")
+}
+
 model TreatmentPlan {
   id          String   @id @default(cuid())
   patientId   String
@@ -1057,6 +1094,7 @@ model TreatmentPlan {
   @@index([stage])
   @@index([followUpAt])
   @@map("treatment_plans")
+  clinicalProductionEntries ClinicalProductionEntry[]
 }
 
 // Idempotency record for treatment follow-up reminders (due-soon/due-today/overdue),

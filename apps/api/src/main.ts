@@ -18,6 +18,7 @@ import { aiBudgetAlertMailConfigFromEnv, createAiBudgetAlertEmailDelivery } from
 import authRouter from './routes/auth'
 import employeesRouter from './routes/employees'
 import schedulingRouter from './routes/scheduling'
+import clinicalProductionRouter from './routes/clinical-production'
 import patientsRouter from './routes/patients'
 import doctorsRouter from './routes/doctors'
 import servicesRouter from './routes/services'
@@ -215,6 +216,7 @@ app.get('/scheduling/google/callback', (req, res, next) => {
 })
 
 app.use('/scheduling',   schedulingRouter)
+app.use('/clinical-production', clinicalProductionRouter)
 app.use('/patients',     patientsRouter)
 app.use('/doctors',      doctorsRouter)
 app.use('/services',     servicesRouter)
