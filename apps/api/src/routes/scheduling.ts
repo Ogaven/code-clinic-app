@@ -1321,6 +1321,69 @@ router.get('/practice-appointment-insights', requireAuth, adminOnly, async (req,
   }
 })
 
+// Capacity readiness audit: a complete doctor schedule is a prerequisite for
+// trustworthy utilization. This endpoint intentionally does not guess hours
+// from generic clinic opening times or appointment counts.
+router.get('/practice-capacity-readiness', requireAuth, adminOnly, async (_req, res) => {
+  try {
+    const [doctors, schedules, blockedTimeCount, specialDayCount] = await Promise.all([
+      prisma.doctor.findMany({ where: { isActive: true }, select: { id: true } }),
+      prisma.doctorSchedule.findMany({ select: {
+        doctorId: true, dayOfWeek: true, isOpen: true, openTime: true, closeTime: true, breaks: true,
+      } }),
+      prisma.blockedTime.count(),
+      prisma.specialDay.count(),
+    ])
+    const activeIds = new Set(doctors.map(doctor => doctor.id))
+    const byDoctor = new Map<string, typeof schedules>()
+    for (const schedule of schedules) {
+      if (!activeIds.has(schedule.doctorId)) continue
+      const existing = byDoctor.get(schedule.doctorId) ?? []
+      existing.push(schedule)
+      byDoctor.set(schedule.doctorId, existing)
+    }
+    const clock = /^([01]\\d|2[0-3]):[0-5]\\d$/
+    const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
+    let incompleteDoctorCount = 0
+    let incompleteDayCount = 0
+    for (const doctor of doctors) {
+      const days = byDoctor.get(doctor.id) ?? []
+      let incomplete = false
+      const seen = new Set<number>()
+      for (const day of days) {
+        seen.add(day.dayOfWeek)
+        if (!day.isOpen) continue
+        if (!day.openTime || !day.closeTime || !clock.test(day.openTime) ||
+            !clock.test(day.closeTime) || minutes(day.closeTime) <= minutes(day.openTime) ||
+            (day.breaks !== null && !Array.isArray(day.breaks))) {
+          incompleteDayCount++
+          incomplete = true
+        }
+      }
+      // Seven explicit day definitions are required to distinguish closed
+      // days from missing configuration. Missing days are never assumed open.
+      const missing = 7 - seen.size
+      if (missing > 0) {
+        incompleteDayCount += missing
+        incomplete = true
+      }
+      if (incomplete) incompleteDoctorCount++
+    }
+    res.json({
+      activeDoctorCount: doctors.length,
+      doctorsWithCompleteSchedules: doctors.length - incompleteDoctorCount,
+      doctorsWithIncompleteSchedules: incompleteDoctorCount,
+      incompleteDayCount, recordedBlockedTimeCount: blockedTimeCount,
+      recordedSpecialDayCount: specialDayCount,
+      capacityMinutes: null, utilizationPercent: null,
+      basis: 'SCHEDULE_CONFIGURATION_READINESS',
+      disclaimer: 'Readiness is based on explicit per-doctor day configurations. Recorded blocks and special days are counted but not yet applied to available minutes. No utilization or availability is inferred from incomplete schedules.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to audit schedule readiness' })
+  }
+})
+
 // Manager-controlled production targets are separate from appointment-volume capacity.
 // Values are stored in existing app_settings; no migration or patient write required.
 const practiceGoalSchema = z.object({
