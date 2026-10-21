@@ -51,6 +51,37 @@ async function instagramProfileToken(configured?: string | null, fallback?: stri
   }
 }
 
+// Meta's Page conversation participants edge can expose names when the direct
+// PSID profile edge returns 100/33. Only exact numeric participant IDs are
+// eligible for a match; never infer identity from ordering or email.
+async function facebookParticipantNames(token: string): Promise<Map<string, string>> {
+  const names = new Map<string, string>()
+  try {
+    const url = new URL('https://graph.facebook.com/v23.0/532091973485208/conversations')
+    url.searchParams.set('fields', 'participants.limit(2){id,name}')
+    url.searchParams.set('limit', '100')
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(12000),
+    })
+    if (!response.ok) {
+      console.warn('[MetaProfileRefresh] Facebook participant lookup rejected', { status: response.status })
+      return names
+    }
+    const payload = await response.json() as { data?: Array<{ participants?: { data?: Array<{ id?: string; name?: string }> } }> }
+    for (const conversation of payload.data ?? []) {
+      for (const participant of conversation.participants?.data ?? []) {
+        if (!participant.id || !/^\d+$/.test(participant.id) || participant.id === '532091973485208') continue
+        const name = participant.name?.trim()
+        if (name && !placeholder(name)) names.set(participant.id, name)
+      }
+    }
+  } catch {
+    console.warn('[MetaProfileRefresh] Facebook participant lookup unavailable')
+  }
+  return names
+}
+
 export async function refreshMissingMetaProfiles(): Promise<void> {
   if (running) return
   running = true
@@ -69,6 +100,9 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
     const batch = rows.slice(0, 10)
     cursor = rows.length > 10 ? batch[batch.length - 1].id : undefined
     const stats = { scanned: batch.length, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, skippedNonPlatformId: 0, unavailable: 0 }
+    const fbNames = tokens.FACEBOOK && batch.some(row => row.channel === 'FACEBOOK' && placeholder(row.displayName))
+      ? await facebookParticipantNames(tokens.FACEBOOK)
+      : new Map<string, string>()
     for (const row of batch) {
       const token = tokens[row.channel]
       if (!token) { stats.missingToken++; continue }
@@ -79,7 +113,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
         ? await fetchFbUserInfo(row.phoneNumber, token)
         : await fetchInstagramUserInfo(row.phoneNumber, token)
       if (!profile.name && !profile.pictureUrl) stats.unavailable++
-      const name = profile.name?.trim() || null
+      const name = (row.channel === 'FACEBOOK' ? fbNames.get(row.phoneNumber) : null) || profile.name?.trim() || null
       const validName = name && !placeholder(name) ? name : null
       // Conditional writes protect real names/photos against a concurrent
       // webhook update. Only identity fields may be changed.
