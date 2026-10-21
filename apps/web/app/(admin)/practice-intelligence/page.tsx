@@ -9,7 +9,7 @@ import { Activity, CalendarDays, ClipboardList, Clock3, ShieldCheck, TrendingUp 
  * Reuses the existing admin-only, approved clinical-production summary API.
  * No patient details are fetched and no operational actions are executed here.
  */
-type AppointmentInsights = { bookedCount: number; bookedMinutes: number; cancelledCount: number; noShowCount: number; importedCount: number; invalidDurationCount: number; basis: string }
+type AppointmentInsights = { bookedCount: number; bookedMinutes: number; uniqueBookedMinutes: number; overlappingMinutes: number; cancelledCount: number; noShowCount: number; importedCount: number; invalidDurationCount: number; basis: string }
 
 type ProductionGoals = { weekdayProductionGoalUGX: number | null; saturdayProductionGoalUGX: number | null }
 
@@ -188,14 +188,14 @@ export default function PracticeIntelligencePage() {
           appointmentInsights ? (
             <>
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div><p className="text-xs text-gray-500">Booked minutes</p><p className="text-xl font-bold">{appointmentInsights.bookedMinutes.toLocaleString()}</p></div>
+                <div><p className="text-xs text-gray-500">Unique booked minutes</p><p className="text-xl font-bold">{appointmentInsights.uniqueBookedMinutes.toLocaleString()}</p></div>
                 <div><p className="text-xs text-gray-500">Booked visits</p><p className="text-xl font-bold">{appointmentInsights.bookedCount}</p></div>
                 <div><p className="text-xs text-gray-500">Cancelled / rescheduled</p><p className="text-xl font-bold">{appointmentInsights.cancelledCount}</p></div>
                 <div><p className="text-xs text-gray-500">No-shows</p><p className="text-xl font-bold">{appointmentInsights.noShowCount}</p></div>
               </div>
               <p className="mt-3 text-xs text-gray-500">
                 Imported records excluded: {appointmentInsights.importedCount}. Invalid durations: {appointmentInsights.invalidDurationCount}.
-                Overlapping bookings may double-count minutes. Capacity and utilization remain unavailable until staffing and blocked-time checks are completed.
+                Raw appointment minutes: {appointmentInsights.bookedMinutes.toLocaleString()}; overlapping minutes: {appointmentInsights.overlappingMinutes.toLocaleString()}. Unique booked time is deduplicated per dentist. Capacity and utilization remain unavailable until staffing and blocked-time checks are completed.
               </p>
             </>
           ) : <p className="mt-3 text-sm text-gray-500">No appointment figures available.</p>}
