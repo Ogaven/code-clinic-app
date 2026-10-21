@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availableMinutes, mergeIntervals } from '../utils/practice-capacity-metrics'
+import { availableMinutes, configuredShift, kampalaClockInstant, mergeIntervals } from '../utils/practice-capacity-metrics'
 
 const interval = (start: number, end: number) => ({ start: start * 60000, end: end * 60000 })
 
@@ -26,5 +26,27 @@ describe('doctor capacity interval arithmetic', () => {
 
   it('ignores invalid intervals and merges adjacent ones', () => {
     expect(mergeIntervals([interval(2, 1), interval(1, 2), interval(2, 3)])).toEqual([interval(1, 3)])
+  })
+})
+
+describe('Kampala capacity clock conversion', () => {
+  it('converts local working hours to the correct UTC instants', () => {
+    expect(configuredShift('2026-10-21', '08:00', '18:00')).toEqual({
+      start: Date.parse('2026-10-21T05:00:00Z'),
+      end: Date.parse('2026-10-21T15:00:00Z'),
+    })
+  })
+
+  it('rejects malformed, reversed and overnight schedules instead of guessing', () => {
+    expect(configuredShift('2026-10-21', '18:00', '08:00')).toBeNull()
+    expect(configuredShift('2026-10-21', '08:00', '08:00')).toBeNull()
+    expect(kampalaClockInstant('2026-10-21', '25:00')).toBeNull()
+    expect(configuredShift('2026-10-21', null, '18:00')).toBeNull()
+  })
+
+  it('supports Saturday Kampala schedules', () => {
+    const shift = configuredShift('2026-10-24', '09:00', '13:00')
+    expect(shift).not.toBeNull()
+    expect(availableMinutes([shift!], [])).toBe(240)
   })
 })
