@@ -1261,6 +1261,61 @@ router.post('/import-appointments', requireAuth, adminAndReceptionist, upload.si
 // GET  /scheduling/booking-settings → { allowOverlapping: boolean }
 // POST /scheduling/booking-settings → { allowOverlapping: boolean }
 
+// Read-only practice intelligence: booked appointment time, not dentist capacity.
+// Admin-only, bounded, no patient details returned and no existing calendar behavior changed.
+router.get('/practice-appointment-insights', requireAuth, adminOnly, async (req, res) => {
+  const dates = z.object({
+    startDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+    endDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+  }).safeParse(req.query)
+  if (!dates.success) return res.status(400).json({ error: 'Valid startDate and endDate required' })
+  const { startDate, endDate } = dates.data
+  if (!isValidKampalaCalendarDate(startDate) || !isValidKampalaCalendarDate(endDate) || startDate > endDate) {
+    return res.status(400).json({ error: 'Invalid Kampala calendar date range' })
+  }
+  const start = new Date(startDate + 'T00:00:00+03:00')
+  const end = new Date(endDate + 'T00:00:00+03:00')
+  end.setUTCDate(end.getUTCDate() + 1)
+  if (end.getTime() - start.getTime() > 7 * 86400000) {
+    return res.status(400).json({ error: 'Maximum reporting range is 7 days' })
+  }
+  try {
+    const appointments = await prisma.appointment.findMany({
+      where: { startAt: { lt: end }, endAt: { gt: start } },
+      select: { startAt: true, endAt: true, status: true },
+    })
+    const excluded = new Set(['CANCELLED', 'CANCELLED_RESCHEDULED', 'RESCHEDULED', 'NO_SHOW', 'IMPORTED'])
+    let bookedMinutes = 0
+    let bookedCount = 0
+    let cancelledCount = 0
+    let noShowCount = 0
+    let importedCount = 0
+    let invalidDurationCount = 0
+    for (const appointment of appointments) {
+      if (appointment.status === 'IMPORTED') { importedCount++; continue }
+      if (appointment.status === 'NO_SHOW') { noShowCount++; continue }
+      if (appointment.status === 'CANCELLED' || appointment.status === 'CANCELLED_RESCHEDULED' || appointment.status === 'RESCHEDULED') {
+        cancelledCount++; continue
+      }
+      if (excluded.has(appointment.status)) continue
+      const minutes = (Math.min(appointment.endAt.getTime(), end.getTime()) -
+        Math.max(appointment.startAt.getTime(), start.getTime())) / 60000
+      if (!Number.isFinite(minutes) || minutes <= 0) { invalidDurationCount++; continue }
+      bookedCount++
+      bookedMinutes += minutes
+    }
+    res.json({
+      startDate, endDate, bookedCount, bookedMinutes: Math.round(bookedMinutes),
+      cancelledCount, noShowCount, importedCount, invalidDurationCount,
+      capacityMinutes: null, utilizationPercent: null,
+      basis: 'SCHEDULED_APPOINTMENT_MINUTES',
+      disclaimer: 'Booked minutes are summed per appointment, excluding cancelled, no-show and imported records. Overlapping appointments may double-count time. Dentist availability and capacity have not yet been validated; this is not a utilization percentage.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to calculate appointment insights' })
+  }
+})
+
 // Manager-controlled production targets are separate from appointment-volume capacity.
 // Values are stored in existing app_settings; no migration or patient write required.
 const practiceGoalSchema = z.object({
