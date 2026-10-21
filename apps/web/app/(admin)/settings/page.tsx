@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { UserCog, Shield, ScrollText, Settings2 } from 'lucide-react'
+import { UserCog, Shield, ScrollText, Settings2, CalendarClock } from 'lucide-react'
 
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null)
@@ -69,9 +69,10 @@ export default function SettingsPage() {
         <section className="bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 p-6">
           <h3 className="font-semibold text-clinic-navy dark:text-white mb-1">Practice Administration</h3>
           <p className="text-xs text-gray-400 mb-4">Manage staff access and review operational activity.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { href: '/employees', label: 'Staff List', icon: UserCog },
+              { href: '/admin/staff/attendance', label: 'Staff Attendance', icon: CalendarClock },
               { href: '/admin/staff/permissions', label: 'Staff Permissions', icon: Shield },
               { href: '/audit-log', label: 'Audit Log', icon: ScrollText },
             ].map(({ href, label, icon: Icon }) => (
