@@ -1267,8 +1267,8 @@ router.post('/import-appointments', requireAuth, adminAndReceptionist, upload.si
 // Admin-only, bounded, no patient details returned and no existing calendar behavior changed.
 router.get('/practice-appointment-insights', requireAuth, adminOnly, async (req, res) => {
   const dates = z.object({
-    startDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
-    endDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   }).safeParse(req.query)
   if (!dates.success) return res.status(400).json({ error: 'Valid startDate and endDate required' })
   const { startDate, endDate } = dates.data
@@ -1343,7 +1343,7 @@ router.get('/practice-capacity-readiness', requireAuth, adminOnly, async (_req, 
       existing.push(schedule)
       byDoctor.set(schedule.doctorId, existing)
     }
-    const clock = /^([01]\\d|2[0-3]):[0-5]\\d$/
+    const clock = /^([01]\d|2[0-3]):[0-5]\d$/
     const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
     let incompleteDoctorCount = 0
     let incompleteDayCount = 0
@@ -1391,8 +1391,8 @@ router.get('/practice-capacity-readiness', requireAuth, adminOnly, async (_req, 
 // participate; appointment counts are not substituted for clinical minutes.
 router.get('/practice-capacity-summary', requireAuth, adminOnly, async (req, res) => {
   const dates = z.object({
-    startDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
-    endDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   }).safeParse(req.query)
   if (!dates.success) return res.status(400).json({ error: 'Valid dates required' })
   const { startDate, endDate } = dates.data
@@ -1694,7 +1694,7 @@ router.get('/practice-doctor-schedule-minutes', requireAuth, adminOnly, async (r
   }
   const weekday = new Date(parsed.data.date + 'T12:00:00+03:00').getUTCDay()
   const minutes = (value: unknown): number | null => {
-    if (typeof value !== 'string' || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(value)) return null
+    if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return null
     const [hour, minute] = value.split(':').map(Number)
     return hour * 60 + minute
   }
@@ -1788,7 +1788,7 @@ router.get('/practice-scheduled-block-overlap', requireAuth, adminOnly, async (r
   const end = new Date(start.getTime() + 86_400_000)
   const weekday = new Date(parsed.data.date + 'T12:00:00+03:00').getUTCDay()
   const clock = (value: unknown): number | null => {
-    if (typeof value !== 'string' || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(value)) return null
+    if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return null
     const [h, m] = value.split(':').map(Number)
     return h * 60 + m
   }
