@@ -9,6 +9,8 @@ import { Activity, CalendarDays, ClipboardList, Clock3, ShieldCheck, TrendingUp 
  * Reuses the existing admin-only, approved clinical-production summary API.
  * No patient details are fetched and no operational actions are executed here.
  */
+type AppointmentInsights = { bookedCount: number; bookedMinutes: number; cancelledCount: number; noShowCount: number; importedCount: number; invalidDurationCount: number; basis: string }
+
 type ProductionGoals = { weekdayProductionGoalUGX: number | null; saturdayProductionGoalUGX: number | null }
 
 type ProductionSummary = {
@@ -33,6 +35,8 @@ export default function PracticeIntelligencePage() {
   const [summary, setSummary] = useState<ProductionSummary | null>(null)
   const [goals, setGoals] = useState<ProductionGoals | null>(null)
   const [goalsError, setGoalsError] = useState('')
+  const [appointmentInsights, setAppointmentInsights] = useState<AppointmentInsights | null>(null)
+  const [appointmentError, setAppointmentError] = useState('')
   const [summaryError, setSummaryError] = useState('')
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
@@ -64,6 +68,18 @@ export default function PracticeIntelligencePage() {
           throw new Error('The production report did not return verified ledger figures.')
         }
         if (active) setSummary(result)
+        try {
+          const appointmentResponse = await fetch(
+            '/api-proxy/scheduling/practice-appointment-insights?startDate=' + startDate + '&endDate=' + endDate,
+            { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' },
+          )
+          if (!appointmentResponse.ok) throw new Error('Appointment insights could not be loaded.')
+          const appointmentData: AppointmentInsights = await appointmentResponse.json()
+          if (appointmentData.basis !== 'SCHEDULED_APPOINTMENT_MINUTES') throw new Error('Invalid appointment insight source.')
+          if (active) setAppointmentInsights(appointmentData)
+        } catch {
+          if (active) setAppointmentError('Appointment insights could not be loaded.')
+        }
         try {
           const goalsResponse = await fetch('/api-proxy/scheduling/practice-production-goals', {
             headers: { Authorization: 'Bearer ' + token }, cache: 'no-store',
@@ -162,6 +178,27 @@ export default function PracticeIntelligencePage() {
         ) : (
           <p className="mt-3 text-sm text-gray-500">No verified report available.</p>
         )}
+      </section>
+
+      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
+        <h2 className="text-lg font-bold text-clinic-navy dark:text-white">Appointment time — last 7 Kampala days</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-300">Read-only scheduled appointment durations; not a measure of doctor capacity or utilization.</p>
+        {summaryLoading ? <p className="mt-3 text-sm text-gray-500">Loading appointment figures…</p> :
+          appointmentError ? <p className="mt-3 text-sm text-amber-700" role="alert">{appointmentError}</p> :
+          appointmentInsights ? (
+            <>
+              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div><p className="text-xs text-gray-500">Booked minutes</p><p className="text-xl font-bold">{appointmentInsights.bookedMinutes.toLocaleString()}</p></div>
+                <div><p className="text-xs text-gray-500">Booked visits</p><p className="text-xl font-bold">{appointmentInsights.bookedCount}</p></div>
+                <div><p className="text-xs text-gray-500">Cancelled / rescheduled</p><p className="text-xl font-bold">{appointmentInsights.cancelledCount}</p></div>
+                <div><p className="text-xs text-gray-500">No-shows</p><p className="text-xl font-bold">{appointmentInsights.noShowCount}</p></div>
+              </div>
+              <p className="mt-3 text-xs text-gray-500">
+                Imported records excluded: {appointmentInsights.importedCount}. Invalid durations: {appointmentInsights.invalidDurationCount}.
+                Overlapping bookings may double-count minutes. Capacity and utilization remain unavailable until staffing and blocked-time checks are completed.
+              </p>
+            </>
+          ) : <p className="mt-3 text-sm text-gray-500">No appointment figures available.</p>}
       </section>
 
       <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
