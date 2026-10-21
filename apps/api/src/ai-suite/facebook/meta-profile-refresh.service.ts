@@ -120,17 +120,27 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
       ? await facebookParticipantNames(tokens.FACEBOOK)
       : new Map<string, string>()
     let facebookNameMatches = 0
+    let facebookUnmatchedPlaceholders = 0
+    let facebookAlreadyNamedMatches = 0
     for (const row of batch) {
       const token = tokens[row.channel]
       if (!token) { stats.missingToken++; continue }
       if (!row.phoneNumber || (!placeholder(row.displayName) && row.profilePictureUrl)) continue
       if (!lookupEligible(row.phoneNumber)) { stats.skippedNonPlatformId++; continue }
       stats.attempted++
-      const profile = row.channel === 'FACEBOOK'
-        ? await fetchFbUserInfo(row.phoneNumber, token)
-        : await fetchInstagramUserInfo(row.phoneNumber, token)
+      const participantName = row.channel === 'FACEBOOK' ? fbNames.get(row.phoneNumber) : undefined
+      if (row.channel === 'FACEBOOK' && placeholder(row.displayName) && !participantName) facebookUnmatchedPlaceholders++
+      if (row.channel === 'FACEBOOK' && participantName && !placeholder(row.displayName)) facebookAlreadyNamedMatches++
+      // A verified participant name avoids an unnecessary direct lookup when a
+      // photo is already stored; otherwise still attempt the photo lookup.
+      const shouldFetchProfile = !participantName || !row.profilePictureUrl
+      const profile = shouldFetchProfile
+        ? row.channel === 'FACEBOOK'
+          ? await fetchFbUserInfo(row.phoneNumber, token)
+          : await fetchInstagramUserInfo(row.phoneNumber, token)
+        : { name: null, pictureUrl: null }
       if (!profile.name && !profile.pictureUrl) stats.unavailable++
-      const name = (row.channel === 'FACEBOOK' ? fbNames.get(row.phoneNumber) : null) || profile.name?.trim() || null
+      const name = participantName || profile.name?.trim() || null
       const validName = name && !placeholder(name) ? name : null
       if (row.channel === 'FACEBOOK' && row.phoneNumber && fbNames.has(row.phoneNumber)) facebookNameMatches++
       // Conditional writes protect real names/photos against a concurrent
@@ -150,7 +160,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
         stats.photosUpdated += updated.count
       }
     }
-    console.info('[MetaProfileRefresh] Batch summary', { ...stats, facebookNameMatches })
+    console.info('[MetaProfileRefresh] Batch summary', { ...stats, facebookNameMatches, facebookAlreadyNamedMatches, facebookUnmatchedPlaceholders })
   } catch (error) {
     console.warn('[MetaProfileRefresh] Background refresh skipped:', error instanceof Error ? error.message : 'unknown error')
   } finally {
