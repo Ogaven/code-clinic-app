@@ -1425,8 +1425,9 @@ router.get('/practice-capacity-summary', requireAuth, adminOnly, async (req, res
     let includedDoctorDays = 0
     let dayCursor = start.getTime()
     while (dayCursor < end.getTime()) {
-      const day = new Date(dayCursor).toISOString().slice(0, 10)
-      const dayOfWeek = new Date(dayCursor).getUTCDay()
+      // Kampala midnight is 21:00 UTC on the preceding date.
+      const day = new Date(dayCursor + 3 * 3600000).toISOString().slice(0, 10)
+      const dayOfWeek = new Date(day + 'T12:00:00Z').getUTCDay()
       const dayStart = dayCursor
       const dayEnd = dayCursor + 86400000
       const special = specialDays.find(d => d.date.toISOString().slice(0, 10) === day)
