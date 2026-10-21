@@ -92,6 +92,6 @@ describe('clinical production HTTP route behavior (mocked transaction; not datab
     expect(mock.groupBy).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ approvalStatus: 'APPROVED' }),
     }))
-    expect((await response.json()).netClinicalProductionUGX).toBe(50000)
+    expect((await response.json() as { netClinicalProductionUGX: number }).netClinicalProductionUGX).toBe(50000)
   })
 })
