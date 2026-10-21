@@ -15,6 +15,35 @@ function placeholder(name: string | null): boolean {
     || /^@?(?:ig_)?\d+$/i.test(value)
 }
 
+// Validate only the configured Instagram token before historical lookups. Meta
+// error 190 means the saved token is unusable; the environment token is then
+// considered as a fallback. No credentials or account identifiers are logged.
+async function instagramProfileToken(configured?: string | null, fallback?: string): Promise<string | undefined> {
+  const primary = configured?.trim()
+  const secondary = fallback?.trim()
+  if (!primary) return secondary
+  if (!secondary || primary === secondary) return primary
+
+  try {
+    const url = new URL('https://graph.facebook.com/v23.0/me')
+    url.searchParams.set('fields', 'id')
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${primary}` },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (response.ok) return primary
+    const data = await response.json() as { error?: { code?: number } }
+    if (data.error?.code === 190 || response.status === 401) {
+      console.warn('[MetaProfileRefresh] Saved Instagram token rejected; using environment fallback')
+      return secondary
+    }
+    // Do not bypass a token for transient failures or unrelated permission errors.
+    return primary
+  } catch {
+    return primary
+  }
+}
+
 export async function refreshMissingMetaProfiles(): Promise<void> {
   if (running) return
   running = true
@@ -22,7 +51,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
     const config = await prisma.aiAgentConfig.findFirst()
     const tokens: Record<string, string | undefined> = {
       FACEBOOK: config?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN,
-      INSTAGRAM: config?.instagramAccessToken || process.env.INSTAGRAM_ACCESS_TOKEN,
+      INSTAGRAM: await instagramProfileToken(config?.instagramAccessToken, process.env.INSTAGRAM_ACCESS_TOKEN),
     }
     const rows = await prisma.aiConversation.findMany({
       where: { channel: { in: ['FACEBOOK', 'INSTAGRAM'] }, ...(cursor ? { id: { gt: cursor } } : {}) },
