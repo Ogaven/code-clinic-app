@@ -7,6 +7,13 @@ import { fetchFbUserInfo, fetchInstagramUserInfo } from '../facebook/facebook.ro
 let cursor: string | undefined
 let running = false
 
+// Historical synthetic identifiers (fb_*, ig_*, verify_*) are not proven
+// platform-scoped user IDs. Never send them to Meta or mutate them in storage.
+// Only attempt Graph lookups for numeric sender IDs received from webhooks.
+function lookupEligible(id: string | null): boolean {
+  return typeof id === 'string' && /^\\d+$/.test(id)
+}
+
 function placeholder(name: string | null): boolean {
   if (!name) return true
   const value = name.trim()
@@ -61,11 +68,12 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
     })
     const batch = rows.slice(0, 10)
     cursor = rows.length > 10 ? batch[batch.length - 1].id : undefined
-    const stats = { scanned: batch.length, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, unavailable: 0 }
+    const stats = { scanned: batch.length, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, skippedNonPlatformId: 0, unavailable: 0 }
     for (const row of batch) {
       const token = tokens[row.channel]
       if (!token) { stats.missingToken++; continue }
       if (!row.phoneNumber || (!placeholder(row.displayName) && row.profilePictureUrl)) continue
+      if (!lookupEligible(row.phoneNumber)) { stats.skippedNonPlatformId++; continue }
       stats.attempted++
       const profile = row.channel === 'FACEBOOK'
         ? await fetchFbUserInfo(row.phoneNumber, token)
