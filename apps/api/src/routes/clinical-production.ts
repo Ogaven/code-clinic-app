@@ -86,8 +86,8 @@ router.post('/entries', requireAuth, adminOnly, async (req, res) => {
 })
 
 const reportSchema = z.object({
-  startDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
-  endDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 })
 
 // Read-only verified ledger activity. Report by actual delivery date, not
