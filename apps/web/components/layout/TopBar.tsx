@@ -36,16 +36,13 @@ const NAV: NavLink[] = [
     { label: 'Patients Recare Calls Tracker', href: '/patients/recare' },
   ] },
   { label: 'Appointments', href: '/scheduling' },
-  { label: 'Staff', children: [
-    { label: 'Staff List', href: '/employees' }, { label: 'Attendance', href: '/admin/staff/attendance' },
-    { label: 'Permissions', href: '/admin/staff/permissions' },
-  ] },
   { label: 'Treatments', children: [
     { label: 'Treatment Pipeline', href: '/treatment-pipeline' },
   ] },
   { label: 'Billing', children: [
     { label: 'Stocks', href: '/stocks' },
   ] },
+  { label: 'Practice Intelligence', href: '/practice-intelligence' },
   { label: 'AI Suite', children: [
     { label: 'Conversations', href: '/ai-suite/inbox' }, { label: 'Knowledge Base', href: '/ai-suite/knowledge-base' },
     { label: 'Escalations', href: '/ai-suite/escalations' }, { label: 'Follow-ups', href: '/ai-suite/followup-dashboard' },
