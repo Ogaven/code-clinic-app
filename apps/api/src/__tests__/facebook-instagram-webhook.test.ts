@@ -256,6 +256,33 @@ describe('outbound routing — never crosses channels, mocked fetch only, no rea
 })
 
 
+describe('Existing social DM placeholder recovery', () => {
+  it('replaces an Instagram placeholder when Meta returns a verified username', async () => {
+    prismaMock.aiConversation.findFirst.mockResolvedValue({
+      id: 'ig-existing',
+      channel: 'INSTAGRAM',
+      phoneNumber: '28540242905567428',
+      status: 'ACTIVE',
+      agentEnabled: true,
+      displayName: 'Instagram User',
+      profilePictureUrl: null,
+    })
+    global.fetch = vi.fn(async (url: any) => {
+      if (String(url).includes('/28540242905567428?')) {
+        return { ok: true, json: async () => ({ username: 'real_patient', profile_pic: 'https://example.test/ig.jpg' }) } as any
+      }
+      return { ok: true, json: async () => ({}), text: async () => '' } as any
+    }) as any
+
+    await processSocialMessage('28540242905567428', 'Hello', 'INSTAGRAM', 'mid-ig-placeholder')
+
+    expect(prismaMock.aiConversation.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'ig-existing' },
+      data: expect.objectContaining({ displayName: '@real_patient', profilePictureUrl: 'https://example.test/ig.jpg' }),
+    }))
+  })
+})
+
 describe('Facebook social identity enrichment', () => {
   it('back-fills a missing Messenger profile picture even when the display name already exists', async () => {
     prismaMock.aiConversation.findFirst.mockResolvedValue({

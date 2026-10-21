@@ -626,7 +626,7 @@ export async function processSocialMessage(
       })
     } else {
       const identityPatch: { displayName?: string; profilePictureUrl?: string } = {}
-      if (!conversation.displayName && resolvedName) identityPatch.displayName = resolvedName
+      if (isPlaceholder(conversation.displayName) && resolvedName && !isPlaceholder(resolvedName) && resolvedName !== conversation.displayName) identityPatch.displayName = resolvedName
       if (!conversation.profilePictureUrl && pictureUrl) identityPatch.profilePictureUrl = pictureUrl
       if (Object.keys(identityPatch).length) {
         await prisma.aiConversation.update({

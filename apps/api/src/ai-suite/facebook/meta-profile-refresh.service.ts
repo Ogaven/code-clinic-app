@@ -126,6 +126,9 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
       const token = tokens[row.channel]
       if (!token) { stats.missingToken++; continue }
       if (!row.phoneNumber || (!placeholder(row.displayName) && row.profilePictureUrl)) continue
+      // The connected Instagram professional account is not a customer. Historical
+      // records using our own account ID must remain intact, not profile-enriched.
+      if (row.channel === 'INSTAGRAM' && row.phoneNumber === process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID) continue
       if (!lookupEligible(row.phoneNumber)) { stats.skippedNonPlatformId++; continue }
       stats.attempted++
       const participantName = row.channel === 'FACEBOOK' ? fbNames.get(row.phoneNumber) : undefined
