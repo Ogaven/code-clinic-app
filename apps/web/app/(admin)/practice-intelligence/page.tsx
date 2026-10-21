@@ -9,6 +9,8 @@ import { Activity, CalendarDays, ClipboardList, Clock3, ShieldCheck, TrendingUp 
  * Reuses the existing admin-only, approved clinical-production summary API.
  * No patient details are fetched and no operational actions are executed here.
  */
+type CapacityReadiness = { activeDoctorCount: number; doctorsWithCompleteSchedules: number; doctorsWithIncompleteSchedules: number; incompleteDayCount: number; recordedBlockedTimeCount: number; recordedSpecialDayCount: number; basis: string }
+
 type AppointmentInsights = { bookedCount: number; bookedMinutes: number; uniqueBookedMinutes: number; overlappingMinutes: number; cancelledCount: number; noShowCount: number; importedCount: number; invalidDurationCount: number; basis: string }
 
 type ProductionGoals = { weekdayProductionGoalUGX: number | null; saturdayProductionGoalUGX: number | null }
@@ -37,6 +39,8 @@ export default function PracticeIntelligencePage() {
   const [goalsError, setGoalsError] = useState('')
   const [appointmentInsights, setAppointmentInsights] = useState<AppointmentInsights | null>(null)
   const [appointmentError, setAppointmentError] = useState('')
+  const [capacityReadiness, setCapacityReadiness] = useState<CapacityReadiness | null>(null)
+  const [capacityError, setCapacityError] = useState('')
   const [summaryError, setSummaryError] = useState('')
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
@@ -68,6 +72,17 @@ export default function PracticeIntelligencePage() {
           throw new Error('The production report did not return verified ledger figures.')
         }
         if (active) setSummary(result)
+        try {
+          const readinessResponse = await fetch('/api-proxy/scheduling/practice-capacity-readiness', {
+            headers: { Authorization: 'Bearer ' + token }, cache: 'no-store',
+          })
+          if (!readinessResponse.ok) throw new Error('Capacity readiness unavailable.')
+          const readiness: CapacityReadiness = await readinessResponse.json()
+          if (readiness.basis !== 'SCHEDULE_CONFIGURATION_READINESS') throw new Error('Invalid readiness source.')
+          if (active) setCapacityReadiness(readiness)
+        } catch {
+          if (active) setCapacityError('Capacity readiness unavailable.')
+        }
         try {
           const appointmentResponse = await fetch(
             '/api-proxy/scheduling/practice-appointment-insights?startDate=' + startDate + '&endDate=' + endDate,
@@ -178,6 +193,30 @@ export default function PracticeIntelligencePage() {
         ) : (
           <p className="mt-3 text-sm text-gray-500">No verified report available.</p>
         )}
+      </section>
+
+      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
+        <h2 className="text-lg font-bold text-clinic-navy dark:text-white">Doctor capacity data readiness</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-300">
+          Before calculating utilization, each active doctor's weekly working days must be explicitly configured.
+        </p>
+        {summaryLoading ? <p className="mt-3 text-sm text-gray-500">Checking schedule completeness…</p> :
+          capacityError ? <p className="mt-3 text-sm text-amber-700" role="alert">{capacityError}</p> :
+          capacityReadiness ? (
+            <>
+              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div><p className="text-xs text-gray-500">Active dentists</p><p className="text-xl font-bold">{capacityReadiness.activeDoctorCount}</p></div>
+                <div><p className="text-xs text-gray-500">Complete schedules</p><p className="text-xl font-bold">{capacityReadiness.doctorsWithCompleteSchedules}</p></div>
+                <div><p className="text-xs text-gray-500">Incomplete schedules</p><p className="text-xl font-bold">{capacityReadiness.doctorsWithIncompleteSchedules}</p></div>
+                <div><p className="text-xs text-gray-500">Incomplete day records</p><p className="text-xl font-bold">{capacityReadiness.incompleteDayCount}</p></div>
+              </div>
+              <p className="mt-3 text-xs text-gray-500">
+                Recorded blocked periods: {capacityReadiness.recordedBlockedTimeCount}.
+                Recorded special days: {capacityReadiness.recordedSpecialDayCount}.
+                These are configuration checks, not proof of staff attendance or a utilization calculation.
+              </p>
+            </>
+          ) : <p className="mt-3 text-sm text-gray-500">No schedule readiness data available.</p>}
       </section>
 
       <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
