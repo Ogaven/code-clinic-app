@@ -134,11 +134,23 @@ export async function fetchInstagramUserInfo(
     url.searchParams.set('fields', 'name,username,profile_pic')
     url.searchParams.set('access_token', token)
     const res = await fetch(url.toString())
+    const data = await res.json() as {
+      name?: string
+      username?: string
+      profile_pic?: string
+      error?: { code?: number; error_subcode?: number; type?: string }
+    }
     if (!res.ok) {
-      console.warn('[Instagram] Profile lookup rejected', { status: res.status })
+      // Log only Meta's numeric diagnostic codes and error type. Never log
+      // customer identifiers, request URLs, access tokens, or error messages.
+      console.warn('[Instagram] Profile lookup rejected', {
+        status: res.status,
+        metaCode: typeof data?.error?.code === 'number' ? data.error.code : null,
+        metaSubcode: typeof data?.error?.error_subcode === 'number' ? data.error.error_subcode : null,
+        metaType: typeof data?.error?.type === 'string' ? data.error.type.slice(0, 80) : null,
+      })
       return { name: null, pictureUrl: null }
     }
-    const data = await res.json() as { name?: string; username?: string; profile_pic?: string }
     return {
       name: data.name?.trim() || (data.username ? `@${data.username.replace(/^@/, '')}` : null),
       pictureUrl: data.profile_pic || null,
