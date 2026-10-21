@@ -1,12 +1,75 @@
+'use client'
+
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Activity, CalendarDays, ClipboardList, Clock3, ShieldCheck, TrendingUp } from 'lucide-react'
 
 /**
  * Practice Intelligence — read-only foundation.
- * No patient data is fetched and no operational actions are executed here.
- * Real clinic KPIs must only be enabled after audited, role-scoped API integration.
+ * Reuses the existing admin-only, approved clinical-production summary API.
+ * No patient details are fetched and no operational actions are executed here.
  */
+type ProductionSummary = {
+  startDate: string
+  endDate: string
+  netClinicalProductionUGX: number
+  deliveryCount: number
+  reversalCount: number
+  adjustmentCount: number
+  basis: 'APPROVED_CLINICAL_PRODUCTION_LEDGER'
+}
+
+function kampalaDay(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Kampala', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date)
+  const value = (part: string) => parts.find(item => item.type === part)?.value ?? ''
+  return value('year') + '-' + value('month') + '-' + value('day')
+}
+
 export default function PracticeIntelligencePage() {
+  const [summary, setSummary] = useState<ProductionSummary | null>(null)
+  const [summaryError, setSummaryError] = useState('')
+  const [summaryLoading, setSummaryLoading] = useState(true)
+  const [authorized, setAuthorized] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    async function load() {
+      try {
+        const raw = localStorage.getItem('cc_user')
+        const user = raw ? JSON.parse(raw) as { role?: string } : null
+        if (user?.role !== 'ADMIN') {
+          if (active) setSummaryError('Administrator access is required for verified production reporting.')
+          return
+        }
+        if (active) setAuthorized(true)
+        const token = localStorage.getItem('cc_token')
+        if (!token) throw new Error('Sign in to view verified production figures.')
+        const endDate = kampalaDay(new Date())
+        const startDate = kampalaDay(new Date(Date.now() - 6 * 86400000))
+        const response = await fetch(
+          '/api-proxy/clinical-production/summary?startDate=' + startDate + '&endDate=' + endDate,
+          { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' },
+        )
+        if (!response.ok) throw new Error('Unable to load verified production (' + response.status + ').')
+        const result: ProductionSummary = await response.json()
+        if (result.basis !== 'APPROVED_CLINICAL_PRODUCTION_LEDGER' ||
+            !Number.isSafeInteger(result.netClinicalProductionUGX) ||
+            !Number.isSafeInteger(result.deliveryCount)) {
+          throw new Error('The production report did not return verified ledger figures.')
+        }
+        if (active) setSummary(result)
+      } catch (error) {
+        if (active) setSummaryError(error instanceof Error ? error.message : 'Unable to load production.')
+      } finally {
+        if (active) setSummaryLoading(false)
+      }
+    }
+    void load()
+    return () => { active = false }
+  }, [])
+
   const layers = [
     {
       title: 'Performance overview',
@@ -54,14 +117,38 @@ export default function PracticeIntelligencePage() {
         <div className="flex items-start gap-3">
           <Clock3 className="mt-0.5 shrink-0 text-clinic-blue" size={20} aria-hidden="true" />
           <div>
-            <h2 className="font-semibold text-clinic-navy dark:text-white">Live measurements are not enabled yet</h2>
+            <h2 className="font-semibold text-clinic-navy dark:text-white">Appointment capacity measurements are not enabled yet</h2>
             <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">
-              We are validating appointment duration, dentist availability, verified treatment delivery
-              and billing sources before publishing performance numbers. No demo values are shown as real data.
+              We are validating appointment duration, dentist availability and billing sources before publishing capacity or profitability numbers. Approved treatment production is reported separately below. No demo values are shown as real data.
             </p>
           </div>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Last 7 Kampala calendar days · verified treatment delivery</p>
+        <h2 className="mt-2 text-lg font-bold text-clinic-navy dark:text-white">Approved clinical production</h2>
+        {summaryLoading ? (
+          <p className="mt-3 text-sm text-gray-500" role="status">Loading verified figures…</p>
+        ) : summaryError ? (
+          <p className="mt-3 text-sm text-amber-700" role="alert">{summaryError}</p>
+        ) : authorized && summary ? (
+          <>
+            <p className="mt-3 text-3xl font-bold text-clinic-navy dark:text-white">
+              {'UGX ' + summary.netClinicalProductionUGX.toLocaleString('en-UG')}
+            </p>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              {summary.deliveryCount} approved deliveries · {summary.reversalCount} reversals · {summary.adjustmentCount} adjustments
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              {summary.startDate} to {summary.endDate}. Excludes pending/rejected entries, invoices and cash collections.
+              Zero means no approved net production recorded for this period, not necessarily no treatment performed.
+            </p>
+          </>
+        ) : (
+          <p className="mt-3 text-sm text-gray-500">No verified report available.</p>
+        )}
+      </section>
 
       <div className="grid gap-4 md:grid-cols-2">
         {layers.map(({ title, subtitle, description, icon: Icon }) => (
