@@ -9,6 +9,8 @@ import { Activity, CalendarDays, ClipboardList, Clock3, ShieldCheck, TrendingUp 
  * Reuses the existing admin-only, approved clinical-production summary API.
  * No patient details are fetched and no operational actions are executed here.
  */
+type ProductionGoals = { weekdayProductionGoalUGX: number | null; saturdayProductionGoalUGX: number | null }
+
 type ProductionSummary = {
   startDate: string
   endDate: string
@@ -29,6 +31,8 @@ function kampalaDay(date: Date): string {
 
 export default function PracticeIntelligencePage() {
   const [summary, setSummary] = useState<ProductionSummary | null>(null)
+  const [goals, setGoals] = useState<ProductionGoals | null>(null)
+  const [goalsError, setGoalsError] = useState('')
   const [summaryError, setSummaryError] = useState('')
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
@@ -60,6 +64,16 @@ export default function PracticeIntelligencePage() {
           throw new Error('The production report did not return verified ledger figures.')
         }
         if (active) setSummary(result)
+        try {
+          const goalsResponse = await fetch('/api-proxy/scheduling/practice-production-goals', {
+            headers: { Authorization: 'Bearer ' + token }, cache: 'no-store',
+          })
+          if (!goalsResponse.ok) throw new Error('Production goals could not be loaded.')
+          const data: ProductionGoals = await goalsResponse.json()
+          if (active) setGoals(data)
+        } catch {
+          if (active) setGoalsError('Production goals could not be loaded.')
+        }
       } catch (error) {
         if (active) setSummaryError(error instanceof Error ? error.message : 'Unable to load production.')
       } finally {
@@ -148,6 +162,34 @@ export default function PracticeIntelligencePage() {
         ) : (
           <p className="mt-3 text-sm text-gray-500">No verified report available.</p>
         )}
+      </section>
+
+      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
+        <h2 className="text-lg font-bold text-clinic-navy dark:text-white">Manager-defined daily production goals</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-300">
+          Goals measure intended value of approved treatment delivery, not the number of appointments.
+        </p>
+        {summaryLoading ? <p className="mt-3 text-sm text-gray-500">Loading goals…</p> :
+          goalsError ? <p className="mt-3 text-sm text-amber-700" role="alert">{goalsError}</p> :
+          goals ? (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold text-gray-500">Monday–Friday</p>
+                <p className="mt-1 text-xl font-bold text-clinic-navy dark:text-white">
+                  {goals.weekdayProductionGoalUGX == null ? 'Not set' : 'UGX ' + goals.weekdayProductionGoalUGX.toLocaleString('en-UG')}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500">Saturday</p>
+                <p className="mt-1 text-xl font-bold text-clinic-navy dark:text-white">
+                  {goals.saturdayProductionGoalUGX == null ? 'Not set' : 'UGX ' + goals.saturdayProductionGoalUGX.toLocaleString('en-UG')}
+                </p>
+              </div>
+            </div>
+          ) : <p className="mt-3 text-sm text-gray-500">No goal data available.</p>}
+        <Link href="/settings" className="mt-4 inline-block text-sm font-semibold text-clinic-blue hover:underline">
+          Manage goals in Settings
+        </Link>
       </section>
 
       <div className="grid gap-4 md:grid-cols-2">
