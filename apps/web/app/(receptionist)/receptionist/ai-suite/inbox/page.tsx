@@ -171,7 +171,7 @@ function convLabel(conv: Conversation, channel: ChannelKey): string {
   if (conv.patientName) return conv.patientName
   if (channel === 'WHATSAPP' && conv.waDisplayName) return conv.waDisplayName
   const storedName = conv.displayName?.trim() || ''
-  const unresolvedSocialName = /^(?:FB User(?:\\s+\\S+)?|Instagram User|@?(?:ig_|fb_)?\\d+)$/i.test(storedName)
+  const unresolvedSocialName = /^(?:FB User(?:\s+\S+)?|Instagram User|@?(?:ig_|fb_)?\d+)$/i.test(storedName)
   if (storedName && !((channel === 'FACEBOOK' || channel === 'INSTAGRAM') && unresolvedSocialName)) return storedName
   if (channel === 'INSTAGRAM' || channel === 'FACEBOOK') return 'Unidentified contact'
   const id = conv.phoneNumber || ''
