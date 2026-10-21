@@ -53,3 +53,27 @@ describe('clinical production idempotency', () => {
   it('rejects reuse of the same key for another patient', () => expect(isMatchingProductionReplay(existing, { ...existing, patientId: 'patient-2' })).toBe(false))
   it('rejects reuse of the same key for a different treatment date', () => expect(isMatchingProductionReplay(existing, { ...existing, deliveredAt: new Date('2026-10-20T09:00:00Z') })).toBe(false))
 })
+
+
+describe('clinical production correction edge cases', () => {
+  it('rejects a reversal larger than the remaining delivered value', () => {
+    expect(isCorrectionWithinDeliveredValue(50000, -10000, -40001)).toBe(false)
+    expect(isCorrectionWithinDeliveredValue(50000, -10000, -40000)).toBe(true)
+  })
+  it('rejects a correction when previously approved corrections have exhausted delivery', () => {
+    expect(isCorrectionWithinDeliveredValue(50000, -50000, -1)).toBe(false)
+  })
+  it('rejects a replay that changes the clinical linkage', () => {
+    const existing = {
+      patientId: 'patient-1',
+      kind: 'DELIVERY' as const,
+      amountUGX: 50000,
+      originalEntryId: null,
+      appointmentId: 'appointment-1',
+      treatmentPlanId: null,
+      note: 'Verified delivery',
+      deliveredAt: new Date('2026-10-19T09:00:00Z'),
+    }
+    expect(isMatchingProductionReplay(existing, { ...existing, appointmentId: 'appointment-2' })).toBe(false)
+  })
+})
