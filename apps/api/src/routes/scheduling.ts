@@ -15,6 +15,7 @@ import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../ai-suite/whatsapp/
 import { getGreetingName, toProper } from '../utils/nameHelper'
 import { prisma } from '../lib/prisma'
 import { isValidKampalaCalendarDate } from '../utils/practice-kampala-date'
+import { summarizeBookedIntervals } from '../utils/practice-appointment-metrics'
 import { logAudit } from '../services/audit.service'
 import { appointmentVisibleToUser, authenticatedDoctorId } from '../lib/doctor-access'
 import { deleteAppointmentPermanently } from '../services/appointment-delete.service'
@@ -1282,9 +1283,10 @@ router.get('/practice-appointment-insights', requireAuth, adminOnly, async (req,
   try {
     const appointments = await prisma.appointment.findMany({
       where: { startAt: { lt: end }, endAt: { gt: start } },
-      select: { startAt: true, endAt: true, status: true },
+      select: { doctorId: true, startAt: true, endAt: true, status: true },
     })
     const excluded = new Set(['CANCELLED', 'CANCELLED_RESCHEDULED', 'RESCHEDULED', 'NO_SHOW', 'IMPORTED'])
+    const bookedIntervals: Array<{ doctorId: string; startAt: Date; endAt: Date }> = []
     let bookedMinutes = 0
     let bookedCount = 0
     let cancelledCount = 0
@@ -1303,13 +1305,16 @@ router.get('/practice-appointment-insights', requireAuth, adminOnly, async (req,
       if (!Number.isFinite(minutes) || minutes <= 0) { invalidDurationCount++; continue }
       bookedCount++
       bookedMinutes += minutes
+      bookedIntervals.push({ doctorId: appointment.doctorId, startAt: appointment.startAt, endAt: appointment.endAt })
     }
+    const occupancy = summarizeBookedIntervals(bookedIntervals, start, end)
     res.json({
       startDate, endDate, bookedCount, bookedMinutes: Math.round(bookedMinutes),
+      uniqueBookedMinutes: occupancy.uniqueBookedMinutes, overlappingMinutes: occupancy.overlappingMinutes,
       cancelledCount, noShowCount, importedCount, invalidDurationCount,
       capacityMinutes: null, utilizationPercent: null,
       basis: 'SCHEDULED_APPOINTMENT_MINUTES',
-      disclaimer: 'Booked minutes are summed per appointment, excluding cancelled, no-show and imported records. Overlapping appointments may double-count time. Dentist availability and capacity have not yet been validated; this is not a utilization percentage.',
+      disclaimer: 'Booked minutes are summed per appointment, excluding cancelled, no-show and imported records. Unique booked minutes deduplicate overlapping bookings for the same dentist. Dentist availability and capacity have not yet been validated; this is not a utilization percentage.',
     })
   } catch {
     res.status(500).json({ error: 'Unable to calculate appointment insights' })
