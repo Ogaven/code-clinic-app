@@ -1407,7 +1407,7 @@ router.get('/practice-capacity-summary', requireAuth, adminOnly, async (req, res
     const [doctors, schedules, blocks, specialDays] = await Promise.all([
       prisma.doctor.findMany({ where: { isActive: true }, select: { id: true } }),
       prisma.doctorSchedule.findMany({ select: {
-        doctorId: true, dayOfWeek: true, isOpen: true, openTime: true, closeTime: true, breaks: true,
+        doctorId: true, dayOfWeek: true, isOpen: true, openTime: true, closeTime: true, breaks: true, slots: true,
       } }),
       prisma.blockedTime.findMany({ where: { startAt: { lt: end }, endAt: { gt: start } },
         select: { doctorId: true, startAt: true, endAt: true } }),
@@ -1443,7 +1443,11 @@ router.get('/practice-capacity-summary', requireAuth, adminOnly, async (req, res
           continue
         }
         const shift = configuredShift(day, schedule.openTime, schedule.closeTime)
-        if (!shift || !Array.isArray(schedule.breaks)) {
+        // Advanced per-doctor slot restrictions cannot be treated as a full shift.
+        // Do not overstate availability until their semantics are modeled.
+        if (!shift || !Array.isArray(schedule.breaks) ||
+            (Array.isArray(schedule.slots) && schedule.slots.length > 0) ||
+            (schedule.slots !== null && !Array.isArray(schedule.slots))) {
           excludedDoctorDays++
           continue
         }
@@ -1472,7 +1476,7 @@ router.get('/practice-capacity-summary', requireAuth, adminOnly, async (req, res
       partialKnownAvailableMinutes: available,
       utilizationPercent: null,
       basis: 'CONFIGURED_DOCTOR_TIME_MINUS_RECORDED_BLOCKS',
-      disclaimer: 'Capacity excludes configured breaks, recorded blocked times and clinic-wide DAY_OFF exceptions. Unknown schedules or special-working-day rules make total capacity unavailable. This is configured availability, not confirmed attendance. Utilization is not calculated.',
+      disclaimer: 'Capacity excludes configured breaks, recorded blocked times and clinic-wide DAY_OFF exceptions. Unknown schedules, advanced slot restrictions or special-working-day rules make total capacity unavailable. This is configured availability, not confirmed attendance. Utilization is not calculated.',
     })
   } catch {
     res.status(500).json({ error: 'Unable to calculate configured clinical capacity' })
