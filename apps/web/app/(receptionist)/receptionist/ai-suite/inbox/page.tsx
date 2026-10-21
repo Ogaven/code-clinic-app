@@ -60,19 +60,51 @@ function avatarColor(seed: string): string {
 }
 function Avatar({ name, size = 40, borderColor, pictureUrl }: { name: string | null | undefined; size?: number; borderColor?: string; pictureUrl?: string | null }) {
   const [imgOk, setImgOk] = useState(true)
-  const safe = name || '?'
-  if (pictureUrl && imgOk) {
-    return (
-      <img src={pictureUrl} alt={safe} referrerPolicy="no-referrer" onError={() => setImgOk(false)}
-        className="rounded-full object-cover flex-shrink-0"
-        style={{ width: size, height: size, boxShadow: borderColor ? `0 0 0 2px ${borderColor}` : undefined }} />
-    )
-  }
+  const [expanded, setExpanded] = useState(false)
+  const safe = name || 'Customer'
+  const hasImage = Boolean(pictureUrl && imgOk)
   return (
-    <div className="rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-      style={{ width: size, height: size, background: avatarColor(safe), fontSize: size * 0.35, boxShadow: borderColor ? `0 0 0 2px ${borderColor}` : undefined }}>
-      {nameInitials(safe)}
-    </div>
+    <>
+      <button type="button" aria-label={`View ${safe} profile picture`}
+        title={hasImage ? 'View larger profile photo' : 'View contact profile'}
+        onClick={event => { event.stopPropagation(); setExpanded(true) }}
+        className="rounded-full flex-shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+        style={{ width: size, height: size }}>
+        {hasImage ? (
+          <img src={pictureUrl!} alt={safe} referrerPolicy="no-referrer"
+            onError={() => setImgOk(false)} className="rounded-full object-cover"
+            style={{ width: size, height: size, boxShadow: borderColor ? `0 0 0 2px ${borderColor}` : undefined }} />
+        ) : (
+          <span className="rounded-full flex items-center justify-center text-white font-bold"
+            style={{ width: size, height: size, background: avatarColor(safe), fontSize: size * 0.35, boxShadow: borderColor ? `0 0 0 2px ${borderColor}` : undefined }}>
+            {nameInitials(safe)}
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div role="dialog" aria-modal="true" aria-label={`${safe} profile`}
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 p-5"
+          onClick={event => { event.stopPropagation(); setExpanded(false) }}>
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl"
+            onClick={event => event.stopPropagation()}>
+            <button type="button" aria-label="Close profile" onClick={() => setExpanded(false)}
+              className="absolute right-3 top-3 rounded-full p-2 text-gray-600 hover:bg-gray-100"><X size={20} /></button>
+            <p className="mb-5 pr-6 text-lg font-semibold text-gray-900 break-words">{safe}</p>
+            {hasImage ? (
+              <img src={pictureUrl!} alt={`${safe} profile photo`} referrerPolicy="no-referrer"
+                onError={() => setImgOk(false)}
+                className="mx-auto max-h-[65vh] max-w-full rounded-xl object-contain" />
+            ) : (
+              <>
+                <div className="mx-auto flex h-36 w-36 items-center justify-center rounded-full text-5xl font-bold text-white"
+                  style={{ background: avatarColor(safe) }}>{nameInitials(safe)}</div>
+                <p className="mt-5 text-sm text-gray-500">Profile photo not available from this channel.</p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -138,7 +170,10 @@ function convLabel(conv: Conversation, channel: ChannelKey): string {
   if (channel === 'WEBSITE' && conv.displayName) return conv.displayName
   if (conv.patientName) return conv.patientName
   if (channel === 'WHATSAPP' && conv.waDisplayName) return conv.waDisplayName
-  if (conv.displayName) return conv.displayName
+  const storedName = conv.displayName?.trim() || ''
+  const unresolvedSocialName = /^(?:FB User(?:\s+\S+)?|Instagram User|@?(?:ig_|fb_)?\d+)$/i.test(storedName)
+  if (storedName && !((channel === 'FACEBOOK' || channel === 'INSTAGRAM') && unresolvedSocialName)) return storedName
+  if (channel === 'INSTAGRAM' || channel === 'FACEBOOK') return 'Unidentified contact'
   const id = conv.phoneNumber || ''
   if (channel === 'WHATSAPP') return formatPhoneDisplay(id)
   if (channel === 'INSTAGRAM') return `@${id.slice(0, 10)}`
