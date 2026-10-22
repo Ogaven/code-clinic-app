@@ -34,10 +34,28 @@
       "purpose": "maskable"
     }
   ],
-  "categories": ["medical", "business", "productivity"],
+  "categories": [
+    "medical",
+    "business",
+    "productivity"
+  ],
   "shortcuts": [
-    { "name": "Dashboard",    "url": "/dashboard",              "description": "Admin Dashboard" },
-    { "name": "Scheduling",   "url": "/scheduling",             "description": "Appointments" },
-    { "name": "Receptionist", "url": "/receptionist/dashboard", "description": "Receptionist Portal" }
-  ]
+    {
+      "name": "Dashboard",
+      "url": "/dashboard",
+      "description": "Admin Dashboard"
+    },
+    {
+      "name": "Scheduling",
+      "url": "/scheduling",
+      "description": "Appointments"
+    },
+    {
+      "name": "Receptionist",
+      "url": "/receptionist/dashboard",
+      "description": "Receptionist Portal"
+    }
+  ],
+  "id": "/",
+  "scope": "/"
 }
