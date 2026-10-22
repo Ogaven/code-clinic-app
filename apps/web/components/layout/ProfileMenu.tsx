@@ -63,7 +63,7 @@ export default function ProfileMenu({
   // Same rule as the mobile sheet: only show a real, invokable install path —
   // Chromium once beforeinstallprompt has actually fired, or iOS/iPadOS
   // (Add to Home Screen always works there) — never a dead button.
-  const showInstall = !install.isStandalone && (install.canInstallNative || install.isIOS)
+  const showInstall = !install.isStandalone
 
   return (
     <div className="fixed right-4 top-[70px] z-[101] w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl dark:border-white/10 dark:bg-[#0c1b38]">
