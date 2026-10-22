@@ -139,7 +139,7 @@ export default function PracticeIntelligencePage() {
     {
       title: 'Performance overview',
       subtitle: 'What happened?',
-      description: 'Appointment attendance, available clinical minutes and approved production will appear here after the source-data audit.',
+      description: 'Recorded appointment time, configured clinical availability and approved treatment production are shown above. Actual attendance is not yet verified.',
       icon: Activity,
     },
     {
@@ -317,7 +317,7 @@ export default function PracticeIntelligencePage() {
             <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{subtitle}</p>
             <h2 className="mt-1 text-lg font-bold text-clinic-navy dark:text-white">{title}</h2>
             <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">{description}</p>
-            <p className="mt-4 text-xs font-semibold text-gray-500 dark:text-gray-400">Awaiting verified data integration</p>
+            <p className="mt-4 text-xs font-semibold text-gray-500 dark:text-gray-400">Read-only reporting foundation</p>
           </section>
         ))}
       </div>
