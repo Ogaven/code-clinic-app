@@ -1411,8 +1411,12 @@ router.get('/practice-capacity-summary', requireAuth, adminOnly, async (req, res
       } }),
       prisma.blockedTime.findMany({ where: { startAt: { lt: end }, endAt: { gt: start } },
         select: { doctorId: true, startAt: true, endAt: true } }),
-      prisma.specialDay.findMany({ where: { date: { gte: start, lt: end } },
-        select: { date: true, type: true, openTime: true, closeTime: true } }),
+      // SpecialDay is stored as UTC-midnight YYYY-MM-DD, unlike Kampala-local appointment instants.
+      // Query UTC calendar labels so the first day's closure is never silently missed.
+      prisma.specialDay.findMany({ where: { date: {
+        gte: new Date(startDate + 'T00:00:00.000Z'),
+        lt: new Date(new Date(endDate + 'T00:00:00.000Z').getTime() + 86400000),
+      } }, select: { date: true, type: true, openTime: true, closeTime: true } }),
     ])
     const scheduleByDoctor = new Map<string, typeof schedules>()
     for (const schedule of schedules) {
