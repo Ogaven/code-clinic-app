@@ -52,6 +52,17 @@ export default function SarahChatbot() {
     }
   }, [msgs, typing])
 
+  // Keep the floating control inside the visible viewport, including mobile safe margins.
+  function clampDrag(x: number, y: number) {
+    const rect = bubbleRef.current?.getBoundingClientRect()
+    if (!rect) return { x, y }
+    const margin = 8
+    return {
+      x: Math.max(pos.x + margin - rect.left, Math.min(pos.x + window.innerWidth - margin - rect.right, x)),
+      y: Math.max(pos.y + margin - rect.top, Math.min(pos.y + window.innerHeight - margin - rect.bottom, y)),
+    }
+  }
+
   /* ── drag logic ── */
   function onMouseDown(e: React.MouseEvent) {
     if ((e.target as HTMLElement).closest('button, input, textarea')) return
@@ -66,7 +77,7 @@ export default function SarahChatbot() {
       const dx = e.clientX - dragStart.current.mx
       const dy = e.clientY - dragStart.current.my
       if (Math.abs(dx) > 4 || Math.abs(dy) > 4) setHasMoved(true)
-      setPos({ x: dragStart.current.bx + dx, y: dragStart.current.by + dy })
+      setPos(clampDrag(dragStart.current.bx + dx, dragStart.current.by + dy))
     }
     function onMouseUp() {
       if (dragging) {
@@ -80,7 +91,7 @@ export default function SarahChatbot() {
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
     }
-  }, [dragging])
+  }, [dragging, pos])
 
   /* ── touch drag ── */
   function onTouchStart(e: React.TouchEvent) {
@@ -94,7 +105,7 @@ export default function SarahChatbot() {
       const t = e.touches[0]
       if (!t) return
       if (e.cancelable) e.preventDefault()
-      setPos({ x: dragStart.current.bx + t.clientX - dragStart.current.mx, y: dragStart.current.by + t.clientY - dragStart.current.my })
+      setPos(clampDrag(dragStart.current.bx + t.clientX - dragStart.current.mx, dragStart.current.by + t.clientY - dragStart.current.my))
       setHasMoved(true)
     }
     function onTouchEnd() { setDragging(false); setTimeout(() => setHasMoved(false), 100) }
@@ -168,7 +179,7 @@ export default function SarahChatbot() {
   // both breakpoints without fighting the responsive base offset.
   const bubbleWrapClass = 'fixed z-[9999] right-6 bottom-[calc(88px+env(safe-area-inset-bottom))] xl:bottom-6'
   const dragTransform: React.CSSProperties = {
-    transform: `translate(${-pos.x}px, ${-pos.y}px)`,
+    transform: `translate(${pos.x}px, ${pos.y}px)`,
     cursor: dragging ? 'grabbing' : 'grab',
     userSelect: 'none',
     transition: dragging ? 'none' : 'transform 0.2s',
