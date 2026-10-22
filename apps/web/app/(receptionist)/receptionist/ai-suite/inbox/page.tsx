@@ -402,6 +402,7 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
   const [reply,      setReply]      = useState('')
   const [showEmoji,  setShowEmoji]  = useState(false)
   const [sending,    setSending]    = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const draftKey = `cc-inbox-draft:${sel.id}`
 
@@ -423,15 +424,22 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
   async function send() {
     if (!reply.trim() || sending) return
     setSending(true)
+    setSendError(null)
     try {
       const res = await fetch(`${API}/ai-suite/conversations/${sel.id}/send`, {
         method: 'POST', headers: authH(true), body: JSON.stringify({ text: reply.trim() }),
       })
-      if (!res.ok) return
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null) as { error?: string } | null
+        setSendError(payload?.error || `Message not sent (HTTP ${res.status}). Please try again.`)
+        return
+      }
       try { sessionStorage.removeItem(draftKey) } catch {}
       setReply('')
       fetchMsgs(sel.id)
-    } catch {} finally {
+    } catch {
+      setSendError('Connection problem. Message not confirmed as sent; check the conversation before retrying.')
+    } finally {
       setSending(false)
       inputRef.current?.focus()
     }
@@ -477,6 +485,7 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
           {sending ? <Loader2 size={18} className="animate-spin text-white" /> : <Send size={18} className="text-white" />}
         </button>
       </div>
+      {sendError && <p role="alert" className="mt-2 text-sm font-medium text-red-600 dark:text-red-300">{sendError} Your draft is preserved.</p>}
     </div>
   )
 }
