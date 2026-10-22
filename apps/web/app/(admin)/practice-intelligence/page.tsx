@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Activity, CalendarDays, ClipboardList, Clock3, ShieldCheck, TrendingUp } from 'lucide-react'
 
 /**
- * Practice Intelligence — read-only foundation.
+ * AI Practice Intelligence — read-only foundation.
  * Reuses the existing admin-only, approved clinical-production summary API.
  * No patient details are fetched and no operational actions are executed here.
  */
@@ -167,7 +167,7 @@ export default function PracticeIntelligencePage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-clinic-blue">Code Clinic</p>
-          <h1 className="mt-1 text-2xl font-bold text-clinic-navy dark:text-white">Practice Intelligence</h1>
+          <h1 className="mt-1 text-2xl font-bold text-clinic-navy dark:text-white">AI Practice Intelligence</h1>
           <p className="mt-2 max-w-3xl text-sm text-gray-500 dark:text-gray-300">
             A new operational intelligence workspace. The existing calendar, doctor and receptionist
             workflows remain unchanged.
