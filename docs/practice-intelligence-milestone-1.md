@@ -47,7 +47,9 @@ Preserve direct Staff URLs and access controls.
 - Actual attendance = attended visits / eligible scheduled visits, with clearly stated period and exclusions.
 - Production = approved delivered-treatment ledger entries in Kampala-local period; show no data / zero distinctly.
 - Goal comparison uses manager-entered targets with effective dates and audit history.
-- Never infer true profit from invoices or collections alone; demo Financial Snapshot must remain visibly demo until replaced by verified billing and expense data.
+- Never infer true profit from invoices or collections alone. The dashboard Financial Snapshot uses only recorded invoicing, collections and approved clinical production; expenses and net income remain unavailable until reconciled with trustworthy accounting data.
+- Planned accounting integration: QuickBooks will be connected in a later, separately approved milestone to improve accuracy of expenses, income classification, profitability, account balances and reconciliation. No QuickBooks connection, credentials, sync or accounting write is part of this read-only milestone.
+- When QuickBooks is connected, distinguish QuickBooks accounting revenue and expenses from EMR invoices, cash collections and clinical production; define the authoritative source per KPI, mapping, sync freshness, deduplication and discrepancy handling before displaying consolidated financial metrics.
 - Never claim causal attribution from correlation alone. Show missing data, confidence, and source timestamps.
 
 ## Acceptance tests before merge
