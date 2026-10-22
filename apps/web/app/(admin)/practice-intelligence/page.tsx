@@ -175,6 +175,24 @@ export default function PracticeIntelligencePage() {
   const cancelledDifference = appointmentEvidence && previousWeek
     ? appointmentEvidence.cancelledCount - previousWeek.cancelledCount : null
   const signedDifference = (value: number) => (value > 0 ? '+' : '') + value.toLocaleString('en-UG')
+  // These are observed operational signals, not inferred reasons for attendance or production.
+  const diagnosticSignals: string[] = []
+  if (appointmentEvidence && appointmentEvidence.cancelledCount > 0) {
+    diagnosticSignals.push(`${appointmentEvidence.cancelledCount} cancelled or rescheduled appointments recorded; review the existing calendar for documented reasons.`)
+  }
+  if (appointmentEvidence && appointmentEvidence.noShowCount > 0) {
+    diagnosticSignals.push(`${appointmentEvidence.noShowCount} appointments marked no-show; check confirmation and contact records before attributing a cause.`)
+  }
+  if (appointmentEvidence && appointmentEvidence.overlappingMinutes > 0) {
+    diagnosticSignals.push(`${appointmentEvidence.overlappingMinutes.toLocaleString('en-UG')} overlapping booked minutes; verify whether the dentist's concurrent bookings are intentional.`)
+  }
+  if (capacityReadiness && capacityReadiness.doctorsWithIncompleteSchedules > 0) {
+    diagnosticSignals.push(`${capacityReadiness.doctorsWithIncompleteSchedules} of ${capacityReadiness.activeDoctorCount} active dentists have incomplete weekly schedules; capacity conclusions must wait for corrections.`)
+  }
+  const comparisonSignal = appointmentEvidence && previousWeek
+    ? `Compared with the preceding seven days: booked visits ${signedDifference(bookedDifference ?? 0)}, no-shows ${signedDifference(noShowDifference ?? 0)}, cancelled or rescheduled ${signedDifference(cancelledDifference ?? 0)}. These are changes in recorded statuses, not established causes.`
+    : null
+
   const layers = [
     {
       title: 'Performance overview',
@@ -189,7 +207,7 @@ export default function PracticeIntelligencePage() {
       title: 'Performance diagnosis',
       subtitle: 'What factors are visible?',
       description: appointmentEvidence
-        ? `${appointmentEvidence.cancelledCount} cancelled or rescheduled visits, ${appointmentEvidence.noShowCount} no-shows and ${appointmentEvidence.overlappingMinutes.toLocaleString('en-UG')} overlapping booked minutes. ${capacityReadiness ? capacityReadiness.doctorsWithIncompleteSchedules + ' of ' + capacityReadiness.activeDoctorCount + ' active dentists have incomplete weekly schedules.' : 'Schedule completeness unavailable.'}`
+        ? diagnosticSignals.length > 0 ? diagnosticSignals.join(' ') : 'No cancellation, no-show or booking overlap signals were recorded in this period. This does not establish that operations were problem-free.'
         : 'No reliable appointment evidence is available for a diagnosis.',
       note: 'Descriptive factors only; these do not establish causes',
       icon: ClipboardList,
@@ -241,6 +259,19 @@ export default function PracticeIntelligencePage() {
           </div>
         </div>
       </div>
+
+      <section aria-labelledby="diagnostic-evidence-title" className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
+        <h2 id="diagnostic-evidence-title" className="text-lg font-bold text-clinic-navy dark:text-white">Operational diagnostic evidence</h2>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Recorded signals only. A change in bookings or attendance status does not establish why it happened.</p>
+        {appointmentError || capacityError ? <p className="mt-3 text-sm text-amber-700" role="alert">Some diagnostic sources are unavailable; findings are incomplete.</p> : null}
+        {diagnosticSignals.length > 0 ? (
+          <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-gray-700 dark:text-gray-200">
+            {diagnosticSignals.map(signal => <li key={signal}>{signal}</li>)}
+          </ul>
+        ) : <p className="mt-3 text-sm text-gray-500">{appointmentEvidence ? 'No flagged signals in the available records.' : 'Waiting for verified appointment records.'}</p>}
+        {comparisonSignal ? <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">{comparisonSignal}</p> : null}
+        <p className="mt-3 text-xs text-gray-500">Review findings with clinic staff before changing schedules or contacting patients. No actions are performed automatically.</p>
+      </section>
 
       <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Last 7 Kampala calendar days · verified treatment delivery</p>
