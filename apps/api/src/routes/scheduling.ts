@@ -1330,7 +1330,7 @@ router.get('/practice-capacity-readiness', requireAuth, adminOnly, async (_req, 
     const [doctors, schedules, blockedTimeCount, specialDayCount] = await Promise.all([
       prisma.doctor.findMany({ where: { isActive: true }, select: { id: true } }),
       prisma.doctorSchedule.findMany({ select: {
-        doctorId: true, dayOfWeek: true, isOpen: true, openTime: true, closeTime: true, breaks: true,
+        doctorId: true, dayOfWeek: true, isOpen: true, openTime: true, closeTime: true, breaks: true, slots: true,
       } }),
       prisma.blockedTime.count(),
       prisma.specialDay.count(),
@@ -1356,7 +1356,9 @@ router.get('/practice-capacity-readiness', requireAuth, adminOnly, async (_req, 
         if (!day.isOpen) continue
         if (!day.openTime || !day.closeTime || !clock.test(day.openTime) ||
             !clock.test(day.closeTime) || minutes(day.closeTime) <= minutes(day.openTime) ||
-            (day.breaks !== null && !Array.isArray(day.breaks))) {
+            !Array.isArray(day.breaks) ||
+            (Array.isArray(day.slots) && day.slots.length > 0) ||
+            (day.slots !== null && !Array.isArray(day.slots))) {
           incompleteDayCount++
           incomplete = true
         }
@@ -1378,7 +1380,7 @@ router.get('/practice-capacity-readiness', requireAuth, adminOnly, async (_req, 
       recordedSpecialDayCount: specialDayCount,
       capacityMinutes: null, utilizationPercent: null,
       basis: 'SCHEDULE_CONFIGURATION_READINESS',
-      disclaimer: 'Readiness is based on explicit per-doctor day configurations. Recorded blocks and special days are counted but not yet applied to available minutes. No utilization or availability is inferred from incomplete schedules.',
+      disclaimer: 'Readiness requires explicit per-doctor day configurations, valid break arrays and no unsupported advanced slot restrictions. This is a configuration audit, not a calculation of available minutes, attendance or utilization.',
     })
   } catch {
     res.status(500).json({ error: 'Unable to audit schedule readiness' })
