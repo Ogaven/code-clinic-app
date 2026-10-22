@@ -1795,7 +1795,15 @@ model Task {
   dueAt        DateTime?
   createdAt    DateTime  @default(now())
   completedAt  DateTime?
+  // Optional approval metadata for AI-recommended operational tasks.
+  // Existing tasks retain their OPEN/DONE/DISMISSED workflow.
+  approvalStatus String?   // PENDING_REVIEW | APPROVED | REJECTED
+  proposedAction String?   // Structured JSON proposal; never executed by task approval alone
+  reviewedById   String?
+  reviewedAt     DateTime?
+  reviewNotes    String?
 
+  @@index([approvalStatus, createdAt])
   @@index([entityType, entityId])
   @@index([assignedToId, status])
   @@map("tasks")
