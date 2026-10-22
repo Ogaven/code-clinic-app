@@ -12,7 +12,9 @@ import { readTheme, applyTheme } from '@/lib/theme'
 import Avatar from '@/components/ui/Avatar'
 import InfoTooltip from '@/components/ui/InfoTooltip'
 
-// Dashboard finance figures use recorded sources only; no demonstration balances.\n\ninterface DashMetrics {
+// Dashboard finance figures use recorded sources only; no demonstration balances.
+
+interface DashMetrics {
   totalPatients: number
   newPatientsThisMonth: number; returningPatientsThisMonth: number
   lapsedCount: number
