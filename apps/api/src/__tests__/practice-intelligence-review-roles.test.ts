@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Request, Response, NextFunction } from 'express'
+import type { Request, Response } from 'express'
 import { adminOnly } from '../middleware/rbac'
 
 function authorize(role?: string) {
@@ -7,7 +7,7 @@ function authorize(role?: string) {
   const status = vi.fn().mockReturnThis()
   const json = vi.fn()
   const res = { status, json } as unknown as Response
-  const next = vi.fn() as NextFunction
+  const next = vi.fn()
   adminOnly(req, res, next)
   return { status, json, next }
 }
