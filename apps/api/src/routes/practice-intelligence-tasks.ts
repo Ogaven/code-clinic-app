@@ -7,6 +7,16 @@ const router = Router()
 const allowedActions = new Set(['REVIEW_SCHEDULE', 'REVIEW_ATTENDANCE', 'REVIEW_CAPACITY', 'REVIEW_CRM'])
 const allowedDecisions = new Set(['APPROVED', 'REJECTED'])
 
+// Centralized staff scoping: never return another user's or unapproved proposals.
+export function approvedAssignmentsFilter(userId: string) {
+  return {
+    entityType: 'PRACTICE_INTELLIGENCE',
+    assignedToId: userId,
+    approvalStatus: 'APPROVED',
+  } as const
+}
+
+
 // Admin-only proposals are advisory records. Approval never executes an action.
 router.get('/recommendations', requireAuth, adminOnly, async (_req, res) => {
   try {
@@ -66,11 +76,7 @@ router.get('/my-assignments', requireAuth, async (req, res) => {
   }
   try {
     const tasks = await prisma.task.findMany({
-      where: {
-        entityType: 'PRACTICE_INTELLIGENCE',
-        assignedToId: req.user!.id,
-        approvalStatus: 'APPROVED',
-      },
+      where: approvedAssignmentsFilter(req.user!.id),
       select: {
         id: true, title: true, description: true, proposedAction: true,
         approvalStatus: true, assignedToId: true, createdAt: true,
