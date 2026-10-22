@@ -476,6 +476,12 @@ export default function PracticeIntelligencePage() {
         ))}
       </div>
 
+      <section className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-white/10 dark:bg-white/5">
+        <h2 className="font-bold text-clinic-navy dark:text-white">Staff-approved AI recommendations</h2>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Review submitted recommendations, record an approval or rejection, and preserve the decision history. No action is executed by approval.</p>
+        <Link href="/practice-intelligence/reviews" className="mt-3 inline-block text-sm font-semibold text-clinic-blue hover:underline">Open recommendation review queue →</Link>
+      </section>
+
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 dark:border-white/10 dark:bg-white/5">
         <CalendarDays className="text-clinic-blue" size={20} aria-hidden="true" />
         <p className="flex-1 text-sm text-gray-600 dark:text-gray-300">
