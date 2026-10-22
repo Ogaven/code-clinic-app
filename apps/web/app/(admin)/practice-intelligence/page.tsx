@@ -112,7 +112,12 @@ export default function PracticeIntelligencePage() {
           )
           if (!appointmentResponse.ok) throw new Error('Appointment insights could not be loaded.')
           const appointmentData: AppointmentInsights = await appointmentResponse.json()
-          if (appointmentData.basis !== 'SCHEDULED_APPOINTMENT_MINUTES') throw new Error('Invalid appointment insight source.')
+          if (appointmentData.basis !== 'SCHEDULED_APPOINTMENT_MINUTES' ||
+              appointmentData.startDate !== startDate ||
+              appointmentData.endDate !== endDate ||
+              ![appointmentData.bookedCount, appointmentData.noShowCount, appointmentData.cancelledCount].every(value => Number.isSafeInteger(value) && value >= 0)) {
+            throw new Error('Invalid appointment insight source.')
+          }
           if (active) setAppointmentInsights(appointmentData)
         } catch {
           if (active) setAppointmentError('Appointment insights could not be loaded.')
@@ -128,7 +133,12 @@ export default function PracticeIntelligencePage() {
           )
           if (!previousResponse.ok) throw new Error('Previous-week appointment data unavailable.')
           const previous: AppointmentInsights = await previousResponse.json()
-          if (previous.basis !== 'SCHEDULED_APPOINTMENT_MINUTES') throw new Error('Invalid previous-week source.')
+          if (previous.basis !== 'SCHEDULED_APPOINTMENT_MINUTES' ||
+              previous.startDate !== previousStartDate ||
+              previous.endDate !== previousEndDate ||
+              ![previous.bookedCount, previous.noShowCount, previous.cancelledCount].every(value => Number.isSafeInteger(value) && value >= 0)) {
+            throw new Error('Invalid previous-week appointment evidence.')
+          }
           if (active) setPreviousAppointmentInsights(previous)
         } catch {
           if (active) setPreviousAppointmentError('Previous-week appointment data unavailable.')
