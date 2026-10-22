@@ -605,6 +605,7 @@ export async function processSocialMessage(
     // resolution when the customer sends another message, without blocking DMs.
     const isPlaceholder = (name: string | null | undefined) =>
       !name || /^FB User(?:\s+\d+)?$/i.test(name.trim())
+        || /^Facebook User$/i.test(name.trim())
         || /^Instagram User$/i.test(name.trim())
         || /^@?(?:ig_)?\d+$/i.test(name.trim())
     let resolvedName: string | null = conversation?.displayName ?? null
