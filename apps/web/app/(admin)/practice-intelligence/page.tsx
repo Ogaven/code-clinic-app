@@ -182,9 +182,9 @@ export default function PracticeIntelligencePage() {
         <div className="flex items-start gap-3">
           <Clock3 className="mt-0.5 shrink-0 text-clinic-blue" size={20} aria-hidden="true" />
           <div>
-            <h2 className="font-semibold text-clinic-navy dark:text-white">Appointment capacity measurements are not enabled yet</h2>
+            <h2 className="font-semibold text-clinic-navy dark:text-white">Capacity measurements are based on configured schedules</h2>
             <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">
-              We are validating appointment duration, dentist availability and billing sources before publishing capacity or profitability numbers. Approved treatment production is reported separately below. No demo values are shown as real data.
+              The figures below use recorded appointments and configured doctor availability. They do not prove actual attendance, time worked, or profitability. Missing schedules are shown as incomplete, and approved treatment production is reported separately. No demo values are shown as real data.
             </p>
           </div>
         </div>
