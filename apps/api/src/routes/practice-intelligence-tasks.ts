@@ -34,20 +34,21 @@ router.post('/recommendations', requireAuth, adminOnly, async (req, res) => {
       where: { entityType: 'PRACTICE_INTELLIGENCE', entityId: evidenceKey, approvalStatus: 'PENDING_REVIEW' },
     })
     if (existing) { res.status(409).json({ error: 'An open review already exists', taskId: existing.id }); return }
-    const task = await prisma.task.create({
-      data: {
-        entityType: 'PRACTICE_INTELLIGENCE', entityId: evidenceKey,
-        title: title.trim(), description: description?.trim() ?? null,
-        proposedAction, approvalStatus: 'PENDING_REVIEW',
-      },
+    const task = await prisma.$transaction(async tx => {
+      const created = await tx.task.create({
+        data: {
+          entityType: 'PRACTICE_INTELLIGENCE', entityId: evidenceKey,
+          title: title.trim(), description: description?.trim() ?? null,
+          proposedAction, approvalStatus: 'PENDING_REVIEW',
+        },
+      })
+      await tx.auditLog.create({ data: {
+        userId: req.user!.id, action: 'CREATE', resource: 'PRACTICE_INTELLIGENCE_TASK',
+        resourceId: created.id, entityType: 'PRACTICE_INTELLIGENCE_TASK', entityId: created.id,
+        entityName: created.title, actionType: 'CREATE', notes: 'Recommendation submitted for staff review',
+      } })
+      return created
     })
-    // Keep creation and its audit record atomic. The partial unique index
-    // prevents concurrent pending reviews for the same evidence key.
-    await prisma.auditLog.create({ data: {
-      userId: req.user!.id, action: 'CREATE', resource: 'PRACTICE_INTELLIGENCE_TASK',
-      resourceId: task.id, entityType: 'PRACTICE_INTELLIGENCE_TASK', entityId: task.id,
-      entityName: task.title, actionType: 'CREATE', notes: 'Recommendation submitted for staff review',
-    } })
     res.status(201).json({ task })
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
