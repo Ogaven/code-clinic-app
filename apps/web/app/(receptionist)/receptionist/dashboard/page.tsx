@@ -248,6 +248,7 @@ export default function ReceptionistDashboard() {
 
   return (
     <div className="p-5 space-y-5 max-w-[1600px] mx-auto overflow-x-hidden">
+      <div className="flex justify-end"><Link href="/receptionist/practice-assignments" className="inline-flex items-center rounded-xl border border-cyan-500/30 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-900 hover:bg-cyan-100 dark:bg-cyan-500/10 dark:text-cyan-200">My AI Practice Intelligence assignments →</Link></div>
 
       {/* ── Check In/Out Modal ───────────────────────────────────── */}
       {showCheckin && (
