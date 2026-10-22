@@ -6,6 +6,9 @@ import { fetchFbUserInfo, fetchInstagramUserInfo } from '../facebook/facebook.ro
 // account from starving all other conversations. Resets after the last page.
 let cursor: string | undefined
 let running = false
+// Reuse the bounded Page participant index briefly to avoid re-fetching up to
+// five Graph pages for each ten-conversation batch. Token changes invalidate it.
+let participantIndexCache: { token: string; expiresAt: number; names: Map<string, string> } | undefined
 
 // Historical synthetic identifiers (fb_*, ig_*, verify_*) are not proven
 // platform-scoped user IDs. Never send them to Meta or mutate them in storage.
@@ -56,6 +59,9 @@ async function instagramProfileToken(configured?: string | null, fallback?: stri
 // PSID profile edge returns 100/33. Only exact numeric participant IDs are
 // eligible for a match; never infer identity from ordering or email.
 async function facebookParticipantNames(token: string): Promise<Map<string, string>> {
+  if (participantIndexCache?.token === token && participantIndexCache.expiresAt > Date.now()) {
+    return participantIndexCache.names
+  }
   const names = new Map<string, string>()
   const pageId = '532091973485208'
   const firstUrl = new URL(`https://graph.facebook.com/v23.0/${pageId}/conversations`)
@@ -92,6 +98,8 @@ async function facebookParticipantNames(token: string): Promise<Map<string, stri
       }
       next = payload.paging?.next
     }
+    // Cache only completed, successful indexes; failures must remain retryable.
+    if (pages > 0 && !next) participantIndexCache = { token, expiresAt: Date.now() + 5 * 60_000, names }
     console.info('[MetaProfileRefresh] Facebook participant index', { pages, identities: names.size, hasMore: Boolean(next) })
   } catch {
     console.warn('[MetaProfileRefresh] Facebook participant lookup unavailable', { pages })
