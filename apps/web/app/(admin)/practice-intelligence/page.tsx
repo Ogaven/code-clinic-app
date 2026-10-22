@@ -317,7 +317,7 @@ export default function PracticeIntelligencePage() {
             <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{subtitle}</p>
             <h2 className="mt-1 text-lg font-bold text-clinic-navy dark:text-white">{title}</h2>
             <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">{description}</p>
-            <p className="mt-4 text-xs font-semibold text-gray-500 dark:text-gray-400">Read-only reporting foundation</p>
+            <p className="mt-4 text-xs font-semibold text-gray-500 dark:text-gray-400">Awaiting verified data integration</p>
           </section>
         ))}
       </div>
