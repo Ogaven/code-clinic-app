@@ -58,6 +58,56 @@ router.post('/recommendations', requireAuth, adminOnly, async (req, res) => {
   }
 })
 
+// Assignment is administrative coordination, never action execution.
+router.get('/assignees', requireAuth, adminOnly, async (_req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { isActive: true, role: { in: ['ADMIN', 'DOCTOR', 'RECEPTIONIST'] } },
+      select: { id: true, firstName: true, lastName: true, role: true },
+      orderBy: { firstName: 'asc' },
+    })
+    res.json({ users })
+  } catch {
+    res.status(500).json({ error: 'Unable to load eligible staff' })
+  }
+})
+
+router.post('/recommendations/:id/assign', requireAuth, adminOnly, async (req, res) => {
+  const { assignedToId } = req.body ?? {}
+  if (typeof assignedToId !== 'string' || !/^[a-zA-Z0-9_-]{1,120}$/.test(assignedToId)) {
+    res.status(400).json({ error: 'Valid staff ID required' }); return
+  }
+  try {
+    const assignee = await prisma.user.findFirst({
+      where: { id: assignedToId, isActive: true, role: { in: ['ADMIN', 'DOCTOR', 'RECEPTIONIST'] } },
+      select: { id: true },
+    })
+    if (!assignee) { res.status(400).json({ error: 'Eligible active staff member not found' }); return }
+    const result = await prisma.$transaction(async tx => {
+      const task = await tx.task.findFirst({
+        where: { id: req.params.id, entityType: 'PRACTICE_INTELLIGENCE', approvalStatus: { in: ['PENDING_REVIEW', 'APPROVED'] } },
+      })
+      if (!task) return null
+      const updated = await tx.task.update({
+        where: { id: task.id },
+        data: { assignedToId: assignee.id },
+      })
+      await tx.auditLog.create({ data: {
+        userId: req.user!.id, action: 'UPDATE', resource: 'PRACTICE_INTELLIGENCE_TASK',
+        resourceId: task.id, entityType: 'PRACTICE_INTELLIGENCE_TASK', entityId: task.id,
+        entityName: task.title, actionType: 'UPDATE',
+        fieldChanges: JSON.stringify({ before: { assignedToId: task.assignedToId }, after: { assignedToId: assignee.id } }),
+        notes: 'Administrative assignment only; no action executed',
+      } })
+      return updated
+    })
+    if (!result) { res.status(404).json({ error: 'Reviewable recommendation not found' }); return }
+    res.json({ task: result, actionExecuted: false })
+  } catch {
+    res.status(500).json({ error: 'Unable to assign recommendation' })
+  }
+})
+
 router.post('/recommendations/:id/decision', requireAuth, adminOnly, async (req, res) => {
   const { decision, notes } = req.body ?? {}
   if (!allowedDecisions.has(decision) || (notes !== undefined && (typeof notes !== 'string' || notes.length > 2000))) {
