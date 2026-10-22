@@ -7,9 +7,6 @@ import {
   Plus, Calendar, Download, Users, TrendingUp, TrendingDown, ArrowUpRight,
   UserCheck, MessageSquareText, Phone,
 } from 'lucide-react'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList,
-} from 'recharts'
 import { cn, formatUGX, getGreeting, kampalaMonthToDateLabel } from '@/lib/utils'
 import { readTheme, applyTheme } from '@/lib/theme'
 import Avatar from '@/components/ui/Avatar'
@@ -194,16 +191,6 @@ function ChannelIconView({ icon, label }: { icon: ChannelIcon; label: string }) 
 // Themed Recharts tooltip content — rendered as real DOM (not inline SVG
 // paint), so it can use the app's existing .dark ancestor-class mechanism
 // via Tailwind dark: classes instead of a second theme system.
-function ChartTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-white/10 dark:bg-slate-800">
-      <p className="font-bold text-gray-700 dark:text-slate-200">{label}</p>
-      <p className="mt-0.5 font-medium text-gray-500 dark:text-slate-400">{formatUGX(payload[0].value)}</p>
-    </div>
-  )
-}
-
 function CompactCard({ title, action, children, className }: { title: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn('min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5', className)}>
