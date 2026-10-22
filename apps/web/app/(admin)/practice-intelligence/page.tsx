@@ -183,22 +183,29 @@ export default function PracticeIntelligencePage() {
   if (appointmentEvidence && appointmentEvidence.noShowCount > 0) {
     diagnosticSignals.push(`${appointmentEvidence.noShowCount} appointments marked no-show; check confirmation and contact records before attributing a cause.`)
   }
+  if (appointmentEvidence && appointmentEvidence.invalidDurationCount > 0) {
+    diagnosticSignals.push(`${appointmentEvidence.invalidDurationCount} appointments have invalid durations; booked-minute evidence may be incomplete.`)
+  }
   if (appointmentEvidence && appointmentEvidence.overlappingMinutes > 0) {
     diagnosticSignals.push(`${appointmentEvidence.overlappingMinutes.toLocaleString('en-UG')} overlapping booked minutes; verify whether the dentist's concurrent bookings are intentional.`)
   }
   if (capacityReadiness && capacityReadiness.doctorsWithIncompleteSchedules > 0) {
     diagnosticSignals.push(`${capacityReadiness.doctorsWithIncompleteSchedules} of ${capacityReadiness.activeDoctorCount} active dentists have incomplete weekly schedules; capacity conclusions must wait for corrections.`)
   }
-  // Suggested investigations are navigational only; staff retain full control.
+  // Prioritize data-quality blockers before calendar review. These are
+  // deterministic investigation priorities, not clinical or AI risk scores.
   const investigationActions = [
-    ...(appointmentEvidence && (appointmentEvidence.cancelledCount > 0 || appointmentEvidence.noShowCount > 0)
-      ? [{ label: 'Review cancellations and no-shows in appointments', href: '/scheduling', reason: 'Check recorded statuses and confirmation history before attributing causes.' }]
+    ...(capacityReadiness && capacityReadiness.doctorsWithIncompleteSchedules > 0
+      ? [{ priority: 'First — data quality', label: 'Review doctor schedule configuration', href: '/settings', reason: `${capacityReadiness.doctorsWithIncompleteSchedules} dentist schedules are incomplete. Correct working hours and recorded blocks before interpreting capacity.` }]
+      : []),
+    ...(appointmentEvidence && appointmentEvidence.invalidDurationCount > 0
+      ? [{ priority: 'First — data quality', label: 'Review appointment durations', href: '/scheduling', reason: `${appointmentEvidence.invalidDurationCount} appointments have invalid recorded durations. Verify records before using booked-minute metrics.` }]
       : []),
     ...(appointmentEvidence && appointmentEvidence.overlappingMinutes > 0
-      ? [{ label: 'Inspect overlapping bookings', href: '/scheduling', reason: 'Confirm whether concurrent bookings are intentional before editing the calendar.' }]
+      ? [{ priority: 'Next — scheduling review', label: 'Inspect overlapping bookings', href: '/scheduling', reason: 'Confirm whether concurrent bookings are intentional before editing the calendar.' }]
       : []),
-    ...(capacityReadiness && capacityReadiness.doctorsWithIncompleteSchedules > 0
-      ? [{ label: 'Review doctor schedule configuration', href: '/settings', reason: 'Correct missing working hours and recorded blocks before using capacity metrics.' }]
+    ...(appointmentEvidence && (appointmentEvidence.cancelledCount > 0 || appointmentEvidence.noShowCount > 0)
+      ? [{ priority: 'Next — attendance review', label: 'Review cancellations and no-shows', href: '/scheduling', reason: 'Check recorded appointment statuses and confirmation history before attributing causes.' }]
       : []),
   ]
   const comparisonSignal = appointmentEvidence && previousWeek
@@ -287,7 +294,8 @@ export default function PracticeIntelligencePage() {
             <h3 className="text-sm font-semibold text-clinic-navy dark:text-white">Staff-reviewed next steps</h3>
             {investigationActions.map(action => (
               <div key={action.label} className="rounded-xl border border-gray-100 p-3 dark:border-white/10">
-                <p className="text-sm text-gray-600 dark:text-gray-300">{action.reason}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{action.priority}</p>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{action.reason}</p>
                 <Link href={action.href} className="mt-2 inline-block text-sm font-semibold text-clinic-blue hover:underline">{action.label} →</Link>
               </div>
             ))}
