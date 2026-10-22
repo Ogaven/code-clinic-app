@@ -130,6 +130,7 @@ export default function DoctorDashboardPage() {
           <div className="mt-4 flex flex-wrap gap-3">
             <Link href="/doctor/schedule?tab=appointments" className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#162663]">View my appointments</Link>
             <Link href="/doctor/flow" className="rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold">Open live flow</Link>
+            <Link href="/doctor/practice-assignments" className="rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold">My AI assignments</Link>
           </div>
         </div>
         <Image src="/dental3d.png" alt="Dental care" width={400} height={308} className="pointer-events-none absolute -bottom-8 right-1 hidden h-auto opacity-90 md:block md:w-[30%] md:max-w-[230px] lg:-bottom-10 lg:w-[32%] lg:max-w-[270px] xl:w-[36%] xl:max-w-[320px]"/>
