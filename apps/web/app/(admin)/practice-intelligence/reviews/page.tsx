@@ -12,10 +12,13 @@ type ReviewTask = {
   createdAt: string
   reviewedAt: string | null
   reviewNotes: string | null
+  assignedToId: string | null
 }
 
 export default function PracticeIntelligenceReviewsPage() {
   const [tasks, setTasks] = useState<ReviewTask[]>([])
+  const [assignees, setAssignees] = useState<{ id: string; firstName: string; lastName: string; role: string }[]>([])
+  const [selectedAssignee, setSelectedAssignee] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [workingId, setWorkingId] = useState<string | null>(null)
@@ -35,6 +38,13 @@ export default function PracticeIntelligenceReviewsPage() {
       if (!response.ok) throw new Error('Unable to load recommendations (' + response.status + ').')
       const result = await response.json() as { tasks: ReviewTask[] }
       setTasks(result.tasks)
+      const assigneeResponse = await fetch('/api-proxy/practice-intelligence-tasks/assignees', {
+        headers: { Authorization: 'Bearer ' + token }, cache: 'no-store',
+      })
+      if (assigneeResponse.ok) {
+        const staff = await assigneeResponse.json() as { users: typeof assignees }
+        setAssignees(staff.users)
+      }
       setError('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load recommendations.')
@@ -44,6 +54,26 @@ export default function PracticeIntelligenceReviewsPage() {
   }, [])
 
   useEffect(() => { void load() }, [load])
+
+  async function assign(task: ReviewTask) {
+    const assignedToId = selectedAssignee[task.id]
+    const token = localStorage.getItem('cc_token')
+    if (!assignedToId || !token || workingId) return
+    setWorkingId(task.id)
+    try {
+      const response = await fetch('/api-proxy/practice-intelligence-tasks/recommendations/' + encodeURIComponent(task.id) + '/assign', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedToId }),
+      })
+      if (!response.ok) throw new Error('Unable to assign staff (' + response.status + ').')
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to assign staff.')
+    } finally {
+      setWorkingId(null)
+    }
+  }
 
   async function decide(task: ReviewTask, decision: 'APPROVED' | 'REJECTED') {
     if (workingId) return
@@ -90,6 +120,20 @@ export default function PracticeIntelligenceReviewsPage() {
               </div>
               {task.description && <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{task.description}</p>}
               <p className="mt-2 text-xs text-gray-500">Proposed review: {task.proposedAction?.replaceAll('_', ' ') || 'Unspecified'} · Submitted {new Date(task.createdAt).toLocaleString()}</p>
+              {(task.approvalStatus === 'PENDING_REVIEW' || task.approvalStatus === 'APPROVED') && (
+                <div className="mt-3 flex flex-wrap items-end gap-2">
+                  <label className="text-sm font-medium">Assigned staff
+                    <select className="mt-1 block max-w-full rounded-lg border border-gray-300 bg-transparent p-2 text-sm"
+                      value={selectedAssignee[task.id] ?? task.assignedToId ?? ''}
+                      onChange={event => setSelectedAssignee(previous => ({ ...previous, [task.id]: event.target.value }))}>
+                      <option value="">Unassigned</option>
+                      {assignees.map(staff => <option key={staff.id} value={staff.id}>{staff.firstName} {staff.lastName} ({staff.role})</option>)}
+                    </select>
+                  </label>
+                  <button type="button" disabled={workingId !== null || !selectedAssignee[task.id] || selectedAssignee[task.id] === task.assignedToId}
+                    onClick={() => void assign(task)} className="rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-50">Save assignment</button>
+                </div>
+              )}
               {task.approvalStatus === 'PENDING_REVIEW' ? (
                 <div className="mt-4 space-y-3">
                   <label className="block text-sm font-medium">Review notes (optional)
