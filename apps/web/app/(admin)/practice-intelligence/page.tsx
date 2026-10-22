@@ -135,29 +135,50 @@ export default function PracticeIntelligencePage() {
     return () => { active = false }
   }, [])
 
+  // Explain observed records without treating correlation as causation or
+  // extrapolating a forecast from one seven-day window.
+  const appointmentEvidence = appointmentInsights
+  const totalVisits = appointmentEvidence
+    ? appointmentEvidence.bookedCount + appointmentEvidence.cancelledCount + appointmentEvidence.noShowCount
+    : 0
+  const cancellationShare = appointmentEvidence && totalVisits > 0
+    ? Math.round((appointmentEvidence.cancelledCount / totalVisits) * 100)
+    : null
   const layers = [
     {
       title: 'Performance overview',
       subtitle: 'What happened?',
-      description: 'Appointment attendance, available clinical minutes and approved production will appear here after the source-data audit.',
+      description: appointmentEvidence
+        ? `${appointmentEvidence.bookedCount} booked visits, ${appointmentEvidence.uniqueBookedMinutes.toLocaleString('en-UG')} unique booked minutes and ${appointmentEvidence.noShowCount} no-shows over seven Kampala days. ${summary ? 'Approved clinical production: UGX ' + summary.netClinicalProductionUGX.toLocaleString('en-UG') + '.' : 'Approved production is unavailable.'}`
+        : 'Appointment records are unavailable; no performance totals are estimated.',
+      note: appointmentEvidence ? 'Observed appointment records, not confirmed attendance' : 'Awaiting appointment source data',
       icon: Activity,
     },
     {
       title: 'Performance diagnosis',
-      subtitle: 'Why did it happen?',
-      description: 'Evidence-backed explanations of cancellations, schedule gaps and staff availability. No unsupported causal claims.',
+      subtitle: 'What factors are visible?',
+      description: appointmentEvidence
+        ? `${appointmentEvidence.cancelledCount} cancelled or rescheduled visits${cancellationShare === null ? '' : ' (' + cancellationShare + '% of classified visits)'}, ${appointmentEvidence.noShowCount} no-shows and ${appointmentEvidence.overlappingMinutes.toLocaleString('en-UG')} overlapping booked minutes. ${capacityReadiness ? capacityReadiness.doctorsWithIncompleteSchedules + ' of ' + capacityReadiness.activeDoctorCount + ' active dentists have incomplete weekly schedules.' : 'Schedule completeness unavailable.'}`
+        : 'No reliable appointment evidence is available for a diagnosis.',
+      note: 'Descriptive factors only; these do not establish causes',
       icon: ClipboardList,
     },
     {
       title: 'Forecasts and risks',
       subtitle: 'What is likely to happen?',
-      description: 'Predictions will be enabled only when there is sufficient reliable history to show meaningful confidence ranges.',
+      description: 'A defensible forecast needs multiple comparable historical periods, stable appointment classifications and validated uncertainty ranges. Seven days of bookings alone cannot establish a reliable future trend.',
+      note: 'Forecast withheld — insufficient validated historical evidence',
       icon: TrendingUp,
     },
     {
       title: 'Recommended actions',
       subtitle: 'What should we do?',
-      description: 'Future recommendations will be reviewed by authorized staff before any appointment or patient communication changes.',
+      description: capacityReadiness && capacityReadiness.doctorsWithIncompleteSchedules > 0
+        ? `Review the ${capacityReadiness.doctorsWithIncompleteSchedules} incomplete doctor schedules and ${capacityReadiness.incompleteDayCount} missing or invalid day records before using capacity or utilization for management decisions. ${appointmentEvidence && appointmentEvidence.overlappingMinutes > 0 ? 'Also review overlapping appointment times in the existing calendar.' : ''}`
+        : appointmentEvidence && appointmentEvidence.overlappingMinutes > 0
+          ? 'Review overlapping booked appointment times in the existing calendar; confirm whether they are legitimate shared sessions before making changes.'
+          : 'Continue checking schedule completeness and treatment production approval before setting operational targets.',
+      note: 'Staff-reviewed guidance only — no automatic schedule or patient changes',
       icon: ShieldCheck,
     },
   ]
@@ -311,13 +332,13 @@ export default function PracticeIntelligencePage() {
       </section>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {layers.map(({ title, subtitle, description, icon: Icon }) => (
+        {layers.map(({ title, subtitle, description, note, icon: Icon }) => (
           <section key={title} className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
             <Icon size={22} className="text-clinic-blue" aria-hidden="true" />
             <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{subtitle}</p>
             <h2 className="mt-1 text-lg font-bold text-clinic-navy dark:text-white">{title}</h2>
             <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">{description}</p>
-            <p className="mt-4 text-xs font-semibold text-gray-500 dark:text-gray-400">Awaiting verified data integration</p>
+            <p className="mt-4 text-xs font-semibold text-gray-500 dark:text-gray-400">{note}</p>
           </section>
         ))}
       </div>
