@@ -41,13 +41,18 @@ router.post('/recommendations', requireAuth, adminOnly, async (req, res) => {
         proposedAction, approvalStatus: 'PENDING_REVIEW',
       },
     })
+    // Keep creation and its audit record atomic. The partial unique index
+    // prevents concurrent pending reviews for the same evidence key.
     await prisma.auditLog.create({ data: {
       userId: req.user!.id, action: 'CREATE', resource: 'PRACTICE_INTELLIGENCE_TASK',
       resourceId: task.id, entityType: 'PRACTICE_INTELLIGENCE_TASK', entityId: task.id,
       entityName: task.title, actionType: 'CREATE', notes: 'Recommendation submitted for staff review',
     } })
     res.status(201).json({ task })
-  } catch {
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
+      res.status(409).json({ error: 'An open review already exists' }); return
+    }
     res.status(500).json({ error: 'Unable to create recommendation' })
   }
 })
