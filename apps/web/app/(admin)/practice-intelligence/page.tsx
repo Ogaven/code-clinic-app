@@ -50,6 +50,8 @@ export default function PracticeIntelligencePage() {
   const [summaryError, setSummaryError] = useState('')
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
+  const [submissionBusy, setSubmissionBusy] = useState<string | null>(null)
+  const [submissionMessage, setSubmissionMessage] = useState('')
 
   useEffect(() => {
     let active = true
@@ -194,18 +196,49 @@ export default function PracticeIntelligencePage() {
   }
   // Prioritize data-quality blockers before calendar review. These are
   // deterministic investigation priorities, not clinical or AI risk scores.
+  async function submitInvestigation(action: { label: string; reason: string; proposedAction: string; evidenceKey: string }) {
+    if (submissionBusy) return
+    const token = localStorage.getItem('cc_token')
+    if (!token) { setSubmissionMessage('Please sign in again.'); return }
+    setSubmissionBusy(action.evidenceKey)
+    setSubmissionMessage('')
+    try {
+      const response = await fetch('/api-proxy/practice-intelligence-tasks/recommendations', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          evidenceKey: action.evidenceKey,
+          title: action.label,
+          description: action.reason,
+          proposedAction: action.proposedAction,
+        }),
+      })
+      if (response.status === 409) {
+        setSubmissionMessage('This finding already has a pending review. Open the review queue to see it.')
+      } else if (!response.ok) {
+        setSubmissionMessage('Unable to submit recommendation (' + response.status + ').')
+      } else {
+        setSubmissionMessage('Recommendation submitted for administrator review. No operational action was performed.')
+      }
+    } catch {
+      setSubmissionMessage('Unable to reach the recommendation review service.')
+    } finally {
+      setSubmissionBusy(null)
+    }
+  }
+  const evidencePeriod = appointmentEvidence ? appointmentEvidence.startDate + ':' + appointmentEvidence.endDate : ''
   const investigationActions = [
     ...(capacityReadiness && capacityReadiness.doctorsWithIncompleteSchedules > 0
-      ? [{ priority: 'First — data quality', label: 'Review doctor schedule configuration', href: '/settings', reason: `${capacityReadiness.doctorsWithIncompleteSchedules} dentist schedules are incomplete. Correct working hours and recorded blocks before interpreting capacity.` }]
+      ? [{ priority: 'First — data quality', label: 'Review doctor schedule configuration', href: '/settings', proposedAction: 'REVIEW_CAPACITY', evidenceKey: 'schedule-readiness:' + kampalaDay(new Date()), reason: `${capacityReadiness.doctorsWithIncompleteSchedules} dentist schedules are incomplete. Correct working hours and recorded blocks before interpreting capacity.` }]
       : []),
     ...(appointmentEvidence && appointmentEvidence.invalidDurationCount > 0
-      ? [{ priority: 'First — data quality', label: 'Review appointment durations', href: '/scheduling', reason: `${appointmentEvidence.invalidDurationCount} appointments have invalid recorded durations. Verify records before using booked-minute metrics.` }]
+      ? [{ priority: 'First — data quality', label: 'Review appointment durations', href: '/scheduling', proposedAction: 'REVIEW_SCHEDULE', evidenceKey: 'invalid-duration:' + evidencePeriod, reason: `${appointmentEvidence.invalidDurationCount} appointments have invalid recorded durations. Verify records before using booked-minute metrics.` }]
       : []),
     ...(appointmentEvidence && appointmentEvidence.overlappingMinutes > 0
-      ? [{ priority: 'Next — scheduling review', label: 'Inspect overlapping bookings', href: '/scheduling', reason: 'Confirm whether concurrent bookings are intentional before editing the calendar.' }]
+      ? [{ priority: 'Next — scheduling review', label: 'Inspect overlapping bookings', href: '/scheduling', proposedAction: 'REVIEW_SCHEDULE', evidenceKey: 'overlaps:' + evidencePeriod, reason: 'Confirm whether concurrent bookings are intentional before editing the calendar.' }]
       : []),
     ...(appointmentEvidence && (appointmentEvidence.cancelledCount > 0 || appointmentEvidence.noShowCount > 0)
-      ? [{ priority: 'Next — attendance review', label: 'Review cancellations and no-shows', href: '/scheduling', reason: 'Check recorded appointment statuses and confirmation history before attributing causes.' }]
+      ? [{ priority: 'Next — attendance review', label: 'Review cancellations and no-shows', href: '/scheduling', proposedAction: 'REVIEW_ATTENDANCE', evidenceKey: 'attendance:' + evidencePeriod, reason: 'Check recorded appointment statuses and confirmation history before attributing causes.' }]
       : []),
   ]
   // The existing CRM queue contains lead follow-ups, not appointment-specific
@@ -304,11 +337,15 @@ export default function PracticeIntelligencePage() {
         {investigationActions.length > 0 ? (
           <div className="mt-5 space-y-3">
             <h3 className="text-sm font-semibold text-clinic-navy dark:text-white">Staff-reviewed next steps</h3>
+            {submissionMessage && <p role="status" className="text-sm text-gray-600 dark:text-gray-300">{submissionMessage}</p>}
             {investigationActions.map(action => (
               <div key={action.label} className="rounded-xl border border-gray-100 p-3 dark:border-white/10">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{action.priority}</p>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{action.reason}</p>
                 <Link href={action.href} className="mt-2 inline-block text-sm font-semibold text-clinic-blue hover:underline">{action.label} →</Link>
+                <button type="button" disabled={submissionBusy !== null} onClick={() => void submitInvestigation(action)} className="ml-3 mt-2 rounded-lg border border-clinic-blue px-3 py-1.5 text-xs font-semibold text-clinic-blue disabled:opacity-50">
+                  {submissionBusy === action.evidenceKey ? 'Submitting…' : 'Submit for approval'}
+                </button>
               </div>
             ))}
           </div>
