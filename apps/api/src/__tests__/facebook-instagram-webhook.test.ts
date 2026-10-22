@@ -96,6 +96,17 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(getAgentReplyV2OpenAI).toHaveBeenCalledWith('conv-1', event.sender.id, event.message.text, 'FACEBOOK')
   })
 
+  it('does not persist Facebook user as a verified customer name', async () => {
+    (global.fetch as any) = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ first_name: 'Facebook', last_name: 'user', profile_pic: null }),
+    })
+    await processSocialMessage('28540242905567428', 'Hello', 'FACEBOOK', 'mid.generic-name')
+    expect(prismaMock.aiConversation.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ channel: 'FACEBOOK', displayName: null }),
+    }))
+  })
+
   it('never processes a message whose sender is our own Page ID — self-reply loop guard', async () => {
     await processSocialMessage(FB_PAGE_ID, 'echoed text', 'FACEBOOK', 'mid.echo')
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
