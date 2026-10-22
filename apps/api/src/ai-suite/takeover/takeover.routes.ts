@@ -690,8 +690,13 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
         await prisma.aiMessage.update({ where: { id: msgRecord.id }, data: { wamid, status: 'sent' } })
       }
     } else if (conversation.channel === 'SMS') {
-      const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
-      await sendWhatsAppMessage(conversation.phoneNumber, text.trim(), undefined, false)
+      // Never silently redirect an SMS reply to WhatsApp.
+      const { sendSMS } = await import('../sms/sms.service')
+      const result = await sendSMS(conversation.phoneNumber, text.trim())
+      if (result !== 'SENT') {
+        await prisma.aiMessage.delete({ where: { id: msgRecord.id } })
+        return res.status(503).json({ error: 'SMS channel is not active or configured; no message was sent' })
+      }
     } else if (conversation.channel === 'FACEBOOK' || conversation.channel === 'INSTAGRAM') {
       const { sendSocialReply } = await import('../facebook/facebook.routes')
       await sendSocialReply(conversation.phoneNumber, text.trim(), conversation.channel as 'FACEBOOK' | 'INSTAGRAM')
@@ -705,7 +710,10 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       if (meta.commentId) {
         await sendCommentReply(meta.commentId, text.trim(), conversation.channel as 'FACEBOOK_COMMENT' | 'INSTAGRAM_COMMENT')
       } else {
-        console.warn(`[Takeover] No commentId in metadata for ${conversation.channel} — message saved only`)
+        // A comment without a platform comment ID cannot be delivered.
+        // Do not show a staff reply as sent when no external send occurred.
+        await prisma.aiMessage.delete({ where: { id: msgRecord.id } })
+        return res.status(422).json({ error: 'Cannot reply: source comment ID is missing; no message was sent' })
       }
     }
     // WEBSITE: no external delivery — message is visible in the widget on next poll
