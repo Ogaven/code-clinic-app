@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, CalendarDays, Users, PhoneCall,
+  LayoutDashboard, CalendarDays, Users, UserCog, PhoneCall,
   Wallet, Receipt, ShoppingBag, CreditCard, FileBarChart,
   Bot, Settings, HeadphonesIcon,
   ChevronLeft, ChevronRight, BookOpen, Package,
@@ -71,6 +71,7 @@ const adminNav: NavGroup[] = [
       { label: 'Campaigns',           href: '/campaigns',           icon: Megaphone },
       { label: 'Quiz Funnels',        href: '/quiz-funnels',        icon: HelpCircle },
       { label: 'Treatment Pipeline',  href: '/treatment-pipeline',  icon: Kanban },
+      { label: 'Practice Intelligence', href: '/practice-intelligence', icon: BarChart2 },
       { label: 'Referrals',           href: '/referrals',           icon: Share2 },
     ],
   },
