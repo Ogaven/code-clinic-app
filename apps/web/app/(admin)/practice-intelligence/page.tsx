@@ -13,7 +13,7 @@ type CapacitySummary = { availableMinutes: number | null; partialKnownAvailableM
 
 type CapacityReadiness = { activeDoctorCount: number; doctorsWithCompleteSchedules: number; doctorsWithIncompleteSchedules: number; incompleteDayCount: number; recordedBlockedTimeCount: number; recordedSpecialDayCount: number; basis: string }
 
-type AppointmentInsights = { bookedCount: number; bookedMinutes: number; uniqueBookedMinutes: number; overlappingMinutes: number; cancelledCount: number; noShowCount: number; importedCount: number; invalidDurationCount: number; basis: string }
+type AppointmentInsights = { startDate: string; endDate: string; bookedCount: number; bookedMinutes: number; uniqueBookedMinutes: number; overlappingMinutes: number; cancelledCount: number; noShowCount: number; importedCount: number; invalidDurationCount: number; basis: string }
 
 type ProductionGoals = { weekdayProductionGoalUGX: number | null; saturdayProductionGoalUGX: number | null }
 
