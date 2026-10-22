@@ -64,7 +64,8 @@ export default function PracticeIntelligencePage() {
         if (!token) throw new Error('Sign in to view verified production figures.')
         const endDate = kampalaDay(new Date())
         const startDate = kampalaDay(new Date(Date.now() - 6 * 86400000))
-        const response = await fetch(
+        try {
+          const response = await fetch(
           '/api-proxy/clinical-production/summary?startDate=' + startDate + '&endDate=' + endDate,
           { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' },
         )
@@ -75,7 +76,10 @@ export default function PracticeIntelligencePage() {
             !Number.isSafeInteger(result.deliveryCount)) {
           throw new Error('The production report did not return verified ledger figures.')
         }
-        if (active) setSummary(result)
+          if (active) setSummary(result)
+        } catch (error) {
+          if (active) setSummaryError(error instanceof Error ? error.message : 'Unable to load production.')
+        }
         try {
           const capacityResponse = await fetch(
             '/api-proxy/scheduling/practice-capacity-summary?startDate=' + startDate + '&endDate=' + endDate,
