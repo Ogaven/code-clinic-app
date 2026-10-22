@@ -71,7 +71,7 @@ const adminNav: NavGroup[] = [
       { label: 'Campaigns',           href: '/campaigns',           icon: Megaphone },
       { label: 'Quiz Funnels',        href: '/quiz-funnels',        icon: HelpCircle },
       { label: 'Treatment Pipeline',  href: '/treatment-pipeline',  icon: Kanban },
-      { label: 'Practice Intelligence', href: '/practice-intelligence', icon: BarChart2 },
+      { label: 'AI Practice Intelligence', href: '/practice-intelligence', icon: BarChart2 },
       { label: 'Referrals',           href: '/referrals',           icon: Share2 },
     ],
   },
