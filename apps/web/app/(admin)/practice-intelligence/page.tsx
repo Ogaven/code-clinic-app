@@ -245,7 +245,7 @@ export default function PracticeIntelligencePage() {
           capacitySummary ? (
             <>
               <p className="mt-3 text-2xl font-bold text-clinic-navy dark:text-white">
-                {capacitySummary.availableMinutes === null ? 'Unavailable — incomplete configuration' :
+                {capacitySummary.availableMinutes === null ? 'Unavailable — no active doctors or incomplete configuration' :
                   capacitySummary.availableMinutes.toLocaleString() + ' minutes'}
               </p>
               <p className="mt-2 text-xs text-gray-500">
