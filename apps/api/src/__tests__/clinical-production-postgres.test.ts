@@ -107,7 +107,7 @@ describe.skipIf(!isolatedUrl)('clinical production authenticated PostgreSQL inte
       RETURNS trigger LANGUAGE plpgsql AS $audit_failure$
       BEGIN
         IF NEW.resource = 'CLINICAL_PRODUCTION'
-           AND NEW.resourceId = '${pending.id}' THEN
+           AND NEW."resourceId" = '${pending.id}' THEN
           RAISE EXCEPTION 'synthetic audit insert failure';
         END IF;
         RETURN NEW;
