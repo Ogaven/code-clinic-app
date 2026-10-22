@@ -1438,11 +1438,16 @@ router.get('/practice-capacity-summary', requireAuth, adminOnly, async (req, res
       for (const doctor of doctors) {
         const rows = scheduleByDoctor.get(doctor.id) ?? []
         const schedule = rows.find(row => row.dayOfWeek === dayOfWeek)
+        // Clinic-wide closures override missing or incomplete doctor schedules.
+        if (special?.type === 'DAY_OFF') {
+          includedDoctorDays++
+          continue
+        }
         if (!schedule || (special && special.type !== 'DAY_OFF')) {
           excludedDoctorDays++
           continue
         }
-        if (special?.type === 'DAY_OFF' || !schedule.isOpen) {
+        if (!schedule.isOpen) {
           includedDoctorDays++
           continue
         }
@@ -1476,7 +1481,7 @@ router.get('/practice-capacity-summary', requireAuth, adminOnly, async (req, res
     res.json({
       startDate, endDate, activeDoctorCount: doctors.length,
       includedDoctorDays, excludedDoctorDays,
-      availableMinutes: excludedDoctorDays === 0 ? available : null,
+      availableMinutes: doctors.length > 0 && excludedDoctorDays === 0 ? available : null,
       partialKnownAvailableMinutes: available,
       utilizationPercent: null,
       basis: 'CONFIGURED_DOCTOR_TIME_MINUS_RECORDED_BLOCKS',
