@@ -88,10 +88,12 @@ router.post('/recommendations/:id/assign', requireAuth, adminOnly, async (req, r
         where: { id: req.params.id, entityType: 'PRACTICE_INTELLIGENCE', approvalStatus: { in: ['PENDING_REVIEW', 'APPROVED'] } },
       })
       if (!task) return null
-      const updated = await tx.task.update({
-        where: { id: task.id },
+      const changed = await tx.task.updateMany({
+        where: { id: task.id, entityType: 'PRACTICE_INTELLIGENCE', approvalStatus: { in: ['PENDING_REVIEW', 'APPROVED'] } },
         data: { assignedToId: assignee.id },
       })
+      if (changed.count !== 1) return null
+      const updated = await tx.task.findUniqueOrThrow({ where: { id: task.id } })
       await tx.auditLog.create({ data: {
         userId: req.user!.id, action: 'UPDATE', resource: 'PRACTICE_INTELLIGENCE_TASK',
         resourceId: task.id, entityType: 'PRACTICE_INTELLIGENCE_TASK', entityId: task.id,
