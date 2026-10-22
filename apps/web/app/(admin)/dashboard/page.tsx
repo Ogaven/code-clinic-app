@@ -577,22 +577,22 @@ export default function DashboardPage() {
           {user?.role !== 'ADMIN' ? (
             <p className="text-sm text-gray-500">Financial activity is available to clinic administrators.</p>
           ) : practiceFinancial ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                 <p className="text-xl font-extrabold text-clinic-navy dark:text-white">{formatUGX(practiceFinancial.invoicedUGX)}</p>
                 <p className="text-xs text-gray-500">Invoiced (excluding drafts and cancellations)</p>
               </div>
-              <div>
+              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                 <p className="text-xl font-extrabold text-clinic-navy dark:text-white">{formatUGX(practiceFinancial.collectedUGX)}</p>
                 <p className="text-xs text-gray-500">Payments collected</p>
               </div>
-              <div>
+              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                 <p className="text-lg font-bold text-clinic-navy dark:text-white">
                   {clinicalProduction ? formatUGX(clinicalProduction.netClinicalProductionUGX) : 'Unavailable'}
                 </p>
                 <p className="text-xs text-gray-500">Approved clinical production</p>
               </div>
-              <div>
+              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                 <p className="text-lg font-bold text-gray-500">Not yet verified</p>
                 <p className="text-xs text-gray-500">Expenses and net income</p>
               </div>
@@ -600,7 +600,7 @@ export default function DashboardPage() {
           ) : <p className="text-sm text-gray-500">
             {practiceFinancialError ? 'Financial activity unavailable; no values are estimated.' : 'Loading recorded financial activity…'}
           </p>}
-          <Link href="/practice-intelligence" className="mt-3 inline-block text-xs font-semibold text-cyan-700 dark:text-cyan-300">
+          <Link href="/practice-intelligence" className="mt-4 inline-flex rounded-lg bg-clinic-navy px-4 py-2 text-xs font-semibold text-white hover:opacity-90">
             Open AI Practice Intelligence →
           </Link>
         </div>
