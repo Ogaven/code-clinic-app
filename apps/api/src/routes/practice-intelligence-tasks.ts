@@ -106,8 +106,8 @@ router.get('/assignees', requireAuth, adminOnly, async (_req, res) => {
 
 router.post('/recommendations/:id/assign', requireAuth, adminOnly, async (req, res) => {
   const { assignedToId } = req.body ?? {}
-  if (typeof assignedToId !== 'string' || !/^[a-zA-Z0-9_-]{1,120}$/.test(assignedToId)) {
-    res.status(400).json({ error: 'Valid staff ID required' }); return
+  if (assignedToId !== null && (typeof assignedToId !== 'string' || !/^[a-zA-Z0-9_-]{1,120}$/.test(assignedToId))) {
+    res.status(400).json({ error: 'Valid staff ID or null required' }); return
   }
   try {
     const assignee = await prisma.user.findFirst({
@@ -122,7 +122,7 @@ router.post('/recommendations/:id/assign', requireAuth, adminOnly, async (req, r
       if (!task) return null
       const changed = await tx.task.updateMany({
         where: { id: task.id, entityType: 'PRACTICE_INTELLIGENCE', approvalStatus: { in: ['PENDING_REVIEW', 'APPROVED'] } },
-        data: { assignedToId: assignee.id },
+        data: { assignedToId: assignee?.id ?? null },
       })
       if (changed.count !== 1) return null
       const updated = await tx.task.findUniqueOrThrow({ where: { id: task.id } })
@@ -130,8 +130,8 @@ router.post('/recommendations/:id/assign', requireAuth, adminOnly, async (req, r
         userId: req.user!.id, action: 'UPDATE', resource: 'PRACTICE_INTELLIGENCE_TASK',
         resourceId: task.id, entityType: 'PRACTICE_INTELLIGENCE_TASK', entityId: task.id,
         entityName: task.title, actionType: 'UPDATE',
-        fieldChanges: JSON.stringify({ before: { assignedToId: task.assignedToId }, after: { assignedToId: assignee.id } }),
-        notes: 'Administrative assignment only; no action executed',
+        fieldChanges: JSON.stringify({ before: { assignedToId: task.assignedToId }, after: { assignedToId: assignee?.id ?? null } }),
+        notes: assignee ? 'Administrative assignment only; no action executed' : 'Administrative unassignment only; no action executed',
       } })
       return updated
     })

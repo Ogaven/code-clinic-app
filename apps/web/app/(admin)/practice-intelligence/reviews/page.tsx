@@ -58,13 +58,13 @@ export default function PracticeIntelligenceReviewsPage() {
   async function assign(task: ReviewTask) {
     const assignedToId = selectedAssignee[task.id]
     const token = localStorage.getItem('cc_token')
-    if (!assignedToId || !token || workingId) return
+    if (assignedToId === undefined || !token || workingId) return
     setWorkingId(task.id)
     try {
       const response = await fetch('/api-proxy/practice-intelligence-tasks/recommendations/' + encodeURIComponent(task.id) + '/assign', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignedToId }),
+        body: JSON.stringify({ assignedToId: assignedToId || null }),
       })
       if (!response.ok) throw new Error('Unable to assign staff (' + response.status + ').')
       await load()
@@ -130,7 +130,7 @@ export default function PracticeIntelligenceReviewsPage() {
                       {assignees.map(staff => <option key={staff.id} value={staff.id}>{staff.firstName} {staff.lastName} ({staff.role})</option>)}
                     </select>
                   </label>
-                  <button type="button" disabled={workingId !== null || !selectedAssignee[task.id] || selectedAssignee[task.id] === task.assignedToId}
+                  <button type="button" disabled={workingId !== null || selectedAssignee[task.id] === undefined || selectedAssignee[task.id] === (task.assignedToId ?? '')}
                     onClick={() => void assign(task)} className="rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-50">Save assignment</button>
                 </div>
               )}
