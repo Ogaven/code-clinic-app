@@ -12,7 +12,7 @@
 // and the desktop profile dropdown (components/layout/ProfileMenu.tsx) so the
 // instructions never drift between the two surfaces.
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Download, Share, PlusSquare, Check } from 'lucide-react'
 
 interface IOSInstallInstructionsProps {
@@ -20,6 +20,7 @@ interface IOSInstallInstructionsProps {
 }
 
 export default function IOSInstallInstructions({ onClose }: IOSInstallInstructionsProps) {
+  const [isApple] = useState(() => typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)))
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -54,9 +55,9 @@ export default function IOSInstallInstructions({ onClose }: IOSInstallInstructio
         <h3 className="text-center text-lg font-black text-gray-800 dark:text-white">Install Code Clinic</h3>
         <p className="mt-1 text-center text-sm text-gray-500 dark:text-slate-400">To install Code Clinic on your device:</p>
         <ol className="mt-5 space-y-4">
-          <InstallStep n={1} icon={Share}>Tap your browser's <strong>Share</strong> icon</InstallStep>
-          <InstallStep n={2} icon={PlusSquare}>Select <strong>Add to Home Screen</strong></InstallStep>
-          <InstallStep n={3} icon={Check}>Tap <strong>Add</strong>, then open Code Clinic from your Home Screen</InstallStep>
+          <InstallStep n={1} icon={Share}>{isApple ? <>Tap your browser's <strong>Share</strong> icon</> : <>Open your browser menu (usually <strong>⋮</strong>)</>}</InstallStep>
+          <InstallStep n={2} icon={PlusSquare}>Select <strong>{isApple ? 'Add to Home Screen' : 'Install app or Add to Home screen'}</strong></InstallStep>
+          <InstallStep n={3} icon={Check}>Tap <strong>{isApple ? 'Add' : 'Install or Add'}</strong>, then open Code Clinic from your Home Screen</InstallStep>
         </ol>
         <button onClick={onClose} className="mt-6 w-full rounded-2xl py-3 text-sm font-bold text-white" style={{ background: 'linear-gradient(135deg,#0c1e50,#29ABE2)' }}>
           Got it
