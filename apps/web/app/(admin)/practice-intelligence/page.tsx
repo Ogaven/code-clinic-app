@@ -139,7 +139,7 @@ export default function PracticeIntelligencePage() {
     {
       title: 'Performance overview',
       subtitle: 'What happened?',
-      description: 'Appointment attendance, available clinical minutes and approved production will appear here after the source-data audit.',
+      description: 'Recorded appointment time, configured clinical availability and approved treatment production are shown above. Actual attendance is not yet verified.',
       icon: Activity,
     },
     {
