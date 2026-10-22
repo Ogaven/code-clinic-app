@@ -18,6 +18,7 @@ function placeholder(name: string | null): boolean {
   if (!name) return true
   const value = name.trim()
   return !value || /^FB User(?:\s+\S+)?$/i.test(value)
+    || /^Facebook User$/i.test(value)
     || /^Instagram User$/i.test(value)
     || /^@?(?:ig_)?\d+$/i.test(value)
 }
