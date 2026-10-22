@@ -44,7 +44,8 @@ async function fetchPostCaption(
   channel: 'FACEBOOK_COMMENT' | 'INSTAGRAM_COMMENT',
   token:   string,
 ): Promise<string | null> {
-  const cached = postCaptionCache.get(postId)
+  const cacheKey = `${channel}:${postId}`
+  const cached = postCaptionCache.get(cacheKey)
   if (cached && Date.now() - cached.fetchedAt < CAPTION_TTL_MS) return cached.caption
 
   try {
@@ -55,7 +56,7 @@ async function fetchPostCaption(
     const data  = await res.json() as any
     const caption: string | undefined = data.message ?? data.caption
     if (caption) {
-      postCaptionCache.set(postId, { caption, fetchedAt: Date.now() })
+      postCaptionCache.set(cacheKey, { caption, fetchedAt: Date.now() })
       return caption
     }
   } catch {}
@@ -80,7 +81,13 @@ export async function fetchPostThumbnail(
     url.searchParams.set('access_token', token)
     const res = await fetch(url.toString())
     if (!res.ok) {
-      // Permission failures must not be mistaken for a permanently absent image.
+      // Record only diagnostic codes, never customer IDs, URLs, or access tokens.
+      const payload = await res.json().catch(() => null) as { error?: { code?: number; error_subcode?: number } } | null
+      console.warn('[MetaPostThumbnail] Graph request rejected', {
+        channel, status: res.status,
+        metaCode: payload?.error?.code ?? null,
+        metaSubcode: payload?.error?.error_subcode ?? null,
+      })
       return null
     }
     const data = await res.json() as {
@@ -92,9 +99,12 @@ export async function fetchPostThumbnail(
     const thumb = channel === 'INSTAGRAM_COMMENT'
       ? (data.media_type === 'VIDEO' ? data.thumbnail_url || data.media_url : data.media_url || data.thumbnail_url) || null
       : data.full_picture || null
-    postThumbnailCache.set(cacheKey, { url: thumb, fetchedAt: Date.now() })
+    // Missing images may become available after Meta finishes processing media.
+    // Do not cache a null result for an hour.
+    if (thumb) postThumbnailCache.set(cacheKey, { url: thumb, fetchedAt: Date.now() })
     return thumb
   } catch {
+    console.warn('[MetaPostThumbnail] Graph request failed', { channel })
     return null
   }
 }
