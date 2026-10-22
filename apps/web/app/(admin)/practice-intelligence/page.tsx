@@ -189,6 +189,18 @@ export default function PracticeIntelligencePage() {
   if (capacityReadiness && capacityReadiness.doctorsWithIncompleteSchedules > 0) {
     diagnosticSignals.push(`${capacityReadiness.doctorsWithIncompleteSchedules} of ${capacityReadiness.activeDoctorCount} active dentists have incomplete weekly schedules; capacity conclusions must wait for corrections.`)
   }
+  // Suggested investigations are navigational only; staff retain full control.
+  const investigationActions = [
+    ...(appointmentEvidence && (appointmentEvidence.cancelledCount > 0 || appointmentEvidence.noShowCount > 0)
+      ? [{ label: 'Review cancellations and no-shows in appointments', href: '/scheduling', reason: 'Check recorded statuses and confirmation history before attributing causes.' }]
+      : []),
+    ...(appointmentEvidence && appointmentEvidence.overlappingMinutes > 0
+      ? [{ label: 'Inspect overlapping bookings', href: '/scheduling', reason: 'Confirm whether concurrent bookings are intentional before editing the calendar.' }]
+      : []),
+    ...(capacityReadiness && capacityReadiness.doctorsWithIncompleteSchedules > 0
+      ? [{ label: 'Review doctor schedule configuration', href: '/settings', reason: 'Correct missing working hours and recorded blocks before using capacity metrics.' }]
+      : []),
+  ]
   const comparisonSignal = appointmentEvidence && previousWeek
     ? `Compared with the preceding seven days: booked visits ${signedDifference(bookedDifference ?? 0)}, no-shows ${signedDifference(noShowDifference ?? 0)}, cancelled or rescheduled ${signedDifference(cancelledDifference ?? 0)}. These are changes in recorded statuses, not established causes.`
     : null
@@ -270,6 +282,17 @@ export default function PracticeIntelligencePage() {
           </ul>
         ) : <p className="mt-3 text-sm text-gray-500">{appointmentEvidence ? 'No flagged signals in the available records.' : 'Waiting for verified appointment records.'}</p>}
         {comparisonSignal ? <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">{comparisonSignal}</p> : null}
+        {investigationActions.length > 0 ? (
+          <div className="mt-5 space-y-3">
+            <h3 className="text-sm font-semibold text-clinic-navy dark:text-white">Staff-reviewed next steps</h3>
+            {investigationActions.map(action => (
+              <div key={action.label} className="rounded-xl border border-gray-100 p-3 dark:border-white/10">
+                <p className="text-sm text-gray-600 dark:text-gray-300">{action.reason}</p>
+                <Link href={action.href} className="mt-2 inline-block text-sm font-semibold text-clinic-blue hover:underline">{action.label} →</Link>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <p className="mt-3 text-xs text-gray-500">Review findings with clinic staff before changing schedules or contacting patients. No actions are performed automatically.</p>
       </section>
 
