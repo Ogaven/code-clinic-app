@@ -64,8 +64,9 @@ export default function PracticeIntelligencePage() {
         if (active) setAuthorized(true)
         const token = localStorage.getItem('cc_token')
         if (!token) throw new Error('Sign in to view verified production figures.')
-        const endDate = kampalaDay(new Date())
-        const startDate = kampalaDay(new Date(Date.now() - 6 * 86400000))
+        const reportNow = Date.now()
+        const endDate = kampalaDay(new Date(reportNow))
+        const startDate = kampalaDay(new Date(reportNow - 6 * 86400000))
         try {
           const response = await fetch(
           '/api-proxy/clinical-production/summary?startDate=' + startDate + '&endDate=' + endDate,
@@ -125,8 +126,8 @@ export default function PracticeIntelligencePage() {
         // Compare with the immediately preceding, non-overlapping Kampala week.
         // This is historical comparison, never a predictive forecast.
         try {
-          const previousEndDate = kampalaDay(new Date(Date.now() - 7 * 86400000))
-          const previousStartDate = kampalaDay(new Date(Date.now() - 13 * 86400000))
+          const previousEndDate = kampalaDay(new Date(reportNow - 7 * 86400000))
+          const previousStartDate = kampalaDay(new Date(reportNow - 13 * 86400000))
           const previousResponse = await fetch(
             '/api-proxy/scheduling/practice-appointment-insights?startDate=' + previousStartDate + '&endDate=' + previousEndDate,
             { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' },
