@@ -79,7 +79,7 @@ export default function MobileProfileSheet({ user, theme, onThemeChange, profile
   // browser has actually fired beforeinstallprompt (nothing to invoke before
   // that — never show a dead button), or any iOS/iPadOS browser (Add to
   // Home Screen always works there). Hidden entirely once already installed.
-  const showInstall = !install.isStandalone && (install.canInstallNative || install.isIOS)
+  const showInstall = !install.isStandalone
 
   return (
     <div className="xl:hidden fixed inset-0 z-[150]" onMouseDown={onClose}>
