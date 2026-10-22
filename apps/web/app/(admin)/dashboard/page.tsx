@@ -225,8 +225,6 @@ export default function DashboardPage() {
   const [practiceFinancial, setPracticeFinancial] = useState<{ invoicedUGX: number; collectedUGX: number; invoicesCount: number; paymentsCount: number } | null>(null)
   const [practiceFinancialError, setPracticeFinancialError] = useState(false)
   const [clinicalProduction, setClinicalProduction] = useState<{ netClinicalProductionUGX: number; deliveryCount: number; reversalCount: number; adjustmentCount: number } | null>(null)
-  const [clinicalProductionError, setClinicalProductionError] = useState(false)
-  const [pendingProductionCount, setPendingProductionCount] = useState<number | null>(null)
   const [satisfaction, setSatisfaction] = useState<SatisfactionSummary | null>(null)
   const [googleRating, setGoogleRating] = useState<{ averageRating: number; totalReviewCount: number } | null>(null)
   const [growthPeriod, setGrowthPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month')
@@ -384,11 +382,7 @@ export default function DashboardPage() {
     fetch('/api-proxy/clinical-production/summary?' + query.toString(), { headers: { Authorization: 'Bearer ' + token } })
       .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json() })
       .then(data => { if (!cancelled) setClinicalProduction(data) })
-      .catch(() => { if (!cancelled) setClinicalProductionError(true) })
-    fetch('/api-proxy/clinical-production/entries/pending', { headers: { Authorization: 'Bearer ' + token } })
-      .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json() })
-      .then(data => { if (!cancelled) setPendingProductionCount(Array.isArray(data.entries) ? data.entries.length : null) })
-      .catch(() => { if (!cancelled) setPendingProductionCount(null) })
+      .catch(() => { if (!cancelled) setClinicalProduction(null) })
     return () => { cancelled = true }
   }, [user?.role])
 
