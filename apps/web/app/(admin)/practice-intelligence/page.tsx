@@ -138,12 +138,6 @@ export default function PracticeIntelligencePage() {
   // Explain observed records without treating correlation as causation or
   // extrapolating a forecast from one seven-day window.
   const appointmentEvidence = appointmentInsights
-  const totalVisits = appointmentEvidence
-    ? appointmentEvidence.bookedCount + appointmentEvidence.cancelledCount + appointmentEvidence.noShowCount
-    : 0
-  const cancellationShare = appointmentEvidence && totalVisits > 0
-    ? Math.round((appointmentEvidence.cancelledCount / totalVisits) * 100)
-    : null
   const layers = [
     {
       title: 'Performance overview',
@@ -158,7 +152,7 @@ export default function PracticeIntelligencePage() {
       title: 'Performance diagnosis',
       subtitle: 'What factors are visible?',
       description: appointmentEvidence
-        ? `${appointmentEvidence.cancelledCount} cancelled or rescheduled visits${cancellationShare === null ? '' : ' (' + cancellationShare + '% of classified visits)'}, ${appointmentEvidence.noShowCount} no-shows and ${appointmentEvidence.overlappingMinutes.toLocaleString('en-UG')} overlapping booked minutes. ${capacityReadiness ? capacityReadiness.doctorsWithIncompleteSchedules + ' of ' + capacityReadiness.activeDoctorCount + ' active dentists have incomplete weekly schedules.' : 'Schedule completeness unavailable.'}`
+        ? `${appointmentEvidence.cancelledCount} cancelled or rescheduled visits, ${appointmentEvidence.noShowCount} no-shows and ${appointmentEvidence.overlappingMinutes.toLocaleString('en-UG')} overlapping booked minutes. ${capacityReadiness ? capacityReadiness.doctorsWithIncompleteSchedules + ' of ' + capacityReadiness.activeDoctorCount + ' active dentists have incomplete weekly schedules.' : 'Schedule completeness unavailable.'}`
         : 'No reliable appointment evidence is available for a diagnosis.',
       note: 'Descriptive factors only; these do not establish causes',
       icon: ClipboardList,
