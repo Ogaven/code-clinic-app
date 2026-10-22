@@ -83,24 +83,22 @@ function Avatar({ name, size = 40, borderColor, pictureUrl }: { name: string | n
       </button>
       {expanded && (
         <div role="dialog" aria-modal="true" aria-label={`${safe} profile`}
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 p-5"
+          className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/85 px-5 py-8"
           onClick={event => { event.stopPropagation(); setExpanded(false) }}>
-          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl"
+          <div className="relative flex flex-col items-center gap-4"
             onClick={event => event.stopPropagation()}>
             <button type="button" aria-label="Close profile" onClick={() => setExpanded(false)}
-              className="absolute right-3 top-3 rounded-full p-2 text-gray-600 hover:bg-gray-100"><X size={20} /></button>
-            <p className="mb-5 pr-6 text-lg font-semibold text-gray-900 break-words">{safe}</p>
+              className="absolute -right-2 -top-12 rounded-full bg-white/15 p-2 text-white hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"><X size={22} /></button>
             {hasImage ? (
               <img src={pictureUrl!} alt={`${safe} profile photo`} referrerPolicy="no-referrer"
                 onError={() => setImgOk(false)}
-                className="mx-auto max-h-[65vh] max-w-full rounded-xl object-contain" />
+                className="h-[min(76vw,360px)] w-[min(76vw,360px)] rounded-full border-4 border-white/90 object-cover shadow-2xl" />
             ) : (
-              <>
-                <div className="mx-auto flex h-36 w-36 items-center justify-center rounded-full text-5xl font-bold text-white"
-                  style={{ background: avatarColor(safe) }}>{nameInitials(safe)}</div>
-                <p className="mt-5 text-sm text-gray-500">Profile photo not available from this channel.</p>
-              </>
+              <div className="flex h-[min(76vw,360px)] w-[min(76vw,360px)] items-center justify-center rounded-full border-4 border-white/90 text-7xl font-bold text-white shadow-2xl"
+                style={{ background: avatarColor(safe) }}>{nameInitials(safe)}</div>
             )}
+            <p className="max-w-[min(85vw,400px)] text-center text-lg font-semibold text-white break-words">{safe}</p>
+            {!hasImage && <p className="max-w-xs text-center text-sm text-white/75">Profile photo not available from this channel.</p>}
           </div>
         </div>
       )}
