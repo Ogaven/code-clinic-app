@@ -58,6 +58,32 @@ router.post('/recommendations', requireAuth, adminOnly, async (req, res) => {
   }
 })
 
+// Staff can see only their own approved assignments. Pending proposals and review
+// history remain restricted to administrators; this endpoint is read-only.
+router.get('/my-assignments', requireAuth, async (req, res) => {
+  if (!['ADMIN', 'DOCTOR', 'RECEPTIONIST'].includes(req.user!.role)) {
+    res.status(403).json({ error: 'Access denied' }); return
+  }
+  try {
+    const tasks = await prisma.task.findMany({
+      where: {
+        entityType: 'PRACTICE_INTELLIGENCE',
+        assignedToId: req.user!.id,
+        approvalStatus: 'APPROVED',
+      },
+      select: {
+        id: true, title: true, description: true, proposedAction: true,
+        approvalStatus: true, assignedToId: true, createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    })
+    res.json({ tasks, actionExecuted: false })
+  } catch {
+    res.status(500).json({ error: 'Unable to load assignments' })
+  }
+})
+
 // Assignment is administrative coordination, never action execution.
 router.get('/assignees', requireAuth, adminOnly, async (_req, res) => {
   try {
