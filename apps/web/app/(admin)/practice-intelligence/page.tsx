@@ -40,6 +40,8 @@ export default function PracticeIntelligencePage() {
   const [goals, setGoals] = useState<ProductionGoals | null>(null)
   const [goalsError, setGoalsError] = useState('')
   const [appointmentInsights, setAppointmentInsights] = useState<AppointmentInsights | null>(null)
+  const [previousAppointmentInsights, setPreviousAppointmentInsights] = useState<AppointmentInsights | null>(null)
+  const [previousAppointmentError, setPreviousAppointmentError] = useState('')
   const [appointmentError, setAppointmentError] = useState('')
   const [capacityReadiness, setCapacityReadiness] = useState<CapacityReadiness | null>(null)
   const [capacityError, setCapacityError] = useState('')
@@ -115,6 +117,22 @@ export default function PracticeIntelligencePage() {
         } catch {
           if (active) setAppointmentError('Appointment insights could not be loaded.')
         }
+        // Compare with the immediately preceding, non-overlapping Kampala week.
+        // This is historical comparison, never a predictive forecast.
+        try {
+          const previousEndDate = kampalaDay(new Date(Date.now() - 7 * 86400000))
+          const previousStartDate = kampalaDay(new Date(Date.now() - 13 * 86400000))
+          const previousResponse = await fetch(
+            '/api-proxy/scheduling/practice-appointment-insights?startDate=' + previousStartDate + '&endDate=' + previousEndDate,
+            { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' },
+          )
+          if (!previousResponse.ok) throw new Error('Previous-week appointment data unavailable.')
+          const previous: AppointmentInsights = await previousResponse.json()
+          if (previous.basis !== 'SCHEDULED_APPOINTMENT_MINUTES') throw new Error('Invalid previous-week source.')
+          if (active) setPreviousAppointmentInsights(previous)
+        } catch {
+          if (active) setPreviousAppointmentError('Previous-week appointment data unavailable.')
+        }
         try {
           const goalsResponse = await fetch('/api-proxy/scheduling/practice-production-goals', {
             headers: { Authorization: 'Bearer ' + token }, cache: 'no-store',
@@ -138,6 +156,14 @@ export default function PracticeIntelligencePage() {
   // Explain observed records without treating correlation as causation or
   // extrapolating a forecast from one seven-day window.
   const appointmentEvidence = appointmentInsights
+  const previousWeek = previousAppointmentInsights
+  const bookedDifference = appointmentEvidence && previousWeek
+    ? appointmentEvidence.bookedCount - previousWeek.bookedCount : null
+  const noShowDifference = appointmentEvidence && previousWeek
+    ? appointmentEvidence.noShowCount - previousWeek.noShowCount : null
+  const cancelledDifference = appointmentEvidence && previousWeek
+    ? appointmentEvidence.cancelledCount - previousWeek.cancelledCount : null
+  const signedDifference = (value: number) => (value > 0 ? '+' : '') + value.toLocaleString('en-UG')
   const layers = [
     {
       title: 'Performance overview',
@@ -323,6 +349,34 @@ export default function PracticeIntelligencePage() {
         <Link href="/settings" className="mt-4 inline-block text-sm font-semibold text-clinic-blue hover:underline">
           Manage goals in Settings
         </Link>
+      </section>
+
+      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5">
+        <h2 className="text-lg font-bold text-clinic-navy dark:text-white">Appointment trends — two recorded weeks</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-300">
+          The latest seven Kampala days compared with the seven days immediately before them. Changes describe recorded appointment statuses, not confirmed attendance or a forecast.
+        </p>
+        {summaryLoading ? <p className="mt-4 text-sm text-gray-500">Loading historical comparison…</p> :
+          previousAppointmentError || appointmentError ? <p className="mt-4 text-sm text-amber-700" role="alert">Historical comparison unavailable. No trend is estimated.</p> :
+          appointmentEvidence && previousWeek && bookedDifference !== null && noShowDifference !== null && cancelledDifference !== null ? (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-gray-100 p-4 dark:border-white/10">
+                <p className="text-xs text-gray-500">Booked visits</p>
+                <p className="mt-1 text-xl font-bold">{appointmentEvidence.bookedCount.toLocaleString('en-UG')}</p>
+                <p className="mt-1 text-xs text-gray-500">{signedDifference(bookedDifference)} versus prior week ({previousWeek.bookedCount})</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 p-4 dark:border-white/10">
+                <p className="text-xs text-gray-500">No-shows</p>
+                <p className="mt-1 text-xl font-bold">{appointmentEvidence.noShowCount.toLocaleString('en-UG')}</p>
+                <p className="mt-1 text-xs text-gray-500">{signedDifference(noShowDifference)} versus prior week ({previousWeek.noShowCount})</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 p-4 dark:border-white/10">
+                <p className="text-xs text-gray-500">Cancelled or rescheduled</p>
+                <p className="mt-1 text-xl font-bold">{appointmentEvidence.cancelledCount.toLocaleString('en-UG')}</p>
+                <p className="mt-1 text-xs text-gray-500">{signedDifference(cancelledDifference)} versus prior week ({previousWeek.cancelledCount})</p>
+              </div>
+            </div>
+          ) : <p className="mt-4 text-sm text-gray-500">No comparable appointment records available.</p>}
       </section>
 
       <div className="grid gap-4 md:grid-cols-2">
