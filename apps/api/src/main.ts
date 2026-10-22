@@ -543,11 +543,12 @@ runStartup().then(() => {
     checkLeadFollowUpOverdueAlerts().catch(err => console.error('[CrmLeadFollowUpOverdue] Scheduler error:', err))
   }, ONE_HOUR)
 
-  // Resolve missing Meta DM names and avatars in the backend, without any
-  // staff-facing button or outbound patient messages. At most ten per hour.
+  // Repair missing Meta DM identities in small bounded batches every ten minutes.
+  // The worker limits each pass to ten conversations, prevents overlapping runs,
+  // and never sends messages. Hourly batches delayed historical recovery for hours.
   setInterval(() => {
     refreshMissingMetaProfiles().catch(err => console.error('[MetaProfileRefresh] Tick failed:', err))
-  }, ONE_HOUR)
+  }, 10 * 60 * 1000)
 
   // Run once 2 minutes after startup (gives DB time to settle after migrations)
   setTimeout(() => {
