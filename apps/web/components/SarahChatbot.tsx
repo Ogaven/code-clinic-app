@@ -92,6 +92,8 @@ export default function SarahChatbot() {
     function onTouchMove(e: TouchEvent) {
       if (!dragging) return
       const t = e.touches[0]
+      if (!t) return
+      if (e.cancelable) e.preventDefault()
       setPos({ x: dragStart.current.bx + t.clientX - dragStart.current.mx, y: dragStart.current.by + t.clientY - dragStart.current.my })
       setHasMoved(true)
     }
@@ -294,7 +296,7 @@ export default function SarahChatbot() {
         </div>
       </div>
     )}
-    <div ref={bubbleRef} className={bubbleWrapClass} style={dragTransform} onMouseDown={onMouseDown} onTouchStart={onTouchStart}>
+    <div ref={bubbleRef} className={bubbleWrapClass} style={{ ...dragTransform, touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }} onMouseDown={onMouseDown} onTouchStart={onTouchStart}>
 
       {/* ── Chat Panel — desktop/tablet (xl+): small floating panel, unchanged ── */}
       {open && !minimised && (
