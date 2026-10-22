@@ -7,19 +7,12 @@ import {
   Plus, Calendar, Download, Users, TrendingUp, TrendingDown, ArrowUpRight,
   UserCheck, MessageSquareText, Phone,
 } from 'lucide-react'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList,
-} from 'recharts'
 import { cn, formatUGX, getGreeting, kampalaMonthToDateLabel } from '@/lib/utils'
 import { readTheme, applyTheme } from '@/lib/theme'
 import Avatar from '@/components/ui/Avatar'
 import InfoTooltip from '@/components/ui/InfoTooltip'
 
-// ── Everything below is real, live Code Clinic data reused from existing
-//    APIs — EXCEPT the Financial Snapshot, which uses explicitly
-//    user-approved placeholder figures (see "DEMO DATA" block) because the
-//    Accounts application isn't finished yet. Nothing here is written to
-//    the database and no Accounts API is touched. ──────────────────────────
+// Dashboard finance figures use recorded sources only; no demonstration balances.
 
 interface DashMetrics {
   totalPatients: number
@@ -200,16 +193,6 @@ function ChannelIconView({ icon, label }: { icon: ChannelIcon; label: string }) 
 // Themed Recharts tooltip content — rendered as real DOM (not inline SVG
 // paint), so it can use the app's existing .dark ancestor-class mechanism
 // via Tailwind dark: classes instead of a second theme system.
-function ChartTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-white/10 dark:bg-slate-800">
-      <p className="font-bold text-gray-700 dark:text-slate-200">{label}</p>
-      <p className="mt-0.5 font-medium text-gray-500 dark:text-slate-400">{formatUGX(payload[0].value)}</p>
-    </div>
-  )
-}
-
 function CompactCard({ title, action, children, className }: { title: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn('min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5', className)}>
@@ -424,32 +407,6 @@ export default function DashboardPage() {
   const displayName = isDoctor ? `Dr. ${name}` : name
   const m = dashData?.metrics
 
-  // ── DEMO DATA — explicitly approved by the user for this card only. The
-  // Accounts application isn't finished, so there's no reliable real
-  // Revenue/Expenses/Net Income source yet. NOT written to the database,
-  // NOT read from any Accounts API. Replace with real Accounts data once
-  // that module is ready. ─────────────────────────────────────────────────
-  // The most recent point deliberately equals the headline Revenue figure
-  // (58,320,000) — the chart is a Revenue trend, so its last bar must match
-  // the Revenue figure shown beside it. The other five are a sensible demo
-  // progression toward that same number. Month LABELS are derived from
-  // today's real date (rolling last 6 months, ending at the current month)
-  // so this never goes stale the way a hardcoded "Jan – Jun" did — verified
-  // 0 real Payment/Expense records exist in production (see accounts.ts's
-  // GET /accounts/dashboard, which aggregates those tables and would return
-  // all-zero revenue/expenses today), so there is no reliable real financial
-  // data to switch to yet; only the demo range's staleness is being fixed.
-  const financeNow = new Date()
-  const DEMO_REVENUE_PROGRESSION = [38_000_000, 41_200_000, 44_600_000, 48_900_000, 52_300_000, 58_320_000]
-  const financeMonthLabels = Array.from({ length: 6 }, (_, i) =>
-    new Date(financeNow.getFullYear(), financeNow.getMonth() - (5 - i), 1).toLocaleDateString('en-US', { month: 'short' }))
-  const DEMO_FINANCE = {
-    revenue: DEMO_REVENUE_PROGRESSION[5], expenses: 24_000_000, netIncome: 34_320_000,
-    trend: financeMonthLabels.map((month, i) => ({ month, revenue: DEMO_REVENUE_PROGRESSION[i] })),
-  }
-  // Demo-only growth badge — derived purely from the demo trend above, not real data.
-  const demoGrowthPct = Math.round(((DEMO_FINANCE.trend[5].revenue - DEMO_FINANCE.trend[0].revenue) / DEMO_FINANCE.trend[0].revenue) * 100)
-
   const weekCounts = WEEK_STATUSES.map(s => ({ ...s, count: (weekAppts ?? []).filter(a => a.status === s.key).length }))
   const weekTotal = weekAppts ? weekAppts.length : 0
   // Operational demand and attendance are different facts. Never treat future bookings
@@ -631,69 +588,42 @@ export default function DashboardPage() {
           </div>
         </Link>
 
-        {/* Financial Snapshot — DEMO DATA, see comment above. Custom header
-            (not CompactCard's) because the growth badge sits beside the
-            title, not as a lone top-right action like other cards. */}
-        <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <div className="mb-2.5 flex items-center justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Financial Snapshot</p>
-              {/* Loud, unmissable — unlike the small caption alone, this
-                  can't be scrolled past or missed at a glance. See DEMO_FINANCE
-                  comment above: Accounts isn't live yet, so nothing here may
-                  read as a real clinic balance. */}
-              <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700 dark:bg-amber-400/15 dark:text-amber-400">Demo Data</span>
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400"><TrendingUp size={9} />{demoGrowthPct}% (demo)</span>
-            </div>
-            <span className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 dark:border-white/10 dark:text-slate-300">{financeMonthLabels[0]} – {financeMonthLabels[5]}</span>
+        {/* Live, recorded activity only. Expenses and net income require a
+            separately verified ledger source; never infer them from invoices. */}
+        <div className="min-w-0 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-slate-200">Financial Snapshot — recorded activity</p>
+            <span className="text-[10px] text-gray-500">Kampala month to date</span>
           </div>
-          <div className="flex gap-4">
-            <div className="flex w-[28%] flex-shrink-0 flex-col justify-between">
-              <div className="space-y-2.5">
-                <div>
-                  <p className="text-xl font-extrabold leading-tight text-clinic-navy dark:text-white">{formatUGX(DEMO_FINANCE.revenue)}</p>
-                  <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Revenue</p>
-                </div>
-                <div>
-                  <p className="text-base font-bold leading-tight text-gray-700 dark:text-slate-200">{formatUGX(DEMO_FINANCE.expenses)}</p>
-                  <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Expenses</p>
-                </div>
-                <div>
-                  <p className="text-base font-bold leading-tight text-emerald-600 dark:text-emerald-400">{formatUGX(DEMO_FINANCE.netIncome)}</p>
-                  <p className="text-[10px] font-medium text-gray-500 dark:text-slate-400">Net Income</p>
-                </div>
+          {user?.role !== 'ADMIN' ? (
+            <p className="text-sm text-gray-500">Financial activity is available to clinic administrators.</p>
+          ) : practiceFinancial ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xl font-extrabold text-clinic-navy dark:text-white">{formatUGX(practiceFinancial.invoicedUGX)}</p>
+                <p className="text-xs text-gray-500">Invoiced (excluding drafts and cancellations)</p>
               </div>
-              <p className="text-[9px] text-gray-300 dark:text-white/20">Demo financial data</p>
+              <div>
+                <p className="text-xl font-extrabold text-clinic-navy dark:text-white">{formatUGX(practiceFinancial.collectedUGX)}</p>
+                <p className="text-xs text-gray-500">Payments collected</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-clinic-navy dark:text-white">
+                  {clinicalProduction ? formatUGX(clinicalProduction.netClinicalProductionUGX) : 'Unavailable'}
+                </p>
+                <p className="text-xs text-gray-500">Approved clinical production</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-gray-500">Not yet verified</p>
+                <p className="text-xs text-gray-500">Expenses and net income</p>
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={DEMO_FINANCE.trend} margin={{ top: 32, right: 4, left: 0, bottom: 0 }}>
-                  <CartesianGrid vertical={false} strokeDasharray="4 4" stroke={dark ? '#64748B' : '#94A3B8'} strokeOpacity={dark ? 0.3 : 0.25} />
-                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: dark ? '#CBD5E1' : '#6B7280', fontWeight: 600 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 9, fill: dark ? '#94A3B8' : '#9CA3AF', fontWeight: 600 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${Math.round(v / 1_000_000)}M`} width={30} />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: dark ? 'rgba(255,255,255,0.06)' : 'rgba(148,163,184,0.08)' }} />
-                  {/* Current month uses the Code Clinic brand cyan — bright
-                      enough to stay visible on both a white and a near-black
-                      card surface, unlike the previous fixed navy which
-                      nearly disappeared against the dark card background. */}
-                  <Bar dataKey="revenue" radius={[6, 6, 0, 0]} maxBarSize={36}>
-                    {DEMO_FINANCE.trend.map((_, i, arr) => <Cell key={i} fill={i === arr.length - 1 ? '#29ABE2' : (dark ? '#60A5FA' : '#93C5FD')} />)}
-                    <LabelList dataKey="revenue" content={(props: any) => {
-                      const { x, y, width, index, value } = props
-                      if (index !== DEMO_FINANCE.trend.length - 1) return null
-                      const cx = x + width / 2
-                      return (
-                        <g>
-                          <rect x={cx - 24} y={y - 24} width={48} height={19} rx={9.5} fill="#1A237E" />
-                          <text x={cx} y={y - 10.5} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#fff">{`${Math.round(value / 1_000_000)}M`}</text>
-                        </g>
-                      )
-                    }} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          ) : <p className="text-sm text-gray-500">
+            {practiceFinancialError ? 'Financial activity unavailable; no values are estimated.' : 'Loading recorded financial activity…'}
+          </p>}
+          <Link href="/practice-intelligence" className="mt-3 inline-block text-xs font-semibold text-cyan-700 dark:text-cyan-300">
+            View Practice Intelligence →
+          </Link>
         </div>
 
         {/* Growth & CRM — lifecycle and revenue are intentionally separate.

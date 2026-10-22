@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, BookOpen, Package,
   ListChecks, Inbox, Phone, Mic, AlertCircle,
   ShoppingCart, FileText, Layers, Building2, TrendingUp, Scale,
-  Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2, ScrollText, UserPlus, Shield,
+  Activity, ArrowLeftRight, FileCheck, Megaphone, Kanban, Share2, UserPlus,
   ClipboardList, BarChart2, HelpCircle, Zap, Clock, CalendarClock,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -48,9 +48,6 @@ const adminNav: NavGroup[] = [
       { label: 'Appointments', href: '/appointments', icon: ListChecks },
       { label: 'Waitlist',     href: '/waitlist',     icon: Clock },
       { label: 'Patients',     href: '/patients',     icon: Users, sub: PATIENTS_SUB },
-      { label: 'Staff List',        href: '/employees',             icon: UserCog },
-      { label: 'Staff Permissions', href: '/admin/staff/permissions', icon: Shield },
-      { label: 'Audit Log',         href: '/audit-log',              icon: ScrollText },
     ],
   },
   {
@@ -74,6 +71,7 @@ const adminNav: NavGroup[] = [
       { label: 'Campaigns',           href: '/campaigns',           icon: Megaphone },
       { label: 'Quiz Funnels',        href: '/quiz-funnels',        icon: HelpCircle },
       { label: 'Treatment Pipeline',  href: '/treatment-pipeline',  icon: Kanban },
+      { label: 'Practice Intelligence', href: '/practice-intelligence', icon: BarChart2 },
       { label: 'Referrals',           href: '/referrals',           icon: Share2 },
     ],
   },

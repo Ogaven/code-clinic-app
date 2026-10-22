@@ -15,6 +15,8 @@ import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../ai-suite/whatsapp/
 import { getGreetingName, toProper } from '../utils/nameHelper'
 import { prisma } from '../lib/prisma'
 import { isValidKampalaCalendarDate } from '../utils/practice-kampala-date'
+import { summarizeBookedIntervals } from '../utils/practice-appointment-metrics'
+import { availableMinutes, configuredShift, kampalaClockInstant } from '../utils/practice-capacity-metrics'
 import { logAudit } from '../services/audit.service'
 import { appointmentVisibleToUser, authenticatedDoctorId } from '../lib/doctor-access'
 import { deleteAppointmentPermanently } from '../services/appointment-delete.service'
@@ -1261,6 +1263,237 @@ router.post('/import-appointments', requireAuth, adminAndReceptionist, upload.si
 // GET  /scheduling/booking-settings → { allowOverlapping: boolean }
 // POST /scheduling/booking-settings → { allowOverlapping: boolean }
 
+// Read-only practice intelligence: booked appointment time, not dentist capacity.
+// Admin-only, bounded, no patient details returned and no existing calendar behavior changed.
+router.get('/practice-appointment-insights', requireAuth, adminOnly, async (req, res) => {
+  const dates = z.object({
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  }).safeParse(req.query)
+  if (!dates.success) return res.status(400).json({ error: 'Valid startDate and endDate required' })
+  const { startDate, endDate } = dates.data
+  if (!isValidKampalaCalendarDate(startDate) || !isValidKampalaCalendarDate(endDate) || startDate > endDate) {
+    return res.status(400).json({ error: 'Invalid Kampala calendar date range' })
+  }
+  const start = new Date(startDate + 'T00:00:00+03:00')
+  const end = new Date(endDate + 'T00:00:00+03:00')
+  end.setUTCDate(end.getUTCDate() + 1)
+  if (end.getTime() - start.getTime() > 7 * 86400000) {
+    return res.status(400).json({ error: 'Maximum reporting range is 7 days' })
+  }
+  try {
+    const appointments = await prisma.appointment.findMany({
+      where: { startAt: { lt: end }, endAt: { gt: start } },
+      select: { doctorId: true, startAt: true, endAt: true, status: true },
+    })
+    const excluded = new Set(['CANCELLED', 'CANCELLED_RESCHEDULED', 'RESCHEDULED', 'NO_SHOW', 'IMPORTED'])
+    const bookedIntervals: Array<{ doctorId: string; startAt: Date; endAt: Date }> = []
+    let bookedMinutes = 0
+    let bookedCount = 0
+    let cancelledCount = 0
+    let noShowCount = 0
+    let importedCount = 0
+    let invalidDurationCount = 0
+    for (const appointment of appointments) {
+      if (appointment.status === 'IMPORTED') { importedCount++; continue }
+      if (appointment.status === 'NO_SHOW') { noShowCount++; continue }
+      if (appointment.status === 'CANCELLED' || appointment.status === 'CANCELLED_RESCHEDULED' || appointment.status === 'RESCHEDULED') {
+        cancelledCount++; continue
+      }
+      if (excluded.has(appointment.status)) continue
+      const minutes = (Math.min(appointment.endAt.getTime(), end.getTime()) -
+        Math.max(appointment.startAt.getTime(), start.getTime())) / 60000
+      if (!Number.isFinite(minutes) || minutes <= 0) { invalidDurationCount++; continue }
+      bookedCount++
+      bookedMinutes += minutes
+      bookedIntervals.push({ doctorId: appointment.doctorId, startAt: appointment.startAt, endAt: appointment.endAt })
+    }
+    const occupancy = summarizeBookedIntervals(bookedIntervals, start, end)
+    res.json({
+      startDate, endDate, bookedCount, bookedMinutes: Math.round(bookedMinutes),
+      uniqueBookedMinutes: occupancy.uniqueBookedMinutes, overlappingMinutes: occupancy.overlappingMinutes,
+      cancelledCount, noShowCount, importedCount, invalidDurationCount,
+      capacityMinutes: null, utilizationPercent: null,
+      basis: 'SCHEDULED_APPOINTMENT_MINUTES',
+      disclaimer: 'Booked minutes are summed per appointment, excluding cancelled, no-show and imported records. Unique booked minutes deduplicate overlapping bookings for the same dentist. Dentist availability and capacity have not yet been validated; this is not a utilization percentage.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to calculate appointment insights' })
+  }
+})
+
+// Capacity readiness audit: a complete doctor schedule is a prerequisite for
+// trustworthy utilization. This endpoint intentionally does not guess hours
+// from generic clinic opening times or appointment counts.
+router.get('/practice-capacity-readiness', requireAuth, adminOnly, async (_req, res) => {
+  try {
+    const [doctors, schedules, blockedTimeCount, specialDayCount] = await Promise.all([
+      prisma.doctor.findMany({ where: { isActive: true }, select: { id: true } }),
+      prisma.doctorSchedule.findMany({ select: {
+        doctorId: true, dayOfWeek: true, isOpen: true, openTime: true, closeTime: true, breaks: true, slots: true,
+      } }),
+      prisma.blockedTime.count(),
+      prisma.specialDay.count(),
+    ])
+    const activeIds = new Set(doctors.map(doctor => doctor.id))
+    const byDoctor = new Map<string, typeof schedules>()
+    for (const schedule of schedules) {
+      if (!activeIds.has(schedule.doctorId)) continue
+      const existing = byDoctor.get(schedule.doctorId) ?? []
+      existing.push(schedule)
+      byDoctor.set(schedule.doctorId, existing)
+    }
+    const clock = /^([01]\d|2[0-3]):[0-5]\d$/
+    const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
+    let incompleteDoctorCount = 0
+    let incompleteDayCount = 0
+    for (const doctor of doctors) {
+      const days = byDoctor.get(doctor.id) ?? []
+      let incomplete = false
+      const seen = new Set<number>()
+      for (const day of days) {
+        seen.add(day.dayOfWeek)
+        if (!day.isOpen) continue
+        if (!day.openTime || !day.closeTime || !clock.test(day.openTime) ||
+            !clock.test(day.closeTime) || minutes(day.closeTime) <= minutes(day.openTime) ||
+            !Array.isArray(day.breaks) ||
+            (Array.isArray(day.slots) && day.slots.length > 0) ||
+            (day.slots !== null && !Array.isArray(day.slots))) {
+          incompleteDayCount++
+          incomplete = true
+        }
+      }
+      // Seven explicit day definitions are required to distinguish closed
+      // days from missing configuration. Missing days are never assumed open.
+      const missing = 7 - seen.size
+      if (missing > 0) {
+        incompleteDayCount += missing
+        incomplete = true
+      }
+      if (incomplete) incompleteDoctorCount++
+    }
+    res.json({
+      activeDoctorCount: doctors.length,
+      doctorsWithCompleteSchedules: doctors.length - incompleteDoctorCount,
+      doctorsWithIncompleteSchedules: incompleteDoctorCount,
+      incompleteDayCount, recordedBlockedTimeCount: blockedTimeCount,
+      recordedSpecialDayCount: specialDayCount,
+      capacityMinutes: null, utilizationPercent: null,
+      basis: 'SCHEDULE_CONFIGURATION_READINESS',
+      disclaimer: 'Readiness requires explicit per-doctor day configurations, valid break arrays and no unsupported advanced slot restrictions. This is a configuration audit, not a calculation of available minutes, attendance or utilization.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to audit schedule readiness' })
+  }
+})
+
+// Conservative, read-only capacity by doctor and day. A missing schedule,
+// malformed break, or unrecognized special-day rule yields null capacity rather
+// than a fabricated utilization percentage. Only fully configured schedules
+// participate; appointment counts are not substituted for clinical minutes.
+router.get('/practice-capacity-summary', requireAuth, adminOnly, async (req, res) => {
+  const dates = z.object({
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  }).safeParse(req.query)
+  if (!dates.success) return res.status(400).json({ error: 'Valid dates required' })
+  const { startDate, endDate } = dates.data
+  if (!isValidKampalaCalendarDate(startDate) || !isValidKampalaCalendarDate(endDate) || startDate > endDate) {
+    return res.status(400).json({ error: 'Invalid Kampala calendar date range' })
+  }
+  const start = new Date(startDate + 'T00:00:00+03:00')
+  const end = new Date(endDate + 'T00:00:00+03:00')
+  end.setUTCDate(end.getUTCDate() + 1)
+  if (end.getTime() - start.getTime() > 7 * 86400000) return res.status(400).json({ error: 'Maximum reporting range is 7 days' })
+  try {
+    const [doctors, schedules, blocks, specialDays] = await Promise.all([
+      prisma.doctor.findMany({ where: { isActive: true }, select: { id: true } }),
+      prisma.doctorSchedule.findMany({ select: {
+        doctorId: true, dayOfWeek: true, isOpen: true, openTime: true, closeTime: true, breaks: true, slots: true,
+      } }),
+      prisma.blockedTime.findMany({ where: { startAt: { lt: end }, endAt: { gt: start } },
+        select: { doctorId: true, startAt: true, endAt: true } }),
+      // SpecialDay is stored as UTC-midnight YYYY-MM-DD, unlike Kampala-local appointment instants.
+      // Query UTC calendar labels so the first day's closure is never silently missed.
+      prisma.specialDay.findMany({ where: { date: {
+        gte: new Date(startDate + 'T00:00:00.000Z'),
+        lt: new Date(new Date(endDate + 'T00:00:00.000Z').getTime() + 86400000),
+      } }, select: { date: true, type: true, openTime: true, closeTime: true } }),
+    ])
+    const scheduleByDoctor = new Map<string, typeof schedules>()
+    for (const schedule of schedules) {
+      const rows = scheduleByDoctor.get(schedule.doctorId) ?? []
+      rows.push(schedule)
+      scheduleByDoctor.set(schedule.doctorId, rows)
+    }
+    let available = 0
+    let excludedDoctorDays = 0
+    let includedDoctorDays = 0
+    let dayCursor = start.getTime()
+    while (dayCursor < end.getTime()) {
+      // Kampala midnight is 21:00 UTC on the preceding date.
+      const day = new Date(dayCursor + 3 * 3600000).toISOString().slice(0, 10)
+      const dayOfWeek = new Date(day + 'T12:00:00Z').getUTCDay()
+      const dayStart = dayCursor
+      const dayEnd = dayCursor + 86400000
+      const special = specialDays.find(d => d.date.toISOString().slice(0, 10) === day)
+      for (const doctor of doctors) {
+        const rows = scheduleByDoctor.get(doctor.id) ?? []
+        const schedule = rows.find(row => row.dayOfWeek === dayOfWeek)
+        // Clinic-wide closures override missing or incomplete doctor schedules.
+        if (special?.type === 'DAY_OFF') {
+          includedDoctorDays++
+          continue
+        }
+        if (!schedule || (special && special.type !== 'DAY_OFF')) {
+          excludedDoctorDays++
+          continue
+        }
+        if (!schedule.isOpen) {
+          includedDoctorDays++
+          continue
+        }
+        const shift = configuredShift(day, schedule.openTime, schedule.closeTime)
+        // Advanced per-doctor slot restrictions cannot be treated as a full shift.
+        // Do not overstate availability until their semantics are modeled.
+        if (!shift || !Array.isArray(schedule.breaks) ||
+            (Array.isArray(schedule.slots) && schedule.slots.length > 0) ||
+            (schedule.slots !== null && !Array.isArray(schedule.slots))) {
+          excludedDoctorDays++
+          continue
+        }
+        const unavailable = blocks.filter(b => b.doctorId === doctor.id).map(b => ({
+          start: b.startAt.getTime(), end: b.endAt.getTime(),
+        }))
+        let valid = true
+        for (const item of schedule.breaks) {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) { valid = false; break }
+          const value = item as Record<string, unknown>
+          const breakStart = typeof value.start === 'string' ? kampalaClockInstant(day, value.start) : null
+          const breakEnd = typeof value.end === 'string' ? kampalaClockInstant(day, value.end) : null
+          if (breakStart === null || breakEnd === null || breakEnd <= breakStart) { valid = false; break }
+          unavailable.push({ start: breakStart, end: breakEnd })
+        }
+        if (!valid) { excludedDoctorDays++; continue }
+        available += availableMinutes([{ start: Math.max(shift.start, dayStart), end: Math.min(shift.end, dayEnd) }], unavailable)
+        includedDoctorDays++
+      }
+      dayCursor += 86400000
+    }
+    res.json({
+      startDate, endDate, activeDoctorCount: doctors.length,
+      includedDoctorDays, excludedDoctorDays,
+      availableMinutes: doctors.length > 0 && excludedDoctorDays === 0 ? available : null,
+      partialKnownAvailableMinutes: available,
+      utilizationPercent: null,
+      basis: 'CONFIGURED_DOCTOR_TIME_MINUS_RECORDED_BLOCKS',
+      disclaimer: 'Capacity excludes configured breaks, recorded blocked times and clinic-wide DAY_OFF exceptions. Unknown schedules, advanced slot restrictions or special-working-day rules make total capacity unavailable. This is configured availability, not confirmed attendance. Utilization is not calculated.',
+    })
+  } catch {
+    res.status(500).json({ error: 'Unable to calculate configured clinical capacity' })
+  }
+})
+
 // Manager-controlled production targets are separate from appointment-volume capacity.
 // Values are stored in existing app_settings; no migration or patient write required.
 const practiceGoalSchema = z.object({
@@ -1472,7 +1705,7 @@ router.get('/practice-doctor-schedule-minutes', requireAuth, adminOnly, async (r
   }
   const weekday = new Date(parsed.data.date + 'T12:00:00+03:00').getUTCDay()
   const minutes = (value: unknown): number | null => {
-    if (typeof value !== 'string' || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(value)) return null
+    if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return null
     const [hour, minute] = value.split(':').map(Number)
     return hour * 60 + minute
   }
@@ -1566,7 +1799,7 @@ router.get('/practice-scheduled-block-overlap', requireAuth, adminOnly, async (r
   const end = new Date(start.getTime() + 86_400_000)
   const weekday = new Date(parsed.data.date + 'T12:00:00+03:00').getUTCDay()
   const clock = (value: unknown): number | null => {
-    if (typeof value !== 'string' || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(value)) return null
+    if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return null
     const [h, m] = value.split(':').map(Number)
     return h * 60 + m
   }
