@@ -225,8 +225,6 @@ export default function DashboardPage() {
   const [practiceFinancial, setPracticeFinancial] = useState<{ invoicedUGX: number; collectedUGX: number; invoicesCount: number; paymentsCount: number } | null>(null)
   const [practiceFinancialError, setPracticeFinancialError] = useState(false)
   const [clinicalProduction, setClinicalProduction] = useState<{ netClinicalProductionUGX: number; deliveryCount: number; reversalCount: number; adjustmentCount: number } | null>(null)
-  const [clinicalProductionError, setClinicalProductionError] = useState(false)
-  const [pendingProductionCount, setPendingProductionCount] = useState<number | null>(null)
   const [satisfaction, setSatisfaction] = useState<SatisfactionSummary | null>(null)
   const [googleRating, setGoogleRating] = useState<{ averageRating: number; totalReviewCount: number } | null>(null)
   const [growthPeriod, setGrowthPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month')
@@ -384,11 +382,7 @@ export default function DashboardPage() {
     fetch('/api-proxy/clinical-production/summary?' + query.toString(), { headers: { Authorization: 'Bearer ' + token } })
       .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json() })
       .then(data => { if (!cancelled) setClinicalProduction(data) })
-      .catch(() => { if (!cancelled) setClinicalProductionError(true) })
-    fetch('/api-proxy/clinical-production/entries/pending', { headers: { Authorization: 'Bearer ' + token } })
-      .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json() })
-      .then(data => { if (!cancelled) setPendingProductionCount(Array.isArray(data.entries) ? data.entries.length : null) })
-      .catch(() => { if (!cancelled) setPendingProductionCount(null) })
+      .catch(() => { if (!cancelled) setClinicalProduction(null) })
     return () => { cancelled = true }
   }, [user?.role])
 
@@ -531,27 +525,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {user?.role === 'ADMIN' && (
-        <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-bold text-clinic-navy dark:text-white">Actual financial activity — month to date</h3>
-              <p className="text-xs text-gray-500">Invoices, payments and staff-recorded treatment delivery are separate measures (Kampala).</p>
-              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{pendingProductionCount === null ? "Approval queue unavailable" : `${pendingProductionCount}${pendingProductionCount === 100 ? "+" : ""} entries awaiting review`}</p>
-              <Link href="/clinical-production" className="mt-1 inline-block text-xs font-semibold text-cyan-700 dark:text-cyan-300">Review clinical production entries →</Link>
-            </div>
-            <Link href="/settings" className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">Manage production goals</Link>
-          </div>
-          {practiceFinancial ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div><p className="text-xs text-gray-500">Invoiced (excluding drafts/cancellations)</p><p className="text-lg font-bold">{formatUGX(practiceFinancial.invoicedUGX)}</p><p className="text-xs text-gray-400">{practiceFinancial.invoicesCount} invoices</p></div>
-              <div><p className="text-xs text-gray-500">Payments collected</p><p className="text-lg font-bold">{formatUGX(practiceFinancial.collectedUGX)}</p><p className="text-xs text-gray-400">{practiceFinancial.paymentsCount} payments</p></div>
-              <div><p className="text-xs text-gray-500">Staff-recorded clinical production</p>{clinicalProduction ? <><p className="text-lg font-bold">{formatUGX(clinicalProduction.netClinicalProductionUGX)}</p><p className="text-xs text-gray-400">{clinicalProduction.deliveryCount} deliveries · {clinicalProduction.reversalCount} reversals · {clinicalProduction.adjustmentCount} adjustments</p></> : <><p className="text-sm font-semibold text-amber-600">Unavailable</p><p className="text-xs text-gray-400">{clinicalProductionError ? 'Ledger reporting is unavailable' : 'Loading ledger records…'}; not inferred from invoices or collections</p></>}</div>
-            </div>
-          ) : <p className="text-sm text-gray-500">{practiceFinancialError ? 'Financial activity unavailable; no figures are being estimated.' : 'Loading recorded financial activity…'}</p>}
-        </section>
-      )}
-
       {/* ═══ ROW 2 — Patient Satisfaction | Financial Snapshot | CRM Growth ═══ */}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[0.85fr_1.6fr_0.85fr]">
 
@@ -598,22 +571,22 @@ export default function DashboardPage() {
           {user?.role !== 'ADMIN' ? (
             <p className="text-sm text-gray-500">Financial activity is available to clinic administrators.</p>
           ) : practiceFinancial ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                 <p className="text-xl font-extrabold text-clinic-navy dark:text-white">{formatUGX(practiceFinancial.invoicedUGX)}</p>
                 <p className="text-xs text-gray-500">Invoiced (excluding drafts and cancellations)</p>
               </div>
-              <div>
+              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                 <p className="text-xl font-extrabold text-clinic-navy dark:text-white">{formatUGX(practiceFinancial.collectedUGX)}</p>
                 <p className="text-xs text-gray-500">Payments collected</p>
               </div>
-              <div>
+              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                 <p className="text-lg font-bold text-clinic-navy dark:text-white">
                   {clinicalProduction ? formatUGX(clinicalProduction.netClinicalProductionUGX) : 'Unavailable'}
                 </p>
                 <p className="text-xs text-gray-500">Approved clinical production</p>
               </div>
-              <div>
+              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
                 <p className="text-lg font-bold text-gray-500">Not yet verified</p>
                 <p className="text-xs text-gray-500">Expenses and net income</p>
               </div>
@@ -621,8 +594,8 @@ export default function DashboardPage() {
           ) : <p className="text-sm text-gray-500">
             {practiceFinancialError ? 'Financial activity unavailable; no values are estimated.' : 'Loading recorded financial activity…'}
           </p>}
-          <Link href="/practice-intelligence" className="mt-3 inline-block text-xs font-semibold text-cyan-700 dark:text-cyan-300">
-            View Practice Intelligence →
+          <Link href="/practice-intelligence" className="mt-4 inline-flex rounded-lg bg-clinic-navy px-4 py-2 text-xs font-semibold text-white hover:opacity-90">
+            Open AI Practice Intelligence →
           </Link>
         </div>
 

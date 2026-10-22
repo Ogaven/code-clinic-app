@@ -42,7 +42,7 @@ const NAV: NavLink[] = [
   { label: 'Billing', children: [
     { label: 'Stocks', href: '/stocks' },
   ] },
-  { label: 'Practice Intelligence', href: '/practice-intelligence' },
+  { label: 'AI Practice Intelligence', href: '/practice-intelligence' },
   { label: 'AI Suite', children: [
     { label: 'Conversations', href: '/ai-suite/inbox' }, { label: 'Knowledge Base', href: '/ai-suite/knowledge-base' },
     { label: 'Escalations', href: '/ai-suite/escalations' }, { label: 'Follow-ups', href: '/ai-suite/followup-dashboard' },
