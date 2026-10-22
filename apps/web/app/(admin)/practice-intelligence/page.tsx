@@ -208,6 +208,11 @@ export default function PracticeIntelligencePage() {
       ? [{ priority: 'Next — attendance review', label: 'Review cancellations and no-shows', href: '/scheduling', reason: 'Check recorded appointment statuses and confirmation history before attributing causes.' }]
       : []),
   ]
+  // The existing CRM queue contains lead follow-ups, not appointment-specific
+  // tasks. Link it only as an adjacent staff review workspace.
+  const crmReviewAction = appointmentEvidence && (appointmentEvidence.cancelledCount > 0 || appointmentEvidence.noShowCount > 0)
+    ? { label: 'Review existing CRM lead follow-ups', href: '/crm/follow-ups', reason: 'Check whether related lead follow-up work is already tracked. This queue does not automatically include these appointments.' }
+    : null
   const comparisonSignal = appointmentEvidence && previousWeek
     ? `Compared with the preceding seven days: booked visits ${signedDifference(bookedDifference ?? 0)}, no-shows ${signedDifference(noShowDifference ?? 0)}, cancelled or rescheduled ${signedDifference(cancelledDifference ?? 0)}. These are changes in recorded statuses, not established causes.`
     : null
@@ -289,6 +294,13 @@ export default function PracticeIntelligencePage() {
           </ul>
         ) : <p className="mt-3 text-sm text-gray-500">{appointmentEvidence ? 'No flagged signals in the available records.' : 'Waiting for verified appointment records.'}</p>}
         {comparisonSignal ? <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">{comparisonSignal}</p> : null}
+        {crmReviewAction ? (
+          <div className="mt-4 rounded-xl border border-gray-100 p-3 dark:border-white/10">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Related CRM review — not an appointment task</p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{crmReviewAction.reason}</p>
+            <Link href={crmReviewAction.href} className="mt-2 inline-block text-sm font-semibold text-clinic-blue hover:underline">{crmReviewAction.label} →</Link>
+          </div>
+        ) : null}
         {investigationActions.length > 0 ? (
           <div className="mt-5 space-y-3">
             <h3 className="text-sm font-semibold text-clinic-navy dark:text-white">Staff-reviewed next steps</h3>
