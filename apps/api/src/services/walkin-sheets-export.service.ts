@@ -38,7 +38,8 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
   const metadata = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID, fields: 'sheets(properties(sheetId,title))' }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS })
   const title = metadata.data.sheets?.find(sheet => sheet.properties?.sheetId === SHEET_GID)?.properties?.title
   if (!title) throw new Error('Walk-in worksheet gid not found; refusing to write to another tab')
-  const range = `'${title.replace(/'/g, "''")}'!A:Q`
+  const quotedTitle = `'${title.replace(/'/g, "''")}'`
+  const range = `${quotedTitle}!A:AC`
   // Repair activities saved by the intake fallback when the outbox table
   // was temporarily unavailable. These are explicitly marked events only;
   // do not backfill unrelated or historical patient activities.
@@ -110,17 +111,37 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
           prisma.patient.findUnique({ where: { id: task.patientId } }),
         ])
         if (!activity || !patient) throw new Error('Referenced intake activity or patient not found')
-        await sheets.spreadsheets.values.append({
-          spreadsheetId: SPREADSHEET_ID, range, valueInputOption: 'RAW',
-          insertDataOption: 'INSERT_ROWS',
-          // Match existing Google Form Responses 2 columns without rewriting
-          // legacy rows. Column Q is an explicitly reserved dedupe key.
-          requestBody: { values: [[
-            activity.createdAt.toISOString(), cell(patient.lastName), cell(patient.firstName),
-            cell(patient.phone), '', cell(patient.email), cell(patient.address), '',
-            cell(patient.referralSource), '', '', '', cell(patient.nextOfKinPhone),
-            '', '', '', task.activityId,
-          ]] },
+        // values.append performs table detection and can start at the wrong
+        // column in this historical Google Forms worksheet. Address A:Q
+        // explicitly instead, below the last occupied row across A:AC.
+        const lastOccupiedRow = rows.reduce((last, row, index) =>
+          row.some(value => String(value ?? '').trim() !== '') ? index + 1 : last, 0)
+        const targetRow = Math.max(2, lastOccupiedRow + 1)
+        const grid = await sheets.spreadsheets.get({
+          spreadsheetId: SPREADSHEET_ID, fields: 'sheets(properties(sheetId,gridProperties(rowCount)))',
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS })
+        const rowCount = grid.data.sheets?.find(sheet => sheet.properties?.sheetId === SHEET_GID)?.properties?.gridProperties?.rowCount ?? 0
+        if (targetRow > rowCount) {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: SPREADSHEET_ID,
+            requestBody: { requests: [{ appendDimension: {
+              sheetId: SHEET_GID, dimension: 'ROWS', length: targetRow - rowCount,
+            } }] },
+          }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS })
+        }
+        const dob = patient.dob instanceof Date && !Number.isNaN(patient.dob.getTime())
+          ? patient.dob.toISOString().slice(0, 10) : ''
+        const kin = [patient.nextOfKinName, patient.nextOfKinRelation].filter(Boolean).join(' — ')
+        const values = [[
+          activity.createdAt.toISOString(), cell(patient.lastName), cell(patient.firstName),
+          cell(patient.phone), dob, cell(patient.email), cell(patient.address), '',
+          cell(patient.referralSource), cell(kin), '', '', cell(patient.nextOfKinPhone),
+          '', '', dob, task.activityId,
+        ]]
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `${quotedTitle}!A${targetRow}:Q${targetRow}`,
+          valueInputOption: 'RAW', requestBody: { values },
         }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS })
       }
       await prisma.walkInSheetOutbox.update({ where: { id: task.id }, data: { status: 'EXPORTED', exportedAt: new Date(), lastError: null } })
