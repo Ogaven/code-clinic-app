@@ -108,7 +108,7 @@ export default function PracticeIntelligenceReviewsPage() {
         </p>
       </div>
       {error && <p role="alert" className="rounded-xl border border-amber-300 p-3 text-sm text-amber-800 dark:text-amber-300">{error}</p>}
-      {loading ? <p>Loading recommendations…</p> : tasks.length === 0 ? (
+      {loading ? <p>Loading recommendations…</p> : error ? <p className="rounded-xl border p-5 text-sm text-gray-600 dark:text-gray-300">Review data is temporarily unavailable. Please retry after the service is restored.</p> : tasks.length === 0 ? (
         <p className="rounded-xl border p-5 text-sm text-gray-600 dark:text-gray-300">No recommendations have been submitted for review. Findings in the dashboard are not automatically tasks.</p>
       ) : (
         <div className="space-y-3">
