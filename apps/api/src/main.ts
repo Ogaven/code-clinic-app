@@ -591,7 +591,7 @@ runStartup().then(() => {
       catch (error) { logger.error({ error }, 'Walk-in Google Sheets export failed') }
       finally { running = false }
     }
-    setInterval(() => { void tick() }, 60_000)
+    setInterval(() => { void tick() }, 10_000)
     void tick()
   }
 
