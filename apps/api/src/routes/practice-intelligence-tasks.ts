@@ -110,11 +110,11 @@ router.post('/recommendations/:id/assign', requireAuth, adminOnly, async (req, r
     res.status(400).json({ error: 'Valid staff ID or null required' }); return
   }
   try {
-    const assignee = await prisma.user.findFirst({
+    const assignee = assignedToId === null ? null : await prisma.user.findFirst({
       where: { id: assignedToId, isActive: true, role: { in: ['ADMIN', 'DOCTOR', 'RECEPTIONIST'] } },
       select: { id: true },
     })
-    if (!assignee) { res.status(400).json({ error: 'Eligible active staff member not found' }); return }
+    if (assignedToId !== null && !assignee) { res.status(400).json({ error: 'Eligible active staff member not found' }); return }
     const result = await prisma.$transaction(async tx => {
       const task = await tx.task.findFirst({
         where: { id: req.params.id, entityType: 'PRACTICE_INTELLIGENCE', approvalStatus: { in: ['PENDING_REVIEW', 'APPROVED'] } },
