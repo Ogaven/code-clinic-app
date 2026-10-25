@@ -50,5 +50,12 @@ jobs:
           else
             echo 'DEDUPE_MIGRATION_MENTIONED=NO'
           fi
+          # Only expose migration identifiers, never raw output, URLs or SQL data.
+          printf '%s\\n' "$output" | grep -E '^[[:space:]]*20[0-9]{12}_[a-zA-Z0-9_]+[[:space:]]*
+          REMOTE
+ | sed -E 's/^[[:space:]]*/PENDING_MIGRATION=/' || true
+          echo "PENDING_MIGRATION_COUNT=$(printf '%s\\n' "$output" | grep -Ec '^[[:space:]]*20[0-9]{12}_[a-zA-Z0-9_]+[[:space:]]*
+          REMOTE
+ || true)"
           # Do not print raw migration output: it may contain sensitive connection details.
           REMOTE
