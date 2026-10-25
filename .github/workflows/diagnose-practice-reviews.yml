@@ -24,19 +24,31 @@ jobs:
           cd /var/www/codeclinic || exit 1
           output=$(packages/database/node_modules/.bin/prisma migrate status --schema=packages/database/prisma/schema.prisma 2>&1)
           result=$?
+          echo "PRISMA_EXIT_CODE=$result"
+          # Prisma prints the heading and pending migration names on separate lines.
+          # Match complete output, not a single-line 'following migration.*not yet' regex.
           if [ "$result" -eq 0 ]; then
             echo 'MIGRATION_STATUS=UP_TO_DATE'
-          elif printf '%s' "$output" | grep -qi 'following migration.*not yet been applied\|pending migrations'; then
+          elif printf '%s' "$output" | grep -Eqi 'not yet been applied|pending migrations|have not been applied'; then
             echo 'MIGRATION_STATUS=PENDING'
-          elif printf '%s' "$output" | grep -qi 'diverged\|failed migration'; then
+          elif printf '%s' "$output" | grep -Eqi 'diverged|failed migration|migration history'; then
             echo 'MIGRATION_STATUS=DIVERGED_OR_FAILED'
+          elif printf '%s' "$output" | grep -Eqi 'P1001|P1002|P1017|can.t reach database|connection refused|connection timed out'; then
+            echo 'MIGRATION_STATUS=CONNECTION_ERROR'
+          elif printf '%s' "$output" | grep -Eqi 'P1010|P1000|authentication failed|access denied'; then
+            echo 'MIGRATION_STATUS=AUTH_ERROR'
           else
-            echo 'MIGRATION_STATUS=UNKNOWN_OR_CONNECTION_ERROR'
+            echo 'MIGRATION_STATUS=UNKNOWN'
           fi
           if printf '%s' "$output" | grep -q '20261022130000_task_approval_metadata'; then
             echo 'APPROVAL_METADATA_MIGRATION_MENTIONED=YES'
           else
             echo 'APPROVAL_METADATA_MIGRATION_MENTIONED=NO'
+          fi
+          if printf '%s' "$output" | grep -q '20261022160000_practice_intelligence_pending_dedupe'; then
+            echo 'DEDUPE_MIGRATION_MENTIONED=YES'
+          else
+            echo 'DEDUPE_MIGRATION_MENTIONED=NO'
           fi
           # Do not print raw migration output: it may contain sensitive connection details.
           REMOTE
