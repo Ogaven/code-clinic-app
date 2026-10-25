@@ -1,0 +1,42 @@
+name: Diagnose AI recommendation review database
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-practice-reviews.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connect and check migration state without modifying data
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 46.101.255.243 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -o BatchMode=yes root@46.101.255.243 'bash -s' <<'REMOTE'
+          set -u
+          cd /var/www/codeclinic || exit 1
+          output=$(packages/database/node_modules/.bin/prisma migrate status --schema=packages/database/prisma/schema.prisma 2>&1)
+          result=$?
+          if [ "$result" -eq 0 ]; then
+            echo 'MIGRATION_STATUS=UP_TO_DATE'
+          elif printf '%s' "$output" | grep -qi 'following migration.*not yet been applied\|pending migrations'; then
+            echo 'MIGRATION_STATUS=PENDING'
+          elif printf '%s' "$output" | grep -qi 'diverged\|failed migration'; then
+            echo 'MIGRATION_STATUS=DIVERGED_OR_FAILED'
+          else
+            echo 'MIGRATION_STATUS=UNKNOWN_OR_CONNECTION_ERROR'
+          fi
+          if printf '%s' "$output" | grep -q '20261022130000_task_approval_metadata'; then
+            echo 'APPROVAL_METADATA_MIGRATION_MENTIONED=YES'
+          else
+            echo 'APPROVAL_METADATA_MIGRATION_MENTIONED=NO'
+          fi
+          # Do not print raw migration output: it may contain sensitive connection details.
+          REMOTE
