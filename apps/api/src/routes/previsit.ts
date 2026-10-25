@@ -178,7 +178,7 @@ router.post('/submit', async (req, res) => {
               userId:    'pre-visit-form',
               userName:  'Pre-Visit Form (Self-Service)',
               action:    'Submitted walk-in intake form',
-              metadata:  JSON.stringify({ outcome, conflicts, note: note || undefined }),
+              metadata:  JSON.stringify({ outcome, conflicts, note: note || undefined, intakeSnapshot: { firstName, lastName, phone, dob, email, address, referralSource, nextOfKinName, nextOfKinPhone, nextOfKinRelation, chiefComplaint, referredByContact } }),
             },
           })
           await tx.walkInSheetOutbox.create({
@@ -195,7 +195,7 @@ router.post('/submit', async (req, res) => {
             userId: 'pre-visit-form',
             userName: 'Pre-Visit Form (Self-Service)',
             action: 'Submitted walk-in intake form',
-            metadata: JSON.stringify({ outcome, conflicts, note: note || undefined, sheetExportPendingReconciliation: true }),
+            metadata: JSON.stringify({ outcome, conflicts, note: note || undefined, intakeSnapshot: { firstName, lastName, phone, dob, email, address, referralSource, nextOfKinName, nextOfKinPhone, nextOfKinRelation, chiefComplaint, referredByContact }, sheetExportPendingReconciliation: true }),
           },
         }).catch(error => console.error('[PreVisit] Walk-in activity fallback failed:', error))
       }
