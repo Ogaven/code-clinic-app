@@ -129,14 +129,21 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
             } }] },
           }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS })
         }
+        let snapshot: Record<string, unknown> = {}
+        try {
+          const metadata = JSON.parse(activity.metadata || '{}')
+          if (metadata.intakeSnapshot && typeof metadata.intakeSnapshot === 'object') snapshot = metadata.intakeSnapshot
+        } catch { /* Historical activity without structured metadata */ }
+        const submitted = (key: string, fallback: unknown): unknown =>
+          Object.prototype.hasOwnProperty.call(snapshot, key) ? snapshot[key] : fallback
         const dob = patient.dob instanceof Date && !Number.isNaN(patient.dob.getTime())
           ? patient.dob.toISOString().slice(0, 10) : ''
-        const kin = [patient.nextOfKinName, patient.nextOfKinRelation].filter(Boolean).join(' — ')
+        const kin = [submitted('nextOfKinName', patient.nextOfKinName), submitted('nextOfKinRelation', patient.nextOfKinRelation)].filter(Boolean).join(' — ')
         const values = [[
-          activity.createdAt.toISOString(), cell(patient.lastName), cell(patient.firstName),
-          cell(patient.phone), dob, cell(patient.email), cell(patient.address), '',
-          cell(patient.referralSource), cell(kin), '', '', cell(patient.nextOfKinPhone),
-          '', '', dob, task.activityId,
+          new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Kampala', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(activity.createdAt).replace(',', ''), cell(submitted('lastName', patient.lastName)), cell(submitted('firstName', patient.firstName)),
+          cell(submitted('phone', patient.phone)), cell(submitted('dob', dob)), cell(submitted('email', patient.email)), cell(submitted('address', patient.address)), cell(submitted('chiefComplaint', '')),
+          cell(submitted('referralSource', patient.referralSource)), cell(kin), '', '', cell(submitted('nextOfKinPhone', patient.nextOfKinPhone)),
+          cell(submitted('referredByContact', '')), '', cell(submitted('dob', dob)), task.activityId,
         ]]
         await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
