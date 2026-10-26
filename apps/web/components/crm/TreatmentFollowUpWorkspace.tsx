@@ -27,7 +27,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
   const [items, setItems] = useState<FollowUpPlan[]>([])
   const [coordinators, setCoordinators] = useState<{ id: string; firstName: string; lastName: string }[]>([])
   const [ownerId, setOwnerId] = useState('')
-  const [history, setHistory] = useState<{ eventType: string; actorId: string; createdAt: string; newValues: unknown }[]>([])
+  const [history, setHistory] = useState<{ eventType: string; actorId: string; createdAt: string; newValues: unknown; outcome?: string | null }[]>([])
   const [historyFor, setHistoryFor] = useState<FollowUpPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -153,7 +153,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
         <section role="dialog" aria-modal="true" aria-labelledby="history-title" className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900">
           <h2 id="history-title" className="text-lg font-bold dark:text-white">Coordination history</h2>
           <p className="mt-1 text-sm text-gray-500">{historyFor.patient.firstName} {historyFor.patient.lastName}</p>
-          <div className="mt-4 max-h-80 space-y-3 overflow-y-auto">{history.length === 0 ? <p className="text-sm text-gray-500">No coordination events recorded yet.</p> : history.map((event, index) => <div key={index} className="rounded-lg border p-3 text-sm dark:text-white"><div className="font-semibold">{event.eventType}</div><div className="text-xs text-gray-500">{new Date(event.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' })}</div><pre className="mt-2 whitespace-pre-wrap break-words text-xs">{JSON.stringify(event.newValues, null, 2)}</pre></div>)}</div>
+          <div className="mt-4 max-h-80 space-y-3 overflow-y-auto">{history.length === 0 ? <p className="text-sm text-gray-500">No coordination events recorded yet.</p> : history.map((event, index) => <div key={index} className="rounded-lg border p-3 text-sm dark:text-white"><div className="font-semibold">{event.eventType}</div><div className="text-xs text-gray-500">{new Date(event.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' })}</div>{event.outcome && <p className="mt-2 whitespace-pre-wrap">Outcome: {event.outcome}</p>}<pre className="mt-2 whitespace-pre-wrap break-words text-xs">{JSON.stringify(event.newValues, null, 2)}</pre></div>)}</div>
           <div className="mt-4 text-right"><button type="button" onClick={() => setHistoryFor(null)} className="rounded-lg border px-4 py-2 dark:text-white">Close</button></div>
         </section>
       </div>}
