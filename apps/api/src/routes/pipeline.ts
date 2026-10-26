@@ -555,19 +555,21 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
 router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) => {
   try {
     if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
-    const { resolution, note, rescheduleTo } = req.body as { resolution: 'COMPLETED' | 'DISMISSED' | 'RESCHEDULED'; note?: string; rescheduleTo?: string }
+    const { resolution, note, rescheduleTo } = (req.body ?? {}) as { resolution: 'COMPLETED' | 'DISMISSED' | 'RESCHEDULED'; note?: string; rescheduleTo?: string }
     if (!['COMPLETED', 'DISMISSED', 'RESCHEDULED'].includes(resolution)) {
       res.status(400).json({ error: 'resolution must be COMPLETED, DISMISSED, or RESCHEDULED' }); return
     }
+    if (typeof note !== 'string' || !note.trim() || note.length > 2000) { res.status(400).json({ error: 'An outcome note is required (maximum 2000 characters)' }); return }
     const doctorId = await authenticatedDoctorId(prisma, req.user!)
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
 
     const plan = await prisma.treatmentPlan.findFirst({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
-      select: { id: true, patientId: true, toothNumber: true, followUpNote: true },
+      select: { id: true, patientId: true, toothNumber: true, followUpNote: true, followUpAt: true, status: true, patientDecision: true },
     })
     if (!plan) { res.status(404).json({ error: 'Treatment plan not found' }); return }
 
+    if (plan.patientDecision === 'Declined' && resolution === 'RESCHEDULED') { res.status(409).json({ error: 'Declined treatment cannot be rescheduled for routine follow-up' }); return }
     let newFollowUpAt: Date | null = null
     if (resolution === 'RESCHEDULED') {
       if (!rescheduleTo) { res.status(400).json({ error: 'rescheduleTo is required when resolution is RESCHEDULED' }); return }
@@ -583,9 +585,13 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
     const stamp = `[${resolution}${req.user!.firstName ? ` by ${req.user!.firstName} ${req.user!.lastName}` : ''} on ${new Date().toISOString().slice(0, 10)}]${note ? ` ${note}` : ''}`
     const updatedNote = plan.followUpNote ? `${stamp}\n${plan.followUpNote}` : stamp
 
-    await prisma.treatmentPlan.update({
-      where: { id: plan.id },
-      data: { followUpAt: newFollowUpAt, followUpNote: updatedNote },
+    await prisma.$transaction(async tx => {
+      await tx.treatmentPlan.update({ where: { id: plan.id }, data: { followUpAt: newFollowUpAt, followUpNote: updatedNote } })
+      await tx.treatmentFollowUpEvent.create({ data: {
+        treatmentPlanId: plan.id, actorId: req.user!.id, eventType: 'FOLLOW_UP_' + resolution,
+        previousValues: { followUpAt: plan.followUpAt?.toISOString() ?? null },
+        newValues: { followUpAt: newFollowUpAt?.toISOString() ?? null }, outcome: note.trim(),
+      } })
     })
 
     logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: plan.id, entityName: `Follow-up resolved: ${resolution}`, notes: note, req })
