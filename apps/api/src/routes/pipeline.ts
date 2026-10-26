@@ -294,6 +294,20 @@ router.get('/treatment', requireAuth, async (req, res) => {
     const assigned = followUps.filter(p => !!p.coordinatorId && !!p.nextAction?.trim())
     const due = followUps.filter(p => new Date(p.followUpAt!).getTime() <= now.getTime())
     const overdue = followUps.filter(p => new Date(p.followUpAt!).getTime() < now.getTime())
+    // The event log records the due-date snapshot for every new resolution.
+    // Count only these verified events; historical audit entries lack this evidence.
+    const resolutionEvents = await prisma.treatmentFollowUpEvent.findMany({
+      where: { eventType: 'FOLLOW_UP_COMPLETED' },
+      select: { createdAt: true, previousValues: true },
+    })
+    const assessedCompletions = resolutionEvents.map(event => {
+      const values = event.previousValues
+      if (!values || typeof values !== 'object' || Array.isArray(values)) return null
+      const dueAt = (values as Record<string, unknown>).followUpAt
+      if (typeof dueAt !== 'string' || !Number.isFinite(Date.parse(dueAt))) return null
+      return { onTime: event.createdAt.getTime() <= Date.parse(dueAt) }
+    }).filter((event): event is { onTime: boolean } => event !== null)
+    const completedOnTime = assessedCompletions.filter(event => event.onTime).length
     const coordinationMetrics = {
       active: followUps.length,
       assignedWithNextAction: assigned.length,
@@ -302,7 +316,9 @@ router.get('/treatment', requireAuth, async (req, res) => {
       overdue: overdue.length,
       unassigned: followUps.filter(p => !p.coordinatorId).length,
       clinicalReviewHeld: enriched.filter(p => p.clinicalReviewRequired && !NON_ACTIONABLE_STATUSES.includes(p.status)).length,
-      onTimeCompletionPct: null, // Requires verified due-date snapshots at resolution; do not invent KPI.
+      onTimeCompletionPct: assessedCompletions.length ? Math.round(completedOnTime / assessedCompletions.length * 100) : null,
+      verifiedCompletions: assessedCompletions.length,
+      completedOnTime,
     }
 
     res.json({
