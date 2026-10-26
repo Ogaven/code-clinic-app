@@ -1,0 +1,59 @@
+name: Backup Code Clinic database before review migration
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/backup-practice-review-database.yml'
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create and verify encrypted-transport PostgreSQL archive on production host
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 46.101.255.243 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -o BatchMode=yes root@46.101.255.243 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /var/www/codeclinic
+          # Read DATABASE_URL through Prisma's dotenv handling; never print it.
+          cd packages/database
+          node <<'NODE'
+          const { spawnSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { URL } = require('node:url');
+          const dotenv = require('dotenv');
+          for (const filename of ['../../apps/api/.env', '../../.env', '.env']) {
+            const full = path.resolve(filename);
+            if (fs.existsSync(full)) dotenv.config({ path: full, override: false, quiet: true });
+          }
+          const raw = process.env.DATABASE_URL;
+          if (!raw) { console.log('BACKUP_STATUS=DATABASE_URL_NOT_FOUND'); process.exit(1); }
+          const u = new URL(raw);
+          if (!['postgresql:', 'postgres:'].includes(u.protocol)) process.exit(1);
+          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const dir = '/var/backups/codeclinic-db';
+          fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+          fs.chmodSync(dir, 0o700);
+          const file = path.join(dir, 'pre-ai-reviews-' + stamp + '.dump');
+          const env = { ...process.env, PGDATABASE: decodeURIComponent(u.pathname.slice(1)), PGHOST: u.hostname, PGPORT: u.port || '5432', PGUSER: decodeURIComponent(u.username), PGPASSWORD: decodeURIComponent(u.password), PGSSLMODE: u.searchParams.get('sslmode') || 'require' };
+          // No database URL in command arguments, log output, or file names.
+          const backup = spawnSync('pg_dump', ['--format=custom', '--no-owner', '--no-acl', '--file='+file], { env, encoding: 'utf8', timeout: 600000 });
+          if (backup.status !== 0) { try { fs.unlinkSync(file); } catch {} console.log('BACKUP_STATUS=FAILED'); process.exit(1); }
+          fs.chmodSync(file, 0o600);
+          const stat = fs.statSync(file);
+          const verify = spawnSync('pg_restore', ['--list', file], { env, encoding: 'utf8', timeout: 120000 });
+          if (verify.status !== 0 || stat.size < 1024 || !verify.stdout.includes('TABLE')) { console.log('BACKUP_STATUS=VERIFY_FAILED'); process.exit(1); }
+          console.log('BACKUP_STATUS=ARCHIVE_VERIFIED');
+          console.log('BACKUP_SIZE_BYTES=' + stat.size);
+          console.log('BACKUP_LOCATION=PRODUCTION_HOST_PRIVATE_DIRECTORY');
+          console.log('RESTORE_TEST=ARCHIVE_LIST_ONLY_NOT_FULL_RESTORE');
+          NODE
+          REMOTE
