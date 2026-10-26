@@ -286,7 +286,7 @@ router.get('/treatment', requireAuth, async (req, res) => {
     // Cancelled/Declined) so a resolved or declined plan can't sit in both the
     // "Declined" column and this queue at once.
     const followUps = enriched
-      .filter(p => p.followUpAt && !NON_ACTIONABLE_STATUSES.includes(p.status))
+      .filter(p => p.followUpAt && !NON_ACTIONABLE_STATUSES.includes(p.status) && p.patientDecision !== 'Declined' && p.patientDecision !== 'Deferred' && !p.clinicalReviewRequired)
       .sort((a, b) => new Date(a.followUpAt!).getTime() - new Date(b.followUpAt!).getTime())
 
     res.json({
