@@ -1385,7 +1385,7 @@ function InboxPage() {
           const last    = conv.lastMessage
           const time    = fmtTime(last?.createdAt ?? conv.updatedAt)
           const active  = sel?.id === conv.id
-          const preview = last && !isTemplateArtifact(last.content) ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : 'No patient message preview'
+          const preview = last && !isTemplateArtifact(last.content) ? (last.role === 'AGENT' ? '🤖 ' : '') + last.content.slice(0, 50) : last ? 'Template notification · no readable message' : 'No messages recorded yet'
           const ws     = getWorkState(conv)
           const wsMeta = WORK_STATE_META[ws]
           const isLead = isLeadConversation(conv)
