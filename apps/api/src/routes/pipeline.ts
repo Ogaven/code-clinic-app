@@ -297,7 +297,7 @@ router.get('/treatment', requireAuth, async (req, res) => {
     // The event log records the due-date snapshot for every new resolution.
     // Count only these verified events; historical audit entries lack this evidence.
     const resolutionEvents = await prisma.treatmentFollowUpEvent.findMany({
-      where: { eventType: 'FOLLOW_UP_COMPLETED' },
+      where: { eventType: 'FOLLOW_UP_COMPLETED', ...(doctorId ? { treatmentPlan: { doctorId } } : {}) },
       select: { createdAt: true, previousValues: true },
     })
     const assessedCompletions = resolutionEvents.map(event => {
@@ -305,7 +305,11 @@ router.get('/treatment', requireAuth, async (req, res) => {
       if (!values || typeof values !== 'object' || Array.isArray(values)) return null
       const dueAt = (values as Record<string, unknown>).followUpAt
       if (typeof dueAt !== 'string' || !Number.isFinite(Date.parse(dueAt))) return null
-      return { onTime: event.createdAt.getTime() <= Date.parse(dueAt) }
+      const dueDay = kampalaYMD(new Date(dueAt))
+      const completedDay = kampalaYMD(event.createdAt)
+      const dueKey = Date.UTC(dueDay.y, dueDay.m, dueDay.day)
+      const completedKey = Date.UTC(completedDay.y, completedDay.m, completedDay.day)
+      return { onTime: completedKey <= dueKey }
     }).filter((event): event is { onTime: boolean } => event !== null)
     const completedOnTime = assessedCompletions.filter(event => event.onTime).length
     const coordinationMetrics = {
