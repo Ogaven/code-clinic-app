@@ -25,6 +25,24 @@ export async function checkAndSendLeadNurtureMessages(): Promise<void> {
 
   for (const msg of due) {
     try {
+      // Never send a generic nurture nudge over an unanswered patient question.
+      // The lead may have replied after this reminder was originally scheduled.
+      const conversations = await prisma.aiConversation.findMany({
+        where: { patientId: msg.patient.id, channel: 'WHATSAPP' },
+        select: { id: true, agentEnabled: true, status: true },
+      })
+      const activeIds = conversations.filter(c => c.status === 'ACTIVE').map(c => c.id)
+      const staffControlled = conversations.some(c => c.status === 'ACTIVE' && !c.agentEnabled)
+      const latestMessage = activeIds.length ? await prisma.aiMessage.findFirst({
+        where: { conversationId: { in: activeIds }, role: { in: ['USER', 'AGENT'] } },
+        orderBy: { createdAt: 'desc' },
+        select: { role: true, createdAt: true },
+      }) : null
+      if (staffControlled || (latestMessage?.role === 'USER' && latestMessage.createdAt >= msg.scheduledFor)) {
+        console.log('[LeadNurture] Skipping scheduled reminder: patient replied or staff controls conversation')
+        await prisma.aiScheduledMessage.update({ where: { id: msg.id }, data: { sent: true } })
+        continue
+      }
       await sendWhatsAppMessage(msg.patient.phone, msg.content)
 
       await prisma.aiScheduledMessage.update({
