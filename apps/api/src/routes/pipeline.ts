@@ -647,7 +647,13 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
     const updatedNote = plan.followUpNote ? `${stamp}\n${plan.followUpNote}` : stamp
 
     await prisma.$transaction(async tx => {
-      await tx.treatmentPlan.update({ where: { id: plan.id }, data: { followUpAt: newFollowUpAt, followUpNote: updatedNote } })
+      // Optimistic concurrency: a follow-up must not be resolved twice against
+      // the same scheduled date. The event is committed only with the update.
+      const changed = await tx.treatmentPlan.updateMany({
+        where: { id: plan.id, followUpAt: plan.followUpAt },
+        data: { followUpAt: newFollowUpAt, followUpNote: updatedNote },
+      })
+      if (changed.count !== 1) throw new Error('FOLLOW_UP_CHANGED')
       await tx.treatmentFollowUpEvent.create({ data: {
         treatmentPlanId: plan.id, actorId: req.user!.id, eventType: 'FOLLOW_UP_' + resolution,
         previousValues: { followUpAt: plan.followUpAt?.toISOString() ?? null },
@@ -660,6 +666,7 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
 
     res.json({ id: plan.id, resolution, followUpAt: newFollowUpAt })
   } catch (e) {
+    if (e instanceof Error && e.message === 'FOLLOW_UP_CHANGED') { res.status(409).json({ error: 'Follow-up was changed by another staff member; reload and try again' }); return }
     console.error('[Pipeline] follow-up resolve error:', e)
     res.status(500).json({ error: 'Failed to resolve follow-up' })
   }
