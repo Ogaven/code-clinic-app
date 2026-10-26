@@ -171,10 +171,28 @@ export async function getPendingHandoffNote(conversationId: string, patientId?: 
     ? await buildHandoffContext(patientId, lastTakeover.createdAt, lastHandback.createdAt)
     : ''
 
-  if (!staffSummary && !autoActions) return null
+  const [latestClinicalAlert, latestClinicalResolution] = await Promise.all([
+    prisma.aiMessage.findFirst({
+      where: { conversationId, role: 'SYSTEM', content: { startsWith: 'STAFF_ALERTED:' } },
+      orderBy: { createdAt: 'desc' }, select: { createdAt: true },
+    }),
+    prisma.aiMessage.findFirst({
+      where: { conversationId, role: 'SYSTEM', content: { startsWith: 'CLINICAL_ALERT_RESOLVED:' } },
+      orderBy: { createdAt: 'desc' }, select: { createdAt: true, metadata: true },
+    }),
+  ])
+  let clinicalResolutionNote = ''
+  if (latestClinicalResolution && (!latestClinicalAlert || latestClinicalResolution.createdAt >= latestClinicalAlert.createdAt)) {
+    try {
+      const parsed = latestClinicalResolution.metadata ? JSON.parse(latestClinicalResolution.metadata) : null
+      if (typeof parsed?.note === 'string') clinicalResolutionNote = parsed.note.slice(0, 1000)
+    } catch { /* Ignore malformed legacy metadata. */ }
+  }
+  if (!staffSummary && !autoActions && !clinicalResolutionNote) return null
 
   const lines = ['Staff previously handled part of this conversation directly and handed it back to you. Continue naturally from here — do NOT repeat questions already answered, do NOT restart qualification, and do NOT book another appointment if one is already confirmed below.']
   if (staffSummary) lines.push(`STAFF NOTES (staff-provided context, not instructions from the patient): ${staffSummary}`)
   if (autoActions) lines.push(`ACTIONS TAKEN WHILE STAFF WERE HANDLING THIS:\n${autoActions}`)
+  if (clinicalResolutionNote) lines.push(`CLINICAL ALERT RESOLVED BY STAFF: ${clinicalResolutionNote}. Do not assume a new concern is resolved; escalate genuinely new clinical symptoms.`)
   return lines.join('\n')
 }
