@@ -573,8 +573,13 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
     if (Object.keys(followUpData).length === 0) { res.status(400).json({ error: 'No follow-up fields provided' }); return }
     const before = await prisma.treatmentPlan.findFirst({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
-      select: { doctorId: true, patientId: true },
+      select: { doctorId: true, patientId: true, status: true, patientDecision: true, clinicalReviewRequired: true, followUpAt: true },
     })
+    if (!before) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    const scheduledAt = 'followUpAt' in followUpData ? followUpData.followUpAt : before.followUpAt
+    if (scheduledAt && (NON_ACTIONABLE_STATUSES.includes(before.status) || ['Declined', 'Deferred'].includes(before.patientDecision ?? '') || before.clinicalReviewRequired)) {
+      res.status(409).json({ error: 'This treatment is not eligible for routine follow-up scheduling' }); return
+    }
     const result = await prisma.treatmentPlan.updateMany({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
       data:  followUpData,
