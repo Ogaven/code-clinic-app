@@ -1260,11 +1260,15 @@ function InboxPage() {
   async function confirmHandback(summary: string) {
     if (!summary.trim()) return
     if (!sel) return
-    setHandbackOpen(false)
-    await fetch(`${API}/ai-suite/handback/${sel.id}`, {
-      method: 'POST', headers: authH(true), body: JSON.stringify({ summary: summary || undefined }),
+    const response = await fetch(`${API}/ai-suite/handback/${sel.id}`, {
+      method: 'POST', headers: authH(true), body: JSON.stringify({ summary }),
     })
-    fetchConvs()
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(data.error || 'Handback failed; Sarah remains paused. Please try again.')
+    }
+    setHandbackOpen(false)
+    await fetchConvs()
   }
 
   useEffect(() => {
