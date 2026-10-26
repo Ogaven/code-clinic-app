@@ -550,13 +550,23 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
     }
     // Atomic write and append-only history: no partial state without its event.
     const updated = await prisma.$transaction(async tx => {
-      const count = await tx.treatmentPlan.updateMany({ where, data: changes })
-      if (count.count !== 1) throw new Error('Treatment plan changed during update')
+      const count = await tx.treatmentPlan.updateMany({
+        where: {
+          ...where,
+          patientDecision: before.patientDecision,
+          coordinatorId: before.coordinatorId,
+          clinicalReviewRequired: before.clinicalReviewRequired,
+          followUpAt: before.followUpAt,
+        },
+        data: changes,
+      })
+      if (count.count !== 1) throw new Error('COORDINATION_CHANGED')
       await tx.treatmentFollowUpEvent.create({ data: { treatmentPlanId: before.id, actorId: req.user!.id, eventType: 'COORDINATION_UPDATED', previousValues: { ...before, followUpAt: before.followUpAt?.toISOString() ?? null }, newValues: { ...changes, ...(changes.followUpAt instanceof Date ? { followUpAt: changes.followUpAt.toISOString() } : {}) } } })
       return tx.treatmentPlan.findUniqueOrThrow({ where: { id: before.id } })
     })
     res.json({ id: updated.id, patientDecision: updated.patientDecision, decisionReason: updated.decisionReason, coordinatorId: updated.coordinatorId, nextAction: updated.nextAction, clinicalReviewRequired: updated.clinicalReviewRequired, followUpAt: updated.followUpAt })
   } catch (error) {
+    if (error instanceof Error && error.message === 'COORDINATION_CHANGED') { res.status(409).json({ error: 'Coordination changed by another staff member; reload and try again' }); return }
     console.error('[Pipeline] coordination update failed:', error)
     res.status(500).json({ error: 'Failed to update treatment coordination' })
   }
