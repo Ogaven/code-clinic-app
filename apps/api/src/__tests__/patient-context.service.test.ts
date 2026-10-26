@@ -74,6 +74,7 @@ vi.mock('../lib/prisma', () => ({
         let rows = store.aiMessages.filter(m => m.conversationId === where.conversationId && m.role === where.role)
         if (where.content?.startsWith) rows = rows.filter(m => m.content.startsWith(where.content.startsWith))
         if (where.createdAt?.lt) rows = rows.filter(m => m.createdAt.getTime() < where.createdAt.lt.getTime())
+        if (where.createdAt?.gt) rows = rows.filter(m => m.createdAt.getTime() > where.createdAt.gt.getTime())
         const dir = orderBy?.createdAt === 'asc' ? 1 : -1
         rows = [...rows].sort((a, b) => dir * (a.createdAt.getTime() - b.createdAt.getTime()))
         return rows[0] ?? null
@@ -215,7 +216,7 @@ describe('getPendingHandoffNote', () => {
     expect(note).toContain('Booked Tuesday 8am for a filling.')
   })
 
-  it('does NOT resurface the hand-back note once Sarah has already replied since', async () => {
+  it('retains the hand-back note even after Sarah has replied', async () => {
     const { getPendingHandoffNote } = await import('../ai-suite/agent/patient-context.service')
     systemMsg({
       content: 'Agent resumed by staff. Handoff notes: Booked Tuesday 8am.',
@@ -226,7 +227,7 @@ describe('getPendingHandoffNote', () => {
 
     const note = await getPendingHandoffNote('conv_1', 'patient_1')
 
-    expect(note).toBeNull()
+    expect(note).toContain('Booked Tuesday 8am.')
   })
 
   it('auto-enriches with PatientActivity rows logged during the takeover window, without fabricating anything', async () => {
