@@ -864,4 +864,37 @@ router.post('/patient-engagement/recare-calls', requireAuth, adminAndReceptionis
   }
 })
 
+ 
+// Staff may correct a recare entry after a patient responds or attends later.
+// Preserve the original patient, contact date and recorder for accountability.
+router.patch('/patient-engagement/recare-calls/:id', requireAuth, adminAndReceptionist, async (req: Request, res: Response) => {
+  const id = String(req.params.id || '')
+  if (!z.string().uuid().safeParse(id).success) { res.status(400).json({ error: 'Invalid recare call ID' }); return }
+  const updateSchema = recareCallSchema.omit({ patientId: true, contactedAt: true }).strict()
+  const parsed = updateSchema.safeParse(req.body)
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid recare update details' }); return }
+  const input = parsed.data
+  if (input.attendance === 'RESCHEDULED' && !input.rescheduledDate) {
+    res.status(400).json({ error: 'Rescheduled date is required' }); return
+  }
+  try {
+    const existing = await prisma.patientRecareCall.findUnique({ where: { id }, select: { id: true } })
+    if (!existing) { res.status(404).json({ error: 'Recare call not found' }); return }
+    const call = await prisma.patientRecareCall.update({
+      where: { id },
+      data: {
+        contactMethod: input.contactMethod, reached: input.reached,
+        appointmentSet: input.appointmentSet,
+        appointmentDate: input.appointmentDate ? new Date(input.appointmentDate) : null,
+        attendance: input.attendance,
+        rescheduledDate: input.rescheduledDate ? new Date(input.rescheduledDate) : null,
+        comment: input.comment ?? null,
+      },
+    })
+    res.json({ call })
+  } catch {
+    res.status(500).json({ error: 'Failed to update recare call' })
+  }
+})
+
 export default router
