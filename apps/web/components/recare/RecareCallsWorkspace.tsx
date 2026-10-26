@@ -29,6 +29,7 @@ export default function RecareCallsWorkspace() {
   const [visitRefreshKey, setVisitRefreshKey] = useState(0)
   const [outcomeFilter, setOutcomeFilter] = useState('ALL')
   const [form, setForm] = useState(empty)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [patients, setPatients] = useState<{id:string;firstName:string;lastName:string;phone:string}[]>([])
   const [error, setError] = useState('')
@@ -117,23 +118,32 @@ export default function RecareCallsWorkspace() {
     if (!popup) { setWeeklyError('Allow pop-ups to print or save the weekly report as PDF.'); return }
     popup.document.open(); popup.document.write(html); popup.document.close(); popup.focus(); popup.print()
   }
+  function startEdit(call: Call) {
+    const localDate = (v: string | null) => { if (!v) return ''; const d = new Date(v); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }
+    setEditingId(call.id)
+    setForm({ patientId: call.patientId, contactMethod: call.contactMethod, contactedAt: localDate(call.contactedAt), reached: call.reached, appointmentSet: call.appointmentSet, appointmentDate: localDate(call.appointmentDate), attendance: call.attendance, rescheduledDate: localDate(call.rescheduledDate), comment: call.comment || '' })
+    setSearch(call.patient.firstName + ' ' + call.patient.lastName)
+    setError('')
+    document.getElementById('recare-contact-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  function cancelEdit() { setEditingId(null); setForm(empty); setSearch(''); setError('') }
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setError('')
     if (!form.patientId || !form.contactedAt) { setError('Select a patient and contact date.'); return }
     setSaving(true)
     try {
-      const r = await fetch('/api-proxy/crm-automation/patient-engagement/recare-calls', {
-        method: 'POST',
+      const r = await fetch(editingId ? '/api-proxy/crm-automation/patient-engagement/recare-calls/' + editingId : '/api-proxy/crm-automation/patient-engagement/recare-calls', {
+        method: editingId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
         body: JSON.stringify({
-          patientId: form.patientId, contactMethod: form.contactMethod, contactedAt: toISO(form.contactedAt),
+          ...(!editingId ? { patientId: form.patientId, contactedAt: toISO(form.contactedAt) } : {}), contactMethod: form.contactMethod,
           reached: form.reached, appointmentSet: form.appointmentSet,
           appointmentDate: toISO(form.appointmentDate), attendance: form.attendance,
           rescheduledDate: toISO(form.rescheduledDate), comment: form.comment || null,
         }),
       })
       if (!r.ok) { const data = await r.json().catch(() => ({})); throw new Error(data.error || 'Could not save call') }
-      setForm(empty); setSearch(''); setPatients([]); setWeekly(null); await refresh()
+      setEditingId(null); setForm(empty); setSearch(''); setPatients([]); setWeekly(null); await refresh()
       setVisitOffset(0)
       setVisitRefreshKey(n => n + 1)
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save call') }
@@ -175,14 +185,14 @@ export default function RecareCallsWorkspace() {
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm dark:text-white"><span>Showing page {Math.floor(visitOffset / 100) + 1} · {visits.length} patients {visitLoading ? '· Loading…' : ''}</span><div className="flex gap-2"><button type="button" disabled={visitOffset===0||visitLoading} onClick={()=>setVisitOffset(n=>Math.max(0,n-100))} className="rounded-lg border px-3 py-2 disabled:opacity-40">Previous 100</button><button type="button" disabled={!visitHasMore||visitLoading} onClick={()=>setVisitOffset(n=>n+100)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Next 100</button></div></div>
       {visits.length===0&&!visitError&&!visitLoading&&<p className="text-xs text-gray-500">No verified completed-visit summary entries returned.</p>}
     </section>
-    <form onSubmit={submit} className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
-      <h2 className="font-bold dark:text-white">Record a recare contact</h2>
+    <form id="recare-contact-form" onSubmit={submit} className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
+      <h2 className="font-bold dark:text-white">{editingId ? 'Edit recare contact outcome' : 'Record a recare contact'}</h2>
       <div className="grid gap-4 md:grid-cols-3">
-        <label className={label}>Find patient<input className={field} value={search} onChange={e => {setSearch(e.target.value);setForm(f=>({...f,patientId:''}))}} placeholder="Search by patient name or ID" />
+        <label className={label}>Find patient<input className={field} value={search} disabled={!!editingId} onChange={e => {setSearch(e.target.value);setForm(f=>({...f,patientId:''}))}} placeholder="Search by patient name or ID" />
           {patients.length > 0 && <select className={field} value={form.patientId} onChange={e => setForm(f=>({...f,patientId:e.target.value}))}><option value="">Select existing patient</option>{patients.map(p=><option key={p.id} value={p.id}>{p.firstName} {p.lastName} — {p.phone}</option>)}</select>}
         </label>
         <label className={label}>Contact method<select className={field} value={form.contactMethod} onChange={e=>setForm(f=>({...f,contactMethod:e.target.value}))}>{['Call','Text','WhatsApp','Other'].map(x=><option key={x}>{x}</option>)}</select></label>
-        <label className={label}>Date contacted<input required type="datetime-local" className={field} value={form.contactedAt} onChange={e=>setForm(f=>({...f,contactedAt:e.target.value}))}/></label>
+        <label className={label}>Date contacted<input required type="datetime-local" disabled={!!editingId} className={field} value={form.contactedAt} onChange={e=>setForm(f=>({...f,contactedAt:e.target.value}))}/></label>
         <label className={label}>Response<select className={field} value={form.reached} onChange={e=>setForm(f=>({...f,reached:e.target.value}))}>{['Not Tried','Yes','No'].map(x=><option key={x}>{x}</option>)}</select></label>
         <label className={label}>Appointment booked<select className={field} value={String(form.appointmentSet)} onChange={e=>setForm(f=>({...f,appointmentSet:e.target.value==='true'}))}><option value="false">No</option><option value="true">Yes</option></select></label>
         <label className={label}>Appointment date<input type="datetime-local" className={field} value={form.appointmentDate} onChange={e=>setForm(f=>({...f,appointmentDate:e.target.value}))}/></label>
@@ -191,7 +201,7 @@ export default function RecareCallsWorkspace() {
         <label className={label}>Comments<textarea maxLength={2000} className={field} value={form.comment} onChange={e=>setForm(f=>({...f,comment:e.target.value}))}/></label>
       </div>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      <button disabled={saving || !form.patientId} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving?'Saving…':'Save recare call'}</button>
+      <button disabled={saving || !form.patientId} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving?'Saving…':editingId?'Save changes':'Save recare call'}</button>{editingId && <button type="button" onClick={cancelEdit} className="ml-3 rounded-lg border px-4 py-2 text-sm dark:text-white">Cancel editing</button>}
     </form>
     </>}
     {tab === 'weekly' && <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-gray-900">
@@ -214,7 +224,7 @@ export default function RecareCallsWorkspace() {
       <div className="flex flex-wrap items-center justify-between gap-3 p-4"><div><h2 className="font-bold text-teal-800 dark:text-teal-300">Recorded Recare Contacts</h2><p className="text-xs text-gray-500">Showing {visibleCalls.length} of the {calls.length} most recent entries. This is not yet the full historical overdue recall list.</p></div><button onClick={()=>void refresh()} className="text-sm text-blue-600">Refresh</button></div>
       <div className="flex flex-wrap gap-3 px-4 pb-4"><input aria-label="Search recorded patients" value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Search patient name…" className={field + ' max-w-sm'} /><select aria-label="Filter recare outcomes" value={outcomeFilter} onChange={e=>setOutcomeFilter(e.target.value)} className={field + ' max-w-xs'}><option value="ALL">All outcomes</option>{outcomes.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
       {loading ? <p className="p-4 text-sm">Loading…</p> : visibleCalls.length===0 ? <p className="p-4 text-sm text-gray-500">No recare calls recorded yet.</p> :
-      <table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-gray-50 text-gray-600 dark:bg-gray-800"><tr>{['Patient','Contacted','Method','Response','Booked','Attendance','Recorded by','Notes'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>{visibleCalls.map(c=><tr key={c.id} className="border-t border-gray-100 dark:border-white/10"><td className="p-3"><Link className="text-blue-600 hover:underline" href={`/patients/${c.patientId}`}>{c.patient.firstName} {c.patient.lastName}</Link></td><td className="p-3">{new Date(c.contactedAt).toLocaleString('en-UG')}</td><td className="p-3">{c.contactMethod}</td><td className="p-3">{c.reached}</td><td className="p-3">{c.appointmentSet?'Yes':'No'}</td><td className="p-3">{c.attendance}</td><td className="p-3">{c.recordedByName}</td><td className="p-3">{c.comment||'—'}</td></tr>)}</tbody></table>}
+      <table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-gray-50 text-gray-600 dark:bg-gray-800"><tr>{['Patient','Contacted','Method','Response','Booked','Attendance','Recorded by','Notes','Action'].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>{visibleCalls.map(c=><tr key={c.id} className="border-t border-gray-100 dark:border-white/10"><td className="p-3"><Link className="text-blue-600 hover:underline" href={`/patients/${c.patientId}`}>{c.patient.firstName} {c.patient.lastName}</Link></td><td className="p-3">{new Date(c.contactedAt).toLocaleString('en-UG')}</td><td className="p-3">{c.contactMethod}</td><td className="p-3">{c.reached}</td><td className="p-3">{c.appointmentSet?'Yes':'No'}</td><td className="p-3">{c.attendance}</td><td className="p-3">{c.recordedByName}</td><td className="p-3">{c.comment||'—'}</td><td className="p-3"><button type="button" onClick={()=>startEdit(c)} className="rounded-lg border border-teal-600 px-3 py-1.5 font-semibold text-teal-700 dark:text-teal-300">Edit</button></td></tr>)}</tbody></table>}
     </section>}
   </div>
 }
