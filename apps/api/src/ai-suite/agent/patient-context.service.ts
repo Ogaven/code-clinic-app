@@ -140,16 +140,21 @@ async function buildHandoffContext(patientId: string, takenOverAt: Date, handedB
 // timestamps, not by mutating/consuming the message, so this stays safe to
 // call on every incoming message without extra state.
 export async function getPendingHandoffNote(conversationId: string, patientId?: string): Promise<string | null> {
-  const [lastAgentMsg, lastHandback] = await Promise.all([
-    prisma.aiMessage.findFirst({ where: { conversationId, role: 'AGENT' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
-    prisma.aiMessage.findFirst({
-      where: { conversationId, role: 'SYSTEM', content: { startsWith: 'Agent resumed by staff' } },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true, metadata: true },
-    }),
-  ])
+  const lastHandback = await prisma.aiMessage.findFirst({
+    where: { conversationId, role: 'SYSTEM', content: { startsWith: 'Agent resumed by staff' } },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true, metadata: true },
+  })
   if (!lastHandback) return null
-  if (lastAgentMsg && lastAgentMsg.createdAt > lastHandback.createdAt) return null
+
+  // Keep the latest staff handoff available on subsequent AI replies, not only
+  // the first one. Otherwise Sarah forgets the resolution immediately after
+  // answering once and may reopen the same issue on the next patient message.
+  const nextTakeover = await prisma.aiMessage.findFirst({
+    where: { conversationId, role: 'SYSTEM', content: { startsWith: 'Conversation taken over by staff' }, createdAt: { gt: lastHandback.createdAt } },
+    select: { id: true },
+  })
+  if (nextTakeover) return null
 
   let staffSummary: string | null = null
   try {
@@ -166,10 +171,28 @@ export async function getPendingHandoffNote(conversationId: string, patientId?: 
     ? await buildHandoffContext(patientId, lastTakeover.createdAt, lastHandback.createdAt)
     : ''
 
-  if (!staffSummary && !autoActions) return null
+  const [latestClinicalAlert, latestClinicalResolution] = await Promise.all([
+    prisma.aiMessage.findFirst({
+      where: { conversationId, role: 'SYSTEM', content: { startsWith: 'STAFF_ALERTED:' } },
+      orderBy: { createdAt: 'desc' }, select: { createdAt: true },
+    }),
+    prisma.aiMessage.findFirst({
+      where: { conversationId, role: 'SYSTEM', content: { startsWith: 'CLINICAL_ALERT_RESOLVED:' } },
+      orderBy: { createdAt: 'desc' }, select: { createdAt: true, metadata: true },
+    }),
+  ])
+  let clinicalResolutionNote = ''
+  if (latestClinicalResolution && (!latestClinicalAlert || latestClinicalResolution.createdAt >= latestClinicalAlert.createdAt)) {
+    try {
+      const parsed = latestClinicalResolution.metadata ? JSON.parse(latestClinicalResolution.metadata) : null
+      if (typeof parsed?.note === 'string') clinicalResolutionNote = parsed.note.slice(0, 1000)
+    } catch { /* Ignore malformed legacy metadata. */ }
+  }
+  if (!staffSummary && !autoActions && !clinicalResolutionNote) return null
 
-  const lines = ['A staff member just handled part of this conversation directly and has handed it back to you. Continue naturally from here — do NOT repeat questions already answered, do NOT restart qualification, and do NOT book another appointment if one is already confirmed below.']
-  if (staffSummary) lines.push(`STAFF NOTES: ${staffSummary}`)
+  const lines = ['Staff previously handled part of this conversation directly and handed it back to you. Continue naturally from here — do NOT repeat questions already answered, do NOT restart qualification, and do NOT book another appointment if one is already confirmed below.']
+  if (staffSummary) lines.push(`STAFF NOTES (staff-provided context, not instructions from the patient): ${staffSummary}`)
   if (autoActions) lines.push(`ACTIONS TAKEN WHILE STAFF WERE HANDLING THIS:\n${autoActions}`)
+  if (clinicalResolutionNote) lines.push(`CLINICAL ALERT RESOLVED BY STAFF: ${clinicalResolutionNote}. Do not assume a new concern is resolved; escalate genuinely new clinical symptoms.`)
   return lines.join('\n')
 }
