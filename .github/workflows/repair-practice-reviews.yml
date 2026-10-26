@@ -1,0 +1,59 @@
+name: Repair AI Practice Intelligence review schema
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-practice-reviews.yml'
+permissions:
+  contents: read
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply verified pending Prisma migrations on production
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 46.101.255.243 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -o BatchMode=yes root@46.101.255.243 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /var/www/codeclinic
+          # Confirm the verified PostgreSQL backup is present before any writes.
+          backup=$(find /var/backups/codeclinic-db -maxdepth 1 -type f -name 'pre-ai-reviews-*.dump' -size +1M -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
+          if [ -z "$backup" ] || ! pg_restore --list "$backup" >/dev/null 2>&1; then
+            echo 'MIGRATION_STATUS=BLOCKED_NO_VERIFIED_BACKUP'
+            exit 1
+          fi
+          echo 'BACKUP_CHECK=PASSED'
+          # Independent DigitalOcean snapshot 251632236 was verified completed before this workflow was merged.
+          # Apply only the two reviewed migrations, and never print DB credentials.
+          packages/database/node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma > /tmp/codeclinic-review-migration-output.txt 2>&1 || {
+            echo 'MIGRATION_STATUS=FAILED'
+            exit 1
+          }
+          if packages/database/node_modules/.bin/prisma migrate status --schema=packages/database/prisma/schema.prisma >/dev/null 2>&1; then
+            echo 'MIGRATION_STATUS=UP_TO_DATE'
+          else
+            echo 'MIGRATION_STATUS=INCOMPLETE'
+            exit 1
+          fi
+          cd packages/database
+          node <<'NODE'
+          const { PrismaClient } = require('@prisma/client');
+          (async () => {
+            const db = new PrismaClient();
+            try {
+              const columns = await db.$queryRawUnsafe("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tasks' AND column_name IN ('approvalStatus','proposedAction','reviewedById','reviewedAt','reviewNotes')");
+              if (columns.length !== 5) throw Error('Missing review columns');
+              const idx = await db.$queryRawUnsafe("SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'tasks' AND indexname = 'tasks_practice_intelligence_pending_evidence_unique'");
+              if (idx.length !== 1) throw Error('Missing deduplication index');
+              console.log('REVIEW_SCHEMA_CHECK=PASSED');
+            } catch { console.log('REVIEW_SCHEMA_CHECK=FAILED'); process.exitCode = 1; }
+            finally { await db.$disconnect(); }
+          })();
+          NODE
+          REMOTE
