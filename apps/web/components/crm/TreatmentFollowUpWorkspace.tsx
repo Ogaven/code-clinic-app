@@ -32,6 +32,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [view, setView] = useState<'due' | 'upcoming' | 'all'>('due')
+  const [ownerFilter, setOwnerFilter] = useState('all')
   const [savingId, setSavingId] = useState<string | null>(null)
   const [editing, setEditing] = useState<FollowUpPlan | null>(null)
   const [outcome, setOutcome] = useState('')
@@ -67,7 +68,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
 
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
   const filtered = items.filter(item => {
-    if (!item.followUpAt) return false
+    if (!item.followUpAt || (ownerFilter !== 'all' && (item.coordinatorId || 'unassigned') !== ownerFilter)) return false
     const day = new Date(item.followUpAt).toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
     return view === 'all' || (view === 'due' ? day <= today : day > today)
   })
@@ -184,6 +185,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
           <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={!!savingId} onClick={() => setEditing(null)} className="rounded-lg border px-4 py-2 dark:text-white">Cancel</button><button type="button" disabled={!!savingId || !outcome.trim() || (resolution === 'RESCHEDULED' && !rescheduleDate)} onClick={() => void saveOutcome(editing)} className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50">{savingId ? 'Saving…' : 'Save outcome'}</button></div>
         </section>
       </div>}
+      <div className="flex flex-wrap items-center gap-3"><label htmlFor="followup-owner" className="text-sm font-semibold dark:text-white">Coordinator</label><select id="followup-owner" value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className="rounded-lg border bg-white px-3 py-2 text-sm text-gray-900"><option value="all">All coordinators</option><option value="unassigned">Unassigned</option>{coordinators.map(user => <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>)}</select></div>
       {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
         {error} <button type="button" onClick={() => void load()} className="ml-2 underline">Retry</button>
       </div>}
@@ -210,7 +212,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
                 <td className="px-4 py-3 text-gray-600 dark:text-white/70">{p.followUpAt ? new Date(p.followUpAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
                 <td className="px-4 py-3 text-gray-600 dark:text-white/70">{p.status}<div className="text-xs text-gray-400">{p.stage}</div></td>
                 <td className="px-4 py-3 text-gray-600 dark:text-white/70">{p.doctorName || 'Unassigned'}</td>
-                <td className="px-4 py-3 text-xs"><div>{p.patientDecision || 'Decision not recorded'}</div><div>{p.nextAction || 'Next action not recorded'}</div><div>{p.coordinatorId ? 'Coordinator assigned' : 'Coordinator unassigned'}</div></td>
+                <td className="px-4 py-3 text-xs"><div>{p.patientDecision || 'Decision not recorded'}</div><div>{p.nextAction || 'Next action not recorded'}</div><div>{p.coordinatorId ? (coordinators.find(u => u.id === p.coordinatorId)?.firstName || 'Assigned') + ' ' + (coordinators.find(u => u.id === p.coordinatorId)?.lastName || '') : 'Coordinator unassigned'}</div></td>
                 <td className="px-4 py-3"><div className="flex flex-col gap-2"><button type="button" onClick={() => editCoordination(p)} className="rounded-lg border px-3 py-2 text-xs font-semibold dark:text-white">Edit coordination</button><button type="button" onClick={() => void showHistory(p)} className="rounded-lg border px-3 py-2 text-xs dark:text-white">History</button><button type="button" disabled={savingId === p.id} onClick={() => { setEditing(p); setOutcome(''); setResolution('COMPLETED'); setRescheduleDate('') }} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Record outcome</button></div></td>
               </tr>)}
             </tbody>
