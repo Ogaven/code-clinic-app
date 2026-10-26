@@ -25,6 +25,7 @@ interface FollowUpPlan {
 
 export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHref: (id: string) => string }) {
   const [items, setItems] = useState<FollowUpPlan[]>([])
+  const [metrics, setMetrics] = useState<{ active: number; assignedWithNextAction: number; assignmentCoveragePct: number | null; overdue: number; unassigned: number; clinicalReviewHeld: number } | null>(null)
   const [coordinators, setCoordinators] = useState<{ id: string; firstName: string; lastName: string }[]>([])
   const [ownerId, setOwnerId] = useState('')
   const [history, setHistory] = useState<{ eventType: string; actorId: string; createdAt: string; newValues: unknown; outcome?: string | null }[]>([])
@@ -56,6 +57,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
       const data = await response.json()
       if (!Array.isArray(data.followUps)) throw new Error('Invalid Treatment Pipeline response')
       setItems(data.followUps)
+      setMetrics(data.coordinationMetrics || null)
       const owners = await fetch('/api-proxy/pipeline/treatment/coordinators', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
       if (owners.ok) { const result = await owners.json(); setCoordinators(Array.isArray(result.coordinators) ? result.coordinators : []) }
     } catch (err) {
@@ -149,6 +151,12 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
           <Link href={pipelineHref} className="font-semibold text-blue-600 hover:underline">Open Treatment Pipeline</Link>
         </div>
       </div>
+      {metrics && <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="rounded-xl border p-3"><div className="text-xs text-gray-500">Active follow-ups</div><div className="text-2xl font-bold dark:text-white">{metrics.active}</div></div>
+        <div className="rounded-xl border p-3"><div className="text-xs text-gray-500">Owner + next action</div><div className="text-2xl font-bold dark:text-white">{metrics.assignmentCoveragePct === null ? '—' : `${metrics.assignmentCoveragePct}%`}</div><div className="text-xs text-gray-500">{metrics.assignedWithNextAction} cases · target 95%</div></div>
+        <div className="rounded-xl border p-3"><div className="text-xs text-gray-500">Overdue</div><div className="text-2xl font-bold dark:text-white">{metrics.overdue}</div></div>
+        <div className="rounded-xl border p-3"><div className="text-xs text-gray-500">Unassigned</div><div className="text-2xl font-bold dark:text-white">{metrics.unassigned}</div></div>
+      </div>}
       <div className="flex flex-wrap gap-2">{(['due', 'upcoming', 'all'] as const).map(key => <button key={key} type="button" onClick={() => setView(key)} className={`rounded-lg border px-3 py-2 text-sm ${view === key ? 'bg-blue-700 text-white' : 'bg-white text-gray-700'}`}>{key === 'due' ? 'Due / overdue' : key === 'upcoming' ? 'Upcoming' : 'All outstanding'}</button>)}</div>
       {historyFor && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
         <section role="dialog" aria-modal="true" aria-labelledby="history-title" className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900">
