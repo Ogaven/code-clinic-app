@@ -25,6 +25,10 @@ interface FollowUpPlan {
 
 export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHref: (id: string) => string }) {
   const [items, setItems] = useState<FollowUpPlan[]>([])
+  const [coordinators, setCoordinators] = useState<{ id: string; firstName: string; lastName: string }[]>([])
+  const [ownerId, setOwnerId] = useState('')
+  const [history, setHistory] = useState<{ eventType: string; actorId: string; createdAt: string; newValues: unknown }[]>([])
+  const [historyFor, setHistoryFor] = useState<FollowUpPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [view, setView] = useState<'due' | 'upcoming' | 'all'>('due')
@@ -51,6 +55,8 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
       const data = await response.json()
       if (!Array.isArray(data.followUps)) throw new Error('Invalid Treatment Pipeline response')
       setItems(data.followUps)
+      const owners = await fetch('/api-proxy/pipeline/treatment/coordinators', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+      if (owners.ok) { const result = await owners.json(); setCoordinators(Array.isArray(result.coordinators) ? result.coordinators : []) }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load treatment follow-ups')
     } finally {
@@ -87,6 +93,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
   const editCoordination = (item: FollowUpPlan) => {
     setCoordination(item)
     setDecision(item.patientDecision || '')
+    setOwnerId(item.coordinatorId || '')
     setReason(item.decisionReason || '')
     setNextAction(item.nextAction || '')
     setDueDate(item.followUpAt ? new Date(item.followUpAt).toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' }) : '')
@@ -99,13 +106,24 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
       const response = await fetch(`/api-proxy/pipeline/treatment/${coordination.id}/coordination`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${localStorage.getItem('cc_token')}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patientDecision: decision || null, decisionReason: reason, nextAction, followUpAt: dueDate ? `${dueDate}T09:00:00+03:00` : null }),
+        body: JSON.stringify({ patientDecision: decision || null, decisionReason: reason, nextAction, coordinatorId: ownerId || null, followUpAt: dueDate ? `${dueDate}T09:00:00+03:00` : null }),
       })
       if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Could not save coordination') }
       setCoordination(null)
       await load()
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save coordination') }
     finally { setSavingId(null) }
+  }
+
+  const showHistory = async (item: FollowUpPlan) => {
+    setError('')
+    try {
+      const response = await fetch(`/api-proxy/pipeline/treatment/${item.id}/coordination-history`, { headers: { Authorization: `Bearer ${localStorage.getItem('cc_token')}` }, cache: 'no-store' })
+      if (!response.ok) throw new Error('Unable to load coordination history')
+      const data = await response.json()
+      setHistory(Array.isArray(data.events) ? data.events : [])
+      setHistoryFor(item)
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load history') }
   }
 
   const pipelineHref = typeof window !== 'undefined' && window.location.pathname.startsWith('/receptionist')
@@ -131,12 +149,21 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
         </div>
       </div>
       <div className="flex flex-wrap gap-2">{(['due', 'upcoming', 'all'] as const).map(key => <button key={key} type="button" onClick={() => setView(key)} className={`rounded-lg border px-3 py-2 text-sm ${view === key ? 'bg-blue-700 text-white' : 'bg-white text-gray-700'}`}>{key === 'due' ? 'Due / overdue' : key === 'upcoming' ? 'Upcoming' : 'All outstanding'}</button>)}</div>
+      {historyFor && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <section role="dialog" aria-modal="true" aria-labelledby="history-title" className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900">
+          <h2 id="history-title" className="text-lg font-bold dark:text-white">Coordination history</h2>
+          <p className="mt-1 text-sm text-gray-500">{historyFor.patient.firstName} {historyFor.patient.lastName}</p>
+          <div className="mt-4 max-h-80 space-y-3 overflow-y-auto">{history.length === 0 ? <p className="text-sm text-gray-500">No coordination events recorded yet.</p> : history.map((event, index) => <div key={index} className="rounded-lg border p-3 text-sm dark:text-white"><div className="font-semibold">{event.eventType}</div><div className="text-xs text-gray-500">{new Date(event.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' })}</div><pre className="mt-2 whitespace-pre-wrap break-words text-xs">{JSON.stringify(event.newValues, null, 2)}</pre></div>)}</div>
+          <div className="mt-4 text-right"><button type="button" onClick={() => setHistoryFor(null)} className="rounded-lg border px-4 py-2 dark:text-white">Close</button></div>
+        </section>
+      </div>}
       {coordination && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
         <section role="dialog" aria-modal="true" aria-labelledby="coordination-title" className="w-full max-w-lg space-y-3 rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900">
           <h2 id="coordination-title" className="text-lg font-bold dark:text-white">Edit treatment coordination</h2>
           <p className="text-sm text-gray-500">{coordination.patient.firstName} {coordination.patient.lastName} — {coordination.treatmentName}</p>
           <label className="block text-sm font-semibold dark:text-white">Patient decision</label>
           <select value={decision} onChange={e => setDecision(e.target.value)} className="w-full rounded-lg border p-2 text-gray-900"><option value="">Not recorded</option>{['Accepted', 'Partially Accepted', 'Undecided', 'Deferred', 'Declined'].map(d => <option key={d} value={d}>{d}</option>)}</select>
+          <label className="block text-sm font-semibold dark:text-white">Assigned coordinator</label><select value={ownerId} onChange={e => setOwnerId(e.target.value)} className="w-full rounded-lg border p-2 text-gray-900"><option value="">Unassigned</option>{coordinators.map(user => <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>)}</select>
           <label className="block text-sm font-semibold dark:text-white">Decision reason</label><textarea value={reason} maxLength={2000} onChange={e => setReason(e.target.value)} className="w-full rounded-lg border p-2 text-gray-900" rows={2} />
           <label className="block text-sm font-semibold dark:text-white">Next action</label><textarea value={nextAction} maxLength={2000} onChange={e => setNextAction(e.target.value)} className="w-full rounded-lg border p-2 text-gray-900" rows={2} />
           <label className="block text-sm font-semibold dark:text-white">Follow-up date</label><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="w-full rounded-lg border p-2 text-gray-900" />
@@ -184,7 +211,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
                 <td className="px-4 py-3 text-gray-600 dark:text-white/70">{p.status}<div className="text-xs text-gray-400">{p.stage}</div></td>
                 <td className="px-4 py-3 text-gray-600 dark:text-white/70">{p.doctorName || 'Unassigned'}</td>
                 <td className="px-4 py-3 text-xs"><div>{p.patientDecision || 'Decision not recorded'}</div><div>{p.nextAction || 'Next action not recorded'}</div><div>{p.coordinatorId ? 'Coordinator assigned' : 'Coordinator unassigned'}</div></td>
-                <td className="px-4 py-3"><div className="flex flex-col gap-2"><button type="button" onClick={() => editCoordination(p)} className="rounded-lg border px-3 py-2 text-xs font-semibold dark:text-white">Edit coordination</button><button type="button" disabled={savingId === p.id} onClick={() => { setEditing(p); setOutcome(''); setResolution('COMPLETED'); setRescheduleDate('') }} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Record outcome</button></div></td>
+                <td className="px-4 py-3"><div className="flex flex-col gap-2"><button type="button" onClick={() => editCoordination(p)} className="rounded-lg border px-3 py-2 text-xs font-semibold dark:text-white">Edit coordination</button><button type="button" onClick={() => void showHistory(p)} className="rounded-lg border px-3 py-2 text-xs dark:text-white">History</button><button type="button" disabled={savingId === p.id} onClick={() => { setEditing(p); setOutcome(''); setResolution('COMPLETED'); setRescheduleDate('') }} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Record outcome</button></div></td>
               </tr>)}
             </tbody>
           </table>
