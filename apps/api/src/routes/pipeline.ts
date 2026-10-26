@@ -148,6 +148,7 @@ function resolvePeriod(key: string, customStart?: string, customEnd?: string): {
 // of `period` — see the comment above `moneyAtRisk`.
 router.get('/treatment', requireAuth, async (req, res) => {
   try {
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
     const doctorId = await authenticatedDoctorId(prisma, req.user!)
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     const periodKey = ((req.query.period as string) || 'month') as PeriodKey
