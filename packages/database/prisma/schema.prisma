@@ -1102,6 +1102,8 @@ model TreatmentPlan {
   @@index([doctorId])
   @@index([stage])
   @@index([followUpAt])
+  @@index([coordinatorId])
+  @@index([patientDecision])
   @@map("treatment_plans")
   clinicalProductionEntries ClinicalProductionEntry[]
 }
