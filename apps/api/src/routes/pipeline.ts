@@ -423,6 +423,22 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
   }
 })
 
+// GET /pipeline/treatment/coordinators — active staff eligible to own a case.
+router.get('/treatment/coordinators', requireAuth, async (req, res) => {
+  try {
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
+    const staff = await prisma.user.findMany({
+      where: { role: { in: ['ADMIN', 'RECEPTIONIST'] }, isActive: true },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    })
+    res.json({ coordinators: staff })
+  } catch (error) {
+    console.error('[Pipeline] coordinator list failed:', error)
+    res.status(500).json({ error: 'Failed to load coordinators' })
+  }
+})
+
 // GET /pipeline/treatment/:id/coordination-history — immutable Stage 1 event log.
 router.get('/treatment/:id/coordination-history', requireAuth, async (req, res) => {
   try {
