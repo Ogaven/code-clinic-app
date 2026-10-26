@@ -1,3 +1,4 @@
+import { isPatientDecision } from '../utils/treatment-decision'
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth'
 import { prisma } from '../lib/prisma'
@@ -419,6 +420,62 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
   } catch (e) {
     console.error('[Pipeline] status update error:', e)
     res.status(500).json({ error: 'Failed to update status' })
+  }
+})
+
+// PATCH /pipeline/treatment/:id/coordination — Stage 1 staff-only coordination.
+// Deliberately separate from clinical status/stage and patient messaging.
+router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
+  try {
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+    const { patientDecision, decisionReason, coordinatorId, nextAction, clinicalReviewRequired, followUpAt } = req.body ?? {}
+    const changes: Record<string, any> = {}
+    if ('patientDecision' in req.body) {
+      if (patientDecision !== null && !isPatientDecision(patientDecision)) { res.status(400).json({ error: 'Invalid patient decision' }); return }
+      changes.patientDecision = patientDecision
+    }
+    for (const key of ['decisionReason', 'nextAction'] as const) {
+      if (key in req.body) {
+        const value = req.body[key]
+        if (value !== null && (typeof value !== 'string' || value.length > 2000)) { res.status(400).json({ error: 'Invalid ' + key }); return }
+        changes[key] = value?.trim() || null
+      }
+    }
+    if ('coordinatorId' in req.body) {
+      if (coordinatorId !== null && typeof coordinatorId !== 'string') { res.status(400).json({ error: 'Invalid coordinatorId' }); return }
+      if (coordinatorId) {
+        const owner = await prisma.user.findFirst({ where: { id: coordinatorId, isActive: true, role: { in: ['ADMIN', 'RECEPTIONIST'] } }, select: { id: true } })
+        if (!owner) { res.status(400).json({ error: 'Coordinator must be an active authorised staff member' }); return }
+      }
+      changes.coordinatorId = coordinatorId || null
+    }
+    if ('clinicalReviewRequired' in req.body) {
+      if (typeof clinicalReviewRequired !== 'boolean') { res.status(400).json({ error: 'Invalid clinicalReviewRequired' }); return }
+      if (clinicalReviewRequired === false && req.user!.role !== 'DOCTOR' && req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Clinician or administrator review required to clear clinical hold' }); return }
+      changes.clinicalReviewRequired = clinicalReviewRequired
+    }
+    if ('followUpAt' in req.body) {
+      const parsed = parseFollowUpFields({ followUpAt })
+      if (parsed.error) { res.status(400).json({ error: parsed.error }); return }
+      changes.followUpAt = parsed.data.followUpAt
+    }
+    if (!Object.keys(changes).length) { res.status(400).json({ error: 'No coordination fields provided' }); return }
+    const where = { id: req.params.id, ...(doctorId ? { doctorId } : {}) }
+    const before = await prisma.treatmentPlan.findFirst({ where, select: { id: true, patientDecision: true, decisionReason: true, coordinatorId: true, nextAction: true, clinicalReviewRequired: true, followUpAt: true } })
+    if (!before) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    // Atomic write and append-only history: no partial state without its event.
+    const updated = await prisma.$transaction(async tx => {
+      const count = await tx.treatmentPlan.updateMany({ where, data: changes })
+      if (count.count !== 1) throw new Error('Treatment plan changed during update')
+      await tx.treatmentFollowUpEvent.create({ data: { treatmentPlanId: before.id, actorId: req.user!.id, eventType: 'COORDINATION_UPDATED', previousValues: before, newValues: changes } })
+      return tx.treatmentPlan.findUniqueOrThrow({ where: { id: before.id } })
+    })
+    res.json({ id: updated.id, patientDecision: updated.patientDecision, decisionReason: updated.decisionReason, coordinatorId: updated.coordinatorId, nextAction: updated.nextAction, clinicalReviewRequired: updated.clinicalReviewRequired, followUpAt: updated.followUpAt })
+  } catch (error) {
+    console.error('[Pipeline] coordination update failed:', error)
+    res.status(500).json({ error: 'Failed to update treatment coordination' })
   }
 })
 
