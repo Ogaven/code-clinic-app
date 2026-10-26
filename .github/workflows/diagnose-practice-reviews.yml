@@ -54,5 +54,31 @@ jobs:
           printf '%s\\n' "$output" | grep -E '^[[:space:]]*20[0-9]{12}_[a-zA-Z0-9_]+[[:space:]]*$' | sed -E 's/^[[:space:]]*/PENDING_MIGRATION=/' || true
           count=$(printf '%s\\n' "$output" | grep -Ec '^[[:space:]]*20[0-9]{12}_[a-zA-Z0-9_]+[[:space:]]*$' || true)
           echo "PENDING_MIGRATION_COUNT=$count"
+          # Read-only schema and migration preflight using Prisma's existing DB URL.
+          # Never print connection strings or patient/task rows.
+          cd packages/database
+          node <<'NODE'
+          const { PrismaClient } = require('@prisma/client');
+          (async () => {
+            const db = new PrismaClient();
+            try {
+              const cols = await db.$queryRawUnsafe("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tasks' AND column_name IN ('approvalStatus','proposedAction','reviewedById','reviewedAt','reviewNotes')");
+              const names = new Set(cols.map(x => x.column_name));
+              console.log('APPROVAL_COLUMNS_PRESENT=' + ['approvalStatus','proposedAction','reviewedById','reviewedAt','reviewNotes'].filter(x => names.has(x)).join(','));
+              const migration = await db.$queryRawUnsafe("SELECT migration_name, finished_at IS NOT NULL AS applied, rolled_back_at IS NOT NULL AS rolled_back FROM \"_prisma_migrations\" WHERE migration_name IN ('20261022130000_task_approval_metadata','20261022160000_practice_intelligence_pending_dedupe') ORDER BY migration_name");
+              for (const m of migration) console.log('MIGRATION_RECORD=' + m.migration_name + ':applied=' + m.applied + ':rolled_back=' + m.rolled_back);
+              if (names.has('approvalStatus')) {
+                const duplicate = await db.$queryRawUnsafe("SELECT count(*)::int AS groups FROM (SELECT \"entityId\" FROM tasks WHERE \"entityType\" = 'PRACTICE_INTELLIGENCE' AND \"approvalStatus\" = 'PENDING_REVIEW' GROUP BY \"entityId\" HAVING count(*) > 1) d");
+                console.log('PENDING_DUPLICATE_GROUPS=' + duplicate[0].groups);
+              } else {
+                console.log('PENDING_DUPLICATE_GROUPS=NOT_APPLICABLE_COLUMN_MISSING');
+              }
+            } catch (e) {
+              console.log('PREFLIGHT_ERROR_CODE=' + (typeof e.code === 'string' && /^P[0-9]{4}$/.test(e.code) ? e.code : 'OTHER'));
+              process.exitCode = 1;
+            } finally { await db.$disconnect(); }
+          })();
+          NODE
+          cd ../..
           # Do not print raw migration output: it may contain sensitive connection details.
           REMOTE
