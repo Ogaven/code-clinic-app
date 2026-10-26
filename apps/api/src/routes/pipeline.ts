@@ -430,7 +430,8 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
     if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
     const doctorId = await authenticatedDoctorId(prisma, req.user!)
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
-    const { patientDecision, decisionReason, coordinatorId, nextAction, clinicalReviewRequired, followUpAt } = req.body ?? {}
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) { res.status(400).json({ error: 'Invalid request body' }); return }
+    const { patientDecision, coordinatorId, clinicalReviewRequired, followUpAt } = req.body
     const changes: Record<string, any> = {}
     if ('patientDecision' in req.body) {
       if (patientDecision !== null && !isPatientDecision(patientDecision)) { res.status(400).json({ error: 'Invalid patient decision' }); return }
@@ -453,7 +454,7 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
     }
     if ('clinicalReviewRequired' in req.body) {
       if (typeof clinicalReviewRequired !== 'boolean') { res.status(400).json({ error: 'Invalid clinicalReviewRequired' }); return }
-      if (clinicalReviewRequired === false && req.user!.role !== 'DOCTOR' && req.user!.role !== 'ADMIN') { res.status(403).json({ error: 'Clinician or administrator review required to clear clinical hold' }); return }
+      if (clinicalReviewRequired === false && req.user!.role !== 'DOCTOR') { res.status(403).json({ error: 'Clinician or administrator review required to clear clinical hold' }); return }
       changes.clinicalReviewRequired = clinicalReviewRequired
     }
     if ('followUpAt' in req.body) {
@@ -469,7 +470,7 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
     const updated = await prisma.$transaction(async tx => {
       const count = await tx.treatmentPlan.updateMany({ where, data: changes })
       if (count.count !== 1) throw new Error('Treatment plan changed during update')
-      await tx.treatmentFollowUpEvent.create({ data: { treatmentPlanId: before.id, actorId: req.user!.id, eventType: 'COORDINATION_UPDATED', previousValues: before, newValues: changes } })
+      await tx.treatmentFollowUpEvent.create({ data: { treatmentPlanId: before.id, actorId: req.user!.id, eventType: 'COORDINATION_UPDATED', previousValues: { ...before, followUpAt: before.followUpAt?.toISOString() ?? null }, newValues: { ...changes, ...(changes.followUpAt instanceof Date ? { followUpAt: changes.followUpAt.toISOString() } : {}) } } })
       return tx.treatmentPlan.findUniqueOrThrow({ where: { id: before.id } })
     })
     res.json({ id: updated.id, patientDecision: updated.patientDecision, decisionReason: updated.decisionReason, coordinatorId: updated.coordinatorId, nextAction: updated.nextAction, clinicalReviewRequired: updated.clinicalReviewRequired, followUpAt: updated.followUpAt })
