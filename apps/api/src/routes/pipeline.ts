@@ -423,6 +423,22 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
   }
 })
 
+// GET /pipeline/treatment/:id/coordination-history — immutable Stage 1 event log.
+router.get('/treatment/:id/coordination-history', requireAuth, async (req, res) => {
+  try {
+    if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
+    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
+    const plan = await prisma.treatmentPlan.findFirst({ where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) }, select: { id: true } })
+    if (!plan) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    const events = await prisma.treatmentFollowUpEvent.findMany({ where: { treatmentPlanId: plan.id }, orderBy: { createdAt: 'desc' }, take: 100 })
+    res.json({ events })
+  } catch (error) {
+    console.error('[Pipeline] coordination history failed:', error)
+    res.status(500).json({ error: 'Failed to load coordination history' })
+  }
+})
+
 // PATCH /pipeline/treatment/:id/coordination — Stage 1 staff-only coordination.
 // Deliberately separate from clinical status/stage and patient messaging.
 router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
