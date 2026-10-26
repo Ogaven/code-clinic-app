@@ -38,7 +38,7 @@ export async function checkAndSendLeadNurtureMessages(): Promise<void> {
         orderBy: { createdAt: 'desc' },
         select: { role: true, createdAt: true },
       }) : null
-      if (staffControlled || (latestMessage?.role === 'USER' && latestMessage.createdAt >= msg.scheduledFor)) {
+      if (staffControlled || (latestMessage?.role === 'USER')) {
         console.log('[LeadNurture] Skipping scheduled reminder: patient replied or staff controls conversation')
         await prisma.aiScheduledMessage.update({ where: { id: msg.id }, data: { sent: true } })
         continue
