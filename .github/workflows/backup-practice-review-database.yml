@@ -29,10 +29,17 @@ jobs:
           const fs = require('node:fs');
           const path = require('node:path');
           const { URL } = require('node:url');
-          const dotenv = require('dotenv');
+          // The production database package does not install dotenv.
+          // Load only DATABASE_URL from existing env files without echoing values.
           for (const filename of ['../../apps/api/.env', '../../.env', '.env']) {
+            if (process.env.DATABASE_URL) break;
             const full = path.resolve(filename);
-            if (fs.existsSync(full)) dotenv.config({ path: full, override: false, quiet: true });
+            if (!fs.existsSync(full)) continue;
+            const line = fs.readFileSync(full, 'utf8').split(/\\r?\\n/).find(x => /^\\s*(?:export\\s+)?DATABASE_URL\\s*=/.test(x));
+            if (!line) continue;
+            let value = line.replace(/^\\s*(?:export\\s+)?DATABASE_URL\\s*=\\s*/, '').trim();
+            if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+            if (value) process.env.DATABASE_URL = value;
           }
           const raw = process.env.DATABASE_URL;
           if (!raw) { console.log('BACKUP_STATUS=DATABASE_URL_NOT_FOUND'); process.exit(1); }
