@@ -112,6 +112,10 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
   }
   const saveCoordination = async () => {
     if (!coordination) return
+    if (dueDate && (['Declined', 'Deferred'].includes(decision) || coordination.clinicalReviewRequired)) {
+      setError('Clear the routine follow-up date for declined, deferred or clinically held treatments before saving.')
+      return
+    }
     setSavingId(coordination.id)
     setError('')
     try {
