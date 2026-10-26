@@ -80,5 +80,23 @@ jobs:
           })();
           NODE
           cd ../..
+          # Backup prerequisites only. Do not print DATABASE_URL or backup contents.
+          if command -v pg_dump >/dev/null 2>&1; then
+            echo "PG_DUMP_AVAILABLE=YES"
+            pg_dump --version | sed -E 's/.* ([0-9]+)(\\.[0-9]+)?.*/PG_DUMP_MAJOR=\\1/'
+          else
+            echo "PG_DUMP_AVAILABLE=NO"
+          fi
+          if command -v pg_restore >/dev/null 2>&1; then
+            echo "PG_RESTORE_AVAILABLE=YES"
+          else
+            echo "PG_RESTORE_AVAILABLE=NO"
+          fi
+          if [ -d /var/backups ] && [ -w /var/backups ]; then
+            echo "BACKUP_DIRECTORY_WRITABLE=YES"
+          else
+            echo "BACKUP_DIRECTORY_WRITABLE=NO"
+          fi
+          # Does not establish an off-server or restorable database backup.
           # Do not print raw migration output: it may contain sensitive connection details.
           REMOTE
