@@ -498,6 +498,15 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
     const where = { id: req.params.id, ...(doctorId ? { doctorId } : {}) }
     const before = await prisma.treatmentPlan.findFirst({ where, select: { id: true, patientDecision: true, decisionReason: true, coordinatorId: true, nextAction: true, clinicalReviewRequired: true, followUpAt: true } })
     if (!before) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    const effectiveDecision = changes.patientDecision !== undefined ? changes.patientDecision : before.patientDecision
+    const effectiveDate = changes.followUpAt !== undefined ? changes.followUpAt : before.followUpAt
+    const effectiveHold = changes.clinicalReviewRequired !== undefined ? changes.clinicalReviewRequired : before.clinicalReviewRequired
+    if (effectiveDate && ['Declined', 'Deferred'].includes(effectiveDecision ?? '')) {
+      res.status(409).json({ error: 'Declined or deferred decisions cannot retain an active routine follow-up date' }); return
+    }
+    if (effectiveDate && effectiveHold) {
+      res.status(409).json({ error: 'Clinical-review cases must be cleared by a doctor before routine follow-up is scheduled' }); return
+    }
     // Atomic write and append-only history: no partial state without its event.
     const updated = await prisma.$transaction(async tx => {
       const count = await tx.treatmentPlan.updateMany({ where, data: changes })
