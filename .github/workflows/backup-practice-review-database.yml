@@ -41,6 +41,19 @@ jobs:
             if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
             if (value) process.env.DATABASE_URL = value;
           }
+          // PM2 is the authoritative runtime environment for the production API.
+          // Only consume the connection string in memory; never log PM2 JSON.
+          if (!process.env.DATABASE_URL) {
+            const pm2 = spawnSync('pm2', ['jlist'], { encoding: 'utf8', timeout: 15000, maxBuffer: 8 * 1024 * 1024 });
+            if (pm2.status === 0) {
+              try {
+                const processes = JSON.parse(pm2.stdout);
+                const api = processes.find(p => p.name === 'codeclinic-api');
+                const value = api?.pm2_env?.DATABASE_URL || api?.pm2_env?.env?.DATABASE_URL;
+                if (typeof value === 'string' && value.length) process.env.DATABASE_URL = value;
+              } catch {}
+            }
+          }
           const raw = process.env.DATABASE_URL;
           if (!raw) { console.log('BACKUP_STATUS=DATABASE_URL_NOT_FOUND'); process.exit(1); }
           const u = new URL(raw);
