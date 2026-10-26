@@ -23,6 +23,15 @@ interface FollowUpPlan {
   clinicalReviewRequired?: boolean
 }
 
+// Date-only keys must be stable across browsers and locales.
+function kampalaDateKey(value: Date): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Kampala', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(value)
+  const part = (type: string) => parts.find(p => p.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
 export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHref: (id: string) => string }) {
   const [items, setItems] = useState<FollowUpPlan[]>([])
   const [metrics, setMetrics] = useState<{ active: number; assignedWithNextAction: number; assignmentCoveragePct: number | null; overdue: number; unassigned: number; clinicalReviewHeld: number; onTimeCompletionPct: number | null; verifiedCompletions: number; completedOnTime: number } | null>(null)
@@ -68,10 +77,10 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
   }, [])
   useEffect(() => { void load() }, [load])
 
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
+  const today = kampalaDateKey(new Date())
   const filtered = items.filter(item => {
     if (!item.followUpAt || (ownerFilter !== 'all' && (item.coordinatorId || 'unassigned') !== ownerFilter)) return false
-    const day = new Date(item.followUpAt).toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' })
+    const day = kampalaDateKey(new Date(item.followUpAt))
     return view === 'all' || (view === 'due' ? day <= today : day > today)
   })
   const saveOutcome = async (item: FollowUpPlan) => {
@@ -99,7 +108,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
     setOwnerId(item.coordinatorId || '')
     setReason(item.decisionReason || '')
     setNextAction(item.nextAction || '')
-    setDueDate(item.followUpAt ? new Date(item.followUpAt).toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' }) : '')
+    setDueDate(item.followUpAt ? kampalaDateKey(new Date(item.followUpAt)) : '')
   }
   const saveCoordination = async () => {
     if (!coordination) return
