@@ -17,6 +17,22 @@ function cell(value: unknown): string {
   return /^[=+\-@\t\r]/.test(text) ? "'" + text : text
 }
 
+// Display Ugandan numbers like existing Form responses, without the country prefix.
+function localUgandanPhone(value: unknown): string {
+  const raw = String(value ?? '').trim()
+  const digits = raw.replace(/[^\d]/g, '')
+  if (/^256[37]\d{8}$/.test(digits)) return '0' + digits.slice(3)
+  if (/^[37]\d{8}$/.test(digits)) return '0' + digits
+  if (/^0[37]\d{8}$/.test(digits)) return digits
+  return raw
+}
+
+// A person's name must never be written into a phone-number column.
+function kinPhone(value: unknown): string {
+  const normalized = localUgandanPhone(value)
+  return /\d{7,}/.test(normalized.replace(/\D/g, '')) ? normalized : ''
+}
+
 export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; skipped: boolean }> {
   if (process.env.WALKIN_SHEETS_EXPORT_ENABLED !== 'true') return { processed: 0, skipped: true }
   const email = process.env.WALKIN_SHEETS_SERVICE_ACCOUNT_EMAIL
@@ -141,9 +157,9 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
         const kin = [submitted('nextOfKinName', patient.nextOfKinName), submitted('nextOfKinRelation', patient.nextOfKinRelation)].filter(Boolean).join(' — ')
         const values = [[
           new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Kampala', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(activity.createdAt).replace(',', ''), cell(submitted('lastName', patient.lastName)), cell(submitted('firstName', patient.firstName)),
-          cell(submitted('phone', patient.phone)), cell(submitted('dob', dob)), cell(submitted('email', patient.email)), cell(submitted('address', patient.address)), cell(submitted('chiefComplaint', '')),
-          cell(submitted('referralSource', patient.referralSource)), cell(kin), '', '', cell(submitted('nextOfKinPhone', patient.nextOfKinPhone)),
-          cell(submitted('referredByContact', '')), '', cell(submitted('dob', dob)), task.activityId,
+          cell(localUgandanPhone(submitted('phone', patient.phone))), cell(submitted('dob', dob)), cell(submitted('email', patient.email)), cell(submitted('address', patient.address)), cell(submitted('chiefComplaint', '')),
+          cell(submitted('referralSource', patient.referralSource)), cell(kin), '', '', cell(kinPhone(submitted('nextOfKinPhone', patient.nextOfKinPhone))),
+          cell(localUgandanPhone(submitted('referredByContact', ''))), '', cell(submitted('dob', dob)), task.activityId,
         ]]
         await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
