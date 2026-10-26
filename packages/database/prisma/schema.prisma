@@ -1086,6 +1086,14 @@ model TreatmentPlan {
   followUpReason String?
   followUpNote   String?
 
+  // Stage 1 coordination metadata, separate from clinical status and dentist.
+  patientDecision String?
+  decisionReason String?
+  coordinatorId String?
+  nextAction String?
+  // Existing followUpAt remains the due date/time.
+  clinicalReviewRequired Boolean @default(false)
+
   appointments   Appointment[]
   followUpAlerts TreatmentFollowUpAlert[]
 
