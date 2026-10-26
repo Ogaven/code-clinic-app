@@ -1831,9 +1831,10 @@ function ClinicalResolutionForm({ error, onCancel, onConfirm }: {
   )
 }
 
-function HandBackModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (summary: string) => void }) {
+function HandBackModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (summary: string) => Promise<void> }) {
   const [summary, setSummary] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
   return (
     <div className="fixed inset-0 z-[10003] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={onClose}>
       <div className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -1852,10 +1853,11 @@ function HandBackModal({ onClose, onConfirm }: { onClose: () => void; onConfirm:
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
           />
         </div>
+        {submitError && <p role="alert" className="px-4 pb-2 text-xs text-red-600">{submitError}</p>}
         <div className="flex gap-2 px-4 pb-4">
           <button
             disabled={submitting || !summary.trim()}
-            onClick={async () => { if (!summary.trim()) return; setSubmitting(true); await onConfirm(summary.trim()) }}
+            onClick={async () => { if (!summary.trim()) return; setSubmitting(true); setSubmitError(''); try { await onConfirm(summary.trim()) } catch (error) { setSubmitError(error instanceof Error ? error.message : 'Handback failed') } finally { setSubmitting(false) } }}
             className="flex-1 px-4 py-2 text-sm font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 disabled:opacity-50">
             {submitting ? 'Handing back…' : 'Hand Back'}
           </button>
