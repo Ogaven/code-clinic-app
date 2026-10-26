@@ -523,7 +523,7 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
     }
     if ('clinicalReviewRequired' in req.body) {
       if (typeof clinicalReviewRequired !== 'boolean') { res.status(400).json({ error: 'Invalid clinicalReviewRequired' }); return }
-      if (clinicalReviewRequired === false && req.user!.role !== 'DOCTOR') { res.status(403).json({ error: 'Clinician or administrator review required to clear clinical hold' }); return }
+      if (clinicalReviewRequired === false && req.user!.role !== 'DOCTOR') { res.status(403).json({ error: 'A doctor must clear the clinical hold' }); return }
       changes.clinicalReviewRequired = clinicalReviewRequired
     }
     if ('followUpAt' in req.body) {
@@ -533,11 +533,14 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
     }
     if (!Object.keys(changes).length) { res.status(400).json({ error: 'No coordination fields provided' }); return }
     const where = { id: req.params.id, ...(doctorId ? { doctorId } : {}) }
-    const before = await prisma.treatmentPlan.findFirst({ where, select: { id: true, patientDecision: true, decisionReason: true, coordinatorId: true, nextAction: true, clinicalReviewRequired: true, followUpAt: true } })
+    const before = await prisma.treatmentPlan.findFirst({ where, select: { id: true, status: true, patientDecision: true, decisionReason: true, coordinatorId: true, nextAction: true, clinicalReviewRequired: true, followUpAt: true } })
     if (!before) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     const effectiveDecision = changes.patientDecision !== undefined ? changes.patientDecision : before.patientDecision
     const effectiveDate = changes.followUpAt !== undefined ? changes.followUpAt : before.followUpAt
     const effectiveHold = changes.clinicalReviewRequired !== undefined ? changes.clinicalReviewRequired : before.clinicalReviewRequired
+    if (effectiveDate && NON_ACTIONABLE_STATUSES.includes(before.status)) {
+      res.status(409).json({ error: 'Completed, cancelled or declined treatment cannot have an active routine follow-up' }); return
+    }
     if (effectiveDate && ['Declined', 'Deferred'].includes(effectiveDecision ?? '')) {
       res.status(409).json({ error: 'Declined or deferred decisions cannot retain an active routine follow-up date' }); return
     }
