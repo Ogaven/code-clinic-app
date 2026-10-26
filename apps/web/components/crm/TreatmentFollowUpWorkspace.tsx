@@ -33,6 +33,11 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
   const [outcome, setOutcome] = useState('')
   const [resolution, setResolution] = useState<'COMPLETED' | 'RESCHEDULED'>('COMPLETED')
   const [rescheduleDate, setRescheduleDate] = useState('')
+  const [coordination, setCoordination] = useState<FollowUpPlan | null>(null)
+  const [decision, setDecision] = useState('')
+  const [reason, setReason] = useState('')
+  const [nextAction, setNextAction] = useState('')
+  const [dueDate, setDueDate] = useState('')
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -79,6 +84,30 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
     finally { setSavingId(null) }
   }
 
+  const editCoordination = (item: FollowUpPlan) => {
+    setCoordination(item)
+    setDecision(item.patientDecision || '')
+    setReason(item.decisionReason || '')
+    setNextAction(item.nextAction || '')
+    setDueDate(item.followUpAt ? new Date(item.followUpAt).toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala' }) : '')
+  }
+  const saveCoordination = async () => {
+    if (!coordination) return
+    setSavingId(coordination.id)
+    setError('')
+    try {
+      const response = await fetch(`/api-proxy/pipeline/treatment/${coordination.id}/coordination`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${localStorage.getItem('cc_token')}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientDecision: decision || null, decisionReason: reason, nextAction, followUpAt: dueDate ? `${dueDate}T09:00:00+03:00` : null }),
+      })
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Could not save coordination') }
+      setCoordination(null)
+      await load()
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save coordination') }
+    finally { setSavingId(null) }
+  }
+
   const pipelineHref = typeof window !== 'undefined' && window.location.pathname.startsWith('/receptionist')
     ? '/receptionist/treatment-pipeline' : '/treatment-pipeline'
 
@@ -102,6 +131,18 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
         </div>
       </div>
       <div className="flex flex-wrap gap-2">{(['due', 'upcoming', 'all'] as const).map(key => <button key={key} type="button" onClick={() => setView(key)} className={`rounded-lg border px-3 py-2 text-sm ${view === key ? 'bg-blue-700 text-white' : 'bg-white text-gray-700'}`}>{key === 'due' ? 'Due / overdue' : key === 'upcoming' ? 'Upcoming' : 'All outstanding'}</button>)}</div>
+      {coordination && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <section role="dialog" aria-modal="true" aria-labelledby="coordination-title" className="w-full max-w-lg space-y-3 rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900">
+          <h2 id="coordination-title" className="text-lg font-bold dark:text-white">Edit treatment coordination</h2>
+          <p className="text-sm text-gray-500">{coordination.patient.firstName} {coordination.patient.lastName} — {coordination.treatmentName}</p>
+          <label className="block text-sm font-semibold dark:text-white">Patient decision</label>
+          <select value={decision} onChange={e => setDecision(e.target.value)} className="w-full rounded-lg border p-2 text-gray-900"><option value="">Not recorded</option>{['Accepted', 'Partially Accepted', 'Undecided', 'Deferred', 'Declined'].map(d => <option key={d} value={d}>{d}</option>)}</select>
+          <label className="block text-sm font-semibold dark:text-white">Decision reason</label><textarea value={reason} maxLength={2000} onChange={e => setReason(e.target.value)} className="w-full rounded-lg border p-2 text-gray-900" rows={2} />
+          <label className="block text-sm font-semibold dark:text-white">Next action</label><textarea value={nextAction} maxLength={2000} onChange={e => setNextAction(e.target.value)} className="w-full rounded-lg border p-2 text-gray-900" rows={2} />
+          <label className="block text-sm font-semibold dark:text-white">Follow-up date</label><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="w-full rounded-lg border p-2 text-gray-900" />
+          <div className="flex justify-end gap-2"><button type="button" disabled={!!savingId} onClick={() => setCoordination(null)} className="rounded-lg border px-4 py-2 dark:text-white">Cancel</button><button type="button" disabled={!!savingId} onClick={() => void saveCoordination()} className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50">Save changes</button></div>
+        </section>
+      </div>}
       {editing && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget && !savingId) setEditing(null) }}>
         <section role="dialog" aria-modal="true" aria-labelledby="followup-outcome-title" className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900">
           <h2 id="followup-outcome-title" className="text-lg font-bold text-gray-900 dark:text-white">Record follow-up outcome</h2>
@@ -143,7 +184,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
                 <td className="px-4 py-3 text-gray-600 dark:text-white/70">{p.status}<div className="text-xs text-gray-400">{p.stage}</div></td>
                 <td className="px-4 py-3 text-gray-600 dark:text-white/70">{p.doctorName || 'Unassigned'}</td>
                 <td className="px-4 py-3 text-xs"><div>{p.patientDecision || 'Decision not recorded'}</div><div>{p.nextAction || 'Next action not recorded'}</div><div>{p.coordinatorId ? 'Coordinator assigned' : 'Coordinator unassigned'}</div></td>
-                <td className="px-4 py-3"><button type="button" disabled={savingId === p.id} onClick={() => { setEditing(p); setOutcome(''); setResolution('COMPLETED'); setRescheduleDate('') }} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Record outcome</button></td>
+                <td className="px-4 py-3"><div className="flex flex-col gap-2"><button type="button" onClick={() => editCoordination(p)} className="rounded-lg border px-3 py-2 text-xs font-semibold dark:text-white">Edit coordination</button><button type="button" disabled={savingId === p.id} onClick={() => { setEditing(p); setOutcome(''); setResolution('COMPLETED'); setRescheduleDate('') }} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Record outcome</button></div></td>
               </tr>)}
             </tbody>
           </table>
