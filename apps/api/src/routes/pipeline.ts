@@ -611,11 +611,14 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
 
     const plan = await prisma.treatmentPlan.findFirst({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
-      select: { id: true, patientId: true, toothNumber: true, followUpNote: true, followUpAt: true, status: true, patientDecision: true },
+      select: { id: true, patientId: true, toothNumber: true, followUpNote: true, followUpAt: true, status: true, patientDecision: true, clinicalReviewRequired: true },
     })
     if (!plan) { res.status(404).json({ error: 'Treatment plan not found' }); return }
 
-    if (plan.patientDecision === 'Declined' && resolution === 'RESCHEDULED') { res.status(409).json({ error: 'Declined treatment cannot be rescheduled for routine follow-up' }); return }
+    if (resolution === 'RESCHEDULED' && (['Declined', 'Deferred'].includes(plan.patientDecision ?? '') || NON_ACTIONABLE_STATUSES.includes(plan.status))) {
+      res.status(409).json({ error: 'This treatment is not eligible for routine follow-up rescheduling' }); return
+    }
+    if (resolution === 'RESCHEDULED' && plan.clinicalReviewRequired) { res.status(409).json({ error: 'Clinical review must be cleared before routine follow-up rescheduling' }); return }
     let newFollowUpAt: Date | null = null
     if (resolution === 'RESCHEDULED') {
       if (!rescheduleTo) { res.status(400).json({ error: 'rescheduleTo is required when resolution is RESCHEDULED' }); return }
