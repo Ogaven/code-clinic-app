@@ -289,9 +289,26 @@ router.get('/treatment', requireAuth, async (req, res) => {
       .filter(p => p.followUpAt && !NON_ACTIONABLE_STATUSES.includes(p.status) && p.patientDecision !== 'Declined' && p.patientDecision !== 'Deferred' && !p.clinicalReviewRequired)
       .sort((a, b) => new Date(a.followUpAt!).getTime() - new Date(b.followUpAt!).getTime())
 
+    // Stage 1 accountability uses only explicitly scheduled, actionable cases.
+    // No historical auto-enrolment or fabricated denominators.
+    const assigned = followUps.filter(p => !!p.coordinatorId && !!p.nextAction?.trim())
+    const due = followUps.filter(p => new Date(p.followUpAt!).getTime() <= now.getTime())
+    const overdue = followUps.filter(p => new Date(p.followUpAt!).getTime() < now.getTime())
+    const coordinationMetrics = {
+      active: followUps.length,
+      assignedWithNextAction: assigned.length,
+      assignmentCoveragePct: followUps.length ? Math.round(assigned.length / followUps.length * 100) : null,
+      due: due.length,
+      overdue: overdue.length,
+      unassigned: followUps.filter(p => !p.coordinatorId).length,
+      clinicalReviewHeld: enriched.filter(p => p.clinicalReviewRequired && !NON_ACTIONABLE_STATUSES.includes(p.status)).length,
+      onTimeCompletionPct: null, // Requires verified due-date snapshots at resolution; do not invent KPI.
+    }
+
     res.json({
       plans:   inPeriod,
       followUps,
+      coordinationMetrics,
       metrics: { presentedValue, acceptedValue, conversionRate, moneyAtRisk, avgDaysToSchedule },
       period:  { key: periodKey, start: periodStart?.toISOString() ?? null, end: periodEnd?.toISOString() ?? null, label: periodLabel },
     })
