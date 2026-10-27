@@ -556,6 +556,7 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
       const count = await tx.treatmentPlan.updateMany({
         where: {
           ...where,
+          status: before.status,
           patientDecision: before.patientDecision,
           coordinatorId: before.coordinatorId,
           decisionReason: before.decisionReason,
