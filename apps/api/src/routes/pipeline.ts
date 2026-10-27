@@ -326,6 +326,7 @@ router.get('/treatment', requireAuth, async (req, res) => {
       onTimeCompletionPct: assessedCompletions.length ? Math.round(completedOnTime / assessedCompletions.length * 100) : null,
       verifiedCompletions: assessedCompletions.length,
       completedOnTime,
+      completionSampleLimit: 1000,
     }
 
     res.json({
