@@ -94,7 +94,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolution, note: outcome.trim(), ...(resolution === 'RESCHEDULED' ? { rescheduleTo: `${rescheduleDate}T09:00:00+03:00` } : {}) }),
       })
-      if (!response.ok) throw new Error('Could not record outcome')
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Could not record outcome') }
       setEditing(null)
       setOutcome('')
       await load()
