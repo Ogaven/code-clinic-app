@@ -677,6 +677,20 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
       }
     }
 
+    // A provider failure can race with a staff takeover. In that case the
+    // agent deliberately returns an empty response; never persist or send it.
+    if (!agentReply?.trim()) return
+
+    // Re-check ownership after the asynchronous AI request. Staff may have
+    // taken over while Sarah was generating her reply.
+    const currentConversation = await prisma.aiConversation.findUnique({
+      where: { id: conversation.id },
+      select: { agentEnabled: true },
+    })
+    const isProviderFailureAcknowledgment =
+      agentReply === 'Thank you for your message. Our reception team will assist you shortly.'
+    if (!currentConversation || (!currentConversation.agentEnabled && !isProviderFailureAcknowledgment)) return
+
     // ── 9. Persist Sarah's reply ──────────────────────────────────────────────
     await prisma.aiMessage.create({
       data: {
