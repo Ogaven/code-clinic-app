@@ -300,6 +300,8 @@ router.get('/treatment', requireAuth, async (req, res) => {
     const resolutionEvents = await prisma.treatmentFollowUpEvent.findMany({
       where: { eventType: 'FOLLOW_UP_COMPLETED', ...(doctorId ? { treatmentPlan: { doctorId } } : {}) },
       select: { createdAt: true, previousValues: true },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
     })
     const assessedCompletions = resolutionEvents.map(event => {
       const values = event.previousValues
