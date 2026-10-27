@@ -663,7 +663,7 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       // Optimistic concurrency: a follow-up must not be resolved twice against
       // the same scheduled date. The event is committed only with the update.
       const changed = await tx.treatmentPlan.updateMany({
-        where: { id: plan.id, followUpAt: plan.followUpAt },
+        where: { id: plan.id, followUpAt: plan.followUpAt, followUpNote: plan.followUpNote },
         data: { followUpAt: newFollowUpAt, followUpNote: updatedNote },
       })
       if (changed.count !== 1) throw new Error('FOLLOW_UP_CHANGED')
