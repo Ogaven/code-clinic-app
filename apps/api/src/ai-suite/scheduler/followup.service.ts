@@ -104,6 +104,26 @@ Rules:
   }
 }
 
+// Do not interrupt an unanswered patient or a staff-managed conversation with
+// an automated follow-up. This is checked immediately before each send.
+async function shouldPauseAutomatedFollowup(phone: string, since?: Date): Promise<boolean> {
+  const conversations = await prisma.aiConversation.findMany({
+    where: { phoneNumber: phone, channel: 'WHATSAPP', status: 'ACTIVE' },
+    select: { id: true, agentEnabled: true },
+  })
+  if (conversations.some(c => !c.agentEnabled)) return true
+  const ids = conversations.map(c => c.id)
+  if (!ids.length) return false
+  const latest = await prisma.aiMessage.findFirst({
+    where: { conversationId: { in: ids }, role: { in: ['USER', 'AGENT', 'STAFF'] } },
+    orderBy: { createdAt: 'desc' },
+    select: { role: true, createdAt: true },
+  })
+  if (!latest) return false
+  if (latest.role === 'USER') return true
+  return !!since && latest.role === 'STAFF' && latest.createdAt >= since
+}
+
 // ── checkAndSendFollowups ─────────────────────────────────────────────────────
 // Runs every hour. Finds COMPLETED appointments from 23–25 hours ago and sends a
 // warm post-visit follow-up message if one hasn't been sent yet.
@@ -193,6 +213,7 @@ export async function checkAndSendFollowups(): Promise<void> {
       continue
     }
     const recipientPhone = routing.recipient.phone
+    if (await shouldPauseAutomatedFollowup(recipientPhone)) continue
     try {
       await sendWhatsAppMessage(recipientPhone, message)
     } catch (err: any) {
@@ -341,6 +362,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       continue
     }
     const recipientPhone = missedRouting.recipient.phone
+    if (await shouldPauseAutomatedFollowup(recipientPhone)) { counts.skipped++; continue }
     try {
       await sendWhatsAppMessage(recipientPhone, msg)
     } catch (err: any) {
@@ -431,6 +453,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
         continue
       }
       const recipientPhoneNudge = nudgeRouting.recipient.phone
+      if (await shouldPauseAutomatedFollowup(recipientPhoneNudge)) { counts.skipped++; continue }
       try {
         await sendWhatsAppMessage(recipientPhoneNudge, nudge)
         const c = await prisma.aiConversation.findFirst({ where: { phoneNumber: patient.phone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
@@ -518,6 +541,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       try {
         const hasReplied = await prisma.aiMessage.findFirst({ where: { conversation: { phoneNumber: patientPhone }, role: 'USER', createdAt: { gte: stage1SentAt } } })
         if (hasReplied) { console.log(`[PostApptFollowup] Stage 2 skipped, patient replied`); return }
+        if (await shouldPauseAutomatedFollowup(patientPhone, stage1SentAt)) return
         await sendWhatsAppMessage(patientPhone, stage2)
         const c = await prisma.aiConversation.findFirst({ where: { phoneNumber: patientPhone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
         if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', content: stage2, metadata: JSON.stringify({ type: 'followup', serviceName: naturalServiceName(appt.service?.name), doctorName: doctorFirst }) } })
@@ -533,6 +557,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       try {
         const hasReplied = await prisma.aiMessage.findFirst({ where: { conversation: { phoneNumber: patientPhone }, role: 'USER', createdAt: { gte: stage1SentAt } } })
         if (hasReplied) { console.log(`[PostApptFollowup] Stage 3 skipped, patient replied`); return }
+        if (await shouldPauseAutomatedFollowup(patientPhone, stage1SentAt)) return
         await sendWhatsAppMessage(patientPhone, stage3)
         const c = await prisma.aiConversation.findFirst({ where: { phoneNumber: patientPhone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
         if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', content: stage3, metadata: JSON.stringify({ type: 'followup', serviceName: naturalServiceName(appt.service?.name), doctorName: doctorFirst }) } })
