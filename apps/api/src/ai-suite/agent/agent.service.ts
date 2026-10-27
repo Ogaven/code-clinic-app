@@ -3091,10 +3091,34 @@ export async function getAgentReplyV2OpenAI(
       succeeded:    false,
       errorMessage: (err?.message ?? 'unknown error').slice(0, 500),
     })
-    await escalateOnRepeatedProviderFailure(conversationId, from, channel).catch(
-      (e: any) => console.error('[AgentV2-OpenAI] escalateOnRepeatedProviderFailure failed:', e?.message)
-    )
-    return `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
+    // A provider failure is not a patient question. Route it to reception
+    // immediately rather than repeatedly telling the patient to try again.
+    if (!channel || channel === 'WHATSAPP') {
+      try {
+        await prisma.aiConversation.updateMany({
+          where: { id: conversationId, agentEnabled: true },
+          data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+        })
+        await prisma.aiMessage.create({
+          data: {
+            conversationId,
+            role: 'SYSTEM',
+            content: 'AI_PROVIDER_FAILURE: Sarah paused; reception follow-up required.',
+            metadata: JSON.stringify({ reason: 'AI_PROVIDER_FAILURE', at: new Date().toISOString() }),
+          },
+        })
+        await alertStaffOfConcern({
+          conversationId,
+          patientPhone: from,
+          message: 'Sarah could not complete an AI response. Reception must review the latest patient message and reply manually.',
+          channel,
+        })
+      } catch (handoffError: any) {
+        console.error('[AgentV2-OpenAI] Provider-failure human handoff failed:', handoffError?.message)
+      }
+      return `Thank you for your message. Our reception team will assist you shortly.`
+    }
+    return `Thank you for your message. Our team will assist you shortly.`
   }
 }
 
