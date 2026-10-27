@@ -34,7 +34,7 @@ function kampalaDateKey(value: Date): string {
 
 export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHref: (id: string) => string }) {
   const [items, setItems] = useState<FollowUpPlan[]>([])
-  const [metrics, setMetrics] = useState<{ active: number; assignedWithNextAction: number; assignmentCoveragePct: number | null; overdue: number; unassigned: number; clinicalReviewHeld: number; onTimeCompletionPct: number | null; verifiedCompletions: number; completedOnTime: number } | null>(null)
+  const [metrics, setMetrics] = useState<{ active: number; assignedWithNextAction: number; assignmentCoveragePct: number | null; overdue: number; unassigned: number; clinicalReviewHeld: number; onTimeCompletionPct: number | null; verifiedCompletions: number; completedOnTime: number; completionSampleLimit?: number } | null>(null)
   const [coordinators, setCoordinators] = useState<{ id: string; firstName: string; lastName: string }[]>([])
   const [ownerId, setOwnerId] = useState('')
   const [history, setHistory] = useState<{ eventType: string; actorId: string; createdAt: string; newValues: unknown; outcome?: string | null }[]>([])
@@ -170,7 +170,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
         <div className="rounded-xl border p-3"><div className="text-xs text-gray-500">Overdue</div><div className="text-2xl font-bold dark:text-white">{metrics.overdue}</div></div>
         <div className="rounded-xl border p-3"><div className="text-xs text-gray-500">Unassigned</div><div className="text-2xl font-bold dark:text-white">{metrics.unassigned}</div></div>
       </div>}
-      {metrics && <p className="text-sm text-gray-600 dark:text-white/70">On-time completion: <strong>{metrics.onTimeCompletionPct === null ? 'Not yet measurable' : `${metrics.onTimeCompletionPct}%`}</strong> ({metrics.completedOnTime} on time of {metrics.verifiedCompletions} verified completed follow-ups; target 90%). Historical completions without due-date evidence are excluded.</p>}
+      {metrics && <p className="text-sm text-gray-600 dark:text-white/70">On-time completion: <strong>{metrics.onTimeCompletionPct === null ? 'Not yet measurable' : `${metrics.onTimeCompletionPct}%`}</strong> ({metrics.completedOnTime} on time of {metrics.verifiedCompletions} verified completed follow-ups; target 90%). Historical completions without due-date evidence are excluded. {metrics.completionSampleLimit ? `Calculated from the latest ${metrics.completionSampleLimit.toLocaleString()} completion events at most; not an all-time rate.` : ''}</p>}
       <div className="flex flex-wrap gap-2">{(['due', 'upcoming', 'all'] as const).map(key => <button key={key} type="button" onClick={() => setView(key)} className={`rounded-lg border px-3 py-2 text-sm ${view === key ? 'bg-blue-700 text-white' : 'bg-white text-gray-700'}`}>{key === 'due' ? 'Due / overdue' : key === 'upcoming' ? 'Upcoming' : 'All outstanding'}</button>)}</div>
       {historyFor && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
         <section role="dialog" aria-modal="true" aria-labelledby="history-title" className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900">
