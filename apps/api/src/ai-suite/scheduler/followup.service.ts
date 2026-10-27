@@ -506,6 +506,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       continue
     }
     const recipientPhone = stage1Routing.recipient.phone
+    if (await shouldPauseAutomatedFollowup(recipientPhone)) { counts.skipped++; continue }
     const stage1SentAt = new Date()
     try {
       await sendWhatsAppMessage(recipientPhone, stage1)
