@@ -123,7 +123,7 @@ describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel
     const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
     const reply = await getAgentReplyV2OpenAI('conv-3', '+256700000003', 'How much is a cleaning?', 'WHATSAPP')
 
-    expect(reply).toBe(`Sorry, I'm having a small issue right now. Please try again in a moment 😊`)
+    expect(reply).toBe(`Thank you for your message. Our reception team will assist you shortly.`)
   })
 
   it('OPENAI_429_TEST — a rate-limit error falls back gracefully without throwing', async () => {

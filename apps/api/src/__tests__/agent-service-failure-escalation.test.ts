@@ -34,9 +34,10 @@ vi.mock('../ai-suite/agent/patient-context.service', () => ({
   getPendingHandoffNote: vi.fn().mockResolvedValue(null),
 }))
 
-const FALLBACK_TEXT = `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
+const FALLBACK_TEXT = `Thank you for your message. Our reception team will assist you shortly.`
 
 const prismaMock = {
+  aiConversation: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   aiMessage:      { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({}) },
   patient:        { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn().mockResolvedValue(null) },
   service:        { findMany: vi.fn().mockResolvedValue([]) },
@@ -62,6 +63,7 @@ describe('safe failure behavior — no silent repeat-fallback loop', () => {
     prismaMock.patient.findFirst.mockResolvedValue(null)
     prismaMock.user.findMany.mockResolvedValue([])
     prismaMock.aiMessage.findMany.mockResolvedValue([])
+    prismaMock.aiConversation.updateMany.mockResolvedValue({ count: 1 })
   })
 
   it('a first, isolated failure returns the fallback but does NOT alert staff', async () => {
@@ -93,9 +95,12 @@ describe('safe failure behavior — no silent repeat-fallback loop', () => {
     // Patient still gets the same, unchanged fallback text — this is a background-only alert.
     expect(reply).toBe(FALLBACK_TEXT)
     // Staff WAS notified this time.
-    expect(sendWhatsAppMessage).toHaveBeenCalledTimes(1)
-    const [toNumber, alertText] = sendWhatsAppMessage.mock.calls[0]
-    expect(typeof toNumber).toBe('string')
-    expect(alertText).toContain('AI provider failure')
+    expect(prismaMock.aiConversation.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'conv-repeat-fail' }),
+      data: expect.objectContaining({ agentEnabled: false, status: 'HUMAN_TAKEOVER' }),
+    }))
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ content: expect.stringContaining('AI_PROVIDER_FAILURE') }),
+    }))
   })
 })
