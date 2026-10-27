@@ -214,7 +214,7 @@ export default function PracticeIntelligencePage() {
         }),
       })
       if (response.status === 409) {
-        setSubmissionMessage('This finding already has a pending review. Open the review queue to see it.')
+        setSubmissionMessage('This finding already has a pending review.')
       } else if (!response.ok) {
         setSubmissionMessage('Unable to submit recommendation (' + response.status + ').')
       } else {
@@ -336,8 +336,8 @@ export default function PracticeIntelligencePage() {
         ) : null}
         {investigationActions.length > 0 ? (
           <div className="mt-5 space-y-3">
-            <h3 className="text-sm font-semibold text-clinic-navy dark:text-white">Staff-reviewed next steps</h3>
-            {submissionMessage && <p role="status" className="text-sm text-gray-600 dark:text-gray-300">{submissionMessage}</p>}
+            <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold text-clinic-navy dark:text-white">Staff-reviewed next steps</h3><Link href="/practice-intelligence/reviews" className="text-sm font-semibold text-clinic-blue hover:underline">Administrator review queue →</Link></div>
+            {submissionMessage && <div role="status" className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-300"><span>{submissionMessage}</span><Link href="/practice-intelligence/reviews" className="font-semibold text-clinic-blue underline">Open administrator review queue</Link></div>}
             {investigationActions.map(action => (
               <div key={action.label} className="rounded-xl border border-gray-100 p-3 dark:border-white/10">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{action.priority}</p>
