@@ -558,6 +558,8 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
           ...where,
           patientDecision: before.patientDecision,
           coordinatorId: before.coordinatorId,
+          decisionReason: before.decisionReason,
+          nextAction: before.nextAction,
           clinicalReviewRequired: before.clinicalReviewRequired,
           followUpAt: before.followUpAt,
         },
