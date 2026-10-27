@@ -34,7 +34,7 @@ vi.mock('../ai-suite/agent/patient-context.service', () => ({
   getPendingHandoffNote: vi.fn().mockResolvedValue(null),
 }))
 
-const FALLBACK_TEXT = `Sorry, I'm having a small issue right now. Please try again in a moment 😊`
+const FALLBACK_TEXT = `Thank you for your message. Our reception team will assist you shortly.`
 
 const prismaMock = {
   aiMessage:      { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({}) },
