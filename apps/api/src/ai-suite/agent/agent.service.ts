@@ -3095,10 +3095,13 @@ export async function getAgentReplyV2OpenAI(
     // immediately rather than repeatedly telling the patient to try again.
     if (!channel || channel === 'WHATSAPP') {
       try {
-        await prisma.aiConversation.updateMany({
+        const paused = await prisma.aiConversation.updateMany({
           where: { id: conversationId, agentEnabled: true },
           data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
         })
+        // If staff already took over, do not emit a second failure event or
+        // interrupt the staff-managed conversation with an AI acknowledgment.
+        if (paused.count === 0) return ''
         await prisma.aiMessage.create({
           data: {
             conversationId,
