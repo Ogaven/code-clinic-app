@@ -13,6 +13,21 @@ describe('Stage 1 treatment decisions', () => {
     expect(eligibleForRoutineTreatmentFollowUp('Deferred', true)).toBe(false)
     expect(eligibleForRoutineTreatmentFollowUp('Accepted', true)).toBe(false)
   })
+  it('rejects malformed or incorrectly cased decisions', () => {
+    for (const value of ['', 'accepted', 'DECLINED', 'On Hold', 0, false, {}, [], undefined]) {
+      expect(isPatientDecision(value)).toBe(false)
+    }
+  })
+  it('does not start routine outreach without permission, even for unrecorded decisions', () => {
+    for (const decision of [...PATIENT_DECISIONS, null]) {
+      expect(eligibleForRoutineTreatmentFollowUp(decision, false)).toBe(false)
+    }
+  })
+  it('does not initiate sales follow-up for accepted decisions', () => {
+    expect(eligibleForRoutineTreatmentFollowUp('Accepted', true)).toBe(false)
+    expect(eligibleForRoutineTreatmentFollowUp('Partially Accepted', true)).toBe(true)
+    expect(eligibleForRoutineTreatmentFollowUp(null, true)).toBe(true)
+  })
   it('honours contact permission for unresolved decisions', () => {
     expect(eligibleForRoutineTreatmentFollowUp('Undecided', false)).toBe(false)
     expect(eligibleForRoutineTreatmentFollowUp('Partially Accepted', false)).toBe(false)
