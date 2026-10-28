@@ -1,3 +1,4 @@
+import { classifyNonPatientEnquiry } from '../../crm-automation/non-patient-enquiry'
 import { Router }   from 'express'
 import multer        from 'multer'
 import path          from 'path'
@@ -89,7 +90,7 @@ router.post('/message', async (req, res) => {
         // Upsert lead — routed through the single lead-creation orchestration
         // entry point (Part K). Acknowledgement is skipped: the AI agent
         // already replies to this same inbound message in real time.
-        await findOrCreateLeadForChannel({
+        if (!classifyNonPatientEnquiry(message)) await findOrCreateLeadForChannel({
           where:      { phone: sessionId, source: 'WEBSITE', status: { notIn: ['CONVERTED', 'LOST'] } },
           createData: { phone: sessionId, source: 'WEBSITE', status: 'NEW', stage: 'NEW', lastMessage: message, name: extractedName || null },
           onExistingMessage: message,
