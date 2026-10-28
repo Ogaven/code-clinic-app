@@ -329,7 +329,7 @@ describe('Facebook social identity enrichment', () => {
       if (value.includes('/post-1?fields=message')) {
         return { ok: true, json: async () => ({ message: 'Alcohol before the dentist? Tell us you are anxious instead.' }) } as any
       }
-      return { ok: true, json: async () => ({}), text: async () => '' } as any
+      return { ok: true, json: async () => ({ id: 'created-reply-1' }), text: async () => JSON.stringify({ id: 'created-reply-1' }) } as any
     }) as any
 
     await processComment('comment-1', 'post-1', 'commenter-1', 'Princess Priscilla', "What's this all about?", 'FACEBOOK_COMMENT')
