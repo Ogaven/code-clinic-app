@@ -365,13 +365,18 @@ export async function processComment(
 
     // ── B. Idempotency: skip if we've already processed this comment ──────────
     const marker = `"commentId":"${commentId}"`
-    const alreadyProcessed = await prisma.aiMessage.findFirst({
-      where: { metadata: { contains: marker } },
+    const alreadyPublished = await prisma.aiMessage.findFirst({
+      where: { role: 'AGENT', metadata: { contains: marker } },
     })
-    if (alreadyProcessed) {
-      console.log(`[${channel}] Duplicate webhook — commentId ${commentId} already processed, skipping`)
+    if (alreadyPublished) {
+      console.log(`[${channel}] Comment reply already recorded — commentId ${commentId}, skipping`)
       return
     }
+    // A previous attempt may have stored the inbound comment before Meta
+    // rejected the reply. Allow a retry without duplicating the USER message.
+    const existingInbound = await prisma.aiMessage.findFirst({
+      where: { role: 'USER', metadata: { contains: marker } },
+    })
 
     // ── C. Get or create conversation, updating displayName if we have it ────────
     const config = await prisma.aiAgentConfig.findFirst()
@@ -453,14 +458,16 @@ export async function processComment(
     }
 
     // Store user message with commentId + postCaption in metadata
-    await prisma.aiMessage.create({
-      data: {
-        conversationId: conversation.id,
-        role:     'USER',
-        content:  text,
-        metadata: JSON.stringify({ commentId, postId, fromName, parentId, postCaption: postCaption?.slice(0, 200) ?? null }),
-      },
-    })
+    if (!existingInbound) {
+      await prisma.aiMessage.create({
+        data: {
+          conversationId: conversation.id,
+          role:     'USER',
+          content:  text,
+          metadata: JSON.stringify({ commentId, postId, fromName, parentId, postCaption: postCaption?.slice(0, 200) ?? null }),
+        },
+      })
+    }
 
     // Creating a message does NOT bump the parent conversation's updatedAt —
     // touch it explicitly so reused threads (repeat commenters) sort by real
