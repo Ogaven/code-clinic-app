@@ -647,6 +647,8 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       res.status(409).json({ error: 'This treatment is not eligible for routine follow-up rescheduling' }); return
     }
     if (resolution === 'RESCHEDULED' && plan.clinicalReviewRequired) { res.status(409).json({ error: 'Clinical review must be cleared before routine follow-up rescheduling' }); return }
+    // A clinical hold may be dismissed or completed, but must not be rescheduled as routine outreach.
+    // The hold flag itself remains unchanged until a doctor explicitly clears it.
     let newFollowUpAt: Date | null = null
     if (resolution === 'RESCHEDULED') {
       if (!rescheduleTo) { res.status(400).json({ error: 'rescheduleTo is required when resolution is RESCHEDULED' }); return }
