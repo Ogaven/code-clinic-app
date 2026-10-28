@@ -1,3 +1,4 @@
+import { classifyNonPatientEnquiry } from '../crm-automation/non-patient-enquiry'
 import { Router } from 'express'
 import { prisma } from '../lib/prisma'
 import { getAgentReplyV2OpenAI } from '../ai-suite/agent/agent.service'
@@ -73,7 +74,7 @@ router.post('/message', async (req, res) => {
     // social-channel enquiries. The widget session id is the stable identity
     // available before the visitor supplies a phone/email, so use it for
     // deduplication without pretending it is a real phone number.
-    await findOrCreateLeadForChannel({
+    if (!classifyNonPatientEnquiry(message)) await findOrCreateLeadForChannel({
       where:      { provider: 'WEBSITE_CHAT', externalSubmissionId: sessionId, status: { notIn: ['CONVERTED', 'LOST'] } },
       createData: {
         source: 'WEBSITE',
