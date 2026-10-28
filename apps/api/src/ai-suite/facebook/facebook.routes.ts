@@ -1,4 +1,7 @@
 import { Router } from 'express'
+import { createHash } from 'crypto'
+import { persistMetaEvents, drainMetaEvents } from './meta-inbox.worker'
+import type { MetaInboxProvider, MetaInboxPayload } from './meta-inbox.types'
 import * as fs from 'fs'
 import { getAgentReplyV2OpenAI, getCommentReplyOpenAI } from '../agent/agent.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
@@ -185,129 +188,89 @@ router.get('/facebook/webhook', (req, res) => {
   res.status(403).json({ error: 'Verification failed' })
 })
 
-// POST /ai-suite/facebook/webhook — receive Messenger messages
-router.post('/facebook/webhook', async (req, res) => {
-  // See lib/webhook-signature.ts — rejects only once a real app secret is
-  // configured; today this only logs a warning and never blocks live traffic.
-  if (checkMetaWebhookSignature(req, ['FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'Facebook') === 'REJECTED') {
+// Webhook payloads must be persisted before acknowledging Meta.
+function extractInboxEvents(body: any, provider: MetaInboxProvider): Array<{ key: string; payload: MetaInboxPayload }> {
+  const events: Array<{ key: string; payload: MetaInboxPayload }> = []
+  for (const entry of body.entry ?? []) {
+    for (const event of entry.messaging ?? []) {
+      if (!event.message?.text || event.message.is_echo || !event.sender?.id) continue
+      const mid = event.message.mid ? String(event.message.mid) : undefined
+      const key = mid ? `message:${mid}` : `message:${createHash('sha256').update(JSON.stringify(event)).digest('hex')}`
+      events.push({ key, payload: { kind: 'message', fromId: String(event.sender.id), text: String(event.message.text), mid } })
+    }
+    for (const change of entry.changes ?? []) {
+      const v = change.value
+      if (provider === 'FACEBOOK') {
+        if (change.field !== 'feed' || v?.item !== 'comment' || v?.verb !== 'add') continue
+        const commentId = v.comment_id ?? v.id
+        if (!commentId || !v.post_id || !v.from?.id || !v.message || String(v.from.id) === FB_PAGE_ID) continue
+        events.push({ key: `comment:${commentId}`, payload: { kind: 'comment', commentId: String(commentId),
+          postId: String(v.post_id), fromId: String(v.from.id), fromName: String(v.from.name ?? ''),
+          text: String(v.message), parentId: v.parent_id ? String(v.parent_id) : undefined } })
+      } else {
+        if (change.field !== 'comments' || !v?.id || !v?.text || String(v.from?.id ?? '') === IG_ACCOUNT_ID) continue
+        events.push({ key: `comment:${v.id}`, payload: { kind: 'comment', commentId: String(v.id),
+          postId: String(v.media?.id ?? ''), fromId: String(v.from?.id ?? ''),
+          fromName: String(v.from?.username ?? ''), text: String(v.text),
+          parentId: v.parent_id ? String(v.parent_id) : undefined } })
+      }
+    }
+  }
+  return events
+}
+
+async function processInboxEvent(provider: MetaInboxProvider, event: MetaInboxPayload): Promise<void> {
+  if (event.kind === 'message') {
+    await processSocialMessage(event.fromId, event.text, provider, event.mid)
+  } else {
+    await processComment(event.commentId, event.postId, event.fromId, event.fromName, event.text,
+      provider === 'FACEBOOK' ? 'FACEBOOK_COMMENT' : 'INSTAGRAM_COMMENT', event.parentId)
+  }
+}
+
+const metaInboxTimer = setInterval(() => {
+  void drainMetaEvents(processInboxEvent).catch(error => console.error('[Meta inbox] drain failed:', error))
+}, 5000)
+metaInboxTimer.unref()
+
+async function acceptMetaWebhook(req: import('express').Request, res: import('express').Response, provider: MetaInboxProvider): Promise<void> {
+  const secrets = provider === 'FACEBOOK' ? ['FACEBOOK_APP_SECRET', 'META_APP_SECRET']
+    : ['INSTAGRAM_APP_SECRET', 'FACEBOOK_APP_SECRET', 'META_APP_SECRET']
+  if (checkMetaWebhookSignature(req, secrets, provider) === 'REJECTED') {
     res.sendStatus(403)
     return
   }
-
-  res.sendStatus(200) // Acknowledge immediately so Meta doesn't retry
-
-  try {
-    const body = req.body as any
-    if (body.object !== 'page') return
-
-    for (const entry of body.entry ?? []) {
-      for (const event of entry.messaging ?? []) {
-        if (!event.message?.text) continue
-        if (event.message?.is_echo) continue // never process our own outbound sends mirrored back
-        await processSocialMessage(
-          String(event.sender.id),
-          String(event.message.text),
-          'FACEBOOK',
-          event.message.mid ? String(event.message.mid) : undefined,
-        )
-      }
-      // Page post comments arrive as entry.changes[] with field "feed".
-      // Keep this separate from Messenger events so a comment is persisted in
-      // the FACEBOOK_COMMENT channel and replied to on the originating thread.
-      for (const change of entry.changes ?? []) {
-        if (change.field !== 'feed') continue
-        const v = change.value
-        if (v?.item !== 'comment' || v?.verb !== 'add') continue
-
-        const commentId = v.comment_id ?? v.id
-        const postId = v.post_id
-        const fromId = v.from?.id
-        const text = v.message
-        if (!commentId || !postId || !fromId || !text) continue
-
-        // Never process comments authored by the CODE Clinic Page itself.
-        if (String(fromId) === FB_PAGE_ID) continue
-
-        await processComment(
-          String(commentId),
-          String(postId),
-          String(fromId),
-          String(v.from?.name ?? ''),
-          String(text),
-          'FACEBOOK_COMMENT',
-          v.parent_id ? String(v.parent_id) : undefined,
-        )
-      }
-    }
-  } catch (err) {
-    console.error('[Facebook] Webhook error:', err)
+  const body = req.body as any
+  if (body?.object !== (provider === 'FACEBOOK' ? 'page' : 'instagram')) {
+    res.sendStatus(200)
+    return
   }
-})
+  try {
+    await persistMetaEvents(provider, extractInboxEvents(body, provider))
+    res.sendStatus(200)
+    void drainMetaEvents(processInboxEvent).catch(error => console.error('[Meta inbox] drain failed:', error))
+  } catch (error) {
+    console.error('[Meta inbox] failed to persist; Meta may retry:', error)
+    res.sendStatus(503)
+  }
+}
 
-// ── Instagram DMs ─────────────────────────────────────────────────────────────
+// POST /ai-suite/facebook/webhook
+router.post('/facebook/webhook', (req, res) => { void acceptMetaWebhook(req, res, 'FACEBOOK') })
 
 // GET /ai-suite/instagram/webhook
 router.get('/instagram/webhook', (req, res) => {
-  const mode      = req.query['hub.mode']
-  const token     = req.query['hub.verify_token']
+  const mode = req.query['hub.mode']
+  const token = req.query['hub.verify_token']
   const challenge = req.query['hub.challenge']
-
   if (mode === 'subscribe' && token === (process.env.INSTAGRAM_VERIFY_TOKEN ?? 'codeclinic-instagram-2026')) {
-    console.log('[Instagram] Webhook verified')
     return res.status(200).send(challenge)
   }
   res.status(403).json({ error: 'Verification failed' })
 })
 
 // POST /ai-suite/instagram/webhook
-router.post('/instagram/webhook', async (req, res) => {
-  // See lib/webhook-signature.ts — rejects only once a real app secret is
-  // configured; today this only logs a warning and never blocks live traffic.
-  if (checkMetaWebhookSignature(req, ['INSTAGRAM_APP_SECRET', 'FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'Instagram') === 'REJECTED') {
-    res.sendStatus(403)
-    return
-  }
-
-  res.sendStatus(200)
-
-  try {
-    const body = req.body as any
-    if (body.object !== 'instagram') return
-
-    for (const entry of body.entry ?? []) {
-      // DMs
-      for (const event of entry.messaging ?? []) {
-        if (!event.message?.text) continue
-        if (event.message?.is_echo) continue // never process our own outbound sends mirrored back
-        await processSocialMessage(
-          String(event.sender.id),
-          String(event.message.text),
-          'INSTAGRAM',
-          event.message.mid ? String(event.message.mid) : undefined,
-        )
-      }
-      // Post comments
-      for (const change of entry.changes ?? []) {
-        if (change.field !== 'comments') continue
-        const v = change.value
-        if (!v?.text || !v?.id) continue
-        // Never process comments authored by our own IG account (prevents self-reply loops)
-        if (String(v.from?.id ?? '') === IG_ACCOUNT_ID) continue
-        await processComment(
-          String(v.id),
-          String(v.media?.id ?? ''),
-          String(v.from?.id ?? ''),
-          String(v.from?.username ?? ''),
-          String(v.text),
-          'INSTAGRAM_COMMENT',
-          v.parent_id ? String(v.parent_id) : undefined,
-        )
-      }
-    }
-  } catch (err) {
-    console.error('[Instagram] Webhook error:', err)
-  }
-})
+router.post('/instagram/webhook', (req, res) => { void acceptMetaWebhook(req, res, 'INSTAGRAM') })
 
 // ── Comment helpers ───────────────────────────────────────────────────────────
 
