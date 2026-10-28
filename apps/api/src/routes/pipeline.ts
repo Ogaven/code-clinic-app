@@ -340,7 +340,8 @@ router.get('/treatment', requireAuth, async (req, res) => {
     const coordinationNeedsAttention = enriched
       .filter(p => new Date(p.createdAt) >= triageCutoff && !p.followUpAt &&
         !NON_ACTIONABLE_STATUSES.includes(p.status) &&
-        p.patientDecision !== 'Declined' && p.patientDecision !== 'Deferred')
+        p.patientDecision !== 'Declined' && p.patientDecision !== 'Deferred' &&
+        (!p.coordinatorId || !p.nextAction?.trim() || !p.patientDecision || p.clinicalReviewRequired))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 100)
 
