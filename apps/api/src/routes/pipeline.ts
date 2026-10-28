@@ -669,6 +669,7 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
     let newFollowUpAt: Date | null = null
     if (resolution === 'RESCHEDULED') {
       if (!rescheduleTo) { res.status(400).json({ error: 'rescheduleTo is required when resolution is RESCHEDULED' }); return }
+      if (typeof rescheduleTo !== 'string' || !rescheduleTo.trim()) { res.status(400).json({ error: 'Invalid rescheduleTo date' }); return }
       const d = new Date(rescheduleTo)
       if (isNaN(d.getTime())) { res.status(400).json({ error: 'Invalid rescheduleTo date' }); return }
       newFollowUpAt = d
@@ -685,7 +686,7 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       // Optimistic concurrency: a follow-up must not be resolved twice against
       // the same scheduled date. The event is committed only with the update.
       const changed = await tx.treatmentPlan.updateMany({
-        where: { id: plan.id, followUpAt: plan.followUpAt, followUpNote: plan.followUpNote },
+        where: { id: plan.id, followUpAt: plan.followUpAt, followUpNote: plan.followUpNote, status: plan.status, patientDecision: plan.patientDecision, clinicalReviewRequired: plan.clinicalReviewRequired },
         data: { followUpAt: newFollowUpAt, followUpNote: updatedNote },
       })
       if (changed.count !== 1) throw new Error('FOLLOW_UP_CHANGED')
