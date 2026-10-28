@@ -25,6 +25,12 @@ describe('parseFollowUpFields', () => {
     expect(error).toBe('Invalid followUpAt date')
   })
 
+  it('rejects impossible calendar dates instead of silently rolling into another month', () => {
+    for (const followUpAt of ['2026-02-31', '2026-04-31', '2026-13-01']) {
+      expect(parseFollowUpFields({ followUpAt }).error).toBe('Invalid followUpAt date')
+    }
+  })
+
   it('rejects non-string dates instead of coercing numbers, booleans or objects', () => {
     for (const value of [0, 1, true, false, {}, [], ['2026-12-01'], '   ']) {
       expect(parseFollowUpFields({ followUpAt: value }).error).toBe('Invalid followUpAt date')
