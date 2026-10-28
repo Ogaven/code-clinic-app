@@ -12,6 +12,7 @@ export function parseFollowUpFields(body: any): { data: Record<string, any>; err
     if (body.followUpAt === null || body.followUpAt === '') {
       data.followUpAt = null
     } else {
+      if (typeof body.followUpAt !== 'string' || !body.followUpAt.trim()) return { data, error: 'Invalid followUpAt date' }
       const d = new Date(body.followUpAt)
       if (isNaN(d.getTime())) return { data, error: 'Invalid followUpAt date' }
       data.followUpAt = d
