@@ -495,7 +495,14 @@ export async function processComment(
       : nonPatientEnquiry === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
       : await getCommentReplyOpenAI(conversation.id, text, channel, fromId, postCaption ?? undefined)
 
-    logOpenAICommentReply(channel, fromId, text, reply)
+    if (!reply?.trim()) {
+      console.warn(`[${channel}] Empty comment reply suppressed: commentId=${commentId}`)
+      return
+    }
+
+    // Only record an outbound AGENT message after Meta confirms publication.
+    // Previously a failed Graph API call left a phantom reply in the inbox.
+    await sendCommentReply(commentId, reply, channel)
 
     await prisma.aiMessage.create({
       data: {
@@ -505,8 +512,7 @@ export async function processComment(
         metadata: JSON.stringify({ commentId, postId }),
       },
     })
-
-    await sendCommentReply(commentId, reply, channel)
+    logOpenAICommentReply(channel, fromId, text, reply)
   } catch (err) {
     console.error(`[${channel}] processComment error:`, err)
   }
