@@ -13,6 +13,8 @@ type ReviewTask = {
   reviewedAt: string | null
   reviewNotes: string | null
   assignedToId: string | null
+  status: string
+  completedAt: string | null
 }
 
 export default function PracticeIntelligenceReviewsPage() {
@@ -118,6 +120,12 @@ export default function PracticeIntelligenceReviewsPage() {
                 <h2 className="font-bold text-clinic-navy dark:text-white">{task.title}</h2>
                 <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{task.approvalStatus?.replaceAll('_', ' ')}</span>
               </div>
+              {task.approvalStatus === 'APPROVED' && (
+                <p className="mt-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  Investigation: {task.status === 'DONE' ? 'COMPLETED' : 'OPEN'}
+                  {task.status === 'DONE' && task.completedAt ? ' · Completed ' + new Date(task.completedAt).toLocaleString() : ''}
+                </p>
+              )}
               {task.description && <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{task.description}</p>}
               <p className="mt-2 text-xs text-gray-500">Proposed review: {task.proposedAction?.replaceAll('_', ' ') || 'Unspecified'} · Submitted {new Date(task.createdAt).toLocaleString()}</p>
               {(task.approvalStatus === 'PENDING_REVIEW' || task.approvalStatus === 'APPROVED') && (
