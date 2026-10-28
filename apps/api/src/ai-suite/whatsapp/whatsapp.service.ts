@@ -1,4 +1,4 @@
-import { classifyNonPatientEnquiry } from '../../crm-automation/non-patient-enquiry'
+import { classifyNonPatientEnquiry, JOB_ENQUIRY_REPLY, SUPPLIER_ENQUIRY_REPLY } from '../../crm-automation/non-patient-enquiry'
 import { getAgentReplyV2OpenAI } from '../agent/agent.service'
 import { isAgentEnabled, takeoverConversation } from '../takeover/takeover.service'
 import { setBookingState } from '../booking/booking.state'
@@ -608,7 +608,9 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
     }
 
     // ── 7. Get Sarah's reply from OpenAI ───────────────────────────────────────
-    const agentReply = await getAgentReplyV2OpenAI(conversation.id, from, text)
+    const agentReply = classifyNonPatientEnquiry(text) === 'JOB' ? JOB_ENQUIRY_REPLY
+      : classifyNonPatientEnquiry(text) === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
+      : await getAgentReplyV2OpenAI(conversation.id, from, text)
 
     // ── 7b. Rating detection ─────────────────────────────────────────────────
     // If patient sends a bare 1–5 number (or "X stars"), persist as PatientFeedback.
