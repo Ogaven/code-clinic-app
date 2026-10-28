@@ -529,8 +529,9 @@ export async function sendCommentReply(
     : (config?.instagramAccessToken    || process.env.INSTAGRAM_ACCESS_TOKEN     || null)
 
   if (!token) {
-    console.warn(`[${channel}] No access token configured — comment reply not sent`)
-    return
+    // Do not silently report success: callers must not persist an AGENT
+    // message when the reply was never sent to Meta.
+    throw new Error(`[${channel}] No access token configured — comment reply not sent`)
   }
 
   // Facebook comments: POST /{comment_id}/comments
