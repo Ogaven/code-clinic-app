@@ -25,6 +25,12 @@ describe('parseFollowUpFields', () => {
     expect(error).toBe('Invalid followUpAt date')
   })
 
+  it('rejects non-string dates instead of coercing numbers, booleans or objects', () => {
+    for (const value of [0, 1, true, false, {}, [], ['2026-12-01'], '   ']) {
+      expect(parseFollowUpFields({ followUpAt: value }).error).toBe('Invalid followUpAt date')
+    }
+  })
+
   it('treats an explicit null followUpAt as "clear the field"', () => {
     const { data } = parseFollowUpFields({ followUpAt: null })
     expect(data.followUpAt).toBeNull()
