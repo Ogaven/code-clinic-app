@@ -1,3 +1,4 @@
+import { classifyNonPatientEnquiry } from '../../crm-automation/non-patient-enquiry'
 import { getAgentReplyV2OpenAI } from '../agent/agent.service'
 import { isAgentEnabled, takeoverConversation } from '../takeover/takeover.service'
 import { setBookingState } from '../booking/booking.state'
@@ -296,7 +297,7 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
     // agent) already replies to this same inbound message in real time
     // through the normal pipeline; sending a second "thanks for reaching
     // out" would be a duplicate.
-    if (!patient) {
+    if (!patient && !classifyNonPatientEnquiry(text)) {
       await findOrCreateLeadForChannel({
         where:      { phone: from, status: { notIn: ['CONVERTED', 'LOST'] } },
         createData: { phone: from, source: 'WHATSAPP', status: 'NEW', stage: 'NEW', lastMessage: text },
