@@ -1,3 +1,4 @@
+import { classifyNonPatientEnquiry, JOB_ENQUIRY_REPLY, SUPPLIER_ENQUIRY_REPLY } from '../../crm-automation/non-patient-enquiry'
 import { Router }   from 'express'
 import multer        from 'multer'
 import path          from 'path'
@@ -64,7 +65,9 @@ router.post('/message', async (req, res) => {
     if (!agentOn) {
       reply = 'Our team has taken over this conversation. A staff member will respond shortly.'
     } else {
-      reply = await getAgentReplyV2OpenAI(conversation.id, sessionId, message, 'WEBSITE')
+      reply = classifyNonPatientEnquiry(message) === 'JOB' ? JOB_ENQUIRY_REPLY
+      : classifyNonPatientEnquiry(message) === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
+      : await getAgentReplyV2OpenAI(conversation.id, sessionId, message, 'WEBSITE')
       await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: reply },
       })
@@ -89,7 +92,7 @@ router.post('/message', async (req, res) => {
         // Upsert lead — routed through the single lead-creation orchestration
         // entry point (Part K). Acknowledgement is skipped: the AI agent
         // already replies to this same inbound message in real time.
-        await findOrCreateLeadForChannel({
+        if (!classifyNonPatientEnquiry(message)) await findOrCreateLeadForChannel({
           where:      { phone: sessionId, source: 'WEBSITE', status: { notIn: ['CONVERTED', 'LOST'] } },
           createData: { phone: sessionId, source: 'WEBSITE', status: 'NEW', stage: 'NEW', lastMessage: message, name: extractedName || null },
           onExistingMessage: message,
