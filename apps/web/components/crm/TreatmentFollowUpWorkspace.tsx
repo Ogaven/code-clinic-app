@@ -220,7 +220,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
       {loading ? <p className="text-sm text-gray-500">Loading live follow-ups…</p> : !error && filtered.length === 0
         ? <p className="rounded-xl border bg-white p-8 text-sm text-gray-500 dark:bg-white/5">{view === 'triage' ? 'No recent unscheduled plans need manual review.' : 'No outstanding follow-ups in the Treatment Pipeline.'}</p>
         : !error && <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white dark:border-white/10 dark:bg-white/5">
-          <div className="border-b px-4 py-3 text-sm font-semibold text-gray-700 dark:text-white">{filtered.length} {view === 'due' ? 'due or overdue' : view === 'upcoming' ? 'upcoming' : view === 'triage' ? 'recent unscheduled plans for manual review' : 'outstanding'} follow-up{filtered.length === 1 ? '' : 's'}</div>
+          <div className="border-b px-4 py-3 text-sm font-semibold text-gray-700 dark:text-white">{filtered.length} {view === 'triage' ? `recent unscheduled treatment plan${filtered.length === 1 ? '' : 's'} for manual review` : `${view === 'due' ? 'due or overdue' : view === 'upcoming' ? 'upcoming' : 'outstanding'} follow-up${filtered.length === 1 ? '' : 's'}`}</div>
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-white/5"><tr>
               <th className="px-4 py-3">Patient</th><th className="px-4 py-3">Treatment / Notes</th>
