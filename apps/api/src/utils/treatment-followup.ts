@@ -13,7 +13,15 @@ export function parseFollowUpFields(body: any): { data: Record<string, any>; err
       data.followUpAt = null
     } else {
       if (typeof body.followUpAt !== 'string' || !body.followUpAt.trim()) return { data, error: 'Invalid followUpAt date' }
-      const d = new Date(body.followUpAt)
+      const raw = body.followUpAt.trim()
+      // Reject impossible calendar dates that JavaScript silently normalizes (e.g. February 31).
+      const calendarDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
+      if (calendarDate) {
+        const [, year, month, day] = calendarDate
+        const date = new Date(`${year}-${month}-${day}T00:00:00.000Z`)
+        if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== raw) return { data, error: 'Invalid followUpAt date' }
+      }
+      const d = new Date(raw)
       if (isNaN(d.getTime())) return { data, error: 'Invalid followUpAt date' }
       data.followUpAt = d
     }
