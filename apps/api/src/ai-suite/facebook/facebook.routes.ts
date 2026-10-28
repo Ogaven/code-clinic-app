@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { persistMetaEvents, drainMetaEvents } from './meta-inbox.worker'
 import type { MetaInboxProvider, MetaInboxPayload } from './meta-inbox.types'
 import * as fs from 'fs'
@@ -472,7 +472,30 @@ export async function processComment(
 
     // Only record an outbound AGENT message after Meta confirms publication.
     // Previously a failed Graph API call left a phantom reply in the inbox.
-    await sendCommentReply(commentId, reply, channel)
+    // Claim before calling Meta. A timeout/crash after Meta accepts a reply
+    // must never trigger a second automatic public reply on webhook redelivery.
+    // Ambiguous sends are held for staff reconciliation rather than replayed.
+    const claimed = await prisma.$executeRawUnsafe(
+      `INSERT INTO "meta_comment_publish_claims" ("id","channel","commentId")
+       VALUES ($1,$2,$3) ON CONFLICT ("channel","commentId") DO NOTHING`,
+      randomUUID(), channel, commentId,
+    )
+    if (claimed === 0) {
+      console.warn(`[${channel}] Public reply already claimed; requires reconciliation if no agent message exists`)
+      return
+    }
+    try {
+      await sendCommentReply(commentId, reply, channel)
+      await prisma.$executeRawUnsafe(
+        `UPDATE "meta_comment_publish_claims" SET "status"='PUBLISHED',"publishedAt"=NOW()
+         WHERE "channel"=$1 AND "commentId"=$2`, channel, commentId)
+    } catch (error: any) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "meta_comment_publish_claims" SET "status"='REVIEW_REQUIRED',"lastError"=$3
+         WHERE "channel"=$1 AND "commentId"=$2`,
+        channel, commentId, String(error?.message ?? error).slice(0, 500))
+      throw error
+    }
 
     await prisma.aiMessage.create({
       data: {
