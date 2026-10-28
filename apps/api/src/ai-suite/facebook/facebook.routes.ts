@@ -522,6 +522,9 @@ export async function processComment(
     logOpenAICommentReply(channel, fromId, text, reply)
   } catch (err) {
     console.error(`[${channel}] processComment error:`, err)
+    // Propagate failures to the webhook caller and future durable retry worker.
+    // Swallowing this exception incorrectly reports processing as successful.
+    throw err
   }
 }
 
