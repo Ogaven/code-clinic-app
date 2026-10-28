@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { prismaMock, findOrCreateLeadForChannel, getAgentReplyV2OpenAI, getCommentReplyOpenAI, isAgentEnabled, maybeNotifyStaff } = vi.hoisted(() => ({
   prismaMock: {
+    $executeRawUnsafe: vi.fn().mockResolvedValue(1),
     aiAgentConfig: { findFirst: vi.fn() },
     aiConversation: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     aiMessage: { findFirst: vi.fn(), create: vi.fn() },
