@@ -660,7 +660,7 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
     if (!plan.followUpAt) {
       res.status(409).json({ error: 'No active follow-up is scheduled for this treatment plan' }); return
     }
-    if (resolution === 'RESCHEDULED' && (['Declined', 'Deferred', 'Accepted'].includes(plan.patientDecision ?? '') || NON_ACTIONABLE_STATUSES.includes(plan.status))) {
+    if (resolution === 'RESCHEDULED' && (['Declined', 'Deferred'].includes(plan.patientDecision ?? '') || NON_ACTIONABLE_STATUSES.includes(plan.status))) {
       res.status(409).json({ error: 'This treatment is not eligible for routine follow-up rescheduling' }); return
     }
     if (resolution === 'RESCHEDULED' && plan.clinicalReviewRequired) { res.status(409).json({ error: 'Clinical review must be cleared before routine follow-up rescheduling' }); return }
