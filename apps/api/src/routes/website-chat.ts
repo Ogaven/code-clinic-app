@@ -1,4 +1,4 @@
-import { classifyNonPatientEnquiry } from '../crm-automation/non-patient-enquiry'
+import { classifyNonPatientEnquiry, JOB_ENQUIRY_REPLY, SUPPLIER_ENQUIRY_REPLY } from '../crm-automation/non-patient-enquiry'
 import { Router } from 'express'
 import { prisma } from '../lib/prisma'
 import { getAgentReplyV2OpenAI } from '../ai-suite/agent/agent.service'
@@ -91,7 +91,9 @@ router.post('/message', async (req, res) => {
       // genuine inbound CRM activity by findOrCreateLeadForChannel().
     })
 
-    const reply = await getAgentReplyV2OpenAI(conv.id, sessionId, message, 'WEBSITE')
+    const reply = classifyNonPatientEnquiry(message) === 'JOB' ? JOB_ENQUIRY_REPLY
+      : classifyNonPatientEnquiry(message) === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
+      : await getAgentReplyV2OpenAI(conv.id, sessionId, message, 'WEBSITE')
 
     await prisma.aiMessage.create({
       data: { conversationId: conv.id, role: 'AGENT', content: reply },
