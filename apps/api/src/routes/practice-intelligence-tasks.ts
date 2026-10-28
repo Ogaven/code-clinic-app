@@ -171,4 +171,36 @@ router.post('/recommendations/:id/decision', requireAuth, adminOnly, async (req,
   }
 })
 
+
+router.post('/my-assignments/:id/complete', requireAuth, async (req, res) => {
+  if (!['ADMIN', 'DOCTOR', 'RECEPTIONIST'].includes(req.user!.role)) {
+    res.status(403).json({ error: 'Access denied' }); return
+  }
+  const { findings } = req.body ?? {}
+  if (typeof findings !== 'string' || !findings.trim() || findings.trim().length > 2000) {
+    res.status(400).json({ error: 'Investigation findings required (maximum 2000 characters)' }); return
+  }
+  try {
+    const task = await prisma.$transaction(async tx => {
+      const changed = await tx.task.updateMany({
+        where: { id: req.params.id, entityType: 'PRACTICE_INTELLIGENCE',
+          assignedToId: req.user!.id, approvalStatus: 'APPROVED', status: 'OPEN' },
+        data: { status: 'DONE', completedAt: new Date() },
+      })
+      if (changed.count !== 1) return null
+      const updated = await tx.task.findUniqueOrThrow({ where: { id: req.params.id } })
+      await tx.auditLog.create({ data: {
+        userId: req.user!.id, action: 'STATUS_CHANGE', resource: 'PRACTICE_INTELLIGENCE_TASK',
+        resourceId: updated.id, entityType: 'PRACTICE_INTELLIGENCE_TASK', entityId: updated.id,
+        entityName: updated.title, actionType: 'STATUS_CHANGE',
+        fieldChanges: JSON.stringify({ before: { status: 'OPEN' }, after: { status: 'DONE' } }),
+        notes: findings.trim(),
+      } })
+      return updated
+    })
+    if (!task) { res.status(409).json({ error: 'Investigation unavailable or already completed' }); return }
+    res.json({ task, actionExecuted: false })
+  } catch { res.status(500).json({ error: 'Unable to record investigation completion' }) }
+})
+
 export default router
