@@ -10,12 +10,16 @@ type Assignment = {
   proposedAction: string | null
   approvalStatus: string | null
   createdAt: string
+  status: string
+  completedAt: string | null
 }
 
 export default function MyPracticeIntelligenceAssignments() {
   const [tasks, setTasks] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [findings, setFindings] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState<string | null>(null)
   const load = useCallback(async () => {
     const token = localStorage.getItem('cc_token')
     const raw = localStorage.getItem('cc_user')
@@ -41,6 +45,25 @@ export default function MyPracticeIntelligenceAssignments() {
     }
   }, [])
   useEffect(() => { void load() }, [load])
+  async function complete(task: Assignment) {
+    const notes = findings[task.id]?.trim()
+    if (!notes || busy) return
+    if (!window.confirm('Mark this investigation completed? No operational action will run.')) return
+    const token = localStorage.getItem('cc_token')
+    if (!token) { setError('Please sign in again.'); return }
+    setBusy(task.id)
+    try {
+      const response = await fetch('/api-proxy/practice-intelligence-tasks/my-assignments/' + encodeURIComponent(task.id) + '/complete', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ findings: notes }),
+      })
+      if (!response.ok) throw new Error('Unable to complete investigation (' + response.status + ').')
+      await load()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to record completion.')
+    } finally { setBusy(null) }
+  }
   return (
     <main className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
       <Link href="/practice-intelligence" className="text-sm font-semibold text-clinic-blue hover:underline">← AI Practice Intelligence</Link>
@@ -60,7 +83,17 @@ export default function MyPracticeIntelligenceAssignments() {
             <h2 className="font-semibold text-clinic-navy dark:text-white">{task.title}</h2>
             {task.description && <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{task.description}</p>}
             <p className="mt-2 text-xs text-gray-500">Approved for staff investigation · {task.proposedAction?.replaceAll('_', ' ') ?? 'Review'} · Submitted {new Date(task.createdAt).toLocaleString()}</p>
-            <p className="mt-2 text-xs text-gray-500">Investigation completion tracking is not yet available. Report findings to the clinic administrator; do not treat approval as completion.</p>
+            {task.status === 'DONE' ? (
+              <p className="mt-3 text-sm font-semibold text-green-700">Investigation completed {task.completedAt ? new Date(task.completedAt).toLocaleString() : ''}. Findings recorded in audit log.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                <label className="block text-sm font-medium">Investigation findings (required)
+                  <textarea maxLength={2000} rows={3} value={findings[task.id] ?? ''} onChange={event => setFindings(previous => ({ ...previous, [task.id]: event.target.value }))} className="mt-1 block w-full rounded-lg border border-gray-300 bg-transparent p-2" />
+                </label>
+                <button type="button" disabled={busy !== null || !findings[task.id]?.trim()} onClick={() => void complete(task)} className="rounded-lg border border-clinic-blue px-4 py-2 text-sm font-semibold text-clinic-blue disabled:opacity-50">Mark investigation completed</button>
+                <p className="text-xs text-gray-500">Only mark complete after investigating. This records findings without changing clinic operations.</p>
+              </div>
+            )}
           </section>
         ))}</div>
       )}
