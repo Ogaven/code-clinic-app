@@ -236,7 +236,9 @@ metaInboxTimer.unref()
 async function acceptMetaWebhook(req: import('express').Request, res: import('express').Response, provider: MetaInboxProvider): Promise<void> {
   const secrets = provider === 'FACEBOOK' ? ['FACEBOOK_APP_SECRET', 'META_APP_SECRET']
     : ['INSTAGRAM_APP_SECRET', 'FACEBOOK_APP_SECRET', 'META_APP_SECRET']
-  if (checkMetaWebhookSignature(req, secrets, provider) === 'REJECTED') {
+  // Fail closed: no Meta secret means we cannot authenticate this webhook.
+  // Never persist or act on unauthenticated customer messages/comments.
+  if (checkMetaWebhookSignature(req, secrets, provider) !== 'OK') {
     res.sendStatus(403)
     return
   }
