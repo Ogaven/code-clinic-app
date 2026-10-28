@@ -293,8 +293,13 @@ router.get('/treatment', requireAuth, async (req, res) => {
     // Stage 1 accountability uses only explicitly scheduled, actionable cases.
     // No historical auto-enrolment or fabricated denominators.
     const assigned = followUps.filter(p => !!p.coordinatorId && !!p.nextAction?.trim())
-    const due = followUps.filter(p => new Date(p.followUpAt!).getTime() <= now.getTime())
-    const overdue = followUps.filter(p => new Date(p.followUpAt!).getTime() < now.getTime())
+    // Calendar-day accountability: a follow-up due later today is due today,
+    // not overdue until the next Kampala calendar day begins.
+    const today = kampalaYMD(now)
+    const todayStart = kampalaMidnightUTC(today.y, today.m, today.day).getTime()
+    const tomorrowStart = kampalaMidnightUTC(today.y, today.m, today.day + 1).getTime()
+    const due = followUps.filter(p => new Date(p.followUpAt!).getTime() < tomorrowStart)
+    const overdue = followUps.filter(p => new Date(p.followUpAt!).getTime() < todayStart)
     // The event log records the due-date snapshot for every new resolution.
     // Count only these verified events; historical audit entries lack this evidence.
     const resolutionEvents = await prisma.treatmentFollowUpEvent.findMany({
