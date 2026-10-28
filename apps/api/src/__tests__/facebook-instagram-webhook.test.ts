@@ -175,6 +175,31 @@ describe('processComment — comment ingestion', () => {
     )
   })
 
+  it('never sends a second public reply when a previous publish claim exists', async () => {
+    prismaMock.$executeRawUnsafe.mockResolvedValueOnce(0)
+    await processComment('already-claimed', 'post-1', 'user-1', 'Jane', 'How much is cleaning?', 'FACEBOOK_COMMENT')
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledTimes(1)
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/already-claimed/comments'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
+    )
+  })
+
+  it('holds an ambiguous Meta publish failure for staff reconciliation', async () => {
+    ;(global.fetch as any) = vi.fn().mockResolvedValue({
+      ok: false, status: 500, text: async () => '{"error":"temporary failure"}',
+    })
+    await expect(processComment('ambiguous-reply', 'post-1', 'user-1', 'Jane', 'How much is cleaning?', 'FACEBOOK_COMMENT')).rejects.toThrow()
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledTimes(2)
+    expect(prismaMock.$executeRawUnsafe.mock.calls[1][0]).toContain('REVIEW_REQUIRED')
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
+    )
+  })
+
   it('scopes a commenter conversation to the originating post so the inbox groups comments under the correct post', async () => {
     await processComment('comment-post-2', 'post-2', 'same-user', 'Jane', 'What is this post about?', 'FACEBOOK_COMMENT')
 
