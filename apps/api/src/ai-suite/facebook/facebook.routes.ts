@@ -315,6 +315,20 @@ function isDirectedAtUs(text: string): boolean {
   return /code.?clinic|@code_clinic|@codeclinic|tooth|teeth|dental|dentist|appointment|book|cost|price|how much|whiten|brac|implant|filling|cavity|gum|pain|extract|bleach|veneer|crown|root.?canal|braces|invisalign/i.test(text)
 }
 
+// Only genuine patient enquiries belong in the clinical leads pipeline.
+// Apply before creating a Lead; still retain the conversation for staff review.
+function classifyNonPatientEnquiry(message: string): 'JOB' | 'SUPPLIER' | null {
+  const text = message.trim().toLowerCase()
+  if (/\b(job|jobs|vacanc(?:y|ies)|employment|recruit(?:ment|ing)?|internship|attachment|work opportunity|hiring|apply for (?:a |the )?(?:job|position)|send (?:my |a )?cv)\b/.test(text) &&
+      /\b(job|jobs|vacanc(?:y|ies)|employment|recruit(?:ment|ing)?|internship|attachment|work opportunity|hiring|apply|cv|position)\b/.test(text)) return 'JOB'
+  if (/\b(?:we|i) (?:sell|supply|offer|provide|distribute|market)\b|\b(?:our|my) (?:products|services|catalogue|quotation|proposal)\b|\b(?:supplier|vendor|wholesale|distributor|marketing agency|advertising services)\b/.test(text) &&
+      !/\b(?:i need|i want|my tooth|my teeth|toothache|dental appointment|book an appointment)\b/.test(text)) return 'SUPPLIER'
+  return null
+}
+
+const JOB_ENQUIRY_REPLY = 'Thank you for your interest in working with Code Clinic. Please send your application or CV to dentist@codeclinic.ug.'
+const SUPPLIER_ENQUIRY_REPLY = 'Thank you for contacting Code Clinic. This channel is for patient enquiries; our reception team can review relevant business proposals separately.'
+
 // ── Comment processor ─────────────────────────────────────────────────────────
 
 export async function processComment(
@@ -423,17 +437,20 @@ export async function processComment(
     // Routed through the single lead-creation orchestration entry point
     // (Part K). Acknowledgement is skipped: the AI agent already replies to
     // this same comment in real time through the normal pipeline.
-    await findOrCreateLeadForChannel({
-      where:      { phone: fromId, status: { notIn: ['CONVERTED', 'LOST'] } },
-      createData: { name: resolvedName || undefined, phone: fromId, source: baseChannel, status: 'NEW', stage: 'NEW', lastMessage: text },
-      onExistingMessage: text,
-      intakeOptions: { skipAcknowledgement: true },
-      // The lead just commented — real operational contact-origin evidence.
-      // Lead-directed sends in this codebase (ack/SLA warm message) only ever
-      // go via WhatsApp today, so evidence is recorded against that channel
-      // regardless of the originating social platform.
-      contactEvidence: { channel: 'WHATSAPP', source: 'INBOUND_MESSAGE' },
-    })
+    const nonPatientEnquiry = classifyNonPatientEnquiry(text)
+    if (!nonPatientEnquiry) {
+      await findOrCreateLeadForChannel({
+        where:      { phone: fromId, status: { notIn: ['CONVERTED', 'LOST'] } },
+        createData: { name: resolvedName || undefined, phone: fromId, source: baseChannel, status: 'NEW', stage: 'NEW', lastMessage: text },
+        onExistingMessage: text,
+        intakeOptions: { skipAcknowledgement: true },
+        // The lead just commented — real operational contact-origin evidence.
+        // Lead-directed sends in this codebase (ack/SLA warm message) only ever
+        // go via WhatsApp today, so evidence is recorded against that channel
+        // regardless of the originating social platform.
+        contactEvidence: { channel: 'WHATSAPP', source: 'INBOUND_MESSAGE' },
+      })
+    }
 
     // Store user message with commentId + postCaption in metadata
     await prisma.aiMessage.create({
@@ -474,7 +491,9 @@ export async function processComment(
     // OpenAI is the only comment-reply provider now (live since 2026-08-26,
     // formerly gated behind COMMENT_REPLY_PROVIDER — Anthropic cut over
     // entirely as of the provider hotfix, so this call is unconditional).
-    const reply = await getCommentReplyOpenAI(conversation.id, text, channel, fromId, postCaption ?? undefined)
+    const reply = nonPatientEnquiry === 'JOB' ? JOB_ENQUIRY_REPLY
+      : nonPatientEnquiry === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
+      : await getCommentReplyOpenAI(conversation.id, text, channel, fromId, postCaption ?? undefined)
 
     logOpenAICommentReply(channel, fromId, text, reply)
 
@@ -653,13 +672,16 @@ export async function processSocialMessage(
     // Acknowledgement is skipped: the AI agent already replies to this same
     // DM in real time through the normal pipeline.
     const source = channel // 'FACEBOOK' | 'INSTAGRAM'
-    await findOrCreateLeadForChannel({
-      where:      { phone: senderId, status: { notIn: ['CONVERTED', 'LOST'] } },
-      createData: { name: resolvedName || undefined, phone: senderId, source, status: 'NEW', stage: 'NEW', lastMessage: text },
-      onExistingMessage: text,
-      intakeOptions: { skipAcknowledgement: true },
-      contactEvidence: { channel: 'WHATSAPP', source: 'INBOUND_MESSAGE' },
-    })
+    const nonPatientEnquiry = classifyNonPatientEnquiry(text)
+    if (!nonPatientEnquiry) {
+      await findOrCreateLeadForChannel({
+        where:      { phone: senderId, status: { notIn: ['CONVERTED', 'LOST'] } },
+        createData: { name: resolvedName || undefined, phone: senderId, source, status: 'NEW', stage: 'NEW', lastMessage: text },
+        onExistingMessage: text,
+        intakeOptions: { skipAcknowledgement: true },
+        contactEvidence: { channel: 'WHATSAPP', source: 'INBOUND_MESSAGE' },
+      })
+    }
 
     await prisma.aiMessage.create({
       data: {
@@ -694,7 +716,9 @@ export async function processSocialMessage(
       return
     }
 
-    const reply = await getAgentReplyV2OpenAI(conversation.id, senderId, text, channel)
+    const reply = nonPatientEnquiry === 'JOB' ? JOB_ENQUIRY_REPLY
+      : nonPatientEnquiry === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
+      : await getAgentReplyV2OpenAI(conversation.id, senderId, text, channel)
 
     await prisma.aiMessage.create({
       data: { conversationId: conversation.id, role: 'AGENT', content: reply },
