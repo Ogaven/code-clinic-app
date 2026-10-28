@@ -102,7 +102,7 @@ export default function PracticeIntelligenceReviewsPage() {
     <main className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
       <Link href="/practice-intelligence" className="text-sm font-semibold text-clinic-blue hover:underline">← AI Practice Intelligence</Link>
       <div>
-        <h1 className="text-2xl font-bold text-clinic-navy dark:text-white">AI recommendation reviews</h1>
+        <h1 className="text-2xl font-bold text-clinic-navy dark:text-white">AI recommendation reviews</h1>\n        <Link href="/practice-intelligence/my-assignments" className="mt-2 inline-block text-sm font-semibold text-clinic-blue hover:underline">View my approved investigations →</Link>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
           Administrator review queue. Approval records a decision only — it never contacts a patient, reschedules an appointment or executes a proposed action.
         </p>
