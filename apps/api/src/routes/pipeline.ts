@@ -334,9 +334,20 @@ router.get('/treatment', requireAuth, async (req, res) => {
       completionSampleLimit: 1000,
     }
 
+    // Manual triage only: recently created, actionable unscheduled plans.
+    // This is read-only discovery, never enrollment or automated patient contact.
+    const triageCutoff = new Date(now.getTime() - 30 * 86_400_000)
+    const coordinationNeedsAttention = enriched
+      .filter(p => new Date(p.createdAt) >= triageCutoff && !p.followUpAt &&
+        !NON_ACTIONABLE_STATUSES.includes(p.status) &&
+        p.patientDecision !== 'Declined' && p.patientDecision !== 'Deferred')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 100)
+
     res.json({
       plans:   inPeriod,
       followUps,
+      coordinationNeedsAttention,
       coordinationMetrics,
       metrics: { presentedValue, acceptedValue, conversionRate, moneyAtRisk, avgDaysToSchedule },
       period:  { key: periodKey, start: periodStart?.toISOString() ?? null, end: periodEnd?.toISOString() ?? null, label: periodLabel },
