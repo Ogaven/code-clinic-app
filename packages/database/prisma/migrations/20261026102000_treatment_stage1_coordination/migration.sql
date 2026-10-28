@@ -23,3 +23,4 @@ CREATE TABLE "treatment_follow_up_events" (
   CONSTRAINT "treatment_follow_up_events_treatmentPlanId_fkey" FOREIGN KEY ("treatmentPlanId") REFERENCES "treatment_plans"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE INDEX "treatment_follow_up_events_plan_created_idx" ON "treatment_follow_up_events"("treatmentPlanId","createdAt");
+CREATE INDEX "treatment_follow_up_events_type_created_idx" ON "treatment_follow_up_events"("eventType","createdAt");
