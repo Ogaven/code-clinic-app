@@ -34,6 +34,7 @@ function kampalaDateKey(value: Date): string {
 
 export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHref: (id: string) => string }) {
   const [items, setItems] = useState<FollowUpPlan[]>([])
+  const [triageItems, setTriageItems] = useState<FollowUpPlan[]>([])
   const [metrics, setMetrics] = useState<{ active: number; assignedWithNextAction: number; assignmentCoveragePct: number | null; overdue: number; unassigned: number; clinicalReviewHeld: number; onTimeCompletionPct: number | null; verifiedCompletions: number; completedOnTime: number; completionSampleLimit?: number } | null>(null)
   const [coordinators, setCoordinators] = useState<{ id: string; firstName: string; lastName: string }[]>([])
   const [ownerId, setOwnerId] = useState('')
@@ -41,7 +42,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
   const [historyFor, setHistoryFor] = useState<FollowUpPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [view, setView] = useState<'due' | 'upcoming' | 'all'>('due')
+  const [view, setView] = useState<'due' | 'upcoming' | 'all' | 'triage'>('due')
   const [ownerFilter, setOwnerFilter] = useState('all')
   const [savingId, setSavingId] = useState<string | null>(null)
   const [editing, setEditing] = useState<FollowUpPlan | null>(null)
@@ -66,6 +67,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
       const data = await response.json()
       if (!Array.isArray(data.followUps)) throw new Error('Invalid Treatment Pipeline response')
       setItems(data.followUps)
+      setTriageItems(Array.isArray(data.coordinationNeedsAttention) ? data.coordinationNeedsAttention : [])
       setMetrics(data.coordinationMetrics || null)
       const owners = await fetch('/api-proxy/pipeline/treatment/coordinators', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
       if (owners.ok) { const result = await owners.json(); setCoordinators(Array.isArray(result.coordinators) ? result.coordinators : []) }
@@ -78,8 +80,10 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
   useEffect(() => { void load() }, [load])
 
   const today = kampalaDateKey(new Date())
-  const filtered = items.filter(item => {
-    if (!item.followUpAt || (ownerFilter !== 'all' && (item.coordinatorId || 'unassigned') !== ownerFilter)) return false
+  const filtered = (view === 'triage' ? triageItems : items).filter(item => {
+    if (ownerFilter !== 'all' && (item.coordinatorId || 'unassigned') !== ownerFilter) return false
+    if (view === 'triage') return true
+    if (!item.followUpAt) return false
     const day = kampalaDateKey(new Date(item.followUpAt))
     return view === 'all' || (view === 'due' ? day <= today : day > today)
   })
@@ -171,7 +175,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
         <div className="rounded-xl border p-3"><div className="text-xs text-gray-500">Unassigned</div><div className="text-2xl font-bold dark:text-white">{metrics.unassigned}</div></div>
       </div>}
       {metrics && <p className="text-sm text-gray-600 dark:text-white/70">On-time completion: <strong>{metrics.onTimeCompletionPct === null ? 'Not yet measurable' : `${metrics.onTimeCompletionPct}%`}</strong> ({metrics.completedOnTime} on time of {metrics.verifiedCompletions} verified completed follow-ups; target 90%). Historical completions without due-date evidence are excluded. {metrics.completionSampleLimit ? `Calculated from the latest ${metrics.completionSampleLimit.toLocaleString()} completion events at most; not an all-time rate.` : ''}</p>}
-      <div className="flex flex-wrap gap-2">{(['due', 'upcoming', 'all'] as const).map(key => <button key={key} type="button" onClick={() => setView(key)} className={`rounded-lg border px-3 py-2 text-sm ${view === key ? 'bg-blue-700 text-white' : 'bg-white text-gray-700'}`}>{key === 'due' ? 'Due / overdue' : key === 'upcoming' ? 'Upcoming' : 'All outstanding'}</button>)}</div>
+      <div className="flex flex-wrap gap-2">{(['due', 'upcoming', 'all', 'triage'] as const).map(key => <button key={key} type="button" onClick={() => setView(key)} className={`rounded-lg border px-3 py-2 text-sm ${view === key ? 'bg-blue-700 text-white' : 'bg-white text-gray-700'}`}>{key === 'due' ? 'Due / overdue' : key === 'upcoming' ? 'Upcoming' : key === 'all' ? 'All outstanding' : `Needs review (${triageItems.length})`}</button>)}</div>
       {historyFor && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
         <section role="dialog" aria-modal="true" aria-labelledby="history-title" className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900">
           <h2 id="history-title" className="text-lg font-bold dark:text-white">Coordination history</h2>
@@ -213,10 +217,10 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
       {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
         {error} <button type="button" onClick={() => void load()} className="ml-2 underline">Retry</button>
       </div>}
-      {loading ? <p className="text-sm text-gray-500">Loading live follow-ups…</p> : !error && items.length === 0
-        ? <p className="rounded-xl border bg-white p-8 text-sm text-gray-500 dark:bg-white/5">No outstanding follow-ups in the Treatment Pipeline.</p>
+      {loading ? <p className="text-sm text-gray-500">Loading live follow-ups…</p> : !error && filtered.length === 0
+        ? <p className="rounded-xl border bg-white p-8 text-sm text-gray-500 dark:bg-white/5">{view === 'triage' ? 'No recent unscheduled plans need manual review.' : 'No outstanding follow-ups in the Treatment Pipeline.'}</p>
         : !error && <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white dark:border-white/10 dark:bg-white/5">
-          <div className="border-b px-4 py-3 text-sm font-semibold text-gray-700 dark:text-white">{filtered.length} {view === 'due' ? 'due or overdue' : view === 'upcoming' ? 'upcoming' : 'outstanding'} follow-up{filtered.length === 1 ? '' : 's'}</div>
+          <div className="border-b px-4 py-3 text-sm font-semibold text-gray-700 dark:text-white">{filtered.length} {view === 'due' ? 'due or overdue' : view === 'upcoming' ? 'upcoming' : view === 'triage' ? 'recent unscheduled plans for manual review' : 'outstanding'} follow-up{filtered.length === 1 ? '' : 's'}</div>
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-white/5"><tr>
               <th className="px-4 py-3">Patient</th><th className="px-4 py-3">Treatment / Notes</th>
@@ -237,7 +241,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
                 <td className="px-4 py-3 text-gray-600 dark:text-white/70">{p.status}<div className="text-xs text-gray-400">{p.stage}</div></td>
                 <td className="px-4 py-3 text-gray-600 dark:text-white/70">{p.doctorName || 'Unassigned'}</td>
                 <td className="px-4 py-3 text-xs"><div>{p.patientDecision || 'Decision not recorded'}</div><div>{p.nextAction || 'Next action not recorded'}</div><div>{p.coordinatorId ? (coordinators.find(u => u.id === p.coordinatorId)?.firstName || 'Assigned') + ' ' + (coordinators.find(u => u.id === p.coordinatorId)?.lastName || '') : 'Coordinator unassigned'}</div></td>
-                <td className="px-4 py-3"><div className="flex flex-col gap-2"><button type="button" onClick={() => editCoordination(p)} className="rounded-lg border px-3 py-2 text-xs font-semibold dark:text-white">Edit coordination</button><button type="button" onClick={() => void showHistory(p)} className="rounded-lg border px-3 py-2 text-xs dark:text-white">History</button><button type="button" disabled={savingId === p.id} onClick={() => { setEditing(p); setOutcome(''); setResolution('COMPLETED'); setRescheduleDate('') }} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Record outcome</button></div></td>
+                <td className="px-4 py-3"><div className="flex flex-col gap-2"><button type="button" onClick={() => editCoordination(p)} className="rounded-lg border px-3 py-2 text-xs font-semibold dark:text-white">Edit coordination</button><button type="button" onClick={() => void showHistory(p)} className="rounded-lg border px-3 py-2 text-xs dark:text-white">History</button>{view !== 'triage' && <button type="button" disabled={savingId === p.id} onClick={() => { setEditing(p); setOutcome(''); setResolution('COMPLETED'); setRescheduleDate('') }} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Record outcome</button>}</div></td>
               </tr>)}
             </tbody>
           </table>
