@@ -2092,3 +2092,27 @@ model AiBudgetAlert {
   @@index([status, createdAt], map: "ai_budget_alerts_status_created_idx")
   @@map("ai_budget_alerts")
 }
+
+
+ // Durable inbound Meta webhook inbox. Event payloads may contain sensitive
+ // customer content: do not expose this table through client-facing APIs.
+model MetaWebhookInbox {
+  id            String    @id @default(cuid())
+  eventKey      String    @unique
+  platform      String
+  eventType     String
+  payload       Json
+  status        String    @default("PENDING")
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  leaseOwner    String?
+  leaseUntil    DateTime?
+  lastErrorCode String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseUntil])
+  @@map("meta_webhook_inbox")
+}
