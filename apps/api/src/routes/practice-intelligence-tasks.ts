@@ -80,6 +80,7 @@ router.get('/my-assignments', requireAuth, async (req, res) => {
       select: {
         id: true, title: true, description: true, proposedAction: true,
         approvalStatus: true, assignedToId: true, createdAt: true,
+        status: true, completedAt: true,
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
