@@ -670,8 +670,9 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
     if (resolution === 'RESCHEDULED') {
       if (!rescheduleTo) { res.status(400).json({ error: 'rescheduleTo is required when resolution is RESCHEDULED' }); return }
       if (typeof rescheduleTo !== 'string' || !rescheduleTo.trim()) { res.status(400).json({ error: 'Invalid rescheduleTo date' }); return }
-      const d = new Date(rescheduleTo)
-      if (isNaN(d.getTime())) { res.status(400).json({ error: 'Invalid rescheduleTo date' }); return }
+      const parsed = parseFollowUpFields({ followUpAt: rescheduleTo })
+      if (parsed.error || !(parsed.data.followUpAt instanceof Date)) { res.status(400).json({ error: 'Invalid rescheduleTo date' }); return }
+      const d = parsed.data.followUpAt as Date
       newFollowUpAt = d
     }
 
