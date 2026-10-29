@@ -617,12 +617,29 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
     if (scheduledAt && (NON_ACTIONABLE_STATUSES.includes(before.status) || ['Declined', 'Deferred'].includes(before.patientDecision ?? '') || before.clinicalReviewRequired)) {
       res.status(409).json({ error: 'This treatment is not eligible for routine follow-up scheduling' }); return
     }
-    const result = await prisma.treatmentPlan.updateMany({
-      where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
-      data:  followUpData,
+    // Preserve the current clinical eligibility state and append an event in the
+    // same transaction. A concurrent decision or hold must not be overwritten.
+    await prisma.$transaction(async tx => {
+      const result = await tx.treatmentPlan.updateMany({
+        where: {
+          id: req.params.id, ...(doctorId ? { doctorId } : {}),
+          status: before.status, patientDecision: before.patientDecision,
+          clinicalReviewRequired: before.clinicalReviewRequired, followUpAt: before.followUpAt,
+        },
+        data: followUpData,
+      })
+      if (result.count !== 1) throw new Error('FOLLOW_UP_CHANGED')
+      await tx.treatmentFollowUpEvent.create({ data: {
+        treatmentPlanId: req.params.id, actorId: req.user!.id, eventType: 'FOLLOW_UP_UPDATED',
+        previousValues: { followUpAt: before.followUpAt?.toISOString() ?? null },
+        newValues: { followUpAt: followUpData.followUpAt instanceof Date ? followUpData.followUpAt.toISOString() : (followUpData.followUpAt ?? null) },
+      } })
     })
-    if (result.count !== 1) { res.status(404).json({ error: 'Treatment plan not found' }); return }
-    logAudit({ userId: req.user!.id, actionType: 'UPDATE', entityType: 'TREATMENT_PLAN', entityId: req.params.id, entityName: 'Follow-up updated', notes: JSON.stringify(followUpData), req })
+    try {
+      await logAudit({ userId: req.user!.id, actionType: 'UPDATE', entityType: 'TREATMENT_PLAN', entityId: req.params.id, entityName: 'Follow-up updated', notes: JSON.stringify(followUpData), req })
+    } catch (auditError) {
+      console.error('[Pipeline] follow-up updated but secondary audit logging failed:', auditError)
+    }
 
     if (before && 'doctorId' in followUpData && followUpData.doctorId && followUpData.doctorId !== before.doctorId) {
       notifyDoctorAssigned(followUpData.doctorId, before.patientId).catch(() => {})
@@ -630,6 +647,7 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
 
     res.json({ id: req.params.id, ...followUpData })
   } catch (e) {
+    if (e instanceof Error && e.message === 'FOLLOW_UP_CHANGED') { res.status(409).json({ error: 'Follow-up changed by another staff member; reload and try again' }); return }
     console.error('[Pipeline] follow-up update error:', e)
     res.status(500).json({ error: 'Failed to update follow-up' })
   }
