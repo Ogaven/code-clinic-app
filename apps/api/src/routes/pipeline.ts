@@ -699,7 +699,13 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
     })
 
     logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: plan.id, entityName: `Follow-up resolved: ${resolution}`, notes: note, req })
-    await logPatientActivity(plan.patientId, req.user!.id, `${req.user!.firstName} ${req.user!.lastName}`, `Treatment follow-up ${resolution.toLowerCase()}: ${plan.toothNumber || 'General'}${note ? ` — ${note}` : ''}`)
+    // The treatment update and append-only outcome event are already committed.
+    // A secondary timeline failure must not return 500 and invite staff to repeat a completed action.
+    try {
+      await logPatientActivity(plan.patientId, req.user!.id, `${req.user!.firstName} ${req.user!.lastName}`, `Treatment follow-up ${resolution.toLowerCase()}: ${plan.toothNumber || 'General'}${note ? ` — ${note}` : ''}`)
+    } catch (activityError) {
+      console.error('[Pipeline] follow-up committed but patient activity timeline failed:', activityError)
+    }
 
     res.json({ id: plan.id, resolution, followUpAt: newFollowUpAt })
   } catch (e) {
