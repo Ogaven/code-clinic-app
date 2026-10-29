@@ -46,15 +46,17 @@ export async function drainMetaEvents(
         await handle(row.provider, row.payload)
         await prisma.$executeRawUnsafe(
           `UPDATE "meta_webhook_events" SET "status"='DONE',"processedAt"=NOW(),
-           "leaseUntil"=NULL,"lastError"=NULL,"updatedAt"=NOW() WHERE "id"=$1`, row.id)
+           "leaseUntil"=NULL,"lastError"=NULL,"updatedAt"=NOW()
+           WHERE "id"=$1 AND "status"='PROCESSING' AND "attempts"=$2`, row.id, row.attempts)
       } catch (error: any) {
         const delay = Math.min(3600, 10 * 2 ** Math.min(row.attempts, 8))
         await prisma.$executeRawUnsafe(
           `UPDATE "meta_webhook_events" SET
             "status"=CASE WHEN "attempts">=12 THEN 'FAILED' ELSE 'PENDING' END,
             "nextAttemptAt"=NOW() + ($2 * INTERVAL '1 second'),
-            "leaseUntil"=NULL,"lastError"=$3,"updatedAt"=NOW() WHERE "id"=$1`,
-          row.id, delay, String(error?.message ?? error).slice(0, 1000))
+            "leaseUntil"=NULL,"lastError"=$3,"updatedAt"=NOW()
+            WHERE "id"=$1 AND "status"='PROCESSING' AND "attempts"=$4`,
+          row.id, delay, String(error?.message ?? error).slice(0, 1000), row.attempts)
       }
     }
   } finally {
