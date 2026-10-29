@@ -15,6 +15,8 @@ type ReviewTask = {
   assignedToId: string | null
   status: string
   completedAt: string | null
+  completionFindings: string | null
+  completedById: string | null
 }
 
 export default function PracticeIntelligenceReviewsPage() {
@@ -125,6 +127,13 @@ export default function PracticeIntelligenceReviewsPage() {
                   Investigation: {task.status === 'DONE' ? 'COMPLETED' : 'OPEN'}
                   {task.status === 'DONE' && task.completedAt ? ' · Completed ' + new Date(task.completedAt).toLocaleString() : ''}
                 </p>
+              )}
+              {task.status === 'DONE' && task.approvalStatus === 'APPROVED' && (
+                <div className="mt-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-white/10">
+                  <p className="font-semibold">Investigation findings</p>
+                  <p className="mt-1 whitespace-pre-wrap break-words">{task.completionFindings || 'No recorded findings available'}</p>
+                  {task.completedById && <p className="mt-1 text-xs text-gray-500">Completed by staff account {task.completedById}</p>}
+                </div>
               )}
               {task.description && <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{task.description}</p>}
               <p className="mt-2 text-xs text-gray-500">Proposed review: {task.proposedAction?.replaceAll('_', ' ') || 'Unspecified'} · Submitted {new Date(task.createdAt).toLocaleString()}</p>
