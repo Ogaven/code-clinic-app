@@ -8,6 +8,7 @@
 // DB (which would silently break the alert scheduler's comparisons).
 export function parseFollowUpFields(body: any): { data: Record<string, any>; error?: string } {
   const data: Record<string, any> = {}
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { data, error: 'Invalid follow-up payload' }
   if ('followUpAt' in body) {
     if (body.followUpAt === null || body.followUpAt === '') {
       data.followUpAt = null
