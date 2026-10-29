@@ -181,7 +181,7 @@ router.get('/facebook/webhook', (req, res) => {
   const token     = req.query['hub.verify_token']
   const challenge = req.query['hub.challenge']
 
-  if (mode === 'subscribe' && token === (process.env.FACEBOOK_VERIFY_TOKEN ?? 'codeclinic-facebook-2026')) {
+  if (mode === 'subscribe' && typeof process.env.FACEBOOK_VERIFY_TOKEN === 'string' && process.env.FACEBOOK_VERIFY_TOKEN.length > 0 && token === process.env.FACEBOOK_VERIFY_TOKEN) {
     console.log('[Facebook] Webhook verified')
     return res.status(200).send(challenge)
   }
@@ -265,7 +265,7 @@ router.get('/instagram/webhook', (req, res) => {
   const mode = req.query['hub.mode']
   const token = req.query['hub.verify_token']
   const challenge = req.query['hub.challenge']
-  if (mode === 'subscribe' && token === (process.env.INSTAGRAM_VERIFY_TOKEN ?? 'codeclinic-instagram-2026')) {
+  if (mode === 'subscribe' && typeof process.env.INSTAGRAM_VERIFY_TOKEN === 'string' && process.env.INSTAGRAM_VERIFY_TOKEN.length > 0 && token === process.env.INSTAGRAM_VERIFY_TOKEN) {
     return res.status(200).send(challenge)
   }
   res.status(403).json({ error: 'Verification failed' })
