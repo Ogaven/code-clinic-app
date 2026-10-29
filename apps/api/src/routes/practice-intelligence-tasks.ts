@@ -25,7 +25,26 @@ router.get('/recommendations', requireAuth, adminOnly, async (_req, res) => {
       orderBy: { createdAt: 'desc' },
       take: 100,
     })
-    res.json({ tasks })
+    const completedIds = tasks.filter(task => task.status === 'DONE').map(task => task.id)
+    const completionLogs = completedIds.length ? await prisma.auditLog.findMany({
+      where: {
+        resource: 'PRACTICE_INTELLIGENCE_TASK',
+        resourceId: { in: completedIds },
+        actionType: 'STATUS_CHANGE',
+        fieldChanges: { contains: '"status":"DONE"' },
+      },
+      select: { resourceId: true, notes: true, userId: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    }) : []
+    const findingsById = new Map<string, typeof completionLogs[number]>()
+    for (const log of completionLogs) {
+      if (log.resourceId && !findingsById.has(log.resourceId)) findingsById.set(log.resourceId, log)
+    }
+    res.json({ tasks: tasks.map(task => ({
+      ...task,
+      completionFindings: task.status === 'DONE' ? findingsById.get(task.id)?.notes ?? null : null,
+      completedById: task.status === 'DONE' ? findingsById.get(task.id)?.userId ?? null : null,
+    })) })
   } catch {
     res.status(500).json({ error: 'Unable to load review queue' })
   }
