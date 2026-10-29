@@ -698,7 +698,13 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       } })
     })
 
-    logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: plan.id, entityName: `Follow-up resolved: ${resolution}`, notes: note, req })
+    // The transactional follow-up event is the durable audit record. Secondary
+    // logging must not make a committed outcome appear to have failed.
+    try {
+      await logAudit({ userId: req.user!.id, actionType: 'STATUS_CHANGE', entityType: 'TREATMENT_PLAN', entityId: plan.id, entityName: `Follow-up resolved: ${resolution}`, notes: note, req })
+    } catch (auditError) {
+      console.error('[Pipeline] follow-up committed but secondary audit logging failed:', auditError)
+    }
     // The treatment update and append-only outcome event are already committed.
     // A secondary timeline failure must not return 500 and invite staff to repeat a completed action.
     try {
