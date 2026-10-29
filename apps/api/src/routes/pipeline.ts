@@ -666,7 +666,8 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
 router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) => {
   try {
     if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
-    const { resolution, note, rescheduleTo } = (req.body ?? {}) as { resolution: 'COMPLETED' | 'DISMISSED' | 'RESCHEDULED'; note?: string; rescheduleTo?: string }
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) { res.status(400).json({ error: 'Invalid request body' }); return }
+    const { resolution, note, rescheduleTo } = req.body as { resolution: 'COMPLETED' | 'DISMISSED' | 'RESCHEDULED'; note?: string; rescheduleTo?: string }
     if (!['COMPLETED', 'DISMISSED', 'RESCHEDULED'].includes(resolution)) {
       res.status(400).json({ error: 'resolution must be COMPLETED, DISMISSED, or RESCHEDULED' }); return
     }
