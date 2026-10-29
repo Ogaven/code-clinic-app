@@ -76,7 +76,7 @@ describe('AI Suite router mount order — Instagram/Facebook webhooks vs takeove
       body: JSON.stringify({}),
     })
     expect(res.status).not.toBe(401)
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(403)
   })
 
   it('takeoverRouter real routes remain protected — this is a mount-order fix, not an auth bypass', async () => {
