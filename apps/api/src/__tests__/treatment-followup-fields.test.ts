@@ -7,6 +7,12 @@ import { describe, expect, it } from 'vitest'
 import { parseFollowUpFields, NON_ACTIONABLE_STATUSES } from '../utils/treatment-followup'
 
 describe('parseFollowUpFields', () => {
+  it('returns a validation error rather than throwing on null or malformed payloads', () => {
+    for (const payload of [null, undefined, 0, 'text', []]) {
+      expect(parseFollowUpFields(payload).error).toBe('Invalid follow-up payload')
+    }
+  })
+
   it('leaves data empty when no follow-up keys are present in the body', () => {
     const { data, error } = parseFollowUpFields({ notes: 'unrelated field' })
     expect(data).toEqual({})
