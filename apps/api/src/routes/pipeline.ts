@@ -614,6 +614,8 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
     })
     if (!before) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     const scheduledAt = 'followUpAt' in followUpData ? followUpData.followUpAt : before.followUpAt
+    // An empty follow-up date must not bypass clinical-state checks when the
+    // same request also changes the assigned clinician or other follow-up fields.
     if (scheduledAt && (NON_ACTIONABLE_STATUSES.includes(before.status) || ['Declined', 'Deferred'].includes(before.patientDecision ?? '') || before.clinicalReviewRequired)) {
       res.status(409).json({ error: 'This treatment is not eligible for routine follow-up scheduling' }); return
     }
@@ -631,8 +633,11 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
       if (result.count !== 1) throw new Error('FOLLOW_UP_CHANGED')
       await tx.treatmentFollowUpEvent.create({ data: {
         treatmentPlanId: req.params.id, actorId: req.user!.id, eventType: 'FOLLOW_UP_UPDATED',
-        previousValues: { followUpAt: before.followUpAt?.toISOString() ?? null },
-        newValues: { followUpAt: followUpData.followUpAt instanceof Date ? followUpData.followUpAt.toISOString() : (followUpData.followUpAt ?? null) },
+        previousValues: { followUpAt: before.followUpAt?.toISOString() ?? null, doctorId: before.doctorId },
+        newValues: {
+          ...followUpData,
+          ...(followUpData.followUpAt instanceof Date ? { followUpAt: followUpData.followUpAt.toISOString() } : {}),
+        },
       } })
     })
     try {
