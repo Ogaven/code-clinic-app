@@ -768,7 +768,7 @@ export async function sendSocialReply(
 
   if (!res.ok) {
     const detail = await res.text()
-    throw new Error(`[${channel}] Failed to send reply (HTTP ${res.status}): ${detail.slice(0, 500)`)
+    throw new Error(`[${channel}] Failed to send reply (HTTP ${res.status}): ${detail.slice(0, 500)}`)
   } else {
     console.log(`[${channel}] Reply sent to ${recipientId}`)
   }
