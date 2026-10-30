@@ -554,7 +554,7 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
     }
     if (!Object.keys(changes).length) { res.status(400).json({ error: 'No coordination fields provided' }); return }
     const where = { id: req.params.id, ...(doctorId ? { doctorId } : {}) }
-    const before = await prisma.treatmentPlan.findFirst({ where, select: { id: true, status: true, patientDecision: true, decisionReason: true, coordinatorId: true, nextAction: true, clinicalReviewRequired: true, followUpAt: true } })
+    const before = await prisma.treatmentPlan.findFirst({ where, select: { id: true, doctorId: true, status: true, patientDecision: true, decisionReason: true, coordinatorId: true, nextAction: true, clinicalReviewRequired: true, followUpAt: true } })
     if (!before) { res.status(404).json({ error: 'Treatment plan not found' }); return }
     const effectiveDecision = changes.patientDecision !== undefined ? changes.patientDecision : before.patientDecision
     const effectiveDate = changes.followUpAt !== undefined ? changes.followUpAt : before.followUpAt
@@ -573,6 +573,7 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
       const count = await tx.treatmentPlan.updateMany({
         where: {
           ...where,
+          doctorId: before.doctorId,
           status: before.status,
           patientDecision: before.patientDecision,
           coordinatorId: before.coordinatorId,
