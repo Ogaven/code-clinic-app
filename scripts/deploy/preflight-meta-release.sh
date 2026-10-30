@@ -25,8 +25,19 @@ const db = new PrismaClient();
   } finally { await db.$disconnect(); }
 })();
 NODE
-for name in FACEBOOK_APP_SECRET INSTAGRAM_APP_SECRET META_APP_SECRET FACEBOOK_VERIFY_TOKEN INSTAGRAM_VERIFY_TOKEN FACEBOOK_PAGE_ACCESS_TOKEN INSTAGRAM_ACCESS_TOKEN; do
-  if [[ -n "${!name:-}" ]]; then echo "ENV_${name}=PRESENT"; else echo "ENV_${name}=MISSING_OR_NOT_EXPORTED"; fi
-done
+# A login shell is not the running PM2 process. Do not claim that missing
+# exported variables prove application credentials are absent.
+# Do not print PM2 environment values: they may include patient data or secrets.
+if command -v pm2 >/dev/null 2>&1; then
+  if pm2 describe codeclinic-api >/dev/null 2>&1; then
+    echo 'PM2_API_PROCESS=FOUND'
+  else
+    echo 'PM2_API_PROCESS=NOT_FOUND'
+  fi
+else
+  echo 'PM2_CLI=UNAVAILABLE'
+fi
+echo 'META_RUNTIME_CREDENTIALS=NOT_VERIFIED_BY_THIS_READ_ONLY_CHECK'
+echo 'META_RUNTIME_SIGNATURES=NOT_VERIFIED_BY_THIS_READ_ONLY_CHECK'
 if command -v pg_dump >/dev/null; then echo 'PG_DUMP=AVAILABLE'; else echo 'PG_DUMP=UNAVAILABLE'; fi
 echo 'PREFLIGHT_READ_ONLY=YES'
