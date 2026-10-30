@@ -77,7 +77,7 @@ describe('parseFollowUpFields', () => {
   })
 
   it('rejects malformed doctor IDs and accepts explicit null for legacy unassignment', () => {
-    for (const value of [true, 42, {}, [], 'x'.repeat(201)]) {
+    for (const value of [true, 42, {}, [], '   ', 'x'.repeat(201)]) {
       expect(parseFollowUpFields({ doctorId: value }).error).toBe('Invalid doctorId')
     }
     expect(parseFollowUpFields({ doctorId: null }).data.doctorId).toBeNull()
