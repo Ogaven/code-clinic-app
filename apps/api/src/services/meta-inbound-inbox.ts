@@ -64,7 +64,7 @@ export async function processMetaInboxBatch(): Promise<void> {
   for (const item of pending) {
     const leaseUntil = new Date(Date.now() + 120_000)
     const claim = await prisma.metaInboundEvent.updateMany({
-      where: { id: item.id, status: item.status, attempts: item.attempts },
+      where: { id: item.id, status: item.status, attempts: item.attempts, ...(item.status === 'PROCESSING' ? { leaseUntil: { lt: new Date() } } : { availableAt: { lte: new Date() } }) },
       data: { status: 'PROCESSING', attempts: { increment: 1 }, leaseUntil },
     })
     if (claim.count !== 1) continue
