@@ -124,7 +124,7 @@ describe('processSocialMessage — DM ingestion', () => {
 
     await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.duplicate')
 
-    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({ where: { metadata: { contains: '"messageId":"mid.duplicate"' } } })
+    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({ where: { role: 'AGENT', metadata: { contains: '"messageId":"mid.duplicate"' } } })
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
     expect(prismaMock.aiConversation.findFirst).not.toHaveBeenCalled()
     expect(maybeNotifyStaff).not.toHaveBeenCalled()
