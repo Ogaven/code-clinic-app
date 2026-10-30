@@ -8,14 +8,14 @@ const { PrismaClient } = require('./packages/database/node_modules/@prisma/clien
 const db = new PrismaClient();
 (async () => {
   try {
-    const names = ['20261028120000_meta_webhook_inbox', '20261028121000_meta_comment_publish_guard'];
+    const names = ['20261028120000_meta_webhook_inbox', '20261028121000_meta_comment_publish_guard', '20261030190000_meta_dm_send_guard'];
     const migrations = await db.$queryRawUnsafe(
       'SELECT migration_name, finished_at IS NOT NULL AS applied, rolled_back_at IS NOT NULL AS rolled_back FROM "_prisma_migrations" WHERE migration_name = ANY($1::text[])', names);
     for (const name of names) {
       const m = migrations.find(row => row.migration_name === name);
       console.log('MIGRATION_' + name + '=' + (!m ? 'MISSING' : m.rolled_back ? 'ROLLED_BACK' : m.applied ? 'APPLIED' : 'INCOMPLETE'));
     }
-    for (const name of ['meta_webhook_events', 'meta_comment_publish_claims']) {
+    for (const name of ['meta_webhook_events', 'meta_comment_publish_claims', 'meta_dm_send_claims']) {
       const rows = await db.$queryRawUnsafe('SELECT to_regclass($1) IS NOT NULL AS present', 'public.' + name);
       console.log('TABLE_' + name + '=' + (rows[0].present ? 'PRESENT' : 'MISSING'));
     }
