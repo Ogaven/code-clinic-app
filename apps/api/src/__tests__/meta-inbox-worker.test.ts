@@ -67,4 +67,17 @@ describe('Meta durable inbox', () => {
     expect(args[5]).toBe(true)
   })
 
+  it('quarantines messages with no stable Meta message ID instead of retrying', async () => {
+    prismaMock.$queryRawUnsafe.mockResolvedValueOnce([{
+      id: 'event-4', provider: 'INSTAGRAM', attempts: 1,
+      payload: { kind: 'message', fromId: 'sender', text: 'hi' },
+    }]).mockResolvedValue([])
+    await drainMetaEvents(vi.fn().mockRejectedValue(
+      new Error('META_DM_REVIEW_REQUIRED_MISSING_MESSAGE_ID')))
+    const args = prismaMock.$executeRawUnsafe.mock.calls[0]
+    expect(args[0]).toContain('WHEN $5 OR')
+    expect(args[3]).toContain('META_DM_REVIEW_REQUIRED_MISSING_MESSAGE_ID')
+    expect(args[5]).toBe(true)
+  })
+
 })
