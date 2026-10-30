@@ -104,6 +104,42 @@ describe('follow-up resolution HTTP authorization and validation', () => {
     expect(response.status).toBe(409)
     expect(prismaMock.treatmentFollowUpEvent.create).not.toHaveBeenCalled()
   })
+  it('blocks routine rescheduling while a doctor clinical hold is active', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', patientId: 'patient-1',
+      followUpAt: new Date('2026-10-29T08:00:00.000Z'), followUpNote: null,
+      status: 'Planned', patientDecision: 'Accepted', clinicalReviewRequired: true,
+    })
+    const response = await resolve({
+      resolution: 'RESCHEDULED', note: 'Patient asked for later contact', rescheduleTo: '2030-12-01',
+    })
+    expect(response.status).toBe(409)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+  it('blocks routine rescheduling after a patient declines treatment', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', patientId: 'patient-1',
+      followUpAt: new Date('2026-10-29T08:00:00.000Z'), followUpNote: null,
+      status: 'Planned', patientDecision: 'Declined', clinicalReviewRequired: false,
+    })
+    const response = await resolve({
+      resolution: 'RESCHEDULED', note: 'Retry outreach', rescheduleTo: '2030-12-01',
+    })
+    expect(response.status).toBe(409)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+  it('rejects past rescheduling without changing the plan or history', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', patientId: 'patient-1',
+      followUpAt: new Date('2026-10-29T08:00:00.000Z'), followUpNote: null,
+      status: 'Planned', patientDecision: 'Accepted', clinicalReviewRequired: false,
+    })
+    const response = await resolve({
+      resolution: 'RESCHEDULED', note: 'Backdated follow-up', rescheduleTo: '2020-01-01',
+    })
+    expect(response.status).toBe(400)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
   it('does not resolve a treatment with no scheduled follow-up', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({ id: 'plan-1', followUpAt: null })
     const response = await resolve({ resolution: 'COMPLETED', note: 'Patient contacted' })
