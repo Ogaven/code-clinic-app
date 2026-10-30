@@ -37,7 +37,7 @@ export function parseFollowUpFields(body: any): { data: Record<string, any>; err
   // Assigned clinician — reuses the existing TreatmentPlan.doctorId field.
   if ('doctorId' in body) {
     const value = body.doctorId
-    if (value !== null && (typeof value !== 'string' || value.length > 200)) return { data: {}, error: 'Invalid doctorId' }
+    if (value !== null && (typeof value !== 'string' || value.length > 200 || (value.length > 0 && !value.trim()))) return { data: {}, error: 'Invalid doctorId' }
     data.doctorId = value === '' ? null : value
   }
   return { data }
