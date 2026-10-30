@@ -689,7 +689,7 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       res.status(400).json({ error: 'resolution must be COMPLETED, DISMISSED, or RESCHEDULED' }); return
     }
     if (typeof note !== 'string' || !note.trim() || note.length > 2000) { res.status(400).json({ error: 'An outcome note is required (maximum 2000 characters)' }); return }
-    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    const doctorId = req.user!.role === 'DOCTOR' ? await authenticatedDoctorId(prisma, req.user!) : null
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
 
     const plan = await prisma.treatmentPlan.findFirst({
