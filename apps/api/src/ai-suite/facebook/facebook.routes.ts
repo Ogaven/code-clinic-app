@@ -507,6 +507,13 @@ export async function processComment(
       return
     }
 
+    // A staff takeover can happen while a comment reply is being generated.
+    // Suppress automated publication if the conversation changed ownership.
+    if (!(await isAgentEnabled(conversation.id))) {
+      console.log(`[${channel}] Human takeover during comment generation — suppressing reply`)
+      return
+    }
+
     // Only record an outbound AGENT message after Meta confirms publication.
     // Previously a failed Graph API call left a phantom reply in the inbox.
     await sendCommentReply(commentId, reply, channel)
