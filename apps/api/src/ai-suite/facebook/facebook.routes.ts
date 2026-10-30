@@ -727,8 +727,35 @@ export async function processSocialMessage(
       : nonPatientEnquiry === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
       : await getAgentReplyV2OpenAI(conversation.id, senderId, text, channel)
 
+    // A durable claim is written before the external send. Never automatically
+    // release it: after a crash or timeout Meta may already have accepted the DM.
+    // No Meta message ID means we cannot safely deduplicate a replay.
+    if (!messageId) {
+      throw new Error('META_DM_REVIEW_REQUIRED_MISSING_MESSAGE_ID')
+    }
+    const claimed = await prisma.$executeRawUnsafe(
+      `INSERT INTO "meta_dm_send_claims" ("id","channel","messageId")
+       VALUES ($1,$2,$3) ON CONFLICT ("channel","messageId") DO NOTHING`,
+      randomUUID(), channel, messageId,
+    )
+    if (claimed === 0) {
+      // Already sent or possibly sent: require manual reconciliation, never replay.
+      console.warn(`[${channel}] DM send already claimed; suppressing automatic replay`)
+      return
+    }
+    try {
+      await sendSocialReply(senderId, reply, channel)
+      await prisma.$executeRawUnsafe(
+        `UPDATE "meta_dm_send_claims" SET "status"='PUBLISHED',"publishedAt"=NOW()
+         WHERE "channel"=$1 AND "messageId"=$2`, channel, messageId)
+    } catch (error: any) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "meta_dm_send_claims" SET "status"='REVIEW_REQUIRED',"lastError"=$3
+         WHERE "channel"=$1 AND "messageId"=$2`,
+        channel, messageId, String(error?.message ?? error).slice(0, 500))
+      throw error
+    }
     // Persist an AGENT reply only after Meta confirms the outbound delivery.
-    await sendSocialReply(senderId, reply, channel)
     await prisma.aiMessage.create({
       data: { conversationId: conversation.id, role: 'AGENT', content: reply, metadata: replyMarker },
     })
