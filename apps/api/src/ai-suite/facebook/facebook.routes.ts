@@ -748,6 +748,13 @@ export async function processSocialMessage(
       : nonPatientEnquiry === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
       : await getAgentReplyV2OpenAI(conversation.id, senderId, text, channel)
 
+    // Human takeover may occur while the AI is composing. Recheck immediately
+    // before creating an outbound delivery intent or contacting Meta.
+    if (!(await isAgentEnabled(conversation.id))) {
+      console.log(`[${channel}] Human takeover during AI generation — suppressing reply`)
+      return
+    }
+
     // Persist a delivery intent before the external call. A network timeout or
     // process crash after Meta accepts the reply is ambiguous: automatic retry
     // could send a duplicate. Fail closed and flag that intent for staff review.
