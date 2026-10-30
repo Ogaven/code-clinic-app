@@ -628,6 +628,11 @@ export async function processSocialMessage(
         where: { role: 'AGENT', metadata: { contains: marker } },
       })
       if (alreadyProcessed) {
+        // SENDING is an ambiguous delivery, not proof that Meta accepted it.
+        // Do not automatically resend: keep it visible for staff reconciliation.
+        if (alreadyProcessed.metadata?.includes('"deliveryStatus":"SENDING"')) {
+          console.warn(`[${channel}] Message ${messageId} has an unresolved delivery attempt; staff review required`)
+        }
         console.log(`[${channel}] Duplicate webhook — messageId ${messageId} already processed, skipping`)
         return
       }
