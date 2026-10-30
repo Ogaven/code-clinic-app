@@ -61,12 +61,12 @@ describe('AI Suite router mount order — Instagram/Facebook webhooks vs takeove
       headers: { 'Content-Type': 'application/json' },
       // Deliberately minimal/non-Instagram body — this test is scoped to
       // routing only, not Instagram payload handling (covered elsewhere).
-      // The handler sends 200 before touching the body at all, so this
-      // never needs a DB.
+      // Signature enforcement rejects this unsigned request with 403 before
+      // touching the DB, proving the public route is reachable and secure.
       body: JSON.stringify({}),
     })
     expect(res.status).not.toBe(401)
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(403)
   })
 
   it('an unauthenticated POST to /ai-suite/facebook/webhook also reaches the webhook handler, not a 401', async () => {
@@ -76,7 +76,7 @@ describe('AI Suite router mount order — Instagram/Facebook webhooks vs takeove
       body: JSON.stringify({}),
     })
     expect(res.status).not.toBe(401)
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(403)
   })
 
   it('takeoverRouter real routes remain protected — this is a mount-order fix, not an auth bypass', async () => {

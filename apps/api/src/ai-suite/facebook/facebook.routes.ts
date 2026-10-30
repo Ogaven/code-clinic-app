@@ -1,4 +1,7 @@
 import { Router } from 'express'
+import { createHash, randomUUID } from 'crypto'
+import { persistMetaEvents, drainMetaEvents } from './meta-inbox.worker'
+import type { MetaInboxProvider, MetaInboxPayload } from './meta-inbox.types'
 import * as fs from 'fs'
 import { getAgentReplyV2OpenAI, getCommentReplyOpenAI } from '../agent/agent.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
@@ -178,136 +181,98 @@ router.get('/facebook/webhook', (req, res) => {
   const token     = req.query['hub.verify_token']
   const challenge = req.query['hub.challenge']
 
-  if (mode === 'subscribe' && token === (process.env.FACEBOOK_VERIFY_TOKEN ?? 'codeclinic-facebook-2026')) {
+  if (mode === 'subscribe' && typeof process.env.FACEBOOK_VERIFY_TOKEN === 'string' && process.env.FACEBOOK_VERIFY_TOKEN.length > 0 && token === process.env.FACEBOOK_VERIFY_TOKEN) {
     console.log('[Facebook] Webhook verified')
     return res.status(200).send(challenge)
   }
   res.status(403).json({ error: 'Verification failed' })
 })
 
-// POST /ai-suite/facebook/webhook — receive Messenger messages
-router.post('/facebook/webhook', async (req, res) => {
-  // See lib/webhook-signature.ts — rejects only once a real app secret is
-  // configured; today this only logs a warning and never blocks live traffic.
-  if (checkMetaWebhookSignature(req, ['FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'Facebook') === 'REJECTED') {
+// Webhook payloads must be persisted before acknowledging Meta.
+function extractInboxEvents(body: any, provider: MetaInboxProvider): Array<{ key: string; payload: MetaInboxPayload }> {
+  const events: Array<{ key: string; payload: MetaInboxPayload }> = []
+  for (const entry of body.entry ?? []) {
+    for (const event of entry.messaging ?? []) {
+      if (!event.message?.text || event.message.is_echo || !event.sender?.id) continue
+      const mid = event.message.mid ? String(event.message.mid) : undefined
+      const key = mid ? `message:${mid}` : `message:${createHash('sha256').update(JSON.stringify(event)).digest('hex')}`
+      events.push({ key, payload: { kind: 'message', fromId: String(event.sender.id), text: String(event.message.text), mid } })
+    }
+    for (const change of entry.changes ?? []) {
+      const v = change.value
+      if (provider === 'FACEBOOK') {
+        if (change.field !== 'feed' || v?.item !== 'comment' || v?.verb !== 'add') continue
+        const commentId = v.comment_id ?? v.id
+        if (!commentId || !v.post_id || !v.from?.id || !v.message || String(v.from.id) === FB_PAGE_ID) continue
+        events.push({ key: `comment:${commentId}`, payload: { kind: 'comment', commentId: String(commentId),
+          postId: String(v.post_id), fromId: String(v.from.id), fromName: String(v.from.name ?? ''),
+          text: String(v.message), parentId: v.parent_id ? String(v.parent_id) : undefined } })
+      } else {
+        if (change.field !== 'comments' || !v?.id || !v?.text || String(v.from?.id ?? '') === IG_ACCOUNT_ID) continue
+        events.push({ key: `comment:${v.id}`, payload: { kind: 'comment', commentId: String(v.id),
+          postId: String(v.media?.id ?? ''), fromId: String(v.from?.id ?? ''),
+          fromName: String(v.from?.username ?? ''), text: String(v.text),
+          parentId: v.parent_id ? String(v.parent_id) : undefined } })
+      }
+    }
+  }
+  return events
+}
+
+async function processInboxEvent(provider: MetaInboxProvider, event: MetaInboxPayload): Promise<void> {
+  if (event.kind === 'message') {
+    await processSocialMessage(event.fromId, event.text, provider, event.mid)
+  } else {
+    await processComment(event.commentId, event.postId, event.fromId, event.fromName, event.text,
+      provider === 'FACEBOOK' ? 'FACEBOOK_COMMENT' : 'INSTAGRAM_COMMENT', event.parentId)
+  }
+}
+
+const metaInboxTimer = setInterval(() => {
+  void drainMetaEvents(processInboxEvent).catch(error => console.error('[Meta inbox] drain failed:', error))
+}, 5000)
+metaInboxTimer.unref()
+
+async function acceptMetaWebhook(req: import('express').Request, res: import('express').Response, provider: MetaInboxProvider): Promise<void> {
+  const secrets = provider === 'FACEBOOK' ? ['FACEBOOK_APP_SECRET', 'META_APP_SECRET']
+    : ['INSTAGRAM_APP_SECRET', 'FACEBOOK_APP_SECRET', 'META_APP_SECRET']
+  // Fail closed: no Meta secret means we cannot authenticate this webhook.
+  // Never persist or act on unauthenticated customer messages/comments.
+  if (checkMetaWebhookSignature(req, secrets, provider) !== 'OK') {
     res.sendStatus(403)
     return
   }
-
-  res.sendStatus(200) // Acknowledge immediately so Meta doesn't retry
-
-  try {
-    const body = req.body as any
-    if (body.object !== 'page') return
-
-    for (const entry of body.entry ?? []) {
-      for (const event of entry.messaging ?? []) {
-        if (!event.message?.text) continue
-        if (event.message?.is_echo) continue // never process our own outbound sends mirrored back
-        await processSocialMessage(
-          String(event.sender.id),
-          String(event.message.text),
-          'FACEBOOK',
-          event.message.mid ? String(event.message.mid) : undefined,
-        )
-      }
-      // Page post comments arrive as entry.changes[] with field "feed".
-      // Keep this separate from Messenger events so a comment is persisted in
-      // the FACEBOOK_COMMENT channel and replied to on the originating thread.
-      for (const change of entry.changes ?? []) {
-        if (change.field !== 'feed') continue
-        const v = change.value
-        if (v?.item !== 'comment' || v?.verb !== 'add') continue
-
-        const commentId = v.comment_id ?? v.id
-        const postId = v.post_id
-        const fromId = v.from?.id
-        const text = v.message
-        if (!commentId || !postId || !fromId || !text) continue
-
-        // Never process comments authored by the CODE Clinic Page itself.
-        if (String(fromId) === FB_PAGE_ID) continue
-
-        await processComment(
-          String(commentId),
-          String(postId),
-          String(fromId),
-          String(v.from?.name ?? ''),
-          String(text),
-          'FACEBOOK_COMMENT',
-          v.parent_id ? String(v.parent_id) : undefined,
-        )
-      }
-    }
-  } catch (err) {
-    console.error('[Facebook] Webhook error:', err)
+  const body = req.body as any
+  if (body?.object !== (provider === 'FACEBOOK' ? 'page' : 'instagram')) {
+    res.sendStatus(200)
+    return
   }
-})
+  try {
+    await persistMetaEvents(provider, extractInboxEvents(body, provider))
+    res.sendStatus(200)
+    void drainMetaEvents(processInboxEvent).catch(error => console.error('[Meta inbox] drain failed:', error))
+  } catch (error) {
+    console.error('[Meta inbox] failed to persist; Meta may retry:', error)
+    res.sendStatus(503)
+  }
+}
 
-// ── Instagram DMs ─────────────────────────────────────────────────────────────
+// POST /ai-suite/facebook/webhook
+router.post('/facebook/webhook', (req, res) => { void acceptMetaWebhook(req, res, 'FACEBOOK') })
 
 // GET /ai-suite/instagram/webhook
 router.get('/instagram/webhook', (req, res) => {
-  const mode      = req.query['hub.mode']
-  const token     = req.query['hub.verify_token']
+  const mode = req.query['hub.mode']
+  const token = req.query['hub.verify_token']
   const challenge = req.query['hub.challenge']
-
-  if (mode === 'subscribe' && token === (process.env.INSTAGRAM_VERIFY_TOKEN ?? 'codeclinic-instagram-2026')) {
-    console.log('[Instagram] Webhook verified')
+  if (mode === 'subscribe' && typeof process.env.INSTAGRAM_VERIFY_TOKEN === 'string' && process.env.INSTAGRAM_VERIFY_TOKEN.length > 0 && token === process.env.INSTAGRAM_VERIFY_TOKEN) {
     return res.status(200).send(challenge)
   }
   res.status(403).json({ error: 'Verification failed' })
 })
 
 // POST /ai-suite/instagram/webhook
-router.post('/instagram/webhook', async (req, res) => {
-  // See lib/webhook-signature.ts — rejects only once a real app secret is
-  // configured; today this only logs a warning and never blocks live traffic.
-  if (checkMetaWebhookSignature(req, ['INSTAGRAM_APP_SECRET', 'FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'Instagram') === 'REJECTED') {
-    res.sendStatus(403)
-    return
-  }
-
-  res.sendStatus(200)
-
-  try {
-    const body = req.body as any
-    if (body.object !== 'instagram') return
-
-    for (const entry of body.entry ?? []) {
-      // DMs
-      for (const event of entry.messaging ?? []) {
-        if (!event.message?.text) continue
-        if (event.message?.is_echo) continue // never process our own outbound sends mirrored back
-        await processSocialMessage(
-          String(event.sender.id),
-          String(event.message.text),
-          'INSTAGRAM',
-          event.message.mid ? String(event.message.mid) : undefined,
-        )
-      }
-      // Post comments
-      for (const change of entry.changes ?? []) {
-        if (change.field !== 'comments') continue
-        const v = change.value
-        if (!v?.text || !v?.id) continue
-        // Never process comments authored by our own IG account (prevents self-reply loops)
-        if (String(v.from?.id ?? '') === IG_ACCOUNT_ID) continue
-        await processComment(
-          String(v.id),
-          String(v.media?.id ?? ''),
-          String(v.from?.id ?? ''),
-          String(v.from?.username ?? ''),
-          String(v.text),
-          'INSTAGRAM_COMMENT',
-          v.parent_id ? String(v.parent_id) : undefined,
-        )
-      }
-    }
-  } catch (err) {
-    console.error('[Instagram] Webhook error:', err)
-  }
-})
+router.post('/instagram/webhook', (req, res) => { void acceptMetaWebhook(req, res, 'INSTAGRAM') })
 
 // ── Comment helpers ───────────────────────────────────────────────────────────
 
@@ -443,7 +408,7 @@ export async function processComment(
     // (Part K). Acknowledgement is skipped: the AI agent already replies to
     // this same comment in real time through the normal pipeline.
     const nonPatientEnquiry = classifyNonPatientEnquiry(text)
-    if (!nonPatientEnquiry) {
+    if (!nonPatientEnquiry && !existingInbound) {
       await findOrCreateLeadForChannel({
         where:      { phone: fromId, status: { notIn: ['CONVERTED', 'LOST'] } },
         createData: { name: resolvedName || undefined, phone: fromId, source: baseChannel, status: 'NEW', stage: 'NEW', lastMessage: text },
@@ -509,7 +474,30 @@ export async function processComment(
 
     // Only record an outbound AGENT message after Meta confirms publication.
     // Previously a failed Graph API call left a phantom reply in the inbox.
-    await sendCommentReply(commentId, reply, channel)
+    // Claim before calling Meta. A timeout/crash after Meta accepts a reply
+    // must never trigger a second automatic public reply on webhook redelivery.
+    // Ambiguous sends are held for staff reconciliation rather than replayed.
+    const claimed = await prisma.$executeRawUnsafe(
+      `INSERT INTO "meta_comment_publish_claims" ("id","channel","commentId")
+       VALUES ($1,$2,$3) ON CONFLICT ("channel","commentId") DO NOTHING`,
+      randomUUID(), channel, commentId,
+    )
+    if (claimed === 0) {
+      console.warn(`[${channel}] Public reply already claimed; requires reconciliation if no agent message exists`)
+      return
+    }
+    try {
+      await sendCommentReply(commentId, reply, channel)
+      await prisma.$executeRawUnsafe(
+        `UPDATE "meta_comment_publish_claims" SET "status"='PUBLISHED',"publishedAt"=NOW()
+         WHERE "channel"=$1 AND "commentId"=$2`, channel, commentId)
+    } catch (error: any) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "meta_comment_publish_claims" SET "status"='REVIEW_REQUIRED',"lastError"=$3
+         WHERE "channel"=$1 AND "commentId"=$2`,
+        channel, commentId, String(error?.message ?? error).slice(0, 500))
+      throw error
+    }
 
     await prisma.aiMessage.create({
       data: {
@@ -617,20 +605,18 @@ export async function processSocialMessage(
       return
     }
 
-    // ── 1. Idempotency: skip if we've already processed this exact message ───
-    // Meta delivers webhooks at-least-once — a retried delivery of the same
-    // messaging event must not create a second stored message, a second AI
-    // reply, or a second staff escalation. Mirrors processComment's
-    // commentId-marker pattern (metadata JSON, no schema change required).
-    if (messageId) {
-      const marker = `"messageId":"${messageId}"`
-      const alreadyProcessed = await prisma.aiMessage.findFirst({
-        where: { metadata: { contains: marker } },
+    // A persisted inbound DM is not proof that the outbound reply succeeded.
+    // On a queue retry, reuse that inbound record rather than abandoning delivery.
+    const inboundMarker = messageId ? JSON.stringify({ messageId }) : undefined
+    const existingInbound = inboundMarker
+      ? await prisma.aiMessage.findFirst({ where: { metadata: { contains: inboundMarker } } })
+      : null
+    const replyMarker = messageId ? JSON.stringify({ outboundForMessageId: messageId }) : undefined
+    if (replyMarker) {
+      const existingReply = await prisma.aiMessage.findFirst({
+        where: { role: 'AGENT', metadata: { contains: replyMarker } },
       })
-      if (alreadyProcessed) {
-        console.log(`[${channel}] Duplicate webhook — messageId ${messageId} already processed, skipping`)
-        return
-      }
+      if (existingReply) return
     }
 
     const config    = await prisma.aiAgentConfig.findFirst()
@@ -700,12 +686,14 @@ export async function processSocialMessage(
       })
     }
 
-    await prisma.aiMessage.create({
-      data: {
-        conversationId: conversation.id, role: 'USER', content: text,
-        metadata: messageId ? JSON.stringify({ messageId }) : undefined,
-      },
-    })
+    if (!existingInbound) {
+      await prisma.aiMessage.create({
+        data: {
+          conversationId: conversation.id, role: 'USER', content: text,
+          metadata: inboundMarker,
+        },
+      })
+    }
 
     // Creating a message does NOT bump the parent conversation's updatedAt —
     // touch it explicitly so reused threads sort by real last-activity.
@@ -717,7 +705,9 @@ export async function processSocialMessage(
     }
 
     // Notify staff of new or unattended conversations (fire-and-forget)
-    maybeNotifyStaff(conversation.id, senderId, resolvedName || senderId, channel, isNew)
+    if (!existingInbound) {
+      maybeNotifyStaff(conversation.id, senderId, resolvedName || senderId, channel, isNew)
+    }
 
     // ── Channel kill-switch: check per-channel toggle from config ─────────────
     const toggleField = channel === 'FACEBOOK' ? 'fbDmsEnabled' : 'igDmsEnabled'
@@ -737,13 +727,41 @@ export async function processSocialMessage(
       : nonPatientEnquiry === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
       : await getAgentReplyV2OpenAI(conversation.id, senderId, text, channel)
 
+    // A durable claim is written before the external send. Never automatically
+    // release it: after a crash or timeout Meta may already have accepted the DM.
+    // No Meta message ID means we cannot safely deduplicate a replay.
+    if (!messageId) {
+      throw new Error('META_DM_REVIEW_REQUIRED_MISSING_MESSAGE_ID')
+    }
+    const claimed = await prisma.$executeRawUnsafe(
+      `INSERT INTO "meta_dm_send_claims" ("id","channel","messageId")
+       VALUES ($1,$2,$3) ON CONFLICT ("channel","messageId") DO NOTHING`,
+      randomUUID(), channel, messageId,
+    )
+    if (claimed === 0) {
+      // Already sent or possibly sent: require manual reconciliation, never replay.
+      console.warn(`[${channel}] DM send already claimed; suppressing automatic replay`)
+      return
+    }
+    try {
+      await sendSocialReply(senderId, reply, channel)
+      await prisma.$executeRawUnsafe(
+        `UPDATE "meta_dm_send_claims" SET "status"='PUBLISHED',"publishedAt"=NOW()
+         WHERE "channel"=$1 AND "messageId"=$2`, channel, messageId)
+    } catch (error: any) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "meta_dm_send_claims" SET "status"='REVIEW_REQUIRED',"lastError"=$3
+         WHERE "channel"=$1 AND "messageId"=$2`,
+        channel, messageId, String(error?.message ?? error).slice(0, 500))
+      throw error
+    }
+    // Persist an AGENT reply only after Meta confirms the outbound delivery.
     await prisma.aiMessage.create({
-      data: { conversationId: conversation.id, role: 'AGENT', content: reply },
+      data: { conversationId: conversation.id, role: 'AGENT', content: reply, metadata: replyMarker },
     })
-
-    await sendSocialReply(senderId, reply, channel)
   } catch (err) {
     console.error(`[${channel}] processSocialMessage error:`, err)
+    throw err
   }
 }
 
@@ -759,8 +777,7 @@ export async function sendSocialReply(
     : (config?.instagramAccessToken    || process.env.INSTAGRAM_ACCESS_TOKEN     || null)
 
   if (!token) {
-    console.warn(`[${channel}] No page access token configured — reply not sent`)
-    return
+    throw new Error(`[${channel}] No page access token configured — reply not sent`)
   }
 
   // Instagram Business Login tokens belong on graph.instagram.com. Facebook
@@ -769,17 +786,23 @@ export async function sendSocialReply(
     ? `https://graph.instagram.com/${GRAPH_VERSION}/me/messages`
     : `https://graph.facebook.com/${GRAPH_VERSION}/me/messages`
 
-  const res = await fetch(sendUrl, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      recipient: { id: recipientId },
-      message:   { text },
-    }),
-  })
-
+  let res: Response
+  try {
+    res = await fetch(sendUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        message:   { text },
+      }),
+    })
+  
+  } catch (error) {
+    throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] Network error: ${String(error).slice(0, 300)}`)
+  }
   if (!res.ok) {
-    console.error(`[${channel}] Failed to send reply:`, await res.text())
+    const detail = await res.text()
+    throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] HTTP ${res.status}: ${detail.slice(0, 500)}`)
   } else {
     console.log(`[${channel}] Reply sent to ${recipientId}`)
   }

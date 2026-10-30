@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { prismaMock, findOrCreateLeadForChannel, getAgentReplyV2OpenAI, getCommentReplyOpenAI, isAgentEnabled, maybeNotifyStaff } = vi.hoisted(() => ({
   prismaMock: {
+    $executeRawUnsafe: vi.fn().mockResolvedValue(1),
     aiAgentConfig: { findFirst: vi.fn() },
     aiConversation: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     aiMessage: { findFirst: vi.fn(), create: vi.fn() },
@@ -35,6 +36,7 @@ const IG_ACCOUNT_ID = '17841404690443540'
 const originalFetch = global.fetch
 beforeEach(() => {
   vi.clearAllMocks()
+  prismaMock.$executeRawUnsafe.mockResolvedValue(1)
   prismaMock.aiAgentConfig.findFirst.mockResolvedValue(null)
   prismaMock.aiConversation.findFirst.mockResolvedValue(null)
   prismaMock.aiConversation.create.mockImplementation(async ({ data }: any) => ({ id: 'conv-1', ...data }))
@@ -119,16 +121,48 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
   })
 
-  it('idempotency: a redelivered webhook for the same messageId is skipped entirely (no duplicate message/reply/notify)', async () => {
-    prismaMock.aiMessage.findFirst.mockResolvedValue({ id: 'existing-msg' }) // marker already recorded
+  it('idempotency: a redelivered webhook with a recorded outbound reply is skipped', async () => {
+    prismaMock.aiMessage.findFirst.mockImplementation(async ({ where }: any) =>
+      where?.role === 'AGENT' ? { id: 'sent-reply' } : { id: 'existing-inbound' })
 
     await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.duplicate')
 
-    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({ where: { metadata: { contains: '"messageId":"mid.duplicate"' } } })
+    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({
+      where: { role: 'AGENT', metadata: { contains: '{"outboundForMessageId":"mid.duplicate"}' } },
+    })
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
     expect(prismaMock.aiConversation.findFirst).not.toHaveBeenCalled()
     expect(maybeNotifyStaff).not.toHaveBeenCalled()
     expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
+  })
+
+  it('does not repeat lead intake or staff alerts when retrying a persisted inbound DM', async () => {
+    prismaMock.aiMessage.findFirst.mockImplementation(async ({ where }: any) =>
+      where?.role === 'AGENT' ? null : { id: 'existing-inbound' })
+
+    await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.retry')
+
+    expect(maybeNotifyStaff).not.toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'USER' }) }),
+    )
+    expect(getAgentReplyV2OpenAI).toHaveBeenCalled()
+  })
+
+  it('claims a DM before sending and suppresses a second send for an existing claim', async () => {
+    prismaMock.$executeRawUnsafe.mockResolvedValueOnce(0)
+    await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.claimed')
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO "meta_dm_send_claims"'),
+      expect.any(String), 'FACEBOOK', 'mid.claimed',
+    )
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/messages'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
+    )
   })
 
   it('stores the real Meta message ID in metadata so a later redelivery can be recognized', async () => {
@@ -138,9 +172,20 @@ describe('processSocialMessage — DM ingestion', () => {
     }))
   })
 
-  it('does not fail or skip processing when no messageId is available (idempotency is best-effort, not a hard requirement)', async () => {
-    await processSocialMessage('sender-1', 'hi', 'FACEBOOK', undefined)
+  it('stores inbound messages but refuses an unsafe automatic send without a Meta message ID', async () => {
+    await expect(processSocialMessage('sender-1', 'hi', 'FACEBOOK', undefined))
+      .rejects.toThrow('META_DM_REVIEW_REQUIRED_MISSING_MESSAGE_ID')
     expect(prismaMock.aiConversation.create).toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'USER' }) }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
+    )
+    expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO "meta_dm_send_claims"'),
+      expect.anything(), expect.anything(), expect.anything(),
+    )
   })
 
   it('skips the AI reply (but still stores the message) when the channel is human-takeover', async () => {
@@ -171,6 +216,31 @@ describe('processComment — comment ingestion', () => {
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining(`/${c.id}/replies`),
       expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('never sends a second public reply when a previous publish claim exists', async () => {
+    prismaMock.$executeRawUnsafe.mockResolvedValueOnce(0)
+    await processComment('already-claimed', 'post-1', 'user-1', 'Jane', 'How much is cleaning?', 'FACEBOOK_COMMENT')
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledTimes(1)
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/already-claimed/comments'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
+    )
+  })
+
+  it('holds an ambiguous Meta publish failure for staff reconciliation', async () => {
+    ;(global.fetch as any) = vi.fn().mockResolvedValue({
+      ok: false, status: 500, text: async () => '{"error":"temporary failure"}',
+    })
+    await expect(processComment('ambiguous-reply', 'post-1', 'user-1', 'Jane', 'How much is cleaning?', 'FACEBOOK_COMMENT')).rejects.toThrow()
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledTimes(2)
+    expect(prismaMock.$executeRawUnsafe.mock.calls[1][0]).toContain('REVIEW_REQUIRED')
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
     )
   })
 
@@ -246,7 +316,7 @@ describe('outbound routing — never crosses channels, mocked fetch only, no rea
   it('does not send anything when no token is configured for the channel', async () => {
     prismaMock.aiAgentConfig.findFirst.mockResolvedValue(null)
     delete process.env.FACEBOOK_PAGE_ACCESS_TOKEN
-    await sendSocialReply('recipient-1', 'hello', 'FACEBOOK')
+    await expect(sendSocialReply('recipient-1', 'hello', 'FACEBOOK')).rejects.toThrow('No page access token configured')
     expect(global.fetch).not.toHaveBeenCalled()
   })
 
