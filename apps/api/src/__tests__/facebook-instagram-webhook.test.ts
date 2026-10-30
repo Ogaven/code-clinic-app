@@ -272,7 +272,7 @@ describe('outbound routing — never crosses channels, mocked fetch only, no rea
   it('does not send anything when no token is configured for the channel', async () => {
     prismaMock.aiAgentConfig.findFirst.mockResolvedValue(null)
     delete process.env.FACEBOOK_PAGE_ACCESS_TOKEN
-    await sendSocialReply('recipient-1', 'hello', 'FACEBOOK')
+    await expect(sendSocialReply('recipient-1', 'hello', 'FACEBOOK')).rejects.toThrow('No page access token configured')
     expect(global.fetch).not.toHaveBeenCalled()
   })
 
