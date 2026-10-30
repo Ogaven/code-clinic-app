@@ -27,11 +27,19 @@ export function parseFollowUpFields(body: any): { data: Record<string, any>; err
       data.followUpAt = d
     }
   }
-  if ('followUpReason' in body) data.followUpReason = body.followUpReason === '' ? null : body.followUpReason
-  if ('followUpNote' in body) data.followUpNote = body.followUpNote === '' ? null : body.followUpNote
-  // Assigned clinician — reuses the existing TreatmentPlan.doctorId field
-  // (no new assignment field). null unassigns.
-  if ('doctorId' in body) data.doctorId = body.doctorId === '' ? null : body.doctorId
+  for (const field of ['followUpReason', 'followUpNote'] as const) {
+    if (field in body) {
+      const value = body[field]
+      if (value !== null && (typeof value !== 'string' || value.length > 2000)) return { data: {}, error: `Invalid ${field} (maximum 2000 characters)` }
+      data[field] = value === '' ? null : value
+    }
+  }
+  // Assigned clinician — reuses the existing TreatmentPlan.doctorId field.
+  if ('doctorId' in body) {
+    const value = body.doctorId
+    if (value !== null && (typeof value !== 'string' || value.length > 200)) return { data: {}, error: 'Invalid doctorId' }
+    data.doctorId = value === '' ? null : value
+  }
   return { data }
 }
 
