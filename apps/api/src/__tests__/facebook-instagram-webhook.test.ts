@@ -135,6 +135,19 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
   })
 
+  it('does not repeat lead intake or staff alerts when retrying a persisted inbound DM', async () => {
+    prismaMock.aiMessage.findFirst.mockImplementation(async ({ where }: any) =>
+      where?.role === 'AGENT' ? null : { id: 'existing-inbound' })
+
+    await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.retry')
+
+    expect(maybeNotifyStaff).not.toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'USER' }) }),
+    )
+    expect(getAgentReplyV2OpenAI).toHaveBeenCalled()
+  })
+
   it('stores the real Meta message ID in metadata so a later redelivery can be recognized', async () => {
     await processSocialMessage('sender-1', 'hi', 'INSTAGRAM', 'mid.IG456')
     expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
