@@ -140,6 +140,31 @@ describe('follow-up resolution HTTP authorization and validation', () => {
     expect(response.status).toBe(400)
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
+  it('allows a valid future reschedule and records the new date in history', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', patientId: 'patient-1',
+      toothNumber: '24', followUpAt: new Date('2026-10-29T08:00:00.000Z'),
+      followUpNote: null, status: 'Planned',
+      patientDecision: 'Accepted', clinicalReviewRequired: false,
+    })
+    prismaMock.treatmentPlan.updateMany.mockResolvedValue({ count: 1 })
+    prismaMock.treatmentFollowUpEvent.create.mockResolvedValue({ id: 'event-2' })
+    const response = await resolve({
+      resolution: 'RESCHEDULED', note: 'Patient requested December', rescheduleTo: '2030-12-01',
+    })
+    expect(response.status).toBe(200)
+    const expectedDate = new Date('2030-12-01T00:00:00.000Z')
+    expect(prismaMock.treatmentPlan.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ followUpAt: expectedDate }),
+    }))
+    expect(prismaMock.treatmentFollowUpEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        eventType: 'FOLLOW_UP_RESCHEDULED',
+        outcome: 'Patient requested December',
+        newValues: expect.objectContaining({ followUpAt: expectedDate.toISOString() }),
+      }),
+    }))
+  })
   it('does not resolve a treatment with no scheduled follow-up', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({ id: 'plan-1', followUpAt: null })
     const response = await resolve({ resolution: 'COMPLETED', note: 'Patient contacted' })
