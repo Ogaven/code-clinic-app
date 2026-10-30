@@ -618,6 +618,10 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
     if ('doctorId' in followUpData && !followUpData.doctorId) {
       res.status(400).json({ error: 'A treating doctor is required; follow-up editing cannot unassign the treatment plan' }); return
     }
+    if ('doctorId' in followUpData && req.user!.role !== 'DOCTOR') {
+      const targetDoctor = await prisma.doctor.findUnique({ where: { id: followUpData.doctorId }, select: { id: true } })
+      if (!targetDoctor) { res.status(400).json({ error: 'The selected treating doctor does not exist' }); return }
+    }
     const before = await prisma.treatmentPlan.findFirst({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
       select: { doctorId: true, patientId: true, status: true, patientDecision: true, clinicalReviewRequired: true, followUpAt: true },
