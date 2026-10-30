@@ -120,12 +120,15 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
   })
 
-  it('idempotency: a redelivered webhook for the same messageId is skipped entirely (no duplicate message/reply/notify)', async () => {
-    prismaMock.aiMessage.findFirst.mockResolvedValue({ id: 'existing-msg' }) // marker already recorded
+  it('idempotency: a redelivered webhook with a recorded outbound reply is skipped', async () => {
+    prismaMock.aiMessage.findFirst.mockImplementation(async ({ where }: any) =>
+      where?.role === 'AGENT' ? { id: 'sent-reply' } : { id: 'existing-inbound' })
 
     await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.duplicate')
 
-    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({ where: { metadata: { contains: '"messageId":"mid.duplicate"' } } })
+    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({
+      where: { role: 'AGENT', metadata: { contains: '{"outboundForMessageId":"mid.duplicate"}' } },
+    })
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
     expect(prismaMock.aiConversation.findFirst).not.toHaveBeenCalled()
     expect(maybeNotifyStaff).not.toHaveBeenCalled()
