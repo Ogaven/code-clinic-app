@@ -34,3 +34,8 @@ For each `REVIEW_REQUIRED` or stale `CLAIMED` record, staff should inspect the c
 - A successful CI run is not a live Meta delivery test.
 - A missing Meta app secret means HTTP 403 and no webhook ingestion.
 - No payment or paid infrastructure is required for this implementation.
+
+## Direct-message delivery reconciliation
+If a Facebook or Instagram DM send fails or times out after the outbound request starts, Meta may have accepted it even though the API received no confirmation. The inbox worker marks these events `FAILED` with `META_DM_DELIVERY_UNCERTAIN` in `lastError` instead of retrying automatically. This is a deliberate duplicate-message safeguard, not proof that the patient received a reply.
+
+An authorized staff member must inspect the relevant Meta conversation and the local staff inbox. If the reply is visible on Meta, do not resend it. Otherwise respond manually through the authorized channel. Do not reset these failed events to PENDING without a verified delivery reconciliation. Missing access tokens and other pre-send failures may still use the normal bounded retry policy.
