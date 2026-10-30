@@ -16,8 +16,22 @@ const db = new PrismaClient();
       console.log('MIGRATION_' + name + '=' + (!m ? 'MISSING' : m.rolled_back ? 'ROLLED_BACK' : m.applied ? 'APPLIED' : 'INCOMPLETE'));
     }
     for (const name of ['meta_webhook_events', 'meta_comment_publish_claims', 'meta_dm_send_claims']) {
-      const rows = await db.$queryRawUnsafe('SELECT to_regclass($1) IS NOT NULL AS present', 'public.' + name);
+      const rows = await db.$queryRawUnsafe('SELECT to_regclass($1::text) IS NOT NULL AS present', 'public.' + name);
       console.log('TABLE_' + name + '=' + (rows[0].present ? 'PRESENT' : 'MISSING'));
+    }
+    // Fail the preflight if a migration is incomplete or a table is absent.
+    // Missing migrations are expected before the release, but still block deploy.
+    const missing = names.filter(name => !migrations.some(m =>
+      m.migration_name === name && m.applied && !m.rolled_back))
+    const tableRows = await db.$queryRawUnsafe(
+      `SELECT to_regclass('public.meta_webhook_events') IS NOT NULL AS inbox,
+              to_regclass('public.meta_comment_publish_claims') IS NOT NULL AS comments,
+              to_regclass('public.meta_dm_send_claims') IS NOT NULL AS dms`)
+    if (missing.length || !tableRows[0]?.inbox || !tableRows[0]?.comments || !tableRows[0]?.dms) {
+      console.log('SCHEMA_RELEASE_GATE=BLOCKED')
+      process.exitCode = 1
+    } else {
+      console.log('SCHEMA_RELEASE_GATE=PASS')
     }
   } catch (e) {
     console.log('DATABASE_PREFLIGHT=ERROR_' + (/^P[0-9]{4}$/.test(e.code || '') ? e.code : 'UNKNOWN'));
