@@ -719,7 +719,10 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       // A date-only value means the clinic calendar day, not midnight UTC.
       // Permit today's calendar date; reject only earlier calendar dates.
       const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(rescheduleTo.trim())
-      if (dateOnly ? d.toISOString().slice(0, 10) < new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala', year: 'numeric', month: '2-digit', day: '2-digit' }) : d.getTime() <= Date.now()) {
+      const kampalaParts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Kampala', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+      const kampalaDay = (key: string) => kampalaParts.find(part => part.type === key)!.value
+      const todayInKampala = `${kampalaDay('year')}-${kampalaDay('month')}-${kampalaDay('day')}`
+      if (dateOnly ? d.toISOString().slice(0, 10) < todayInKampala : d.getTime() <= Date.now()) {
         res.status(400).json({ error: 'rescheduleTo must not be in the past' }); return
       }
       newFollowUpAt = d
