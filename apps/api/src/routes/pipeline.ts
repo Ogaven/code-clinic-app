@@ -518,7 +518,7 @@ router.get('/treatment/:id/coordination-history', requireAuth, async (req, res) 
 router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
   try {
     if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
-    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    const doctorId = req.user!.role === 'DOCTOR' ? await authenticatedDoctorId(prisma, req.user!) : null
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) { res.status(400).json({ error: 'Invalid request body' }); return }
     const { patientDecision, coordinatorId, clinicalReviewRequired, followUpAt } = req.body
