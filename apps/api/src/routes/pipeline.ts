@@ -721,7 +721,8 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
     // Prefix the plan note as a convenient staff-facing summary; secondary
     // audit and activity logs are best-effort after the transaction commits.
     const stamp = `[${resolution}${req.user!.firstName ? ` by ${req.user!.firstName} ${req.user!.lastName}` : ''} on ${new Date().toISOString().slice(0, 10)}]${note ? ` ${note}` : ''}`
-    const updatedNote = plan.followUpNote ? `${stamp}\n${plan.followUpNote}` : stamp
+    // Keep the visible note concise; full prior outcomes remain in the append-only event history.
+    const updatedNote = stamp
 
     await prisma.$transaction(async tx => {
       // Optimistic concurrency: a follow-up must not be resolved twice against
