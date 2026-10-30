@@ -424,7 +424,7 @@ router.patch('/treatment/:id/status', requireAuth, async (req, res) => {
       res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }); return
     }
     if (!['ADMIN', 'RECEPTIONIST', 'DOCTOR'].includes(req.user!.role)) { res.status(403).json({ error: 'Access denied' }); return }
-    const doctorId = await authenticatedDoctorId(prisma, req.user!)
+    const doctorId = req.user!.role === 'DOCTOR' ? await authenticatedDoctorId(prisma, req.user!) : null
     if (req.user!.role === 'DOCTOR' && !doctorId) { res.status(404).json({ error: 'Doctor record not found' }); return }
     const { data: followUpData, error: followUpError } = parseFollowUpFields(req.body)
     if (followUpError) { res.status(400).json({ error: followUpError }); return }
