@@ -744,6 +744,7 @@ export async function processSocialMessage(
     await sendSocialReply(senderId, reply, channel)
   } catch (err) {
     console.error(`[${channel}] processSocialMessage error:`, err)
+    throw err
   }
 }
 
@@ -875,6 +876,7 @@ export async function processLeadAdSubmission(leadgenId: string): Promise<void> 
     })
   } catch (e: any) {
     console.error('[LeadAds] Processing error:', e?.message)
+    throw e
   }
 }
 
