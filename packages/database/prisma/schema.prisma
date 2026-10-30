@@ -2094,10 +2094,8 @@ model AiBudgetAlert {
 }
 
 
-/**
- * Durable Meta inbound event inbox. Acknowledgment must follow successful insert.
- * Payload is limited to the raw event JSON and should follow retention policy.
- */
+/// Durable Meta inbound event inbox; acknowledge only after successful insert.
+/// Payload retention must follow clinic policy.
 model MetaInboundEvent {
   id            String    @id @default(cuid())
   eventKey      String    @unique
