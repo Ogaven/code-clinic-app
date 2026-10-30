@@ -49,14 +49,18 @@ export async function drainMetaEvents(
            "leaseUntil"=NULL,"lastError"=NULL,"updatedAt"=NOW()
            WHERE "id"=$1 AND "status"='PROCESSING' AND "attempts"=$2`, row.id, row.attempts)
       } catch (error: any) {
+        // A failed outbound Meta send may have been accepted remotely before
+        // the connection failed. Never auto-retry an ambiguous delivery:
+        // quarantine for manual reconciliation to avoid duplicate patient DMs.
+        const ambiguousDelivery = String(error?.message ?? error).includes('META_DM_DELIVERY_UNCERTAIN')
         const delay = Math.min(3600, 10 * 2 ** Math.min(row.attempts, 8))
         await prisma.$executeRawUnsafe(
           `UPDATE "meta_webhook_events" SET
-            "status"=CASE WHEN "attempts">=12 THEN 'FAILED' ELSE 'PENDING' END,
+            "status"=CASE WHEN $5 OR "attempts">=12 THEN 'FAILED' ELSE 'PENDING' END,
             "nextAttemptAt"=NOW() + ($2 * INTERVAL '1 second'),
             "leaseUntil"=NULL,"lastError"=$3,"updatedAt"=NOW()
             WHERE "id"=$1 AND "status"='PROCESSING' AND "attempts"=$4`,
-          row.id, delay, String(error?.message ?? error).slice(0, 1000), row.attempts)
+          row.id, delay, String(error?.message ?? error).slice(0, 1000), row.attempts, ambiguousDelivery)
       }
     }
   } finally {
