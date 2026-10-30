@@ -66,6 +66,23 @@ describe('parseFollowUpFields', () => {
     expect(assigned.data.doctorId).toBe('doctor_123')
   })
 
+  it('rejects malformed notes and reasons before Prisma receives them', () => {
+    for (const field of ['followUpReason', 'followUpNote']) {
+      for (const value of [false, 123, {}, [], 'x'.repeat(2001)]) {
+        const result = parseFollowUpFields({ [field]: value })
+        expect(result.error).toMatch(new RegExp(field))
+        expect(result.data).toEqual({})
+      }
+    }
+  })
+
+  it('rejects malformed doctor IDs and accepts explicit null for legacy unassignment', () => {
+    for (const value of [true, 42, {}, [], 'x'.repeat(201)]) {
+      expect(parseFollowUpFields({ doctorId: value }).error).toBe('Invalid doctorId')
+    }
+    expect(parseFollowUpFields({ doctorId: null }).data.doctorId).toBeNull()
+  })
+
   it('never touches a key that is absent from the body (undefined means "leave unchanged")', () => {
     const { data } = parseFollowUpFields({ followUpAt: '2026-12-01' })
     expect('followUpReason' in data).toBe(false)
