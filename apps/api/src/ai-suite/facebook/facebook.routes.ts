@@ -743,7 +743,23 @@ export async function processSocialMessage(
       : nonPatientEnquiry === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
       : await getAgentReplyV2OpenAI(conversation.id, senderId, text, channel)
 
+    // Persist a delivery intent before the external call. A network timeout or
+    // process crash after Meta accepts the reply is ambiguous: automatic retry
+    // could send a duplicate. Fail closed and flag that intent for staff review.
+    const deliveryIntent = messageId ? await prisma.aiMessage.create({
+      data: { conversationId: conversation.id, role: 'AGENT', content: reply,
+        metadata: JSON.stringify({ messageId, deliveryStatus: 'SENDING' }) },
+    }) : null
+
     await sendSocialReply(senderId, reply, channel)
+
+    if (deliveryIntent) {
+      await prisma.aiMessage.update({
+        where: { id: deliveryIntent.id },
+        data: { metadata: JSON.stringify({ messageId, deliveryStatus: 'SENT' }) },
+      })
+      return
+    }
 
     await prisma.aiMessage.create({
       data: { conversationId: conversation.id, role: 'AGENT', content: reply,
