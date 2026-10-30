@@ -62,6 +62,16 @@ export async function processMetaInboxBatch(): Promise<void> {
     orderBy: { createdAt: 'asc' }, take: 20,
   })
   for (const item of pending) {
+    // A crashed worker can leave a PROCESSING lease expired indefinitely.
+    // Enforce the same eight-attempt limit for lease expirations as for
+    // ordinary handler failures; do not send messages on a ninth attempt.
+    if (item.attempts >= 8) {
+      await prisma.metaInboundEvent.updateMany({
+        where: { id: item.id, status: item.status, attempts: item.attempts },
+        data: { status: 'FAILED', leaseUntil: null, lastError: 'Maximum processing attempts exceeded (including expired leases)' },
+      })
+      continue
+    }
     const leaseUntil = new Date(Date.now() + 10 * 60_000)
     const claim = await prisma.metaInboundEvent.updateMany({
       where: { id: item.id, status: item.status, attempts: item.attempts, ...(item.status === 'PROCESSING' ? { leaseUntil: { lt: new Date() } } : { availableAt: { lte: new Date() } }) },
