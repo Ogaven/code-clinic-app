@@ -408,7 +408,7 @@ export async function processComment(
     // (Part K). Acknowledgement is skipped: the AI agent already replies to
     // this same comment in real time through the normal pipeline.
     const nonPatientEnquiry = classifyNonPatientEnquiry(text)
-    if (!nonPatientEnquiry) {
+    if (!nonPatientEnquiry && !existingInbound) {
       await findOrCreateLeadForChannel({
         where:      { phone: fromId, status: { notIn: ['CONVERTED', 'LOST'] } },
         createData: { name: resolvedName || undefined, phone: fromId, source: baseChannel, status: 'NEW', stage: 'NEW', lastMessage: text },
@@ -705,7 +705,9 @@ export async function processSocialMessage(
     }
 
     // Notify staff of new or unattended conversations (fire-and-forget)
-    maybeNotifyStaff(conversation.id, senderId, resolvedName || senderId, channel, isNew)
+    if (!existingInbound) {
+      maybeNotifyStaff(conversation.id, senderId, resolvedName || senderId, channel, isNew)
+    }
 
     // ── Channel kill-switch: check per-channel toggle from config ─────────────
     const toggleField = channel === 'FACEBOOK' ? 'fbDmsEnabled' : 'igDmsEnabled'
