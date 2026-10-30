@@ -720,9 +720,10 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
     }
 
     // The append-only TreatmentFollowUpEvent is the durable resolution history.
-    // Prefix the plan note as a convenient staff-facing summary; secondary
-    // audit and activity logs are best-effort after the transaction commits.
-    const stamp = `[${resolution}${req.user!.firstName ? ` by ${req.user!.firstName} ${req.user!.lastName}` : ''} on ${new Date().toISOString().slice(0, 10)}]${note ? ` ${note}` : ''}`
+    // Store a concise staff-facing summary; secondary audit and activity
+    // logs are best-effort after the transaction commits.
+    const actorName = [req.user!.firstName, req.user!.lastName].filter(Boolean).join(' ').slice(0, 120)
+    const stamp = `[${resolution}${actorName ? ` by ${actorName}` : ''} on ${new Date().toISOString().slice(0, 10)}] ${note.trim()}`
     // Keep the visible note concise; full prior outcomes remain in the append-only event history.
     const updatedNote = stamp
 
