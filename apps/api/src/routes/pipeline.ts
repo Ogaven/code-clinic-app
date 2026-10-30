@@ -739,8 +739,8 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       if (changed.count !== 1) throw new Error('FOLLOW_UP_CHANGED')
       await tx.treatmentFollowUpEvent.create({ data: {
         treatmentPlanId: plan.id, actorId: req.user!.id, eventType: 'FOLLOW_UP_' + resolution,
-        previousValues: { followUpAt: plan.followUpAt?.toISOString() ?? null },
-        newValues: { followUpAt: newFollowUpAt?.toISOString() ?? null }, outcome: note.trim(),
+        previousValues: { followUpAt: plan.followUpAt?.toISOString() ?? null, followUpNote: plan.followUpNote },
+        newValues: { followUpAt: newFollowUpAt?.toISOString() ?? null, followUpNote: updatedNote }, outcome: note.trim(),
       } })
     })
 
