@@ -605,20 +605,18 @@ export async function processSocialMessage(
       return
     }
 
-    // ── 1. Idempotency: skip if we've already processed this exact message ───
-    // Meta delivers webhooks at-least-once — a retried delivery of the same
-    // messaging event must not create a second stored message, a second AI
-    // reply, or a second staff escalation. Mirrors processComment's
-    // commentId-marker pattern (metadata JSON, no schema change required).
-    if (messageId) {
-      const marker = `"messageId":"${messageId}"`
-      const alreadyProcessed = await prisma.aiMessage.findFirst({
-        where: { metadata: { contains: marker } },
+    // A persisted inbound DM is not proof that the outbound reply succeeded.
+    // On a queue retry, reuse that inbound record rather than abandoning delivery.
+    const inboundMarker = messageId ? JSON.stringify({ messageId }) : undefined
+    const existingInbound = inboundMarker
+      ? await prisma.aiMessage.findFirst({ where: { metadata: { contains: inboundMarker } } })
+      : null
+    const replyMarker = messageId ? JSON.stringify({ outboundForMessageId: messageId }) : undefined
+    if (replyMarker) {
+      const existingReply = await prisma.aiMessage.findFirst({
+        where: { role: 'AGENT', metadata: { contains: replyMarker } },
       })
-      if (alreadyProcessed) {
-        console.log(`[${channel}] Duplicate webhook — messageId ${messageId} already processed, skipping`)
-        return
-      }
+      if (existingReply) return
     }
 
     const config    = await prisma.aiAgentConfig.findFirst()
@@ -688,12 +686,14 @@ export async function processSocialMessage(
       })
     }
 
-    await prisma.aiMessage.create({
-      data: {
-        conversationId: conversation.id, role: 'USER', content: text,
-        metadata: messageId ? JSON.stringify({ messageId }) : undefined,
-      },
-    })
+    if (!existingInbound) {
+      await prisma.aiMessage.create({
+        data: {
+          conversationId: conversation.id, role: 'USER', content: text,
+          metadata: inboundMarker,
+        },
+      })
+    }
 
     // Creating a message does NOT bump the parent conversation's updatedAt —
     // touch it explicitly so reused threads sort by real last-activity.
@@ -728,7 +728,7 @@ export async function processSocialMessage(
     // Persist an AGENT reply only after Meta confirms the outbound delivery.
     await sendSocialReply(senderId, reply, channel)
     await prisma.aiMessage.create({
-      data: { conversationId: conversation.id, role: 'AGENT', content: reply },
+      data: { conversationId: conversation.id, role: 'AGENT', content: reply, metadata: replyMarker },
     })
   } catch (err) {
     console.error(`[${channel}] processSocialMessage error:`, err)
