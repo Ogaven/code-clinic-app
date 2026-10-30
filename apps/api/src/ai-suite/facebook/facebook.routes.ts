@@ -757,18 +757,23 @@ export async function sendSocialReply(
     ? `https://graph.instagram.com/${GRAPH_VERSION}/me/messages`
     : `https://graph.facebook.com/${GRAPH_VERSION}/me/messages`
 
-  const res = await fetch(sendUrl, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      recipient: { id: recipientId },
-      message:   { text },
-    }),
-  })
-
+  let res: Response
+  try {
+    const res = await fetch(sendUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        message:   { text },
+      }),
+    })
+  
+  } catch (error) {
+    throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] Network error: ${String(error).slice(0, 300)}`)
+  }
   if (!res.ok) {
     const detail = await res.text()
-    throw new Error(`[${channel}] Failed to send reply (HTTP ${res.status}): ${detail.slice(0, 500)}`)
+    throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] HTTP ${res.status}: ${detail.slice(0, 500)}`)
   } else {
     console.log(`[${channel}] Reply sent to ${recipientId}`)
   }
