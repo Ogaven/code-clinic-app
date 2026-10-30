@@ -613,6 +613,10 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
     if (req.user!.role === 'DOCTOR' && 'doctorId' in followUpData && followUpData.doctorId !== doctorId) {
       res.status(403).json({ error: 'Doctors cannot reassign treatment ownership through follow-up editing' }); return
     }
+    // General follow-up edits must not create an unowned clinical plan.
+    if ('doctorId' in followUpData && !followUpData.doctorId) {
+      res.status(400).json({ error: 'A treating doctor is required; follow-up editing cannot unassign the treatment plan' }); return
+    }
     const before = await prisma.treatmentPlan.findFirst({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
       select: { doctorId: true, patientId: true, status: true, patientDecision: true, clinicalReviewRequired: true, followUpAt: true },
