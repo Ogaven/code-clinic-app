@@ -26,6 +26,8 @@ export async function notifyDoctorAssigned(doctorId: string, patientId: string):
   try {
     const doctor = await prisma.doctor.findUnique({ where: { id: doctorId }, select: { userId: true } })
     if (!doctor) return
+    const recipient = await prisma.user.findFirst({ where: { id: doctor.userId, role: 'DOCTOR', isActive: true }, select: { id: true } })
+    if (!recipient) return
     await notifyUsers({
       userIds: [doctor.userId],
       type: 'SYSTEM',
