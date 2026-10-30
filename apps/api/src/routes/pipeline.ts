@@ -618,15 +618,17 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
     if ('doctorId' in followUpData && !followUpData.doctorId) {
       res.status(400).json({ error: 'A treating doctor is required; follow-up editing cannot unassign the treatment plan' }); return
     }
-    if ('doctorId' in followUpData && req.user!.role !== 'DOCTOR') {
-      const targetDoctor = await prisma.doctor.findUnique({ where: { id: followUpData.doctorId }, select: { id: true } })
-      if (!targetDoctor) { res.status(400).json({ error: 'The selected treating doctor does not exist' }); return }
-    }
     const before = await prisma.treatmentPlan.findFirst({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
       select: { doctorId: true, patientId: true, status: true, patientDecision: true, clinicalReviewRequired: true, followUpAt: true },
     })
     if (!before) { res.status(404).json({ error: 'Treatment plan not found' }); return }
+    if ('doctorId' in followUpData && req.user!.role !== 'DOCTOR' && followUpData.doctorId !== before.doctorId) {
+      const targetDoctor = await prisma.doctor.findUnique({ where: { id: followUpData.doctorId }, select: { id: true, userId: true } })
+      if (!targetDoctor) { res.status(400).json({ error: 'The selected treating doctor does not exist' }); return }
+      const activeUser = await prisma.user.findFirst({ where: { id: targetDoctor.userId, isActive: true, role: 'DOCTOR' }, select: { id: true } })
+      if (!activeUser) { res.status(400).json({ error: 'The selected treating doctor must have an active doctor account' }); return }
+    }
     const scheduledAt = 'followUpAt' in followUpData ? followUpData.followUpAt : before.followUpAt
     // An empty follow-up date must not bypass clinical-state checks when the
     // same request also changes the assigned clinician or other follow-up fields.
