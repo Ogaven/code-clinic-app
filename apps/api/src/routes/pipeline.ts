@@ -711,10 +711,9 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       newFollowUpAt = d
     }
 
-    // No dedicated resolution-history column on TreatmentPlan — the outcome
-    // is recorded durably in the audit log (below) and the patient activity
-    // timeline; the note field itself is prefixed with a short stamp so
-    // staff glancing at the plan still see the latest resolution inline.
+    // The append-only TreatmentFollowUpEvent is the durable resolution history.
+    // Prefix the plan note as a convenient staff-facing summary; secondary
+    // audit and activity logs are best-effort after the transaction commits.
     const stamp = `[${resolution}${req.user!.firstName ? ` by ${req.user!.firstName} ${req.user!.lastName}` : ''} on ${new Date().toISOString().slice(0, 10)}]${note ? ` ${note}` : ''}`
     const updatedNote = plan.followUpNote ? `${stamp}\n${plan.followUpNote}` : stamp
 
