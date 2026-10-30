@@ -36,6 +36,7 @@ const IG_ACCOUNT_ID = '17841404690443540'
 const originalFetch = global.fetch
 beforeEach(() => {
   vi.clearAllMocks()
+  prismaMock.$executeRawUnsafe.mockResolvedValue(1)
   prismaMock.aiAgentConfig.findFirst.mockResolvedValue(null)
   prismaMock.aiConversation.findFirst.mockResolvedValue(null)
   prismaMock.aiConversation.create.mockImplementation(async ({ data }: any) => ({ id: 'conv-1', ...data }))
@@ -146,6 +147,22 @@ describe('processSocialMessage — DM ingestion', () => {
       expect.objectContaining({ data: expect.objectContaining({ role: 'USER' }) }),
     )
     expect(getAgentReplyV2OpenAI).toHaveBeenCalled()
+  })
+
+  it('claims a DM before sending and suppresses a second send for an existing claim', async () => {
+    prismaMock.$executeRawUnsafe.mockResolvedValueOnce(0)
+    await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.claimed')
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO "meta_dm_send_claims"'),
+      expect.any(String), 'FACEBOOK', 'mid.claimed',
+    )
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/messages'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
+    )
   })
 
   it('stores the real Meta message ID in metadata so a later redelivery can be recognized', async () => {
