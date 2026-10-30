@@ -172,9 +172,20 @@ describe('processSocialMessage — DM ingestion', () => {
     }))
   })
 
-  it('does not fail or skip processing when no messageId is available (idempotency is best-effort, not a hard requirement)', async () => {
-    await processSocialMessage('sender-1', 'hi', 'FACEBOOK', undefined)
+  it('stores inbound messages but refuses an unsafe automatic send without a Meta message ID', async () => {
+    await expect(processSocialMessage('sender-1', 'hi', 'FACEBOOK', undefined))
+      .rejects.toThrow('META_DM_REVIEW_REQUIRED_MISSING_MESSAGE_ID')
     expect(prismaMock.aiConversation.create).toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'USER' }) }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
+    )
+    expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO "meta_dm_send_claims"'),
+      expect.anything(), expect.anything(), expect.anything(),
+    )
   })
 
   it('skips the AI reply (but still stores the message) when the channel is human-takeover', async () => {
