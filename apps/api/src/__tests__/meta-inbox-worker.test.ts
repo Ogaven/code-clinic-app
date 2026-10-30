@@ -55,4 +55,16 @@ describe('Meta durable inbox', () => {
     expect(prismaMock.$executeRawUnsafe.mock.calls[0][0]).toContain(`'PENDING'`)
     expect(prismaMock.$executeRawUnsafe.mock.calls[0][3]).toContain('temporary Meta outage')
   })
+  it('quarantines ambiguous Meta DM deliveries for manual reconciliation', async () => {
+    prismaMock.$queryRawUnsafe.mockResolvedValueOnce([{
+      id: 'event-3', provider: 'FACEBOOK', attempts: 1,
+      payload: { kind: 'message', fromId: 'sender', text: 'hi' },
+    }]).mockResolvedValue([])
+    await drainMetaEvents(vi.fn().mockRejectedValue(new Error('META_DM_DELIVERY_UNCERTAIN timeout')))
+    const args = prismaMock.$executeRawUnsafe.mock.calls[0]
+    expect(args[0]).toContain('WHEN $5 OR')
+    expect(args[3]).toContain('META_DM_DELIVERY_UNCERTAIN')
+    expect(args[5]).toBe(true)
+  })
+
 })
