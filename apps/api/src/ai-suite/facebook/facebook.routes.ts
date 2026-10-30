@@ -767,8 +767,7 @@ export async function sendSocialReply(
     : (config?.instagramAccessToken    || process.env.INSTAGRAM_ACCESS_TOKEN     || null)
 
   if (!token) {
-    console.warn(`[${channel}] No page access token configured — reply not sent`)
-    return
+    throw new Error(`[${channel}] No page access token configured — reply not sent`)
   }
 
   // Instagram Business Login tokens belong on graph.instagram.com. Facebook
@@ -787,7 +786,9 @@ export async function sendSocialReply(
   })
 
   if (!res.ok) {
-    console.error(`[${channel}] Failed to send reply:`, await res.text())
+    const details = (await res.text()).slice(0, 500)
+    console.error(`[${channel}] Failed to send reply: HTTP ${res.status}`, details)
+    throw new Error(`[${channel}] Meta reply rejected: HTTP ${res.status}`)
   } else {
     console.log(`[${channel}] Reply sent to ${recipientId}`)
   }
