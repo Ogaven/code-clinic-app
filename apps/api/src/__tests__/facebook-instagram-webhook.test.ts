@@ -97,6 +97,16 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(getAgentReplyV2OpenAI).toHaveBeenCalledWith('conv-1', event.sender.id, event.message.text, 'FACEBOOK')
   })
 
+  it('suppresses a DM reply when staff take over during AI generation', async () => {
+    isAgentEnabled.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    await processSocialMessage('sender-1', 'Need an appointment', 'FACEBOOK', 'mid.takeover')
+    expect(getAgentReplyV2OpenAI).toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'AGENT' }),
+    }))
+    expect(prismaMock.aiMessage.update).not.toHaveBeenCalled()
+  })
+
   it('does not persist Facebook user as a verified customer name', async () => {
     (global.fetch as any) = vi.fn().mockResolvedValue({
       ok: true,
