@@ -627,6 +627,7 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
           id: req.params.id, ...(doctorId ? { doctorId } : {}),
           status: before.status, patientDecision: before.patientDecision,
           clinicalReviewRequired: before.clinicalReviewRequired, followUpAt: before.followUpAt,
+          doctorId: before.doctorId,
         },
         data: followUpData,
       })
