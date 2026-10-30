@@ -185,6 +185,19 @@ describe('processComment — comment ingestion', () => {
     )
   })
 
+  it('suppresses an Instagram comment reply when staff take over during generation', async () => {
+    isAgentEnabled.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    await processComment('comment-takeover', 'media-1', 'user-1', 'Jane', 'Can I book?', 'INSTAGRAM_COMMENT')
+    expect(getCommentReplyOpenAI).toHaveBeenCalled()
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/comment-takeover/replies'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'AGENT' }),
+    }))
+  })
+
   it('scopes a commenter conversation to the originating post so the inbox groups comments under the correct post', async () => {
     await processComment('comment-post-2', 'post-2', 'same-user', 'Jane', 'What is this post about?', 'FACEBOOK_COMMENT')
 
