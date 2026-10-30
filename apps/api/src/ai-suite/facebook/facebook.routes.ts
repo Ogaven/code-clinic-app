@@ -625,13 +625,17 @@ export async function processSocialMessage(
     if (messageId) {
       const marker = `"messageId":"${messageId}"`
       const alreadyProcessed = await prisma.aiMessage.findFirst({
-        where: { metadata: { contains: marker } },
+        where: { role: 'AGENT', metadata: { contains: marker } },
       })
       if (alreadyProcessed) {
         console.log(`[${channel}] Duplicate webhook — messageId ${messageId} already processed, skipping`)
         return
       }
     }
+
+    const existingInbound = messageId ? await prisma.aiMessage.findFirst({
+      where: { role: 'USER', metadata: { contains: `"messageId":"${messageId}"` } },
+    }) : null
 
     const config    = await prisma.aiAgentConfig.findFirst()
     const dmToken   = channel === 'FACEBOOK'
@@ -700,12 +704,14 @@ export async function processSocialMessage(
       })
     }
 
-    await prisma.aiMessage.create({
-      data: {
-        conversationId: conversation.id, role: 'USER', content: text,
-        metadata: messageId ? JSON.stringify({ messageId }) : undefined,
-      },
-    })
+    if (!existingInbound) {
+      await prisma.aiMessage.create({
+        data: {
+          conversationId: conversation.id, role: 'USER', content: text,
+          metadata: messageId ? JSON.stringify({ messageId }) : undefined,
+        },
+      })
+    }
 
     // Creating a message does NOT bump the parent conversation's updatedAt —
     // touch it explicitly so reused threads sort by real last-activity.
@@ -737,11 +743,12 @@ export async function processSocialMessage(
       : nonPatientEnquiry === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
       : await getAgentReplyV2OpenAI(conversation.id, senderId, text, channel)
 
-    await prisma.aiMessage.create({
-      data: { conversationId: conversation.id, role: 'AGENT', content: reply },
-    })
-
     await sendSocialReply(senderId, reply, channel)
+
+    await prisma.aiMessage.create({
+      data: { conversationId: conversation.id, role: 'AGENT', content: reply,
+        metadata: messageId ? JSON.stringify({ messageId }) : undefined },
+    })
   } catch (err) {
     console.error(`[${channel}] processSocialMessage error:`, err)
     throw err
