@@ -608,6 +608,11 @@ router.patch('/treatment/:id/follow-up', requireAuth, async (req, res) => {
     const { data: followUpData, error: followUpError } = parseFollowUpFields(req.body)
     if (followUpError) { res.status(400).json({ error: followUpError }); return }
     if (Object.keys(followUpData).length === 0) { res.status(400).json({ error: 'No follow-up fields provided' }); return }
+    // A doctor may edit follow-up details for their own plans, but must not
+    // transfer plan ownership through this general-purpose follow-up endpoint.
+    if (req.user!.role === 'DOCTOR' && 'doctorId' in followUpData && followUpData.doctorId !== doctorId) {
+      res.status(403).json({ error: 'Doctors cannot reassign treatment ownership through follow-up editing' }); return
+    }
     const before = await prisma.treatmentPlan.findFirst({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
       select: { doctorId: true, patientId: true, status: true, patientDecision: true, clinicalReviewRequired: true, followUpAt: true },
