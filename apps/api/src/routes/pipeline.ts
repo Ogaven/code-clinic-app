@@ -535,7 +535,7 @@ router.patch('/treatment/:id/coordination', requireAuth, async (req, res) => {
       }
     }
     if ('coordinatorId' in req.body) {
-      if (coordinatorId !== null && typeof coordinatorId !== 'string') { res.status(400).json({ error: 'Invalid coordinatorId' }); return }
+      if (coordinatorId !== null && (typeof coordinatorId !== 'string' || coordinatorId.length > 200)) { res.status(400).json({ error: 'Invalid coordinatorId' }); return }
       if (coordinatorId) {
         const owner = await prisma.user.findFirst({ where: { id: coordinatorId, isActive: true, role: { in: ['ADMIN', 'RECEPTIONIST'] } }, select: { id: true } })
         if (!owner) { res.status(400).json({ error: 'Coordinator must be an active authorised staff member' }); return }
