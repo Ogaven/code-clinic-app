@@ -8,7 +8,7 @@ const { prismaMock, authenticatedDoctorId } = vi.hoisted(() => ({
   prismaMock: {
     treatmentPlan: { findFirst: vi.fn(), updateMany: vi.fn() },
     treatmentFollowUpEvent: { create: vi.fn() },
-    $transaction: vi.fn(async (callback: any) => callback(prismaMock)),
+    $transaction: vi.fn(),
   },
   authenticatedDoctorId: vi.fn(),
 }))
@@ -34,6 +34,7 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(e => e ? reject(e) : resolve())) })
 beforeEach(() => {
   vi.clearAllMocks()
+  prismaMock.$transaction.mockImplementation(async (callback: any) => callback(prismaMock))
   currentUser = { id: 'staff-1', role: 'RECEPTIONIST', firstName: 'Front', lastName: 'Desk' }
 })
 function resolve(body: any) {
