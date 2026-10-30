@@ -12,7 +12,7 @@ const { prismaMock, findOrCreateLeadForChannel, getAgentReplyV2OpenAI, getCommen
   prismaMock: {
     aiAgentConfig: { findFirst: vi.fn() },
     aiConversation: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
-    aiMessage: { findFirst: vi.fn(), create: vi.fn() },
+    aiMessage: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
   findOrCreateLeadForChannel: vi.fn().mockResolvedValue({ lead: { id: 'lead-1' }, isNew: true }),
   getAgentReplyV2OpenAI: vi.fn().mockResolvedValue('AI reply text'),
@@ -40,7 +40,8 @@ beforeEach(() => {
   prismaMock.aiConversation.create.mockImplementation(async ({ data }: any) => ({ id: 'conv-1', ...data }))
   prismaMock.aiConversation.update.mockResolvedValue({})
   prismaMock.aiMessage.findFirst.mockResolvedValue(null)
-  prismaMock.aiMessage.create.mockResolvedValue({})
+  prismaMock.aiMessage.create.mockResolvedValue({ id: 'msg-1' })
+  prismaMock.aiMessage.update.mockResolvedValue({})
   isAgentEnabled.mockResolvedValue(true)
   findOrCreateLeadForChannel.mockResolvedValue({ lead: { id: 'lead-1' }, isNew: true })
   process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'test-fb-page-token'
@@ -246,7 +247,7 @@ describe('outbound routing — never crosses channels, mocked fetch only, no rea
   it('does not send anything when no token is configured for the channel', async () => {
     prismaMock.aiAgentConfig.findFirst.mockResolvedValue(null)
     delete process.env.FACEBOOK_PAGE_ACCESS_TOKEN
-    await sendSocialReply('recipient-1', 'hello', 'FACEBOOK')
+    await expect(sendSocialReply('recipient-1', 'hello', 'FACEBOOK')).rejects.toThrow('No page access token')
     expect(global.fetch).not.toHaveBeenCalled()
   })
 
