@@ -716,7 +716,12 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       const parsed = parseFollowUpFields({ followUpAt: rescheduleTo })
       if (parsed.error || !(parsed.data.followUpAt instanceof Date)) { res.status(400).json({ error: 'Invalid rescheduleTo date' }); return }
       const d = parsed.data.followUpAt as Date
-      if (d.getTime() <= Date.now()) { res.status(400).json({ error: 'rescheduleTo must be in the future' }); return }
+      // A date-only value means the clinic calendar day, not midnight UTC.
+      // Permit today's calendar date; reject only earlier calendar dates.
+      const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(rescheduleTo.trim())
+      if (dateOnly ? d.toISOString().slice(0, 10) < new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Kampala', year: 'numeric', month: '2-digit', day: '2-digit' }) : d.getTime() <= Date.now()) {
+        res.status(400).json({ error: 'rescheduleTo must not be in the past' }); return
+      }
       newFollowUpAt = d
     }
 
