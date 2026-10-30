@@ -62,7 +62,7 @@ export async function processMetaInboxBatch(): Promise<void> {
     orderBy: { createdAt: 'asc' }, take: 20,
   })
   for (const item of pending) {
-    const leaseUntil = new Date(Date.now() + 120_000)
+    const leaseUntil = new Date(Date.now() + 10 * 60_000)
     const claim = await prisma.metaInboundEvent.updateMany({
       where: { id: item.id, status: item.status, attempts: item.attempts, ...(item.status === 'PROCESSING' ? { leaseUntil: { lt: new Date() } } : { availableAt: { lte: new Date() } }) },
       data: { status: 'PROCESSING', attempts: { increment: 1 }, leaseUntil },
@@ -70,11 +70,11 @@ export async function processMetaInboxBatch(): Promise<void> {
     if (claim.count !== 1) continue
     try {
       await dispatch(JSON.parse(item.payload))
-      await prisma.metaInboundEvent.update({ where: { id: item.id }, data: { status: 'COMPLETED', processedAt: new Date(), leaseUntil: null, lastError: null } })
+      await prisma.metaInboundEvent.updateMany({ where: { id: item.id, status: 'PROCESSING', attempts: item.attempts + 1 }, data: { status: 'COMPLETED', processedAt: new Date(), leaseUntil: null, lastError: null } })
     } catch (error) {
       const attempts = item.attempts + 1
-      await prisma.metaInboundEvent.update({
-        where: { id: item.id },
+      await prisma.metaInboundEvent.updateMany({
+        where: { id: item.id, status: 'PROCESSING', attempts: item.attempts + 1 },
         data: { status: attempts >= 8 ? 'FAILED' : 'PENDING', leaseUntil: null, availableAt: new Date(Date.now() + Math.min(3600, 2 ** attempts * 10) * 1000), lastError: String(error).slice(0, 1000) },
       })
     }
