@@ -694,7 +694,7 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
 
     const plan = await prisma.treatmentPlan.findFirst({
       where: { id: req.params.id, ...(doctorId ? { doctorId } : {}) },
-      select: { id: true, patientId: true, toothNumber: true, followUpNote: true, followUpAt: true, status: true, patientDecision: true, clinicalReviewRequired: true },
+      select: { id: true, doctorId: true, patientId: true, toothNumber: true, followUpNote: true, followUpAt: true, status: true, patientDecision: true, clinicalReviewRequired: true },
     })
     if (!plan) { res.status(404).json({ error: 'Treatment plan not found' }); return }
 
@@ -728,7 +728,7 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       // the same scheduled date. The event is committed only with the update.
       const changed = await tx.treatmentPlan.updateMany({
         where: {
-          id: plan.id, ...(doctorId ? { doctorId } : {}),
+          id: plan.id, doctorId: plan.doctorId,
           followUpAt: plan.followUpAt, followUpNote: plan.followUpNote,
           status: plan.status, patientDecision: plan.patientDecision,
           clinicalReviewRequired: plan.clinicalReviewRequired,
