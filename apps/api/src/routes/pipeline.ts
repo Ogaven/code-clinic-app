@@ -716,6 +716,7 @@ router.post('/treatment/:id/follow-up/resolve', requireAuth, async (req, res) =>
       const parsed = parseFollowUpFields({ followUpAt: rescheduleTo })
       if (parsed.error || !(parsed.data.followUpAt instanceof Date)) { res.status(400).json({ error: 'Invalid rescheduleTo date' }); return }
       const d = parsed.data.followUpAt as Date
+      if (d.getTime() <= Date.now()) { res.status(400).json({ error: 'rescheduleTo must be in the future' }); return }
       newFollowUpAt = d
     }
 
