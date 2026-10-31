@@ -206,6 +206,38 @@ describe('treatment coordination HTTP access and clinical holds', () => {
       }),
     }))
   })
+  it('rejects clearing a clinical hold and scheduling routine outreach in the same request for reception', async () => {
+    const response = await coordinate({
+      clinicalReviewRequired: false, followUpAt: '2030-12-01',
+    })
+    expect(response.status).toBe(403)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+  it('allows an assigned doctor to clear a hold and schedule follow-up together', async () => {
+    currentUser.role = 'DOCTOR'
+    authenticatedDoctorId.mockResolvedValue('doctor-a')
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: true, followUpAt: null,
+    })
+    prismaMock.treatmentPlan.updateMany.mockResolvedValue({ count: 1 })
+    prismaMock.treatmentPlan.findUniqueOrThrow.mockResolvedValue({
+      id: 'plan-1', patientDecision: 'Accepted', decisionReason: null,
+      coordinatorId: null, nextAction: null, clinicalReviewRequired: false,
+      followUpAt: new Date('2030-12-01T00:00:00.000Z'),
+    })
+    const response = await coordinate({
+      clinicalReviewRequired: false, followUpAt: '2030-12-01',
+    })
+    expect(response.status).toBe(200)
+    expect(prismaMock.treatmentFollowUpEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        eventType: 'COORDINATION_UPDATED',
+        newValues: expect.objectContaining({ clinicalReviewRequired: false }),
+      }),
+    }))
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
