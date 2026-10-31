@@ -283,6 +283,26 @@ describe('treatment coordination HTTP access and clinical holds', () => {
       }),
     }))
   })
+  it('does not assign a coordinator when the treatment plan is missing', async () => {
+    prismaMock.user.findFirst.mockResolvedValue({ id: 'reception-user' })
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue(null)
+    const response = await coordinate({ coordinatorId: 'reception-user' })
+    expect(response.status).toBe(404)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+    expect(prismaMock.treatmentFollowUpEvent.create).not.toHaveBeenCalled()
+  })
+  it('does not append a coordinator event if saving the event fails', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: false, followUpAt: null,
+    })
+    prismaMock.treatmentPlan.updateMany.mockResolvedValue({ count: 1 })
+    prismaMock.treatmentFollowUpEvent.create.mockRejectedValueOnce(new Error('History unavailable'))
+    const response = await coordinate({ nextAction: 'Call tomorrow' })
+    expect(response.status).toBe(500)
+    expect(prismaMock.treatmentFollowUpEvent.create).toHaveBeenCalledOnce()
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
