@@ -765,6 +765,13 @@ export async function processSocialMessage(
     // Persist a delivery intent before the external call. A network timeout or
     // process crash after Meta accepts the reply is ambiguous: automatic retry
     // could send a duplicate. Fail closed and flag that intent for staff review.
+    // If the AI returned no usable text, do not create a delivery intent or
+    // attempt to send an empty Meta message.
+    if (!reply?.trim()) {
+      console.warn(`[${channel}] Empty DM reply suppressed: messageId=${messageId ?? 'unknown'}`)
+      return
+    }
+
     const deliveryIntent = messageId ? await prisma.aiMessage.create({
       data: { conversationId: conversation.id, role: 'AGENT', content: reply,
         metadata: JSON.stringify({ messageId, deliveryStatus: 'SENDING' }) },
