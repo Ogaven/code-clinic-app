@@ -7,7 +7,8 @@ process.env.OPENAI_API_KEY ??= 'test-key-not-real'
 
 const { prismaMock, authenticatedDoctorId } = vi.hoisted(() => ({
   prismaMock: {
-    treatmentPlan: { findFirst: vi.fn(), updateMany: vi.fn() },
+    treatmentPlan: { findFirst: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
+    user: { findFirst: vi.fn() },
     treatmentFollowUpEvent: { create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -43,6 +44,40 @@ function resolve(body: any) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   })
 }
+describe('treatment coordination HTTP access and clinical holds', () => {
+  function coordinate(body: any) {
+    return fetch(`${origin}/treatment/plan-1/coordination`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+  }
+  it('rejects patient role without touching treatment records', async () => {
+    currentUser.role = 'PATIENT'
+    expect((await coordinate({ nextAction: 'Call patient' })).status).toBe(403)
+    expect(prismaMock.treatmentPlan.findFirst).not.toHaveBeenCalled()
+  })
+  it('does not let reception clear a doctor clinical hold', async () => {
+    expect((await coordinate({ clinicalReviewRequired: false })).status).toBe(403)
+    expect(prismaMock.treatmentPlan.findFirst).not.toHaveBeenCalled()
+  })
+  it('rejects an inactive or unauthorized follow-up coordinator', async () => {
+    prismaMock.user.findFirst.mockResolvedValue(null)
+    expect((await coordinate({ coordinatorId: 'inactive-user' })).status).toBe(400)
+    expect(prismaMock.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'inactive-user', isActive: true }),
+    }))
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+  it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: false,
+      followUpAt: new Date('2030-12-01T00:00:00.000Z'),
+    })
+    expect((await coordinate({ patientDecision: 'Declined' })).status).toBe(409)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+})
 describe('follow-up resolution HTTP authorization and validation', () => {
   it('rejects unauthorized roles before reading a treatment plan', async () => {
     currentUser.role = 'PATIENT'
