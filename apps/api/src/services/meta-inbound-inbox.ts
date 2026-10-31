@@ -10,7 +10,11 @@ export function metaEventKey(source: string, event: unknown): string {
 
 export async function enqueueMetaEvent(body: MetaEvent): Promise<void> {
   if (body.object !== 'page' && body.object !== 'instagram') return
-  for (const entry of body.entry ?? []) {
+  if (!Array.isArray(body.entry)) throw new Error('Invalid Meta webhook: entry must be an array')
+  for (const entry of body.entry) {
+    if (!entry || typeof entry !== 'object') throw new Error('Invalid Meta webhook entry')
+    if (entry.messaging !== undefined && !Array.isArray(entry.messaging)) throw new Error('Invalid Meta webhook messaging')
+    if (entry.changes !== undefined && !Array.isArray(entry.changes)) throw new Error('Invalid Meta webhook changes')
     for (const event of entry.messaging ?? []) {
       if (!event.message?.text || event.message.is_echo) continue
       const payload = { object: body.object, kind: 'message', event }
