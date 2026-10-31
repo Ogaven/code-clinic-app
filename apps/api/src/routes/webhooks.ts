@@ -21,7 +21,7 @@ router.get('/facebook', (req, res) => {
 
 // POST /webhooks/facebook — receive Facebook Messenger events from Meta
 router.post('/facebook', async (req, res) => {
-  if (checkMetaWebhookSignature(req, ['FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'Facebook') === 'REJECTED') {
+  if (checkMetaWebhookSignature(req, ['FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'Facebook') !== 'OK') {
     res.sendStatus(403)
     return
   }
