@@ -107,6 +107,15 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(prismaMock.aiMessage.update).not.toHaveBeenCalled()
   })
 
+  it('does not send or record an empty AI reply', async () => {
+    getAgentReplyV2OpenAI.mockResolvedValueOnce('   ')
+    await processSocialMessage('sender-1', 'Hello', 'FACEBOOK', 'mid.empty')
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'AGENT' }),
+    }))
+    expect(prismaMock.aiMessage.update).not.toHaveBeenCalled()
+  })
+
   it('does not persist Facebook user as a verified customer name', async () => {
     (global.fetch as any) = vi.fn().mockResolvedValue({
       ok: true,
