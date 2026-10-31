@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import express from 'express'
 import type { Server } from 'node:http'
@@ -21,9 +22,25 @@ beforeEach(() => {
   delete process.env.FACEBOOK_APP_SECRET
   delete process.env.META_APP_SECRET
 })
-const post = (body: object) => fetch(`${origin}/webhooks/facebook`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+const post = (body: object, signed = true) => {
+  const raw = JSON.stringify(body)
+  const signature = createHmac('sha256', process.env.FACEBOOK_APP_SECRET ?? 'test-secret').update(raw).digest('hex')
+  return fetch(`${origin}/webhooks/facebook`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(signed ? { 'x-hub-signature-256': `sha256=${signature}` } : {}) }, body: raw })
+}
 
 describe('Meta webhook durable acknowledgment', () => {
+  beforeEach(() => { process.env.FACEBOOK_APP_SECRET = 'test-secret' })
+  it('rejects requests when no app secret is configured', async () => {
+    delete process.env.FACEBOOK_APP_SECRET
+    const res = await post({ object: 'page', entry: [] })
+    expect(res.status).toBe(403)
+    expect(enqueueMetaEvent).not.toHaveBeenCalled()
+  })
+  it('rejects unsigned requests before persistence', async () => {
+    const res = await post({ object: 'page', entry: [] }, false)
+    expect(res.status).toBe(403)
+    expect(enqueueMetaEvent).not.toHaveBeenCalled()
+  })
   for (const object of ['page', 'instagram']) {
     it(`persists ${object} payload before returning 200`, async () => {
       const body = { object, entry: [{ messaging: [{ sender: { id: 'sender' }, message: { mid: 'm1', text: 'Hello' } }] }] }
