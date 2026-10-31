@@ -158,6 +158,21 @@ describe('treatment coordination HTTP access and clinical holds', () => {
     }))
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
+  it('rejects malformed coordination requests before writing patient records', async () => {
+    const malformed = await coordinate({ nextAction: { unsafe: true } })
+    expect(malformed.status).toBe(400)
+    const empty = await coordinate({})
+    expect(empty.status).toBe(400)
+    expect(prismaMock.treatmentPlan.updateMany).not.toHaveBeenCalled()
+    expect(prismaMock.treatmentFollowUpEvent.create).not.toHaveBeenCalled()
+  })
+  it('rejects a non-doctor clearing a clinical hold even with another change', async () => {
+    const response = await coordinate({
+      clinicalReviewRequired: false, nextAction: 'Resume outreach',
+    })
+    expect(response.status).toBe(403)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
