@@ -16,11 +16,12 @@ export async function enqueueMetaEvent(body: MetaEvent): Promise<void> {
     if (entry.messaging !== undefined && !Array.isArray(entry.messaging)) throw new Error('Invalid Meta webhook messaging')
     if (entry.changes !== undefined && !Array.isArray(entry.changes)) throw new Error('Invalid Meta webhook changes')
     for (const event of entry.messaging ?? []) {
-      if (!event.message?.text || event.message.is_echo) continue
+      if (!event || typeof event !== 'object' || !event.message?.text || event.message.is_echo) continue
       const payload = { object: body.object, kind: 'message', event }
       await persist(payload)
     }
     for (const change of entry.changes ?? []) {
+      if (!change || typeof change !== 'object') continue
       if (body.object === 'page' && change.field !== 'feed' && change.field !== 'leadgen') continue
       if (body.object === 'instagram' && change.field !== 'comments') continue
       const payload = { object: body.object, kind: 'change', change }
