@@ -777,7 +777,25 @@ export async function processSocialMessage(
         metadata: JSON.stringify({ messageId, deliveryStatus: 'SENDING' }) },
     }) : null
 
-    await sendSocialReply(senderId, reply, channel)
+    try {
+      await sendSocialReply(senderId, reply, channel)
+    } catch (sendError) {
+      // The send may have reached Meta before a transport failure. Do not
+      // automatically resend an ambiguous delivery: retain the intent for
+      // staff reconciliation. Definite missing-token and HTTP rejection cases
+      // are marked FAILED so they are not mistaken for in-flight delivery.
+      if (deliveryIntent) {
+        const message = String(sendError)
+        const definiteFailure = message.includes('No page access token configured') || message.includes('Meta reply rejected: HTTP')
+        if (definiteFailure) {
+          await prisma.aiMessage.update({
+            where: { id: deliveryIntent.id },
+            data: { metadata: JSON.stringify({ messageId, deliveryStatus: 'FAILED', deliveryError: message.slice(0, 300) }) },
+          })
+        }
+      }
+      throw sendError
+    }
 
     if (deliveryIntent) {
       await prisma.aiMessage.update({
