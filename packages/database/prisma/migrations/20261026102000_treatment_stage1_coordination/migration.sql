@@ -9,7 +9,10 @@ ALTER TABLE "treatment_plans"
 CREATE INDEX "treatment_plans_coordinatorId_idx" ON "treatment_plans"("coordinatorId");
 CREATE INDEX "treatment_plans_patientDecision_idx" ON "treatment_plans"("patientDecision");
 
--- Append-only coordinator history. No automatic activation of historical plans.
+-- Coordination history is inserted as events during normal operation. Parent treatment-plan
+-- deletion currently cascades to these events; retention across deletion is NOT guaranteed.
+-- Clinical record-retention policy must be approved before production release.
+-- No automatic activation of historical plans.
 CREATE TABLE "treatment_follow_up_events" (
   "id" TEXT NOT NULL,
   "treatmentPlanId" TEXT NOT NULL,
