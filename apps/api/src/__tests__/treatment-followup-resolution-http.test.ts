@@ -147,6 +147,17 @@ describe('treatment coordination HTTP access and clinical holds', () => {
       }),
     }))
   })
+  it('does not let a doctor edit another doctor\'s treatment coordination', async () => {
+    currentUser.role = 'DOCTOR'
+    authenticatedDoctorId.mockResolvedValue('doctor-a')
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue(null)
+    const response = await coordinate({ nextAction: 'Call patient' })
+    expect(response.status).toBe(404)
+    expect(prismaMock.treatmentPlan.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'plan-1', doctorId: 'doctor-a' },
+    }))
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
