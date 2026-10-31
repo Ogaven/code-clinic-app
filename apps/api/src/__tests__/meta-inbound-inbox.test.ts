@@ -32,6 +32,12 @@ describe('durable Meta inbox', () => {
     expect(upsert).toHaveBeenCalledTimes(2)
     expect(upsert.mock.calls[0][0].where.eventKey).toBe(upsert.mock.calls[1][0].where.eventKey)
   })
+  it('rejects malformed entry collections rather than acknowledging them', async () => {
+    await expect(enqueueMetaEvent({ object: 'page', entry: {} as any })).rejects.toThrow('entry must be an array')
+    await expect(enqueueMetaEvent({ object: 'instagram', entry: [{ messaging: {} }] as any })).rejects.toThrow('messaging')
+    await expect(enqueueMetaEvent({ object: 'page', entry: [{ changes: {} }] as any })).rejects.toThrow('changes')
+    expect(upsert).not.toHaveBeenCalled()
+  })
   it('ignores echoed messages', async () => {
     await enqueueMetaEvent({ object: 'page', entry: [{ messaging: [{ message: { text: 'reply', is_echo: true } }] }] })
     expect(upsert).not.toHaveBeenCalled()
