@@ -38,6 +38,11 @@ describe('durable Meta inbox', () => {
     await expect(enqueueMetaEvent({ object: 'page', entry: [{ changes: {} }] as any })).rejects.toThrow('changes')
     expect(upsert).not.toHaveBeenCalled()
   })
+  it('skips null messaging and change items while preserving valid events', async () => {
+    await enqueueMetaEvent({ object: 'instagram', entry: [{ messaging: [null, payload.event], changes: [null] }] as any })
+    expect(upsert).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(upsert.mock.calls[0][0].create.payload).kind).toBe('message')
+  })
   it('ignores echoed messages', async () => {
     await enqueueMetaEvent({ object: 'page', entry: [{ messaging: [{ message: { text: 'reply', is_echo: true } }] }] })
     expect(upsert).not.toHaveBeenCalled()
