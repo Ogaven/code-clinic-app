@@ -348,6 +348,17 @@ describe('treatment coordination HTTP access and clinical holds', () => {
     expect(prismaMock.user.findFirst).not.toHaveBeenCalled()
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
+  it('rejects a malformed follow-up date without creating coordination history', async () => {
+    const response = await coordinate({ followUpAt: 'not-a-date' })
+    expect(response.status).toBe(400)
+    expect(prismaMock.treatmentPlan.findFirst).not.toHaveBeenCalled()
+    expect(prismaMock.treatmentFollowUpEvent.create).not.toHaveBeenCalled()
+  })
+  it('rejects a non-string follow-up date without updating treatment', async () => {
+    const response = await coordinate({ followUpAt: { date: '2030-12-01' } })
+    expect(response.status).toBe(400)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
