@@ -324,6 +324,18 @@ describe('treatment coordination HTTP access and clinical holds', () => {
     expect(response.status).toBe(400)
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
+  it('rejects an oversized decision reason before updating a treatment', async () => {
+    const response = await coordinate({ decisionReason: 'x'.repeat(2001) })
+    expect(response.status).toBe(400)
+    expect(prismaMock.treatmentPlan.findFirst).not.toHaveBeenCalled()
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+  it('rejects an oversized next action before updating a treatment', async () => {
+    const response = await coordinate({ nextAction: 'x'.repeat(2001) })
+    expect(response.status).toBe(400)
+    expect(prismaMock.treatmentPlan.findFirst).not.toHaveBeenCalled()
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
