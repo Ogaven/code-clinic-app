@@ -67,6 +67,42 @@ describe('treatment coordination HTTP access and clinical holds', () => {
     }))
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
+  it('does not create a coordination event if another staff member changed the plan', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: false, followUpAt: null,
+    })
+    prismaMock.treatmentPlan.updateMany.mockResolvedValue({ count: 0 })
+    const response = await coordinate({ nextAction: 'Call tomorrow' })
+    expect(response.status).toBe(409)
+    expect(prismaMock.treatmentFollowUpEvent.create).not.toHaveBeenCalled()
+  })
+  it('saves coordination changes and a durable event together', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: false, followUpAt: null,
+    })
+    prismaMock.treatmentPlan.updateMany.mockResolvedValue({ count: 1 })
+    prismaMock.treatmentPlan.findUniqueOrThrow.mockResolvedValue({
+      id: 'plan-1', patientDecision: 'Accepted', decisionReason: null,
+      coordinatorId: null, nextAction: 'Call tomorrow',
+      clinicalReviewRequired: false, followUpAt: null,
+    })
+    const response = await coordinate({ nextAction: 'Call tomorrow' })
+    expect(response.status).toBe(200)
+    expect(prismaMock.treatmentPlan.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ doctorId: 'doctor-a', patientDecision: 'Accepted' }),
+      data: { nextAction: 'Call tomorrow' },
+    }))
+    expect(prismaMock.treatmentFollowUpEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        eventType: 'COORDINATION_UPDATED', actorId: 'staff-1',
+        newValues: expect.objectContaining({ nextAction: 'Call tomorrow' }),
+      }),
+    }))
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
