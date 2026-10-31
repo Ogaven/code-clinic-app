@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import express from 'express'
 import type { Server } from 'node:http'
+import { logAudit } from '../services/audit.service'
 
 process.env.OPENAI_API_KEY ??= 'test-key-not-real'
 
@@ -186,6 +187,21 @@ describe('follow-up resolution HTTP authorization and validation', () => {
     const response = await resolve({ resolution: 'COMPLETED', note: 'Patient reached' })
     expect(response.status).toBe(500)
     expect(prismaMock.treatmentFollowUpEvent.create).toHaveBeenCalledOnce()
+  })
+  it('keeps a committed follow-up successful when secondary audit logging fails', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', patientId: 'patient-1',
+      toothNumber: '24', followUpAt: new Date('2026-10-29T08:00:00.000Z'),
+      followUpNote: null, status: 'Planned',
+      patientDecision: 'Accepted', clinicalReviewRequired: false,
+    })
+    prismaMock.treatmentPlan.updateMany.mockResolvedValue({ count: 1 })
+    prismaMock.treatmentFollowUpEvent.create.mockResolvedValue({ id: 'event-3' })
+    vi.mocked(logAudit).mockRejectedValueOnce(new Error('Secondary audit unavailable'))
+    const response = await resolve({ resolution: 'COMPLETED', note: 'Patient reached' })
+    expect(response.status).toBe(200)
+    expect(prismaMock.treatmentFollowUpEvent.create).toHaveBeenCalledOnce()
+    expect(logAudit).toHaveBeenCalledOnce()
   })
   it('does not resolve a treatment with no scheduled follow-up', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({ id: 'plan-1', followUpAt: null })
