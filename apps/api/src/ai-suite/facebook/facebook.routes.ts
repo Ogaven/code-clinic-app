@@ -507,6 +507,13 @@ export async function processComment(
       return
     }
 
+    // A staff takeover can happen while a comment reply is being generated.
+    // Suppress automated publication if the conversation changed ownership.
+    if (!(await isAgentEnabled(conversation.id))) {
+      console.log(`[${channel}] Human takeover during comment generation — suppressing reply`)
+      return
+    }
+
     // Only record an outbound AGENT message after Meta confirms publication.
     // Previously a failed Graph API call left a phantom reply in the inbox.
     await sendCommentReply(commentId, reply, channel)
@@ -625,13 +632,22 @@ export async function processSocialMessage(
     if (messageId) {
       const marker = `"messageId":"${messageId}"`
       const alreadyProcessed = await prisma.aiMessage.findFirst({
-        where: { metadata: { contains: marker } },
+        where: { role: 'AGENT', metadata: { contains: marker } },
       })
       if (alreadyProcessed) {
+        // SENDING is an ambiguous delivery, not proof that Meta accepted it.
+        // Do not automatically resend: keep it visible for staff reconciliation.
+        if (alreadyProcessed.metadata?.includes('"deliveryStatus":"SENDING"')) {
+          console.warn(`[${channel}] Message ${messageId} has an unresolved delivery attempt; staff review required`)
+        }
         console.log(`[${channel}] Duplicate webhook — messageId ${messageId} already processed, skipping`)
         return
       }
     }
+
+    const existingInbound = messageId ? await prisma.aiMessage.findFirst({
+      where: { role: 'USER', metadata: { contains: `"messageId":"${messageId}"` } },
+    }) : null
 
     const config    = await prisma.aiAgentConfig.findFirst()
     const dmToken   = channel === 'FACEBOOK'
@@ -700,12 +716,14 @@ export async function processSocialMessage(
       })
     }
 
-    await prisma.aiMessage.create({
-      data: {
-        conversationId: conversation.id, role: 'USER', content: text,
-        metadata: messageId ? JSON.stringify({ messageId }) : undefined,
-      },
-    })
+    if (!existingInbound) {
+      await prisma.aiMessage.create({
+        data: {
+          conversationId: conversation.id, role: 'USER', content: text,
+          metadata: messageId ? JSON.stringify({ messageId }) : undefined,
+        },
+      })
+    }
 
     // Creating a message does NOT bump the parent conversation's updatedAt —
     // touch it explicitly so reused threads sort by real last-activity.
@@ -737,13 +755,63 @@ export async function processSocialMessage(
       : nonPatientEnquiry === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
       : await getAgentReplyV2OpenAI(conversation.id, senderId, text, channel)
 
-    await prisma.aiMessage.create({
-      data: { conversationId: conversation.id, role: 'AGENT', content: reply },
-    })
+    // Human takeover may occur while the AI is composing. Recheck immediately
+    // before creating an outbound delivery intent or contacting Meta.
+    if (!(await isAgentEnabled(conversation.id))) {
+      console.log(`[${channel}] Human takeover during AI generation — suppressing reply`)
+      return
+    }
 
-    await sendSocialReply(senderId, reply, channel)
+    // Persist a delivery intent before the external call. A network timeout or
+    // process crash after Meta accepts the reply is ambiguous: automatic retry
+    // could send a duplicate. Fail closed and flag that intent for staff review.
+    // If the AI returned no usable text, do not create a delivery intent or
+    // attempt to send an empty Meta message.
+    if (!reply?.trim()) {
+      console.warn(`[${channel}] Empty DM reply suppressed: messageId=${messageId ?? 'unknown'}`)
+      return
+    }
+
+    const deliveryIntent = messageId ? await prisma.aiMessage.create({
+      data: { conversationId: conversation.id, role: 'AGENT', content: reply,
+        metadata: JSON.stringify({ messageId, deliveryStatus: 'SENDING' }) },
+    }) : null
+
+    try {
+      await sendSocialReply(senderId, reply, channel)
+    } catch (sendError) {
+      // The send may have reached Meta before a transport failure. Do not
+      // automatically resend an ambiguous delivery: retain the intent for
+      // staff reconciliation. Definite missing-token and HTTP rejection cases
+      // are marked FAILED so they are not mistaken for in-flight delivery.
+      if (deliveryIntent) {
+        const message = String(sendError)
+        const definiteFailure = message.includes('No page access token configured') || message.includes('Meta reply rejected: HTTP')
+        if (definiteFailure) {
+          await prisma.aiMessage.update({
+            where: { id: deliveryIntent.id },
+            data: { metadata: JSON.stringify({ messageId, deliveryStatus: 'FAILED', deliveryError: message.slice(0, 300) }) },
+          })
+        }
+      }
+      throw sendError
+    }
+
+    if (deliveryIntent) {
+      await prisma.aiMessage.update({
+        where: { id: deliveryIntent.id },
+        data: { metadata: JSON.stringify({ messageId, deliveryStatus: 'SENT' }) },
+      })
+      return
+    }
+
+    await prisma.aiMessage.create({
+      data: { conversationId: conversation.id, role: 'AGENT', content: reply,
+        metadata: messageId ? JSON.stringify({ messageId }) : undefined },
+    })
   } catch (err) {
     console.error(`[${channel}] processSocialMessage error:`, err)
+    throw err
   }
 }
 
@@ -759,8 +827,7 @@ export async function sendSocialReply(
     : (config?.instagramAccessToken    || process.env.INSTAGRAM_ACCESS_TOKEN     || null)
 
   if (!token) {
-    console.warn(`[${channel}] No page access token configured — reply not sent`)
-    return
+    throw new Error(`[${channel}] No page access token configured — reply not sent`)
   }
 
   // Instagram Business Login tokens belong on graph.instagram.com. Facebook
@@ -779,7 +846,9 @@ export async function sendSocialReply(
   })
 
   if (!res.ok) {
-    console.error(`[${channel}] Failed to send reply:`, await res.text())
+    const details = (await res.text()).slice(0, 500)
+    console.error(`[${channel}] Failed to send reply: HTTP ${res.status}`, details)
+    throw new Error(`[${channel}] Meta reply rejected: HTTP ${res.status}`)
   } else {
     console.log(`[${channel}] Reply sent to ${recipientId}`)
   }
@@ -875,6 +944,7 @@ export async function processLeadAdSubmission(leadgenId: string): Promise<void> 
     })
   } catch (e: any) {
     console.error('[LeadAds] Processing error:', e?.message)
+    throw e
   }
 }
 

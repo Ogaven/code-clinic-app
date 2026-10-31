@@ -2092,3 +2092,23 @@ model AiBudgetAlert {
   @@index([status, createdAt], map: "ai_budget_alerts_status_created_idx")
   @@map("ai_budget_alerts")
 }
+
+
+/// Durable Meta inbound event inbox; acknowledge only after successful insert.
+/// Payload retention must follow clinic policy.
+model MetaInboundEvent {
+  id            String    @id @default(cuid())
+  eventKey      String    @unique
+  source        String
+  payload       String
+  status        String    @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED
+  attempts      Int       @default(0)
+  availableAt   DateTime  @default(now())
+  leaseUntil    DateTime?
+  lastError     String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, availableAt])
+  @@map("meta_inbound_events")
+}

@@ -12,7 +12,7 @@ const { prismaMock, findOrCreateLeadForChannel, getAgentReplyV2OpenAI, getCommen
   prismaMock: {
     aiAgentConfig: { findFirst: vi.fn() },
     aiConversation: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
-    aiMessage: { findFirst: vi.fn(), create: vi.fn() },
+    aiMessage: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
   findOrCreateLeadForChannel: vi.fn().mockResolvedValue({ lead: { id: 'lead-1' }, isNew: true }),
   getAgentReplyV2OpenAI: vi.fn().mockResolvedValue('AI reply text'),
@@ -40,7 +40,8 @@ beforeEach(() => {
   prismaMock.aiConversation.create.mockImplementation(async ({ data }: any) => ({ id: 'conv-1', ...data }))
   prismaMock.aiConversation.update.mockResolvedValue({})
   prismaMock.aiMessage.findFirst.mockResolvedValue(null)
-  prismaMock.aiMessage.create.mockResolvedValue({})
+  prismaMock.aiMessage.create.mockResolvedValue({ id: 'msg-1' })
+  prismaMock.aiMessage.update.mockResolvedValue({})
   isAgentEnabled.mockResolvedValue(true)
   findOrCreateLeadForChannel.mockResolvedValue({ lead: { id: 'lead-1' }, isNew: true })
   process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'test-fb-page-token'
@@ -96,6 +97,25 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(getAgentReplyV2OpenAI).toHaveBeenCalledWith('conv-1', event.sender.id, event.message.text, 'FACEBOOK')
   })
 
+  it('suppresses a DM reply when staff take over during AI generation', async () => {
+    isAgentEnabled.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    await processSocialMessage('sender-1', 'Need an appointment', 'FACEBOOK', 'mid.takeover')
+    expect(getAgentReplyV2OpenAI).toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'AGENT' }),
+    }))
+    expect(prismaMock.aiMessage.update).not.toHaveBeenCalled()
+  })
+
+  it('does not send or record an empty AI reply', async () => {
+    getAgentReplyV2OpenAI.mockResolvedValueOnce('   ')
+    await processSocialMessage('sender-1', 'Hello', 'FACEBOOK', 'mid.empty')
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'AGENT' }),
+    }))
+    expect(prismaMock.aiMessage.update).not.toHaveBeenCalled()
+  })
+
   it('does not persist Facebook user as a verified customer name', async () => {
     (global.fetch as any) = vi.fn().mockResolvedValue({
       ok: true,
@@ -124,7 +144,7 @@ describe('processSocialMessage — DM ingestion', () => {
 
     await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.duplicate')
 
-    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({ where: { metadata: { contains: '"messageId":"mid.duplicate"' } } })
+    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({ where: { role: 'AGENT', metadata: { contains: '"messageId":"mid.duplicate"' } } })
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
     expect(prismaMock.aiConversation.findFirst).not.toHaveBeenCalled()
     expect(maybeNotifyStaff).not.toHaveBeenCalled()
@@ -172,6 +192,19 @@ describe('processComment — comment ingestion', () => {
       expect.stringContaining(`/${c.id}/replies`),
       expect.objectContaining({ method: 'POST' }),
     )
+  })
+
+  it('suppresses an Instagram comment reply when staff take over during generation', async () => {
+    isAgentEnabled.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    await processComment('comment-takeover', 'media-1', 'user-1', 'Jane', 'Can I book?', 'INSTAGRAM_COMMENT')
+    expect(getCommentReplyOpenAI).toHaveBeenCalled()
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/comment-takeover/replies'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'AGENT' }),
+    }))
   })
 
   it('scopes a commenter conversation to the originating post so the inbox groups comments under the correct post', async () => {
@@ -246,7 +279,7 @@ describe('outbound routing — never crosses channels, mocked fetch only, no rea
   it('does not send anything when no token is configured for the channel', async () => {
     prismaMock.aiAgentConfig.findFirst.mockResolvedValue(null)
     delete process.env.FACEBOOK_PAGE_ACCESS_TOKEN
-    await sendSocialReply('recipient-1', 'hello', 'FACEBOOK')
+    await expect(sendSocialReply('recipient-1', 'hello', 'FACEBOOK')).rejects.toThrow('No page access token')
     expect(global.fetch).not.toHaveBeenCalled()
   })
 
