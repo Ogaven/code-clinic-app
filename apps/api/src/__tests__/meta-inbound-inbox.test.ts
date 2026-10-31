@@ -42,6 +42,21 @@ describe('durable Meta inbox', () => {
     expect(social).toHaveBeenCalledWith('patient-1', 'Hello', 'INSTAGRAM', 'm1')
     expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'e1', status: 'PROCESSING', attempts: 1 }, data: expect.objectContaining({ status: 'COMPLETED' }) }))
   })
+  it('marks an expired lease failed after eight attempts without redispatch', async () => {
+    findMany.mockResolvedValue([{ id: 'e8', status: 'PROCESSING', attempts: 8, payload: JSON.stringify(payload) }])
+    await processMetaInboxBatch()
+    expect(social).not.toHaveBeenCalled()
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'e8', status: 'PROCESSING', attempts: 8 },
+      data: expect.objectContaining({ status: 'FAILED' }),
+    }))
+  })
+  it('does not dispatch when another worker wins the claim', async () => {
+    findMany.mockResolvedValue([{ id: 'e1', status: 'PENDING', attempts: 0, payload: JSON.stringify(payload) }])
+    updateMany.mockResolvedValueOnce({ count: 0 })
+    await processMetaInboxBatch()
+    expect(social).not.toHaveBeenCalled()
+  })
   it('schedules a retry when a handler throws', async () => {
     findMany.mockResolvedValue([{ id: 'e1', status: 'PENDING', attempts: 0, payload: JSON.stringify(payload) }])
     social.mockRejectedValueOnce(new Error('Meta API unavailable'))
