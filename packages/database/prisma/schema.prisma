@@ -1086,15 +1086,42 @@ model TreatmentPlan {
   followUpReason String?
   followUpNote   String?
 
+  // Stage 1 coordination metadata, separate from clinical status and dentist.
+  patientDecision String?
+  decisionReason String?
+  coordinatorId String?
+  nextAction String?
+  // Existing followUpAt remains the due date/time.
+  clinicalReviewRequired Boolean @default(false)
+
   appointments   Appointment[]
   followUpAlerts TreatmentFollowUpAlert[]
+  coordinationEvents TreatmentFollowUpEvent[]
 
   @@index([patientId])
   @@index([doctorId])
   @@index([stage])
   @@index([followUpAt])
+  @@index([coordinatorId])
+  @@index([patientDecision])
   @@map("treatment_plans")
   clinicalProductionEntries ClinicalProductionEntry[]
+}
+
+model TreatmentFollowUpEvent {
+  id String @id @default(cuid())
+  treatmentPlanId String
+  treatmentPlan TreatmentPlan @relation(fields: [treatmentPlanId], references: [id], onDelete: Cascade)
+  actorId String
+  eventType String
+  previousValues Json?
+  newValues Json?
+  outcome String?
+  createdAt DateTime @default(now())
+
+  @@index([treatmentPlanId, createdAt], map: "treatment_follow_up_events_plan_created_idx")
+  @@index([eventType, createdAt], map: "treatment_follow_up_events_type_created_idx")
+  @@map("treatment_follow_up_events")
 }
 
 // Idempotency record for treatment follow-up reminders (due-soon/due-today/overdue),

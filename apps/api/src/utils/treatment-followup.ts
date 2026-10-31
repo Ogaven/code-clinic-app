@@ -8,20 +8,38 @@
 // DB (which would silently break the alert scheduler's comparisons).
 export function parseFollowUpFields(body: any): { data: Record<string, any>; error?: string } {
   const data: Record<string, any> = {}
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { data, error: 'Invalid follow-up payload' }
   if ('followUpAt' in body) {
     if (body.followUpAt === null || body.followUpAt === '') {
       data.followUpAt = null
     } else {
-      const d = new Date(body.followUpAt)
+      if (typeof body.followUpAt !== 'string' || !body.followUpAt.trim()) return { data, error: 'Invalid followUpAt date' }
+      const raw = body.followUpAt.trim()
+      // Reject impossible calendar dates that JavaScript silently normalizes (e.g. February 31).
+      const calendarDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
+      if (calendarDate) {
+        const [, year, month, day] = calendarDate
+        const date = new Date(`${year}-${month}-${day}T00:00:00.000Z`)
+        if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== raw) return { data, error: 'Invalid followUpAt date' }
+      }
+      const d = new Date(raw)
       if (isNaN(d.getTime())) return { data, error: 'Invalid followUpAt date' }
       data.followUpAt = d
     }
   }
-  if ('followUpReason' in body) data.followUpReason = body.followUpReason === '' ? null : body.followUpReason
-  if ('followUpNote' in body) data.followUpNote = body.followUpNote === '' ? null : body.followUpNote
-  // Assigned clinician — reuses the existing TreatmentPlan.doctorId field
-  // (no new assignment field). null unassigns.
-  if ('doctorId' in body) data.doctorId = body.doctorId === '' ? null : body.doctorId
+  for (const field of ['followUpReason', 'followUpNote'] as const) {
+    if (field in body) {
+      const value = body[field]
+      if (value !== null && (typeof value !== 'string' || value.length > 2000)) return { data: {}, error: `Invalid ${field} (maximum 2000 characters)` }
+      data[field] = value === '' ? null : value
+    }
+  }
+  // Assigned clinician — reuses the existing TreatmentPlan.doctorId field.
+  if ('doctorId' in body) {
+    const value = body.doctorId
+    if (value !== null && (typeof value !== 'string' || value.length > 200 || (value.length > 0 && !value.trim()))) return { data: {}, error: 'Invalid doctorId' }
+    data.doctorId = value === '' ? null : value
+  }
   return { data }
 }
 

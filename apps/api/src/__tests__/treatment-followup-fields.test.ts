@@ -7,6 +7,12 @@ import { describe, expect, it } from 'vitest'
 import { parseFollowUpFields, NON_ACTIONABLE_STATUSES } from '../utils/treatment-followup'
 
 describe('parseFollowUpFields', () => {
+  it('returns a validation error rather than throwing on null or malformed payloads', () => {
+    for (const payload of [null, undefined, 0, 'text', []]) {
+      expect(parseFollowUpFields(payload).error).toBe('Invalid follow-up payload')
+    }
+  })
+
   it('leaves data empty when no follow-up keys are present in the body', () => {
     const { data, error } = parseFollowUpFields({ notes: 'unrelated field' })
     expect(data).toEqual({})
@@ -23,6 +29,18 @@ describe('parseFollowUpFields', () => {
   it('rejects an invalid followUpAt date so a bad payload can never write "Invalid Date"', () => {
     const { error } = parseFollowUpFields({ followUpAt: 'not-a-date' })
     expect(error).toBe('Invalid followUpAt date')
+  })
+
+  it('rejects impossible calendar dates instead of silently rolling into another month', () => {
+    for (const followUpAt of ['2026-02-31', '2026-04-31', '2026-13-01']) {
+      expect(parseFollowUpFields({ followUpAt }).error).toBe('Invalid followUpAt date')
+    }
+  })
+
+  it('rejects non-string dates instead of coercing numbers, booleans or objects', () => {
+    for (const value of [0, 1, true, false, {}, [], ['2026-12-01'], '   ']) {
+      expect(parseFollowUpFields({ followUpAt: value }).error).toBe('Invalid followUpAt date')
+    }
   })
 
   it('treats an explicit null followUpAt as "clear the field"', () => {
@@ -46,6 +64,23 @@ describe('parseFollowUpFields', () => {
     expect(cleared.data.doctorId).toBeNull()
     const assigned = parseFollowUpFields({ doctorId: 'doctor_123' })
     expect(assigned.data.doctorId).toBe('doctor_123')
+  })
+
+  it('rejects malformed notes and reasons before Prisma receives them', () => {
+    for (const field of ['followUpReason', 'followUpNote']) {
+      for (const value of [false, 123, {}, [], 'x'.repeat(2001)]) {
+        const result = parseFollowUpFields({ [field]: value })
+        expect(result.error).toMatch(new RegExp(field))
+        expect(result.data).toEqual({})
+      }
+    }
+  })
+
+  it('rejects malformed doctor IDs and accepts explicit null for legacy unassignment', () => {
+    for (const value of [true, 42, {}, [], '   ', 'x'.repeat(201)]) {
+      expect(parseFollowUpFields({ doctorId: value }).error).toBe('Invalid doctorId')
+    }
+    expect(parseFollowUpFields({ doctorId: null }).data.doctorId).toBeNull()
   })
 
   it('never touches a key that is absent from the body (undefined means "leave unchanged")', () => {
