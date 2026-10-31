@@ -120,6 +120,33 @@ describe('treatment coordination HTTP access and clinical holds', () => {
     expect(response.status).toBe(404)
     expect(prismaMock.treatmentPlan.findFirst).not.toHaveBeenCalled()
   })
+  it('allows a doctor to clear a clinical hold and records the change', async () => {
+    currentUser.role = 'DOCTOR'
+    authenticatedDoctorId.mockResolvedValue('doctor-a')
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: true, followUpAt: null,
+    })
+    prismaMock.treatmentPlan.updateMany.mockResolvedValue({ count: 1 })
+    prismaMock.treatmentPlan.findUniqueOrThrow.mockResolvedValue({
+      id: 'plan-1', patientDecision: 'Accepted', decisionReason: null,
+      coordinatorId: null, nextAction: null, clinicalReviewRequired: false,
+      followUpAt: null,
+    })
+    const response = await coordinate({ clinicalReviewRequired: false })
+    expect(response.status).toBe(200)
+    expect(prismaMock.treatmentPlan.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ doctorId: 'doctor-a', clinicalReviewRequired: true }),
+      data: { clinicalReviewRequired: false },
+    }))
+    expect(prismaMock.treatmentFollowUpEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        eventType: 'COORDINATION_UPDATED', actorId: 'staff-1',
+        newValues: expect.objectContaining({ clinicalReviewRequired: false }),
+      }),
+    }))
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
