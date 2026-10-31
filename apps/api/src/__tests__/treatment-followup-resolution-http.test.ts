@@ -103,6 +103,23 @@ describe('treatment coordination HTTP access and clinical holds', () => {
       }),
     }))
   })
+  it('blocks routine scheduling while a clinical hold remains active', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: true, followUpAt: null,
+    })
+    const response = await coordinate({ followUpAt: '2030-12-01' })
+    expect(response.status).toBe(409)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+  it('requires doctor identity for doctor coordination edits', async () => {
+    currentUser.role = 'DOCTOR'
+    authenticatedDoctorId.mockResolvedValue(null)
+    const response = await coordinate({ nextAction: 'Review treatment' })
+    expect(response.status).toBe(404)
+    expect(prismaMock.treatmentPlan.findFirst).not.toHaveBeenCalled()
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
