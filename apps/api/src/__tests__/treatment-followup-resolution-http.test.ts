@@ -336,6 +336,18 @@ describe('treatment coordination HTTP access and clinical holds', () => {
     expect(prismaMock.treatmentPlan.findFirst).not.toHaveBeenCalled()
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
+  it('rejects whitespace-only coordinator IDs before querying staff', async () => {
+    const response = await coordinate({ coordinatorId: '   ' })
+    expect(response.status).toBe(400)
+    expect(prismaMock.user.findFirst).not.toHaveBeenCalled()
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+  it('rejects coordinator IDs longer than the allowed limit', async () => {
+    const response = await coordinate({ coordinatorId: 'x'.repeat(201) })
+    expect(response.status).toBe(400)
+    expect(prismaMock.user.findFirst).not.toHaveBeenCalled()
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
