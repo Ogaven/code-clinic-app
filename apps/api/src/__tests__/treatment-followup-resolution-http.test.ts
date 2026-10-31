@@ -303,6 +303,16 @@ describe('treatment coordination HTTP access and clinical holds', () => {
     expect(response.status).toBe(500)
     expect(prismaMock.treatmentFollowUpEvent.create).toHaveBeenCalledOnce()
   })
+  it('rejects routine follow-up scheduling for terminal treatment status', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Completed',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: false, followUpAt: null,
+    })
+    const response = await coordinate({ followUpAt: '2030-12-01' })
+    expect(response.status).toBe(409)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
