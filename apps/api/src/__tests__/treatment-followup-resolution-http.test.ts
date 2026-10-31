@@ -173,6 +173,39 @@ describe('treatment coordination HTTP access and clinical holds', () => {
     expect(response.status).toBe(403)
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
+  it('rejects a deferred decision while a routine follow-up remains scheduled', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: false,
+      followUpAt: new Date('2030-12-01T00:00:00.000Z'),
+    })
+    const response = await coordinate({ patientDecision: 'Deferred' })
+    expect(response.status).toBe(409)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+  it('allows a declined decision when the routine follow-up is cleared in the same change', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: false,
+      followUpAt: new Date('2030-12-01T00:00:00.000Z'),
+    })
+    prismaMock.treatmentPlan.updateMany.mockResolvedValue({ count: 1 })
+    prismaMock.treatmentPlan.findUniqueOrThrow.mockResolvedValue({
+      id: 'plan-1', patientDecision: 'Declined', decisionReason: null,
+      coordinatorId: null, nextAction: null, clinicalReviewRequired: false,
+      followUpAt: null,
+    })
+    const response = await coordinate({ patientDecision: 'Declined', followUpAt: null })
+    expect(response.status).toBe(200)
+    expect(prismaMock.treatmentFollowUpEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        eventType: 'COORDINATION_UPDATED',
+        newValues: expect.objectContaining({ patientDecision: 'Declined', followUpAt: null }),
+      }),
+    }))
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
