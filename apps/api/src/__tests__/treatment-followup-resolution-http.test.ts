@@ -166,6 +166,27 @@ describe('follow-up resolution HTTP authorization and validation', () => {
       }),
     }))
   })
+  it('rejects doctor accounts without an associated doctor record', async () => {
+    currentUser.role = 'DOCTOR'
+    authenticatedDoctorId.mockResolvedValue(null)
+    const response = await resolve({ resolution: 'COMPLETED', note: 'Patient reached' })
+    expect(response.status).toBe(404)
+    expect(prismaMock.treatmentPlan.findFirst).not.toHaveBeenCalled()
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+  it('does not report success if durable follow-up history cannot be written', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', patientId: 'patient-1',
+      toothNumber: '24', followUpAt: new Date('2026-10-29T08:00:00.000Z'),
+      followUpNote: null, status: 'Planned',
+      patientDecision: 'Accepted', clinicalReviewRequired: false,
+    })
+    prismaMock.treatmentPlan.updateMany.mockResolvedValue({ count: 1 })
+    prismaMock.treatmentFollowUpEvent.create.mockRejectedValue(new Error('Event insert failed'))
+    const response = await resolve({ resolution: 'COMPLETED', note: 'Patient reached' })
+    expect(response.status).toBe(500)
+    expect(prismaMock.treatmentFollowUpEvent.create).toHaveBeenCalledOnce()
+  })
   it('does not resolve a treatment with no scheduled follow-up', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({ id: 'plan-1', followUpAt: null })
     const response = await resolve({ resolution: 'COMPLETED', note: 'Patient contacted' })
