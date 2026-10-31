@@ -238,6 +238,17 @@ describe('treatment coordination HTTP access and clinical holds', () => {
       }),
     }))
   })
+  it('does not create an event if a coordination update fails during the transaction', async () => {
+    prismaMock.treatmentPlan.findFirst.mockResolvedValue({
+      id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
+      patientDecision: 'Accepted', decisionReason: null, coordinatorId: null,
+      nextAction: null, clinicalReviewRequired: false, followUpAt: null,
+    })
+    prismaMock.treatmentPlan.updateMany.mockRejectedValueOnce(new Error('Database write failed'))
+    const response = await coordinate({ nextAction: 'Call tomorrow' })
+    expect(response.status).toBe(500)
+    expect(prismaMock.treatmentFollowUpEvent.create).not.toHaveBeenCalled()
+  })
   it('blocks a declined decision while a routine follow-up remains scheduled', async () => {
     prismaMock.treatmentPlan.findFirst.mockResolvedValue({
       id: 'plan-1', doctorId: 'doctor-a', status: 'Planned',
