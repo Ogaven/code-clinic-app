@@ -15,6 +15,10 @@
 
 The production workflow `.github/workflows/deploy.yml` triggers on pushes to `main`, targets the existing production server, and **does not automatically apply Prisma migrations**. Its classification step warns when schema or migration files change and requires migrations to be applied separately first. Web/API releases use server-side locking and rollback checks, but application rollback does not undo database migrations. **Do not merge this PR expecting the new schema to be applied automatically.** Confirm the migration operator, database credentials, backup evidence and deployment sequence before approval.
 
+## Deployment classifier and migration sequencing
+
+The existing `scripts/deploy/classify.sh` reads `/var/www/codeclinic/.deploy-state.json` from production and fails closed if the API/web deployed SHAs cannot be resolved. It detects schema changes but **only emits a warning through the production workflow**; schema changes do not prevent the workflow from proceeding. Therefore, the release operator must explicitly ensure that the reviewed migration is already applied and compatible **before merging** this PR to `main`. The production workflow is not a database migration gate. Confirm the exact deployed SHAs and migration status as part of release evidence.
+
 ## 2. Preflight and deployment order
 
 1. Record the currently deployed Git SHA and current API/web health checks.
