@@ -61,8 +61,8 @@ export type MetaSignatureResult = 'OK' | 'UNVERIFIED' | 'REJECTED'
 // handshake in routes/webhooks.ts) so a single shared Meta App Secret works
 // without operators having to set the same value under multiple names.
 export function checkMetaWebhookSignature(req: Request, envVarNames: string[], logPrefix: string): MetaSignatureResult {
-  const appSecret = envVarNames.map(name => process.env[name]).find(Boolean)
-  if (!appSecret) {
+  const appSecrets = envVarNames.map(name => process.env[name]).filter((value): value is string => Boolean(value))
+  if (appSecrets.length === 0) {
     console.warn(
       `[${logPrefix}] No app secret configured (checked ${envVarNames.join(', ')}) — ` +
       'webhook signature NOT verified. This request is being processed unauthenticated. ' +
@@ -70,7 +70,10 @@ export function checkMetaWebhookSignature(req: Request, envVarNames: string[], l
     )
     return 'UNVERIFIED'
   }
-  if (!verifyMetaSignature(req, appSecret)) {
+  // Meta can sign different subscribed endpoints with different configured app secrets.
+  // Accept only a valid HMAC from one of the explicitly trusted app secrets.
+  // Never fall back to accepting an unsigned or invalid request.
+  if (!appSecrets.some(secret => verifyMetaSignature(req, secret))) {
     console.error(`[${logPrefix}] Webhook signature verification FAILED (X-Hub-Signature-256 mismatch or missing) — rejecting request`)
     return 'REJECTED'
   }
