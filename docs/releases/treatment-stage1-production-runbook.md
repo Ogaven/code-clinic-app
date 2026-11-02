@@ -11,6 +11,10 @@
 - [ ] Resolve the event-retention decision: `treatment_follow_up_events.treatmentPlanId` currently has `ON DELETE CASCADE`. Deleting a treatment plan therefore also deletes its event history. Choose and review a policy before changing either the SQL migration or Prisma relation.
 - [ ] Confirm the production deployment operator has a documented rollback route and maintenance window.
 
+## Deployment automation finding (verified from repository)
+
+The production workflow `.github/workflows/deploy.yml` triggers on pushes to `main`, targets the existing production server, and **does not automatically apply Prisma migrations**. Its classification step warns when schema or migration files change and requires migrations to be applied separately first. Web/API releases use server-side locking and rollback checks, but application rollback does not undo database migrations. **Do not merge this PR expecting the new schema to be applied automatically.** Confirm the migration operator, database credentials, backup evidence and deployment sequence before approval.
+
 ## 2. Preflight and deployment order
 
 1. Record the currently deployed Git SHA and current API/web health checks.
