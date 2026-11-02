@@ -30,6 +30,10 @@ The existing `scripts/deploy/classify.sh` reads `/var/www/codeclinic/.deploy-sta
 7. Deploy the approved API and web build through the existing DigitalOcean process, without changing billing or infrastructure.
 8. Confirm health checks and perform limited, authorized production smoke tests without sending test patient communications.
 
+## Staging safety finding
+
+The repository also has `.github/workflows/staging.yml`, triggered by pushes to `staging`. It uses a separate staging host and executes `git reset --hard origin/staging`, builds API/web and runs `pm2 restart all`. **Do not push or merge this branch into staging yet.** Before using staging for clinical acceptance, verify its database URL is separate from production, it contains only authorized/de-identified test data, its migration state is understood, and the staging server's existing changes can safely be replaced. A separate host alone does not prove database isolation.
+
 ## 3. Clinical acceptance scenarios
 
 - Receptionist assigns an active authorized coordinator; invalid/inactive staff assignments are rejected.
