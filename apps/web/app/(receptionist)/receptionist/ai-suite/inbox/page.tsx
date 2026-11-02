@@ -1135,7 +1135,7 @@ function InboxPage() {
       if (requestId !== lastMessageRequest.current) return
       setMsgs(previous => {
         if (previous.length === incoming.length && previous.every((m, i) =>
-          m.id === incoming[i].id && m.content === incoming[i].content && m.createdAt === incoming[i].createdAt
+          m.id === incoming[i].id && m.content === incoming[i].content && m.createdAt === incoming[i].createdAt && m.metadata === incoming[i].metadata
         )) return previous
         return incoming
       })
