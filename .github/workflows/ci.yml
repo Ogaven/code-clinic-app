@@ -149,6 +149,74 @@ jobs:
       - name: Verify migration status
         run: pnpm --filter database exec prisma migrate status
 
+  # Stage 1 SQL smoke test independent of the incomplete legacy migration chain.
+  # Build the current schema in a disposable DB, remove ONLY Stage 1 additions,
+  # then apply the actual checked-in Stage 1 SQL and check its resulting objects.
+  stage1-sql-smoke:
+    name: Stage 1 SQL Smoke Test
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:testpass@localhost:5432/codeclinic_stage1_ci
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: codeclinic_stage1_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Enable pgvector
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector;"
+      - name: Create disposable schema
+        run: pnpm --filter database exec prisma db push --skip-generate
+      - name: Simulate schema before Stage 1
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DROP TABLE "treatment_follow_up_events";
+          ALTER TABLE "treatment_plans"
+            DROP COLUMN "patientDecision",
+            DROP COLUMN "decisionReason",
+            DROP COLUMN "coordinatorId",
+            DROP COLUMN "nextAction",
+            DROP COLUMN "clinicalReviewRequired";
+          SQL
+      - name: Apply actual Stage 1 migration SQL
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f packages/database/prisma/migrations/20261026102000_treatment_stage1_coordination/migration.sql
+      - name: Verify Stage 1 objects and default
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF to_regclass('public.treatment_follow_up_events') IS NULL THEN
+              RAISE EXCEPTION 'Stage 1 event table missing';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'treatment_plans'
+                AND column_name = 'clinicalReviewRequired'
+                AND column_default LIKE '%false%'
+            ) THEN
+              RAISE EXCEPTION 'Stage 1 clinical review default missing';
+            END IF;
+          END $$;
+          SQL
+
   # ── Build ─────────────────────────────��───────────────────────
   build:
     name: Build
