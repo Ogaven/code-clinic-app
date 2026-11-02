@@ -126,7 +126,10 @@ describe('processSocialMessage — DM ingestion', () => {
   })
 
   it('keeps ambiguous Meta transport failures marked SENDING for manual review', async () => {
-    ;(global.fetch as any).mockRejectedValueOnce(new Error('connection reset after request'))
+    ;(global.fetch as any).mockImplementation(async (url: string) => {
+      if (url.includes('/me/messages')) throw new Error('connection reset after request')
+      return { ok: true, json: async () => ({ first_name: 'Patient', last_name: 'Test' }) }
+    })
     await expect(processSocialMessage('sender-1', 'Hello', 'FACEBOOK', 'mid.uncertain')).rejects.toThrow('connection reset')
     expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ role: 'AGENT', metadata: expect.stringContaining('"deliveryStatus":"SENDING"') }),
