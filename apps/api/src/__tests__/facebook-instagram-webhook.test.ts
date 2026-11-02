@@ -116,6 +116,15 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(prismaMock.aiMessage.update).not.toHaveBeenCalled()
   })
 
+  it('marks a definitively rejected Meta DM delivery as FAILED', async () => {
+    ;(global.fetch as any).mockResolvedValue({ ok: false, status: 403, text: async () => 'permission denied' })
+    await expect(processSocialMessage('sender-1', 'Hello', 'FACEBOOK', 'mid.rejected')).rejects.toThrow('Meta reply rejected: HTTP 403')
+    expect(prismaMock.aiMessage.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'msg-1' },
+      data: { metadata: expect.stringContaining('\\"deliveryStatus\\":\\"FAILED\\"') },
+    }))
+  })
+
   it('does not persist Facebook user as a verified customer name', async () => {
     (global.fetch as any) = vi.fn().mockResolvedValue({
       ok: true,
