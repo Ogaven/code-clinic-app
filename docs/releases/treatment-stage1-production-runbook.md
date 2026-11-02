@@ -19,6 +19,10 @@ The production workflow `.github/workflows/deploy.yml` triggers on pushes to `ma
 
 The existing `scripts/deploy/classify.sh` reads `/var/www/codeclinic/.deploy-state.json` from production and fails closed if the API/web deployed SHAs cannot be resolved. It detects schema changes but **only emits a warning through the production workflow**; schema changes do not prevent the workflow from proceeding. Therefore, the release operator must explicitly ensure that the reviewed migration is already applied and compatible **before merging** this PR to `main`. The production workflow is not a database migration gate. Confirm the exact deployed SHAs and migration status as part of release evidence.
 
+## CI limitation: green checks do not validate migration replay
+
+The repository's `.github/workflows/ci.yml` creates disposable PostgreSQL databases and initializes them using `prisma db push --skip-generate`, **not** `prisma migrate deploy`. Consequently, successful Type Check, Unit Tests and Build do not establish that the Stage 1 SQL migration can be applied on top of production's actual migration history. Before release, perform a migration replay or reviewed dry run against an isolated database whose baseline matches production, then verify the live migration history and current backup. Do not substitute CI schema push for production migration verification.
+
 ## 2. Preflight and deployment order
 
 1. Record the currently deployed Git SHA and current API/web health checks.
