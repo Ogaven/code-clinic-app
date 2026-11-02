@@ -110,6 +110,45 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # Replay checked-in SQL migrations on a disposable PostgreSQL instance.
+  # This is separate from the db-push unit-test setup and never uses live credentials.
+  migration-replay:
+    name: SQL Migration Replay
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:testpass@localhost:5432/codeclinic_migration_ci
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: codeclinic_migration_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Enable pgvector extension
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector;"
+      - name: Replay committed Prisma SQL migrations
+        run: pnpm --filter database exec prisma migrate deploy
+      - name: Verify migration status
+        run: pnpm --filter database exec prisma migrate status
+
   # ── Build ─────────────────────────────��───────────────────────
   build:
     name: Build
