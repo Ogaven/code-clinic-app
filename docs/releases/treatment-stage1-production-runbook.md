@@ -23,6 +23,12 @@ The existing `scripts/deploy/classify.sh` reads `/var/www/codeclinic/.deploy-sta
 
 The repository's `.github/workflows/ci.yml` creates disposable PostgreSQL databases and initializes them using `prisma db push --skip-generate`, **not** `prisma migrate deploy`. Consequently, successful Type Check, Unit Tests and Build do not establish that the Stage 1 SQL migration can be applied on top of production's actual migration history. Before release, perform a migration replay or reviewed dry run against an isolated database whose baseline matches production, then verify the live migration history and current backup. Do not substitute CI schema push for production migration verification.
 
+## Stage 1 SQL review — static findings only
+
+The pending SQL adds five columns to `treatment_plans`, two indexes there, and the `treatment_follow_up_events` table with two further indexes. It does not include a data backfill, delete existing rows or modify the existing treatment status and appointment columns. The new non-null `clinicalReviewRequired` flag has a `DEFAULT false`, so historical rows receive a default value when the migration applies. The new event table has an FK to `treatment_plans` with `ON DELETE CASCADE`; clinical retention approval remains required. This is **source review**, not a successful migration rehearsal, schema drift assessment or production verification.
+
+Before executing SQL: check `_prisma_migrations` for prior attempts and checksums, verify expected `treatment_plans` structure, ensure none of the new fields/table/indexes already exist under conflicting definitions, and rehearse on a separately isolated baseline with a recoverable backup. Do not automatically resolve migration conflicts or reset production data.
+
 ## 2. Preflight and deployment order
 
 1. Record the currently deployed Git SHA and current API/web health checks.
