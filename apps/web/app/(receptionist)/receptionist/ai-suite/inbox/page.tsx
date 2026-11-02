@@ -1470,6 +1470,9 @@ function InboxPage() {
         {msgs.filter(msg => !isTemplateArtifact(msg.content)).map((msg, i, visibleMsgs) => {
           const isAgent  = msg.role === 'AGENT'
           const media    = parseBubble(msg.content)
+          const deliveryStatus = (channel === 'FACEBOOK' || channel === 'INSTAGRAM') && isAgent
+            ? (() => { try { return JSON.parse(msg.metadata || '{}').deliveryStatus as string | undefined } catch { return undefined } })()
+            : undefined
           const showTime = i === visibleMsgs.length - 1 || visibleMsgs[i + 1]?.role !== msg.role
           return (
             <div key={msg.id} className={cn('flex', isAgent ? 'justify-end' : 'justify-start')}>
@@ -1652,6 +1655,8 @@ function InboxPage() {
                   style={isAgent ? { background: BUBBLE_BG[channel] } : undefined}>
                   {media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                 </div>
+                {deliveryStatus === 'FAILED' && <span role="alert" className="text-[11px] font-semibold text-red-700 mt-1 px-1">Reply not delivered — staff review required. Do not resend without checking Meta.</span>}
+                {deliveryStatus === 'SENDING' && <span role="status" className="text-[11px] font-semibold text-amber-700 mt-1 px-1">Delivery unconfirmed — check Meta before resending.</span>}
                 <span className={cn('text-[10px] text-gray-400 mt-0.5 px-1', isAgent ? 'text-right' : 'text-left')}>{msgTimestamp(msg.createdAt)}</span>
               </div>
             </div>
