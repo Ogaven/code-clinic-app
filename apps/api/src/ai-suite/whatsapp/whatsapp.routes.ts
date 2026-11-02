@@ -196,7 +196,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
   // as the already-configured FACEBOOK_APP_SECRET (used successfully by the
   // Facebook/Instagram webhooks below), so it's reused here rather than
   // requiring a second, redundant copy of the same value under a new name.
-  if (checkMetaWebhookSignature(req, ['WHATSAPP_APP_SECRET', 'FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'WhatsApp') === 'REJECTED') {
+  if (checkMetaWebhookSignature(req, process.env.WHATSAPP_APP_SECRET ? ['WHATSAPP_APP_SECRET'] : ['FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'WhatsApp') === 'REJECTED') {
     res.sendStatus(403)
     return
   }
