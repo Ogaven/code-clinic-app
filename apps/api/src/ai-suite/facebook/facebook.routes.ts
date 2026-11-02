@@ -639,6 +639,8 @@ export async function processSocialMessage(
         // Do not automatically resend: keep it visible for staff reconciliation.
         if (alreadyProcessed.metadata?.includes('"deliveryStatus":"SENDING"')) {
           console.warn(`[${channel}] Message ${messageId} has an unresolved delivery attempt; staff review required`)
+        } else if (alreadyProcessed.metadata?.includes('"deliveryStatus":"FAILED"')) {
+          console.error(`[${channel}] Message ${messageId} has a failed delivery; staff review required, automatic resend suppressed`)
         }
         console.log(`[${channel}] Duplicate webhook — messageId ${messageId} already processed, skipping`)
         return
