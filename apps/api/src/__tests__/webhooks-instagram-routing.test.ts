@@ -28,6 +28,38 @@ const post = (body: object, signed = true) => {
   return fetch(`${origin}/webhooks/facebook`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(signed ? { 'x-hub-signature-256': `sha256=${signature}` } : {}) }, body: raw })
 }
 
+describe('Meta webhook verification handshake', () => {
+  it('rejects verification when no token is configured', async () => {
+    const previousFb = process.env.FACEBOOK_VERIFY_TOKEN
+    const previousWa = process.env.WHATSAPP_VERIFY_TOKEN
+    delete process.env.FACEBOOK_VERIFY_TOKEN
+    delete process.env.WHATSAPP_VERIFY_TOKEN
+    try {
+      const res = await fetch(`${origin}/webhooks/facebook?hub.mode=subscribe&hub.verify_token=codeclinic-facebook-2026&hub.challenge=challenge`)
+      expect(res.status).toBe(403)
+    } finally {
+      if (previousFb === undefined) delete process.env.FACEBOOK_VERIFY_TOKEN
+      else process.env.FACEBOOK_VERIFY_TOKEN = previousFb
+      if (previousWa === undefined) delete process.env.WHATSAPP_VERIFY_TOKEN
+      else process.env.WHATSAPP_VERIFY_TOKEN = previousWa
+    }
+  })
+  it('accepts only the configured verification token', async () => {
+    const previous = process.env.FACEBOOK_VERIFY_TOKEN
+    process.env.FACEBOOK_VERIFY_TOKEN = 'configured-test-token'
+    try {
+      const rejected = await fetch(`${origin}/webhooks/facebook?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=challenge`)
+      expect(rejected.status).toBe(403)
+      const accepted = await fetch(`${origin}/webhooks/facebook?hub.mode=subscribe&hub.verify_token=configured-test-token&hub.challenge=challenge`)
+      expect(accepted.status).toBe(200)
+      expect(await accepted.text()).toBe('challenge')
+    } finally {
+      if (previous === undefined) delete process.env.FACEBOOK_VERIFY_TOKEN
+      else process.env.FACEBOOK_VERIFY_TOKEN = previous
+    }
+  })
+})
+
 describe('Meta webhook durable acknowledgment', () => {
   beforeEach(() => { process.env.FACEBOOK_APP_SECRET = 'test-secret' })
   it('rejects requests when no app secret is configured', async () => {
