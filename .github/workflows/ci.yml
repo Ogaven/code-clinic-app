@@ -203,6 +203,16 @@ jobs:
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DO $$ BEGIN
+            IF (SELECT count(*) FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'treatment_plans'
+                  AND column_name IN ('patientDecision','decisionReason','coordinatorId','nextAction','clinicalReviewRequired')) <> 5 THEN
+              RAISE EXCEPTION 'Stage 1 treatment plan columns missing';
+            END IF;
+            IF (SELECT count(*) FROM pg_indexes WHERE schemaname = 'public'
+                AND indexname IN ('treatment_plans_coordinatorId_idx','treatment_plans_patientDecision_idx',
+                  'treatment_follow_up_events_plan_created_idx','treatment_follow_up_events_type_created_idx')) <> 4 THEN
+              RAISE EXCEPTION 'Stage 1 indexes missing';
+            END IF;
             IF to_regclass('public.treatment_follow_up_events') IS NULL THEN
               RAISE EXCEPTION 'Stage 1 event table missing';
             END IF;
