@@ -37,7 +37,7 @@ ACTUAL_SHA=$(git rev-parse HEAD)
 # applied. The GitHub workflow deliberately does not run migrations itself.
 # Check BEFORE switching the live API symlink or restarting PM2.
 log "Checking database migration status before API cutover..."
-packages/database/node_modules/.bin/prisma migrate status --schema=packages/database/prisma/schema.prisma \\
+packages/database/node_modules/.bin/prisma migrate status --schema=packages/database/prisma/schema.prisma \
   || die "database migrations are pending or migration status is unhealthy; apply and verify migrations before deploying API"
 
 log "Regenerating Prisma client against current schema..."
