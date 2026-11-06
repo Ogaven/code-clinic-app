@@ -84,6 +84,23 @@ const igCommentFixture = {
 }
 
 describe('processSocialMessage — DM ingestion', () => {
+  it('keeps incoming social messages in the existing human-takeover thread', async () => {
+    prismaMock.aiConversation.findFirst.mockResolvedValueOnce({
+      id: 'existing-conversation', channel: 'INSTAGRAM', phoneNumber: 'ig-existing',
+      status: 'HUMAN_TAKEOVER', agentEnabled: false, displayName: 'Visitor', profilePictureUrl: 'https://example.test/avatar.jpg',
+    })
+    isAgentEnabled.mockResolvedValueOnce(false)
+    await processSocialMessage('ig-existing', 'One more question', 'INSTAGRAM', 'mid.after-takeover')
+    expect(prismaMock.aiConversation.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { phoneNumber: 'ig-existing', channel: 'INSTAGRAM' },
+    }))
+    expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ conversationId: 'existing-conversation', role: 'USER' }),
+    }))
+    expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
+  })
+
   it('does not send a generic DM when Sarah fails and hands conversation to reception', async () => {
     getAgentReplyV2OpenAI.mockResolvedValueOnce('')
     await processSocialMessage('ig-sender-2', 'Can I book an appointment?', 'INSTAGRAM', 'mid.ai-failure')
