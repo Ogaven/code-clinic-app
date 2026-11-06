@@ -232,7 +232,7 @@ async function processInboxEvent(provider: MetaInboxProvider, event: MetaInboxPa
       : ''
     // Do not invent an interpretation of unseen media. Keep the attachment
     // visible as a typed placeholder until the inbox media renderer is wired.
-    await processSocialMessage(event.fromId, [event.text, mediaNote].filter(Boolean).join('\n'), provider, event.mid, event.attachments)
+    await processSocialMessage(event.fromId, [event.text, mediaNote].filter(Boolean).join('\n'), provider, event.mid, event.attachments, !event.text.trim())
   } else {
     await processComment(event.commentId, event.postId, event.fromId, event.fromName, event.text,
       provider === 'FACEBOOK' ? 'FACEBOOK_COMMENT' : 'INSTAGRAM_COMMENT', event.parentId)
@@ -602,6 +602,7 @@ export async function processSocialMessage(
   channel:   'FACEBOOK' | 'INSTAGRAM',
   messageId?: string,
   attachments?: Array<{ type: string; url?: string }>,
+  mediaOnly = false,
 ): Promise<void> {
   try {
     // ── 0. Hard guard: never process our own Page/account as a "sender" ──────
@@ -724,6 +725,17 @@ export async function processSocialMessage(
     // Notify staff of new or unattended conversations (fire-and-forget)
     if (!existingInbound) {
       maybeNotifyStaff(conversation.id, senderId, resolvedName || senderId, channel, isNew)
+    }
+
+    // Media-only messages require a human review. Sarah cannot safely infer
+    // clinical details, symptoms or booking intent from an unseen attachment.
+    if (mediaOnly && attachments?.length) {
+      await prisma.aiConversation.update({
+        where: { id: conversation.id },
+        data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+      })
+      console.log(`[${channel}] Media-only message routed to reception`)
+      return
     }
 
     // ── Channel kill-switch: check per-channel toggle from config ─────────────
