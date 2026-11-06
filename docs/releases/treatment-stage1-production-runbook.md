@@ -19,9 +19,11 @@ The production workflow `.github/workflows/deploy.yml` triggers on pushes to `ma
 
 The existing `scripts/deploy/classify.sh` reads `/var/www/codeclinic/.deploy-state.json` from production and fails closed if the API/web deployed SHAs cannot be resolved. It detects schema changes but **only emits a warning through the production workflow**; schema changes do not prevent the workflow from proceeding. Therefore, the release operator must explicitly ensure that the reviewed migration is already applied and compatible **before merging** this PR to `main`. The production workflow is not a database migration gate. Confirm the exact deployed SHAs and migration status as part of release evidence.
 
-## CI limitation: green checks do not validate migration replay
+## CI evidence and historical migration baseline limitation
 
-The repository's `.github/workflows/ci.yml` creates disposable PostgreSQL databases and initializes them using `prisma db push --skip-generate`, **not** `prisma migrate deploy`. Consequently, successful Type Check, Unit Tests and Build do not establish that the Stage 1 SQL migration can be applied on top of production's actual migration history. Before release, perform a migration replay or reviewed dry run against an isolated database whose baseline matches production, then verify the live migration history and current backup. Do not substitute CI schema push for production migration verification.
+As of commit `17f8ab0`, CI Type Check, Unit Tests, Build and the dedicated Stage 1 SQL Smoke Test all pass (run 42207365281). The smoke test initializes a **disposable** PostgreSQL database using `prisma db push --skip-generate`, removes only the Stage 1 additions, applies the checked-in Stage 1 migration SQL, checks the resulting columns/indexes/table/default, and executes the read-only preflight both before and after the migration. This establishes an isolated additive SQL smoke test, **not** compatibility with the actual production schema.
+
+The separate SQL Migration Replay job still fails on an empty database: the earliest checked-in migration `20260523000001_add_lead_status_fields` assumes a pre-existing `leads` table, but no initial schema-creation baseline is checked in. This is tracked in [issue #462](https://github.com/Ogaven/code-clinic-app/issues/462). Do not suppress the failing job, rewrite historical applied migrations, or interpret the other four passing checks as approval to deploy. The release requires a verified production migration history and isolated rehearsal on a matching baseline.
 
 ## Stage 1 SQL review — static findings only
 
