@@ -194,7 +194,10 @@ describe('processSocialMessage — DM ingestion', () => {
       }),
     }))
     expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ metadata: { contains: '"messageId":"mid.video.1"' } }),
+      where: expect.objectContaining({
+        role: 'USER', metadata: { contains: '"messageId":"mid.video.1"' },
+        conversation: { channel: 'INSTAGRAM', phoneNumber: 'ig-sender-1' },
+      }),
     }))
   })
 
@@ -242,7 +245,7 @@ describe('processSocialMessage — DM ingestion', () => {
     await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.duplicate')
 
     expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({
-      where: { role: 'AGENT', metadata: { contains: '{"outboundForMessageId":"mid.duplicate"}' } },
+      where: { role: 'AGENT', metadata: { contains: '{"outboundForMessageId":"mid.duplicate"}' }, conversation: { channel: 'FACEBOOK', phoneNumber: 'sender-1' } },
     })
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
     expect(prismaMock.aiConversation.findFirst).not.toHaveBeenCalled()
