@@ -257,6 +257,7 @@ describe('processSocialMessage — DM ingestion', () => {
     await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.retry')
 
     expect(maybeNotifyStaff).not.toHaveBeenCalled()
+    expect(findOrCreateLeadForChannel).not.toHaveBeenCalled()
     expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ role: 'USER' }) }),
     )
