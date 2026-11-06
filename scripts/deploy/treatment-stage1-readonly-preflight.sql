@@ -24,6 +24,7 @@ SELECT CASE WHEN to_regclass('public._prisma_migrations') IS NULL
 DO $preflight$
 DECLARE failed_count bigint;
 DECLARE stage1_count bigint;
+DECLARE migration_record record;
 BEGIN
   IF to_regclass('public._prisma_migrations') IS NULL THEN
     RAISE NOTICE 'No _prisma_migrations table; migration baseline must be investigated';
@@ -35,6 +36,15 @@ BEGIN
     INTO stage1_count;
   RAISE NOTICE 'Unresolved migration attempts: %', failed_count;
   RAISE NOTICE 'Completed Stage 1 migration records: %', stage1_count;
+  -- Migration names and completion state only: no application or patient rows.
+  FOR migration_record IN EXECUTE
+    'SELECT migration_name, started_at, finished_at, rolled_back_at, checksum FROM public._prisma_migrations ORDER BY started_at, migration_name'
+  LOOP
+    RAISE NOTICE 'Migration: % | started: % | finished: % | rolled back: % | checksum: %',
+      migration_record.migration_name, migration_record.started_at,
+      migration_record.finished_at, migration_record.rolled_back_at,
+      migration_record.checksum;
+  END LOOP;
   IF failed_count > 0 THEN
     RAISE WARNING 'Unresolved Prisma migration attempts found; stop deployment and investigate';
   END IF;
