@@ -1,3 +1,41 @@
+## Meta durable inbox release preflight (PR #461)
+
+This release introduces the `meta_inbound_events` table and requires a configured
+Meta webhook signing secret. **Do not merge or deploy until the operator has
+verified the prerequisites on the existing production droplet.** Do not print
+secret values or paste them into CI logs.
+
+On the production host, in `/var/www/codeclinic`:
+
+```bash
+# Inspect only whether the required keys exist (never display their values).
+# Check the environment used by the running PM2 API, not merely an unrelated shell.
+pm2 describe codeclinic-api
+# Confirm FACEBOOK_APP_SECRET or META_APP_SECRET is present in the API process
+# environment, and FACEBOOK_VERIFY_TOKEN or WHATSAPP_VERIFY_TOKEN is set.
+# Do not use `pm2 env` or `printenv` in shared logs: they expose credentials.
+
+# Back up the database using the existing approved production backup procedure.
+# Ensure the target migration is available in the checked-out source before
+# running the migration; do not reset or push the schema.
+packages/database/node_modules/.bin/prisma migrate status --schema=packages/database/prisma/schema.prisma
+packages/database/node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma
+packages/database/node_modules/.bin/prisma migrate status --schema=packages/database/prisma/schema.prisma
+```
+
+**Important:** `migrate deploy` applies *all pending migrations*, not only the
+Meta inbox migration. Review the pending migration list and confirm an approved
+backup before executing it. If the new migration is not yet present on the
+server, stage the reviewed migration files without switching the live API or
+web runtime. Never use `prisma migrate reset` or `db push` in production.
+
+After successful migration and credentials verification, merge the reviewed PR.
+The existing main-branch GitHub deployment workflow handles the release and
+rollbacks. Verify `/health`, a signed Meta webhook request, a Facebook DM,
+an Instagram DM, a comment, inbox delivery-status visibility, and human
+handoff before declaring the release complete. Never resend a reply whose
+status is `SENDING` without checking Meta delivery first.
+
 # Code Clinic — Deployment Architecture
 
 Read this before deploying, and before changing any file under `scripts/deploy/`,

@@ -33,6 +33,13 @@ git reset --hard "$TARGET_SHA" --quiet || die "could not check out $TARGET_SHA"
 ACTUAL_SHA=$(git rev-parse HEAD)
 [ "$ACTUAL_SHA" = "$TARGET_SHA" ] || die "checked-out SHA $ACTUAL_SHA does not match requested $TARGET_SHA"
 
+# Fail closed if a release requires a database migration that has not been
+# applied. The GitHub workflow deliberately does not run migrations itself.
+# Check BEFORE switching the live API symlink or restarting PM2.
+log "Checking database migration status before API cutover..."
+packages/database/node_modules/.bin/prisma migrate status --schema=packages/database/prisma/schema.prisma \
+  || die "database migrations are pending or migration status is unhealthy; apply and verify migrations before deploying API"
+
 log "Regenerating Prisma client against current schema..."
 packages/database/node_modules/.bin/prisma generate --schema=packages/database/prisma/schema.prisma \
   || die "prisma generate failed — live API dist untouched"

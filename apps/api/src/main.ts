@@ -45,6 +45,7 @@ import { deliverWalkInSheetOutbox } from './services/walkin-sheets-export.servic
 import quickbooksRouter from './routes/quickbooks'
 import stocksRouter from './routes/stocks'
 import webhooksRouter from './routes/webhooks'
+import { processMetaInboxBatch } from './services/meta-inbound-inbox'
 import scoreappWebhookRouter from './routes/scoreapp-webhook'
 import auditRouter from './routes/audit'
 import aiReportsRouter from './routes/ai-reports'
@@ -594,6 +595,18 @@ runStartup().then(() => {
     setInterval(() => { void tick() }, 10_000)
     void tick()
   }
+
+  // Durable Meta inbound processing: never overlap batches within this process.
+  let metaInboxRunning = false
+  const metaInboxTick = async () => {
+    if (metaInboxRunning) return
+    metaInboxRunning = true
+    try { await processMetaInboxBatch() }
+    catch (error) { logger.error({ error }, 'Meta inbox processing failed') }
+    finally { metaInboxRunning = false }
+  }
+  setInterval(() => { void metaInboxTick() }, 10_000)
+  void metaInboxTick()
 
   app.listen(PORT, () => {
     logger.info({
