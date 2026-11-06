@@ -204,6 +204,10 @@ jobs:
           SQL
       - name: Apply actual Stage 1 migration SQL
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f packages/database/prisma/migrations/20261026102000_treatment_stage1_coordination/migration.sql
+      - name: Verify read-only preflight also works after Stage 1 migration
+        run: |
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f scripts/deploy/treatment-stage1-readonly-preflight.sql
+          test "$(psql "$DATABASE_URL" -Atc "SELECT to_regclass('public.treatment_follow_up_events') IS NOT NULL")" = "t"
       - name: Verify Stage 1 objects and default
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
