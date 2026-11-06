@@ -84,6 +84,21 @@ const igCommentFixture = {
 }
 
 describe('processSocialMessage — DM ingestion', () => {
+  it('persists media metadata for an Instagram video while preserving message deduplication', async () => {
+    const attachments = [{ type: 'video', url: 'https://example.test/clip.mp4' }]
+    await processSocialMessage('ig-sender-1', '[Incoming video attachment]', 'INSTAGRAM', 'mid.video.1', attachments)
+
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        role: 'USER',
+        metadata: JSON.stringify({ messageId: 'mid.video.1', attachments }),
+      }),
+    }))
+    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ metadata: { contains: '"messageId":"mid.video.1"' } }),
+    }))
+  })
+
   it('persists an inbound FACEBOOK DM, notifies staff, and sends an AI reply', async () => {
     const event = fbDmFixture.entry[0].messaging[0]
     await processSocialMessage(event.sender.id, event.message.text, 'FACEBOOK', event.message.mid)
