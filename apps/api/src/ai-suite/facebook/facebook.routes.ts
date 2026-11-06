@@ -619,7 +619,7 @@ export async function processSocialMessage(
 
     // A persisted inbound DM is not proof that the outbound reply succeeded.
     // On a queue retry, reuse that inbound record rather than abandoning delivery.
-    const inboundMarker = messageId ? JSON.stringify({ messageId }) : undefined
+    const inboundMarker = messageId ? JSON.stringify({ messageId }).slice(1, -1) : undefined
     // Preserve original attachment URLs/types in the persisted inbound record.
     // The text placeholder alone cannot power an image/audio/video inbox preview.
     const inboundMetadata = messageId || attachments?.length
