@@ -197,7 +197,20 @@ export function extractInboxEvents(body: any, provider: MetaInboxProvider): Arra
       const attachments = Array.isArray(event.message.attachments)
         ? event.message.attachments
             .filter((item: any) => ['image', 'audio', 'video', 'file'].includes(String(item?.type ?? '')))
-            .map((item: any) => ({ type: String(item.type), url: typeof item.payload?.url === 'string' ? item.payload.url : undefined }))
+            .map((item: any) => {
+              const rawUrl = typeof item.payload?.url === 'string' ? item.payload.url : ''
+              // Keep only HTTPS media URLs from Meta. Never persist or later
+              // render javascript:, data:, local-network or credentialed URLs.
+              let safeUrl: string | undefined
+              try {
+                const parsed = new URL(rawUrl)
+                if (parsed.protocol === 'https:' && !parsed.username && !parsed.password &&
+                    parsed.hostname && !/^(localhost|127(?:\\.\\d{1,3}){3}|0\\.0\\.0\\.0|::1)$/i.test(parsed.hostname)) {
+                  safeUrl = parsed.href
+                }
+              } catch { /* Meta may omit the attachment URL */ }
+              return { type: String(item.type), url: safeUrl }
+            })
         : []
       if (!event.message.text && attachments.length === 0) continue
       const mid = event.message.mid ? String(event.message.mid) : undefined
