@@ -193,10 +193,16 @@ function extractInboxEvents(body: any, provider: MetaInboxProvider): Array<{ key
   const events: Array<{ key: string; payload: MetaInboxPayload }> = []
   for (const entry of body.entry ?? []) {
     for (const event of entry.messaging ?? []) {
-      if (!event.message?.text || event.message.is_echo || !event.sender?.id) continue
+      if (!event.message || event.message.is_echo || !event.sender?.id) continue
+      const attachments = Array.isArray(event.message.attachments)
+        ? event.message.attachments
+            .filter((item: any) => ['image', 'audio', 'video', 'file'].includes(String(item?.type ?? '')))
+            .map((item: any) => ({ type: String(item.type), url: typeof item.payload?.url === 'string' ? item.payload.url : undefined }))
+        : []
+      if (!event.message.text && attachments.length === 0) continue
       const mid = event.message.mid ? String(event.message.mid) : undefined
       const key = mid ? `message:${mid}` : `message:${createHash('sha256').update(JSON.stringify(event)).digest('hex')}`
-      events.push({ key, payload: { kind: 'message', fromId: String(event.sender.id), text: String(event.message.text), mid } })
+      events.push({ key, payload: { kind: 'message', fromId: String(event.sender.id), text: typeof event.message.text === 'string' ? event.message.text : '', attachments, mid } })
     }
     for (const change of entry.changes ?? []) {
       const v = change.value
@@ -221,7 +227,12 @@ function extractInboxEvents(body: any, provider: MetaInboxProvider): Array<{ key
 
 async function processInboxEvent(provider: MetaInboxProvider, event: MetaInboxPayload): Promise<void> {
   if (event.kind === 'message') {
-    await processSocialMessage(event.fromId, event.text, provider, event.mid)
+    const mediaNote = event.attachments?.length
+      ? event.attachments.map(a => `[Incoming ${a.type} attachment]`).join(' ')
+      : ''
+    // Do not invent an interpretation of unseen media. Keep the attachment
+    // visible as a typed placeholder until the inbox media renderer is wired.
+    await processSocialMessage(event.fromId, [event.text, mediaNote].filter(Boolean).join('\n'), provider, event.mid)
   } else {
     await processComment(event.commentId, event.postId, event.fromId, event.fromName, event.text,
       provider === 'FACEBOOK' ? 'FACEBOOK_COMMENT' : 'INSTAGRAM_COMMENT', event.parentId)
