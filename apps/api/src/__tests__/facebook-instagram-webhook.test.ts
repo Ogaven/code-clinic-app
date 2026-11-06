@@ -28,7 +28,7 @@ vi.mock('../ai-suite/takeover/takeover.service', () => ({ isAgentEnabled }))
 vi.mock('../ai-suite/whatsapp/whatsapp.service', () => ({ maybeNotifyStaff }))
 vi.mock('../crm-automation/lead-intake.service', () => ({ findOrCreateLeadForChannel }))
 
-import { processSocialMessage, processComment, sendSocialReply, sendCommentReply } from '../ai-suite/facebook/facebook.routes'
+import { extractInboxEvents, processSocialMessage, processComment, sendSocialReply, sendCommentReply } from '../ai-suite/facebook/facebook.routes'
 
 const FB_PAGE_ID = '532091973485208'
 const IG_ACCOUNT_ID = '17841404690443540'
@@ -82,6 +82,41 @@ const igCommentFixture = {
     }],
   }],
 }
+
+describe('Meta webhook media-only extraction', () => {
+  for (const [provider, object] of [['FACEBOOK', 'page'], ['INSTAGRAM', 'instagram']] as const) {
+    it(`keeps media-only ${provider} messages and their URLs`, () => {
+      const body = { object, entry: [{ messaging: [{
+        sender: { id: 'sender-123' },
+        message: { mid: 'mid.media-only', attachments: [
+          { type: 'image', payload: { url: 'https://example.test/photo.jpg' } },
+          { type: 'audio', payload: { url: 'https://example.test/voice.mp3' } },
+          { type: 'video', payload: { url: 'https://example.test/clip.mp4' } },
+        ] },
+      }] }] }
+      const events = extractInboxEvents(body, provider)
+      expect(events).toHaveLength(1)
+      expect(events[0].payload).toEqual({
+        kind: 'message', fromId: 'sender-123', mid: 'mid.media-only', text: '',
+        attachments: [
+          { type: 'image', url: 'https://example.test/photo.jpg' },
+          { type: 'audio', url: 'https://example.test/voice.mp3' },
+          { type: 'video', url: 'https://example.test/clip.mp4' },
+        ],
+      })
+    })
+  }
+
+  it('ignores Meta echo messages even when they contain attachments', () => {
+    const events = extractInboxEvents({ entry: [{ messaging: [{
+      sender: { id: 'sender-123' }, message: {
+        mid: 'mid.echo-media', is_echo: true,
+        attachments: [{ type: 'image', payload: { url: 'https://example.test/photo.jpg' } }],
+      },
+    }] }] }, 'FACEBOOK')
+    expect(events).toHaveLength(0)
+  })
+})
 
 describe('processSocialMessage — DM ingestion', () => {
   it('keeps incoming social messages in the existing human-takeover thread', async () => {
