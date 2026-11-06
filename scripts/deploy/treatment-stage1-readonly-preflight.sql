@@ -16,7 +16,6 @@ WHERE schemaname='public' AND indexname IN
 ('treatment_plans_coordinatorId_idx','treatment_plans_patientDecision_idx',
  'treatment_follow_up_events_plan_created_idx','treatment_follow_up_events_type_created_idx')
 ORDER BY indexname;
-COMMIT;
 -- Read-only migration summary; conditional SQL avoids failing on legacy databases
 -- where Prisma's migration bookkeeping table was never initialized.
 SELECT CASE WHEN to_regclass('public._prisma_migrations') IS NULL
@@ -40,4 +39,5 @@ BEGIN
     RAISE WARNING 'Unresolved Prisma migration attempts found; stop deployment and investigate';
   END IF;
 END $preflight$;
+COMMIT;
 -- Do not share database connection strings, patient data or credentials in release logs.
