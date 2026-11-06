@@ -189,7 +189,7 @@ router.get('/facebook/webhook', (req, res) => {
 })
 
 // Webhook payloads must be persisted before acknowledging Meta.
-function extractInboxEvents(body: any, provider: MetaInboxProvider): Array<{ key: string; payload: MetaInboxPayload }> {
+export function extractInboxEvents(body: any, provider: MetaInboxProvider): Array<{ key: string; payload: MetaInboxPayload }> {
   const events: Array<{ key: string; payload: MetaInboxPayload }> = []
   for (const entry of body.entry ?? []) {
     for (const event of entry.messaging ?? []) {
