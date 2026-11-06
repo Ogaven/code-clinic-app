@@ -17,8 +17,27 @@ WHERE schemaname='public' AND indexname IN
  'treatment_follow_up_events_plan_created_idx','treatment_follow_up_events_type_created_idx')
 ORDER BY indexname;
 COMMIT;
--- Run this second read-only query only if _prisma_migrations exists:
--- SELECT migration_name, finished_at IS NOT NULL AS finished,
---        rolled_back_at IS NOT NULL AS rolled_back, checksum
--- FROM public._prisma_migrations ORDER BY started_at;
+-- Read-only migration summary; conditional SQL avoids failing on legacy databases
+-- where Prisma's migration bookkeeping table was never initialized.
+SELECT CASE WHEN to_regclass('public._prisma_migrations') IS NULL
+  THEN 'NO_PRISMA_MIGRATION_TABLE' ELSE 'PRISMA_MIGRATION_TABLE_PRESENT' END
+  AS migration_tracking_status;
+DO $preflight$
+DECLARE failed_count bigint;
+DECLARE stage1_count bigint;
+BEGIN
+  IF to_regclass('public._prisma_migrations') IS NULL THEN
+    RAISE NOTICE 'No _prisma_migrations table; migration baseline must be investigated';
+    RETURN;
+  END IF;
+  EXECUTE 'SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL'
+    INTO failed_count;
+  EXECUTE 'SELECT count(*) FROM public._prisma_migrations WHERE migration_name = ''20261026102000_treatment_stage1_coordination'' AND finished_at IS NOT NULL AND rolled_back_at IS NULL'
+    INTO stage1_count;
+  RAISE NOTICE 'Unresolved migration attempts: %', failed_count;
+  RAISE NOTICE 'Completed Stage 1 migration records: %', stage1_count;
+  IF failed_count > 0 THEN
+    RAISE WARNING 'Unresolved Prisma migration attempts found; stop deployment and investigate';
+  END IF;
+END $preflight$;
 -- Do not share database connection strings, patient data or credentials in release logs.
