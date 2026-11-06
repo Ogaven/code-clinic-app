@@ -142,7 +142,7 @@ describe('processSocialMessage — DM ingestion', () => {
     isAgentEnabled.mockResolvedValueOnce(false)
     await processSocialMessage('ig-existing', 'One more question', 'INSTAGRAM', 'mid.after-takeover')
     expect(prismaMock.aiConversation.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { phoneNumber: 'ig-existing', channel: 'INSTAGRAM' },
+      where: { phoneNumber: 'ig-existing', channel: 'INSTAGRAM', status: { in: ['ACTIVE', 'HUMAN_TAKEOVER'] } },
     }))
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
     expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
