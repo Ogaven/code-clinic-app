@@ -114,12 +114,15 @@ describe('Meta webhook media-only extraction', () => {
           { type: 'image', payload: { url: 'javascript:alert(1)' } },
           { type: 'video', payload: { url: 'http://example.test/clip.mp4' } },
           { type: 'file', payload: { url: 'https://127.0.0.1/private' } },
+          { type: 'image', payload: { url: 'https://192.168.1.10/private' } },
+          { type: 'video', payload: { url: 'https://10.0.0.5/private' } },
+          { type: 'file', payload: { url: 'https://metadata.internal/private' } },
         ],
       },
     }] }] }, 'INSTAGRAM')
     expect(events).toHaveLength(1)
     expect(events[0].payload).toEqual(expect.objectContaining({
-      attachments: [{ type: 'image', url: undefined }, { type: 'video', url: undefined }, { type: 'file', url: undefined }],
+      attachments: [{ type: 'image', url: undefined }, { type: 'video', url: undefined }, { type: 'file', url: undefined }, { type: 'image', url: undefined }, { type: 'video', url: undefined }, { type: 'file', url: undefined }],
     }))
   })
 
