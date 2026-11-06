@@ -207,7 +207,20 @@ export function extractInboxEvents(body: any, provider: MetaInboxProvider): Arra
                 if (parsed.protocol === 'https:' && !parsed.username && !parsed.password &&
                     parsed.hostname && !parsed.hostname.endsWith('.local') &&
                     !parsed.hostname.endsWith('.internal') &&
-                    !/^(?:localhost|0\\.0\\.0\\.0|127\\.|10\\.|192\\.168\\.|169\\.254\\.|172\\.(?:1[6-9]|2[0-9]|3[01])\\.|::1$|\\[::1\\]$)/i.test(parsed.hostname) &&
+                    !(() => {
+                      const host = parsed.hostname.toLowerCase()
+                      const octets = host.split('.').map(Number)
+                      const ipv4 = octets.length === 4 && octets.every((part, index) =>
+                        Number.isInteger(part) && part >= 0 && part <= 255 &&
+                        String(part) === host.split('.')[index])
+                      if (ipv4) {
+                        return octets[0] === 0 || octets[0] === 10 || octets[0] === 127 ||
+                          (octets[0] === 169 && octets[1] === 254) ||
+                          (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+                          (octets[0] === 192 && octets[1] === 168)
+                      }
+                      return host === 'localhost' || host === '[::1]' || host === '::1'
+                    })() &&
                     !/^\\d+$/.test(parsed.hostname)) {
                   safeUrl = parsed.href
                 }
