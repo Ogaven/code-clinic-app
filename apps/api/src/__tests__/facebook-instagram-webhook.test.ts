@@ -84,6 +84,22 @@ const igCommentFixture = {
 }
 
 describe('processSocialMessage — DM ingestion', () => {
+  it('does not send a generic DM when Sarah fails and hands conversation to reception', async () => {
+    getAgentReplyV2OpenAI.mockResolvedValueOnce('')
+    await processSocialMessage('ig-sender-2', 'Can I book an appointment?', 'INSTAGRAM', 'mid.ai-failure')
+
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'USER', content: 'Can I book an appointment?' }),
+    }))
+    expect(prismaMock.aiConversation.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+    }))
+    expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'AGENT' }),
+    }))
+  })
+
   it('persists media metadata for an Instagram video while preserving message deduplication', async () => {
     const attachments = [{ type: 'video', url: 'https://example.test/clip.mp4' }]
     await processSocialMessage('ig-sender-1', '[Incoming video attachment]', 'INSTAGRAM', 'mid.video.1', attachments)
