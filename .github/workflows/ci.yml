@@ -188,8 +188,7 @@ jobs:
         run: pnpm --filter database exec prisma db push --skip-generate
       - name: Validate read-only production preflight on disposable database
         run: |
-          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \\
-            -f scripts/deploy/treatment-stage1-readonly-preflight.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f scripts/deploy/treatment-stage1-readonly-preflight.sql
           # Confirm the preflight did not create migration bookkeeping or Stage 1 records.
           test "$(psql "$DATABASE_URL" -Atc "SELECT to_regclass('public._prisma_migrations') IS NULL")" = "t"
       - name: Simulate schema before Stage 1
