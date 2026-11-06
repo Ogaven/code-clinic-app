@@ -376,7 +376,8 @@ function MsgStatus({ status }: { status?: string | null }) {
   if (status === 'read')      return <CheckCheck size={12} className="text-[#53bdeb]" />
   if (status === 'delivered') return <CheckCheck size={12} className="text-gray-400" />
   if (status === 'failed')    return <X size={10} className="text-red-400" />
-  return <Check size={12} className="text-gray-400" />
+  if (status === 'sent') return <Check size={12} className="text-gray-400" aria-label="Sent to provider" />
+  return <span className="text-[10px] text-gray-400" title="Delivery status not yet confirmed">·</span>
 }
 
 // ── Emoji picker ───────────────────────────────────────────────────────────────
@@ -1529,8 +1530,8 @@ function InboxPage() {
                     : { background: '#fff',    borderBottomLeftRadius:  4, color: '#111' }}>
                   {receivedAttachments.length > 0 ? (
                     <div className="flex flex-col gap-2">
-                      {msg.content.replace(/\\[Incoming (?:image|audio|video|file) attachment\\]/g, '').trim() && (
-                        <span className="whitespace-pre-wrap">{msg.content.replace(/\\[Incoming (?:image|audio|video|file) attachment\\]/g, '').trim()}</span>
+                      {msg.content.replace(/\[Incoming (?:image|audio|video|file) attachment\]/g, '').trim() && (
+                        <span className="whitespace-pre-wrap">{msg.content.replace(/\[Incoming (?:image|audio|video|file) attachment\]/g, '').trim()}</span>
                       )}
                       <MetaAttachments attachments={receivedAttachments} />
                     </div>
