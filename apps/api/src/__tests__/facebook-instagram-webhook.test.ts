@@ -107,6 +107,22 @@ describe('Meta webhook media-only extraction', () => {
     })
   }
 
+  it('never exposes unsafe media URL schemes or local addresses in metadata', () => {
+    const events = extractInboxEvents({ entry: [{ messaging: [{
+      sender: { id: 'sender-123' }, message: {
+        mid: 'mid.unsafe-media', attachments: [
+          { type: 'image', payload: { url: 'javascript:alert(1)' } },
+          { type: 'video', payload: { url: 'http://example.test/clip.mp4' } },
+          { type: 'file', payload: { url: 'https://127.0.0.1/private' } },
+        ],
+      },
+    }] }] }, 'INSTAGRAM')
+    expect(events).toHaveLength(1)
+    expect(events[0].payload).toEqual(expect.objectContaining({
+      attachments: [{ type: 'image', url: undefined }, { type: 'video', url: undefined }, { type: 'file', url: undefined }],
+    }))
+  })
+
   it('ignores Meta echo messages even when they contain attachments', () => {
     const events = extractInboxEvents({ entry: [{ messaging: [{
       sender: { id: 'sender-123' }, message: {
