@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { prismaMock, findOrCreateLeadForChannel, getAgentReplyV2OpenAI, getCommentReplyOpenAI, isAgentEnabled, maybeNotifyStaff } = vi.hoisted(() => ({
   prismaMock: {
+    $executeRawUnsafe: vi.fn().mockResolvedValue(1),
     aiAgentConfig: { findFirst: vi.fn() },
     aiConversation: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     aiMessage: { findFirst: vi.fn(), create: vi.fn() },
@@ -27,7 +28,7 @@ vi.mock('../ai-suite/takeover/takeover.service', () => ({ isAgentEnabled }))
 vi.mock('../ai-suite/whatsapp/whatsapp.service', () => ({ maybeNotifyStaff }))
 vi.mock('../crm-automation/lead-intake.service', () => ({ findOrCreateLeadForChannel }))
 
-import { processSocialMessage, processComment, sendSocialReply, sendCommentReply } from '../ai-suite/facebook/facebook.routes'
+import { extractInboxEvents, processSocialMessage, processComment, sendSocialReply, sendCommentReply } from '../ai-suite/facebook/facebook.routes'
 
 const FB_PAGE_ID = '532091973485208'
 const IG_ACCOUNT_ID = '17841404690443540'
@@ -35,6 +36,7 @@ const IG_ACCOUNT_ID = '17841404690443540'
 const originalFetch = global.fetch
 beforeEach(() => {
   vi.clearAllMocks()
+  prismaMock.$executeRawUnsafe.mockResolvedValue(1)
   prismaMock.aiAgentConfig.findFirst.mockResolvedValue(null)
   prismaMock.aiConversation.findFirst.mockResolvedValue(null)
   prismaMock.aiConversation.create.mockImplementation(async ({ data }: any) => ({ id: 'conv-1', ...data }))
@@ -81,7 +83,128 @@ const igCommentFixture = {
   }],
 }
 
+describe('Meta webhook media-only extraction', () => {
+  for (const [provider, object] of [['FACEBOOK', 'page'], ['INSTAGRAM', 'instagram']] as const) {
+    it(`keeps media-only ${provider} messages and their URLs`, () => {
+      const body = { object, entry: [{ messaging: [{
+        sender: { id: 'sender-123' },
+        message: { mid: 'mid.media-only', attachments: [
+          { type: 'image', payload: { url: 'https://example.test/photo.jpg' } },
+          { type: 'audio', payload: { url: 'https://example.test/voice.mp3' } },
+          { type: 'video', payload: { url: 'https://example.test/clip.mp4' } },
+        ] },
+      }] }] }
+      const events = extractInboxEvents(body, provider)
+      expect(events).toHaveLength(1)
+      expect(events[0].payload).toEqual({
+        kind: 'message', fromId: 'sender-123', mid: 'mid.media-only', text: '',
+        attachments: [
+          { type: 'image', url: 'https://example.test/photo.jpg' },
+          { type: 'audio', url: 'https://example.test/voice.mp3' },
+          { type: 'video', url: 'https://example.test/clip.mp4' },
+        ],
+      })
+    })
+  }
+
+  it('never exposes unsafe media URL schemes or local addresses in metadata', () => {
+    const events = extractInboxEvents({ entry: [{ messaging: [{
+      sender: { id: 'sender-123' }, message: {
+        mid: 'mid.unsafe-media', attachments: [
+          { type: 'image', payload: { url: 'javascript:alert(1)' } },
+          { type: 'video', payload: { url: 'http://example.test/clip.mp4' } },
+          { type: 'file', payload: { url: 'https://127.0.0.1/private' } },
+          { type: 'image', payload: { url: 'https://192.168.1.10/private' } },
+          { type: 'video', payload: { url: 'https://10.0.0.5/private' } },
+          { type: 'file', payload: { url: 'https://metadata.internal/private' } },
+        ],
+      },
+    }] }] }, 'INSTAGRAM')
+    expect(events).toHaveLength(1)
+    expect(events[0].payload).toEqual(expect.objectContaining({
+      attachments: [{ type: 'image', url: undefined }, { type: 'video', url: undefined }, { type: 'file', url: undefined }, { type: 'image', url: undefined }, { type: 'video', url: undefined }, { type: 'file', url: undefined }],
+    }))
+  })
+
+  it('ignores Meta echo messages even when they contain attachments', () => {
+    const events = extractInboxEvents({ entry: [{ messaging: [{
+      sender: { id: 'sender-123' }, message: {
+        mid: 'mid.echo-media', is_echo: true,
+        attachments: [{ type: 'image', payload: { url: 'https://example.test/photo.jpg' } }],
+      },
+    }] }] }, 'FACEBOOK')
+    expect(events).toHaveLength(0)
+  })
+})
+
 describe('processSocialMessage — DM ingestion', () => {
+  it('routes a media-only DM to staff without guessing its contents', async () => {
+    await processSocialMessage(
+      'fb-media-sender', '[Incoming image attachment]', 'FACEBOOK',
+      'mid.image-only', [{ type: 'image', url: 'https://example.test/photo.jpg' }], true,
+    )
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'USER' }),
+    }))
+    expect(prismaMock.aiConversation.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+    }))
+    expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
+    expect(findOrCreateLeadForChannel).not.toHaveBeenCalled()
+    expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalled()
+  })
+
+  it('keeps incoming social messages in the existing human-takeover thread', async () => {
+    prismaMock.aiConversation.findFirst.mockResolvedValueOnce({
+      id: 'existing-conversation', channel: 'INSTAGRAM', phoneNumber: 'ig-existing',
+      status: 'HUMAN_TAKEOVER', agentEnabled: false, displayName: 'Visitor', profilePictureUrl: 'https://example.test/avatar.jpg',
+    })
+    isAgentEnabled.mockResolvedValueOnce(false)
+    await processSocialMessage('ig-existing', 'One more question', 'INSTAGRAM', 'mid.after-takeover')
+    expect(prismaMock.aiConversation.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { phoneNumber: 'ig-existing', channel: 'INSTAGRAM', status: { in: ['ACTIVE', 'HUMAN_TAKEOVER'] } },
+    }))
+    expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ conversationId: 'existing-conversation', role: 'USER' }),
+    }))
+    expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
+  })
+
+  it('does not send a generic DM when Sarah fails and hands conversation to reception', async () => {
+    getAgentReplyV2OpenAI.mockResolvedValueOnce('')
+    await processSocialMessage('ig-sender-2', 'Can I book an appointment?', 'INSTAGRAM', 'mid.ai-failure')
+
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'USER', content: 'Can I book an appointment?' }),
+    }))
+    expect(prismaMock.aiConversation.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+    }))
+    expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'AGENT' }),
+    }))
+  })
+
+  it('persists media metadata for an Instagram video while preserving message deduplication', async () => {
+    const attachments = [{ type: 'video', url: 'https://example.test/clip.mp4' }]
+    await processSocialMessage('ig-sender-1', '[Incoming video attachment]', 'INSTAGRAM', 'mid.video.1', attachments)
+
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        role: 'USER',
+        metadata: JSON.stringify({ messageId: 'mid.video.1', attachments }),
+      }),
+    }))
+    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        role: 'USER', metadata: { contains: '"messageId":"mid.video.1"' },
+        conversation: { channel: 'INSTAGRAM', phoneNumber: 'ig-sender-1' },
+      }),
+    }))
+  })
+
   it('persists an inbound FACEBOOK DM, notifies staff, and sends an AI reply', async () => {
     const event = fbDmFixture.entry[0].messaging[0]
     await processSocialMessage(event.sender.id, event.message.text, 'FACEBOOK', event.message.mid)
@@ -119,16 +242,49 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
   })
 
-  it('idempotency: a redelivered webhook for the same messageId is skipped entirely (no duplicate message/reply/notify)', async () => {
-    prismaMock.aiMessage.findFirst.mockResolvedValue({ id: 'existing-msg' }) // marker already recorded
+  it('idempotency: a redelivered webhook with a recorded outbound reply is skipped', async () => {
+    prismaMock.aiMessage.findFirst.mockImplementation(async ({ where }: any) =>
+      where?.role === 'AGENT' ? { id: 'sent-reply' } : { id: 'existing-inbound' })
 
     await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.duplicate')
 
-    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({ where: { metadata: { contains: '"messageId":"mid.duplicate"' } } })
+    expect(prismaMock.aiMessage.findFirst).toHaveBeenCalledWith({
+      where: { role: 'AGENT', metadata: { contains: '{"outboundForMessageId":"mid.duplicate"}' }, conversation: { channel: 'FACEBOOK', phoneNumber: 'sender-1' } },
+    })
     expect(prismaMock.aiConversation.create).not.toHaveBeenCalled()
     expect(prismaMock.aiConversation.findFirst).not.toHaveBeenCalled()
     expect(maybeNotifyStaff).not.toHaveBeenCalled()
     expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
+  })
+
+  it('does not repeat lead intake or staff alerts when retrying a persisted inbound DM', async () => {
+    prismaMock.aiMessage.findFirst.mockImplementation(async ({ where }: any) =>
+      where?.role === 'AGENT' ? null : { id: 'existing-inbound' })
+
+    await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.retry')
+
+    expect(maybeNotifyStaff).not.toHaveBeenCalled()
+    expect(findOrCreateLeadForChannel).not.toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'USER' }) }),
+    )
+    expect(getAgentReplyV2OpenAI).toHaveBeenCalled()
+  })
+
+  it('claims a DM before sending and suppresses a second send for an existing claim', async () => {
+    prismaMock.$executeRawUnsafe.mockResolvedValueOnce(0)
+    await processSocialMessage('sender-1', 'hello', 'FACEBOOK', 'mid.claimed')
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO "meta_dm_send_claims"'),
+      expect.any(String), 'FACEBOOK', 'mid.claimed',
+    )
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/messages'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
+    )
   })
 
   it('stores the real Meta message ID in metadata so a later redelivery can be recognized', async () => {
@@ -138,9 +294,20 @@ describe('processSocialMessage — DM ingestion', () => {
     }))
   })
 
-  it('does not fail or skip processing when no messageId is available (idempotency is best-effort, not a hard requirement)', async () => {
-    await processSocialMessage('sender-1', 'hi', 'FACEBOOK', undefined)
+  it('stores inbound messages but refuses an unsafe automatic send without a Meta message ID', async () => {
+    await expect(processSocialMessage('sender-1', 'hi', 'FACEBOOK', undefined))
+      .rejects.toThrow('META_DM_REVIEW_REQUIRED_MISSING_MESSAGE_ID')
     expect(prismaMock.aiConversation.create).toHaveBeenCalled()
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'USER' }) }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
+    )
+    expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO "meta_dm_send_claims"'),
+      expect.anything(), expect.anything(), expect.anything(),
+    )
   })
 
   it('skips the AI reply (but still stores the message) when the channel is human-takeover', async () => {
@@ -171,6 +338,31 @@ describe('processComment — comment ingestion', () => {
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining(`/${c.id}/replies`),
       expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('never sends a second public reply when a previous publish claim exists', async () => {
+    prismaMock.$executeRawUnsafe.mockResolvedValueOnce(0)
+    await processComment('already-claimed', 'post-1', 'user-1', 'Jane', 'How much is cleaning?', 'FACEBOOK_COMMENT')
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledTimes(1)
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/already-claimed/comments'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
+    )
+  })
+
+  it('holds an ambiguous Meta publish failure for staff reconciliation', async () => {
+    ;(global.fetch as any) = vi.fn().mockResolvedValue({
+      ok: false, status: 500, text: async () => '{"error":"temporary failure"}',
+    })
+    await expect(processComment('ambiguous-reply', 'post-1', 'user-1', 'Jane', 'How much is cleaning?', 'FACEBOOK_COMMENT')).rejects.toThrow()
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledTimes(2)
+    expect(prismaMock.$executeRawUnsafe.mock.calls[1][0]).toContain('REVIEW_REQUIRED')
+    expect(prismaMock.aiMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: 'AGENT' }) }),
     )
   })
 
@@ -246,7 +438,7 @@ describe('outbound routing — never crosses channels, mocked fetch only, no rea
   it('does not send anything when no token is configured for the channel', async () => {
     prismaMock.aiAgentConfig.findFirst.mockResolvedValue(null)
     delete process.env.FACEBOOK_PAGE_ACCESS_TOKEN
-    await sendSocialReply('recipient-1', 'hello', 'FACEBOOK')
+    await expect(sendSocialReply('recipient-1', 'hello', 'FACEBOOK')).rejects.toThrow('No page access token configured')
     expect(global.fetch).not.toHaveBeenCalled()
   })
 
