@@ -729,7 +729,7 @@ export async function processSocialMessage(
     // DM in real time through the normal pipeline.
     const source = channel // 'FACEBOOK' | 'INSTAGRAM'
     const nonPatientEnquiry = classifyNonPatientEnquiry(text)
-    if (!nonPatientEnquiry && !existingInbound) {
+    if (!nonPatientEnquiry && !existingInbound && !mediaOnly) {
       await findOrCreateLeadForChannel({
         where:      { phone: senderId, status: { notIn: ['CONVERTED', 'LOST'] } },
         createData: { name: resolvedName || undefined, phone: senderId, source, status: 'NEW', stage: 'NEW', lastMessage: text },
