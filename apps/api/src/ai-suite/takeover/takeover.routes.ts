@@ -682,6 +682,7 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       },
     })
 
+    try {
     if (conversation.channel === 'WHATSAPP') {
       const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
       // logToConversation:false — message already created above; we just need the wamid back
@@ -718,6 +719,13 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
     }
     // WEBSITE: no external delivery — message is visible in the widget on next poll
 
+    } catch (deliveryError: any) {
+      // The message was persisted before the provider call. Mark it explicitly
+      // as failed so staff never mistake a rejected send for a delivered DM.
+      await prisma.aiMessage.update({ where: { id: msgRecord.id }, data: { status: 'failed' } })
+      console.error('[Takeover] Staff reply delivery failed:', deliveryError?.message ?? deliveryError)
+      return res.status(502).json({ error: 'Message delivery failed. Check the failed message before attempting another send.' })
+    }
     // A successfully-created staff reply is exactly the "first human reply"
     // event the lead pipeline's NEW -> CONTACTED automation is meant to fire
     // on — see lead-stage.service.ts's advanceLeadOnHumanReply for why this
