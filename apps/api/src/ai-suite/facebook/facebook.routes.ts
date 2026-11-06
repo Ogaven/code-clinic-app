@@ -232,7 +232,7 @@ async function processInboxEvent(provider: MetaInboxProvider, event: MetaInboxPa
       : ''
     // Do not invent an interpretation of unseen media. Keep the attachment
     // visible as a typed placeholder until the inbox media renderer is wired.
-    await processSocialMessage(event.fromId, [event.text, mediaNote].filter(Boolean).join('\n'), provider, event.mid)
+    await processSocialMessage(event.fromId, [event.text, mediaNote].filter(Boolean).join('\n'), provider, event.mid, event.attachments)
   } else {
     await processComment(event.commentId, event.postId, event.fromId, event.fromName, event.text,
       provider === 'FACEBOOK' ? 'FACEBOOK_COMMENT' : 'INSTAGRAM_COMMENT', event.parentId)
@@ -601,6 +601,7 @@ export async function processSocialMessage(
   text:      string,
   channel:   'FACEBOOK' | 'INSTAGRAM',
   messageId?: string,
+  attachments?: Array<{ type: string; url?: string }>,
 ): Promise<void> {
   try {
     // ── 0. Hard guard: never process our own Page/account as a "sender" ──────
@@ -619,6 +620,11 @@ export async function processSocialMessage(
     // A persisted inbound DM is not proof that the outbound reply succeeded.
     // On a queue retry, reuse that inbound record rather than abandoning delivery.
     const inboundMarker = messageId ? JSON.stringify({ messageId }) : undefined
+    // Preserve original attachment URLs/types in the persisted inbound record.
+    // The text placeholder alone cannot power an image/audio/video inbox preview.
+    const inboundMetadata = messageId || attachments?.length
+      ? JSON.stringify({ ...(messageId ? { messageId } : {}), ...(attachments?.length ? { attachments } : {}) })
+      : undefined
     const existingInbound = inboundMarker
       ? await prisma.aiMessage.findFirst({ where: { metadata: { contains: inboundMarker } } })
       : null
@@ -701,7 +707,7 @@ export async function processSocialMessage(
       await prisma.aiMessage.create({
         data: {
           conversationId: conversation.id, role: 'USER', content: text,
-          metadata: inboundMarker,
+          metadata: inboundMetadata,
         },
       })
     }
