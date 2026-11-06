@@ -2674,7 +2674,13 @@ export async function getAgentReplyV2OpenAI(
   channel?:       string
 ): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return `Hi! I've received your message and a team member will be with you shortly.`
+  if (!apiKey) {
+    if (channel === 'FACEBOOK' || channel === 'INSTAGRAM') {
+      console.error('[AgentV2-OpenAI] Social AI unavailable: OPENAI_API_KEY is missing')
+      return '' // Never publish a canned answer as though Sarah handled the enquiry.
+    }
+    return `Hi! I've received your message and a team member will be with you shortly.`
+  }
 
   const todayKey  = `ratelimit:${from}:${new Date().toISOString().slice(0, 10)}`
   const current   = await redis.get(todayKey)
@@ -3121,6 +3127,9 @@ export async function getAgentReplyV2OpenAI(
       }
       return `Thank you for your message. Our reception team will assist you shortly.`
     }
+    // Social provider errors must not be published as successful AI conversations.
+    // Staff can see the persisted inbound message and respond after takeover.
+    if (channel === 'FACEBOOK' || channel === 'INSTAGRAM') return ''
     return `Thank you for your message. Our team will assist you shortly.`
   }
 }
