@@ -643,7 +643,7 @@ export async function processSocialMessage(
       : (config?.instagramAccessToken    || process.env.INSTAGRAM_ACCESS_TOKEN     || null)
 
     let conversation = await prisma.aiConversation.findFirst({
-      where:   { phoneNumber: senderId, channel },
+      where:   { phoneNumber: senderId, channel, status: { in: ['ACTIVE', 'HUMAN_TAKEOVER'] } },
       orderBy: { createdAt: 'desc' },
     })
     const isNew = !conversation
