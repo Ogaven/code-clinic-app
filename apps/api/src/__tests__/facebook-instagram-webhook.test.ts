@@ -150,6 +150,7 @@ describe('processSocialMessage — DM ingestion', () => {
       data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
     }))
     expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
+    expect(findOrCreateLeadForChannel).not.toHaveBeenCalled()
     expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalled()
   })
 
