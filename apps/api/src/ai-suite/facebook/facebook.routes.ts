@@ -744,6 +744,17 @@ export async function processSocialMessage(
       : nonPatientEnquiry === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
       : await getAgentReplyV2OpenAI(conversation.id, senderId, text, channel)
 
+    if (!reply?.trim()) {
+      // Provider errors are not successful patient replies. Preserve the
+      // inbound message, notify reception, and do not claim/send a Meta DM.
+      console.error(`[${channel}] Sarah could not generate a reply; staff takeover required`)
+      await prisma.aiConversation.update({
+        where: { id: conversation.id },
+        data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+      })
+      return
+    }
+
     // A durable claim is written before the external send. Never automatically
     // release it: after a crash or timeout Meta may already have accepted the DM.
     // No Meta message ID means we cannot safely deduplicate a replay.
