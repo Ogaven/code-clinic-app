@@ -205,7 +205,7 @@ export function extractInboxEvents(body: any, provider: MetaInboxProvider): Arra
               try {
                 const parsed = new URL(rawUrl)
                 if (parsed.protocol === 'https:' && !parsed.username && !parsed.password &&
-                    parsed.hostname && !/^(localhost|127(?:\\.\\d{1,3}){3}|0\\.0\\.0\\.0|::1)$/i.test(parsed.hostname)) {
+                    parsed.hostname && !['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(parsed.hostname.toLowerCase()) && !parsed.hostname.startsWith('127.')) {
                   safeUrl = parsed.href
                 }
               } catch { /* Meta may omit the attachment URL */ }
