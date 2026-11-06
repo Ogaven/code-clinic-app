@@ -640,12 +640,18 @@ export async function processSocialMessage(
       ? JSON.stringify({ ...(messageId ? { messageId } : {}), ...(attachments?.length ? { attachments } : {}) })
       : undefined
     const existingInbound = inboundMarker
-      ? await prisma.aiMessage.findFirst({ where: { metadata: { contains: inboundMarker } } })
+      ? await prisma.aiMessage.findFirst({
+          where: {
+            role: 'USER',
+            metadata: { contains: inboundMarker },
+            conversation: { channel, phoneNumber: senderId },
+          },
+        })
       : null
     const replyMarker = messageId ? JSON.stringify({ outboundForMessageId: messageId }) : undefined
     if (replyMarker) {
       const existingReply = await prisma.aiMessage.findFirst({
-        where: { role: 'AGENT', metadata: { contains: replyMarker } },
+        where: { role: 'AGENT', metadata: { contains: replyMarker }, conversation: { channel, phoneNumber: senderId } },
       })
       if (existingReply) return
     }
