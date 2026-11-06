@@ -31,6 +31,10 @@ vi.mock('../lib/prisma', () => ({
       findUnique: vi.fn(async ({ where }: any) => store.doctors.get(where.id) ?? null),
     },
     user: {
+      findFirst: vi.fn(async ({ where }: any) => {
+        const user = store.users.get(where.id)
+        return user?.role === where.role && user?.isActive === where.isActive ? { id: user.id } : null
+      }),
       findMany: vi.fn(async ({ where }: any) => {
         const roles: string[] = where?.role?.in ?? []
         return [...store.users.values()].filter(u => roles.includes(u.role) && u.isActive)
@@ -62,6 +66,8 @@ beforeEach(() => {
 
   store.users.set('reception_1', { id: 'reception_1', role: 'RECEPTIONIST', isActive: true })
   store.users.set('admin_1', { id: 'admin_1', role: 'ADMIN', isActive: true })
+  store.users.set('doctor_a_user', { id: 'doctor_a_user', role: 'DOCTOR', isActive: true })
+  store.users.set('doctor_b_user', { id: 'doctor_b_user', role: 'DOCTOR', isActive: true })
   store.doctors.set('doctor_a', { id: 'doctor_a', userId: 'doctor_a_user' })
   store.doctors.set('doctor_b', { id: 'doctor_b', userId: 'doctor_b_user' })
 })
@@ -95,6 +101,13 @@ describe('notifyDoctorAssigned — exact-user routing, never cross-doctor', () =
     const recipientIds = store.notifications.map(n => n.userId)
     expect(recipientIds).not.toContain('reception_1')
     expect(recipientIds).not.toContain('admin_1')
+  })
+
+  it('does not notify an inactive assigned doctor', async () => {
+    store.users.set('doctor_a_user', { id: 'doctor_a_user', role: 'DOCTOR', isActive: false })
+    const { notifyDoctorAssigned } = await import('../routes/pipeline')
+    await notifyDoctorAssigned('doctor_a', 'patient_1')
+    expect(store.notifications).toHaveLength(0)
   })
 
   it('is a safe no-op when the doctorId does not resolve to a real doctor record', async () => {

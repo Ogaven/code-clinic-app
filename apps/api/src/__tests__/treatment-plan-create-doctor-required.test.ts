@@ -114,6 +114,17 @@ describe('POST /clinical/patients/:id/treatment-plans — doctor ownership', () 
     expect(arg.data.followUpReason).toBe('Patient asked to be contacted in 2 weeks')
   })
 
+  it('rejects non-string follow-up dates at the clinical API boundary', async () => {
+    currentUser = { id: 'doc-user-1', role: 'DOCTOR', firstName: 'Steven', lastName: 'K' }
+    authenticatedDoctorId.mockResolvedValue('doctor-self')
+
+    for (const followUpAt of [0, true, {}, ['2026-12-01'], '   ']) {
+      const res = await post({ toothNumber: '24', followUpAt })
+      expect(res.status).toBe(400)
+    }
+    expect(prismaMock.treatmentPlan.create).not.toHaveBeenCalled()
+  })
+
   it('rejects an invalid followUpAt rather than silently writing garbage', async () => {
     currentUser = { id: 'doc-user-1', role: 'DOCTOR', firstName: 'Steven', lastName: 'K' }
     authenticatedDoctorId.mockResolvedValue('doctor-self')

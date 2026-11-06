@@ -46,11 +46,23 @@ jobs:
         id: classify
         env:
           DEPLOY_SERVER: ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}
+          STAGE1_RELEASE_APPROVED_SHA: ${{ vars.STAGE1_RELEASE_APPROVED_SHA }}
         run: |
           set -e
           OUT=$(bash scripts/deploy/classify.sh) || { echo "$OUT"; echo "Classification failed — fail closed, nothing will deploy."; exit 1; }
           echo "$OUT"
           eval "$OUT"
+          # Stage 1 requires a separately verified database migration before any
+          # API/web rollout. A warning alone is insufficient for clinical data.
+          # Check against the deployed API SHA, not just the previous Git commit.
+          STAGE1_MIGRATION="packages/database/prisma/migrations/20261026102000_treatment_stage1_coordination/migration.sql"
+          if git diff --name-only "$API_SHA_PREV" "$TARGET_SHA" -- "$STAGE1_MIGRATION" | grep -Fxq "$STAGE1_MIGRATION"; then
+            if [ -z "$STAGE1_RELEASE_APPROVED_SHA" ] || [ "$STAGE1_RELEASE_APPROVED_SHA" != "$TARGET_SHA" ]; then
+              echo "::error::Stage 1 migration changed. Blocked: set repository variable STAGE1_RELEASE_APPROVED_SHA to the exact reviewed target commit ONLY after verified backup, migration rehearsal/application and clinical release approval (PR #435, issue #462)."
+              exit 1
+            fi
+            echo "::notice::Stage 1 exact-SHA release approval marker matches. Operator must have verified the production migration before setting it."
+          fi
           echo "target_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
           echo "classification=$CLASSIFICATION" >> "$GITHUB_OUTPUT"
           echo "api_changed=$API_CHANGED" >> "$GITHUB_OUTPUT"
