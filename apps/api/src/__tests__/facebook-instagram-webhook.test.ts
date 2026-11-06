@@ -119,6 +119,21 @@ describe('Meta webhook media-only extraction', () => {
 })
 
 describe('processSocialMessage — DM ingestion', () => {
+  it('routes a media-only DM to staff without guessing its contents', async () => {
+    await processSocialMessage(
+      'fb-media-sender', '[Incoming image attachment]', 'FACEBOOK',
+      'mid.image-only', [{ type: 'image', url: 'https://example.test/photo.jpg' }], true,
+    )
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ role: 'USER' }),
+    }))
+    expect(prismaMock.aiConversation.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+    }))
+    expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
+    expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalled()
+  })
+
   it('keeps incoming social messages in the existing human-takeover thread', async () => {
     prismaMock.aiConversation.findFirst.mockResolvedValueOnce({
       id: 'existing-conversation', channel: 'INSTAGRAM', phoneNumber: 'ig-existing',
