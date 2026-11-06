@@ -17,7 +17,7 @@ The production workflow `.github/workflows/deploy.yml` triggers on pushes to `ma
 
 ## Deployment classifier and migration sequencing
 
-The existing `scripts/deploy/classify.sh` reads `/var/www/codeclinic/.deploy-state.json` from production and fails closed if the API/web deployed SHAs cannot be resolved. It detects schema changes but **only emits a warning through the production workflow**; schema changes do not prevent the workflow from proceeding. Therefore, the release operator must explicitly ensure that the reviewed migration is already applied and compatible **before merging** this PR to `main`. The production workflow is not a database migration gate. Confirm the exact deployed SHAs and migration status as part of release evidence.
+The existing `scripts/deploy/classify.sh` reads `/var/www/codeclinic/.deploy-state.json` from production and fails closed if the API/web deployed SHAs cannot be resolved. It detects schema changes, and the proposed Stage 1 workflow guard **blocks the Stage 1 migration diff by default**. The guard permits release only if repository variable `STAGE1_RELEASE_APPROVED_SHA` exactly matches the target Git SHA. **This is a manual release-approval marker, not a database-state check**: the operator must verify backup recovery, actual migration status, retention policy and clinical approval before setting it. Do not set the variable early or reuse it for a different commit. After release, clear the variable to avoid leaving a stale authorization. Confirm exact deployed SHAs and migration status as release evidence.
 
 ## CI evidence and historical migration baseline limitation
 
