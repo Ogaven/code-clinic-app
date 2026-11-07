@@ -542,12 +542,15 @@ describe('Facebook social identity enrichment', () => {
 })
 
 describe('Meta inbound attachment URL validation', () => {
-  const extract = (url: string) => extractInboxEvents({
-    entry: [{ messaging: [{
-      sender: { id: 'sender-1' },
-      message: { mid: 'mid-attachment', attachments: [{ type: 'image', payload: { url } }] },
-    }] }],
-  }, 'FACEBOOK')[0]?.payload.attachments?.[0]
+  const extract = (url: string) => {
+    const payload = extractInboxEvents({
+      entry: [{ messaging: [{
+        sender: { id: 'sender-1' },
+        message: { mid: 'mid-attachment', attachments: [{ type: 'image', payload: { url } }] },
+      }] }],
+    }, 'FACEBOOK')[0]?.payload
+    return payload?.kind === 'message' ? payload.attachments?.[0] : undefined
+  }
 
   it('retains an ordinary HTTPS media URL', () => {
     expect(extract('https://cdn.example.com/image.jpg')?.url).toBe('https://cdn.example.com/image.jpg')
