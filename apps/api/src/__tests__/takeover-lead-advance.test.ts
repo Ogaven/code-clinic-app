@@ -11,12 +11,13 @@ import type { Server } from 'node:http'
 // real send route now calls advanceLeadOnHumanReply after a successful send,
 // and never lets a lead-advance failure break the send response.
 
-const { prismaMock, sendWhatsAppMessage, advanceLeadOnHumanReply } = vi.hoisted(() => ({
+const { prismaMock, sendWhatsAppMessage, sendSocialReply, advanceLeadOnHumanReply } = vi.hoisted(() => ({
   prismaMock: {
     aiConversation: { findUnique: vi.fn() },
     aiMessage: { create: vi.fn(), update: vi.fn(), findFirst: vi.fn() },
   },
   sendWhatsAppMessage: vi.fn().mockResolvedValue('wamid-1'),
+  sendSocialReply: vi.fn().mockResolvedValue(undefined),
   advanceLeadOnHumanReply: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -29,7 +30,7 @@ vi.mock('../ai-suite/takeover/takeover.service', () => ({ takeoverConversation: 
 vi.mock('../lib/doctor-access', () => ({ authenticatedDoctorId: vi.fn() }))
 vi.mock('../ai-suite/facebook/facebook.routes', () => ({
   fetchPostThumbnail: vi.fn(),
-  sendSocialReply: vi.fn().mockResolvedValue(undefined),
+  sendSocialReply,
   sendCommentReply: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('../ai-suite/whatsapp/whatsapp.service', () => ({ sendWhatsAppMessage }))
@@ -85,6 +86,33 @@ describe('POST /ai-suite/conversations/:conversationId/send — wires the real r
 
     expect(res.status).toBe(200)
     expect(advanceLeadOnHumanReply).toHaveBeenCalledWith('fb:12345', 'staff-1')
+  })
+
+  it('marks an uncertain Meta DM send as unknown and warns against a duplicate resend', async () => {
+    prismaMock.aiConversation.findUnique.mockResolvedValue({ id: 'conv-3', channel: 'INSTAGRAM', phoneNumber: 'ig:123' })
+    prismaMock.aiMessage.create.mockResolvedValue({ id: 'msg-3' })
+    sendSocialReply.mockRejectedValueOnce(new Error('META_DM_DELIVERY_UNCERTAIN [INSTAGRAM] Network error'))
+
+    const res = await send('conv-3', 'Hello')
+    expect(res.status).toBe(502)
+    expect((await res.json()).error).toContain('Do not resend')
+    expect(prismaMock.aiMessage.update).toHaveBeenCalledWith({
+      where: { id: 'msg-3' }, data: { status: 'unknown' },
+    })
+    expect(advanceLeadOnHumanReply).not.toHaveBeenCalled()
+  })
+
+  it('marks a definite missing-token Meta send failure as failed', async () => {
+    prismaMock.aiConversation.findUnique.mockResolvedValue({ id: 'conv-4', channel: 'FACEBOOK', phoneNumber: 'fb:456' })
+    prismaMock.aiMessage.create.mockResolvedValue({ id: 'msg-4' })
+    sendSocialReply.mockRejectedValueOnce(new Error('[FACEBOOK] No page access token configured — reply not sent'))
+
+    const res = await send('conv-4', 'Hello')
+    expect(res.status).toBe(502)
+    expect(prismaMock.aiMessage.update).toHaveBeenCalledWith({
+      where: { id: 'msg-4' }, data: { status: 'failed' },
+    })
+    expect(advanceLeadOnHumanReply).not.toHaveBeenCalled()
   })
 
   it('does not call advanceLeadOnHumanReply when the conversation does not exist', async () => {
