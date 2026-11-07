@@ -10,6 +10,8 @@ let running = false
 // hammering the same inaccessible identity on every scheduled refresh.
 const deniedProfileUntil = new Map<string, number>()
 const DENIED_PROFILE_RETRY_MS = 6 * 60 * 60 * 1000
+let previousFacebookToken: string | undefined
+let previousInstagramToken: string | undefined
 // Reuse the bounded Page participant index briefly to avoid re-fetching up to
 // five Graph pages for each ten-conversation batch. Token changes invalidate it.
 let participantIndexCache: { token: string; expiresAt: number; names: Map<string, string> } | undefined
@@ -119,6 +121,13 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
     const tokens: Record<string, string | undefined> = {
       FACEBOOK: config?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN,
       INSTAGRAM: await instagramProfileToken(config?.instagramAccessToken, process.env.INSTAGRAM_ACCESS_TOKEN),
+    }
+    // A newly installed token may have different permissions: immediately retry
+    // identities denied under the previous credential.
+    if (previousFacebookToken !== tokens.FACEBOOK || previousInstagramToken !== tokens.INSTAGRAM) {
+      deniedProfileUntil.clear()
+      previousFacebookToken = tokens.FACEBOOK
+      previousInstagramToken = tokens.INSTAGRAM
     }
     const rows = await prisma.aiConversation.findMany({
       where: { channel: { in: ['FACEBOOK', 'INSTAGRAM'] }, ...(cursor ? { id: { gt: cursor } } : {}) },
