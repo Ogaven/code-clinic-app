@@ -781,10 +781,13 @@ function CommentThread({ conv, onRefresh }: { conv: PostConv; onRefresh: () => v
       const response = await fetch(`${API}/ai-suite/conversations/${conv.id}/send`, {
         method: 'POST', headers: authH(true), body: JSON.stringify({ text: reply.trim() }),
       })
-      if (!response.ok) throw new Error('Reply was not sent. Your draft has been kept; please retry.')
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null
+        throw new Error(payload?.error || `Reply not confirmed (HTTP ${response.status}). Check the thread before resending.`)
+      }
       setReply(''); setSendError(''); onRefresh()
     } catch (error) {
-      setSendError(error instanceof Error ? error.message : 'Reply was not sent. Please retry.')
+      setSendError(error instanceof Error ? error.message : 'Reply delivery is uncertain. Check the thread before resending.')
     } finally { setSending(false) }
   }
 
