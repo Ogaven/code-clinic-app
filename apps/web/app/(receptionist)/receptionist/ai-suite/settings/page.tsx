@@ -1147,8 +1147,27 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
           <>
             <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
               <CheckCircle2 size={14} />
-              <span>Connected to page: <strong>{status.pageName}</strong></span>
+              <span>Saved Page: <strong>{status.pageName}</strong> (delivery not yet verified)</span>
             </div>
+            <button type="button" onClick={() => setShowManual(v => !v)}
+              className="text-xs text-blue-500 dark:text-blue-400 hover:underline underline-offset-2 block">
+              {showManual ? 'Cancel token replacement' : 'Replace / refresh Page token'}
+            </button>
+            {showManual && (
+              <form onSubmit={connectManual} className="space-y-2 p-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                <p className="text-xs text-gray-500">Replace the existing credential without disconnecting the Page. Use a fresh CODE Clinic Page Access Token.</p>
+                <input type="password" autoComplete="off" placeholder="New Page Access Token" value={pageToken}
+                  onChange={e => setPageToken(e.target.value)} required
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-800 dark:text-white" />
+                <input type="text" placeholder="Facebook Page ID" value={pageId}
+                  onChange={e => setPageId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-800 dark:text-white" />
+                <button type="submit" disabled={saving || !pageToken.trim()}
+                  className="px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-60" style={{ background: '#1877F2' }}>
+                  {saving ? 'Validating…' : 'Validate and save token'}
+                </button>
+              </form>
+            )}
             <button onClick={disconnect} disabled={disconnecting}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors disabled:opacity-60">
               {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />} Disconnect
