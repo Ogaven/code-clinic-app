@@ -585,3 +585,13 @@ describe('Meta comment acknowledgement ambiguity', () => {
       .rejects.toThrow('META_COMMENT_DELIVERY_UNCERTAIN')
   })
 })
+
+describe('Meta DM provider error body failures', () => {
+  it('keeps delivery uncertain if Meta returns an HTTP error whose body cannot be read', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false, status: 502, text: async () => { throw new Error('socket closed') },
+    }) as any
+    await expect(sendSocialReply('recipient-123', 'Hello', 'FACEBOOK'))
+      .rejects.toThrow('META_DM_DELIVERY_UNCERTAIN')
+  })
+})
