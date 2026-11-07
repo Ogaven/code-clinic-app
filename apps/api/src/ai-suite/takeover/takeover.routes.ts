@@ -673,6 +673,11 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       where: { id: req.params.conversationId },
     })
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' })
+    // Never acknowledge a staff reply for an unrecognized channel.
+    const supportedChannels = ['WHATSAPP', 'SMS', 'FACEBOOK', 'INSTAGRAM', 'FACEBOOK_COMMENT', 'INSTAGRAM_COMMENT', 'WEBSITE']
+    if (!supportedChannels.includes(conversation.channel)) {
+      return res.status(422).json({ error: 'This conversation channel does not support staff replies' })
+    }
 
     const msgRecord = await prisma.aiMessage.create({
       data: {
@@ -682,6 +687,7 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       },
     })
 
+    try {
     if (conversation.channel === 'WHATSAPP') {
       const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
       // logToConversation:false — message already created above; we just need the wamid back
@@ -717,6 +723,16 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       }
     }
     // WEBSITE: no external delivery — message is visible in the widget on next poll
+    } catch (deliveryError) {
+      // Preserve the attempted message for reconciliation rather than showing
+      // an undelivered reply as sent or blindly retrying a potentially accepted send.
+      await prisma.aiMessage.update({
+        where: { id: msgRecord.id },
+        data: { status: 'failed' },
+      }).catch((updateError) => console.error('[Takeover] Failed to mark delivery attempt:', updateError))
+      console.error('[Takeover] Provider delivery error:', deliveryError)
+      return res.status(502).json({ error: 'Provider delivery was not confirmed. Check the conversation before retrying to avoid duplicates.' })
+    }
 
     // A successfully-created staff reply is exactly the "first human reply"
     // event the lead pipeline's NEW -> CONTACTED automation is meant to fire
