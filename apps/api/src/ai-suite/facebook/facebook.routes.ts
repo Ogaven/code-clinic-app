@@ -585,11 +585,18 @@ export async function sendCommentReply(
     : 'graph.facebook.com'
   const url = `https://${graphHost}/${GRAPH_VERSION}/${commentId}/${replyPath}`
 
-  const res = await fetch(url, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ message: text, access_token: token }).toString(),
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ message: text, access_token: token }).toString(),
+    })
+  } catch {
+    // The provider may have created the reply before the network failed.
+    // Reconciliation is required before a staff member retries.
+    throw new Error(`META_COMMENT_DELIVERY_UNCERTAIN [${channel}] Network error`)
+  }
 
   const rawBody = await res.text()
   let responseBody: any = null
