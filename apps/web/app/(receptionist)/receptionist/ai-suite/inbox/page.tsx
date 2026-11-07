@@ -325,10 +325,13 @@ function VoiceNotePlayer({ conversationId, messageId, content }: { conversationI
 }
 
 function MsgStatus({ status }: { status?: string | null }) {
-  if (status === 'read')      return <CheckCheck size={12} className="text-[#53bdeb]" />
-  if (status === 'delivered') return <CheckCheck size={12} className="text-gray-400" />
-  if (status === 'failed')    return <X size={10} className="text-red-400" />
-  return <Check size={12} className="text-gray-400" />
+  const normalized = status?.toLowerCase()
+  if (normalized === 'read') return <span title="Read" aria-label="Read"><CheckCheck size={12} className="text-[#53bdeb]" /></span>
+  if (normalized === 'delivered') return <span title="Delivered" aria-label="Delivered"><CheckCheck size={12} className="text-gray-400" /></span>
+  if (normalized === 'failed') return <span title="Delivery failed" aria-label="Delivery failed"><X size={12} className="text-red-500" /></span>
+  if (normalized === 'sent') return <span title="Sent; delivery not yet confirmed" aria-label="Sent; delivery not yet confirmed"><Check size={12} className="text-gray-400" /></span>
+  // An absent or unfamiliar status is not evidence that Meta/WhatsApp accepted the message.
+  return <span title="Delivery status unknown" aria-label="Delivery status unknown" className="text-[10px] text-amber-700">?</span>
 }
 
 // ── Emoji picker ───────────────────────────────────────────────────────────────
