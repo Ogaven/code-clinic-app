@@ -897,7 +897,22 @@ export async function sendSocialReply(
     try { detail = (await res.text()).slice(0, 500) } catch { /* body unavailable */ }
     throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] HTTP ${res.status}: ${detail}`)
   } else {
-    console.log(`[${channel}] Reply sent to ${recipientId}`)
+    // A 2xx status alone is not a confirmed Messenger send. Meta normally
+    // returns a message_id; a missing or unreadable acknowledgement must
+    // remain uncertain to prevent accidental duplicate staff replies.
+    let receipt: unknown
+    try {
+      receipt = await res.json()
+    } catch {
+      throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] Unable to read provider acknowledgement`)
+    }
+    const messageId = receipt && typeof receipt === 'object'
+      ? (receipt as { message_id?: unknown }).message_id
+      : null
+    if (typeof messageId !== 'string' || !messageId) {
+      throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] Provider acknowledgement missing message ID`)
+    }
+    console.log(`[${channel}] Reply accepted with message ID`)
   }
 }
 
