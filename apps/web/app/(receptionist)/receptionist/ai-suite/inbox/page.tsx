@@ -1174,6 +1174,8 @@ function InboxPage() {
 
   useEffect(() => {
     if (pollMsg.current) clearInterval(pollMsg.current)
+    // Discard responses belonging to a previously selected conversation.
+    lastMessageRequest.current += 1
     if (!sel) { setMessagesError(false); setMsgs([]); return }
     setMessagesError(false)
     setMsgs([])
@@ -1343,6 +1345,8 @@ function InboxPage() {
   }
 
   function selectConv(conv: Conversation) {
+    setTakeoverError('')
+    setMessagesError(false)
     setSel(conv); setMobileView('chat')
     const apiVal = CHANNELS.find(c => c.key === channel)!.apiVal
     router.push(`${pathname}?channel=${apiVal}&conv=${conv.id}`)
