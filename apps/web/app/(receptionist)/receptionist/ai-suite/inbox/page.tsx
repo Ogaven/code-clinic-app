@@ -989,6 +989,7 @@ function InboxPage() {
   const [msgs,       setMsgs]       = useState<Message[]>([])
   const [loadingC,   setLoadingC]   = useState(true)
   const [loadingM,   setLoadingM]   = useState(false)
+  const [messagesError, setMessagesError] = useState(false)
   const [search,     setSearch]     = useState('')
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   // Mobile-only "Screen A" gate: on phone, Conversations opens on a vertical
@@ -1135,16 +1136,20 @@ function InboxPage() {
     if (prevConvId.current !== id) setLoadingM(true)
     try {
       const res = await fetch(`${API}/ai-suite/conversations/${id}/messages`, { headers: authH() })
-      if (!res.ok || requestId !== lastMessageRequest.current) return
+      if (requestId !== lastMessageRequest.current) return
+      if (!res.ok) throw new Error('Message history request failed')
       const incoming: Message[] = await res.json()
       if (requestId !== lastMessageRequest.current) return
+      setMessagesError(false)
       setMsgs(previous => {
         if (previous.length === incoming.length && previous.every((m, i) =>
           m.id === incoming[i].id && m.content === incoming[i].content && m.createdAt === incoming[i].createdAt && m.metadata === incoming[i].metadata
         )) return previous
         return incoming
       })
-    } catch {} finally {
+    } catch {
+      if (requestId === lastMessageRequest.current) setMessagesError(true)
+    } finally {
       if (requestId === lastMessageRequest.current) setLoadingM(false)
     }
   }, [])
@@ -1169,7 +1174,9 @@ function InboxPage() {
 
   useEffect(() => {
     if (pollMsg.current) clearInterval(pollMsg.current)
-    if (!sel) return
+    if (!sel) { setMessagesError(false); setMsgs([]); return }
+    setMessagesError(false)
+    setMsgs([])
     fetchMsgs(sel.id)
     pollMsg.current = setInterval(() => fetchMsgs(sel.id), 5000)
     return () => { if (pollMsg.current) clearInterval(pollMsg.current) }
@@ -1479,7 +1486,8 @@ function InboxPage() {
         </button>
       </div>
 
-      {takeoverError && <div role="alert" className="mx-3 mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">{takeoverError}</div>}
+      {takeoverError && <div role="alert" className="mx-3 mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">{takeoverError}</div>
+      {messagesError && <div role="alert" className="mx-3 mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900"><span>Messages could not be refreshed. History may be outdated.</span><button type="button" className="font-semibold underline" onClick={() => fetchMsgs(sel.id)}>Retry</button></div>}
       <div ref={messagesScroll} className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 px-3 sm:px-4 pt-4 pb-20 space-y-1.5"
         onScroll={handleMessagesScroll}
         style={{ background: dark ? '#0b1f38' : '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
@@ -1658,7 +1666,8 @@ function InboxPage() {
         </button>
       </div>
 
-      {takeoverError && <div role="alert" className="mx-4 mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">{takeoverError}</div>}
+      {takeoverError && <div role="alert" className="mx-4 mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">{takeoverError}</div>
+      {messagesError && <div role="alert" className="mx-4 mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900"><span>Messages could not be refreshed. History may be outdated.</span><button type="button" className="font-semibold underline" onClick={() => fetchMsgs(sel.id)}>Retry</button></div>}
       <div ref={messagesScroll} className="flex-1 overflow-y-auto px-4 pt-4 pb-20 space-y-2" onScroll={handleMessagesScroll}>
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-300" /></div>
