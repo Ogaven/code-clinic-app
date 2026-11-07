@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'fix/meta-durable-webhook-inbox-20261028']
   pull_request:
     branches: [main]
 
