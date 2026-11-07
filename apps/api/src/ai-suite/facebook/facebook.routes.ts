@@ -221,7 +221,7 @@ export function extractInboxEvents(body: any, provider: MetaInboxProvider): Arra
                       }
                       return host === 'localhost' || host === '[::1]' || host === '::1'
                     })() &&
-                    !/^\\d+$/.test(parsed.hostname)) {
+                    !/^\d+$/.test(parsed.hostname)) {
                   safeUrl = parsed.href
                 }
               } catch { /* Meta may omit the attachment URL */ }
