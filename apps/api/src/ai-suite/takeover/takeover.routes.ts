@@ -726,8 +726,11 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       // A Meta network failure or non-2xx response can be ambiguous: the
       // provider may have accepted the message. Do not label it definitively
       // failed or encourage a duplicate resend without reconciliation.
-      const uncertain = (conversation.channel === 'FACEBOOK' || conversation.channel === 'INSTAGRAM')
-        && String(deliveryError?.message ?? '').includes('META_DM_DELIVERY_UNCERTAIN')
+      const detail = String(deliveryError?.message ?? '')
+      const uncertain = ((conversation.channel === 'FACEBOOK' || conversation.channel === 'INSTAGRAM')
+        && detail.includes('META_DM_DELIVERY_UNCERTAIN'))
+        || ((conversation.channel === 'FACEBOOK_COMMENT' || conversation.channel === 'INSTAGRAM_COMMENT')
+        && detail.includes('META_COMMENT_DELIVERY_UNCERTAIN'))
       await prisma.aiMessage.update({
         where: { id: msgRecord.id },
         data: { status: uncertain ? 'unknown' : 'failed' },
@@ -735,7 +738,7 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       console.error('[Takeover] Staff reply delivery error:', deliveryError?.message ?? deliveryError)
       return res.status(502).json({
         error: uncertain
-          ? 'Meta delivery is uncertain. Do not resend until staff verify whether the message reached the recipient.'
+          ? 'Meta delivery is uncertain. Do not resend until staff verify whether the message or comment reached the recipient.'
           : 'Message delivery failed. Check the failed message before attempting another send.',
       })
     }
