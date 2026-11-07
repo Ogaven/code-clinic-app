@@ -567,3 +567,21 @@ describe('Meta inbound attachment URL validation', () => {
     expect(extract(url)?.url).toBeUndefined()
   })
 })
+
+describe('Meta comment acknowledgement ambiguity', () => {
+  it('requires reconciliation if Meta accepts a reply without returning its created ID', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200, text: async () => JSON.stringify({ success: true }),
+    }) as any
+    await expect(sendCommentReply('comment-123', 'Thanks', 'FACEBOOK_COMMENT'))
+      .rejects.toThrow('META_COMMENT_DELIVERY_UNCERTAIN')
+  })
+
+  it('requires reconciliation if the reply acknowledgement cannot be read', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200, text: async () => { throw new Error('connection closed') },
+    }) as any
+    await expect(sendCommentReply('comment-123', 'Thanks', 'INSTAGRAM_COMMENT'))
+      .rejects.toThrow('META_COMMENT_DELIVERY_UNCERTAIN')
+  })
+})
