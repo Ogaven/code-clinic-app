@@ -187,43 +187,70 @@ router.get('/connections/facebook/callback', async (req, res) => {
 
 router.get('/connections/facebook/status', requireAuth, async (_req, res) => {
   const config = await getConfig()
-  res.json({
-    connected: !!config.facebookPageAccessToken,
-    pageName:  config.facebookPageName || null,
-  })
+  const token = config.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN
+  if (!token) return res.json({ connected: false, pageName: config.facebookPageName || null, health: 'missing' })
+  try {
+    const url = new URL('https://graph.facebook.com/v19.0/me')
+    url.searchParams.set('fields', 'id,name')
+    url.searchParams.set('access_token', token)
+    const response = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) })
+    if (!response.ok) return res.json({ connected: false, pageName: config.facebookPageName || null, health: 'invalid' })
+    const data = await response.json() as { id?: string; name?: string }
+    if (!data.id || !data.name) return res.json({ connected: false, pageName: config.facebookPageName || null, health: 'invalid' })
+    res.json({ connected: true, pageName: data.name, health: 'valid' })
+  } catch {
+    // Network failures are not evidence of an invalid credential.
+    res.json({ connected: false, pageName: config.facebookPageName || null, health: 'unknown' })
+  }
 })
 
 // Manual token connection — for admins who already have a Page Access Token
 router.post('/connections/facebook/manual', requireAuth, async (req, res) => {
   const { pageAccessToken, pageId } = req.body as { pageAccessToken?: string; pageId?: string }
-  if (!pageAccessToken) return res.status(400).json({ error: 'pageAccessToken required' })
+  const suppliedToken = typeof pageAccessToken === 'string' ? pageAccessToken.trim() : ''
+  if (!suppliedToken) return res.status(400).json({ error: 'pageAccessToken required' })
 
-  // Try to exchange for a long-lived token if a short-lived one was pasted
-  const appId     = process.env.FACEBOOK_APP_ID || ''
-  const appSecret = process.env.FACEBOOK_APP_SECRET || ''
-  let finalToken = pageAccessToken
-  if (appId && appSecret) {
-    try {
-      const llRes  = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${pageAccessToken}`)
-      const llData = await llRes.json() as { access_token?: string }
-      if (llData.access_token) finalToken = llData.access_token
-    } catch {}
+  // Validate a Page token before persisting it. A user token or expired token
+  // must never produce a misleading "Connected" state.
+  let pageName: string
+  let verifiedPageId: string
+  try {
+    const url = new URL('https://graph.facebook.com/v19.0/me')
+    url.searchParams.set('fields', 'id,name')
+    url.searchParams.set('access_token', suppliedToken)
+    const response = await fetch(url.toString())
+    if (!response.ok) return res.status(400).json({ error: 'Meta rejected the Facebook Page token. Reconnect with a valid Page Access Token.' })
+    const result = await response.json() as { id?: string; name?: string }
+    if (!result.id || !result.name || (pageId && result.id !== pageId)) {
+      return res.status(400).json({ error: 'The token does not match the selected Facebook Page.' })
+    }
+    verifiedPageId = result.id
+    pageName = result.name
+  } catch {
+    return res.status(502).json({ error: 'Unable to verify the Facebook Page token with Meta. Please retry.' })
   }
 
-  // Try to resolve the page name from the Graph API; fall back to pageId or 'Connected'
-  let pageName = pageId || 'Connected'
+  // Verify Page identity and messaging permission without exposing credentials.
   try {
-    const r = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${finalToken}`)
-    const d = await r.json() as { name?: string }
-    if (d.name) pageName = d.name
-  } catch {}
+    const url = new URL('https://graph.facebook.com/v19.0/me/permissions')
+    url.searchParams.set('access_token', suppliedToken)
+    const response = await fetch(url.toString())
+    if (response.ok) {
+      const result = await response.json() as { data?: Array<{ permission?: string; status?: string }> }
+      if (Array.isArray(result.data) && !result.data.some(p => p.permission === 'pages_messaging' && p.status === 'granted')) {
+        return res.status(400).json({ error: 'The Facebook Page token is missing pages_messaging permission.' })
+      }
+    }
+  } catch {
+    // Page tokens may not support the permissions endpoint; Meta /me was verified above.
+  }
 
   const config = await getConfig()
   await prisma.aiAgentConfig.update({
     where: { id: config.id },
-    data: { facebookPageAccessToken: finalToken, facebookPageName: pageName },
+    data: { facebookPageAccessToken: suppliedToken, facebookPageName: pageName },
   })
-  res.json({ connected: true, pageName, tokenUpgraded: finalToken !== pageAccessToken })
+  res.json({ connected: true, pageName, pageId: verifiedPageId, tokenUpgraded: false })
 })
 
 router.delete('/connections/facebook', requireAuth, async (_req, res) => {

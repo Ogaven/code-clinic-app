@@ -1081,7 +1081,7 @@ function WhatsAppPanel({ onManage }: { onManage: (n: WaNumber) => void }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function FacebookSection({ toast }: { toast: (m: string) => void }) {
-  const [status,        setStatus]        = useState<{ connected: boolean; pageName: string | null } | null>(null)
+  const [status,        setStatus]        = useState<{ connected: boolean; pageName: string | null; health?: 'valid' | 'invalid' | 'missing' | 'unknown' } | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
   const [showManual,    setShowManual]    = useState(false)
   const [pageToken,     setPageToken]     = useState('')
@@ -1120,12 +1120,15 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
         headers: { ...authH(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageAccessToken: pageToken.trim(), pageId: pageId.trim() }),
       })
-      if (!r.ok) throw new Error(await r.text())
+      if (!r.ok) {
+        const errorBody = await r.json().catch(() => null) as { error?: string } | null
+        throw new Error(errorBody?.error || 'Facebook Page token validation failed')
+      }
       const d = await r.json()
-      setStatus({ connected: true, pageName: d.pageName })
+      setStatus({ connected: true, pageName: d.pageName, health: 'valid' })
       setShowManual(false); setPageToken(''); setPageId('')
-      toast('Facebook connected')
-    } catch { toast('Failed to connect — check the token and try again') }
+      toast('Facebook Page token verified and saved')
+    } catch (err) { toast(err instanceof Error ? err.message.slice(0, 180) : 'Failed to verify Page token') }
     finally { setSaving(false) }
   }
 
@@ -1143,12 +1146,37 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
       label="Facebook Messenger"
       badge={status && <StatusBadge connected={status.connected} />}>
       <div className="space-y-4">
+        {status?.health === 'invalid' && (
+          <p role="alert" className="text-xs text-red-600 dark:text-red-400">Meta rejected the saved Facebook credential. Replace the Page token below; do not disconnect the Page.</p>
+        )}
+        {status?.health === 'unknown' && (
+          <p role="status" className="text-xs text-amber-600 dark:text-amber-400">Unable to verify Facebook with Meta right now. Connection status is uncertain.</p>
+        )}
         {status?.connected ? (
           <>
             <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
               <CheckCircle2 size={14} />
-              <span>Connected to page: <strong>{status.pageName}</strong></span>
+              <span>Saved Page: <strong>{status.pageName}</strong> (delivery not yet verified)</span>
             </div>
+            <button type="button" onClick={() => setShowManual(v => !v)}
+              className="text-xs text-blue-500 dark:text-blue-400 hover:underline underline-offset-2 block">
+              {showManual ? 'Cancel token replacement' : 'Replace / refresh Page token'}
+            </button>
+            {showManual && (
+              <form onSubmit={connectManual} className="space-y-2 p-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                <p className="text-xs text-gray-500">Replace the existing credential without disconnecting the Page. Use a fresh CODE Clinic Page Access Token.</p>
+                <input type="password" autoComplete="off" placeholder="New Page Access Token" value={pageToken}
+                  onChange={e => setPageToken(e.target.value)} required
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-800 dark:text-white" />
+                <input type="text" placeholder="Facebook Page ID" value={pageId}
+                  onChange={e => setPageId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-800 dark:text-white" />
+                <button type="submit" disabled={saving || !pageToken.trim()}
+                  className="px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-60" style={{ background: '#1877F2' }}>
+                  {saving ? 'Validating…' : 'Validate and save token'}
+                </button>
+              </form>
+            )}
             <button onClick={disconnect} disabled={disconnecting}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors disabled:opacity-60">
               {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />} Disconnect
