@@ -96,7 +96,7 @@ describe('POST /ai-suite/conversations/:conversationId/send — wires the real r
 
     const res = await send('conv-3', 'Hello')
     expect(res.status).toBe(502)
-    expect((await res.json()).error).toContain('Do not resend')
+    expect(((await res.json()) as { error: string }).error).toContain('Do not resend')
     expect(prismaMock.aiMessage.update).toHaveBeenCalledWith({
       where: { id: 'msg-3' }, data: { status: 'unknown' },
     })
@@ -124,7 +124,7 @@ describe('POST /ai-suite/conversations/:conversationId/send — wires the real r
 
     const res = await send('conv-comment', 'Thank you')
     expect(res.status).toBe(502)
-    expect((await res.json()).error).toContain('Do not resend')
+    expect(((await res.json()) as { error: string }).error).toContain('Do not resend')
     expect(prismaMock.aiMessage.update).toHaveBeenCalledWith({
       where: { id: 'msg-comment' }, data: { status: 'unknown' },
     })
@@ -138,7 +138,7 @@ describe('POST /ai-suite/conversations/:conversationId/send — wires the real r
 
     const res = await send('conv-persist', 'Confirmed provider send')
     expect(res.status).toBe(200)
-    expect((await res.json()).success).toBe(true)
+    expect(((await res.json()) as { success: boolean }).success).toBe(true)
     expect(sendSocialReply).toHaveBeenCalled()
     expect(advanceLeadOnHumanReply).toHaveBeenCalledWith('fb:recipient', 'staff-1')
     expect(prismaMock.aiMessage.update).toHaveBeenCalledTimes(1)
