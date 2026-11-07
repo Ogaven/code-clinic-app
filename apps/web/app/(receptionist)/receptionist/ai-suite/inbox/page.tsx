@@ -377,6 +377,7 @@ function MsgStatus({ status }: { status?: string | null }) {
   if (status === 'delivered') return <CheckCheck size={12} className="text-gray-400" />
   if (status === 'failed')    return <X size={10} className="text-red-400" />
   if (status === 'sent') return <Check size={12} className="text-gray-400" aria-label="Sent to provider" />
+  if (status === 'unknown') return <span role="status" aria-label="Delivery uncertain; verify before resending" title="Delivery uncertain — verify with recipient before resending" className="text-amber-600 text-[11px] font-semibold">?</span>
   return <span className="text-[10px] text-gray-400" title="Delivery status not yet confirmed">·</span>
 }
 
