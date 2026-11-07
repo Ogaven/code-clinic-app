@@ -499,13 +499,6 @@ export async function processComment(
       return
     }
 
-    // Do not ask the text-only AI to interpret an image, video, or audio file
-    // it has not actually seen. Keep the event in the staff inbox instead.
-    if (attachmentOnly) {
-      console.log(`[${channel}] Attachment-only message stored for staff review; AI reply suppressed`)
-      return
-    }
-
     const agentOn = await isAgentEnabled(conversation.id)
     if (!agentOn) {
       console.log(`[${channel}] Human takeover — comment saved, no auto-reply`)
@@ -762,6 +755,13 @@ export async function processSocialMessage(
     const channelOn = (config as any)?.[toggleField] ?? true
     if (!channelOn) {
       console.log(`[${channel}] Channel disabled — message stored, no auto-reply`)
+      return
+    }
+
+    // Do not ask the text-only AI to interpret an image, video, or audio file
+    // it has not actually seen. Keep the event in the staff inbox instead.
+    if (attachmentOnly) {
+      console.log(`[${channel}] Attachment-only message stored for staff review; AI reply suppressed`)
       return
     }
 
