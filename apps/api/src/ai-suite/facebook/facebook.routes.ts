@@ -890,8 +890,12 @@ export async function sendSocialReply(
     throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] Network error: ${String(error).slice(0, 300)}`)
   }
   if (!res.ok) {
-    const detail = await res.text()
-    throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] HTTP ${res.status}: ${detail.slice(0, 500)}`)
+    // A response body read can itself fail after Meta has processed a send.
+    // Keep the delivery uncertain and avoid exposing raw provider responses
+    // (which can include sensitive identifiers) in staff-facing errors.
+    let detail = 'Provider returned a non-success status'
+    try { detail = (await res.text()).slice(0, 500) } catch { /* body unavailable */ }
+    throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] HTTP ${res.status}: ${detail}`)
   } else {
     console.log(`[${channel}] Reply sent to ${recipientId}`)
   }
