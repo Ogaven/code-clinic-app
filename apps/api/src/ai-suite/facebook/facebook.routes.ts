@@ -202,13 +202,18 @@ router.post('/facebook/webhook', async (req, res) => {
 
     for (const entry of body.entry ?? []) {
       for (const event of entry.messaging ?? []) {
-        if (!event.message?.text) continue
         if (event.message?.is_echo) continue // never process our own outbound sends mirrored back
+        const messageText = typeof event.message?.text === 'string' ? event.message.text.trim() : ''
+        const attachments = Array.isArray(event.message?.attachments) ? event.message.attachments : []
+        if (!messageText && !attachments.length) continue
+        const attachmentKinds = [...new Set(attachments.map((a: any) => String(a?.type || 'file')))]
+        const content = messageText || `[Customer sent ${attachmentKinds.join(', ')} attachment(s); content requires staff review]`
         await processSocialMessage(
           String(event.sender.id),
-          String(event.message.text),
+          content,
           'FACEBOOK',
           event.message.mid ? String(event.message.mid) : undefined,
+          !messageText,
         )
       }
       // Page post comments arrive as entry.changes[] with field "feed".
@@ -277,13 +282,18 @@ router.post('/instagram/webhook', async (req, res) => {
     for (const entry of body.entry ?? []) {
       // DMs
       for (const event of entry.messaging ?? []) {
-        if (!event.message?.text) continue
         if (event.message?.is_echo) continue // never process our own outbound sends mirrored back
+        const messageText = typeof event.message?.text === 'string' ? event.message.text.trim() : ''
+        const attachments = Array.isArray(event.message?.attachments) ? event.message.attachments : []
+        if (!messageText && !attachments.length) continue
+        const attachmentKinds = [...new Set(attachments.map((a: any) => String(a?.type || 'file')))]
+        const content = messageText || `[Customer sent ${attachmentKinds.join(', ')} attachment(s); content requires staff review]`
         await processSocialMessage(
           String(event.sender.id),
-          String(event.message.text),
+          content,
           'INSTAGRAM',
           event.message.mid ? String(event.message.mid) : undefined,
+          !messageText,
         )
       }
       // Post comments
@@ -609,6 +619,7 @@ export async function processSocialMessage(
   text:      string,
   channel:   'FACEBOOK' | 'INSTAGRAM',
   messageId?: string,
+  attachmentOnly = false,
 ): Promise<void> {
   try {
     // ── 0. Hard guard: never process our own Page/account as a "sender" ──────
@@ -744,6 +755,13 @@ export async function processSocialMessage(
     const channelOn = (config as any)?.[toggleField] ?? true
     if (!channelOn) {
       console.log(`[${channel}] Channel disabled — message stored, no auto-reply`)
+      return
+    }
+
+    // Do not ask the text-only AI to interpret an image, video, or audio file
+    // it has not actually seen. Keep the event in the staff inbox instead.
+    if (attachmentOnly) {
+      console.log(`[${channel}] Attachment-only message stored for staff review; AI reply suppressed`)
       return
     }
 
