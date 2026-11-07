@@ -187,10 +187,21 @@ router.get('/connections/facebook/callback', async (req, res) => {
 
 router.get('/connections/facebook/status', requireAuth, async (_req, res) => {
   const config = await getConfig()
-  res.json({
-    connected: !!config.facebookPageAccessToken,
-    pageName:  config.facebookPageName || null,
-  })
+  const token = config.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN
+  if (!token) return res.json({ connected: false, pageName: config.facebookPageName || null, health: 'missing' })
+  try {
+    const url = new URL('https://graph.facebook.com/v19.0/me')
+    url.searchParams.set('fields', 'id,name')
+    url.searchParams.set('access_token', token)
+    const response = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) })
+    if (!response.ok) return res.json({ connected: false, pageName: config.facebookPageName || null, health: 'invalid' })
+    const data = await response.json() as { id?: string; name?: string }
+    if (!data.id || !data.name) return res.json({ connected: false, pageName: config.facebookPageName || null, health: 'invalid' })
+    res.json({ connected: true, pageName: data.name, health: 'valid' })
+  } catch {
+    // Network failures are not evidence of an invalid credential.
+    res.json({ connected: false, pageName: config.facebookPageName || null, health: 'unknown' })
+  }
 })
 
 // Manual token connection — for admins who already have a Page Access Token
