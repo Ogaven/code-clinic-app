@@ -131,6 +131,19 @@ describe('POST /ai-suite/conversations/:conversationId/send — wires the real r
     expect(advanceLeadOnHumanReply).not.toHaveBeenCalled()
   })
 
+  it('does not report a successfully accepted Meta DM as failed when status persistence fails', async () => {
+    prismaMock.aiConversation.findUnique.mockResolvedValue({ id: 'conv-persist', channel: 'FACEBOOK', phoneNumber: 'fb:recipient' })
+    prismaMock.aiMessage.create.mockResolvedValue({ id: 'msg-persist' })
+    prismaMock.aiMessage.update.mockRejectedValueOnce(new Error('temporary database write failure'))
+
+    const res = await send('conv-persist', 'Confirmed provider send')
+    expect(res.status).toBe(200)
+    expect((await res.json()).success).toBe(true)
+    expect(sendSocialReply).toHaveBeenCalled()
+    expect(advanceLeadOnHumanReply).toHaveBeenCalledWith('fb:recipient', 'staff-1')
+    expect(prismaMock.aiMessage.update).toHaveBeenCalledTimes(1)
+  })
+
   it('does not call advanceLeadOnHumanReply when the conversation does not exist', async () => {
     prismaMock.aiConversation.findUnique.mockResolvedValue(null)
 
