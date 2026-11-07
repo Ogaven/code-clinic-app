@@ -11,13 +11,14 @@ import type { Server } from 'node:http'
 // real send route now calls advanceLeadOnHumanReply after a successful send,
 // and never lets a lead-advance failure break the send response.
 
-const { prismaMock, sendWhatsAppMessage, sendSocialReply, advanceLeadOnHumanReply } = vi.hoisted(() => ({
+const { prismaMock, sendWhatsAppMessage, sendSocialReply, sendCommentReply, advanceLeadOnHumanReply } = vi.hoisted(() => ({
   prismaMock: {
     aiConversation: { findUnique: vi.fn() },
     aiMessage: { create: vi.fn(), update: vi.fn(), findFirst: vi.fn() },
   },
   sendWhatsAppMessage: vi.fn().mockResolvedValue('wamid-1'),
   sendSocialReply: vi.fn().mockResolvedValue(undefined),
+  sendCommentReply: vi.fn().mockResolvedValue(undefined),
   advanceLeadOnHumanReply: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -31,7 +32,7 @@ vi.mock('../lib/doctor-access', () => ({ authenticatedDoctorId: vi.fn() }))
 vi.mock('../ai-suite/facebook/facebook.routes', () => ({
   fetchPostThumbnail: vi.fn(),
   sendSocialReply,
-  sendCommentReply: vi.fn().mockResolvedValue(undefined),
+  sendCommentReply,
 }))
 vi.mock('../ai-suite/whatsapp/whatsapp.service', () => ({ sendWhatsAppMessage }))
 vi.mock('../crm-automation/lead-stage.service', () => ({ advanceLeadOnHumanReply }))
@@ -111,6 +112,21 @@ describe('POST /ai-suite/conversations/:conversationId/send — wires the real r
     expect(res.status).toBe(502)
     expect(prismaMock.aiMessage.update).toHaveBeenCalledWith({
       where: { id: 'msg-4' }, data: { status: 'failed' },
+    })
+    expect(advanceLeadOnHumanReply).not.toHaveBeenCalled()
+  })
+
+  it('marks an ambiguous Meta comment reply unknown instead of encouraging a resend', async () => {
+    prismaMock.aiConversation.findUnique.mockResolvedValue({ id: 'conv-comment', channel: 'FACEBOOK_COMMENT', phoneNumber: 'fb:commenter' })
+    prismaMock.aiMessage.create.mockResolvedValue({ id: 'msg-comment' })
+    prismaMock.aiMessage.findFirst.mockResolvedValue({ metadata: JSON.stringify({ commentId: 'comment-123' }) })
+    sendCommentReply.mockRejectedValueOnce(new Error('META_COMMENT_DELIVERY_UNCERTAIN [FACEBOOK_COMMENT] Network error'))
+
+    const res = await send('conv-comment', 'Thank you')
+    expect(res.status).toBe(502)
+    expect((await res.json()).error).toContain('Do not resend')
+    expect(prismaMock.aiMessage.update).toHaveBeenCalledWith({
+      where: { id: 'msg-comment' }, data: { status: 'unknown' },
     })
     expect(advanceLeadOnHumanReply).not.toHaveBeenCalled()
   })
