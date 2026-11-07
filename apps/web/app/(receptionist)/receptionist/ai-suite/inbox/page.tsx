@@ -1646,6 +1646,9 @@ function InboxPage() {
         {msgs.map((msg, i) => {
           const isAgent  = msg.role === 'AGENT'
           const media    = parseBubble(msg.content)
+          const deliveryStatus = (channel === 'FACEBOOK' || channel === 'INSTAGRAM') && isAgent
+            ? (() => { try { return JSON.parse(msg.metadata || '{}').deliveryStatus as string | undefined } catch { return undefined } })()
+            : undefined
           return (
             <div key={msg.id} className={cn('flex items-end gap-2', isAgent ? 'justify-end' : 'justify-start')}>
               {!isAgent && <Avatar name={convLabel(sel, channel)} size={28} pictureUrl={sel.profilePictureUrl} />}
