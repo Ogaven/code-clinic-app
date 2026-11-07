@@ -48,7 +48,7 @@ beforeEach(() => {
   process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'test-fb-page-token'
   process.env.INSTAGRAM_ACCESS_TOKEN = 'test-ig-token'
   process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID = IG_ACCOUNT_ID
-  global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'created-reply-1' }), text: async () => JSON.stringify({ id: 'created-reply-1' }) }) as any
+  global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'created-reply-1', message_id: 'mid-created-1' }), text: async () => JSON.stringify({ id: 'created-reply-1' }) }) as any
 })
 afterEach(() => { global.fetch = originalFetch })
 
@@ -521,7 +521,7 @@ describe('Facebook social identity enrichment', () => {
       if (value.includes('/post-1?fields=message')) {
         return { ok: true, json: async () => ({ message: 'Alcohol before the dentist? Tell us you are anxious instead.' }) } as any
       }
-      return { ok: true, json: async () => ({ id: 'created-reply-1' }), text: async () => JSON.stringify({ id: 'created-reply-1' }) } as any
+      return { ok: true, json: async () => ({ id: 'created-reply-1', message_id: 'mid-created-1' }), text: async () => JSON.stringify({ id: 'created-reply-1' }) } as any
     }) as any
 
     await processComment('comment-1', 'post-1', 'commenter-1', 'Princess Priscilla', "What's this all about?", 'FACEBOOK_COMMENT')
@@ -592,6 +592,24 @@ describe('Meta DM provider error body failures', () => {
       ok: false, status: 502, text: async () => { throw new Error('socket closed') },
     }) as any
     await expect(sendSocialReply('recipient-123', 'Hello', 'FACEBOOK'))
+      .rejects.toThrow('META_DM_DELIVERY_UNCERTAIN')
+  })
+})
+
+describe('Meta DM provider acknowledgement validation', () => {
+  it('treats 2xx without a message ID as uncertain rather than sent', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => ({ recipient_id: 'recipient-1' }),
+    }) as any
+    await expect(sendSocialReply('recipient-1', 'Hello', 'FACEBOOK'))
+      .rejects.toThrow('META_DM_DELIVERY_UNCERTAIN')
+  })
+
+  it('treats unreadable successful DM acknowledgement as uncertain', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => { throw new Error('socket closed') },
+    }) as any
+    await expect(sendSocialReply('recipient-1', 'Hello', 'INSTAGRAM'))
       .rejects.toThrow('META_DM_DELIVERY_UNCERTAIN')
   })
 })
