@@ -222,7 +222,7 @@ describe('processSocialMessage — DM ingestion', () => {
   it('does not persist Facebook user as a verified customer name', async () => {
     (global.fetch as any) = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ first_name: 'Facebook', last_name: 'user', profile_pic: null }),
+      json: async () => ({ first_name: 'Facebook', last_name: 'user', profile_pic: null, message_id: 'mid-generic' }),
     })
     await processSocialMessage('28540242905567428', 'Hello', 'FACEBOOK', 'mid.generic-name')
     expect(prismaMock.aiConversation.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -474,7 +474,7 @@ describe('Existing social DM placeholder recovery', () => {
       if (String(url).includes('/28540242905567428?')) {
         return { ok: true, json: async () => ({ username: 'real_patient', profile_pic: 'https://example.test/ig.jpg' }) } as any
       }
-      return { ok: true, json: async () => ({}), text: async () => '' } as any
+      return { ok: true, json: async () => ({ message_id: 'mid-reply-test' }), text: async () => '' } as any
     }) as any
 
     await processSocialMessage('28540242905567428', 'Hello', 'INSTAGRAM', 'mid-ig-placeholder')
