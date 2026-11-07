@@ -1120,7 +1120,10 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
         headers: { ...authH(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageAccessToken: pageToken.trim(), pageId: pageId.trim() }),
       })
-      if (!r.ok) throw new Error(await r.text())
+      if (!r.ok) {
+        const errorBody = await r.json().catch(() => null) as { error?: string } | null
+        throw new Error(errorBody?.error || 'Facebook Page token validation failed')
+      }
       const d = await r.json()
       setStatus({ connected: true, pageName: d.pageName, health: 'valid' })
       setShowManual(false); setPageToken(''); setPageId('')
