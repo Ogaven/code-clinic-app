@@ -598,7 +598,14 @@ export async function sendCommentReply(
     throw new Error(`META_COMMENT_DELIVERY_UNCERTAIN [${channel}] Network error`)
   }
 
-  const rawBody = await res.text()
+  let rawBody: string
+  try {
+    rawBody = await res.text()
+  } catch {
+    // Meta may already have created the comment, even if reading the
+    // acknowledgement fails after the provider accepted the request.
+    throw new Error(`META_COMMENT_DELIVERY_UNCERTAIN [${channel}] Unable to read provider acknowledgement`)
+  }
   let responseBody: any = null
   try {
     responseBody = rawBody ? JSON.parse(rawBody) : null
@@ -624,7 +631,7 @@ export async function sendCommentReply(
     const detail = typeof responseBody === 'string'
       ? responseBody
       : JSON.stringify(responseBody)
-    throw new Error(`[${channel}] Comment reply response missing created reply id: ${detail}`)
+    throw new Error(`META_COMMENT_DELIVERY_UNCERTAIN [${channel}] Comment reply response missing created reply id: ${detail}`)
   }
 
   console.log(`[${channel}] Comment reply created: parent=${commentId} reply=${replyId}`)
