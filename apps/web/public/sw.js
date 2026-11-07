@@ -163,9 +163,12 @@ self.addEventListener('notificationclick', (e) => {
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
       for (const c of cs) {
-        if (c.url.startsWith(self.location.origin) && 'focus' in c) {
-          c.navigate(url)
-          return c.focus()
+        if (new URL(c.url).origin === self.location.origin && 'navigate' in c && 'focus' in c) {
+          // Wait for navigation before focusing: otherwise the old inbox route
+          // may win the race and the notification opens the wrong conversation.
+          return c.navigate(url)
+            .then((navigated) => (navigated || c).focus())
+            .catch(() => clients.openWindow ? clients.openWindow(url) : undefined)
         }
       }
       if (clients.openWindow) return clients.openWindow(url)
