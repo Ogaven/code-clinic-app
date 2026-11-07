@@ -810,9 +810,11 @@ export async function maybeNotifyStaff(
 
     await Promise.all(
       staff.map(async u => {
+        const inboxChannel = channel.toLowerCase()
+        const destination = `?channel=${encodeURIComponent(inboxChannel)}&conv=${encodeURIComponent(conversationId)}`
         const href = u.role === 'RECEPTIONIST'
-          ? `/receptionist/ai-suite/inbox?phone=${encodeURIComponent(phone)}`
-          : `/ai-suite/inbox?phone=${encodeURIComponent(phone)}`
+          ? `/receptionist/ai-suite/inbox${destination}`
+          : `/ai-suite/inbox${destination}`
         await prisma.notification.create({
           data: { userId: u.id, type: 'MESSAGE', title, body, href, isRead: false },
         })
