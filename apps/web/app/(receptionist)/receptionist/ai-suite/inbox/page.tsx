@@ -1004,6 +1004,8 @@ function InboxPage() {
   const [showArchived, setShowArchived] = useState(false)
   const [showNewChat,  setShowNewChat]  = useState(false)
   const [handbackOpen, setHandbackOpen] = useState(false)
+  const [takeoverError, setTakeoverError] = useState('')
+  const [takeoverPending, setTakeoverPending] = useState(false)
   const [clinicalAlertUnresolved, setClinicalAlertUnresolved] = useState(false)
   const [clinicalResolveOpen, setClinicalResolveOpen] = useState(false)
   const [clinicalResolveError, setClinicalResolveError] = useState('')
@@ -1249,9 +1251,22 @@ function InboxPage() {
     // Taking over is immediate (Sarah just needs to go quiet); handing back
     // opens a small optional-summary prompt first so staff can tell Sarah
     // what happened, instead of silently resuming her.
+    if (takeoverPending) return
+    setTakeoverError('')
     if (sel.agentEnabled) {
-      await fetch(`${API}/ai-suite/takeover/${sel.id}`, { method: 'POST', headers: authH() })
-      fetchConvs()
+      setTakeoverPending(true)
+      try {
+        const response = await fetch(`${API}/ai-suite/takeover/${sel.id}`, { method: 'POST', headers: authH() })
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}))
+          throw new Error(data.error || 'Takeover failed. The AI may still be handling this conversation.')
+        }
+        await fetchConvs()
+      } catch (error) {
+        setTakeoverError(error instanceof Error ? error.message : 'Takeover failed. Please try again.')
+      } finally {
+        setTakeoverPending(false)
+      }
     } else {
       setHandbackOpen(true)
     }
@@ -1461,6 +1476,7 @@ function InboxPage() {
         </button>
       </div>
 
+      {takeoverError && <div role="alert" className="mx-3 mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">{takeoverError}</div>}
       <div ref={messagesScroll} className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 px-3 sm:px-4 pt-4 pb-20 space-y-1.5"
         onScroll={handleMessagesScroll}
         style={{ background: dark ? '#0b1f38' : '#e5ddd5', backgroundImage: WA_WALLPAPER }}>
@@ -1639,6 +1655,7 @@ function InboxPage() {
         </button>
       </div>
 
+      {takeoverError && <div role="alert" className="mx-4 mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">{takeoverError}</div>}
       <div ref={messagesScroll} className="flex-1 overflow-y-auto px-4 pt-4 pb-20 space-y-2" onScroll={handleMessagesScroll}>
         {loadingM && msgs.length === 0 && (
           <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-gray-300" /></div>
