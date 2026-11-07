@@ -6,6 +6,12 @@ import { fetchFbUserInfo, fetchInstagramUserInfo } from '../facebook/facebook.ro
 // account from starving all other conversations. Resets after the last page.
 let cursor: string | undefined
 let running = false
+// Meta may deny PSID profile access even when Page conversations work. Avoid
+// hammering the same inaccessible identity on every scheduled refresh.
+const deniedProfileUntil = new Map<string, number>()
+const DENIED_PROFILE_RETRY_MS = 6 * 60 * 60 * 1000
+let previousFacebookToken: string | undefined
+let previousInstagramToken: string | undefined
 // Reuse the bounded Page participant index briefly to avoid re-fetching up to
 // five Graph pages for each ten-conversation batch. Token changes invalidate it.
 let participantIndexCache: { token: string; expiresAt: number; names: Map<string, string> } | undefined
@@ -116,6 +122,13 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
       FACEBOOK: config?.facebookPageAccessToken || process.env.FACEBOOK_PAGE_ACCESS_TOKEN,
       INSTAGRAM: await instagramProfileToken(config?.instagramAccessToken, process.env.INSTAGRAM_ACCESS_TOKEN),
     }
+    // A newly installed token may have different permissions: immediately retry
+    // identities denied under the previous credential.
+    if (previousFacebookToken !== tokens.FACEBOOK || previousInstagramToken !== tokens.INSTAGRAM) {
+      deniedProfileUntil.clear()
+      previousFacebookToken = tokens.FACEBOOK
+      previousInstagramToken = tokens.INSTAGRAM
+    }
     const rows = await prisma.aiConversation.findMany({
       where: { channel: { in: ['FACEBOOK', 'INSTAGRAM'] }, ...(cursor ? { id: { gt: cursor } } : {}) },
       orderBy: { id: 'asc' },
@@ -146,11 +159,25 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
       // A verified participant name avoids an unnecessary direct lookup when a
       // photo is already stored; otherwise still attempt the photo lookup.
       const shouldFetchProfile = !participantName || !row.profilePictureUrl
-      const profile = shouldFetchProfile
+      const deniedKey = `${row.channel}:${row.phoneNumber}`
+      const temporarilyDenied = (deniedProfileUntil.get(deniedKey) ?? 0) > Date.now()
+      const profile = shouldFetchProfile && !temporarilyDenied
         ? row.channel === 'FACEBOOK'
           ? await fetchFbUserInfo(row.phoneNumber, token)
           : await fetchInstagramUserInfo(row.phoneNumber, token)
         : { name: null, pictureUrl: null }
+      // A successful participant name can still be stored even when direct
+      // PSID profile access is denied. Retry denied profiles conservatively.
+      if (shouldFetchProfile && !temporarilyDenied && !profile.name && !profile.pictureUrl) {
+        deniedProfileUntil.set(deniedKey, Date.now() + DENIED_PROFILE_RETRY_MS)
+      } else if (profile.name || profile.pictureUrl) {
+        deniedProfileUntil.delete(deniedKey)
+      }
+      if (deniedProfileUntil.size > 5000) {
+        for (const [key, until] of deniedProfileUntil) {
+          if (until <= Date.now()) deniedProfileUntil.delete(key)
+        }
+      }
       if (!profile.name && !profile.pictureUrl) stats.unavailable++
       const name = participantName || profile.name?.trim() || null
       const validName = name && !placeholder(name) ? name : null
