@@ -1081,7 +1081,7 @@ function WhatsAppPanel({ onManage }: { onManage: (n: WaNumber) => void }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function FacebookSection({ toast }: { toast: (m: string) => void }) {
-  const [status,        setStatus]        = useState<{ connected: boolean; pageName: string | null } | null>(null)
+  const [status,        setStatus]        = useState<{ connected: boolean; pageName: string | null; health?: 'valid' | 'invalid' | 'missing' | 'unknown' } | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
   const [showManual,    setShowManual]    = useState(false)
   const [pageToken,     setPageToken]     = useState('')
@@ -1122,10 +1122,10 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
       })
       if (!r.ok) throw new Error(await r.text())
       const d = await r.json()
-      setStatus({ connected: true, pageName: d.pageName })
+      setStatus({ connected: true, pageName: d.pageName, health: 'valid' })
       setShowManual(false); setPageToken(''); setPageId('')
-      toast('Facebook connected')
-    } catch { toast('Failed to connect — check the token and try again') }
+      toast('Facebook Page token verified and saved')
+    } catch (err) { toast(err instanceof Error ? err.message.slice(0, 180) : 'Failed to verify Page token') }
     finally { setSaving(false) }
   }
 
@@ -1143,6 +1143,12 @@ function FacebookSection({ toast }: { toast: (m: string) => void }) {
       label="Facebook Messenger"
       badge={status && <StatusBadge connected={status.connected} />}>
       <div className="space-y-4">
+        {status?.health === 'invalid' && (
+          <p role="alert" className="text-xs text-red-600 dark:text-red-400">Meta rejected the saved Facebook credential. Replace the Page token below; do not disconnect the Page.</p>
+        )}
+        {status?.health === 'unknown' && (
+          <p role="status" className="text-xs text-amber-600 dark:text-amber-400">Unable to verify Facebook with Meta right now. Connection status is uncertain.</p>
+        )}
         {status?.connected ? (
           <>
             <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
