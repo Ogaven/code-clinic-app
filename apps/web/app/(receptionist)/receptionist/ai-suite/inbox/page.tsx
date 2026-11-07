@@ -1223,9 +1223,11 @@ function InboxPage() {
   // also how a browser/phone "forward" navigation (after having gone back)
   // re-opens a chat once `convs` has (re)loaded.
   useEffect(() => {
-    if (!convParam || sel || convs.length === 0) return
+    if (!convParam || convs.length === 0) return
     const match = convs.find(c => c.id === convParam)
-    if (match) { setSel(match); setMobileView('chat') }
+    // A notification can navigate an already-open inbox to a different
+    // conversation. Do not let the previous selection block the deep link.
+    if (match && sel?.id !== match.id) { setSel(match); setMobileView('chat') }
   }, [convs, convParam])
 
   // Reconciles local screen state FROM the URL — this is what makes the
