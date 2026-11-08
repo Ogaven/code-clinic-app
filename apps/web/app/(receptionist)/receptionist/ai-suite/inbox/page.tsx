@@ -1521,6 +1521,8 @@ function InboxPage() {
                     {isAgent && <MsgStatus status={msg.status} />}
                   </div>
                 </div>
+                {deliveryStatus === 'FAILED' && <div role="alert" className="mt-1 px-1 text-xs font-semibold text-red-700">Message not delivered — check the provider before retrying.</div>}
+                {deliveryStatus === 'SENDING' && <div role="status" className="mt-1 px-1 text-xs font-semibold text-amber-700">Delivery unconfirmed — check before retrying.</div>}
                 {showTime && <div />}
               </div>
             </div>
