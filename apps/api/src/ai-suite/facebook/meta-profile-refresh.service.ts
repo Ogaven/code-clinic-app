@@ -181,7 +181,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
           select: { profilePictureUrl: true },
         })
         const photo = existing?.profilePictureUrl
-        if (photo && /^https:\\/\\//i.test(photo)) {
+        if (photo && photo.startsWith('https://')) {
           const updated = await prisma.aiConversation.updateMany({
             where: { id: row.id, profilePictureUrl: null },
             data: { profilePictureUrl: photo },
