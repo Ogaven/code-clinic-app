@@ -49,7 +49,16 @@ async function dispatch(payload: any): Promise<void> {
     const messageText = typeof e.message.text === 'string' ? e.message.text.trim() : ''
     const attachmentKinds = [...new Set(attachments.map((a: any) => String(a?.type || 'file')))]
     const content = messageText || `[Customer sent ${attachmentKinds.join(', ')} attachment(s); content requires staff review]`
-    await processSocialMessage(String(e.sender.id), content, instagram ? 'INSTAGRAM' : 'FACEBOOK', e.message.mid ? String(e.message.mid) : undefined, !messageText)
+    await processSocialMessage(String(e.sender.id), content, instagram ? 'INSTAGRAM' : 'FACEBOOK', e.message.mid ? String(e.message.mid) : undefined, !messageText,
+      attachments.map((a: any) => {
+        const type = ['image', 'audio', 'video', 'file'].includes(String(a?.type)) ? String(a.type) : 'file'
+        const rawUrl = a?.payload?.url
+        let url: string | undefined
+        if (typeof rawUrl === 'string') {
+          try { const parsed = new URL(rawUrl); if (parsed.protocol === 'https:' && !parsed.username && !parsed.password) url = parsed.href } catch { /* ignore unsafe URLs */ }
+        }
+        return { type, ...(url ? { url } : {}) }
+      }))
     return
   }
   const c = payload.change
