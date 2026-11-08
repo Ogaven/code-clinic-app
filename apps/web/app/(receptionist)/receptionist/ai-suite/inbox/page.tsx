@@ -1550,8 +1550,10 @@ function InboxPage() {
           const isAgent  = msg.role === 'AGENT'
           const media    = parseBubble(msg.content)
           const receivedAttachments = !isAgent && (sel?.channel === 'FACEBOOK' || sel?.channel === 'INSTAGRAM') ? metaAttachments(msg.metadata) : []
-          const deliveryStatus = (channel === 'FACEBOOK' || channel === 'INSTAGRAM') && isAgent
-            ? (() => { try { return JSON.parse(msg.metadata || '{}').deliveryStatus as string | undefined } catch { return undefined } })()
+          const deliveryStatus = isAgent
+            ? (msg.status?.toLowerCase() === 'failed' ? 'FAILED'
+              : msg.status?.toLowerCase() === 'unknown' ? 'SENDING'
+              : (() => { try { return JSON.parse(msg.metadata || '{}').deliveryStatus as string | undefined } catch { return undefined } })())
             : undefined
           const showTime = i === visibleMsgs.length - 1 || visibleMsgs[i + 1]?.role !== msg.role
           return (
@@ -1735,8 +1737,10 @@ function InboxPage() {
         {msgs.map((msg, i) => {
           const isAgent  = msg.role === 'AGENT'
           const media    = parseBubble(msg.content)
-          const deliveryStatus = (channel === 'FACEBOOK' || channel === 'INSTAGRAM') && isAgent
-            ? (() => { try { return JSON.parse(msg.metadata || '{}').deliveryStatus as string | undefined } catch { return undefined } })()
+          const deliveryStatus = isAgent
+            ? (msg.status?.toLowerCase() === 'failed' ? 'FAILED'
+              : msg.status?.toLowerCase() === 'unknown' ? 'SENDING'
+              : (() => { try { return JSON.parse(msg.metadata || '{}').deliveryStatus as string | undefined } catch { return undefined } })())
             : undefined
           return (
             <div key={msg.id} className={cn('flex items-end gap-2', isAgent ? 'justify-end' : 'justify-start')}>
