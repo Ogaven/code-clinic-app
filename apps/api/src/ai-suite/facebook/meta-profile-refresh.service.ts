@@ -41,24 +41,32 @@ async function instagramProfileToken(configured?: string | null, fallback?: stri
   if (!primary) return secondary
   if (!secondary || primary === secondary) return primary
 
-  try {
-    const url = new URL('https://graph.facebook.com/v23.0/me')
-    url.searchParams.set('fields', 'id')
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${primary}` },
-      signal: AbortSignal.timeout(8000),
-    })
-    if (response.ok) return primary
-    const data = await response.json() as { error?: { code?: number } }
-    if (data.error?.code === 190 || response.status === 401) {
-      console.warn('[MetaProfileRefresh] Saved Instagram token rejected; using environment fallback')
-      return secondary
+  // Instagram Business Login credentials must be validated against the
+  // Instagram Graph host. A Facebook Login credential may use Facebook Graph.
+  // Only switch to an environment fallback after both hosts reject auth.
+  let rejectedAuth = 0
+  for (const host of ['graph.instagram.com', 'graph.facebook.com']) {
+    try {
+      const url = new URL(`https://${host}/v24.0/me`)
+      url.searchParams.set('fields', 'id')
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${primary}` },
+        signal: AbortSignal.timeout(8000),
+      })
+      if (response.ok) return primary
+      const data = await response.json() as { error?: { code?: number } }
+      if (data.error?.code === 190 || response.status === 401) rejectedAuth++
+      else return primary
+    } catch {
+      // Transient network failure is not evidence that a token is expired.
+      return primary
     }
-    // Do not bypass a token for transient failures or unrelated permission errors.
-    return primary
-  } catch {
-    return primary
   }
+  if (rejectedAuth === 2) {
+    console.warn('[MetaProfileRefresh] Saved Instagram token rejected on both Graph hosts; using environment fallback')
+    return secondary
+  }
+  return primary
 }
 
 // Meta's Page conversation participants edge can expose names when the direct
