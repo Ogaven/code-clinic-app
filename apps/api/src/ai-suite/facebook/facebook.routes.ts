@@ -629,6 +629,7 @@ export async function processSocialMessage(
   channel:   'FACEBOOK' | 'INSTAGRAM',
   messageId?: string,
   attachmentOnly = false,
+  attachments: Array<{ type: string; url?: string }> = [],
 ): Promise<void> {
   try {
     // ── 0. Hard guard: never process our own Page/account as a "sender" ──────
@@ -743,7 +744,7 @@ export async function processSocialMessage(
       await prisma.aiMessage.create({
         data: {
           conversationId: conversation.id, role: 'USER', content: text,
-          metadata: messageId ? JSON.stringify({ messageId }) : undefined,
+          metadata: messageId || attachments.length ? JSON.stringify({ ...(messageId ? { messageId } : {}), ...(attachments.length ? { attachments } : {}) }) : undefined,
         },
       })
     }
@@ -866,21 +867,47 @@ export async function sendSocialReply(
     ? `https://graph.instagram.com/${GRAPH_VERSION}/me/messages`
     : `https://graph.facebook.com/${GRAPH_VERSION}/me/messages`
 
-  const res = await fetch(sendUrl, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      recipient: { id: recipientId },
-      message:   { text },
-    }),
-  })
-
+  let res: Response
+  try {
+    res = await fetch(sendUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        message:   { text },
+      }),
+    })
+  
+  } catch (error) {
+    throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] Network error: ${String(error).slice(0, 300)}`)
+  }
   if (!res.ok) {
-    const details = (await res.text()).slice(0, 500)
-    console.error(`[${channel}] Failed to send reply: HTTP ${res.status}`, details)
-    throw new Error(`[${channel}] Meta reply rejected: HTTP ${res.status}`)
+    // A response body read can itself fail after Meta has processed a send.
+    // Keep the delivery uncertain and avoid exposing raw provider responses
+    // (which can include sensitive identifiers) in staff-facing errors.
+    let detail = 'Provider returned a non-success status'
+    try { detail = (await res.text()).slice(0, 500) } catch { /* body unavailable */ }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(`[${channel}] Meta reply rejected: HTTP ${res.status}`)
+    }
+    throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] HTTP ${res.status}: ${detail}`)
   } else {
-    console.log(`[${channel}] Reply sent to ${recipientId}`)
+    // A 2xx status alone is not a confirmed Messenger send. Meta normally
+    // returns a message_id; a missing or unreadable acknowledgement must
+    // remain uncertain to prevent accidental duplicate staff replies.
+    let receipt: unknown
+    try {
+      receipt = await res.json()
+    } catch {
+      throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] Unable to read provider acknowledgement`)
+    }
+    const messageId = receipt && typeof receipt === 'object'
+      ? (receipt as { message_id?: unknown }).message_id
+      : null
+    if (typeof messageId !== 'string' || !messageId) {
+      throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] Provider acknowledgement missing message ID`)
+    }
+    console.log(`[${channel}] Reply accepted with message ID`)
   }
 }
 

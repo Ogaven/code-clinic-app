@@ -687,13 +687,20 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       },
     })
 
+    // Provider acceptance and local status persistence are separate operations.
+    // A failed status write must not prompt staff to resend an accepted message.
+    const recordSent = async (data: { status: string; wamid?: string }) => {
+      try { await prisma.aiMessage.update({ where: { id: msgRecord.id }, data }) }
+      catch (err) { console.error('[Takeover] Accepted send status write failed:', err) }
+    }
+
     try {
     if (conversation.channel === 'WHATSAPP') {
       const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
       // logToConversation:false — message already created above; we just need the wamid back
       const wamid = await sendWhatsAppMessage(conversation.phoneNumber, text.trim(), undefined, false)
       if (wamid && wamid !== 'unknown') {
-        await prisma.aiMessage.update({ where: { id: msgRecord.id }, data: { wamid, status: 'sent' } })
+        await recordSent({ wamid, status: 'sent' })
       }
     } else if (conversation.channel === 'SMS') {
       // Never silently redirect an SMS reply to WhatsApp.
@@ -703,12 +710,11 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
         await prisma.aiMessage.delete({ where: { id: msgRecord.id } })
         return res.status(503).json({ error: 'SMS channel is not active or configured; no message was sent' })
       }
-      await prisma.aiMessage.update({ where: { id: msgRecord.id }, data: { status: 'sent' } })
+      await recordSent({ status: 'sent' })
     } else if (conversation.channel === 'FACEBOOK' || conversation.channel === 'INSTAGRAM') {
       const { sendSocialReply } = await import('../facebook/facebook.routes')
       await sendSocialReply(conversation.phoneNumber, text.trim(), conversation.channel as 'FACEBOOK' | 'INSTAGRAM')
-      // Meta accepted the request; delivery/read confirmation is separate.
-      await prisma.aiMessage.update({ where: { id: msgRecord.id }, data: { status: 'sent' } })
+      await recordSent({ status: 'sent' })
     } else if (conversation.channel === 'FACEBOOK_COMMENT' || conversation.channel === 'INSTAGRAM_COMMENT') {
       const { sendCommentReply } = await import('../facebook/facebook.routes')
       const lastUserMsg = await prisma.aiMessage.findFirst({
@@ -718,7 +724,7 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       const meta = lastUserMsg?.metadata ? JSON.parse(lastUserMsg.metadata) : {}
       if (meta.commentId) {
         await sendCommentReply(meta.commentId, text.trim(), conversation.channel as 'FACEBOOK_COMMENT' | 'INSTAGRAM_COMMENT')
-        await prisma.aiMessage.update({ where: { id: msgRecord.id }, data: { status: 'sent' } })
+        await recordSent({ status: 'sent' })
       } else {
         // A comment without a platform comment ID cannot be delivered.
         // Do not show a staff reply as sent when no external send occurred.
@@ -732,7 +738,7 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       // an undelivered reply as sent or blindly retrying a potentially accepted send.
       await prisma.aiMessage.update({
         where: { id: msgRecord.id },
-        data: { status: 'failed' },
+        data: { status: (conversation.channel === 'FACEBOOK' || conversation.channel === 'INSTAGRAM') && String((deliveryError as Error)?.message ?? '').includes('META_DM_DELIVERY_UNCERTAIN') ? 'unknown' : 'failed' },
       }).catch((updateError) => console.error('[Takeover] Failed to mark delivery attempt:', updateError))
       console.error('[Takeover] Provider delivery error:', deliveryError)
       return res.status(502).json({ error: 'Provider delivery was not confirmed. Check the conversation before retrying to avoid duplicates.' })

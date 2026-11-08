@@ -47,7 +47,7 @@ beforeEach(() => {
   process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'test-fb-page-token'
   process.env.INSTAGRAM_ACCESS_TOKEN = 'test-ig-token'
   process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID = IG_ACCOUNT_ID
-  global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'created-reply-1' }), text: async () => JSON.stringify({ id: 'created-reply-1' }) }) as any
+  global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'created-reply-1', message_id: 'mid-created-1' }), text: async () => JSON.stringify({ id: 'created-reply-1', message_id: 'mid-created-1' }) }) as any
 })
 afterEach(() => { global.fetch = originalFetch })
 
@@ -140,7 +140,7 @@ describe('processSocialMessage — DM ingestion', () => {
   it('does not persist Facebook user as a verified customer name', async () => {
     (global.fetch as any) = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ first_name: 'Facebook', last_name: 'user', profile_pic: null }),
+      json: async () => ({ first_name: 'Facebook', last_name: 'user', profile_pic: null, message_id: 'mid-generic' }),
     })
     await processSocialMessage('28540242905567428', 'Hello', 'FACEBOOK', 'mid.generic-name')
     expect(prismaMock.aiConversation.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -336,7 +336,7 @@ describe('Existing social DM placeholder recovery', () => {
       if (String(url).includes('/28540242905567428?')) {
         return { ok: true, json: async () => ({ username: 'real_patient', profile_pic: 'https://example.test/ig.jpg' }) } as any
       }
-      return { ok: true, json: async () => ({}), text: async () => '' } as any
+      return { ok: true, json: async () => ({ message_id: 'mid-reply-test' }), text: async () => '' } as any
     }) as any
 
     await processSocialMessage('28540242905567428', 'Hello', 'INSTAGRAM', 'mid-ig-placeholder')
@@ -363,7 +363,7 @@ describe('Facebook social identity enrichment', () => {
       if (String(url).includes('/psid-123?fields=first_name,last_name,profile_pic')) {
         return { ok: true, json: async () => ({ first_name: 'Jane', last_name: 'Doe', profile_pic: 'https://example.test/jane.jpg' }) } as any
       }
-      return { ok: true, json: async () => ({}), text: async () => '' } as any
+      return { ok: true, json: async () => ({ message_id: 'mid-reply-test' }), text: async () => '' } as any
     }) as any
 
     await processSocialMessage('psid-123', 'Hello', 'FACEBOOK', 'mid-profile-1')
@@ -383,7 +383,7 @@ describe('Facebook social identity enrichment', () => {
       if (value.includes('/post-1?fields=message')) {
         return { ok: true, json: async () => ({ message: 'Alcohol before the dentist? Tell us you are anxious instead.' }) } as any
       }
-      return { ok: true, json: async () => ({ id: 'created-reply-1' }), text: async () => JSON.stringify({ id: 'created-reply-1' }) } as any
+      return { ok: true, json: async () => ({ id: 'created-reply-1', message_id: 'mid-created-1' }), text: async () => JSON.stringify({ id: 'created-reply-1', message_id: 'mid-created-1' }) } as any
     }) as any
 
     await processComment('comment-1', 'post-1', 'commenter-1', 'Princess Priscilla', "What's this all about?", 'FACEBOOK_COMMENT')
@@ -400,5 +400,18 @@ describe('Facebook social identity enrichment', () => {
       'commenter-1',
       'Alcohol before the dentist? Tell us you are anxious instead.',
     )
+  })
+})
+
+
+describe('Meta DM delivery acknowledgement safeguards', () => {
+  it('does not treat a successful HTTP response without message_id as confirmed', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ recipient_id: 'recipient-1' }) }) as any
+    await expect(sendSocialReply('recipient-1', 'Hello', 'FACEBOOK')).rejects.toThrow('META_DM_DELIVERY_UNCERTAIN')
+  })
+
+  it('does not treat an unreadable provider receipt as confirmed', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => { throw new Error('unreadable') } }) as any
+    await expect(sendSocialReply('recipient-1', 'Hello', 'INSTAGRAM')).rejects.toThrow('META_DM_DELIVERY_UNCERTAIN')
   })
 })
