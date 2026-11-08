@@ -1563,8 +1563,8 @@ function InboxPage() {
                     : { background: '#fff',    borderBottomLeftRadius:  4, color: '#111' }}>
                   {receivedAttachments.length > 0 ? (
                     <div className="flex flex-col gap-2">
-                      {msg.content.replace(/\\[Incoming (?:image|audio|video|file) attachment\\]/g, '').trim() && (
-                        <span className="whitespace-pre-wrap">{msg.content.replace(/\\[Incoming (?:image|audio|video|file) attachment\\]/g, '').trim()}</span>
+                      {msg.content.replace(/\[Incoming (?:image|audio|video|file) attachment\]/g, '').trim() && (
+                        <span className="whitespace-pre-wrap">{msg.content.replace(/\[Incoming (?:image|audio|video|file) attachment\]/g, '').trim()}</span>
                       )}
                       <MetaAttachments attachments={receivedAttachments} />
                     </div>
