@@ -139,35 +139,42 @@ export async function fetchInstagramUserInfo(
   igsid: string,
   token: string,
 ): Promise<{ name: string | null; pictureUrl: string | null }> {
-  try {
-    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(igsid)}`)
-    url.searchParams.set('fields', 'name,username,profile_pic')
-    url.searchParams.set('access_token', token)
-    const res = await fetch(url.toString())
-    const data = await res.json() as {
-      name?: string
-      username?: string
-      profile_pic?: string
-      error?: { code?: number; error_subcode?: number; type?: string }
-    }
-    if (!res.ok) {
-      // Log only Meta's numeric diagnostic codes and error type. Never log
-      // customer identifiers, request URLs, access tokens, or error messages.
+  // Instagram Business Login tokens use graph.instagram.com (as does our
+  // working Instagram send path). Facebook Login Page tokens may instead use
+  // graph.facebook.com. Try the Instagram host first, then the Facebook host
+  // only if the first request is rejected. Never log IDs or credentials.
+  for (const host of ['graph.instagram.com', 'graph.facebook.com'] as const) {
+    try {
+      const url = new URL(`https://${host}/${GRAPH_VERSION}/${encodeURIComponent(igsid)}`)
+      url.searchParams.set('fields', 'name,username,profile_pic')
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000),
+      })
+      const data = await res.json() as {
+        name?: string
+        username?: string
+        profile_pic?: string
+        error?: { code?: number; error_subcode?: number; type?: string }
+      }
+      if (res.ok) {
+        return {
+          name: data.name?.trim() || (data.username ? `@${data.username.replace(/^@/, '')}` : null),
+          pictureUrl: data.profile_pic || null,
+        }
+      }
       console.warn('[Instagram] Profile lookup rejected', {
-        status: res.status,
+        host, status: res.status,
         metaCode: typeof data?.error?.code === 'number' ? data.error.code : null,
         metaSubcode: typeof data?.error?.error_subcode === 'number' ? data.error.error_subcode : null,
-        metaType: typeof data?.error?.type === 'string' ? data.error.type.slice(0, 80) : null,
       })
-      return { name: null, pictureUrl: null }
+      // An expired/revoked token cannot be repaired by changing Graph hosts.
+      if (data.error?.code === 190) break
+    } catch {
+      console.warn('[Instagram] Profile lookup network failure', { host })
     }
-    return {
-      name: data.name?.trim() || (data.username ? `@${data.username.replace(/^@/, '')}` : null),
-      pictureUrl: data.profile_pic || null,
-    }
-  } catch {
-    return { name: null, pictureUrl: null }
   }
+  return { name: null, pictureUrl: null }
 }
 
 // ── Facebook Messenger ────────────────────────────────────────────────────────
