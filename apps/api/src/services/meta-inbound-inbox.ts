@@ -17,7 +17,7 @@ export async function enqueueMetaEvent(body: MetaEvent): Promise<void> {
     if (entry.messaging !== undefined && !Array.isArray(entry.messaging)) throw new Error('Invalid Meta webhook messaging')
     if (entry.changes !== undefined && !Array.isArray(entry.changes)) throw new Error('Invalid Meta webhook changes')
     for (const event of entry.messaging ?? []) {
-      if (!event || typeof event !== 'object' || !event.message?.text || event.message.is_echo) continue
+      if (!event || typeof event !== 'object' || (!event.message?.text && !event.message?.attachments?.length) || event.message.is_echo) continue
       const payload = { object: body.object, kind: 'message', event }
       await persist(payload)
     }
@@ -45,7 +45,11 @@ async function dispatch(payload: any): Promise<void> {
   const instagram = payload.object === 'instagram'
   if (payload.kind === 'message') {
     const e = payload.event
-    await processSocialMessage(String(e.sender.id), String(e.message.text), instagram ? 'INSTAGRAM' : 'FACEBOOK', e.message.mid ? String(e.message.mid) : undefined)
+    const attachments = Array.isArray(e.message.attachments) ? e.message.attachments : []
+    const messageText = typeof e.message.text === 'string' ? e.message.text.trim() : ''
+    const attachmentKinds = [...new Set(attachments.map((a: any) => String(a?.type || 'file')))]
+    const content = messageText || `[Customer sent ${attachmentKinds.join(', ')} attachment(s); content requires staff review]`
+    await processSocialMessage(String(e.sender.id), content, instagram ? 'INSTAGRAM' : 'FACEBOOK', e.message.mid ? String(e.message.mid) : undefined, !messageText)
     return
   }
   const c = payload.change
