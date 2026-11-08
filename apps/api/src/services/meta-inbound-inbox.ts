@@ -91,7 +91,9 @@ export async function processMetaInboxBatch(): Promise<void> {
       const attempts = item.attempts + 1
       await prisma.metaInboundEvent.updateMany({
         where: { id: item.id, status: 'PROCESSING', attempts: item.attempts + 1 },
-        data: { status: attempts >= 8 ? 'FAILED' : 'PENDING', leaseUntil: null, availableAt: new Date(Date.now() + Math.min(3600, 2 ** attempts * 10) * 1000), lastError: String(error).slice(0, 1000) },
+        // An outbound Meta call may have succeeded before its receipt was lost.
+        // Quarantine ambiguous delivery instead of automatically resending.
+        data: { status: attempts >= 8 || String(error).includes('META_DM_DELIVERY_UNCERTAIN') || String(error).includes('META_DM_REVIEW_REQUIRED_MISSING_MESSAGE_ID') || String(error).includes('META_COMMENT_DELIVERY_UNCERTAIN') ? 'FAILED' : 'PENDING', leaseUntil: null, availableAt: new Date(Date.now() + Math.min(3600, 2 ** attempts * 10) * 1000), lastError: String(error).slice(0, 1000) },
       })
     }
   }
