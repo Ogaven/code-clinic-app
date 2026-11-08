@@ -26,7 +26,8 @@ function lookupEligible(id: string | null): boolean {
 function placeholder(name: string | null): boolean {
   if (!name) return true
   const value = name.trim()
-  return !value || /^FB User(?:\s+\S+)?$/i.test(value)
+  return !value || /^(?:Unidentified contact|Unknown contact|Unknown user|Unknown sender|Unknown Facebook user|Unknown Instagram user)$/i.test(value)
+    || /^FB User(?:\s+\S+)?$/i.test(value)
     || /^Facebook User$/i.test(value)
     || /^Instagram User$/i.test(value)
     || /^@?(?:ig_)?\d+$/i.test(value)
@@ -146,6 +147,10 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
     const batch = rows.slice(0, 10)
     cursor = rows.length > 10 ? batch[batch.length - 1].id : undefined
     const stats = { scanned: batch.length, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, skippedNonPlatformId: 0, unavailable: 0 }
+    const byChannel = {
+      FACEBOOK: { scanned: 0, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, skippedNonPlatformId: 0, unavailable: 0, cooldownSkipped: 0 },
+      INSTAGRAM: { scanned: 0, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, skippedNonPlatformId: 0, unavailable: 0, cooldownSkipped: 0 },
+    }
     const fbNames = tokens.FACEBOOK && batch.some(row => row.channel === 'FACEBOOK' && placeholder(row.displayName))
       ? await facebookParticipantNames(tokens.FACEBOOK)
       : new Map<string, string>()
@@ -153,14 +158,17 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
     let facebookUnmatchedPlaceholders = 0
     let facebookAlreadyNamedMatches = 0
     for (const row of batch) {
+      const channelStats = byChannel[row.channel as 'FACEBOOK' | 'INSTAGRAM']
+      channelStats.scanned++
       const token = tokens[row.channel]
-      if (!token) { stats.missingToken++; continue }
+      if (!token) { stats.missingToken++; channelStats.missingToken++; continue }
       if (!row.phoneNumber || (!placeholder(row.displayName) && row.profilePictureUrl)) continue
       // The connected Instagram professional account is not a customer. Historical
       // records using our own account ID must remain intact, not profile-enriched.
       if (row.channel === 'INSTAGRAM' && row.phoneNumber === process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID) continue
-      if (!lookupEligible(row.phoneNumber)) { stats.skippedNonPlatformId++; continue }
+      if (!lookupEligible(row.phoneNumber)) { stats.skippedNonPlatformId++; channelStats.skippedNonPlatformId++; continue }
       stats.attempted++
+      channelStats.attempted++
       const participantName = row.channel === 'FACEBOOK' ? fbNames.get(row.phoneNumber) : undefined
       if (row.channel === 'FACEBOOK' && placeholder(row.displayName) && !participantName) facebookUnmatchedPlaceholders++
       if (row.channel === 'FACEBOOK' && participantName && !placeholder(row.displayName)) facebookAlreadyNamedMatches++
@@ -169,6 +177,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
       const shouldFetchProfile = !participantName || !row.profilePictureUrl
       const deniedKey = `${row.channel}:${row.phoneNumber}`
       const temporarilyDenied = (deniedProfileUntil.get(deniedKey) ?? 0) > Date.now()
+      if (shouldFetchProfile && temporarilyDenied) channelStats.cooldownSkipped++
       const profile = shouldFetchProfile && !temporarilyDenied
         ? row.channel === 'FACEBOOK'
           ? await fetchFbUserInfo(row.phoneNumber, token)
@@ -186,7 +195,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
           if (until <= Date.now()) deniedProfileUntil.delete(key)
         }
       }
-      if (!profile.name && !profile.pictureUrl) stats.unavailable++
+      if (!profile.name && !profile.pictureUrl) { stats.unavailable++; channelStats.unavailable++ }
       const name = participantName || profile.name?.trim() || null
       const validName = name && !placeholder(name) ? name : null
       if (row.channel === 'FACEBOOK' && row.phoneNumber && fbNames.has(row.phoneNumber)) facebookNameMatches++
@@ -198,6 +207,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
           data: { displayName: validName },
         })
         stats.namesUpdated += updated.count
+        channelStats.namesUpdated += updated.count
       }
       if (profile.pictureUrl && !row.profilePictureUrl) {
         const updated = await prisma.aiConversation.updateMany({
@@ -205,9 +215,12 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
           data: { profilePictureUrl: profile.pictureUrl },
         })
         stats.photosUpdated += updated.count
+        channelStats.photosUpdated += updated.count
       }
     }
     console.info('[MetaProfileRefresh] Batch summary', { ...stats, facebookNameMatches, facebookAlreadyNamedMatches, facebookUnmatchedPlaceholders })
+    // Aggregated diagnostics only: no customer IDs, names, tokens or photos.
+    console.info('[MetaProfileRefresh] Channel summary', byChannel)
   } catch (error) {
     console.warn('[MetaProfileRefresh] Background refresh skipped:', error instanceof Error ? error.message : 'unknown error')
   } finally {
