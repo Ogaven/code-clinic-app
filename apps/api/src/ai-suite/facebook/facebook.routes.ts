@@ -885,6 +885,9 @@ export async function sendSocialReply(
     // (which can include sensitive identifiers) in staff-facing errors.
     let detail = 'Provider returned a non-success status'
     try { detail = (await res.text()).slice(0, 500) } catch { /* body unavailable */ }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(`[${channel}] Meta reply rejected: HTTP ${res.status}`)
+    }
     throw new Error(`META_DM_DELIVERY_UNCERTAIN [${channel}] HTTP ${res.status}: ${detail}`)
   } else {
     // A 2xx status alone is not a confirmed Messenger send. Meta normally
