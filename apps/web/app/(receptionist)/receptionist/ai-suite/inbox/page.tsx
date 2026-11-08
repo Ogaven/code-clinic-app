@@ -300,6 +300,52 @@ function MediaBubble({ type, content }: { type: string; content?: string }) {
   )
 }
 
+function metaAttachments(metadata?: string | null): Array<{ type: string; url?: string }> {
+  if (!metadata) return []
+  try {
+    const parsed = JSON.parse(metadata) as { attachments?: unknown }
+    if (!Array.isArray(parsed.attachments)) return []
+    return parsed.attachments.flatMap((item: unknown) => {
+      if (!item || typeof item !== 'object') return []
+      const entry = item as { type?: unknown; url?: unknown }
+      const type = String(entry.type ?? '')
+      if (!['image', 'audio', 'video', 'file'].includes(type)) return []
+      let url: string | undefined
+      if (typeof entry.url === 'string') {
+        try {
+          const parsedUrl = new URL(entry.url)
+          if (parsedUrl.protocol === 'https:' && !parsedUrl.username && !parsedUrl.password) url = parsedUrl.href
+        } catch { /* invalid or expired provider link */ }
+      }
+      return [{ type, url }]
+    })
+  } catch { return [] }
+}
+function MetaAttachments({ attachments }: { attachments: Array<{ type: string; url?: string }> }) {
+  return <div className="flex flex-col gap-2">
+    {attachments.map((attachment, index) => (
+      <div key={index} className="max-w-full">
+        {attachment.url && attachment.type === 'image' ? (
+          <a href={attachment.url} target="_blank" rel="noopener noreferrer" aria-label="Open received image">
+            <img src={attachment.url} alt="Received attachment" loading="lazy" referrerPolicy="no-referrer"
+              className="max-h-64 max-w-full rounded-lg object-contain" />
+          </a>
+        ) : attachment.url && attachment.type === 'audio' ? (
+          <audio controls preload="none" src={attachment.url} className="max-w-full" />
+        ) : attachment.url && attachment.type === 'video' ? (
+          <video controls preload="metadata" src={attachment.url} className="max-h-72 max-w-full rounded-lg" />
+        ) : attachment.url ? (
+          <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold underline">
+            Open received file
+          </a>
+        ) : (
+          <span className="text-xs italic">Received {attachment.type} — media link unavailable. Request a resend if needed.</span>
+        )}
+      </div>
+    ))}
+  </div>
+}
+
 function VoiceNotePlayer({ conversationId, messageId, content }: { conversationId: string; messageId: string; content: string }) {
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -1503,6 +1549,7 @@ function InboxPage() {
         {msgs.filter(msg => !isTemplateArtifact(msg.content)).map((msg, i, visibleMsgs) => {
           const isAgent  = msg.role === 'AGENT'
           const media    = parseBubble(msg.content)
+          const receivedAttachments = !isAgent && (sel?.channel === 'FACEBOOK' || sel?.channel === 'INSTAGRAM') ? metaAttachments(msg.metadata) : []
           const deliveryStatus = (channel === 'FACEBOOK' || channel === 'INSTAGRAM') && isAgent
             ? (() => { try { return JSON.parse(msg.metadata || '{}').deliveryStatus as string | undefined } catch { return undefined } })()
             : undefined
@@ -1514,7 +1561,14 @@ function InboxPage() {
                   style={isAgent
                     ? { background: '#d9fdd3', borderBottomRightRadius: 4, color: '#111' }
                     : { background: '#fff',    borderBottomLeftRadius:  4, color: '#111' }}>
-                  {media === 'audio' && msg.metadata?.includes('voiceNoteAvailable') && sel?.channel === 'WHATSAPP' ? <VoiceNotePlayer conversationId={sel.id} messageId={msg.id} content={msg.content} /> : media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
+                  {receivedAttachments.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      {msg.content.replace(/\\[Incoming (?:image|audio|video|file) attachment\\]/g, '').trim() && (
+                        <span className="whitespace-pre-wrap">{msg.content.replace(/\\[Incoming (?:image|audio|video|file) attachment\\]/g, '').trim()}</span>
+                      )}
+                      <MetaAttachments attachments={receivedAttachments} />
+                    </div>
+                  ) : media === 'audio' && msg.metadata?.includes('voiceNoteAvailable') && sel?.channel === 'WHATSAPP' ? <VoiceNotePlayer conversationId={sel.id} messageId={msg.id} content={msg.content} /> : media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                   <div className={cn('flex items-center gap-1 mt-0.5', isAgent ? 'justify-end' : 'justify-start')}>
                     <span className="text-[10px] text-gray-400">{msgTimestamp(msg.createdAt)}</span>
                     {isAgent && <MsgStatus status={msg.status} />}
