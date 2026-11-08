@@ -168,8 +168,10 @@ export async function fetchInstagramUserInfo(
         metaCode: typeof data?.error?.code === 'number' ? data.error.code : null,
         metaSubcode: typeof data?.error?.error_subcode === 'number' ? data.error.error_subcode : null,
       })
-      // An expired/revoked token cannot be repaired by changing Graph hosts.
-      if (data.error?.code === 190) break
+      // An Instagram Business Login token and a Facebook Login Page token
+      // may be accepted on different Graph hosts. Error 190 on one host
+      // alone does not establish that the credential is revoked.
+      // Attempt the other supported host before concluding lookup failed.
     } catch {
       console.warn('[Instagram] Profile lookup network failure', { host })
     }
