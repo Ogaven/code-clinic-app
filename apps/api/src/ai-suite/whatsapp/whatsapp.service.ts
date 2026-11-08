@@ -744,14 +744,22 @@ export async function sendWhatsAppMessageDirect(to: string, body: string, phoneN
     error?:    { message: string; code: number; error_subcode?: number }
   }
 
-  // Meta can return HTTP 200 with an error object — treat this as a real failure
-  if (json.error) {
-    const detail = `#${json.error.code} ${json.error.message}`
+  // Meta may reject a send with a non-2xx response, an error object,
+  // or an unexpected success payload lacking the accepted message ID.
+  // None of these is proof that the recipient received the message.
+  if (!res.ok || json.error) {
+    const detail = json.error
+      ? `#${json.error.code} ${json.error.message}`
+      : `HTTP ${res.status} (no Meta message acceptance confirmed)`
     console.error(`[WhatsApp Direct] FAILED to +${normalizedTo}:`, detail)
     throw new Error(detail)
   }
 
-  const msgId = json.messages?.[0]?.id ?? 'unknown'
+  const msgId = json.messages?.[0]?.id
+  if (!msgId) {
+    console.error('[WhatsApp Direct] Meta response missing accepted message ID')
+    throw new Error('WhatsApp delivery not confirmed: Meta returned no message ID')
+  }
   console.log(`[WhatsApp Direct] Sent to +${normalizedTo}: ${body.slice(0, 60)}… (msgId: ${msgId})`)
   logOutboundMessage(to, body, classifyMessage(body))
   if (logToConversation) logAgentMessageToConversation(to, body, msgId !== 'unknown' ? msgId : undefined)
