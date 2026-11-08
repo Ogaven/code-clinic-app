@@ -629,6 +629,7 @@ export async function processSocialMessage(
   channel:   'FACEBOOK' | 'INSTAGRAM',
   messageId?: string,
   attachmentOnly = false,
+  attachments: Array<{ type: string; url?: string }> = [],
 ): Promise<void> {
   try {
     // ── 0. Hard guard: never process our own Page/account as a "sender" ──────
@@ -742,7 +743,7 @@ export async function processSocialMessage(
       await prisma.aiMessage.create({
         data: {
           conversationId: conversation.id, role: 'USER', content: text,
-          metadata: messageId ? JSON.stringify({ messageId }) : undefined,
+          metadata: messageId || attachments.length ? JSON.stringify({ ...(messageId ? { messageId } : {}), ...(attachments.length ? { attachments } : {}) }) : undefined,
         },
       })
     }
