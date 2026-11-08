@@ -688,7 +688,8 @@ export async function processSocialMessage(
     // Numeric/generic placeholders are not verified customer names. Retry
     // resolution when the customer sends another message, without blocking DMs.
     const isPlaceholder = (name: string | null | undefined) =>
-      !name || /^FB User(?:\s+\d+)?$/i.test(name.trim())
+      !name || /^(?:Unidentified contact|Unknown contact|Unknown user|Unknown sender|Unknown Facebook user|Unknown Instagram user)$/i.test(name.trim())
+        || /^FB User(?:\s+\S+)?$/i.test(name.trim())
         || /^Facebook User$/i.test(name.trim())
         || /^Instagram User$/i.test(name.trim())
         || /^@?(?:ig_)?\d+$/i.test(name.trim())
