@@ -380,6 +380,15 @@ function deliveryFailureExplanation(code?: number | null): string {
   }
 }
 
+function DeliveryFailureDetails({ errorCode }: { errorCode?: number | null }) {
+  return (
+    <details className="mt-1 max-w-full text-[11px] text-red-700">
+      <summary className="cursor-pointer select-none font-medium hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700">Not delivered · Why?</summary>
+      <p className="mt-1 max-w-sm rounded-md border border-red-200 bg-red-50 px-2 py-1.5 leading-relaxed">{deliveryFailureExplanation(errorCode)}</p>
+    </details>
+  )
+}
+
 function MsgStatus({ status, errorCode }: { status?: string | null; errorCode?: number | null }) {
   const normalized = status?.toLowerCase()
   if (normalized === 'read') return <span title="Read" aria-label="Read"><CheckCheck size={12} className="text-[#53bdeb]" /></span>
@@ -1585,7 +1594,7 @@ function InboxPage() {
                     {isAgent && <MsgStatus status={msg.status} errorCode={msg.deliveryErrorCode} />}
                   </div>
                 </div>
-                {deliveryStatus === 'FAILED' && <div role="alert" className="mt-1 px-1 text-xs font-semibold text-red-700">{deliveryFailureExplanation(msg.deliveryErrorCode)}</div>}
+                {deliveryStatus === 'FAILED' && <DeliveryFailureDetails errorCode={msg.deliveryErrorCode} />}
                 {deliveryStatus === 'SENDING' && <div role="status" className="mt-1 px-1 text-xs font-semibold text-amber-700">Delivery unconfirmed — check before retrying.</div>}
                 {showTime && <div />}
               </div>
@@ -1766,7 +1775,7 @@ function InboxPage() {
                     </div>
                   ) : media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                 </div>
-                {deliveryStatus === 'FAILED' && <span role="alert" className="text-[11px] font-semibold text-red-700 mt-1 px-1">{deliveryFailureExplanation(msg.deliveryErrorCode)}</span>}
+                {deliveryStatus === 'FAILED' && <DeliveryFailureDetails errorCode={msg.deliveryErrorCode} />}
                 {deliveryStatus === 'SENDING' && <span role="status" className="text-[11px] font-semibold text-amber-700 mt-1 px-1">Delivery unconfirmed — check Meta before resending.</span>}
                 <span className={cn('text-[10px] text-gray-400 mt-0.5 px-1', isAgent ? 'text-right' : 'text-left')}>{msgTimestamp(msg.createdAt)}</span>
               </div>
