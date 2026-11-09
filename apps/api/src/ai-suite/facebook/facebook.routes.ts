@@ -223,6 +223,7 @@ router.post('/facebook/webhook', async (req, res) => {
           'FACEBOOK',
           event.message.mid ? String(event.message.mid) : undefined,
           !messageText,
+          attachments,
         )
       }
       // Page post comments arrive as entry.changes[] with field "feed".
@@ -303,6 +304,7 @@ router.post('/instagram/webhook', async (req, res) => {
           'INSTAGRAM',
           event.message.mid ? String(event.message.mid) : undefined,
           !messageText,
+          attachments,
         )
       }
       // Post comments
@@ -629,6 +631,7 @@ export async function processSocialMessage(
   channel:   'FACEBOOK' | 'INSTAGRAM',
   messageId?: string,
   attachmentOnly = false,
+  rawAttachments: unknown[] = [],
 ): Promise<void> {
   try {
     // ── 0. Hard guard: never process our own Page/account as a "sender" ──────
@@ -739,11 +742,16 @@ export async function processSocialMessage(
       })
     }
 
+    const mediaAttachments = rawAttachments.slice(0, 10).flatMap((attachment: any) => {
+      const url = attachment?.payload?.url
+      if (typeof url !== 'string' || !/^https:\/\//i.test(url)) return []
+      return [{ type: String(attachment?.type || 'file').slice(0, 40), url }]
+    })
     if (!existingInbound) {
       await prisma.aiMessage.create({
         data: {
           conversationId: conversation.id, role: 'USER', content: text,
-          metadata: messageId ? JSON.stringify({ messageId }) : undefined,
+          metadata: messageId || mediaAttachments.length ? JSON.stringify({ ...(messageId ? { messageId } : {}), ...(mediaAttachments.length ? { attachments: mediaAttachments } : {}) }) : undefined,
         },
       })
     }
