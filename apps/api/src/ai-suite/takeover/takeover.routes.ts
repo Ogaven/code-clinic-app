@@ -526,14 +526,27 @@ router.get('/conversations/:conversationId/messages', adminAndReceptionist, asyn
       },
       orderBy: { createdAt: 'asc' },
     })
-    // Do not send private object-storage keys to the browser. Playback is obtained
-    // separately through the authorized short-lived URL endpoint.
+    // Match Meta's asynchronous failures to the exact outbound WhatsApp wamid.
+    // Never match by phone number: multiple messages may share one recipient.
+    const failedWamids = messages.filter(m => m.role === 'AGENT' && m.status?.toLowerCase() === 'failed' && m.wamid).map(m => m.wamid!)
+    const deliveryFailures = failedWamids.length
+      ? await prisma.metaDeliveryFailure.findMany({
+          where: { wamid: { in: failedWamids } },
+          orderBy: { occurredAt: 'desc' },
+          select: { wamid: true, code: true },
+        })
+      : []
+    const failureCodes = new Map<string, number>()
+    for (const failure of deliveryFailures) {
+      if (failure.wamid && !failureCodes.has(failure.wamid)) failureCodes.set(failure.wamid, failure.code)
+    }
+    // Do not send private object-storage keys or raw Meta error details to the browser.
     res.json(messages.map(m => {
       let voiceNoteAvailable = false
       if (m.metadata) {
         try { voiceNoteAvailable = !!(JSON.parse(m.metadata) as { voiceNote?: { storageKey?: string } }).voiceNote?.storageKey } catch {}
       }
-      return { ...m, metadata: voiceNoteAvailable ? JSON.stringify({ voiceNoteAvailable: true }) : m.metadata }
+      return { ...m, metadata: voiceNoteAvailable ? JSON.stringify({ voiceNoteAvailable: true }) : m.metadata, deliveryErrorCode: m.wamid ? failureCodes.get(m.wamid) ?? null : null }
     }))
   } catch (err: any) {
     console.error('[Takeover] messages fetch error:', err.message)

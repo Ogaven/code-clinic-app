@@ -28,10 +28,10 @@ type Conversation = {
   profilePictureUrl: string | null
   postCaption: string | null
   archivedAt: string | null
-  lastMessage: { id: string; role: string; content: string; createdAt: string; metadata?: string | null } | null
+  lastMessage: { id: string; role: string; content: string; createdAt: string; metadata?: string | null; deliveryErrorCode?: number | null } | null
   createdAt: string; updatedAt: string
 }
-type Message = { id: string; role: 'USER' | 'AGENT'; content: string; createdAt: string; status?: string | null; wamid?: string | null; metadata?: string | null }
+type Message = { id: string; role: 'USER' | 'AGENT'; content: string; createdAt: string; status?: string | null; wamid?: string | null; metadata?: string | null; deliveryErrorCode?: number | null }
 
 // ── Channel config ─────────────────────────────────────────────────────────────
 type ChannelKey = 'WHATSAPP' | 'INSTAGRAM' | 'FACEBOOK' | 'WEBSITE' | 'FB_COMMENTS' | 'IG_COMMENTS'
@@ -370,11 +370,21 @@ function VoiceNotePlayer({ conversationId, messageId, content }: { conversationI
   </div>
 }
 
-function MsgStatus({ status }: { status?: string | null }) {
+function deliveryFailureExplanation(code?: number | null): string {
+  switch (code) {
+    case 131042: return 'WhatsApp Business account restricted by Meta due to unsettled payments (131042). An authorized account administrator must review the restriction.'
+    case 131047: return 'WhatsApp 24-hour customer service window expired (131047). An approved template is required before free-form messages can resume.'
+    case 131026: return 'Meta could not deliver this message (131026). Verify recipient eligibility and the number before attempting another send.'
+    case 131009: return 'Meta rejected an invalid message parameter (131009). Staff should review the number and message format.'
+    default: return code ? `Meta rejected this message (error ${code}). Check the WhatsApp Business account and delivery logs before retrying.` : 'Message not delivered. The provider reason is unavailable; check Meta before retrying.'
+  }
+}
+
+function MsgStatus({ status, errorCode }: { status?: string | null; errorCode?: number | null }) {
   const normalized = status?.toLowerCase()
   if (normalized === 'read') return <span title="Read" aria-label="Read"><CheckCheck size={12} className="text-[#53bdeb]" /></span>
   if (normalized === 'delivered') return <span title="Delivered" aria-label="Delivered"><CheckCheck size={12} className="text-gray-400" /></span>
-  if (normalized === 'failed') return <span title="Delivery failed" aria-label="Delivery failed"><X size={12} className="text-red-500" /></span>
+  if (normalized === 'failed') return <span title={deliveryFailureExplanation(errorCode)} aria-label={deliveryFailureExplanation(errorCode)}><X size={12} className="text-red-500" /></span>
   if (normalized === 'sent') return <span title="Sent; delivery not yet confirmed" aria-label="Sent; delivery not yet confirmed"><Check size={12} className="text-gray-400" /></span>
   // An absent or unfamiliar status is not evidence that Meta/WhatsApp accepted the message.
   return <span title="Delivery status unknown" aria-label="Delivery status unknown" className="text-[10px] text-amber-700">?</span>
@@ -1572,10 +1582,10 @@ function InboxPage() {
                   ) : media === 'audio' && msg.metadata?.includes('voiceNoteAvailable') && sel?.channel === 'WHATSAPP' ? <VoiceNotePlayer conversationId={sel.id} messageId={msg.id} content={msg.content} /> : media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                   <div className={cn('flex items-center gap-1 mt-0.5', isAgent ? 'justify-end' : 'justify-start')}>
                     <span className="text-[10px] text-gray-400">{msgTimestamp(msg.createdAt)}</span>
-                    {isAgent && <MsgStatus status={msg.status} />}
+                    {isAgent && <MsgStatus status={msg.status} errorCode={msg.deliveryErrorCode} />}
                   </div>
                 </div>
-                {deliveryStatus === 'FAILED' && <div role="alert" className="mt-1 px-1 text-xs font-semibold text-red-700">Message not delivered — check the provider before retrying.</div>}
+                {deliveryStatus === 'FAILED' && <div role="alert" className="mt-1 px-1 text-xs font-semibold text-red-700">{deliveryFailureExplanation(msg.deliveryErrorCode)}</div>}
                 {deliveryStatus === 'SENDING' && <div role="status" className="mt-1 px-1 text-xs font-semibold text-amber-700">Delivery unconfirmed — check before retrying.</div>}
                 {showTime && <div />}
               </div>
@@ -1756,7 +1766,7 @@ function InboxPage() {
                     </div>
                   ) : media ? <MediaBubble type={media} content={msg.content} /> : msg.content}
                 </div>
-                {deliveryStatus === 'FAILED' && <span role="alert" className="text-[11px] font-semibold text-red-700 mt-1 px-1">Reply not delivered — staff review required. Do not resend without checking Meta.</span>}
+                {deliveryStatus === 'FAILED' && <span role="alert" className="text-[11px] font-semibold text-red-700 mt-1 px-1">{deliveryFailureExplanation(msg.deliveryErrorCode)}</span>}
                 {deliveryStatus === 'SENDING' && <span role="status" className="text-[11px] font-semibold text-amber-700 mt-1 px-1">Delivery unconfirmed — check Meta before resending.</span>}
                 <span className={cn('text-[10px] text-gray-400 mt-0.5 px-1', isAgent ? 'text-right' : 'text-left')}>{msgTimestamp(msg.createdAt)}</span>
               </div>
