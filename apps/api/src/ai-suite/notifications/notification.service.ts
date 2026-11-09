@@ -123,10 +123,13 @@ export async function sendAppointmentNotification(
           ], false)
           templateSent = true
         } catch (tmplErr: any) {
-          console.warn(`[Notification] Template '${templateName}' failed, falling back to freeform:`, tmplErr?.message)
+          console.error(`[Notification] Approved booking template '${templateName}' failed; no freeform fallback:`, tmplErr?.message)
         }
       }
-      if (!templateSent) await sendWhatsAppMessage(recipientPhone, message)
+      if (!templateSent) {
+        console.warn('[Notification] Booking notification not sent — approved template unavailable or rejected')
+        return
+      }
     } else {
       // Dedup for rescheduled/cancelled: these go out freeform (not via a
       // distinctly-typed template), so classifyMessage() buckets them as generic
@@ -149,7 +152,26 @@ export async function sendAppointmentNotification(
           return
         }
       }
-      await sendWhatsAppMessage(recipientPhone, message)
+      // Proactive notifications must use approved templates. A freeform "Hi" does
+      // not open the customer-service window; only a customer reply does.
+      const templateName = type === 'rescheduled'
+        ? process.env.WA_TEMPLATE_RESCHEDULED_NAME
+        : type === 'cancelled'
+          ? process.env.WA_TEMPLATE_CANCELLED_NAME
+          : process.env.WA_TEMPLATE_REMINDER_NAME
+      if (!templateName) {
+        console.warn(`[Notification] Skipping '${type}' — approved WhatsApp template not configured`)
+        return
+      }
+      const templateAddr = recipientName ? recipientName.split(' ')[0] : toProperCase(p.firstName)
+      const params = type === 'rescheduled'
+        ? [templateAddr, dayDate, time, doc]
+        : type === 'cancelled'
+          ? [templateAddr, shortDate]
+          : [templateAddr, dayDate, time, svc, doc]
+      // Parameter order must match the approved Meta template configured for
+      // this notification. A mismatch is surfaced, never retried as freeform.
+      await sendWhatsAppTemplate(recipientPhone, templateName, params, false)
     }
     const logTarget = recipientName
       ? `guardian ${recipientName} (${recipientPhone}) re: ${patientName}`
