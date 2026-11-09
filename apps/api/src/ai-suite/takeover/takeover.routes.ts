@@ -750,9 +750,15 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
         data: { status: providerAccepted ? 'sent' : 'failed' },
       }).catch((updateError) => console.error('[Takeover] Failed to mark delivery attempt:', updateError))
       console.error('[Takeover] Provider delivery error:', deliveryError)
+      const deliveryDetail = deliveryError instanceof Error ? deliveryError.message : ''
+      const whatsappWindowExpired = conversation.channel === 'WHATSAPP' && /(?:#|code\\s*[:=]?\\s*)131047\\b/i.test(deliveryDetail)
       return res.status(502).json({ error: providerAccepted
         ? 'Provider accepted the message, but recording its status failed. Check the conversation; do not resend.'
-        : 'Provider delivery was not confirmed. Check the conversation before retrying to avoid duplicates.' })
+        : whatsappWindowExpired
+          ? 'WhatsApp rejected this message because the 24-hour customer service window has closed (Meta 131047). Use an approved WhatsApp template to restart the conversation; free-form messages cannot be sent until the patient replies.'
+          : 'Provider delivery was not confirmed. Check the conversation before retrying to avoid duplicates.',
+        ...(whatsappWindowExpired ? { code: 'WHATSAPP_TEMPLATE_REQUIRED' } : {}),
+      })
     }
 
     // A successfully-created staff reply is exactly the "first human reply"
