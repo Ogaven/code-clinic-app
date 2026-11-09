@@ -97,6 +97,22 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(getAgentReplyV2OpenAI).toHaveBeenCalledWith('conv-1', event.sender.id, event.message.text, 'FACEBOOK')
   })
 
+  it('preserves incoming image, audio, and video URLs in the inbox message metadata', async () => {
+    const attachments = [
+      { type: 'image', payload: { url: 'https://cdn.example.test/photo.jpg' } },
+      { type: 'audio', payload: { url: 'https://cdn.example.test/voice.mp3' } },
+      { type: 'video', payload: { url: 'https://cdn.example.test/clip.mp4' } },
+    ]
+    await processSocialMessage('sender-media', '[Customer sent attachments]', 'INSTAGRAM', 'mid.media', true, attachments)
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        role: 'USER',
+        metadata: expect.stringContaining('https://cdn.example.test/clip.mp4'),
+      }),
+    }))
+    expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
+  })
+
   it('suppresses a DM reply when staff take over during AI generation', async () => {
     isAgentEnabled.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
     await processSocialMessage('sender-1', 'Need an appointment', 'FACEBOOK', 'mid.takeover')
