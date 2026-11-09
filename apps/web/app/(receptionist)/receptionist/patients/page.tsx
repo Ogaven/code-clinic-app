@@ -71,6 +71,7 @@ export default function PatientsPage() {
   const [patients, setPatients]   = useState<Patient[]>([])
   const [filtered, setFiltered]   = useState<Patient[]>([])
   const [search, setSearch]       = useState('')
+  const patientSearchRequest = useRef(0)
   const [loading, setLoading]     = useState(true)
   const [selected, setSelected]   = useState<Patient | null>(null)
   const [appts, setAppts]         = useState<any[]>([])
@@ -156,6 +157,7 @@ export default function PatientsPage() {
   }, [patients, filter, sortAZ])
 
   async function fetchPatients(q?: string) {
+    const requestId = ++patientSearchRequest.current
     setLoading(true)
     try {
       const qs = new URLSearchParams({ limit: '500' })
@@ -163,14 +165,18 @@ export default function PatientsPage() {
       const res = await fetch(`${API}/patients?${qs}`, { headers: authH })
       if (res.ok) {
         const json = await res.json().catch(() => null)
-        if (!json) { setLoading(false); return }
+        if (!json) return
         const list = Array.isArray(json) ? json
           : Array.isArray(json?.data) ? json.data
           : Array.isArray(json?.patients) ? json.patients
           : []
-        setPatients(list)
+        if (requestId === patientSearchRequest.current) setPatients(list)
       }
-    } catch { setPatients([]) } finally { setLoading(false) }
+    } catch {
+      // Keep the last successful patient list on temporary network failures.
+    } finally {
+      if (requestId === patientSearchRequest.current) setLoading(false)
+    }
   }
 
   async function selectPatient(p: Patient) {
