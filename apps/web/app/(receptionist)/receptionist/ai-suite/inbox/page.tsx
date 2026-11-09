@@ -6,7 +6,7 @@ import NextImage from 'next/image'
 import {
   Search, Send, Paperclip, Smile, X, Loader2,
   MessageSquare, Instagram, Facebook, Globe, Bot, UserCheck,
-  Image as ImageIcon, FileText, Music, Video as VideoIcon, Check, CheckCheck,
+  Image as ImageIcon, FileText, Music, Video as VideoIcon, Check, CheckCheck, Clock3,
   ChevronLeft, ChevronRight, Plus, Archive, ArchiveRestore, Trash2, MoreVertical,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -396,7 +396,7 @@ function MsgStatus({ status, errorCode }: { status?: string | null; errorCode?: 
   if (normalized === 'failed') return <span title={deliveryFailureExplanation(errorCode)} aria-label={deliveryFailureExplanation(errorCode)}><X size={12} className="text-red-500" /></span>
   if (normalized === 'sent') return <span title="Sent; delivery not yet confirmed" aria-label="Sent; delivery not yet confirmed"><Check size={12} className="text-gray-400" /></span>
   // An absent or unfamiliar status is not evidence that Meta/WhatsApp accepted the message.
-  return <span title="Delivery status unknown" aria-label="Delivery status unknown" className="text-[10px] text-amber-700">?</span>
+  return <span title="Delivery unconfirmed — no verified WhatsApp status is available. Do not assume delivery or resend automatically." aria-label="Delivery unconfirmed" className="inline-flex items-center text-amber-700"><Clock3 size={12} aria-hidden="true" /></span>
 }
 
 // ── Emoji picker ───────────────────────────────────────────────────────────────
