@@ -684,6 +684,9 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
         conversationId: req.params.conversationId,
         role:    'AGENT',
         content: text.trim(),
+        // Website replies are delivered through this persisted conversation,
+        // not through an external messaging provider.
+        ...(conversation.channel === 'WEBSITE' ? { status: 'sent' } : {}),
       },
     })
 
