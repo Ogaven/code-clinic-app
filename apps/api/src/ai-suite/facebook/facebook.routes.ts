@@ -222,7 +222,7 @@ router.post('/facebook/webhook', async (req, res) => {
           content,
           'FACEBOOK',
           event.message.mid ? String(event.message.mid) : undefined,
-          !messageText,
+          attachments.length > 0,
           attachments,
         )
       }
@@ -303,7 +303,7 @@ router.post('/instagram/webhook', async (req, res) => {
           content,
           'INSTAGRAM',
           event.message.mid ? String(event.message.mid) : undefined,
-          !messageText,
+          attachments.length > 0,
           attachments,
         )
       }
@@ -776,8 +776,9 @@ export async function processSocialMessage(
       return
     }
 
-    // Do not ask the text-only AI to interpret an image, video, or audio file
-    // it has not actually seen. Keep the event in the staff inbox instead.
+    // Do not ask the text-only AI to interpret image, video, or audio content
+    // it has not seen, even when the same event also contains text.
+    // Preserve the text and attachments together for staff review.
     if (attachmentOnly) {
       console.log(`[${channel}] Attachment-only message stored for staff review; AI reply suppressed`)
       return
