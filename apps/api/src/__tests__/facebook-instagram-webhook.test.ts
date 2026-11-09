@@ -336,7 +336,7 @@ describe('Existing social DM placeholder recovery', () => {
       if (String(url).includes('/28540242905567428?')) {
         return { ok: true, json: async () => ({ username: 'real_patient', profile_pic: 'https://example.test/ig.jpg' }) } as any
       }
-      return { ok: true, json: async () => ({}), text: async () => '' } as any
+      return { ok: true, json: async () => ({}), text: async () => JSON.stringify({ message_id: 'mid.accepted-profile' }) } as any
     }) as any
 
     await processSocialMessage('28540242905567428', 'Hello', 'INSTAGRAM', 'mid-ig-placeholder')
@@ -363,7 +363,7 @@ describe('Facebook social identity enrichment', () => {
       if (String(url).includes('/psid-123?fields=first_name,last_name,profile_pic')) {
         return { ok: true, json: async () => ({ first_name: 'Jane', last_name: 'Doe', profile_pic: 'https://example.test/jane.jpg' }) } as any
       }
-      return { ok: true, json: async () => ({}), text: async () => '' } as any
+      return { ok: true, json: async () => ({}), text: async () => JSON.stringify({ message_id: 'mid.accepted-profile' }) } as any
     }) as any
 
     await processSocialMessage('psid-123', 'Hello', 'FACEBOOK', 'mid-profile-1')
