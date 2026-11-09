@@ -699,6 +699,13 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
       if (wamid && wamid !== 'unknown') {
         providerAccepted = true
         await prisma.aiMessage.update({ where: { id: msgRecord.id }, data: { wamid, status: 'sent' } })
+      } else {
+        // No provider message ID means acceptance is unconfirmed, not success.
+        // Keep the persisted attempt for reconciliation and do not encourage
+        // an automatic retry that could create a duplicate WhatsApp message.
+        return res.status(502).json({
+          error: 'WhatsApp did not confirm acceptance of this message. Check the conversation before retrying to avoid duplicates.',
+        })
       }
     } else if (conversation.channel === 'SMS') {
       // Never silently redirect an SMS reply to WhatsApp.
