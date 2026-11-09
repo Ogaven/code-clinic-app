@@ -47,7 +47,7 @@ beforeEach(() => {
   process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'test-fb-page-token'
   process.env.INSTAGRAM_ACCESS_TOKEN = 'test-ig-token'
   process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID = IG_ACCOUNT_ID
-  global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'created-reply-1' }), text: async () => JSON.stringify({ id: 'created-reply-1' }) }) as any
+  global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'created-reply-1', message_id: 'mid.accepted-1' }), text: async () => JSON.stringify({ id: 'created-reply-1', message_id: 'mid.accepted-1' }) }) as any
 })
 afterEach(() => { global.fetch = originalFetch })
 
@@ -138,9 +138,9 @@ describe('processSocialMessage — DM ingestion', () => {
   })
 
   it('does not persist Facebook user as a verified customer name', async () => {
-    (global.fetch as any) = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ first_name: 'Facebook', last_name: 'user', profile_pic: null }),
+    (global.fetch as any) = vi.fn(async (url: string) => {
+      if (url.includes('/me/messages')) return { ok: true, text: async () => JSON.stringify({ message_id: 'mid.accepted-generic' }) }
+      return { ok: true, json: async () => ({ first_name: 'Facebook', last_name: 'user', profile_pic: null }) }
     })
     await processSocialMessage('28540242905567428', 'Hello', 'FACEBOOK', 'mid.generic-name')
     expect(prismaMock.aiConversation.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -383,7 +383,7 @@ describe('Facebook social identity enrichment', () => {
       if (value.includes('/post-1?fields=message')) {
         return { ok: true, json: async () => ({ message: 'Alcohol before the dentist? Tell us you are anxious instead.' }) } as any
       }
-      return { ok: true, json: async () => ({ id: 'created-reply-1' }), text: async () => JSON.stringify({ id: 'created-reply-1' }) } as any
+      return { ok: true, json: async () => ({ id: 'created-reply-1' }), text: async () => JSON.stringify({ id: 'created-reply-1', message_id: 'mid.accepted-custom' }) } as any
     }) as any
 
     await processComment('comment-1', 'post-1', 'commenter-1', 'Princess Priscilla', "What's this all about?", 'FACEBOOK_COMMENT')
