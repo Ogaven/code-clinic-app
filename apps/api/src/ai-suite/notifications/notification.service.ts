@@ -1,4 +1,4 @@
-import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
+import { sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { phoneVariants } from '../../utils/phone'
 
