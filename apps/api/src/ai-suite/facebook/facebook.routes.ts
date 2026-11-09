@@ -875,13 +875,31 @@ export async function sendSocialReply(
     }),
   })
 
-  if (!res.ok) {
-    const details = (await res.text()).slice(0, 500)
-    console.error(`[${channel}] Failed to send reply: HTTP ${res.status}`, details)
-    throw new Error(`[${channel}] Meta reply rejected: HTTP ${res.status}`)
-  } else {
-    console.log(`[${channel}] Reply sent to ${recipientId}`)
+  const rawBody = await res.text()
+  let responseBody: unknown
+  try {
+    responseBody = JSON.parse(rawBody)
+  } catch {
+    responseBody = null
   }
+
+  if (!res.ok) {
+    console.error(`[${channel}] Failed to send reply: HTTP ${res.status}`, rawBody.slice(0, 500))
+    throw new Error(`[${channel}] Meta reply rejected: HTTP ${res.status}`)
+  }
+
+  // HTTP 2xx alone does not establish that Meta accepted a Messenger/IG DM.
+  // Both messaging APIs return message_id for an accepted outbound message.
+  // If absent, leave the persisted attempt unconfirmed for staff review.
+  const messageId = responseBody && typeof responseBody === 'object' && 'message_id' in responseBody
+    ? responseBody.message_id
+    : null
+  if (typeof messageId !== 'string' || !messageId.trim()) {
+    console.error(`[${channel}] Meta response missing outbound message_id`)
+    throw new Error(`[${channel}] Meta did not confirm message acceptance; check the conversation before retrying`)
+  }
+
+  console.log(`[${channel}] Meta accepted reply to ${recipientId}: messageId=${messageId}`)
 }
 
 // ── Meta Lead Ads (native Instant Forms) ───────────────────────────────────
