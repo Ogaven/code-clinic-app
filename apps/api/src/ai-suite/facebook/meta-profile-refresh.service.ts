@@ -148,8 +148,8 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
     cursor = rows.length > 10 ? batch[batch.length - 1].id : undefined
     const stats = { scanned: batch.length, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, skippedNonPlatformId: 0, unavailable: 0 }
     const byChannel = {
-      FACEBOOK: { scanned: 0, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, skippedNonPlatformId: 0, unavailable: 0, cooldownSkipped: 0 },
-      INSTAGRAM: { scanned: 0, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, skippedNonPlatformId: 0, unavailable: 0, cooldownSkipped: 0 },
+      FACEBOOK: { scanned: 0, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, skippedNonPlatformId: 0, unavailable: 0, cooldownSkipped: 0, participantNameMatches: 0, unmatchedPlaceholders: 0 },
+      INSTAGRAM: { scanned: 0, attempted: 0, namesUpdated: 0, photosUpdated: 0, missingToken: 0, skippedNonPlatformId: 0, unavailable: 0, cooldownSkipped: 0, participantNameMatches: 0, unmatchedPlaceholders: 0 },
     }
     const fbNames = tokens.FACEBOOK && batch.some(row => row.channel === 'FACEBOOK' && placeholder(row.displayName))
       ? await facebookParticipantNames(tokens.FACEBOOK)
@@ -191,10 +191,8 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
           if (updated.count) row.profilePictureUrl = photo
         }
       }
-      stats.attempted++
-      channelStats.attempted++
       const participantName = row.channel === 'FACEBOOK' ? fbNames.get(row.phoneNumber) : undefined
-      if (row.channel === 'FACEBOOK' && placeholder(row.displayName) && !participantName) facebookUnmatchedPlaceholders++
+      if (row.channel === 'FACEBOOK' && placeholder(row.displayName) && !participantName) { facebookUnmatchedPlaceholders++; byChannel.FACEBOOK.unmatchedPlaceholders++ }
       if (row.channel === 'FACEBOOK' && participantName && !placeholder(row.displayName)) facebookAlreadyNamedMatches++
       // A verified participant name avoids an unnecessary direct lookup when a
       // photo is already stored; otherwise still attempt the photo lookup.
@@ -202,6 +200,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
       const deniedKey = `${row.channel}:${row.phoneNumber}`
       const temporarilyDenied = (deniedProfileUntil.get(deniedKey) ?? 0) > Date.now()
       if (shouldFetchProfile && temporarilyDenied) channelStats.cooldownSkipped++
+      if (shouldFetchProfile && !temporarilyDenied) { stats.attempted++; channelStats.attempted++ }
       const profile = shouldFetchProfile && !temporarilyDenied
         ? row.channel === 'FACEBOOK'
           ? await fetchFbUserInfo(row.phoneNumber, token)
@@ -219,10 +218,10 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
           if (until <= Date.now()) deniedProfileUntil.delete(key)
         }
       }
-      if (!profile.name && !profile.pictureUrl) { stats.unavailable++; channelStats.unavailable++ }
+      if (shouldFetchProfile && !temporarilyDenied && !profile.name && !profile.pictureUrl) { stats.unavailable++; channelStats.unavailable++ }
       const name = participantName || profile.name?.trim() || null
       const validName = name && !placeholder(name) ? name : null
-      if (row.channel === 'FACEBOOK' && row.phoneNumber && fbNames.has(row.phoneNumber)) facebookNameMatches++
+      if (row.channel === 'FACEBOOK' && row.phoneNumber && fbNames.has(row.phoneNumber)) { facebookNameMatches++; byChannel.FACEBOOK.participantNameMatches++ }
       // Conditional writes protect real names/photos against a concurrent
       // webhook update. Only identity fields may be changed.
       if (validName && placeholder(row.displayName)) {
