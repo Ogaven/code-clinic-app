@@ -113,6 +113,20 @@ describe('processSocialMessage — DM ingestion', () => {
     expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
   })
 
+  it('stores a mixed text and image DM without asking text-only AI to inspect the image', async () => {
+    await processSocialMessage('sender-mixed', 'What does this photo show?', 'FACEBOOK', 'mid.mixed', true, [
+      { type: 'image', payload: { url: 'https://cdn.example.test/image.jpg' } },
+    ])
+    expect(prismaMock.aiMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        role: 'USER',
+        content: 'What does this photo show?',
+        metadata: expect.stringContaining('image.jpg'),
+      }),
+    }))
+    expect(getAgentReplyV2OpenAI).not.toHaveBeenCalled()
+  })
+
   it('suppresses a DM reply when staff take over during AI generation', async () => {
     isAgentEnabled.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
     await processSocialMessage('sender-1', 'Need an appointment', 'FACEBOOK', 'mid.takeover')
