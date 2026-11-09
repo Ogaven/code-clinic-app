@@ -31,7 +31,7 @@ type Conversation = {
   lastMessage: { id: string; role: string; content: string; createdAt: string; metadata?: string | null; deliveryErrorCode?: number | null } | null
   createdAt: string; updatedAt: string
 }
-type Message = { id: string; role: 'USER' | 'AGENT'; content: string; createdAt: string; status?: string | null; wamid?: string | null; metadata?: string | null }
+type Message = { id: string; role: 'USER' | 'AGENT'; content: string; createdAt: string; status?: string | null; wamid?: string | null; metadata?: string | null; deliveryErrorCode?: number | null }
 
 // ── Channel config ─────────────────────────────────────────────────────────────
 type ChannelKey = 'WHATSAPP' | 'INSTAGRAM' | 'FACEBOOK' | 'WEBSITE' | 'FB_COMMENTS' | 'IG_COMMENTS'
