@@ -98,8 +98,8 @@ function PreVisitForm() {
     finally { setSaving(false) }
   }
 
-  const inputCls = 'w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
-  const labelCls = 'text-xs font-bold text-gray-500 mb-1 block'
+  const inputCls = 'w-full px-3 py-2.5 text-sm text-gray-950 placeholder:text-gray-500 border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all'
+  const labelCls = 'text-xs font-bold text-gray-800 mb-1 block'
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen">
