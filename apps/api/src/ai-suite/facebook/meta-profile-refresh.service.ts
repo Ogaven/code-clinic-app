@@ -167,6 +167,30 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
       // records using our own account ID must remain intact, not profile-enriched.
       if (row.channel === 'INSTAGRAM' && row.phoneNumber === process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID) continue
       if (!lookupEligible(row.phoneNumber)) { stats.skippedNonPlatformId++; channelStats.skippedNonPlatformId++; continue }
+      // A previously verified photo on another conversation for this exact
+      // platform-scoped sender is reusable. Never match across channels or
+      // synthetic IDs, and never invent a profile picture.
+      if (!row.profilePictureUrl) {
+        const existing = await prisma.aiConversation.findFirst({
+          where: {
+            channel: row.channel,
+            phoneNumber: row.phoneNumber,
+            profilePictureUrl: { not: null },
+            id: { not: row.id },
+          },
+          select: { profilePictureUrl: true },
+        })
+        const photo = existing?.profilePictureUrl
+        if (photo && photo.startsWith('https://')) {
+          const updated = await prisma.aiConversation.updateMany({
+            where: { id: row.id, profilePictureUrl: null },
+            data: { profilePictureUrl: photo },
+          })
+          stats.photosUpdated += updated.count
+          channelStats.photosUpdated += updated.count
+          if (updated.count) row.profilePictureUrl = photo
+        }
+      }
       stats.attempted++
       channelStats.attempted++
       const participantName = row.channel === 'FACEBOOK' ? fbNames.get(row.phoneNumber) : undefined
