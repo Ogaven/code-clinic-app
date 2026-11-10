@@ -119,6 +119,35 @@ beforeEach(() => {
   vi.setSystemTime(FIXED_NOW)
 })
 
+describe('Treatment follow-up office hours', () => {
+  it.each([
+    ['2026-11-10T05:59:59Z', false], // 08:59:59 Kampala
+    ['2026-11-10T06:00:00Z', true],  // 09:00 Kampala
+    ['2026-11-10T14:59:59Z', true],  // 17:59:59 Kampala
+    ['2026-11-10T15:00:00Z', false], // 18:00 Kampala
+    ['2026-11-10T21:00:00Z', false], // midnight Kampala
+  ])('checks Kampala working hours at %s', async (iso, expected) => {
+    const { withinTreatmentFollowUpAlertHours } = await import('../services/treatment-followup-alerts.service')
+    expect(withinTreatmentFollowUpAlertHours(new Date(iso))).toBe(expected)
+  })
+
+  it('defers overnight alerts without recording them and sends once at 09:00 EAT', async () => {
+    const { checkAndSendTreatmentFollowUpAlerts } = await import('../services/treatment-followup-alerts.service')
+    makePlan({ id: 'p_office_hours', followUpAt: TODAY_KAMPALA_MIDNIGHT })
+    vi.setSystemTime(new Date('2026-09-14T00:00:00Z')) // 03:00 EAT
+    await checkAndSendTreatmentFollowUpAlerts()
+    expect(store.alerts.size).toBe(0)
+    expect(store.notifications).toHaveLength(0)
+    expect(pushMock).not.toHaveBeenCalled()
+    vi.setSystemTime(new Date('2026-09-14T06:00:00Z')) // 09:00 EAT
+    await checkAndSendTreatmentFollowUpAlerts()
+    expect(store.alerts.size).toBe(1)
+    expect(store.notifications).toHaveLength(2)
+    await checkAndSendTreatmentFollowUpAlerts()
+    expect(store.notifications).toHaveLength(2)
+  })
+})
+
 describe('Treatment follow-up alert scheduler', () => {
   it('fires UPCOMING_1 once for a follow-up due tomorrow', async () => {
     const { checkAndSendTreatmentFollowUpAlerts } = await import('../services/treatment-followup-alerts.service')
