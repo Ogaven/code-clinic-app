@@ -155,7 +155,7 @@ router.get('/treatment', requireAuth, async (req, res) => {
     const plans = await prisma.treatmentPlan.findMany({
       where: doctorId ? { doctorId } : {},
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, patientNumber: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, patientNumber: true, phone: true } },
         doctor: { include: { user: { select: { firstName: true, lastName: true } } } },
         appointments: { select: { status: true, createdAt: true } },
       },
