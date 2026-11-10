@@ -473,21 +473,24 @@ function Composer({ sel, fetchMsgs, channel, accent, dark }: ComposerProps) {
   const [sendError, setSendError] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const draftKey = `cc-inbox-draft:${sel.id}`
+  const [restoredDraftKey, setRestoredDraftKey] = useState<string | null>(null)
 
   // Keep unsent text safe across polling, parent remounts and accidental
   // in-app refreshes. Drafts are scoped per conversation and only removed
   // after a successful send.
   useEffect(() => {
     try { setReply(sessionStorage.getItem(draftKey) ?? '') } catch { setReply('') }
+    setRestoredDraftKey(draftKey)
     setShowEmoji(false)
   }, [draftKey])
 
   useEffect(() => {
+    if (restoredDraftKey !== draftKey) return
     try {
       if (reply) sessionStorage.setItem(draftKey, reply)
       else sessionStorage.removeItem(draftKey)
     } catch {}
-  }, [draftKey, reply])
+  }, [draftKey, reply, restoredDraftKey])
 
   async function send() {
     if (!reply.trim() || sending) return
@@ -1177,10 +1180,17 @@ function InboxPage() {
       if (pendingSelectId.current) {
         const toSelect = deduped.find(c => c.id === pendingSelectId.current)
         if (toSelect) { setSel(toSelect); setMobileView('chat'); pendingSelectId.current = null }
-      } else if (sel) {
-        const updated = deduped.find(c => c.id === sel.id)
-        // Not found here anymore (deleted, or archived/unarchived out of the current view) — deselect.
-        setSel(updated ?? null)
+      } else {
+        // Polling may briefly omit a thread (pagination, backend race, or a
+        // temporary empty response). Never unmount an open composer while staff
+        // are typing. Explicit archive/delete/channel navigation handles closing.
+        setSel(current => {
+          if (!current) return current
+          const updated = deduped.find(c => c.id === current.id)
+          if (!updated) return current
+          // Preserve the existing object when nothing relevant changed.
+          return JSON.stringify(updated) === JSON.stringify(current) ? current : updated
+        })
       }
     } catch {} finally { setLoadingC(false) }
   }, [channel, showArchived, sel?.id])
