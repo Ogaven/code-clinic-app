@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ClipboardList, RefreshCw } from 'lucide-react'
+import { ClipboardList, Download, RefreshCw } from 'lucide-react'
 
 interface FollowUpPlan {
   id: string
   patientId: string
-  patient: { firstName: string; lastName: string; patientNumber?: number }
+  patient: { firstName: string; lastName: string; patientNumber?: number; phone?: string | null }
   treatmentName: string
   stage: string
   status: string
@@ -43,6 +43,36 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
   }, [])
   useEffect(() => { void load() }, [load])
 
+  function downloadFollowUps() {
+    if (loading || error || items.length === 0) return
+    // Spreadsheet-safe CSV: quote cells, strip control characters and prevent formula execution.
+    const cell = (value: unknown) => {
+      const clean = String(value ?? '').replace(/[\\x00-\\x1f\\x7f]/g, ' ').trim()
+      const safe = /^[=+@\\-]/.test(clean) ? "'" + clean : clean
+      return '"' + safe.replace(/"/g, '""') + '"'
+    }
+    const columns = ['Patient name', 'Phone number', 'Treatment / procedure', 'Follow-up date', 'Follow-up reason', 'Follow-up note', 'Status', 'Doctor']
+    const rows = items.map(p => [
+      [p.patient?.firstName, p.patient?.lastName].filter(Boolean).join(' '),
+      p.patient?.phone ?? '',
+      p.treatmentName,
+      p.followUpAt ? new Date(p.followUpAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' }) : '',
+      p.followUpReason ?? '',
+      p.followUpNote ?? p.notes ?? '',
+      p.status,
+      p.doctorName,
+    ])
+    const csv = '\\uFEFF' + [columns, ...rows].map(row => row.map(cell).join(',')).join('\\r\\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'code-clinic-treatment-followups-' + new Date().toISOString().slice(0, 10) + '.csv'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
   const pipelineHref = typeof window !== 'undefined' && window.location.pathname.startsWith('/receptionist')
     ? '/receptionist/treatment-pipeline' : '/treatment-pipeline'
 
@@ -54,10 +84,15 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
             <ClipboardList size={20} className="text-emerald-500" /> Treatment Follow-up
           </h1>
           <p className="text-sm text-gray-500 dark:text-white/50">
-            Live outstanding follow-ups from the Treatment Pipeline. No demo patients or automatic patient messages.
+            Live outstanding follow-ups from the Treatment Pipeline. Download an Excel-compatible CSV for staff review. No demo patients or automatic patient messages.
           </p>
         </div>
         <div className="flex items-center gap-3 text-sm">
+          <button type="button" onClick={downloadFollowUps} disabled={loading || !!error || items.length === 0}
+            className="flex items-center gap-1 rounded-lg border px-3 py-2 font-semibold disabled:opacity-50"
+            title="Download all outstanding treatment follow-ups as an Excel-compatible CSV">
+            <Download size={14} /> Download Excel report
+          </button>
           <button type="button" onClick={() => void load()} disabled={loading}
             className="flex items-center gap-1 rounded-lg border px-3 py-2 disabled:opacity-50">
             <RefreshCw size={14} /> Refresh
