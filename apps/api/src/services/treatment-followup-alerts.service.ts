@@ -68,7 +68,19 @@ const NON_ACTIONABLE_STATUSES = ['Completed', 'Cancelled', 'Declined']
 // one alert per (plan, alertType, planned follow-up date). This means a scheduler
 // retry cannot spam staff, while changing the plan's follow-up date creates a
 // fresh reminder lifecycle for the new date.
+// Staff treatment follow-up notifications must never wake staff overnight.
+// Use Africa/Kampala explicitly; the production server may run in UTC.
+export function withinTreatmentFollowUpAlertHours(now: Date = new Date()): boolean {
+  const hour = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Kampala', hour: '2-digit', hourCycle: 'h23',
+  }).format(now))
+  return hour >= 9 && hour < 18
+}
+
 export async function checkAndSendTreatmentFollowUpAlerts(): Promise<void> {
+  // Do not write idempotency records outside office hours: the next scheduled
+  // daytime run can then deliver the alert instead of silently losing it.
+  if (!withinTreatmentFollowUpAlertHours()) return
   try {
     const today = startOfKampalaDay()
 
