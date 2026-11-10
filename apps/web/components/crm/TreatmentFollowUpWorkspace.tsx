@@ -47,8 +47,8 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
     if (loading || error || items.length === 0) return
     // Spreadsheet-safe CSV: quote cells, strip control characters and prevent formula execution.
     const cell = (value: unknown) => {
-      const clean = String(value ?? '').replace(/[\\x00-\\x1f\\x7f]/g, ' ').trim()
-      const safe = /^[=+@\\-]/.test(clean) ? "'" + clean : clean
+      const clean = String(value ?? '').replace(/[\x00-\x1f\x7f]/g, ' ').trim()
+      const safe = /^[=+@\-]/.test(clean) ? "'" + clean : clean
       return '"' + safe.replace(/"/g, '""') + '"'
     }
     const columns = ['Patient name', 'Phone number', 'Treatment / procedure', 'Follow-up date', 'Follow-up reason', 'Follow-up note', 'Status', 'Doctor']
@@ -62,7 +62,7 @@ export default function TreatmentFollowUpWorkspace({ patientHref }: { patientHre
       p.status,
       p.doctorName,
     ])
-    const csv = '\\uFEFF' + [columns, ...rows].map(row => row.map(cell).join(',')).join('\\r\\n')
+    const csv = '\uFEFF' + [columns, ...rows].map(row => row.map(cell).join(',')).join('\r\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
     const link = document.createElement('a')
     link.href = url
