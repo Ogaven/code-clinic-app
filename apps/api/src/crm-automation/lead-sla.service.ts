@@ -57,7 +57,6 @@ async function findTeamLeadIds(): Promise<string[]> {
 }
 
 export async function checkLeadSlas(): Promise<{ escalated15: number; warm30: number; stale24: number }> {
-  if (!withinLeadAlertHours()) return { escalated15: 0, warm30: 0, stale24: 0 }
   const now = new Date()
   let escalated15 = 0, warm30 = 0, stale24 = 0
 
@@ -71,6 +70,8 @@ export async function checkLeadSlas(): Promise<{ escalated15: number; warm30: nu
     },
   })
   for (const lead of needs15) {
+    // Defer staff escalation overnight; preserve the SLA state for morning catch-up.
+    if (!withinLeadAlertHours()) continue
     const teamLeads = await findTeamLeadIds()
     const recipients = new Set([lead.assignedTo, ...teamLeads].filter(Boolean) as string[])
     for (const userId of recipients) {
@@ -126,6 +127,7 @@ export async function checkLeadSlas(): Promise<{ escalated15: number; warm30: nu
     },
   })
   for (const lead of needsStale) {
+    if (!withinLeadAlertHours()) continue
     const admins = await findTeamLeadIds()
     for (const userId of admins) {
       await notifyUser(userId, 'Lead is stale (24h)', `${lead.name || lead.phone || 'A lead'} has gone 24 hours with no human reply.`, '/leads', 'A lead has gone 24 hours with no human reply — tap to view.')
