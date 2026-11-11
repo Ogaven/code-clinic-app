@@ -49,7 +49,18 @@ async function notifyFollowUpOverdue(userId: string, role: string, leadId: strin
   return true
 }
 
+// Staff should receive lead follow-up alerts only while the clinic is open.
+// Do not create unread notifications overnight: the next daytime sweep can
+// pick up the still-overdue tasks without losing or duplicating alerts.
+export function withinLeadFollowUpAlertHours(now: Date = new Date()): boolean {
+  const hour = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Kampala', hour: '2-digit', hourCycle: 'h23',
+  }).format(now))
+  return hour >= 7 && hour < 18
+}
+
 export async function checkLeadFollowUpOverdueAlerts(): Promise<{ overdueConsidered: number; notified: number }> {
+  if (!withinLeadFollowUpAlertHours()) return { overdueConsidered: 0, notified: 0 }
   const summary = await buildLeadFollowUpSummary()
   if (summary.overdue.length === 0) return { overdueConsidered: 0, notified: 0 }
 
