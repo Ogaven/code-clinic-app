@@ -70,14 +70,13 @@ export async function checkLeadSlas(): Promise<{ escalated15: number; warm30: nu
     },
   })
   for (const lead of needs15) {
-    // Advance the SLA clock overnight so the consent-gated 30-minute
-    // patient follow-up can run normally. Staff notifications wait until opening.
-    if (withinLeadAlertHours()) {
-      const teamLeads = await findTeamLeadIds()
-      const recipients = new Set([lead.assignedTo, ...teamLeads].filter(Boolean) as string[])
-      for (const userId of recipients) {
-        await notifyUser(userId, 'Lead needs a reply', `${lead.name || lead.phone || 'A lead'} has had no reply in 15 minutes.`, '/leads', 'A lead has had no reply in 15 minutes — tap to view.')
-      }
+    // Always record the SLA notification in-app, even overnight. notifyUser
+    // independently suppresses the OS push outside routine staff hours.
+    // The SLA clock must still advance so consent-gated patient follow-ups run.
+    const teamLeads = await findTeamLeadIds()
+    const recipients = new Set([lead.assignedTo, ...teamLeads].filter(Boolean) as string[])
+    for (const userId of recipients) {
+      await notifyUser(userId, 'Lead needs a reply', `${lead.name || lead.phone || 'A lead'} has had no reply in 15 minutes.`, '/leads', 'A lead has had no reply in 15 minutes — tap to view.')
     }
     await prisma.lead.update({ where: { id: lead.id }, data: { slaState: 'ESCALATED_15' } })
     await prisma.leadSlaEvent.create({ data: { leadId: lead.id, type: 'ESCALATION_15' } })
