@@ -5,7 +5,7 @@
 // lead-followups.service's own tests) — these tests assert only this
 // sweep's own routing/dedup/gating logic.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.setConfig({ testTimeout: 20000 })
 
@@ -62,6 +62,8 @@ function summaryWithOverdue(overdue: any[]) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-11-11T09:00:00+03:00'))
   store.notifications.length = 0
   store.users.clear()
   pushMock.mockClear()
@@ -72,7 +74,29 @@ beforeEach(() => {
   store.users.set('reception_owner', { id: 'reception_owner', role: 'RECEPTIONIST', isActive: true })
 })
 
+afterEach(() => { vi.useRealTimers() })
+
 describe('checkLeadFollowUpOverdueAlerts', () => {
+  it('does not create notifications or push overnight, retaining overdue work for the daytime sweep', async () => {
+    const { checkLeadFollowUpOverdueAlerts, withinLeadFollowUpAlertHours } = await import('../crm-automation/lead-followup-overdue-alerts.service')
+    buildLeadFollowUpSummaryMock.mockResolvedValue(summaryWithOverdue([{ id: 'task_overnight', leadId: 'lead_overnight', assignedToId: 'reception_owner' }]))
+    vi.setSystemTime(new Date('2026-11-11T00:30:00+03:00'))
+    expect(withinLeadFollowUpAlertHours()).toBe(false)
+    expect(await checkLeadFollowUpOverdueAlerts()).toEqual({ overdueConsidered: 0, notified: 0 })
+    expect(store.notifications).toHaveLength(0)
+    expect(pushMock).not.toHaveBeenCalled()
+    vi.setSystemTime(new Date('2026-11-11T07:00:00+03:00'))
+    expect(withinLeadFollowUpAlertHours()).toBe(true)
+    await checkLeadFollowUpOverdueAlerts()
+    expect(store.notifications).toHaveLength(1)
+  })
+
+  it('closes the staff alert window at 6 PM Kampala time', async () => {
+    const { withinLeadFollowUpAlertHours } = await import('../crm-automation/lead-followup-overdue-alerts.service')
+    expect(withinLeadFollowUpAlertHours(new Date('2026-11-11T17:59:00+03:00'))).toBe(true)
+    expect(withinLeadFollowUpAlertHours(new Date('2026-11-11T18:00:00+03:00'))).toBe(false)
+  })
+
   it('routes to the overdue task\'s own assignee, using the exact spec\'d title/body', async () => {
     buildLeadFollowUpSummaryMock.mockResolvedValue(summaryWithOverdue([
       { id: 'task_1', leadId: 'lead_1', assignedToId: 'reception_owner' },
