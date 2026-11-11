@@ -43,6 +43,8 @@ export async function sendOvernightInboxCatchup(now: Date = new Date()): Promise
     if (alreadySent) continue
     const href = user.role === 'RECEPTIONIST' ? '/receptionist/ai-suite/inbox' : '/ai-suite/inbox'
     const body = `${pending} unread inbox notification${pending === 1 ? '' : 's'} arrived overnight. Review conversations requiring human attention.`
+    // Avoid persisting a digest after closing without attempting its push.
+    if (!withinLeadAlertHours()) break
     // Persist the digest before sending so restart retries do not generate duplicate pushes.
     await prisma.notification.create({
       data: { userId: user.id, type: 'MESSAGE', title, body, href },
@@ -50,7 +52,6 @@ export async function sendOvernightInboxCatchup(now: Date = new Date()): Promise
     try {
       // The push API swallows provider failures: this records an attempted
       // dispatch, not confirmed delivery to a device.
-      if (!withinLeadAlertHours()) break
       await sendPushToUser(user.id, {
         title: 'Overnight messages need review',
         body: 'Unread conversations arrived overnight — tap to review.',
