@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const db = vi.hoisted(() => ({
   user: { findMany: vi.fn() },
@@ -11,6 +11,8 @@ import { sendOvernightInboxCatchup } from './overnight-inbox-catchup.service'
 
 describe('morning unread inbox catch-up', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-11T04:05:00Z'))
     vi.clearAllMocks()
     db.user.findMany.mockResolvedValue([{ id: 'staff-1', role: 'RECEPTIONIST' }])
     db.notification.count.mockResolvedValue(2)
@@ -18,6 +20,8 @@ describe('morning unread inbox catch-up', () => {
     db.notification.create.mockResolvedValue({ id: 'digest-1' })
     push.mockResolvedValue(undefined)
   })
+
+  afterEach(() => vi.useRealTimers())
 
   it('does not query or notify staff before 07:00 Kampala time', async () => {
     expect(await sendOvernightInboxCatchup(new Date('2026-11-11T03:59:59Z'))).toBe(0)
