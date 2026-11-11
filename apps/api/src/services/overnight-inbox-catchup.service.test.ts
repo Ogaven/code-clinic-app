@@ -52,6 +52,31 @@ describe('morning unread inbox catch-up', () => {
     expect(push).toHaveBeenCalledTimes(1)
   })
 
+  it('uses the administrator inbox route for admin staff', async () => {
+    db.user.findMany.mockResolvedValue([{ id: 'admin-1', role: 'ADMIN' }])
+    expect(await sendOvernightInboxCatchup(new Date('2026-11-11T04:05:00Z'))).toBe(1)
+    expect(db.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'admin-1', href: '/ai-suite/inbox',
+      }),
+    })
+    expect(push).toHaveBeenCalledWith('admin-1', expect.objectContaining({
+      url: '/ai-suite/inbox',
+    }))
+  })
+
+  it('does not count a rejected provider dispatch as an attempted success', async () => {
+    push.mockRejectedValue(new Error('Provider unavailable'))
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await sendOvernightInboxCatchup(new Date('2026-11-11T04:05:00Z'))).toBe(0)
+      expect(db.notification.create).toHaveBeenCalledTimes(1)
+      expect(log).toHaveBeenCalled()
+    } finally {
+      log.mockRestore()
+    }
+  })
+
   it('does not duplicate a digest already recorded for the same day', async () => {
     db.notification.findFirst.mockResolvedValue({ id: 'existing' })
     expect(await sendOvernightInboxCatchup(new Date('2026-11-11T04:05:00Z'))).toBe(0)
