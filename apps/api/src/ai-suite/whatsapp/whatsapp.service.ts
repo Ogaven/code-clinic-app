@@ -1,3 +1,4 @@
+import { withinLeadAlertHours } from '../../services/lead-alert-hours'
 import { classifyNonPatientEnquiry, JOB_ENQUIRY_REPLY, SUPPLIER_ENQUIRY_REPLY } from '../../crm-automation/non-patient-enquiry'
 import { getAgentReplyV2OpenAI } from '../agent/agent.service'
 import { isAgentEnabled, takeoverConversation } from '../takeover/takeover.service'
@@ -826,7 +827,9 @@ export async function maybeNotifyStaff(
         await prisma.notification.create({
           data: { userId: u.id, type: 'MESSAGE', title, body, href, isRead: false },
         })
-        sendPushToUser(u.id, { title, body: pushBody, url: href }).catch(() => {})
+        if (withinLeadAlertHours()) {
+          sendPushToUser(u.id, { title, body: pushBody, url: href }).catch(() => {})
+        }
       })
     )
   } catch (e: any) {
