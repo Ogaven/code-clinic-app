@@ -52,6 +52,16 @@ describe('morning unread inbox catch-up', () => {
     expect(push).toHaveBeenCalledTimes(1)
   })
 
+  it('stops a running sweep if the clinic closes while reading notifications', async () => {
+    db.notification.count.mockImplementation(async () => {
+      vi.setSystemTime(new Date('2026-11-11T15:00:00Z'))
+      return 2
+    })
+    expect(await sendOvernightInboxCatchup(new Date('2026-11-11T14:59:59Z'))).toBe(0)
+    expect(db.notification.create).not.toHaveBeenCalled()
+    expect(push).not.toHaveBeenCalled()
+  })
+
   it('uses the administrator inbox route for admin staff', async () => {
     db.user.findMany.mockResolvedValue([{ id: 'admin-1', role: 'ADMIN' }])
     expect(await sendOvernightInboxCatchup(new Date('2026-11-11T04:05:00Z'))).toBe(1)
