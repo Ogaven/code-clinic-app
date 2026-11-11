@@ -87,6 +87,28 @@ describe('morning unread inbox catch-up', () => {
     }
   })
 
+  it('handles multiple staff independently and skips users with no unread messages', async () => {
+    db.user.findMany.mockResolvedValue([
+      { id: 'staff-1', role: 'RECEPTIONIST' },
+      { id: 'admin-2', role: 'ADMIN' },
+    ])
+    db.notification.count.mockResolvedValueOnce(2).mockResolvedValueOnce(0)
+    expect(await sendOvernightInboxCatchup(new Date('2026-11-11T04:05:00Z'))).toBe(1)
+    expect(db.notification.create).toHaveBeenCalledTimes(1)
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(push).toHaveBeenCalledWith('staff-1', expect.any(Object))
+  })
+
+  it('does not record a digest when closing time arrives before persistence', async () => {
+    db.notification.findFirst.mockImplementation(async () => {
+      vi.setSystemTime(new Date('2026-11-11T15:00:00Z'))
+      return null
+    })
+    expect(await sendOvernightInboxCatchup(new Date('2026-11-11T14:59:59Z'))).toBe(0)
+    expect(db.notification.create).not.toHaveBeenCalled()
+    expect(push).not.toHaveBeenCalled()
+  })
+
   it('does not duplicate a digest already recorded for the same day', async () => {
     db.notification.findFirst.mockResolvedValue({ id: 'existing' })
     expect(await sendOvernightInboxCatchup(new Date('2026-11-11T04:05:00Z'))).toBe(0)
