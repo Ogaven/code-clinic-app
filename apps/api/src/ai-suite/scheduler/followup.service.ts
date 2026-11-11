@@ -125,12 +125,20 @@ async function shouldPauseAutomatedFollowup(phone: string, since?: Date): Promis
 }
 
 // ── checkAndSendFollowups ─────────────────────────────────────────────────────
-// Runs every hour. Finds COMPLETED appointments from 23–25 hours ago and sends a
-// warm post-visit follow-up message if one hasn't been sent yet.
+// Patient-facing follow-ups only run from 9 AM to 6 PM Kampala time.
+// Widen the lookback to 48 hours so overnight-due appointments are still
+// eligible on the next daytime run. Existing appointment-based dedup remains.
+export function withinPatientFollowupHours(now: Date = new Date()): boolean {
+  const hour = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Kampala', hour: '2-digit', hourCycle: 'h23',
+  }).format(now))
+  return hour >= 9 && hour < 18
+}
 
 export async function checkAndSendFollowups(): Promise<void> {
-  const now         = new Date()
-  const windowStart = new Date(now.getTime() - 25 * 60 * 60 * 1000)
+  const now = new Date()
+  if (!withinPatientFollowupHours(now)) return
+  const windowStart = new Date(now.getTime() - 48 * 60 * 60 * 1000)
   const windowEnd   = new Date(now.getTime() - 23 * 60 * 60 * 1000)
 
   const appointments = await prisma.appointment.findMany({
