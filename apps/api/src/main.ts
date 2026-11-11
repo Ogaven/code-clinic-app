@@ -544,6 +544,35 @@ runStartup().then(() => {
     checkLeadFollowUpOverdueAlerts().catch(err => console.error('[CrmLeadFollowUpOverdue] Scheduler error:', err))
   }, ONE_HOUR)
 
+  // Catch up on unresolved overnight CRM leads once clinic opens.
+  // Retry after errors; the individual sweep handlers deduplicate unread alerts.
+  let lastMorningLeadCatchup = ''
+  let morningLeadCatchupRunning = false
+  setInterval(async () => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Kampala',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date())
+    const get = (type: string) => parts.find(p => p.type === type)?.value ?? ''
+    const day = `${get('year')}-${get('month')}-${get('day')}`
+    const hour = Number(get('hour'))
+    if (hour < 7 || hour >= 18 || morningLeadCatchupRunning || lastMorningLeadCatchup === day) return
+    morningLeadCatchupRunning = true
+    try {
+      await Promise.all([
+        checkLeadSlas(),
+        checkLeadNeedsHelpAlerts(),
+        checkLeadFollowUpOverdueAlerts(),
+      ])
+      lastMorningLeadCatchup = day
+    } catch (err) {
+      console.error('[MorningLeadCatchup] Error:', err)
+    } finally {
+      morningLeadCatchupRunning = false
+    }
+  }, 60 * 1000)
+
   // Repair missing Meta DM identities in small bounded batches every ten minutes.
   // The worker limits each pass to ten conversations, prevents overlapping runs,
   // and never sends messages. Hourly batches delayed historical recovery for hours.

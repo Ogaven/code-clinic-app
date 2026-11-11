@@ -1,3 +1,4 @@
+import { withinLeadAlertHours } from '../services/lead-alert-hours'
 // ─────────────────────────────────────────────────────────────────────────
 // CRM Automation — staff push/notification sweep over lead-followups.
 // service.ts's existing "overdue" bucket (a Task with entityType 'LEAD' past
@@ -50,6 +51,7 @@ async function notifyFollowUpOverdue(userId: string, role: string, leadId: strin
 }
 
 export async function checkLeadFollowUpOverdueAlerts(): Promise<{ overdueConsidered: number; notified: number }> {
+  if (!withinLeadAlertHours()) return { overdueConsidered: 0, notified: 0 }
   const summary = await buildLeadFollowUpSummary()
   if (summary.overdue.length === 0) return { overdueConsidered: 0, notified: 0 }
 
