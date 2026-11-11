@@ -1,3 +1,4 @@
+import { withinLeadAlertHours } from '../services/lead-alert-hours'
 // ─────────────────────────────────────────────────────────────────────────
 // CRM Automation — Lead SLA engine (Part M).
 //
@@ -56,6 +57,7 @@ async function findTeamLeadIds(): Promise<string[]> {
 }
 
 export async function checkLeadSlas(): Promise<{ escalated15: number; warm30: number; stale24: number }> {
+  if (!withinLeadAlertHours()) return { escalated15: 0, warm30: 0, stale24: 0 }
   const now = new Date()
   let escalated15 = 0, warm30 = 0, stale24 = 0
 
