@@ -22,8 +22,10 @@ export async function sendOvernightInboxCatchup(now: Date = new Date()): Promise
     where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
     select: { id: true, role: true },
   })
-  let notified = 0
+  let attempted = 0
   for (const user of staff) {
+    // A long-running sweep must never dispatch routine pushes after closing.
+    if (!withinLeadAlertHours()) break
     const pending = await prisma.notification.count({
       where: {
         userId: user.id,
@@ -46,15 +48,18 @@ export async function sendOvernightInboxCatchup(now: Date = new Date()): Promise
       data: { userId: user.id, type: 'MESSAGE', title, body, href },
     })
     try {
+      // The push API swallows provider failures: this records an attempted
+      // dispatch, not confirmed delivery to a device.
+      if (!withinLeadAlertHours()) break
       await sendPushToUser(user.id, {
         title: 'Overnight messages need review',
         body: 'Unread conversations arrived overnight — tap to review.',
         url: href,
       })
-      notified++
+      attempted++
     } catch (error) {
       console.error('[OvernightInboxCatchup] Push failed:', error)
     }
   }
-  return notified
+  return attempted
 }
