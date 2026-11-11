@@ -103,6 +103,7 @@ import { checkAndSendTreatmentFollowUpAlerts } from './services/treatment-follow
 // setInterval + DB-status idiom as the schedulers above.
 import { processDueScheduledTouches }      from './crm-automation/sequence-dispatcher'
 import { checkLeadSlas }                   from './crm-automation/lead-sla.service'
+import { sendOvernightInboxCatchup } from './services/overnight-inbox-catchup.service'
 import { sweepStaleContactedLeads }        from './crm-automation/lead-stage.service'
 import { runDailyPatientTagDerivation }    from './crm-automation/patient-tags.service'
 import { checkDailyRecallStaffAlerts } from './crm-automation/recall-staff-alerts.service'
@@ -564,6 +565,7 @@ runStartup().then(() => {
         checkLeadSlas(),
         checkLeadNeedsHelpAlerts(),
         checkLeadFollowUpOverdueAlerts(),
+        sendOvernightInboxCatchup(),
       ])
       lastMorningLeadCatchup = day
     } catch (err) {
