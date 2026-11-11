@@ -74,7 +74,7 @@ beforeEach(() => {
   store.users.set('reception_owner', { id: 'reception_owner', role: 'RECEPTIONIST', isActive: true })
 })
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => { vi.useRealTimers() })
 
 describe('checkLeadFollowUpOverdueAlerts', () => {
   it('does not create notifications or push overnight, retaining overdue work for the daytime sweep', async () => {
