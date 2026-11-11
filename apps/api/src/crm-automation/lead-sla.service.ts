@@ -45,7 +45,7 @@ async function notifyUser(userId: string, title: string, body: string, href: str
   // Browser push IS an external, staff-facing send — gated per Part W
   // ("push notification to real staff" is explicitly listed as prohibited
   // during development/testing).
-  if (isCrmFeatureLive('OPERATIONAL')) {
+  if (isCrmFeatureLive('OPERATIONAL') && withinLeadAlertHours()) {
     const payload: PushPayload = { title, body: pushBody, url: href ?? undefined }
     await sendPushToUser(userId, payload)
   }
