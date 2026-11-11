@@ -1,3 +1,4 @@
+import { withinLeadAlertHours } from '../services/lead-alert-hours'
 // ─────────────────────────────────────────────────────────────────────────
 // CRM Automation — staff push/notification sweep over the existing "Needs
 // Attention" lead queue (needs-attention.service.ts). This module invents no
@@ -55,6 +56,7 @@ async function notifyLeadNeedsHelp(userId: string, role: string, leadId: string)
 }
 
 export async function checkLeadNeedsHelpAlerts(): Promise<{ leadsConsidered: number; notified: number }> {
+  if (!withinLeadAlertHours()) return { leadsConsidered: 0, notified: 0 }
   const queue = await buildNeedsAttentionQueue()
   const relevantCategories = queue.categories.filter(c => LEAD_NEEDS_HELP_CATEGORIES.includes(c.key))
 
