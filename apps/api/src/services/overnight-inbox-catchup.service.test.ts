@@ -29,6 +29,13 @@ describe('morning unread inbox catch-up', () => {
     expect(push).not.toHaveBeenCalled()
   })
 
+  it('does not create or push a digest after 18:00 Kampala time', async () => {
+    vi.setSystemTime(new Date('2026-11-11T15:00:00Z'))
+    expect(await sendOvernightInboxCatchup(new Date())).toBe(0)
+    expect(db.notification.create).not.toHaveBeenCalled()
+    expect(push).not.toHaveBeenCalled()
+  })
+
   it('sends one morning digest for overnight unread inbox notifications', async () => {
     expect(await sendOvernightInboxCatchup(new Date('2026-11-11T04:00:00Z'))).toBe(1)
     expect(db.notification.count).toHaveBeenCalledWith({
