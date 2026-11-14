@@ -585,15 +585,27 @@ runStartup().then(() => {
   // have been reviewed. Each tick is guarded against overlapping runs.
   if (process.env.WALKIN_SHEETS_EXPORT_ENABLED === 'true') {
     let running = false
+    let lastSkippedLog = 0
+    logger.info('Walk-in Google Sheets export worker enabled (10-second interval)')
     const tick = async () => {
       if (running) return
       running = true
-      try { await deliverWalkInSheetOutbox() }
+      try {
+        const result = await deliverWalkInSheetOutbox()
+        if (result.processed > 0) {
+          logger.info({ processed: result.processed }, 'Walk-in Google Sheets export batch completed')
+        } else if (result.skipped && Date.now() - lastSkippedLog > 5 * 60_000) {
+          lastSkippedLog = Date.now()
+          logger.warn('Walk-in Google Sheets export skipped: database lease unavailable or export disabled at runtime')
+        }
+      }
       catch (error) { logger.error({ error }, 'Walk-in Google Sheets export failed') }
       finally { running = false }
     }
     setInterval(() => { void tick() }, 10_000)
     void tick()
+  } else {
+    logger.warn('Walk-in Google Sheets export worker disabled in API process environment')
   }
 
   // Durable Meta inbound processing: never overlap batches within this process.
