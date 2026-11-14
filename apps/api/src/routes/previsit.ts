@@ -178,7 +178,7 @@ router.post('/submit', async (req, res) => {
               userId:    'pre-visit-form',
               userName:  'Pre-Visit Form (Self-Service)',
               action:    'Submitted walk-in intake form',
-              metadata:  JSON.stringify({ outcome, conflicts, note: note || undefined, intakeSnapshot: { firstName, lastName, phone, dob, email, address, referralSource, nextOfKinName, nextOfKinPhone, nextOfKinRelation, chiefComplaint, referredByContact } }),
+              metadata:  JSON.stringify({ outcome, conflicts, note: note || undefined, intakeSnapshot: { firstName, lastName, phone, dob, gender, email, address, district, referralSource, nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory, chiefComplaint, currentMedications, referredByContact } }),
             },
           })
           await tx.walkInSheetOutbox.create({
@@ -195,9 +195,12 @@ router.post('/submit', async (req, res) => {
             userId: 'pre-visit-form',
             userName: 'Pre-Visit Form (Self-Service)',
             action: 'Submitted walk-in intake form',
-            metadata: JSON.stringify({ outcome, conflicts, note: note || undefined, intakeSnapshot: { firstName, lastName, phone, dob, email, address, referralSource, nextOfKinName, nextOfKinPhone, nextOfKinRelation, chiefComplaint, referredByContact }, sheetExportPendingReconciliation: true }),
+            metadata: JSON.stringify({ outcome, conflicts, note: note || undefined, intakeSnapshot: { firstName, lastName, phone, dob, gender, email, address, district, referralSource, nextOfKinName, nextOfKinPhone, nextOfKinRelation, allergies, medicalHistory, chiefComplaint, currentMedications, referredByContact }, sheetExportPendingReconciliation: true }),
           },
-        }).catch(error => console.error('[PreVisit] Walk-in activity fallback failed:', error))
+        }).catch(error => {
+          console.error('[PreVisit] Walk-in activity fallback failed:', error)
+          throw new Error('Walk-in intake was saved to the patient record but could not be registered in the staff intake queue. Please retry or contact reception.')
+        })
       }
 
       // Fire-and-forget — never blocks the visitor's response, and never
@@ -208,7 +211,7 @@ router.post('/submit', async (req, res) => {
     res.json({ success: true, patientId: patient.id, outcome, conflicts })
   } catch (e: any) {
     console.error('[PreVisit] Submit error:', e.message)
-    res.status(500).json({ error: 'Failed to save pre-visit form' })
+    res.status(500).json({ error: e.message?.startsWith('Walk-in intake was saved') ? e.message : 'Failed to save pre-visit form. Please try again or contact reception.' })
   }
 })
 
