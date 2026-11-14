@@ -135,7 +135,7 @@ describe('POST /pre-visit/submit — Sheets outbox resilience', () => {
       data: expect.objectContaining({ metadata: expect.stringContaining('sheetExportPendingReconciliation') }),
     })
   })
-  it('preserves registration even when the fallback activity insert also fails', async () => {
+  it('reports incomplete intake when both the outbox and fallback activity insert fail', async () => {
     const { default: previsitRouter } = await import('../routes/previsit')
     const handler = findHandler(previsitRouter, 'post', '/submit')
     const res = fakeRes()
@@ -144,7 +144,8 @@ describe('POST /pre-visit/submit — Sheets outbox resilience', () => {
       .mockResolvedValueOnce({ id: 'activity-1' })
       .mockRejectedValueOnce(new Error('Activity unavailable'))
     await handler({ body: { phone: '0772000000', firstName: 'Jane', lastName: 'Doe' } }, res)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
+    expect(res.status).toHaveBeenCalledWith(500)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('staff intake queue') }))
   })
 
 })
