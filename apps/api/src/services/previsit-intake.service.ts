@@ -111,7 +111,11 @@ export async function submitWalkInIntake(
       : []
     const existing: Patient | null = exactDob.length === 1
       ? exactDob[0]
-      : matching.length === 1 ? matching[0] : null
+      : exactDob.length > 1 ? null
+      : matching.length === 1 &&
+          (!input.dob || !matching[0].dob || !dobConflict(matching[0].dob, input.dob))
+        ? matching[0]
+        : null
 
     if (!existing) {
       const created = await tx.patient.create({
