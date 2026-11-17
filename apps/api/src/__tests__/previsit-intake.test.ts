@@ -36,9 +36,9 @@ function makeFakePrisma() {
 const tx = {
   $executeRaw: async () => undefined,
   patient: {
-    findFirst: async ({ where }: any) => {
+    findMany: async ({ where }: any) => {
       const phones: string[] = where.phone.in
-      return patients.find(p => phones.includes(p.phone)) ?? null
+      return patients.filter(p => phones.includes(p.phone))
     },
     create: async ({ data }: any) => {
       const p = { id: `p${++idSeq}`, ...data } as Patient
@@ -66,6 +66,24 @@ describe('submitWalkInIntake', () => {
     })
     expect(result.outcome).toBe('CREATED')
     expect(patients).toHaveLength(1)
+  })
+
+  it('creates a separate child patient when their guardian shares the same phone', async () => {
+    const prisma: any = makeFakePrisma()
+    await submitWalkInIntake(prisma, { phone: '0772000099', firstName: 'Mary', lastName: 'Kato' })
+    const child = await submitWalkInIntake(prisma, {
+      phone: '0772000099', firstName: 'John', lastName: 'Kato',
+      dob: '2019-06-03', nextOfKinName: 'Mary Kato', nextOfKinRelation: 'Mother',
+    })
+    expect(child.outcome).toBe('CREATED')
+    expect(child.patient.firstName).toBe('John')
+    expect(patients).toHaveLength(2)
+    expect(patients[0].firstName).toBe('Mary')
+    const repeat = await submitWalkInIntake(prisma, {
+      phone: '0772000099', firstName: 'John', lastName: 'Kato', dob: '2019-06-03',
+    })
+    expect(repeat.outcome).toBe('MATCHED_EXISTING')
+    expect(patients).toHaveLength(2)
   })
 
   it('matches an existing patient by a different Ugandan phone format instead of duplicating', async () => {
