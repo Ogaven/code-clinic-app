@@ -110,7 +110,7 @@ describe('submitWalkInIntake', () => {
     expect(outcomes).toEqual(['CREATED', 'MATCHED_EXISTING'])
   })
 
-  it('fills in empty fields on an existing match but never overwrites a conflicting DOB — flags REQUIRES_REVIEW', async () => {
+  it('keeps same-name patients with conflicting birth dates separate without mutating the original', async () => {
     const prisma: any = makeFakePrisma()
     await submitWalkInIntake(prisma, {
       phone: '0772000003', firstName: 'Grace', lastName: 'Auma', dob: '2015-04-10', address: undefined,
@@ -124,12 +124,12 @@ describe('submitWalkInIntake', () => {
       address: 'Ntinda',  // currently empty — safe to fill in
     })
 
-    expect(result.outcome).toBe('REQUIRES_REVIEW')
-    expect(result.conflicts).toContain('dob')
-    // DOB must NOT have been overwritten by the conflicting submitted value.
+    expect(result.outcome).toBe('CREATED')
+    expect(patients).toHaveLength(2)
     expect(patients[0].dob?.toISOString().slice(0, 10)).toBe('2015-04-10')
-    // But the genuinely-empty address field is safe to fill in.
-    expect(patients[0].address).toBe('Ntinda')
+    expect(patients[0].address).toBeUndefined()
+    expect(result.patient.dob?.toISOString().slice(0, 10)).toBe('2016-01-01')
+    expect(result.patient.address).toBe('Ntinda')
   })
 
   // Milestone: URGENT HOTFIX — Walk-in Intake. email/referralSource were
