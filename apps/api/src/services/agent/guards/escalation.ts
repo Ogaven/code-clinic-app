@@ -48,6 +48,8 @@ export async function notifyStaffInApp(params: {
   // one of the two roles to a 404 or the wrong app shell. Pass a function
   // when the destination differs by role; a plain string when it doesn't.
   href: string | ((role: 'RECEPTIONIST' | 'ADMIN') => string)
+  /** Optional restriction for routine alerts; emergency escalations remain 24/7. */
+  shouldPush?: () => boolean
 }): Promise<void> {
   const staff = await prisma.user.findMany({
     where: { role: { in: ['RECEPTIONIST', 'ADMIN'] }, isActive: true },
@@ -61,7 +63,9 @@ export async function notifyStaffInApp(params: {
       console.error('[Escalation] In-app notification create failed:', e?.message)
       return
     }
-    sendPushToUser(u.id, { title: params.title, body: params.pushBody, url: href }).catch(() => {})
+    if (!params.shouldPush || params.shouldPush()) {
+      sendPushToUser(u.id, { title: params.title, body: params.pushBody, url: href }).catch(() => {})
+    }
   }))
 }
 
