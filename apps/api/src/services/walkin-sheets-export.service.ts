@@ -45,11 +45,24 @@ export async function deliverWalkInSheetOutbox(): Promise<{ processed: number; s
   // Every Google request has a 30-second timeout and a run handles at most
   // 10 tasks; the lease duration is deliberately much longer than a run.
   const owner = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+  // Older deployments can have the outbox table without the singleton lease
+  // seed row. Restore only that fixed coordination row; never touch patient data.
+  await prisma.walkInSheetExportLease.upsert({
+    where: { id: 'walkin-sheets' },
+    create: { id: 'walkin-sheets', expiresAt: new Date(0) },
+    update: {},
+  })
   const acquired = await prisma.walkInSheetExportLease.updateMany({
     where: { id: 'walkin-sheets', expiresAt: { lte: new Date() } },
     data: { owner, expiresAt: new Date(Date.now() + 30 * 60_000) },
   })
-  if (!acquired.count) return { processed: 0, skipped: true }
+  if (!acquired.count) {
+    const lease = await prisma.walkInSheetExportLease.findUnique({
+      where: { id: 'walkin-sheets' }, select: { expiresAt: true },
+    })
+    console.warn('[WalkInSheets] Export lease busy', { expiresAt: lease?.expiresAt?.toISOString() })
+    return { processed: 0, skipped: true }
+  }
   try {
   const metadata = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID, fields: 'sheets(properties(sheetId,title))' }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS })
   const title = metadata.data.sheets?.find(sheet => sheet.properties?.sheetId === SHEET_GID)?.properties?.title
