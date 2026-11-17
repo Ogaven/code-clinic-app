@@ -94,9 +94,28 @@ export async function submitWalkInIntake(
     // different people's submits, never a correctness problem).
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${normalizedPhone}))`
 
-    const existing: Patient | null = await tx.patient.findFirst({
+    // A contact number can belong to a parent or guardian and be shared by
+    // several patients. Never select an unrelated patient by phone alone.
+    const candidates: Patient[] = await tx.patient.findMany({
       where: { phone: { in: phoneVariants(normalizedPhone) } },
     })
+    const sameName = (p: Patient) =>
+      !valuesConflict(p.firstName, input.firstName) &&
+      !valuesConflict(p.lastName, input.lastName) &&
+      !isEmpty(p.firstName) && !isEmpty(p.lastName)
+    const matching = candidates.filter(sameName)
+    // Ambiguous same-name records with different DOBs must be reviewed rather
+    // than arbitrarily selecting the first person.
+    const exactDob = input.dob
+      ? matching.filter(p => p.dob && !dobConflict(p.dob, input.dob))
+      : []
+    const existing: Patient | null = exactDob.length === 1
+      ? exactDob[0]
+      : exactDob.length > 1 ? null
+      : matching.length === 1 &&
+          (!input.dob || !matching[0].dob || !dobConflict(matching[0].dob, input.dob))
+        ? matching[0]
+        : null
 
     if (!existing) {
       const created = await tx.patient.create({

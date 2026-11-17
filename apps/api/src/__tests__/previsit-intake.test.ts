@@ -36,9 +36,9 @@ function makeFakePrisma() {
 const tx = {
   $executeRaw: async () => undefined,
   patient: {
-    findFirst: async ({ where }: any) => {
+    findMany: async ({ where }: any) => {
       const phones: string[] = where.phone.in
-      return patients.find(p => phones.includes(p.phone)) ?? null
+      return patients.filter(p => phones.includes(p.phone))
     },
     create: async ({ data }: any) => {
       const p = { id: `p${++idSeq}`, ...data } as Patient
@@ -68,6 +68,24 @@ describe('submitWalkInIntake', () => {
     expect(patients).toHaveLength(1)
   })
 
+  it('creates a separate child patient when their guardian shares the same phone', async () => {
+    const prisma: any = makeFakePrisma()
+    await submitWalkInIntake(prisma, { phone: '0772000099', firstName: 'Mary', lastName: 'Kato' })
+    const child = await submitWalkInIntake(prisma, {
+      phone: '0772000099', firstName: 'John', lastName: 'Kato',
+      dob: '2019-06-03', nextOfKinName: 'Mary Kato', nextOfKinRelation: 'Mother',
+    })
+    expect(child.outcome).toBe('CREATED')
+    expect(child.patient.firstName).toBe('John')
+    expect(patients).toHaveLength(2)
+    expect(patients[0].firstName).toBe('Mary')
+    const repeat = await submitWalkInIntake(prisma, {
+      phone: '0772000099', firstName: 'John', lastName: 'Kato', dob: '2019-06-03',
+    })
+    expect(repeat.outcome).toBe('MATCHED_EXISTING')
+    expect(patients).toHaveLength(2)
+  })
+
   it('matches an existing patient by a different Ugandan phone format instead of duplicating', async () => {
     const prisma: any = makeFakePrisma()
     await submitWalkInIntake(prisma, { phone: '+256772000001', firstName: 'Sam', lastName: 'Okello' })
@@ -92,7 +110,7 @@ describe('submitWalkInIntake', () => {
     expect(outcomes).toEqual(['CREATED', 'MATCHED_EXISTING'])
   })
 
-  it('fills in empty fields on an existing match but never overwrites a conflicting DOB — flags REQUIRES_REVIEW', async () => {
+  it('keeps same-name patients with conflicting birth dates separate without mutating the original', async () => {
     const prisma: any = makeFakePrisma()
     await submitWalkInIntake(prisma, {
       phone: '0772000003', firstName: 'Grace', lastName: 'Auma', dob: '2015-04-10', address: undefined,
@@ -106,12 +124,12 @@ describe('submitWalkInIntake', () => {
       address: 'Ntinda',  // currently empty — safe to fill in
     })
 
-    expect(result.outcome).toBe('REQUIRES_REVIEW')
-    expect(result.conflicts).toContain('dob')
-    // DOB must NOT have been overwritten by the conflicting submitted value.
+    expect(result.outcome).toBe('CREATED')
+    expect(patients).toHaveLength(2)
     expect(patients[0].dob?.toISOString().slice(0, 10)).toBe('2015-04-10')
-    // But the genuinely-empty address field is safe to fill in.
-    expect(patients[0].address).toBe('Ntinda')
+    expect(patients[0].address).toBeUndefined()
+    expect(result.patient.dob?.toISOString().slice(0, 10)).toBe('2016-01-01')
+    expect(result.patient.address).toBe('Ntinda')
   })
 
   // Milestone: URGENT HOTFIX — Walk-in Intake. email/referralSource were
