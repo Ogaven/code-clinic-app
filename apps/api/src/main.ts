@@ -561,13 +561,25 @@ runStartup().then(() => {
     if (hour < 7 || hour >= 18 || morningLeadCatchupRunning || lastMorningLeadCatchup === day) return
     morningLeadCatchupRunning = true
     try {
-      await Promise.all([
+      // Run each sweep to completion even if another one fails. Promise.all
+      // rejects early, allowing the next scheduler tick to overlap with
+      // still-running sweeps and potentially duplicate staff notifications.
+      const results = await Promise.allSettled([
         checkLeadSlas(),
         checkLeadNeedsHelpAlerts(),
         checkLeadFollowUpOverdueAlerts(),
         sendOvernightInboxCatchup(),
       ])
-      lastMorningLeadCatchup = day
+      const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      if (failures.length) {
+        for (const failure of failures) {
+          console.error('[MorningLeadCatchup] Sweep failed:', failure.reason)
+        }
+        // Retry the failed morning batch on the next tick. Individual
+        // notification handlers must still enforce their own deduplication.
+      } else {
+        lastMorningLeadCatchup = day
+      }
     } catch (err) {
       console.error('[MorningLeadCatchup] Error:', err)
     } finally {
