@@ -192,6 +192,18 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
         }
       }
       const participantName = row.channel === 'FACEBOOK' ? fbNames.get(row.phoneNumber) : undefined
+      // Reuse only a non-placeholder name already stored for the exact same
+      // channel and platform-scoped sender. Never guess from a display name,
+      // cross-channel identity, or synthetic historical identifier.
+      let previouslyVerifiedName: string | null = null
+      if (placeholder(row.displayName) && !participantName) {
+        const sibling = await prisma.aiConversation.findMany({
+          where: { channel: row.channel, phoneNumber: row.phoneNumber, id: { not: row.id } },
+          select: { displayName: true },
+          take: 25,
+        })
+        previouslyVerifiedName = sibling.map(item => item.displayName).find(name => !placeholder(name)) ?? null
+      }
       if (row.channel === 'FACEBOOK' && placeholder(row.displayName) && !participantName) { facebookUnmatchedPlaceholders++; byChannel.FACEBOOK.unmatchedPlaceholders++ }
       if (row.channel === 'FACEBOOK' && participantName && !placeholder(row.displayName)) facebookAlreadyNamedMatches++
       // A verified participant name avoids an unnecessary direct lookup when a
@@ -219,7 +231,7 @@ export async function refreshMissingMetaProfiles(): Promise<void> {
         }
       }
       if (shouldFetchProfile && !temporarilyDenied && !profile.name && !profile.pictureUrl) { stats.unavailable++; channelStats.unavailable++ }
-      const name = participantName || profile.name?.trim() || null
+      const name = participantName || profile.name?.trim() || previouslyVerifiedName || null
       const validName = name && !placeholder(name) ? name : null
       if (row.channel === 'FACEBOOK' && row.phoneNumber && fbNames.has(row.phoneNumber)) { facebookNameMatches++; byChannel.FACEBOOK.participantNameMatches++ }
       // Conditional writes protect real names/photos against a concurrent
