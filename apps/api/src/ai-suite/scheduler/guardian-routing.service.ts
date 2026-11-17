@@ -3,6 +3,7 @@ import { getGreetingName, isMinor } from '../../utils/nameHelper'
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { isWithinStaffSessionWindow, notifyStaffInApp } from '../../services/agent/guards/escalation'
 import { getClinicEscalationWhatsAppNumber } from '../../config/escalation-config'
+import { withinTreatmentFollowupAlertHours } from '../../services/lead-alert-hours'
 
 export type PatientForRouting = {
   id: string
@@ -117,6 +118,23 @@ export async function alertStaffMinorNoGuardian(
   const reason = `${messageType} could not be sent — no guardian contact on file, please add guardian info and follow up manually`
   const msg = `⚠️ ${patientFullName} is a minor with no guardian contact on file — a ${messageType} could not be sent. Please add guardian info and follow up manually.`
 
+  // Routine treatment follow-up staff notifications use the 09:00–18:00
+  // clinic window. Preserve an in-app record overnight, but do not send
+  // staff WhatsApp or OS push. Other guardian/escalation alerts stay urgent.
+  const routineFollowup = /follow.up|post.visit/i.test(messageType)
+  if (routineFollowup && !withinTreatmentFollowupAlertHours()) {
+    await notifyStaffInApp({
+      title: 'Guardian Contact Missing — Action Needed',
+      body: msg,
+      pushBody: 'A patient follow-up needs guardian information — tap to review.',
+      href: role => role === 'RECEPTIONIST'
+        ? `/receptionist/patients?search=${encodeURIComponent(patientFullName)}`
+        : `/patients?search=${encodeURIComponent(patientFullName)}`,
+      shouldPush: withinTreatmentFollowupAlertHours,
+    })
+    return
+  }
+
   // Template-first, freeform fallback ONLY inside the 24h session window --
   // same fail-closed architecture as escalation.ts's notifyJulian() and
   // followup.service.ts's patient-confirmation gating. This alert fires
@@ -172,8 +190,9 @@ export async function alertStaffMinorNoGuardian(
     await notifyStaffInApp({
       title:    '⚠️ Guardian Contact Missing — Action Needed',
       body:     msg,
-      pushBody: `${patientFullName} needs guardian info added — tap to view.`,
+      pushBody: 'A patient needs guardian information — tap to review.',
       href:     role => role === 'RECEPTIONIST' ? `/receptionist/patients?search=${encodeURIComponent(patientFullName)}` : `/patients?search=${encodeURIComponent(patientFullName)}`,
+      shouldPush: routineFollowup ? withinTreatmentFollowupAlertHours : undefined,
     }).catch((e: any) => console.error('[GuardianRouting] In-app fallback failed:', e?.message))
   }
 }
