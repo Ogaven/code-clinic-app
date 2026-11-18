@@ -690,9 +690,9 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
       where: { id: conversation.id },
       select: { agentEnabled: true },
     })
-    const isProviderFailureAcknowledgment =
-      agentReply === 'Thank you for your message. Our reception team will assist you shortly.'
-    if (!currentConversation || (!currentConversation.agentEnabled && !isProviderFailureAcknowledgment)) return
+    // Staff ownership always wins, including when the AI provider returns
+    // a generic fallback. Never send automated replies during human takeover.
+    if (!currentConversation?.agentEnabled) return
 
     // ── 9. Persist Sarah's reply ──────────────────────────────────────────────
     await prisma.aiMessage.create({
