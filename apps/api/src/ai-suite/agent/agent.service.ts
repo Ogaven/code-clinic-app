@@ -2955,7 +2955,16 @@ export async function getAgentReplyV2OpenAI(
       ...apiMessages,
     ]
 
-    for (let iter = 0; iter < 8; iter++) {
+    // Cost-control pilot: cap sequential Responses calls per patient turn only when
+    // explicitly configured. Keep the existing eight-round booking behavior by default.
+    // A conservative minimum of two preserves an opportunity to answer after a tool call.
+    const configuredRounds = Number(process.env.SARAH_OPENAI_MAX_TOOL_ROUNDS)
+    const maxToolRounds = Number.isInteger(configuredRounds) && configuredRounds >= 2 && configuredRounds <= 8
+      ? configuredRounds
+      : 8
+    let turnInputTokens = 0
+    let turnOutputTokens = 0
+    for (let iter = 0; iter < maxToolRounds; iter++) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response: any = await executeAgentOpenAiResponse(client, {
         model:             OPENAI_WEBSITE_MODEL,
@@ -2965,6 +2974,9 @@ export async function getAgentReplyV2OpenAI(
       })
 
       const usage = response.usage
+      turnInputTokens += usage?.input_tokens ?? 0
+      turnOutputTokens += usage?.output_tokens ?? 0
+      if (iter > 0) console.log(`[AgentV2-OpenAI] turn cumulative usage: rounds=${iter + 1} in=${turnInputTokens} out=${turnOutputTokens}`)
       console.log(`[AgentV2-OpenAI] usage: in=${usage?.input_tokens ?? '?'} (cached=${usage?.input_tokens_details?.cached_tokens ?? 0}) out=${usage?.output_tokens ?? '?'} (reasoning=${usage?.output_tokens_details?.reasoning_tokens ?? 0}) total=${usage?.total_tokens ?? '?'}`)
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
