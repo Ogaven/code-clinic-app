@@ -109,6 +109,16 @@ describe('morning unread inbox catch-up', () => {
     expect(push).not.toHaveBeenCalled()
   })
 
+  it('does not dispatch a routine push if the clinic closes during digest persistence', async () => {
+    db.notification.create.mockImplementation(async () => {
+      vi.setSystemTime(new Date('2026-11-11T15:00:00Z'))
+      return { id: 'digest-1' }
+    })
+    expect(await sendOvernightInboxCatchup(new Date('2026-11-11T14:59:59Z'))).toBe(0)
+    expect(db.notification.create).toHaveBeenCalledTimes(1)
+    expect(push).not.toHaveBeenCalled()
+  })
+
   it('does not duplicate a digest already recorded for the same day', async () => {
     db.notification.findFirst.mockResolvedValue({ id: 'existing' })
     expect(await sendOvernightInboxCatchup(new Date('2026-11-11T04:05:00Z'))).toBe(0)
