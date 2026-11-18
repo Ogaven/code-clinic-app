@@ -49,6 +49,9 @@ export async function sendOvernightInboxCatchup(now: Date = new Date()): Promise
     await prisma.notification.create({
       data: { userId: user.id, type: 'MESSAGE', title, body, href },
     })
+    // Persistence may take long enough to cross closing time. The in-app
+    // digest remains available, but no routine OS push may leave after 18:00.
+    if (!withinLeadAlertHours()) break
     try {
       // The push API swallows provider failures: this records an attempted
       // dispatch, not confirmed delivery to a device.
