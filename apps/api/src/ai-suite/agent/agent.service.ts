@@ -2615,7 +2615,11 @@ async function executeV2Tool(
 // full booking tool set and the anti-hallucination guard with WhatsApp, so
 // correctness matters far more than shaving cost on an unproven path; luna
 // is a lever to revisit only after flagship-level correctness is proven.
-const OPENAI_WEBSITE_MODEL = 'gpt-5.6-sol'
+// Controlled cost pilot: explicitly opt in to the tested lower-cost model.
+// Defaults to the existing flagship until booking and clinical regression tests pass.
+const OPENAI_WEBSITE_MODEL = process.env.SARAH_OPENAI_MODEL === 'gpt-5.6-luna'
+  ? 'gpt-5.6-luna'
+  : 'gpt-5.6-sol'
 
 const OPENAI_REPLY_TAG_INSTRUCTION = `OUTPUT FORMAT — CRITICAL: wrap ONLY the exact message you want to send the patient in <reply></reply> tags, e.g. <reply>Sure! Here are the available times...</reply>. Everything inside the tags is sent to the patient verbatim — so it must be pure conversational text, never your own reasoning about which rule applies or what to say next. If you need to think through a decision, do that OUTSIDE the tags; it is never seen by the patient.`
 
