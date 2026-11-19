@@ -482,7 +482,30 @@ function OpenAiUsageCard({
                     <div key={c.channel} className="rounded-lg bg-gray-50 dark:bg-white/5 p-3 text-xs">
                       <div className="flex justify-between gap-2">
                         <span className="font-semibold text-gray-700 dark:text-white/70">{CHANNEL_META[c.channel]?.label ?? c.channel}</span>
-                        <span className="font-bold text-amber-600">{c.estimatedCostUsd === undefined ? 'Unavailable' : '
+                        <span className="font-bold text-amber-600">{c.estimatedCostUsd === undefined ? 'Unavailable' : '$' + c.estimatedCostUsd.toFixed(4)}</span>
+                      </div>
+                      <p className="text-gray-400 mt-1">{c.requests.toLocaleString()} requests · {c.totalTokens.toLocaleString()} tokens</p>
+                    </div>
+                  ))}
+                </div>
+                {(data.byChannelModel?.length ?? 0) > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[11px] text-gray-600 dark:text-white/60">
+                      <thead><tr className="border-b border-gray-100 dark:border-white/10">
+                        <th className="py-2">Channel</th><th>Model</th><th className="text-right">Requests</th><th className="text-right">Est. USD</th>
+                      </tr></thead>
+                      <tbody>{[...(data.byChannelModel ?? [])].sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd).map(r => (
+                        <tr key={r.channel + ':' + r.model} className="border-b border-gray-50 dark:border-white/5">
+                          <td className="py-2">{CHANNEL_META[r.channel]?.label ?? r.channel}</td>
+                          <td>{r.model}</td><td className="text-right">{r.requests.toLocaleString()}</td>
+                          <td className="text-right font-semibold">{'$' + r.estimatedCostUsd.toFixed(4)}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
 
             <p className="text-[9px] text-gray-300 dark:text-white/20 leading-relaxed">
               Cost is {data.cost.source === 'CALCULATED_FROM_TOKEN_USAGE' ? 'calculated from logged token usage' : data.cost.source} using OpenAI&apos;s published per-token pricing for {data.models.join(', ') || 'the configured model'} — an estimate, not an actual invoiced figure.
