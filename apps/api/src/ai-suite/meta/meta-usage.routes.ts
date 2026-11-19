@@ -390,7 +390,7 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
     const { start, end, range } = resolveAiUsageRange(req.query.range, req.query.from, req.query.to)
     const where = { createdAt: { gte: start, lt: end } }
 
-    const [totals, failedRequests, byChannelRaw, byModelRaw, byDayRaw] = await Promise.all([
+    const [totals, failedRequests, byChannelRaw, byModelRaw, byChannelModelRaw, byDayRaw] = await Promise.all([
       prisma.aiUsageLog.aggregate({
         where,
         _count: { _all: true },
@@ -415,6 +415,12 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         where,
         _count: { _all: true },
         _sum:   { inputTokens: true, cachedInputTokens: true, outputTokens: true, totalTokens: true },
+      }),
+      prisma.aiUsageLog.groupBy({
+        by: ['channel', 'model'],
+        where,
+        _count: { _all: true },
+        _sum: { inputTokens: true, cachedInputTokens: true, outputTokens: true, totalTokens: true },
       }),
       prisma.$queryRaw<{ day: string; requests: number; total_tokens: number }[]>`
         SELECT
@@ -459,6 +465,26 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         channel:     r.channel,
         requests:    r._count._all,
         totalTokens: r._sum.totalTokens ?? 0,
+        estimatedCostUsd: calculateAiUsageCostUsd(byChannelModelRaw
+          .filter(m => m.channel === r.channel)
+          .map(m => ({
+            model: m.model,
+            inputTokens: m._sum.inputTokens ?? 0,
+            cachedInputTokens: m._sum.cachedInputTokens ?? 0,
+            outputTokens: m._sum.outputTokens ?? 0,
+          }))),
+      })),
+      byChannelModel: byChannelModelRaw.map(r => ({
+        channel: r.channel,
+        model: r.model,
+        requests: r._count._all,
+        totalTokens: r._sum.totalTokens ?? 0,
+        estimatedCostUsd: calculateAiUsageCostUsd([{
+          model: r.model,
+          inputTokens: r._sum.inputTokens ?? 0,
+          cachedInputTokens: r._sum.cachedInputTokens ?? 0,
+          outputTokens: r._sum.outputTokens ?? 0,
+        }]),
       })),
       byDay: byDayRaw.map(r => ({
         day:         r.day.slice(0, 10),
