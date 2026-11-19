@@ -85,7 +85,8 @@ interface Analytics {
 type AiUsageRange = 'today' | '7d' | '30d' | '90d' | 'month' | 'prev_month' | 'custom'
 
 interface AiUsageDayPoint { day: string; requests: number; totalTokens: number }
-interface AiUsageChannelPoint { channel: string; requests: number; totalTokens: number }
+interface AiUsageChannelPoint { channel: string; requests: number; totalTokens: number; estimatedCostUsd?: number }
+interface AiUsageChannelModelPoint { channel: string; model: string; requests: number; totalTokens: number; estimatedCostUsd: number }
 interface AiUsage {
   range: AiUsageRange
   since: string
@@ -102,6 +103,7 @@ interface AiUsage {
     avgTokensPerResponse: number
   }
   byChannel: AiUsageChannelPoint[]
+  byChannelModel?: AiUsageChannelModelPoint[]
   byDay: AiUsageDayPoint[]
   models: string[]
   cost: { value: number; currency: string; source: string }
@@ -473,12 +475,931 @@ function OpenAiUsageCard({
             </div>
 
             {data.byChannel.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 dark:border-white/10">
-                {data.byChannel.map(c => (
-                  <span key={c.channel} className="text-[10px] px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-white/50">
-                    {CHANNEL_META[c.channel]?.label ?? c.channel}: <span className="font-bold">{c.totalTokens.toLocaleString()}</span>
+              <div className="pt-3 border-t border-gray-100 dark:border-white/10 space-y-2">
+                <h4 className="text-xs font-bold text-gray-700 dark:text-white/80">Estimated AI cost by channel</h4>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[...data.byChannel].sort((a, b) => (b.estimatedCostUsd ?? 0) - (a.estimatedCostUsd ?? 0)).map(c => (
+                    <div key={c.channel} className="rounded-lg bg-gray-50 dark:bg-white/5 p-3 text-xs">
+                      <div className="flex justify-between gap-2">
+                        <span className="font-semibold text-gray-700 dark:text-white/70">{CHANNEL_META[c.channel]?.label ?? c.channel}</span>
+                        <span className="font-bold text-amber-600">{c.estimatedCostUsd === undefined ? 'Unavailable' : '
+
+            <p className="text-[9px] text-gray-300 dark:text-white/20 leading-relaxed">
+              Cost is {data.cost.source === 'CALCULATED_FROM_TOKEN_USAGE' ? 'calculated from logged token usage' : data.cost.source} using OpenAI&apos;s published per-token pricing for {data.models.join(', ') || 'the configured model'} — an estimate, not an actual invoiced figure.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── WhatsApp Delivery Health card ───────────────────────────────────────────
+// Distinct from MetaWabaCard above: that shows volume/cost from Meta's
+// pricing_analytics API; this shows what actually happened to those
+// messages (sent vs delivered vs read vs failed) from our own webhook-fed
+// AiMessage.status — "API accepted the message" is never conflated with
+// "the message was delivered" here.
+
+const HEALTH_STYLE: Record<WhatsAppDeliveryHealth['status'], { label: string; pill: string; dot: string }> = {
+  HEALTHY:  { label: 'Healthy',  pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', dot: 'bg-emerald-500' },
+  DEGRADED: { label: 'Degraded', pill: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',       dot: 'bg-amber-500' },
+  DOWN:     { label: 'Down',     pill: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',               dot: 'bg-red-500' },
+  // Too few send attempts in the last 24h to judge either way — deliberately
+  // distinct from HEALTHY so a quiet window can never read as "confirmed fine."
+  UNKNOWN:  { label: 'Unknown',  pill: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40',              dot: 'bg-gray-400' },
+}
+
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return 'Never recorded'
+  return new Date(iso).toLocaleString('en', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+}
+
+function WhatsAppHealthWindowStat({ label, w }: { label: string; w: DeliveryWindow }) {
+  return (
+    <div className="text-center p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
+      <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-1">{label}</p>
+      <p className="text-xl font-black text-gray-800 dark:text-white">{w.attempted.toLocaleString()}</p>
+      <p className="text-[9px] text-gray-400 dark:text-white/40 mt-1">
+        <span className="text-emerald-500 font-bold">{w.deliveryRate}%</span> delivered · <span className="text-red-400 font-bold">{w.failureRate}%</span> failed
+      </p>
+    </div>
+  )
+}
+
+function WhatsAppHealthCard({ data, loading, isAdmin }: { data: WhatsAppDeliveryHealth | null; loading: boolean; isAdmin: boolean }) {
+  return (
+    <section>
+      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
+        <HeartPulse size={10} /> WhatsApp — Patient Messaging Health
+      </p>
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
+        {loading || !data ? (
+          <div className="flex items-center justify-center py-10"><Loader2 size={20} className="animate-spin text-cyan-500" /></div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <span className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold', HEALTH_STYLE[data.status].pill)}>
+                <span className={cn('w-1.5 h-1.5 rounded-full', HEALTH_STYLE[data.status].dot)} />
+                {HEALTH_STYLE[data.status].label}
+              </span>
+              {data.status !== 'HEALTHY' && (
+                <span className="text-[10px] text-gray-400 dark:text-white/40">Based on the last 24 hours of send attempts</span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <WhatsAppHealthWindowStat label="Today" w={data.today} />
+              <WhatsAppHealthWindowStat label="This Month" w={data.thisMonth} />
+              <WhatsAppHealthWindowStat label="Last 30 Days" w={data.last30Days} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-[11px]">
+              <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
+                <p className="text-gray-400 dark:text-white/40">Last successful delivery</p>
+                <p className="font-bold text-gray-700 dark:text-white/80 mt-0.5">{fmtDateTime(data.lastSuccessfulDeliveryAt)}</p>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
+                <p className="text-gray-400 dark:text-white/40">Last failed delivery</p>
+                <p className="font-bold text-gray-700 dark:text-white/80 mt-0.5">{fmtDateTime(data.lastFailedDeliveryAt)}</p>
+              </div>
+            </div>
+
+            {!isAdmin && data.status !== 'HEALTHY' && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/20 rounded-xl text-[11px] text-amber-700 dark:text-amber-400">
+                Some WhatsApp messages aren't going through right now. This has been flagged for the clinic admin.
+              </div>
+            )}
+
+            {isAdmin && data.latestError && (
+              <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-800/20 rounded-xl text-[11px] text-red-600 dark:text-red-400">
+                <span className="font-bold">Latest provider error (admin)</span> — #{data.latestError.code} {data.latestError.title}
+                {data.latestError.details && <span className="block mt-1 text-red-500/80 dark:text-red-400/70">{data.latestError.details}</span>}
+              </div>
+            )}
+
+            {isAdmin && Object.keys(data.failureCountByCode).length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(data.failureCountByCode).map(([code, count]) => (
+                  <span key={code} className="text-[10px] px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-white/50">
+                    #{code}: <span className="font-bold">{count.toLocaleString()}</span>
                   </span>
                 ))}
+              </div>
+            )}
+            {isAdmin && (
+              <p className="text-[9px] text-gray-300 dark:text-white/20">Failure counts are since delivery-failure tracking began (2026-09-15) — not backfilled from before instrumentation existed.</p>
+            )}
+
+            {/* ── Staff Escalation Alerts — a SEPARATE status from patient
+                messaging above. Deliveries to the internal staff escalation
+                number (clinical concerns, guardian-routing warnings, new-lead
+                notifications) are tracked independently so a burst of staff
+                alert failures is visible on its own, and never silently
+                blended into — or hidden from — the patient health status
+                above. */}
+            {data.staffEscalation && (
+              <div className="pt-4 border-t border-gray-100 dark:border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Staff Escalation Alerts</p>
+                  <span className={cn('flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold', HEALTH_STYLE[data.staffEscalation.status].pill)}>
+                    <span className={cn('w-1.5 h-1.5 rounded-full', HEALTH_STYLE[data.staffEscalation.status].dot)} />
+                    {HEALTH_STYLE[data.staffEscalation.status].label}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-[11px]">
+                  <div className="p-2.5 bg-gray-50 dark:bg-white/5 rounded-xl">
+                    <p className="text-gray-400 dark:text-white/40 text-[10px]">Last attempt</p>
+                    <p className="font-bold text-gray-700 dark:text-white/80 mt-0.5">{fmtDateTime(data.staffEscalation.lastAttemptAt)}</p>
+                  </div>
+                  <div className="p-2.5 bg-gray-50 dark:bg-white/5 rounded-xl">
+                    <p className="text-gray-400 dark:text-white/40 text-[10px]">Last successful delivery</p>
+                    <p className="font-bold text-gray-700 dark:text-white/80 mt-0.5">{fmtDateTime(data.staffEscalation.lastSuccessfulDeliveryAt)}</p>
+                  </div>
+                  <div className="p-2.5 bg-gray-50 dark:bg-white/5 rounded-xl">
+                    <p className="text-gray-400 dark:text-white/40 text-[10px]">Last failure</p>
+                    <p className="font-bold text-gray-700 dark:text-white/80 mt-0.5">{fmtDateTime(data.staffEscalation.lastFailedDeliveryAt)}</p>
+                  </div>
+                </div>
+                {isAdmin && data.staffEscalation.latestError && (
+                  <div className="p-2.5 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-800/20 rounded-xl text-[11px] text-red-600 dark:text-red-400">
+                    <span className="font-bold">Latest error (admin)</span> — #{data.staffEscalation.latestError.code} {data.staffEscalation.latestError.title}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── WhatsApp / Meta Status card (Admin-only) ────────────────────────────────
+// Redesigned 2026-09-20: this used to be titled "Meta Billing" and rendered
+// Marketing API credit-line entities ("Ajua Inc.", "LeadConnector LLC") as
+// bold entity-name-plus-balance rows indistinguishable from real financial
+// line items, with only a 9px footnote explaining they weren't actually
+// WhatsApp billing. Meta does not expose a real WhatsApp outstanding-balance
+// figure to this token (payment_methods/adaccounts/funding all return
+// permission-denied — see meta-billing.service.ts) — so this card now leads
+// with verified, operationally useful status (account/phone/templates/
+// payment-eligibility) and demotes the credit-line data to its own small,
+// explicitly-labeled, visually muted section at the bottom, never implying
+// it's Code Clinic's own WhatsApp bill.
+
+const BILLING_STYLE: Record<MetaBillingStatus['billingStatus'], { label: string; pill: string }> = {
+  HEALTHY:             { label: 'Healthy',             pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  ATTENTION_REQUIRED:  { label: 'Attention Required',   pill: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  UNKNOWN:             { label: 'Unknown',              pill: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/40' },
+}
+
+function StatusRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between text-[11px] py-1.5">
+      <span className="text-gray-400 dark:text-white/40">{label}</span>
+      <span className="font-bold text-gray-700 dark:text-white/80">{value}</span>
+    </div>
+  )
+}
+
+function MetaBillingCard({ data, loading }: { data: MetaBillingStatus | null; loading: boolean }) {
+  return (
+    <section>
+      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
+        <CreditCard size={10} /> WhatsApp / Meta Status (Admin only)
+      </p>
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
+        {loading || !data ? (
+          <div className="flex items-center justify-center py-10"><Loader2 size={20} className="animate-spin text-violet-500" /></div>
+        ) : (
+          <>
+            <span className={cn('inline-flex items-center px-2.5 py-1.5 rounded-xl text-xs font-bold w-fit', BILLING_STYLE[data.billingStatus].pill)}>
+              Messaging health: {BILLING_STYLE[data.billingStatus].label}
+            </span>
+
+            {/* ── Payment / Eligibility — the ONLY red-alert section, and only when Meta actually reports one ── */}
+            {data.recent131042Within24h && data.latestPaymentError ? (
+              <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-700/30 rounded-xl text-sm text-red-600 dark:text-red-400">
+                <p className="font-bold flex items-center gap-1.5">
+                  <AlertCircle size={14} /> Meta has blocked WhatsApp delivery — #{data.latestPaymentError.code} {data.latestPaymentError.title}
+                </p>
+                <p className="text-xs mt-1 text-red-500/90 dark:text-red-400/80">
+                  Meta reports a business eligibility/payment condition on the production WhatsApp account. This is not something Code Clinic can resolve in-app.
+                </p>
+                {data.adminActionUrl && (
+                  <a href={data.adminActionUrl} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 mt-2 text-xs font-bold underline">
+                    Resolve in Meta Business Manager <ExternalLink size={11} />
+                  </a>
+                )}
+              </div>
+            ) : data.recent131042 ? (
+              <p className="text-[10px] text-gray-400 dark:text-white/40">
+                A payment/eligibility error (#{data.latestPaymentError?.code}) occurred previously but not in the last 24 hours — not currently treated as an active incident.
+              </p>
+            ) : null}
+
+            {/* ── WhatsApp Business Account ── */}
+            <div className="pt-2 border-t border-gray-100 dark:border-white/10">
+              <StatusRow label="WhatsApp Business Account" value={data.wabaConfigured ? 'Configured' : 'Not configured'} />
+              {data.wabaAccountReviewStatus && <StatusRow label="Account review status" value={data.wabaAccountReviewStatus} />}
+            </div>
+
+            {/* ── Phone Number ── */}
+            <div className="pt-2 border-t border-gray-100 dark:border-white/10">
+              {data.phoneNumber ? (
+                <>
+                  <StatusRow label="Production number" value={data.phoneNumber.displayPhoneNumber ?? '—'} />
+                  <StatusRow label="Verified name" value={data.phoneNumber.verifiedName ?? '—'} />
+                  {data.phoneNumber.qualityRating && <StatusRow label="Quality rating" value={data.phoneNumber.qualityRating} />}
+                </>
+              ) : (
+                <StatusRow label="Production number" value="Unavailable" />
+              )}
+            </div>
+
+            {/* ── Templates ── */}
+            <div className="pt-2 border-t border-gray-100 dark:border-white/10">
+              {data.templates ? (
+                <>
+                  <StatusRow label="Approved templates" value={data.templates.approvedCount} />
+                  {data.templates.pendingCount > 0 && <StatusRow label="Pending review" value={data.templates.pendingCount} />}
+                  {data.templates.rejectedCount > 0 && <StatusRow label="Rejected" value={data.templates.rejectedCount} />}
+                </>
+              ) : (
+                <StatusRow label="Templates" value="Unavailable" />
+              )}
+            </div>
+
+            {/* ── Billing data — honest, never fabricated. No unrelated Marketing
+                API / non-Code-Clinic billing entities are shown here — see
+                meta-billing.service.ts, which stopped calling /extendedcredits
+                entirely (2026-09-22). ── */}
+            <p className="text-[10px] text-gray-400 dark:text-white/40 leading-relaxed pt-2 border-t border-gray-100 dark:border-white/10">
+              {data.billingDataNote}
+            </p>
+
+            {data.graphApiError && (
+              <p className="text-[9px] text-gray-300 dark:text-white/20">Graph API note: {data.graphApiError}</p>
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── CRM Configuration Readiness card (Admin-only) ───────────────────────────
+
+function CrmReadinessCard({ data, loading }: { data: CrmReadinessSummary | null; loading: boolean }) {
+  return (
+    <section>
+      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
+        <ClipboardCheck size={10} /> CRM Configuration Readiness (Admin only)
+      </p>
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5">
+        {loading || !data ? (
+          <div className="flex items-center justify-center py-10"><Loader2 size={20} className="animate-spin text-cyan-500" /></div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className={cn('p-3 rounded-xl', data.activeRoutingRuleCount === 0 ? 'bg-amber-50 dark:bg-amber-900/10' : 'bg-gray-50 dark:bg-white/5')}>
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Routing Rules</p>
+              <p className="text-xl font-black text-gray-800 dark:text-white">{data.activeRoutingRuleCount} active <span className="text-xs text-gray-400 font-normal">/ {data.routingRuleCount} total</span></p>
+              {data.activeRoutingRuleCount === 0 && <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">New leads aren&apos;t being auto-assigned to an owner.</p>}
+            </div>
+            <div className={cn('p-3 rounded-xl', data.activeSequenceDefinitionCount === 0 ? 'bg-amber-50 dark:bg-amber-900/10' : 'bg-gray-50 dark:bg-white/5')}>
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Sequence Definitions</p>
+              <p className="text-xl font-black text-gray-800 dark:text-white">{data.activeSequenceDefinitionCount} active <span className="text-xs text-gray-400 font-normal">/ {data.sequenceDefinitionCount} total</span></p>
+              {data.activeSequenceDefinitionCount === 0 && <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">No recall/follow-up automation is actually running yet.</p>}
+            </div>
+            <div className={cn('p-3 rounded-xl', data.staleUnassignedLeadCount > 0 ? 'bg-amber-50 dark:bg-amber-900/10' : 'bg-gray-50 dark:bg-white/5')}>
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Stale Unassigned Leads</p>
+              <p className="text-xl font-black text-gray-800 dark:text-white">{data.staleUnassignedLeadCount.toLocaleString()}</p>
+              {data.staleUnassignedLeadCount > 0 && <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">Untouched &gt;24h with no owner assigned.</p>}
+            </div>
+            <div className={cn('p-3 rounded-xl', !data.reviewRequestConfigured ? 'bg-amber-50 dark:bg-amber-900/10' : 'bg-gray-50 dark:bg-white/5')}>
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Review Requests</p>
+              <p className="text-xl font-black text-gray-800 dark:text-white">{data.reviewRequestConfigured ? 'Configured' : 'Not configured'}</p>
+              {!data.reviewRequestConfigured && <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">No Google review link set — can&apos;t send anything yet.</p>}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── Meta Integration Health (Admin-only) ────────────────────────────────────
+// Built 2026-09-20 for the Facebook/Instagram ingestion investigation.
+// Every value shown is either a real Graph API read or a real DB read —
+// "Connected" is never shown merely because a credential exists, and a
+// quiet channel is never reported as failed without real evidence either
+// way (see ChannelIngestionStatus.evidence === 'NONE' → "No recent inbound
+// event available for verification").
+
+function fmtEvidence(status: ChannelIngestionStatus | undefined): { label: string; className: string } {
+  if (!status || status.evidence === 'NONE') {
+    return { label: 'No recent inbound event available for verification', className: 'text-gray-400 dark:text-white/40' }
+  }
+  if (status.evidence === 'RECENT') {
+    return { label: `Last event ${fmtDateTime(status.lastInboundEventAt)}`, className: 'text-emerald-600 dark:text-emerald-400' }
+  }
+  return { label: `Last event ${fmtDateTime(status.lastInboundEventAt)} (stale)`, className: 'text-amber-600 dark:text-amber-400' }
+}
+
+function BoolBadge({ value }: { value: boolean | null }) {
+  if (value === null) return <span className="text-[10px] text-gray-400 dark:text-white/40">Unknown</span>
+  return value
+    ? <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Yes</span>
+    : <span className="text-[10px] font-bold text-red-500 dark:text-red-400">No</span>
+}
+
+function MetaIntegrationHealthCard({ data, loading }: { data: MetaIntegrationHealth | null; loading: boolean }) {
+  const d = data?.diagnostics
+  const pageSub = d?.appSubscriptions?.find(s => s.object === 'page') ?? null
+  const igSub   = d?.appSubscriptions?.find(s => s.object === 'instagram') ?? null
+
+  return (
+    <section>
+      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-4 flex items-center gap-2">
+        <HeartPulse size={10} /> Meta Integration Health — Facebook &amp; Instagram (Admin only)
+      </p>
+      <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-5">
+        {loading || !d ? (
+          <div className="flex items-center justify-center py-10"><Loader2 size={20} className="animate-spin text-cyan-500" /></div>
+        ) : (
+          <>
+            {/* ── Facebook ── */}
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-white/50 mb-2">Facebook</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                <div><span className="text-gray-400 dark:text-white/40 block">Page reachable</span><BoolBadge value={d.pageReachable} /></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">App subscribed</span><BoolBadge value={pageSub?.active ?? null} /></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">Page subscribed to app</span><BoolBadge value={d.pageSubscribedToApp} /></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">Callback URL</span><span className="font-mono text-[9px] text-gray-500 dark:text-white/50 break-all">{pageSub?.callbackUrl ?? 'unknown'}</span></div>
+              </div>
+              <div className="mt-2 space-y-1">
+                <p className={cn('text-[10px]', fmtEvidence(data.ingestion.FACEBOOK).className)}>DMs — {fmtEvidence(data.ingestion.FACEBOOK).label}</p>
+                <p className={cn('text-[10px]', fmtEvidence(data.ingestion.FACEBOOK_COMMENT).className)}>Comments — {fmtEvidence(data.ingestion.FACEBOOK_COMMENT).label}</p>
+              </div>
+            </div>
+
+            {/* ── Instagram ── */}
+            <div className="pt-3 border-t border-gray-100 dark:border-white/10">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-white/50 mb-2">Instagram {d.instagramUsername && <span className="font-normal normal-case text-gray-400">· @{d.instagramUsername}</span>}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                <div><span className="text-gray-400 dark:text-white/40 block">Account reachable</span><BoolBadge value={d.instagramReachable} /></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">App subscribed</span><BoolBadge value={igSub?.active ?? null} /></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">Subscribed fields</span><span className="text-gray-600 dark:text-white/60">{igSub?.fields?.join(', ') || 'unknown'}</span></div>
+                <div><span className="text-gray-400 dark:text-white/40 block">Callback URL</span><span className="font-mono text-[9px] text-gray-500 dark:text-white/50 break-all">{igSub?.callbackUrl ?? 'unknown'}</span></div>
+              </div>
+              <div className="mt-2 space-y-1">
+                <p className={cn('text-[10px]', fmtEvidence(data.ingestion.INSTAGRAM).className)}>DMs — {fmtEvidence(data.ingestion.INSTAGRAM).label}</p>
+                <p className={cn('text-[10px]', fmtEvidence(data.ingestion.INSTAGRAM_COMMENT).className)}>Comments — {fmtEvidence(data.ingestion.INSTAGRAM_COMMENT).label}</p>
+              </div>
+            </div>
+
+            {/* ── Permissions ── */}
+            <div className="pt-3 border-t border-gray-100 dark:border-white/10">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-white/50 mb-2">Permissions</p>
+              <div className="space-y-1">
+                {d.permissionChecks.map(p => (
+                  <div key={p.permission} className="flex items-center justify-between text-[11px]">
+                    <span className="text-gray-500 dark:text-white/50">{p.permission} <span className="text-gray-300 dark:text-white/20">— {p.requiredByFeature}</span></span>
+                    {p.granted === 'UNKNOWN'
+                      ? <span className="text-[10px] text-gray-400 dark:text-white/40">Unknown</span>
+                      : <BoolBadge value={p.granted} />}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {d.graphApiError && (
+              <p className="text-[9px] text-gray-300 dark:text-white/20 pt-2 border-t border-gray-100 dark:border-white/10">Graph API note: {d.graphApiError}</p>
+            )}
+            <p className="text-[9px] text-gray-300 dark:text-white/20">
+              &quot;App subscribed&quot; reflects Meta&apos;s app-level webhook configuration. &quot;Page subscribed to app&quot; confirms this specific Page opted into receiving from it — both must be true for events to arrive.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+
+function CompactTrendChart({ channels }: { channels: Record<string, ChannelData> }) {
+  const byDay = new Map<string, number>()
+  Object.values(channels).forEach(channel => channel.daily.forEach(point => {
+    byDay.set(point.day, (byDay.get(point.day) ?? 0) + point.agent + point.user)
+  }))
+  const points = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-30)
+  if (!points.length) return <div className="h-32 grid place-items-center text-xs text-gray-400">No activity in this period</div>
+  const width = 620, height = 150, pad = 12
+  const max = Math.max(...points.map(([, value]) => value), 1)
+  const coords = points.map(([, value], index) => {
+    const x = points.length === 1 ? width / 2 : pad + (index / (points.length - 1)) * (width - pad * 2)
+    const y = height - pad - (value / max) * (height - pad * 2)
+    return { x, y, value }
+  })
+  const line = coords.map(p => `${p.x},${p.y}`).join(' ')
+  const area = `${pad},${height - pad} ${line} ${width - pad},${height - pad}`
+  return (
+    <div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32" role="img" aria-label="AI activity trend">
+        <defs>
+          <linearGradient id="activityFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        <polygon points={area} fill="url(#activityFill)" />
+        <polyline points={line} fill="none" stroke="#06b6d4" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {coords.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="3" fill="#0891b2"><title>{points[i][0]}: {p.value.toLocaleString()} messages</title></circle>)}
+      </svg>
+      <div className="flex justify-between text-[9px] text-gray-400">
+        <span>{points[0]?.[0]}</span><span>{points[points.length - 1]?.[0]}</span>
+      </div>
+    </div>
+  )
+}
+
+function ChannelMixDonut({ channels }: { channels: Record<string, ChannelData> }) {
+  const palette = ['#06b6d4', '#2563eb', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#94a3b8']
+  const rows = CHANNEL_ORDER.map((key, index) => ({
+    key,
+    label: CHANNEL_META[key]?.label ?? key,
+    value: channels[key]?.selected?.total ?? 0,
+    color: palette[index % palette.length],
+  })).filter(row => row.value > 0)
+  const total = rows.reduce((sum, row) => sum + row.value, 0)
+  let cursor = 0
+  const gradient = total
+    ? rows.map(row => {
+        const start = cursor
+        cursor += (row.value / total) * 100
+        return `${row.color} ${start}% ${cursor}%`
+      }).join(', ')
+    : '#e5e7eb 0 100%'
+  return (
+    <div className="flex items-center gap-5">
+      <div className="relative h-28 w-28 shrink-0 rounded-full" style={{ background: `conic-gradient(${gradient})` }}>
+        <div className="absolute inset-[18px] rounded-full bg-white dark:bg-gray-900 grid place-items-center text-center">
+          <div><p className="text-xl font-black text-gray-800 dark:text-white">{total.toLocaleString()}</p><p className="text-[8px] uppercase tracking-wide text-gray-400">messages</p></div>
+        </div>
+      </div>
+      <div className="min-w-0 flex-1 space-y-1.5">
+        {rows.slice(0, 5).map(row => (
+          <div key={row.key} className="flex items-center gap-2 text-[10px]">
+            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: row.color }} />
+            <span className="text-gray-500 dark:text-white/50 truncate flex-1">{row.label}</span>
+            <span className="font-bold text-gray-700 dark:text-white">{row.value.toLocaleString()}</span>
+          </div>
+        ))}
+        {!rows.length && <p className="text-xs text-gray-400">No channel activity in this period</p>}
+      </div>
+    </div>
+  )
+}
+
+function DeliveryDonut({ window }: { window: DeliveryWindow | null }) {
+  if (!window || window.attempted === 0) return <div className="h-28 grid place-items-center text-xs text-gray-400">No delivery attempts in this period</div>
+  const delivered = Math.max(window.delivered, 0)
+  const failed = Math.max(window.failed, 0)
+  const pending = Math.max(window.pending, 0)
+  const total = Math.max(delivered + failed + pending, 1)
+  const deliveredEnd = (delivered / total) * 100
+  const failedEnd = deliveredEnd + (failed / total) * 100
+  return (
+    <div className="flex items-center gap-5">
+      <div className="relative h-28 w-28 shrink-0 rounded-full" style={{ background: `conic-gradient(#10b981 0 ${deliveredEnd}%, #ef4444 ${deliveredEnd}% ${failedEnd}%, #f59e0b ${failedEnd}% 100%)` }}>
+        <div className="absolute inset-[18px] rounded-full bg-white dark:bg-gray-900 grid place-items-center text-center">
+          <div><p className="text-xl font-black text-gray-800 dark:text-white">{window.deliveryRate}%</p><p className="text-[8px] uppercase tracking-wide text-gray-400">delivered</p></div>
+        </div>
+      </div>
+      <div className="space-y-2 text-[10px] flex-1">
+        <div className="flex justify-between"><span className="text-emerald-600">Delivered</span><b>{delivered.toLocaleString()}</b></div>
+        <div className="flex justify-between"><span className="text-red-500">Failed</span><b>{failed.toLocaleString()}</b></div>
+        <div className="flex justify-between"><span className="text-amber-500">Pending</span><b>{pending.toLocaleString()}</b></div>
+        <div className="pt-1 border-t border-gray-100 dark:border-white/10 flex justify-between"><span className="text-gray-400">Attempted</span><b>{window.attempted.toLocaleString()}</b></div>
+      </div>
+    </div>
+  )
+}
+
+function SimpleChannelState({ channel, data, integration }: { channel: string; data: ChannelData; integration: MetaIntegrationHealth | null }) {
+  let label = data.selected.total > 0 ? 'Receiving traffic' : 'No recent traffic'
+  let className = data.selected.total > 0 ? 'text-emerald-600 bg-emerald-50' : 'text-gray-500 bg-gray-100'
+  if (['FACEBOOK', 'FACEBOOK_COMMENT', 'INSTAGRAM', 'INSTAGRAM_COMMENT'].includes(channel)) {
+    const evidence = integration?.ingestion?.[channel]?.evidence
+    if (evidence === 'RECENT') { label = 'Receiving traffic'; className = 'text-emerald-600 bg-emerald-50' }
+    else if (evidence === 'STALE') { label = 'No recent traffic'; className = 'text-amber-700 bg-amber-50' }
+    else { label = 'Configured / unverified'; className = 'text-gray-600 bg-gray-100' }
+  }
+  return <span className={cn('rounded-full px-2 py-1 text-[9px] font-bold', className)}>{label}</span>
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+const CHANNEL_ORDER = ['WHATSAPP', 'WEBSITE', 'FACEBOOK', 'FACEBOOK_COMMENT', 'INSTAGRAM', 'INSTAGRAM_COMMENT', 'SMS']
+
+export default function AnalyticsPage() {
+  const API = '/api-proxy'
+  const [data, setData]             = useState<Analytics | null>(null)
+  const [loading, setLoading]       = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError]           = useState<string | null>(null)
+  const [channelRange, setChannelRange] = useState<AiUsageRange>('30d')
+
+  // Provider billing/cost info is Admin-only — Receptionist (or anyone else)
+  // viewing this same shared page must never see the OpenAI usage/cost
+  // section, and must never even issue the request for it. The backend
+  // enforces this too (adminOnly on GET /ai-suite/ai-usage), so this is
+  // belt-and-braces, not the only guard.
+  const [isAdmin, setIsAdmin]           = useState(false)
+  const [aiUsage, setAiUsage]           = useState<AiUsage | null>(null)
+  const [aiUsageRange, setAiUsageRange] = useState<AiUsageRange>('30d')
+  const [aiUsageLoading, setAiUsageLoading] = useState(true)
+  // Custom From/To (YYYY-MM-DD, Kampala calendar dates) — only used when
+  // aiUsageRange === 'custom'. Shared by both the OpenAI and Meta cost
+  // fetches below so "Custom" is one range selection covering both providers.
+  const [costCustomFrom, setCostCustomFrom] = useState('')
+  const [costCustomTo, setCostCustomTo]     = useState('')
+  const [metaUsage, setMetaUsage]               = useState<MetaUsage | null>(null)
+  const [metaUsageLoading, setMetaUsageLoading] = useState(true)
+
+  const [whatsappHealth, setWhatsappHealth]       = useState<WhatsAppDeliveryHealth | null>(null)
+  const [whatsappHealthLoading, setWhatsappHealthLoading] = useState(true)
+  const [metaBilling, setMetaBilling]             = useState<MetaBillingStatus | null>(null)
+  const [metaBillingLoading, setMetaBillingLoading] = useState(true)
+  const [crmReadiness, setCrmReadiness]           = useState<CrmReadinessSummary | null>(null)
+  const [crmReadinessLoading, setCrmReadinessLoading] = useState(true)
+  const [metaIntegrationHealth, setMetaIntegrationHealth]               = useState<MetaIntegrationHealth | null>(null)
+  const [metaIntegrationHealthLoading, setMetaIntegrationHealthLoading] = useState(true)
+
+  function authH() {
+    const t = typeof window !== 'undefined' ? localStorage.getItem('cc_token') : null
+    return { Authorization: `Bearer ${t}` }
+  }
+
+  async function load(force = false, range: AiUsageRange = channelRange) {
+    force ? setRefreshing(true) : setLoading(true)
+    setError(null)
+    try {
+      const ep = force ? `${API}/ai-suite/channel-analytics/refresh` : `${API}/ai-suite/channel-analytics`
+      const res = await fetch(`${ep}?range=${range}`, { method: force ? 'POST' : 'GET', headers: authH() })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setData(await res.json())
+    } catch {
+      setError('Could not load analytics data')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }
+
+  function rangeQuery(range: AiUsageRange, from: string, to: string): string {
+    if (range !== 'custom') return `range=${range}`
+    return `range=custom&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  }
+
+  async function loadAiUsage(range: AiUsageRange, from: string, to: string) {
+    if (range === 'custom' && (!from || !to)) return
+    setAiUsageLoading(true)
+    try {
+      const res = await fetch(`${API}/ai-suite/ai-usage?${rangeQuery(range, from, to)}`, { headers: authH() })
+      if (!res.ok) { setAiUsage(null); return }
+      setAiUsage(await res.json())
+    } catch {
+      setAiUsage(null)
+    } finally {
+      setAiUsageLoading(false)
+    }
+  }
+
+  // Meta's own cost figure for the exact same selected range — a separate
+  // fetch (not bundled into channel-analytics, which only ever returns a
+  // 6h-cached "this month" snapshot) so Meta's cost card can follow the same
+  // range control as OpenAI's instead of being stuck on "this month".
+  async function loadMetaUsage(range: AiUsageRange, from: string, to: string) {
+    if (range === 'custom' && (!from || !to)) return
+    setMetaUsageLoading(true)
+    try {
+      const res = await fetch(`${API}/ai-suite/meta-usage?${rangeQuery(range, from, to)}`, { headers: authH() })
+      if (!res.ok) { setMetaUsage(null); return }
+      setMetaUsage(await res.json())
+    } catch {
+      setMetaUsage(null)
+    } finally {
+      setMetaUsageLoading(false)
+    }
+  }
+
+  async function loadWhatsappHealth() {
+    setWhatsappHealthLoading(true)
+    try {
+      const res = await fetch(`${API}/ai-suite/whatsapp-health`, { headers: authH() })
+      setWhatsappHealth(res.ok ? await res.json() : null)
+    } catch {
+      setWhatsappHealth(null)
+    } finally {
+      setWhatsappHealthLoading(false)
+    }
+  }
+
+  async function loadMetaBilling() {
+    setMetaBillingLoading(true)
+    try {
+      const res = await fetch(`${API}/ai-suite/meta-billing`, { headers: authH() })
+      setMetaBilling(res.ok ? await res.json() : null)
+    } catch {
+      setMetaBilling(null)
+    } finally {
+      setMetaBillingLoading(false)
+    }
+  }
+
+  async function loadCrmReadiness() {
+    setCrmReadinessLoading(true)
+    try {
+      const res = await fetch(`${API}/ai-suite/crm-readiness`, { headers: authH() })
+      setCrmReadiness(res.ok ? await res.json() : null)
+    } catch {
+      setCrmReadiness(null)
+    } finally {
+      setCrmReadinessLoading(false)
+    }
+  }
+
+  async function loadMetaIntegrationHealth() {
+    setMetaIntegrationHealthLoading(true)
+    try {
+      const res = await fetch(`${API}/ai-suite/meta-integration-health`, { headers: authH() })
+      setMetaIntegrationHealth(res.ok ? await res.json() : null)
+    } catch {
+      setMetaIntegrationHealth(null)
+    } finally {
+      setMetaIntegrationHealthLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadWhatsappHealth()
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('cc_user') : null
+      const role = stored ? JSON.parse(stored)?.role : null
+      setIsAdmin(role === 'ADMIN')
+    } catch {
+      setIsAdmin(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    load(false, channelRange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelRange])
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadAiUsage(aiUsageRange, costCustomFrom, costCustomTo)
+      loadMetaUsage(aiUsageRange, costCustomFrom, costCustomTo)
+      loadMetaBilling()
+      loadCrmReadiness()
+      loadMetaIntegrationHealth()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, aiUsageRange, costCustomFrom, costCustomTo])
+
+  const doBalance      = data && !('notConfigured' in data.digitalocean) ? data.digitalocean as DoBalance : null
+  const doNotConfig    = !!(data && 'notConfigured' in data.digitalocean)
+  const cachedAt       = data ? new Date(data.cachedAt).toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit' }) : null
+
+  return (
+    <div className="p-4 lg:p-5 space-y-3 max-w-[1500px]">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-black text-gray-800 dark:text-white">Clinic AI Overview</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            A simple view of AI activity, messaging health and running costs
+            {cachedAt && <span className="ml-2 text-[10px]">· updated {cachedAt}</span>}
+          </p>
+        </div>
+        <button onClick={() => load(true)} disabled={refreshing || loading}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-sm text-gray-500 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-40">
+          <RefreshCw size={13} className={cn(refreshing && 'animate-spin')} />
+          Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-32">
+          <Loader2 size={28} className="animate-spin text-cyan-500" />
+        </div>
+      ) : error ? (
+        <div className="flex items-center gap-3 px-5 py-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/30 rounded-2xl text-sm text-red-600 dark:text-red-400">
+          <AlertCircle size={16} />
+          {error}
+        </div>
+      ) : data ? (
+        <>
+          {(() => {
+            const op = data.operational
+            const deliveryWindow = channelRange === 'today'
+              ? whatsappHealth?.today ?? null
+              : channelRange === 'month'
+                ? whatsappHealth?.thisMonth ?? null
+                : whatsappHealth?.last30Days ?? null
+            const openAiCost = aiUsage?.cost?.value ?? null
+            // Meta's figure for the EXACT selected cost range (today/7d/30d/
+            // 90d/month/prev_month/custom), not a fixed "this month" — null
+            // (rendered as "Unavailable") when Meta's provider can't supply
+            // data that far back, never a misleading $0.00.
+            const metaCoverage = metaUsage?.account?.coverage ?? null
+            const metaCost = metaUsage?.account?.selected?.cost ?? null
+            const hostingCost = doBalance ? Number(doBalance.monthToDateUsage) : null
+            const costRangeLabel = COST_HISTORY_RANGES.find(r => r.key === aiUsageRange)?.label ?? 'Selected period'
+            const rangeLabel = AI_USAGE_RANGES.find(r => r.key === channelRange)?.label ?? 'Selected period'
+            return (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-1">
+                    {AI_USAGE_RANGES.map(r => (
+                      <button key={r.key} onClick={() => { setChannelRange(r.key); if (isAdmin) setAiUsageRange(r.key) }}
+                        className={cn('px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors',
+                          channelRange === r.key ? 'bg-cyan-500 text-white shadow-sm' : 'bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 text-gray-500')}>
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-gray-400">Main dashboard · {rangeLabel}</p>
+                </div>
+
+                {op && (
+                  <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
+                    {[
+                      ['AI Interactions', op.totalInteractions.toLocaleString()],
+                      ['Calls', op.callEvents.toLocaleString()],
+                      ['AI Resolution', op.aiResolutionRatePct === null ? '—' : `${op.aiResolutionRatePct}%`],
+                      ['Handovers', op.humanHandovers.toLocaleString()],
+                      ['Escalations', op.escalations.toLocaleString()],
+                      ['AI Cost', openAiCost === null ? '—' : `$${openAiCost.toFixed(2)}`],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 px-3 py-3 shadow-sm">
+                        <p className="text-xl font-black text-gray-800 dark:text-white">{value}</p>
+                        <p className="mt-1 text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid lg:grid-cols-12 gap-3">
+                  <section className="lg:col-span-6 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-1">
+                      <div><p className="text-sm font-black text-gray-800 dark:text-white">Activity trend</p><p className="text-[10px] text-gray-400">Patient and AI messages over time</p></div>
+                      <BarChart2 size={16} className="text-cyan-500" />
+                    </div>
+                    <CompactTrendChart channels={data.channels} />
+                  </section>
+
+                  <section className="lg:col-span-3 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 shadow-sm">
+                    <p className="text-sm font-black text-gray-800 dark:text-white">Channel mix</p>
+                    <p className="text-[10px] text-gray-400 mb-3">Where conversations came from</p>
+                    <ChannelMixDonut channels={data.channels} />
+                  </section>
+
+                  <section className="lg:col-span-3 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 shadow-sm">
+                    <p className="text-sm font-black text-gray-800 dark:text-white">WhatsApp delivery</p>
+                    <p className="text-[10px] text-gray-400 mb-3">{channelRange === 'today' ? 'Today' : channelRange === 'month' ? 'This month' : 'Last 30 days'}</p>
+                    <DeliveryDonut window={deliveryWindow} />
+                  </section>
+                </div>
+
+                <div className="grid lg:grid-cols-12 gap-3">
+                  <section className="lg:col-span-7 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <div><p className="text-sm font-black text-gray-800 dark:text-white">Patient channels</p><p className="text-[10px] text-gray-400">Traffic and operational state</p></div>
+                      <MessageSquare size={16} className="text-cyan-500" />
+                    </div>
+                    <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
+                      {CHANNEL_ORDER.filter(ch => ch !== 'SMS').map(ch => {
+                        const channel = data.channels[ch]
+                        if (!channel) return null
+                        return (
+                          <div key={ch} className="rounded-xl bg-gray-50 dark:bg-white/5 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[10px] font-black text-gray-600 dark:text-white/60 truncate">{CHANNEL_META[ch]?.label ?? ch}</p>
+                              <SimpleChannelState channel={ch} data={channel} integration={metaIntegrationHealth} />
+                            </div>
+                            <p className="mt-2 text-lg font-black text-gray-800 dark:text-white">{channel.selected.total.toLocaleString()}</p>
+                            <p className="text-[9px] text-gray-400">{rangeLabel} messages</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="lg:col-span-5 rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <div><p className="text-sm font-black text-gray-800 dark:text-white">Running costs</p><p className="text-[10px] text-gray-400">Clear provider cost summary</p></div>
+                      <DollarSign size={16} className="text-amber-500" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between rounded-xl bg-violet-50 dark:bg-violet-900/10 px-3 py-2">
+                        <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">OpenAI (estimate)</p><p className="text-[9px] text-gray-400">{costRangeLabel}</p></div>
+                        <p className="text-lg font-black text-violet-600">{openAiCost === null ? 'Unavailable' : `$${openAiCost.toFixed(2)}`}</p>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl bg-emerald-50 dark:bg-emerald-900/10 px-3 py-2">
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-600 dark:text-white/60">Meta / WhatsApp (actual)</p>
+                          <p className="text-[9px] text-gray-400">{costRangeLabel}</p>
+                          {metaCoverage?.reason && <p className="text-[8px] text-amber-500 mt-0.5 max-w-[220px]">{metaCoverage.reason}</p>}
+                        </div>
+                        <p className="text-lg font-black text-emerald-600">{metaUsageLoading ? '…' : metaCost === null ? 'Unavailable' : `$${metaCost.toFixed(2)}`}</p>
+                      </div>
+                      {/* No blended "total" row here by design — OpenAI is a token-derived
+                          estimate and Meta is actual provider billing; summing incompatible
+                          confidence levels into one figure would misrepresent both. */}
+                      <div className="flex items-center justify-between rounded-xl bg-cyan-50 dark:bg-cyan-900/10 px-3 py-2">
+                        <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">DigitalOcean hosting</p><p className="text-[9px] text-gray-400">Month to date</p></div>
+                        <p className="text-lg font-black text-cyan-700">{hostingCost === null ? 'Cost unavailable' : `$${hostingCost.toFixed(2)}`}</p>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+
+                <details className="rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-white/5 shadow-sm">
+                  <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between">
+                    <div><p className="text-sm font-black text-gray-700 dark:text-white">Technical details</p><p className="text-[10px] text-gray-400">Provider diagnostics, detailed usage and account information</p></div>
+                    <span className="text-xs font-bold text-cyan-600">Open</span>
+                  </summary>
+                  <div className="border-t border-gray-100 dark:border-white/10 p-4 space-y-6">
+                    <WhatsAppHealthCard data={whatsappHealth} loading={whatsappHealthLoading} isAdmin={isAdmin} />
+                    {isAdmin && (
+                      <OpenAiUsageCard
+                        data={aiUsage} range={aiUsageRange} onRangeChange={setAiUsageRange} loading={aiUsageLoading}
+                        customFrom={costCustomFrom} customTo={costCustomTo}
+                        onCustomChange={(from, to) => { setCostCustomFrom(from); setCostCustomTo(to) }}
+                      />
+                    )}
+                    {isAdmin && <MetaBillingCard data={metaBilling} loading={metaBillingLoading} />}
+                    {data.meta && (
+                      <section>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Meta Cloud API usage</p>
+                        <div className="rounded-xl bg-gray-50 dark:bg-white/5 p-3">
+                          {data.meta.account ? <MetaWabaCard data={data.meta.account} label="Production WhatsApp Business Account" /> : <p className="text-xs text-gray-400">Meta usage unavailable</p>}
+                        </div>
+                      </section>
+                    )}
+                    {isAdmin && (
+                      <section>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Hosting details</p>
+                        <div className="rounded-xl bg-gray-50 dark:bg-white/5 p-4 text-sm text-gray-500">
+                          {doBalance ? (
+                            <div className="grid sm:grid-cols-3 gap-3">
+                              <div><p className="text-[9px] uppercase text-gray-400">Account balance</p><b>$ {doBalance.accountBalance}</b></div>
+                              <div><p className="text-[9px] uppercase text-gray-400">Month-to-date usage</p><b>$ {doBalance.monthToDateUsage}</b></div>
+                              <div><p className="text-[9px] uppercase text-gray-400">MTD balance</p><b>$ {doBalance.monthToDateBalance}</b></div>
+                            </div>
+                          ) : <p>Hosting cost unavailable. Connect billing credentials in the protected server environment.</p>}
+                        </div>
+                      </section>
+                    )}
+                  </div>
+                </details>
+              </div>
+            )
+          })()}
+        </>
+      ) : null}
+    </div>
+  )
+}
+ + c.estimatedCostUsd.toFixed(4)}</span>
+                      </div>
+                      <p className="text-gray-400 mt-1">{c.requests.toLocaleString()} requests · {c.totalTokens.toLocaleString()} tokens</p>
+                    </div>
+                  ))}
+                </div>
+                {(data.byChannelModel?.length ?? 0) > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[11px] text-gray-600 dark:text-white/60">
+                      <thead><tr className="border-b border-gray-100 dark:border-white/10">
+                        <th className="py-2">Channel</th><th>Model</th><th className="text-right">Requests</th><th className="text-right">Est. USD</th>
+                      </tr></thead>
+                      <tbody>{[...(data.byChannelModel ?? [])].sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd).map(r => (
+                        <tr key={r.channel + ':' + r.model} className="border-b border-gray-50 dark:border-white/5">
+                          <td className="py-2">{CHANNEL_META[r.channel]?.label ?? r.channel}</td>
+                          <td>{r.model}</td><td className="text-right">{r.requests.toLocaleString()}</td>
+                          <td className="text-right font-semibold">${r.estimatedCostUsd.toFixed(4)}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
