@@ -1,13 +1,15 @@
 import { processInbound } from './whatsapp.service'
+import { claimSharedWhatsAppMessage } from '../../lib/redis'
 import { prisma } from '../../lib/prisma'
 
 // Per-conversation message buffer that debounces rapid-fire WhatsApp texts
 // into a single processInbound call. Prevents concurrent agent replies when
 // a patient sends several messages in quick succession.
 //
-// Wamid dedup uses a two-layer strategy:
+// Wamid dedup uses a process-local cache and two shared stores:
 //   1. In-memory Map  — fast, synchronous, zero DB overhead (catches same-process duplicates)
-//   2. DB table       — persists across PM2 restarts (catches post-restart dual-webhook duplicates)
+//   2. Redis SET NX — coordinates workers if the database is unavailable
+//   3. DB table       — persists across PM2 restarts (catches post-restart dual-webhook duplicates)
 // The same wamid can arrive via both the Africa's Talking webhook AND the WhatsApp
 // Cloud API webhook. If PM2 restarts between the two deliveries the memory layer is
 // cleared; the DB layer catches it regardless.
@@ -39,31 +41,29 @@ function markWamidSeenMemory(wamid: string): void {
 // ── Layer 2: DB persistence (restart-safe) ────────────────────────────────────
 let _cleanupCounter = 0
 
-async function isWamidSeenDb(wamid: string): Promise<boolean> {
-  if (!wamid) return false
+async function claimWamid(wamid: string): Promise<boolean> {
+  if (!wamid) return true
+  const sharedClaim = await claimSharedWhatsAppMessage(wamid, WAMID_TTL_MS / 1000).catch(() => null)
+  if (sharedClaim === false) return false
   try {
-    const row = await prisma.processedWamid.findFirst({
-      where: { wamid, processedAt: { gte: new Date(Date.now() - WAMID_TTL_MS) } },
+    const { count } = await prisma.processedWamid.createMany({ data: { wamid }, skipDuplicates: true }).catch(async (error: unknown) => {
+      const code = (error as { code?: string } | null)?.code
+      // These errors occur before acquiring a connection. Retrying the insert
+      // can recover a transient outage without mistaking our own claim for a duplicate.
+      if (code !== 'P1001' && code !== 'P2024') throw error
+      return prisma.processedWamid.createMany({ data: { wamid }, skipDuplicates: true })
     })
-    return row !== null
-  } catch (err) {
-    console.error('[MessageBuffer] isWamidSeenDb error:', err instanceof Error ? err.message : String(err))
-    return false  // DB failure must never block message processing
-  }
-}
-
-async function markWamidSeenDb(wamid: string): Promise<void> {
-  if (!wamid) return
-  try {
-    await prisma.processedWamid.upsert({ where: { wamid }, create: { wamid }, update: {} })
-    // Periodic cleanup so the table stays tiny
     if (++_cleanupCounter % 50 === 0) {
-      prisma.processedWamid
+      void prisma.processedWamid
         .deleteMany({ where: { processedAt: { lt: new Date(Date.now() - WAMID_TTL_MS) } } })
         .catch(() => {})
     }
+    return count === 1
   } catch {
-    // Non-fatal — in-memory layer still protects within this process lifetime
+    console.error('[MessageBuffer] Persistent message dedup unavailable', {
+      fallback: sharedClaim === true ? 'redis' : 'process-local',
+    })
+    return true
   }
 }
 
@@ -126,11 +126,10 @@ function _doBuffer(from: string, text: string, wamid: string, phoneNumberId?: st
 }
 
 async function _checkDbThenBuffer(from: string, text: string, wamid: string, phoneNumberId?: string, metadata?: string): Promise<void> {
-  if (await isWamidSeenDb(wamid)) {
+  if (!(await claimWamid(wamid))) {
     console.log(`[MessageBuffer] Duplicate wamid ...${wamid.slice(-16)} from ${from} — skipping (dedup:db, post-restart)`)
     return
   }
-  void markWamidSeenDb(wamid)
   _doBuffer(from, text, wamid, phoneNumberId, metadata)
 }
 

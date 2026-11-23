@@ -84,8 +84,14 @@ interface Analytics {
 
 type AiUsageRange = 'today' | '7d' | '30d' | '90d' | 'month' | 'prev_month' | 'custom'
 
-interface AiUsageDayPoint { day: string; requests: number; totalTokens: number }
-interface AiUsageChannelPoint { channel: string; requests: number; totalTokens: number }
+interface AiUsageDayPoint { day: string; requests: number; totalTokens: number; failedRequests?: number }
+interface AiUsageBreakdownPoint {
+  requests: number
+  totalTokens: number
+  estimatedCostUsd?: number | null
+}
+interface AiUsageChannelPoint extends AiUsageBreakdownPoint { channel: string }
+interface AiUsageModelPoint extends AiUsageBreakdownPoint { model: string }
 interface AiUsage {
   range: AiUsageRange
   since: string
@@ -93,6 +99,7 @@ interface AiUsage {
   totals: {
     requests: number
     failedRequests: number
+    quotaFailures?: number
     inputTokens: number
     cachedInputTokens: number
     outputTokens: number
@@ -102,9 +109,13 @@ interface AiUsage {
     avgTokensPerResponse: number
   }
   byChannel: AiUsageChannelPoint[]
+  byFeature?: (AiUsageBreakdownPoint & { feature: string | null })[]
+  byModel?: AiUsageModelPoint[]
+  byChannelModel?: (AiUsageChannelPoint & AiUsageModelPoint)[]
+  unpricedModels?: string[]
   byDay: AiUsageDayPoint[]
   models: string[]
-  cost: { value: number; currency: string; source: string }
+  cost: { value: number | null; currency: string; source: string }
 }
 
 // ── WhatsApp delivery health + Meta billing + CRM readiness ──────────────
@@ -375,7 +386,7 @@ function TokenBarChart({ points }: { points: AiUsageDayPoint[] }) {
       {points.map((p, i) => {
         const h = Math.max(2, Math.round((p.totalTokens / max) * 32))
         return (
-          <div key={i} title={`${p.day.slice(5)}: ${p.totalTokens.toLocaleString()} tokens (${p.requests} requests)`}
+          <div key={i} title={`${p.day.slice(5)}: ${p.totalTokens.toLocaleString()} tokens (${p.requests} requests${p.failedRequests == null ? '' : `, ${p.failedRequests} failed`})`}
             style={{ height: `${h}px`, flex: 1 }}
             className="rounded-sm bg-violet-400/60 dark:bg-violet-400/40 hover:bg-violet-500 transition-colors cursor-default" />
         )
@@ -384,10 +395,44 @@ function TokenBarChart({ points }: { points: AiUsageDayPoint[] }) {
   )
 }
 
+function AiUsageBreakdown({ title, rows }: {
+  title: string
+  rows: (AiUsageBreakdownPoint & { label: string; key: string })[]
+}) {
+  if (!rows.length) return null
+  const sorted = [...rows].sort((a, b) => (b.estimatedCostUsd ?? -1) - (a.estimatedCostUsd ?? -1) ||
+    a.label.localeCompare(b.label))
+  return (
+    <div className="overflow-x-auto border-t border-gray-100 dark:border-white/10 pt-3">
+      <table className="w-full text-xs text-gray-600 dark:text-white/70">
+        <caption className="mb-2 text-left font-bold">{title}</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="text-left">Source</th>
+            <th scope="col" className="text-right">Requests</th>
+            <th scope="col" className="text-right">Tokens</th>
+            <th scope="col" className="text-right">Est. USD</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(row => (
+            <tr key={row.key} className="border-t border-gray-100 dark:border-white/10">
+              <th scope="row" className="text-left py-2 pr-4 font-medium">{row.label}</th>
+              <td className="text-right tabular-nums">{row.requests.toLocaleString()}</td>
+              <td className="text-right tabular-nums">{row.totalTokens.toLocaleString()}</td>
+              <td className="text-right tabular-nums">{row.estimatedCostUsd == null ? 'Unavailable' : `$${row.estimatedCostUsd.toFixed(4)}`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ── OpenAI usage card (Admin-only — cost figures never shown to Receptionist) ──
 
 function OpenAiUsageCard({
-  data, range, onRangeChange, loading, customFrom, customTo, onCustomChange,
+  data, range, onRangeChange, loading, customFrom, customTo, onCustomChange, conversationId, onConversationChange,
 }: {
   data: AiUsage | null
   range: AiUsageRange
@@ -395,8 +440,12 @@ function OpenAiUsageCard({
   loading: boolean
   customFrom: string
   customTo: string
+  conversationId: string
+  onConversationChange: (id: string) => void
   onCustomChange: (from: string, to: string) => void
 }) {
+  const [draftConversationId, setDraftConversationId] = useState('')
+  const validConversationId = /^[a-zA-Z0-9_-]{1,100}$/.test(draftConversationId.trim())
   return (
     <section>
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
@@ -430,21 +479,45 @@ function OpenAiUsageCard({
         </div>
       )}
 
+      <form className="mb-3 flex flex-wrap items-end gap-2" onSubmit={event => {
+        event.preventDefault()
+        if (validConversationId) onConversationChange(draftConversationId.trim())
+      }}>
+        <label className="grid gap-1 text-xs text-gray-600 dark:text-white/70">
+          Conversation ID
+          <input value={draftConversationId} onChange={event => setDraftConversationId(event.target.value)}
+            maxLength={100} className="rounded-lg border bg-transparent px-2 py-1" />
+        </label>
+        <button type="submit" disabled={!validConversationId} className="rounded-lg border px-2 py-1 text-xs disabled:opacity-50">Filter</button>
+        {conversationId && (
+          <button type="button" className="rounded-lg border px-2 py-1 text-xs" onClick={() => {
+            setDraftConversationId('')
+            onConversationChange('')
+          }}>Clear filter</button>
+        )}
+      </form>
+      {conversationId && <p className="mb-2 text-xs text-gray-500 dark:text-white/60">Showing conversation {conversationId}</p>}
+
       <div className="bg-white dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm p-5 space-y-4">
         {range === 'custom' && (!customFrom || !customTo) ? (
           <p className="text-xs text-gray-400 text-center py-10">Pick both a From and To date to load this range.</p>
-        ) : loading || !data ? (
-          <div className="flex items-center justify-center py-10">
+        ) : loading ? (
+          <div role="status" aria-label="Loading AI usage" className="flex items-center justify-center py-10">
             <Loader2 size={20} className="animate-spin text-violet-500" />
           </div>
-        ) : (
+        ) : data?.totals.requests === 0 ? (
+          <p className="py-10 text-center text-xs text-gray-500">No recorded AI requests for this selection.</p>
+        ) : data ? (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="text-center p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-1">Requests</p>
                 <p className="text-xl font-black text-gray-800 dark:text-white">{data.totals.requests.toLocaleString()}</p>
+                <p className="mt-0.5 text-[9px] text-gray-500">{(data.totals.requests - data.totals.failedRequests).toLocaleString()} successful</p>
                 {data.totals.failedRequests > 0 && (
-                  <p className="text-[9px] text-red-400 mt-0.5">{data.totals.failedRequests} failed</p>
+                  <p className="text-[9px] text-red-400 mt-0.5">{data.totals.failedRequests} failed
+                    {!!data.totals.quotaFailures && ` · ${data.totals.quotaFailures} identified as quota failures`}
+                  </p>
                 )}
               </div>
               <div className="text-center p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
@@ -457,7 +530,7 @@ function OpenAiUsageCard({
               </div>
               <div className="text-center p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl">
                 <p className="text-[9px] font-black uppercase tracking-widest text-amber-500/70 mb-1">Est. Cost</p>
-                <p className="text-xl font-black text-amber-500">${data.cost.value.toFixed(4)}</p>
+                <p className="text-xl font-black text-amber-500">{data.cost.value == null ? 'Unavailable' : `$${data.cost.value.toFixed(4)}`}</p>
                 <p className="text-[8px] text-amber-500/60 mt-0.5">Calculated from token usage</p>
               </div>
             </div>
@@ -472,21 +545,29 @@ function OpenAiUsageCard({
               <span>Tool calls: <span className="font-bold text-gray-500 dark:text-white/40">{data.totals.toolCalls.toLocaleString()}</span></span>
             </div>
 
-            {data.byChannel.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 dark:border-white/10">
-                {data.byChannel.map(c => (
-                  <span key={c.channel} className="text-[10px] px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-white/50">
-                    {CHANNEL_META[c.channel]?.label ?? c.channel}: <span className="font-bold">{c.totalTokens.toLocaleString()}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <p className="text-[9px] text-gray-300 dark:text-white/20 leading-relaxed">
-              Cost is {data.cost.source === 'CALCULATED_FROM_TOKEN_USAGE' ? 'calculated from logged token usage' : data.cost.source} using OpenAI&apos;s published per-token pricing for {data.models.join(', ') || 'the configured model'} — an estimate, not an actual invoiced figure.
+            <AiUsageBreakdown title="By channel" rows={data.byChannel.map(row => ({
+              ...row, key: row.channel, label: CHANNEL_META[row.channel]?.label ?? row.channel,
+            }))} />
+            <AiUsageBreakdown title="By model" rows={(data.byModel ?? []).map(row => ({
+              ...row, key: row.model, label: row.model,
+            }))} />
+            <AiUsageBreakdown title="By feature" rows={(data.byFeature ?? []).map(row => ({
+              ...row, key: row.feature ?? 'unattributed',
+              label: row.feature === 'SARAH_RECEPTION' ? 'Sarah reception'
+                : row.feature === 'SOCIAL_COMMENT' ? 'Social comment replies'
+                : row.feature === 'PERSONALIZED_FOLLOWUP' ? 'Personalized follow-ups'
+                : row.feature ?? 'Unattributed',
+            }))} />
+            <AiUsageBreakdown title="By channel and model" rows={(data.byChannelModel ?? []).map(row => ({
+              ...row, key: JSON.stringify([row.channel, row.model]),
+              label: `${CHANNEL_META[row.channel]?.label ?? row.channel} / ${row.model}`,
+            }))} />
+            <p className="text-xs text-gray-500 dark:text-white/50">
+              Estimates apply OpenAI’s published text-token rates, verified November 23, 2026, to recorded usage. Actual charges, including service-tier rates and other billable activity, are available in OpenAI Billing.
+              {!!data.unpricedModels?.length && ` Estimates exclude models without configured rates: ${data.unpricedModels.join(', ')}.`}
             </p>
           </>
-        )}
+        ) : <p role="alert" className="text-xs text-red-600 py-4">Could not load recorded AI usage.</p>}
       </div>
     </section>
   )
@@ -1019,6 +1100,9 @@ export default function AnalyticsPage() {
   const [aiUsage, setAiUsage]           = useState<AiUsage | null>(null)
   const [aiUsageRange, setAiUsageRange] = useState<AiUsageRange>('30d')
   const [aiUsageLoading, setAiUsageLoading] = useState(true)
+  const [conversationId, setConversationId] = useState('')
+  const [conversationUsage, setConversationUsage] = useState<AiUsage | null>(null)
+  const [conversationLoading, setConversationLoading] = useState(false)
   // Custom From/To (YYYY-MM-DD, Kampala calendar dates) — only used when
   // aiUsageRange === 'custom'. Shared by both the OpenAI and Meta cost
   // fetches below so "Custom" is one range selection covering both providers.
@@ -1062,17 +1146,27 @@ export default function AnalyticsPage() {
     return `range=custom&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
   }
 
-  async function loadAiUsage(range: AiUsageRange, from: string, to: string) {
-    if (range === 'custom' && (!from || !to)) return
-    setAiUsageLoading(true)
+  async function loadAiUsage(range: AiUsageRange, from: string, to: string, signal: AbortSignal, conversation = '') {
+    const setUsage = conversation ? setConversationUsage : setAiUsage
+    const setLoading = conversation ? setConversationLoading : setAiUsageLoading
+    if (range === 'custom' && (!from || !to)) {
+      setUsage(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setUsage(null)
     try {
-      const res = await fetch(`${API}/ai-suite/ai-usage?${rangeQuery(range, from, to)}`, { headers: authH() })
-      if (!res.ok) { setAiUsage(null); return }
-      setAiUsage(await res.json())
+      const res = await fetch(`${API}/ai-suite/ai-usage?${rangeQuery(range, from, to)}${conversation ? `&conversationId=${encodeURIComponent(conversation)}` : ''}`, {
+        headers: authH(), signal,
+      })
+      if (!res.ok) return
+      const usage = await res.json()
+      if (!signal.aborted) setUsage(usage)
     } catch {
-      setAiUsage(null)
+      // Render the unavailable state for failed requests.
     } finally {
-      setAiUsageLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
   }
 
@@ -1160,15 +1254,25 @@ export default function AnalyticsPage() {
   }, [channelRange])
 
   useEffect(() => {
+    const controller = new AbortController()
     if (isAdmin) {
-      loadAiUsage(aiUsageRange, costCustomFrom, costCustomTo)
+      loadAiUsage(aiUsageRange, costCustomFrom, costCustomTo, controller.signal)
       loadMetaUsage(aiUsageRange, costCustomFrom, costCustomTo)
       loadMetaBilling()
       loadCrmReadiness()
       loadMetaIntegrationHealth()
     }
+    return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, aiUsageRange, costCustomFrom, costCustomTo])
+
+  useEffect(() => {
+    if (!isAdmin || !conversationId) return
+    const controller = new AbortController()
+    void loadAiUsage(aiUsageRange, costCustomFrom, costCustomTo, controller.signal, conversationId)
+    return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, conversationId, aiUsageRange, costCustomFrom, costCustomTo])
 
   const doBalance      = data && !('notConfigured' in data.digitalocean) ? data.digitalocean as DoBalance : null
   const doNotConfig    = !!(data && 'notConfigured' in data.digitalocean)
@@ -1338,7 +1442,14 @@ export default function AnalyticsPage() {
                     <WhatsAppHealthCard data={whatsappHealth} loading={whatsappHealthLoading} isAdmin={isAdmin} />
                     {isAdmin && (
                       <OpenAiUsageCard
-                        data={aiUsage} range={aiUsageRange} onRangeChange={setAiUsageRange} loading={aiUsageLoading}
+                        data={conversationId ? conversationUsage : aiUsage} range={aiUsageRange} onRangeChange={setAiUsageRange}
+                        loading={conversationId ? conversationLoading : aiUsageLoading}
+                        conversationId={conversationId} onConversationChange={id => {
+                          if (id === conversationId) return
+                          setConversationUsage(null)
+                          setConversationLoading(!!id)
+                          setConversationId(id)
+                        }}
                         customFrom={costCustomFrom} customTo={costCustomTo}
                         onCustomChange={(from, to) => { setCostCustomFrom(from); setCostCustomTo(to) }}
                       />

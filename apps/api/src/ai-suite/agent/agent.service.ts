@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { agentProviderErrorCode, logAiUsage } from './ai-usage-log'
 import { executeMeteredOpenAiResponses } from './openai-responses-metered'
 import {
   getAvailableSlots,
@@ -37,7 +38,16 @@ export async function executeAgentOpenAiResponse(
   request: Parameters<OpenAI['responses']['create']>[0],
 ) {
   if (process.env.AI_METERED_OPENAI_ENABLED !== 'true') {
-    return client.responses.create({ ...request, stream: false })
+    // Only retry explicit throttling rejections. Timeouts and server errors
+    // can have an ambiguous billing outcome, and credit errors need staff action.
+    for (let retries = 0; ; retries++) {
+      try {
+        return await client.responses.create({ ...request, stream: false }, { maxRetries: 0 })
+      } catch (error) {
+        if (agentProviderErrorCode(error) !== 'rate_limit_exceeded' || retries >= 2) throw error
+        await new Promise(resolve => setTimeout(resolve, 250 * 2 ** retries))
+      }
+    }
   }
   // Multiple models are used by Sarah. Never apply one model's rates to another.
   // Pricing and per-request reserves must be verified for each model separately.
@@ -2623,46 +2633,6 @@ const OPENAI_WEBSITE_MODEL = process.env.SARAH_OPENAI_MODEL === 'gpt-5.6-luna'
 
 const OPENAI_REPLY_TAG_INSTRUCTION = `OUTPUT FORMAT — CRITICAL: wrap ONLY the exact message you want to send the patient in <reply></reply> tags, e.g. <reply>Sure! Here are the available times...</reply>. Everything inside the tags is sent to the patient verbatim — so it must be pure conversational text, never your own reasoning about which rule applies or what to say next. If you need to think through a decision, do that OUTSIDE the tags; it is never seen by the patient.`
 
-// ── Fire-and-forget OpenAI token-usage audit log ──────────────────────────────
-// Mirrors the logOutboundMessage pattern in whatsapp.service.ts: runs as an
-// unawaited async IIFE with its own internal try/catch, so a DB hiccup (or,
-// in tests, an unmocked prisma.aiUsageLog) can never surface as a rejection
-// on the caller's await chain or get swallowed by an outer catch as if the
-// OpenAI call itself had failed.
-function logAiUsage(params: {
-  conversationId?: string | null
-  channel:         string
-  model:           string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  usage?:          any
-  toolCallCount?:  number
-  succeeded?:      boolean
-  errorMessage?:   string | null
-}): void {
-  ;(async () => {
-    try {
-      const { conversationId, channel, model, usage, toolCallCount = 0, succeeded = true, errorMessage = null } = params
-      await prisma.aiUsageLog.create({
-        data: {
-          conversationId:    conversationId ?? null,
-          channel,
-          model,
-          inputTokens:       usage?.input_tokens ?? 0,
-          cachedInputTokens: usage?.input_tokens_details?.cached_tokens ?? 0,
-          outputTokens:      usage?.output_tokens ?? 0,
-          reasoningTokens:   usage?.output_tokens_details?.reasoning_tokens ?? 0,
-          totalTokens:       usage?.total_tokens ?? 0,
-          toolCallCount,
-          succeeded,
-          errorMessage,
-        },
-      })
-    } catch (e: any) {
-      console.error('[AiUsageLog] Failed to write usage log:', e?.message)
-    }
-  })()
-}
-
 // ── Website widget — OpenAI pilot (flagged, verification only) ───────────────
 // Parallel implementation of getAgentReplyV2 on OpenAI's Responses API, gated
 // behind WEBSITE_CHAT_PROVIDER=openai (see website.routes.ts). Mirrors every
@@ -2911,6 +2881,20 @@ export async function getAgentReplyV2OpenAI(
     ].join('\n')
 
     const history = dbMessages.filter(m => m.role !== 'SYSTEM')
+    // Opt-in pilot. Retain complete recent messages and the current message.
+    // Leave the full history available during an active booking workflow.
+    const historyBudget = Number(process.env.SARAH_OPENAI_HISTORY_MAX_CHARS)
+    if (Number.isSafeInteger(historyBudget) && historyBudget >= 6000 && getBookingState(from).state === 'IDLE') {
+      let remaining = historyBudget
+      let index = history.length - 1
+      while (index >= 0) {
+        const length = sanitizeIncomingMessage(history[index].content).length
+        if (remaining < length && index < history.length - 1) break
+        remaining -= length
+        index--
+      }
+      history.splice(0, index + 1)
+    }
     const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
     for (const m of history) {
       const role    = m.role === 'USER' ? 'user' : 'assistant'
@@ -2986,6 +2970,7 @@ export async function getAgentReplyV2OpenAI(
         conversationId: conversationId,
         channel:        channel ?? 'WHATSAPP',
         model:          OPENAI_WEBSITE_MODEL,
+        feature:        'SARAH_RECEPTION',
         usage,
         toolCallCount:  toolCalls.length,
       })
@@ -3104,40 +3089,38 @@ export async function getAgentReplyV2OpenAI(
       conversationId,
       channel:      channel ?? 'WHATSAPP',
       model:        OPENAI_WEBSITE_MODEL,
+      feature:      'SARAH_RECEPTION',
       succeeded:    false,
-      errorMessage: (err?.message ?? 'unknown error').slice(0, 500),
+      errorMessage: agentProviderErrorCode(err),
     })
     // A provider failure is not a patient question. Route it to reception
     // immediately rather than repeatedly telling the patient to try again.
-    if (!channel || channel === 'WHATSAPP') {
-      try {
-        const paused = await prisma.aiConversation.updateMany({
-          where: { id: conversationId, agentEnabled: true },
-          data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
-        })
-        // If staff already took over, do not emit a second failure event or
-        // interrupt the staff-managed conversation with an AI acknowledgment.
-        if (paused.count === 0) return ''
-        await prisma.aiMessage.create({
-          data: {
-            conversationId,
-            role: 'SYSTEM',
-            content: 'AI_PROVIDER_FAILURE: Sarah paused; reception follow-up required.',
-            metadata: JSON.stringify({ reason: 'AI_PROVIDER_FAILURE', at: new Date().toISOString() }),
-          },
-        })
-        await alertStaffOfConcern({
+    try {
+      const paused = await prisma.aiConversation.updateMany({
+        where: { id: conversationId, agentEnabled: true },
+        data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+      })
+      // If staff already took over, do not emit a second failure event or
+      // interrupt the staff-managed conversation with an AI acknowledgment.
+      if (paused.count === 0) return ''
+      await prisma.aiMessage.create({
+        data: {
           conversationId,
-          patientPhone: from,
-          message: 'Sarah could not complete an AI response. Reception must review the latest patient message and reply manually.',
-          channel,
-        })
-      } catch (handoffError: any) {
-        console.error('[AgentV2-OpenAI] Provider-failure human handoff failed:', handoffError?.message)
-      }
-      return `Thank you for your message. Our reception team will assist you shortly.`
+          role: 'SYSTEM',
+          content: 'AI_PROVIDER_FAILURE: Sarah paused; reception follow-up required.',
+          metadata: JSON.stringify({ reason: 'AI_PROVIDER_FAILURE', providerCode: agentProviderErrorCode(err), at: new Date().toISOString() }),
+        },
+      })
+      await alertStaffOfConcern({
+        conversationId,
+        patientPhone: from,
+        message: 'Sarah could not complete an AI response. Reception must review the latest patient message and reply manually.',
+        channel,
+      })
+    } catch (handoffError: any) {
+      console.error('[AgentV2-OpenAI] Provider-failure human handoff failed:', handoffError?.message)
     }
-    return `Thank you for your message. Our team will assist you shortly.`
+    return `Thank you for your message. Our reception team will assist you shortly.`
   }
 }
 
@@ -3350,6 +3333,7 @@ RULES (mandatory):
         conversationId,
         channel,
         model:         OPENAI_COMMENT_MODEL,
+        feature:       'SOCIAL_COMMENT',
         usage,
         toolCallCount: toolCalls.length,
       })
@@ -3377,8 +3361,9 @@ RULES (mandatory):
       conversationId,
       channel,
       model:        OPENAI_COMMENT_MODEL,
+      feature:      'SOCIAL_COMMENT',
       succeeded:    false,
-      errorMessage: (err?.message ?? 'unknown error').slice(0, 500),
+      errorMessage: agentProviderErrorCode(err),
     })
   }
   return FALLBACK

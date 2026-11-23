@@ -16,6 +16,8 @@ vi.mock('openai', () => {
 })
 
 const prismaMock = {
+  aiConversation: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+  aiUsageLog: { create: vi.fn().mockResolvedValue({}) },
   aiMessage: {
     findFirst: vi.fn().mockResolvedValue(null), // no post-booking short-circuit, no prior failed fallback
     findMany:  vi.fn().mockResolvedValue([]),   // empty conversation history by default
@@ -89,6 +91,25 @@ describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel
     expect(inputText.toLowerCase()).not.toContain('claude')
   })
 
+  it('drops oversized older history in the opt-in pilot and keeps recent messages', async () => {
+    vi.stubEnv('SARAH_OPENAI_HISTORY_MAX_CHARS', '6000')
+    try {
+      prismaMock.aiMessage.findMany.mockResolvedValueOnce([
+        { role: 'USER', content: 'Could I come this week?' },
+        { role: 'AGENT', content: 'Which day works for you?' },
+        { role: 'USER', content: 'Older message ' + 'x'.repeat(7000) },
+      ])
+      responsesCreate.mockResolvedValueOnce({ output: [], output_text: 'Which day works?', usage: {} })
+      const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+      await getAgentReplyV2OpenAI('conv-trim', '+256700000044', 'Could I come this week?', 'WHATSAPP')
+      const input = JSON.stringify(responsesCreate.mock.calls[0][0].input)
+      expect(input).toContain('Could I come this week?')
+      expect(input).not.toContain('Older message')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('grounds Sarah on the same ranked AiKnowledgeBase retrieval used by the Knowledge Trainer', async () => {
     responsesCreate.mockResolvedValueOnce({ output: [], output_text: 'Our cancellation policy is 24 hours.', usage: {} })
     prismaMock.aiKnowledgeBase.findMany.mockResolvedValueOnce([
@@ -132,6 +153,37 @@ describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel
 
     const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
     await expect(getAgentReplyV2OpenAI('conv-4', '+256700000004', 'Hi', 'WHATSAPP')).resolves.toBeTypeOf('string')
+  })
+
+  it('does not retry exhausted credits and records a stable failure classification', async () => {
+    responsesCreate.mockRejectedValueOnce(Object.assign(new Error('Provider quota exhausted'), {
+      status: 429, code: 'insufficient_quota',
+    }))
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    const { prisma } = await import('../lib/prisma')
+    const reply = await getAgentReplyV2OpenAI('conv-quota', '+256700000004', 'Please help', 'WHATSAPP')
+    expect(reply).toContain('reception team')
+    expect(responsesCreate).toHaveBeenCalledTimes(1)
+    expect(responsesCreate).toHaveBeenCalledWith(expect.anything(), { maxRetries: 0 })
+    expect(prisma.aiUsageLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ succeeded: false, errorMessage: 'insufficient_quota' }),
+    })
+    expect(prisma.aiConversation.updateMany).toHaveBeenCalledWith({
+      where: { id: 'conv-quota', agentEnabled: true },
+      data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+    })
+    expect(prisma.aiMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ conversationId: 'conv-quota', role: 'SYSTEM' }),
+    })
+  })
+
+  it('retries explicit throttling twice before handing off', async () => {
+    const throttle = Object.assign(new Error('Provider throttling'), { status: 429, code: 'rate_limit_exceeded' })
+    responsesCreate.mockRejectedValueOnce(throttle).mockRejectedValueOnce(throttle).mockRejectedValueOnce(throttle)
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    await expect(getAgentReplyV2OpenAI('conv-throttle', '+256700000004', 'Hello', 'WHATSAPP'))
+      .resolves.toContain('reception team')
+    expect(responsesCreate).toHaveBeenCalledTimes(3)
   })
 
   it('OPENAI_500_TEST — a server error falls back gracefully without throwing', async () => {

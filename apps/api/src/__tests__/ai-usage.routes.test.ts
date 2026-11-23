@@ -32,6 +32,7 @@ interface Row {
   conversationId: string | null
   channel: string
   model: string
+  feature?: string
   inputTokens: number
   cachedInputTokens: number
   outputTokens: number
@@ -48,7 +49,7 @@ const NOW = new Date('2026-09-14T12:00:00.000Z')
 const SEED: Row[] = [
   // In range — flagship model, succeeded, has tool calls and cached tokens
   {
-    id: 'u1', conversationId: 'conv-1', channel: 'WHATSAPP', model: 'gpt-5.6-sol',
+    id: 'u1', conversationId: 'conv-1', channel: 'WHATSAPP', model: 'gpt-5.6-sol', feature: 'SARAH_RECEPTION',
     inputTokens: 1000, cachedInputTokens: 200, outputTokens: 500, reasoningTokens: 100,
     totalTokens: 1500, toolCallCount: 2, succeeded: true, errorMessage: null,
     createdAt: new Date(NOW.getTime() - 2 * 60 * 60 * 1000), // 2h ago
@@ -57,7 +58,7 @@ const SEED: Row[] = [
   {
     id: 'u2', conversationId: 'conv-2', channel: 'WEBSITE', model: 'gpt-5.6-luna',
     inputTokens: 2000, cachedInputTokens: 0, outputTokens: 800, reasoningTokens: 50,
-    totalTokens: 2800, toolCallCount: 1, succeeded: false, errorMessage: 'OpenAI 500',
+    totalTokens: 2800, toolCallCount: 1, succeeded: false, errorMessage: 'You exceeded your current quota',
     createdAt: new Date(NOW.getTime() - 1 * 60 * 60 * 1000), // 1h ago
   },
   // Out of range — 45 days ago, must NOT be included in a 30d window
@@ -67,11 +68,18 @@ const SEED: Row[] = [
     totalTokens: 19998, toolCallCount: 9, succeeded: true, errorMessage: null,
     createdAt: new Date(NOW.getTime() - 45 * 24 * 60 * 60 * 1000),
   },
+  {
+    id: 'u4', conversationId: 'conv-unknown', channel: 'OTHER', model: 'unpriced-model',
+    inputTokens: 10, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0,
+    totalTokens: 10, toolCallCount: 0, succeeded: true, errorMessage: null,
+    createdAt: new Date('2026-01-15T12:00:00.000Z'),
+  },
 ]
 
 function inRange(row: Row, where: any): boolean {
   if (where?.createdAt?.gte && row.createdAt < where.createdAt.gte) return false
   if (where?.createdAt?.lt && row.createdAt >= where.createdAt.lt) return false
+  if (where?.conversationId && row.conversationId !== where.conversationId) return false
   if (where?.succeeded !== undefined && row.succeeded !== where.succeeded) return false
   return true
 }
@@ -100,15 +108,15 @@ function makeFakePrisma(seed: Row[]) {
       count: vi.fn(async ({ where }: any) => seed.filter(r => inRange(r, where)).length),
       groupBy: vi.fn(async ({ by, where }: any) => {
         const rows = seed.filter(r => inRange(r, where))
-        const key = by[0] as 'channel' | 'model'
+        const keys = by as ('channel' | 'model' | 'feature')[]
         const groups = new Map<string, Row[]>()
         for (const r of rows) {
-          const k = r[key] as string
+          const k = JSON.stringify(keys.map(key => r[key]))
           if (!groups.has(k)) groups.set(k, [])
           groups.get(k)!.push(r)
         }
-        return [...groups.entries()].map(([k, grouped]) => ({
-          [key]: k,
+        return [...groups.entries()].map(([, grouped]) => ({
+          ...Object.fromEntries(keys.map(key => [key, grouped[0][key] ?? null])),
           _count: { _all: grouped.length },
           _sum: {
             totalTokens:       sum(grouped, 'totalTokens'),
@@ -123,13 +131,19 @@ function makeFakePrisma(seed: Row[]) {
     // interpolates `start` then `end` in that order, so values[0]/values[1]
     // give us the same window without needing to parse the SQL text.
     $queryRaw: vi.fn(async (_strings: TemplateStringsArray, ...values: any[]) => {
-      const [start, end] = values as [Date, Date]
-      const rows = seed.filter(r => r.createdAt >= start && r.createdAt < end)
-      const byDay = new Map<string, { requests: number; total_tokens: number }>()
+      const [start, end, conversationId] = values as [Date, Date, string | null]
+      const rows = seed.filter(r => inRange(r, { createdAt: { gte: start, lt: end }, conversationId }))
+      const byDay = new Map<string, { requests: number; failures: number; quota_failures: number; total_tokens: number }>()
       for (const r of rows) {
-        const day = r.createdAt.toISOString().slice(0, 10)
-        const entry = byDay.get(day) ?? { requests: 0, total_tokens: 0 }
+        const day = new Date(r.createdAt.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        const entry = byDay.get(day) ?? { requests: 0, failures: 0, quota_failures: 0, total_tokens: 0 }
         entry.requests += 1
+        if (!r.succeeded) {
+          entry.failures += 1
+          if (/insufficient_quota|billing_hard_limit_reached|you exceeded your current quota/i.test(r.errorMessage ?? '')) {
+            entry.quota_failures += 1
+          }
+        }
         entry.total_tokens += r.totalTokens
         byDay.set(day, entry)
       }
@@ -202,6 +216,48 @@ describe('GET /ai-suite/ai-usage', () => {
     expect(body.models.sort()).toEqual(['gpt-5.6-luna', 'gpt-5.6-sol'])
   })
 
+  it('reports model and channel/model estimates and daily failures', async () => {
+    const { default: router } = await import('../ai-suite/meta/meta-usage.routes')
+    const res = fakeRes()
+    await findHandler(router, 'get', '/ai-usage')(fakeReq({ range: '30d' }), res)
+    const body = res.json.mock.calls[0][0]
+    expect(body.byChannelModel).toEqual(expect.arrayContaining([
+      { channel: 'WHATSAPP', model: 'gpt-5.6-sol', requests: 1, totalTokens: 1500, estimatedCostUsd: 0.0133 },
+      { channel: 'WEBSITE', model: 'gpt-5.6-luna', requests: 1, totalTokens: 2800, estimatedCostUsd: 0.0014 },
+    ]))
+    expect(body.totals.quotaFailures).toBe(1)
+    expect(body.byModel).toHaveLength(2)
+    expect(body.byFeature).toEqual(expect.arrayContaining([
+      { feature: 'SARAH_RECEPTION', requests: 1, totalTokens: 1500, estimatedCostUsd: 0.0133 },
+      { feature: null, requests: 1, totalTokens: 2800, estimatedCostUsd: 0.0014 },
+    ]))
+    expect(body.byDay).toEqual([{ day: '2026-09-14', requests: 2, failedRequests: 1, totalTokens: 4300 }])
+  })
+
+  it('scopes recorded token and cost estimates to a requested conversation', async () => {
+    const { default: router } = await import('../ai-suite/meta/meta-usage.routes')
+    const res = fakeRes()
+    await findHandler(router, 'get', '/ai-usage')(fakeReq({ range: '30d', conversationId: 'conv-2' }), res)
+    const body = res.json.mock.calls[0][0]
+    expect(body.totals).toMatchObject({ requests: 1, failedRequests: 1, totalTokens: 2800 })
+    expect(body.cost.value).toBe(0.0014)
+    expect(body.byDay).toEqual([{ day: '2026-09-14', requests: 1, failedRequests: 1, totalTokens: 2800 }])
+  })
+
+  it('reports unavailable estimates for a selection made entirely of unpriced models', async () => {
+    const { default: router } = await import('../ai-suite/meta/meta-usage.routes')
+    const res = fakeRes()
+    await findHandler(router, 'get', '/ai-usage')(fakeReq({
+      range: 'custom', from: '2026-01-15', to: '2026-01-15', conversationId: 'conv-unknown',
+    }), res)
+    const body = res.json.mock.calls[0][0]
+    expect(body.totals.requests).toBe(1)
+    expect(body.cost.value).toBeNull()
+    expect(body.unpricedModels).toEqual(['unpriced-model'])
+    expect(body.byChannel[0].estimatedCostUsd).toBeNull()
+    expect(body.byModel[0].estimatedCostUsd).toBeNull()
+  })
+
   it('labels the cost figure CALCULATED_FROM_TOKEN_USAGE, never as actual billing', async () => {
     const { default: router } = await import('../ai-suite/meta/meta-usage.routes')
     const handler = findHandler(router, 'get', '/ai-usage')
@@ -230,6 +286,9 @@ describe('GET /ai-suite/ai-usage', () => {
     expect(base).toBeGreaterThan(0)
     expect(doubled).toBeCloseTo(base * 2, 2)
     expect(zero).toBe(0)
+    expect(calculateAiUsageCostUsd([
+      { model: 'unpriced-model', inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 0 },
+    ])).toBe(0)
 
     // Cached tokens must be billed at a DISCOUNT relative to full-price input
     // (they're a subset of inputTokens, not an addition on top of it).

@@ -16,7 +16,7 @@ router.post('/session', async (req, res) => {
     if (!sessionId) return res.status(400).json({ error: 'sessionId required' })
 
     const existing = await prisma.aiConversation.findFirst({
-      where:   { phoneNumber: sessionId, channel: 'WEBSITE', status: 'ACTIVE' },
+      where:   { phoneNumber: sessionId, channel: 'WEBSITE', status: { in: ['ACTIVE', 'HUMAN_TAKEOVER'] } },
       orderBy: { createdAt: 'desc' },
     })
 
@@ -57,7 +57,7 @@ router.post('/message', async (req, res) => {
     }
 
     let conv = await prisma.aiConversation.findFirst({
-      where:   { phoneNumber: sessionId, channel: 'WEBSITE', status: 'ACTIVE' },
+      where:   { phoneNumber: sessionId, channel: 'WEBSITE', status: { in: ['ACTIVE', 'HUMAN_TAKEOVER'] } },
       orderBy: { createdAt: 'desc' },
     })
     if (!conv) {
@@ -91,13 +91,19 @@ router.post('/message', async (req, res) => {
       // genuine inbound CRM activity by findOrCreateLeadForChannel().
     })
 
+    if (!conv.agentEnabled || conv.status === 'HUMAN_TAKEOVER') {
+      return res.json({ reply: 'Our reception team will assist you shortly.', sessionId })
+    }
+
     const reply = classifyNonPatientEnquiry(message) === 'JOB' ? JOB_ENQUIRY_REPLY
       : classifyNonPatientEnquiry(message) === 'SUPPLIER' ? SUPPLIER_ENQUIRY_REPLY
       : await getAgentReplyV2OpenAI(conv.id, sessionId, message, 'WEBSITE')
 
-    await prisma.aiMessage.create({
-      data: { conversationId: conv.id, role: 'AGENT', content: reply },
-    })
+    if (reply.trim()) {
+      await prisma.aiMessage.create({
+        data: { conversationId: conv.id, role: 'AGENT', content: reply },
+      })
+    }
 
     res.json({ reply, sessionId })
   } catch (err: any) {

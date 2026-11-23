@@ -10,6 +10,7 @@ import fs from 'fs'
 import { generalLimiter } from './middleware/rateLimit'
 import { runStartup } from './startup'
 import { logger } from './lib/logger'
+import { drainAiUsageLogs } from './ai-suite/agent/ai-usage-log'
 import { prisma } from './lib/prisma'
 import { dispatchPendingAiBudgetAlerts } from './ai-suite/agent/ai-budget-alert-dispatcher'
 import { aiBudgetAlertMailConfigFromEnv, createAiBudgetAlertEmailDelivery } from './ai-suite/agent/ai-budget-alert-email'
@@ -632,12 +633,14 @@ runStartup().then(() => {
 // ─── Graceful shutdown ───────────────────────────────────────
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received — shutting down gracefully')
+  await drainAiUsageLogs()
   await prisma.$disconnect()
   process.exit(0)
 })
 
 process.on('SIGINT', async () => {
   logger.info('SIGINT received — shutting down')
+  await drainAiUsageLogs()
   await prisma.$disconnect()
   process.exit(0)
 })
