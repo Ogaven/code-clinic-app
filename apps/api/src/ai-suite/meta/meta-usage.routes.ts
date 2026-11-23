@@ -466,7 +466,10 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
       cachedInputTokens: row._sum.cachedInputTokens ?? 0,
       outputTokens:      row._sum.outputTokens ?? 0,
     }))
-    const costValue = calculateAiUsageCostUsd(modelUsage)
+    const unpricedModels = modelUsage.filter(row => !Object.prototype.hasOwnProperty.call(OPENAI_PRICING, row.model)).map(row => row.model)
+    const costValue = modelUsage.length > 0 && unpricedModels.length === modelUsage.length
+      ? null
+      : calculateAiUsageCostUsd(modelUsage)
 
     const usageByFeature = new Map<string | null, typeof modelUsage>()
     for (const row of byFeatureModelRaw) {
@@ -498,7 +501,7 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         toolCalls:            sum.toolCallCount ?? 0,
         avgTokensPerResponse: requests > 0 ? Math.round(((sum.totalTokens ?? 0) / requests) * 10) / 10 : 0,
       },
-      unpricedModels: modelUsage.filter(row => !Object.prototype.hasOwnProperty.call(OPENAI_PRICING, row.model)).map(row => row.model),
+      unpricedModels,
       byFeature: [...usageByFeature].map(([feature, records]) => ({
         feature,
         requests: records.reduce((total, row) => total + row.requests, 0),
@@ -513,19 +516,22 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         totalTokens: row.totalTokens,
         estimatedCostUsd: Object.prototype.hasOwnProperty.call(OPENAI_PRICING, row.model) ? calculateAiUsageCostUsd([row]) : null,
       })),
-      byChannel: byChannelRaw.map(r => ({
-        channel:     r.channel,
-        requests:    r._count._all,
-        totalTokens: r._sum.totalTokens ?? 0,
-        estimatedCostUsd: calculateAiUsageCostUsd(byChannelModelRaw
-          .filter(m => m.channel === r.channel)
-          .map(m => ({
-            model: m.model,
-            inputTokens: m._sum.inputTokens ?? 0,
-            cachedInputTokens: m._sum.cachedInputTokens ?? 0,
-            outputTokens: m._sum.outputTokens ?? 0,
-          }))),
-      })),
+      byChannel: byChannelRaw.map(row => {
+        const records = byChannelModelRaw.filter(record => record.channel === row.channel)
+        return {
+          channel: row.channel,
+          requests: row._count._all,
+          totalTokens: row._sum.totalTokens ?? 0,
+          estimatedCostUsd: records.some(record => Object.prototype.hasOwnProperty.call(OPENAI_PRICING, record.model))
+            ? calculateAiUsageCostUsd(records.map(record => ({
+              model: record.model,
+              inputTokens: record._sum.inputTokens ?? 0,
+              cachedInputTokens: record._sum.cachedInputTokens ?? 0,
+              outputTokens: record._sum.outputTokens ?? 0,
+            })))
+            : null,
+        }
+      }),
       byChannelModel: byChannelModelRaw.map(r => ({
         channel: r.channel,
         model: r.model,

@@ -68,6 +68,12 @@ const SEED: Row[] = [
     totalTokens: 19998, toolCallCount: 9, succeeded: true, errorMessage: null,
     createdAt: new Date(NOW.getTime() - 45 * 24 * 60 * 60 * 1000),
   },
+  {
+    id: 'u4', conversationId: 'conv-unknown', channel: 'OTHER', model: 'unpriced-model',
+    inputTokens: 10, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0,
+    totalTokens: 10, toolCallCount: 0, succeeded: true, errorMessage: null,
+    createdAt: new Date('2026-01-15T12:00:00.000Z'),
+  },
 ]
 
 function inRange(row: Row, where: any): boolean {
@@ -236,6 +242,20 @@ describe('GET /ai-suite/ai-usage', () => {
     expect(body.totals).toMatchObject({ requests: 1, failedRequests: 1, totalTokens: 2800 })
     expect(body.cost.value).toBe(0.0014)
     expect(body.byDay).toEqual([{ day: '2026-09-14', requests: 1, failedRequests: 1, totalTokens: 2800 }])
+  })
+
+  it('reports unavailable estimates for a selection made entirely of unpriced models', async () => {
+    const { default: router } = await import('../ai-suite/meta/meta-usage.routes')
+    const res = fakeRes()
+    await findHandler(router, 'get', '/ai-usage')(fakeReq({
+      range: 'custom', from: '2026-01-15', to: '2026-01-15', conversationId: 'conv-unknown',
+    }), res)
+    const body = res.json.mock.calls[0][0]
+    expect(body.totals.requests).toBe(1)
+    expect(body.cost.value).toBeNull()
+    expect(body.unpricedModels).toEqual(['unpriced-model'])
+    expect(body.byChannel[0].estimatedCostUsd).toBeNull()
+    expect(body.byModel[0].estimatedCostUsd).toBeNull()
   })
 
   it('labels the cost figure CALCULATED_FROM_TOKEN_USAGE, never as actual billing', async () => {
