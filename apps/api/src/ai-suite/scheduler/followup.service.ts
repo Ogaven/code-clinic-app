@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { agentProviderErrorCode, logAiUsage } from '../agent/ai-usage-log'
 import { sendWhatsAppMessage, sendWhatsAppTemplate, notifyReceptionistUnreachable } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { getGreetingName, guardianTitle, isMinor, normalizeRelation } from '../../utils/nameHelper'
@@ -51,6 +52,7 @@ function naturalServiceName(dbName: string | null | undefined): string {
 }
 
 async function generatePersonalizedFollowup(params: {
+  conversationId?: string
   patientName: string
   doctorName: string
   serviceName: string
@@ -89,17 +91,26 @@ Rules:
 - End with an invitation to reply if they have questions
 - Output ONLY the message text, nothing else`
 
+  const attribution = {
+    conversationId: params.conversationId,
+    channel: 'WHATSAPP',
+    feature: 'PERSONALIZED_FOLLOWUP',
+    model: 'gpt-5.6-luna',
+  }
   try {
     const client = new OpenAI({ apiKey, maxRetries: 0 })
     const response = await client.responses.create({
-      model: 'gpt-5.6-luna',
+      model: attribution.model,
       input: [{ role: 'user', content: prompt }],
       max_output_tokens: 300,
     })
+    logAiUsage({ ...attribution, usage: response.usage })
     const text = (response.output_text ?? '').trim()
     return text || null
   } catch (err: any) {
-    console.error('[PersonalizedFollowup] Failed:', err?.message || err)
+    const errorMessage = agentProviderErrorCode(err)
+    logAiUsage({ ...attribution, succeeded: false, errorMessage })
+    console.error('[PersonalizedFollowup] Failed:', errorMessage)
     return null
   }
 }
@@ -194,6 +205,15 @@ export async function checkAndSendFollowups(): Promise<void> {
       ? guardianTitle(patient.nextOfKinRelation, guardianFirstName)
       : minor ? 'there' : greetName
 
+    const routing = await resolveOutboundRecipient(patient, greetName)
+    if (!routing.ok) {
+      console.warn(`[Followup] Skipping ${patient.firstName} — minor with no active guardian`)
+      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'post-visit follow-up', patient.phone)
+      continue
+    }
+    const recipientPhone = routing.recipient.phone
+    if (await shouldPauseAutomatedFollowup(recipientPhone)) continue
+
     const note = await prisma.treatmentNote.findFirst({
       where: { patientId: patient.id },
       orderBy: { createdAt: 'desc' },
@@ -213,15 +233,6 @@ export async function checkAndSendFollowups(): Promise<void> {
       : `Hello ${greetName}, hope you are feeling well after your visit yesterday with ${doctor} 😊 How are you doing? Are you following the instructions given? Feel free to reply if you have any questions, we are always here for you.`
     const message = personalized ?? genericMessage
 
-    // ── Send ──────────────────────────────────────────────────────────────────
-    const routing = await resolveOutboundRecipient(patient, greetName)
-    if (!routing.ok) {
-      console.warn(`[Followup] Skipping ${patient.firstName} — minor with no active guardian`)
-      await alertStaffMinorNoGuardian(`${patient.firstName} ${patient.lastName}`, 'post-visit follow-up', patient.phone)
-      continue
-    }
-    const recipientPhone = routing.recipient.phone
-    if (await shouldPauseAutomatedFollowup(recipientPhone)) continue
     try {
       await sendWhatsAppMessage(recipientPhone, message)
     } catch (err: any) {
@@ -542,6 +553,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
         if (hasReplied) { console.log(`[PostApptFollowup] Stage 2 skipped, patient replied`); return }
         if (await shouldPauseAutomatedFollowup(patientPhone, stage1SentAt)) return
         const personalizedStage2 = await generatePersonalizedFollowup({
+          conversationId: convId,
           patientName:       greetName,
           doctorName:        doctorFirst,
           serviceName:       naturalServiceName(appt.service?.name),

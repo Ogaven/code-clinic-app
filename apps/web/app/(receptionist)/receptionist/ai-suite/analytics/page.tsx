@@ -108,6 +108,7 @@ interface AiUsage {
     avgTokensPerResponse: number
   }
   byChannel: AiUsageChannelPoint[]
+  byFeature?: (AiUsageBreakdownPoint & { feature: string | null })[]
   byModel?: AiUsageModelPoint[]
   byChannelModel?: (AiUsageChannelPoint & AiUsageModelPoint)[]
   unpricedModels?: string[]
@@ -520,6 +521,13 @@ function OpenAiUsageCard({
             }))} />
             <AiUsageBreakdown title="By model" rows={(data.byModel ?? []).map(row => ({
               ...row, key: row.model, label: row.model,
+            }))} />
+            <AiUsageBreakdown title="By feature" rows={(data.byFeature ?? []).map(row => ({
+              ...row, key: row.feature ?? 'unattributed',
+              label: row.feature === 'SARAH_RECEPTION' ? 'Sarah reception'
+                : row.feature === 'SOCIAL_COMMENT' ? 'Social comment replies'
+                : row.feature === 'PERSONALIZED_FOLLOWUP' ? 'Personalized follow-ups'
+                : row.feature ?? 'Unattributed',
             }))} />
             <AiUsageBreakdown title="By channel and model" rows={(data.byChannelModel ?? []).map(row => ({
               ...row, key: JSON.stringify([row.channel, row.model]),

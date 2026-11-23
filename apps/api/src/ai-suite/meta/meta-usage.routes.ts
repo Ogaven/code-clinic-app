@@ -387,9 +387,13 @@ export function resolveAiUsageRange(
 router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
   try {
     const { start, end, range } = resolveAiUsageRange(req.query.range, req.query.from, req.query.to)
-    const where = { createdAt: { gte: start, lt: end } }
+    const conversationId = req.query.conversationId ?? null
+    if (conversationId !== null && (typeof conversationId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(conversationId))) {
+      return res.status(400).json({ error: 'Invalid conversation ID' })
+    }
+    const where = { createdAt: { gte: start, lt: end }, ...(conversationId ? { conversationId } : {}) }
 
-    const [totals, failedRequests, byChannelRaw, byModelRaw, byChannelModelRaw, byDayRaw] = await Promise.all([
+    const [totals, failedRequests, byChannelRaw, byModelRaw, byChannelModelRaw, byFeatureModelRaw, byDayRaw] = await Promise.all([
       prisma.aiUsageLog.aggregate({
         where,
         _count: { _all: true },
@@ -421,6 +425,12 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         _count: { _all: true },
         _sum: { inputTokens: true, cachedInputTokens: true, outputTokens: true, totalTokens: true },
       }),
+      prisma.aiUsageLog.groupBy({
+        by: ['feature', 'model'],
+        where,
+        _count: { _all: true },
+        _sum: { inputTokens: true, cachedInputTokens: true, outputTokens: true, totalTokens: true },
+      }),
       prisma.$queryRaw<{ day: string; requests: number; failures: number; total_tokens: number }[]>`
         SELECT
           ("createdAt" + INTERVAL '3 hours')::date::text AS day,
@@ -429,6 +439,7 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
           COALESCE(SUM("totalTokens"), 0)::double precision AS total_tokens
         FROM ai_usage_logs
         WHERE "createdAt" >= ${start} AND "createdAt" < ${end}
+        AND (${conversationId}::text IS NULL OR "conversationId" = ${conversationId})
         GROUP BY 1
         ORDER BY day
       `,
@@ -449,6 +460,20 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
     }))
     const costValue = calculateAiUsageCostUsd(modelUsage)
 
+    const usageByFeature = new Map<string | null, typeof modelUsage>()
+    for (const row of byFeatureModelRaw) {
+      const existing = usageByFeature.get(row.feature) ?? []
+      existing.push({
+        model: row.model,
+        requests: row._count._all,
+        totalTokens: row._sum.totalTokens ?? 0,
+        inputTokens: row._sum.inputTokens ?? 0,
+        cachedInputTokens: row._sum.cachedInputTokens ?? 0,
+        outputTokens: row._sum.outputTokens ?? 0,
+      })
+      usageByFeature.set(row.feature, existing)
+    }
+
     res.json({
       range,
       since: start.toISOString(),
@@ -465,6 +490,14 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         avgTokensPerResponse: requests > 0 ? Math.round(((sum.totalTokens ?? 0) / requests) * 10) / 10 : 0,
       },
       unpricedModels: modelUsage.filter(row => !Object.prototype.hasOwnProperty.call(OPENAI_PRICING, row.model)).map(row => row.model),
+      byFeature: [...usageByFeature].map(([feature, records]) => ({
+        feature,
+        requests: records.reduce((total, row) => total + row.requests, 0),
+        totalTokens: records.reduce((total, row) => total + row.totalTokens, 0),
+        estimatedCostUsd: records.some(row => Object.prototype.hasOwnProperty.call(OPENAI_PRICING, row.model))
+          ? calculateAiUsageCostUsd(records)
+          : null,
+      })),
       byModel: modelUsage.map(row => ({
         model: row.model,
         requests: row.requests,

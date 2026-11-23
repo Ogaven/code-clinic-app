@@ -32,6 +32,7 @@ interface Row {
   conversationId: string | null
   channel: string
   model: string
+  feature?: string
   inputTokens: number
   cachedInputTokens: number
   outputTokens: number
@@ -48,7 +49,7 @@ const NOW = new Date('2026-09-14T12:00:00.000Z')
 const SEED: Row[] = [
   // In range — flagship model, succeeded, has tool calls and cached tokens
   {
-    id: 'u1', conversationId: 'conv-1', channel: 'WHATSAPP', model: 'gpt-5.6-sol',
+    id: 'u1', conversationId: 'conv-1', channel: 'WHATSAPP', model: 'gpt-5.6-sol', feature: 'SARAH_RECEPTION',
     inputTokens: 1000, cachedInputTokens: 200, outputTokens: 500, reasoningTokens: 100,
     totalTokens: 1500, toolCallCount: 2, succeeded: true, errorMessage: null,
     createdAt: new Date(NOW.getTime() - 2 * 60 * 60 * 1000), // 2h ago
@@ -72,6 +73,7 @@ const SEED: Row[] = [
 function inRange(row: Row, where: any): boolean {
   if (where?.createdAt?.gte && row.createdAt < where.createdAt.gte) return false
   if (where?.createdAt?.lt && row.createdAt >= where.createdAt.lt) return false
+  if (where?.conversationId && row.conversationId !== where.conversationId) return false
   if (where?.succeeded !== undefined && row.succeeded !== where.succeeded) return false
   return true
 }
@@ -100,7 +102,7 @@ function makeFakePrisma(seed: Row[]) {
       count: vi.fn(async ({ where }: any) => seed.filter(r => inRange(r, where)).length),
       groupBy: vi.fn(async ({ by, where }: any) => {
         const rows = seed.filter(r => inRange(r, where))
-        const keys = by as ('channel' | 'model')[]
+        const keys = by as ('channel' | 'model' | 'feature')[]
         const groups = new Map<string, Row[]>()
         for (const r of rows) {
           const k = JSON.stringify(keys.map(key => r[key]))
@@ -108,7 +110,7 @@ function makeFakePrisma(seed: Row[]) {
           groups.get(k)!.push(r)
         }
         return [...groups.entries()].map(([, grouped]) => ({
-          ...Object.fromEntries(keys.map(key => [key, grouped[0][key]])),
+          ...Object.fromEntries(keys.map(key => [key, grouped[0][key] ?? null])),
           _count: { _all: grouped.length },
           _sum: {
             totalTokens:       sum(grouped, 'totalTokens'),
@@ -123,8 +125,8 @@ function makeFakePrisma(seed: Row[]) {
     // interpolates `start` then `end` in that order, so values[0]/values[1]
     // give us the same window without needing to parse the SQL text.
     $queryRaw: vi.fn(async (_strings: TemplateStringsArray, ...values: any[]) => {
-      const [start, end] = values as [Date, Date]
-      const rows = seed.filter(r => r.createdAt >= start && r.createdAt < end)
+      const [start, end, conversationId] = values as [Date, Date, string | null]
+      const rows = seed.filter(r => inRange(r, { createdAt: { gte: start, lt: end }, conversationId }))
       const byDay = new Map<string, { requests: number; failures: number; total_tokens: number }>()
       for (const r of rows) {
         const day = new Date(r.createdAt.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -213,7 +215,21 @@ describe('GET /ai-suite/ai-usage', () => {
       { channel: 'WEBSITE', model: 'gpt-5.6-luna', requests: 1, totalTokens: 2800, estimatedCostUsd: 0.0008 },
     ]))
     expect(body.byModel).toHaveLength(2)
+    expect(body.byFeature).toEqual(expect.arrayContaining([
+      { feature: 'SARAH_RECEPTION', requests: 1, totalTokens: 1500, estimatedCostUsd: 0.0073 },
+      { feature: null, requests: 1, totalTokens: 2800, estimatedCostUsd: 0.0008 },
+    ]))
     expect(body.byDay).toEqual([{ day: '2026-09-14', requests: 2, failedRequests: 1, totalTokens: 4300 }])
+  })
+
+  it('scopes recorded token and cost estimates to a requested conversation', async () => {
+    const { default: router } = await import('../ai-suite/meta/meta-usage.routes')
+    const res = fakeRes()
+    await findHandler(router, 'get', '/ai-usage')(fakeReq({ range: '30d', conversationId: 'conv-2' }), res)
+    const body = res.json.mock.calls[0][0]
+    expect(body.totals).toMatchObject({ requests: 1, failedRequests: 1, totalTokens: 2800 })
+    expect(body.cost.value).toBe(0.0008)
+    expect(body.byDay).toEqual([{ day: '2026-09-14', requests: 1, failedRequests: 1, totalTokens: 2800 }])
   })
 
   it('labels the cost figure CALCULATED_FROM_TOKEN_USAGE, never as actual billing', async () => {

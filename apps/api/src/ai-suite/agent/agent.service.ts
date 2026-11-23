@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { agentProviderErrorCode, logAiUsage } from './ai-usage-log'
 import { executeMeteredOpenAiResponses } from './openai-responses-metered'
 import {
   getAvailableSlots,
@@ -28,13 +29,6 @@ import { sendPushToUser } from '../../services/push.service'
 import { buildPatientContextSummary, getPendingHandoffNote } from './patient-context.service'
 import { retrieveSharedClinicKnowledge } from '../knowledge/shared-retrieval'
 
-
-function agentProviderErrorCode(error: unknown): string {
-  const { code, status } = (error ?? {}) as { code?: unknown; status?: unknown }
-  if (code === 'insufficient_quota' || code === 'billing_hard_limit_reached') return 'insufficient_quota'
-  if (code === 'rate_limit_exceeded') return 'rate_limit_exceeded'
-  return typeof status === 'number' ? `openai_http_${status}` : 'agent_request_failed'
-}
 
 // Feature-gated billing integration for the five agent Responses call sites.
 // Keep off until October charges, database migrations, verified model pricing,
@@ -2639,46 +2633,6 @@ const OPENAI_WEBSITE_MODEL = process.env.SARAH_OPENAI_MODEL === 'gpt-5.6-luna'
 
 const OPENAI_REPLY_TAG_INSTRUCTION = `OUTPUT FORMAT — CRITICAL: wrap ONLY the exact message you want to send the patient in <reply></reply> tags, e.g. <reply>Sure! Here are the available times...</reply>. Everything inside the tags is sent to the patient verbatim — so it must be pure conversational text, never your own reasoning about which rule applies or what to say next. If you need to think through a decision, do that OUTSIDE the tags; it is never seen by the patient.`
 
-// ── Fire-and-forget OpenAI token-usage audit log ──────────────────────────────
-// Mirrors the logOutboundMessage pattern in whatsapp.service.ts: runs as an
-// unawaited async IIFE with its own internal try/catch, so a DB hiccup (or,
-// in tests, an unmocked prisma.aiUsageLog) can never surface as a rejection
-// on the caller's await chain or get swallowed by an outer catch as if the
-// OpenAI call itself had failed.
-function logAiUsage(params: {
-  conversationId?: string | null
-  channel:         string
-  model:           string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  usage?:          any
-  toolCallCount?:  number
-  succeeded?:      boolean
-  errorMessage?:   string | null
-}): void {
-  ;(async () => {
-    try {
-      const { conversationId, channel, model, usage, toolCallCount = 0, succeeded = true, errorMessage = null } = params
-      await prisma.aiUsageLog.create({
-        data: {
-          conversationId:    conversationId ?? null,
-          channel,
-          model,
-          inputTokens:       usage?.input_tokens ?? 0,
-          cachedInputTokens: usage?.input_tokens_details?.cached_tokens ?? 0,
-          outputTokens:      usage?.output_tokens ?? 0,
-          reasoningTokens:   usage?.output_tokens_details?.reasoning_tokens ?? 0,
-          totalTokens:       usage?.total_tokens ?? 0,
-          toolCallCount,
-          succeeded,
-          errorMessage,
-        },
-      })
-    } catch (e: any) {
-      console.error('[AiUsageLog] Failed to write usage log:', e?.message)
-    }
-  })()
-}
-
 // ── Website widget — OpenAI pilot (flagged, verification only) ───────────────
 // Parallel implementation of getAgentReplyV2 on OpenAI's Responses API, gated
 // behind WEBSITE_CHAT_PROVIDER=openai (see website.routes.ts). Mirrors every
@@ -3002,6 +2956,7 @@ export async function getAgentReplyV2OpenAI(
         conversationId: conversationId,
         channel:        channel ?? 'WHATSAPP',
         model:          OPENAI_WEBSITE_MODEL,
+        feature:        'SARAH_RECEPTION',
         usage,
         toolCallCount:  toolCalls.length,
       })
@@ -3120,6 +3075,7 @@ export async function getAgentReplyV2OpenAI(
       conversationId,
       channel:      channel ?? 'WHATSAPP',
       model:        OPENAI_WEBSITE_MODEL,
+      feature:      'SARAH_RECEPTION',
       succeeded:    false,
       errorMessage: agentProviderErrorCode(err),
     })
@@ -3363,6 +3319,7 @@ RULES (mandatory):
         conversationId,
         channel,
         model:         OPENAI_COMMENT_MODEL,
+        feature:       'SOCIAL_COMMENT',
         usage,
         toolCallCount: toolCalls.length,
       })
@@ -3390,6 +3347,7 @@ RULES (mandatory):
       conversationId,
       channel,
       model:        OPENAI_COMMENT_MODEL,
+      feature:      'SOCIAL_COMMENT',
       succeeded:    false,
       errorMessage: agentProviderErrorCode(err),
     })
