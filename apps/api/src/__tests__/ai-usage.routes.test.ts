@@ -216,14 +216,14 @@ describe('GET /ai-suite/ai-usage', () => {
     await findHandler(router, 'get', '/ai-usage')(fakeReq({ range: '30d' }), res)
     const body = res.json.mock.calls[0][0]
     expect(body.byChannelModel).toEqual(expect.arrayContaining([
-      { channel: 'WHATSAPP', model: 'gpt-5.6-sol', requests: 1, totalTokens: 1500, estimatedCostUsd: 0.0073 },
-      { channel: 'WEBSITE', model: 'gpt-5.6-luna', requests: 1, totalTokens: 2800, estimatedCostUsd: 0.0008 },
+      { channel: 'WHATSAPP', model: 'gpt-5.6-sol', requests: 1, totalTokens: 1500, estimatedCostUsd: 0.0133 },
+      { channel: 'WEBSITE', model: 'gpt-5.6-luna', requests: 1, totalTokens: 2800, estimatedCostUsd: 0.0014 },
     ]))
     expect(body.totals.quotaFailures).toBe(1)
     expect(body.byModel).toHaveLength(2)
     expect(body.byFeature).toEqual(expect.arrayContaining([
-      { feature: 'SARAH_RECEPTION', requests: 1, totalTokens: 1500, estimatedCostUsd: 0.0073 },
-      { feature: null, requests: 1, totalTokens: 2800, estimatedCostUsd: 0.0008 },
+      { feature: 'SARAH_RECEPTION', requests: 1, totalTokens: 1500, estimatedCostUsd: 0.0133 },
+      { feature: null, requests: 1, totalTokens: 2800, estimatedCostUsd: 0.0014 },
     ]))
     expect(body.byDay).toEqual([{ day: '2026-09-14', requests: 2, failedRequests: 1, totalTokens: 4300 }])
   })
@@ -234,7 +234,7 @@ describe('GET /ai-suite/ai-usage', () => {
     await findHandler(router, 'get', '/ai-usage')(fakeReq({ range: '30d', conversationId: 'conv-2' }), res)
     const body = res.json.mock.calls[0][0]
     expect(body.totals).toMatchObject({ requests: 1, failedRequests: 1, totalTokens: 2800 })
-    expect(body.cost.value).toBe(0.0008)
+    expect(body.cost.value).toBe(0.0014)
     expect(body.byDay).toEqual([{ day: '2026-09-14', requests: 1, failedRequests: 1, totalTokens: 2800 }])
   })
 

@@ -296,8 +296,8 @@ export type AiUsageRangeKey = 'today' | '7d' | '30d' | '90d' | 'month' | 'prev_m
 // or exposed as "actual" billing. Update these figures if OpenAI's pricing
 // changes or the configured model changes.
 const OPENAI_PRICING: Record<string, { inputPerMillion: number; cachedInputPerMillion: number; outputPerMillion: number }> = {
-  'gpt-5.6-sol':  { inputPerMillion: 2.50, cachedInputPerMillion: 1.25,  outputPerMillion: 10.00 }, // flagship tier (website/WhatsApp)
-  'gpt-5.6-luna': { inputPerMillion: 0.15, cachedInputPerMillion: 0.075, outputPerMillion: 0.60  }, // cost-optimized tier (comment replies)
+  'gpt-5.6-sol':  { inputPerMillion: 4.00, cachedInputPerMillion: 0.40, outputPerMillion: 20.00 }, // flagship tier (website/WhatsApp)
+  'gpt-5.6-luna': { inputPerMillion: 0.20, cachedInputPerMillion: 0.02, outputPerMillion: 1.20  }, // cost-optimized tier (comment replies)
 }
 
 // Pure and exported (server-side only — never sent to the client) so it can
@@ -312,10 +312,11 @@ export function calculateAiUsageCostUsd(
   const raw = byModel.reduce((acc, row) => {
     const pricing = Object.prototype.hasOwnProperty.call(OPENAI_PRICING, row.model) ? OPENAI_PRICING[row.model] : undefined
     if (!pricing) return acc
-    const billableInput = Math.max(row.inputTokens - row.cachedInputTokens, 0)
+    const cachedInput = Math.max(0, Math.min(row.inputTokens, row.cachedInputTokens))
+    const billableInput = Math.max(row.inputTokens - cachedInput, 0)
     const modelCost =
       (billableInput          / 1_000_000) * pricing.inputPerMillion +
-      (row.cachedInputTokens  / 1_000_000) * pricing.cachedInputPerMillion +
+      (cachedInput            / 1_000_000) * pricing.cachedInputPerMillion +
       (row.outputTokens       / 1_000_000) * pricing.outputPerMillion
     return acc + modelCost
   }, 0)
@@ -340,7 +341,7 @@ export class InvalidRangeError extends Error {}
 function parseKampalaCalendarDate(value: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new InvalidRangeError(`Invalid date "${value}" — expected YYYY-MM-DD`)
   const parsed = new Date(`${value}T00:00:00Z`)
-  if (isNaN(parsed.getTime())) throw new InvalidRangeError(`Invalid date "${value}"`)
+  if (isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) throw new InvalidRangeError(`Invalid date "${value}"`)
   return parsed
 }
 
@@ -548,6 +549,7 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         value:    costValue,
         currency: 'USD',
         source:   'CALCULATED_FROM_TOKEN_USAGE',
+        ratesVerifiedOn: '2026-11-23',
       },
     })
   } catch (err: any) {

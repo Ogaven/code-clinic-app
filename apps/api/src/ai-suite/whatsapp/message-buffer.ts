@@ -1,13 +1,15 @@
 import { processInbound } from './whatsapp.service'
+import { claimSharedWhatsAppMessage } from '../../lib/redis'
 import { prisma } from '../../lib/prisma'
 
 // Per-conversation message buffer that debounces rapid-fire WhatsApp texts
 // into a single processInbound call. Prevents concurrent agent replies when
 // a patient sends several messages in quick succession.
 //
-// Wamid dedup uses a two-layer strategy:
+// Wamid dedup uses a process-local cache and two shared stores:
 //   1. In-memory Map  — fast, synchronous, zero DB overhead (catches same-process duplicates)
-//   2. DB table       — persists across PM2 restarts (catches post-restart dual-webhook duplicates)
+//   2. Redis SET NX — coordinates workers if the database is unavailable
+//   3. DB table       — persists across PM2 restarts (catches post-restart dual-webhook duplicates)
 // The same wamid can arrive via both the Africa's Talking webhook AND the WhatsApp
 // Cloud API webhook. If PM2 restarts between the two deliveries the memory layer is
 // cleared; the DB layer catches it regardless.
@@ -41,8 +43,16 @@ let _cleanupCounter = 0
 
 async function claimWamid(wamid: string): Promise<boolean> {
   if (!wamid) return true
+  const sharedClaim = await claimSharedWhatsAppMessage(wamid, WAMID_TTL_MS / 1000).catch(() => null)
+  if (sharedClaim === false) return false
   try {
-    const { count } = await prisma.processedWamid.createMany({ data: { wamid }, skipDuplicates: true })
+    const { count } = await prisma.processedWamid.createMany({ data: { wamid }, skipDuplicates: true }).catch(async (error: unknown) => {
+      const code = (error as { code?: string } | null)?.code
+      // These errors occur before acquiring a connection. Retrying the insert
+      // can recover a transient outage without mistaking our own claim for a duplicate.
+      if (code !== 'P1001' && code !== 'P2024') throw error
+      return prisma.processedWamid.createMany({ data: { wamid }, skipDuplicates: true })
+    })
     if (++_cleanupCounter % 50 === 0) {
       void prisma.processedWamid
         .deleteMany({ where: { processedAt: { lt: new Date(Date.now() - WAMID_TTL_MS) } } })
@@ -50,7 +60,9 @@ async function claimWamid(wamid: string): Promise<boolean> {
     }
     return count === 1
   } catch {
-    console.error('[MessageBuffer] Persistent message dedup unavailable; using in-memory dedup')
+    console.error('[MessageBuffer] Persistent message dedup unavailable', {
+      fallback: sharedClaim === true ? 'redis' : 'process-local',
+    })
     return true
   }
 }

@@ -75,3 +75,12 @@ function createRedis(): RedisLike {
 }
 
 export const redis = createRedis()
+
+// When available, a shared claim survives an API restart and coordinates
+// workers during an outage of the persistent WhatsApp dedup table.
+export async function claimSharedWhatsAppMessage(wamid: string, ttlSeconds: number): Promise<boolean | null> {
+  if (redis instanceof NoOpRedis) return null
+  const client = redis as unknown as import('ioredis').default
+  if (client.status !== 'ready') return null
+  return await client.set(`whatsapp:inbound:${wamid}`, '1', 'EX', ttlSeconds, 'NX') === 'OK'
+}

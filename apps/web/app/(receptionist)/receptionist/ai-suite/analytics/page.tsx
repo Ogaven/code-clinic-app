@@ -537,7 +537,7 @@ function OpenAiUsageCard({
               label: `${CHANNEL_META[row.channel]?.label ?? row.channel} / ${row.model}`,
             }))} />
             <p className="text-xs text-gray-500 dark:text-white/50">
-              USD estimates use the application’s configured token rates. The dashboard covers requests recorded by the application.
+              Estimates apply OpenAI’s published text-token rates, verified November 23, 2026, to recorded usage. Actual charges, including service-tier rates and other billable activity, are available in OpenAI Billing.
               {!!data.unpricedModels?.length && ` Estimates exclude models without configured rates: ${data.unpricedModels.join(', ')}.`}
             </p>
           </>
