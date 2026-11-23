@@ -99,6 +99,7 @@ interface AiUsage {
   totals: {
     requests: number
     failedRequests: number
+    quotaFailures?: number
     inputTokens: number
     cachedInputTokens: number
     outputTokens: number
@@ -488,7 +489,9 @@ function OpenAiUsageCard({
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40 mb-1">Requests</p>
                 <p className="text-xl font-black text-gray-800 dark:text-white">{data.totals.requests.toLocaleString()}</p>
                 {data.totals.failedRequests > 0 && (
-                  <p className="text-[9px] text-red-400 mt-0.5">{data.totals.failedRequests} failed</p>
+                  <p className="text-[9px] text-red-400 mt-0.5">{data.totals.failedRequests} failed
+                    {!!data.totals.quotaFailures && ` · ${data.totals.quotaFailures} identified as quota failures`}
+                  </p>
                 )}
               </div>
               <div className="text-center p-3 bg-gray-50 dark:bg-white/5 rounded-xl">

@@ -58,7 +58,7 @@ const SEED: Row[] = [
   {
     id: 'u2', conversationId: 'conv-2', channel: 'WEBSITE', model: 'gpt-5.6-luna',
     inputTokens: 2000, cachedInputTokens: 0, outputTokens: 800, reasoningTokens: 50,
-    totalTokens: 2800, toolCallCount: 1, succeeded: false, errorMessage: 'OpenAI 500',
+    totalTokens: 2800, toolCallCount: 1, succeeded: false, errorMessage: 'You exceeded your current quota',
     createdAt: new Date(NOW.getTime() - 1 * 60 * 60 * 1000), // 1h ago
   },
   // Out of range — 45 days ago, must NOT be included in a 30d window
@@ -127,12 +127,17 @@ function makeFakePrisma(seed: Row[]) {
     $queryRaw: vi.fn(async (_strings: TemplateStringsArray, ...values: any[]) => {
       const [start, end, conversationId] = values as [Date, Date, string | null]
       const rows = seed.filter(r => inRange(r, { createdAt: { gte: start, lt: end }, conversationId }))
-      const byDay = new Map<string, { requests: number; failures: number; total_tokens: number }>()
+      const byDay = new Map<string, { requests: number; failures: number; quota_failures: number; total_tokens: number }>()
       for (const r of rows) {
         const day = new Date(r.createdAt.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
-        const entry = byDay.get(day) ?? { requests: 0, failures: 0, total_tokens: 0 }
+        const entry = byDay.get(day) ?? { requests: 0, failures: 0, quota_failures: 0, total_tokens: 0 }
         entry.requests += 1
-        if (!r.succeeded) entry.failures += 1
+        if (!r.succeeded) {
+          entry.failures += 1
+          if (/insufficient_quota|billing_hard_limit_reached|you exceeded your current quota/i.test(r.errorMessage ?? '')) {
+            entry.quota_failures += 1
+          }
+        }
         entry.total_tokens += r.totalTokens
         byDay.set(day, entry)
       }
@@ -214,6 +219,7 @@ describe('GET /ai-suite/ai-usage', () => {
       { channel: 'WHATSAPP', model: 'gpt-5.6-sol', requests: 1, totalTokens: 1500, estimatedCostUsd: 0.0073 },
       { channel: 'WEBSITE', model: 'gpt-5.6-luna', requests: 1, totalTokens: 2800, estimatedCostUsd: 0.0008 },
     ]))
+    expect(body.totals.quotaFailures).toBe(1)
     expect(body.byModel).toHaveLength(2)
     expect(body.byFeature).toEqual(expect.arrayContaining([
       { feature: 'SARAH_RECEPTION', requests: 1, totalTokens: 1500, estimatedCostUsd: 0.0073 },

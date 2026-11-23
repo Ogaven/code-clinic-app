@@ -431,11 +431,18 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         _count: { _all: true },
         _sum: { inputTokens: true, cachedInputTokens: true, outputTokens: true, totalTokens: true },
       }),
-      prisma.$queryRaw<{ day: string; requests: number; failures: number; total_tokens: number }[]>`
+      prisma.$queryRaw<{ day: string; requests: number; failures: number; quota_failures: number; total_tokens: number }[]>`
         SELECT
           ("createdAt" + INTERVAL '3 hours')::date::text AS day,
           COUNT(*)::int                        AS requests,
           COUNT(*) FILTER (WHERE NOT "succeeded")::int AS failures,
+          COUNT(*) FILTER (
+            WHERE NOT "succeeded" AND (
+              strpos(lower("errorMessage"), 'insufficient_quota') > 0
+              OR strpos(lower("errorMessage"), 'billing_hard_limit_reached') > 0
+              OR "errorMessage" ILIKE '%you exceeded your current quota%'
+            )
+          )::int AS quota_failures,
           COALESCE(SUM("totalTokens"), 0)::double precision AS total_tokens
         FROM ai_usage_logs
         WHERE "createdAt" >= ${start} AND "createdAt" < ${end}
@@ -481,6 +488,7 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
       totals: {
         requests,
         failedRequests,
+        quotaFailures: byDayRaw.reduce((total, day) => total + day.quota_failures, 0),
         inputTokens:          sum.inputTokens ?? 0,
         cachedInputTokens:    sum.cachedInputTokens ?? 0,
         outputTokens:         sum.outputTokens ?? 0,
