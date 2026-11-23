@@ -16,6 +16,7 @@ vi.mock('openai', () => {
 })
 
 const prismaMock = {
+  aiUsageLog: { create: vi.fn().mockResolvedValue({}) },
   aiMessage: {
     findFirst: vi.fn().mockResolvedValue(null), // no post-booking short-circuit, no prior failed fallback
     findMany:  vi.fn().mockResolvedValue([]),   // empty conversation history by default
@@ -132,6 +133,30 @@ describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel
 
     const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
     await expect(getAgentReplyV2OpenAI('conv-4', '+256700000004', 'Hi', 'WHATSAPP')).resolves.toBeTypeOf('string')
+  })
+
+  it('does not retry exhausted credits and records a stable failure classification', async () => {
+    responsesCreate.mockRejectedValueOnce(Object.assign(new Error('Provider quota exhausted'), {
+      status: 429, code: 'insufficient_quota',
+    }))
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    const { prisma } = await import('../lib/prisma')
+    const reply = await getAgentReplyV2OpenAI('conv-quota', '+256700000004', 'Please help', 'WHATSAPP')
+    expect(reply).toContain('reception team')
+    expect(responsesCreate).toHaveBeenCalledTimes(1)
+    expect(responsesCreate).toHaveBeenCalledWith(expect.anything(), { maxRetries: 0 })
+    expect(prisma.aiUsageLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ succeeded: false, errorMessage: 'insufficient_quota' }),
+    })
+  })
+
+  it('retries explicit throttling twice before handing off', async () => {
+    const throttle = Object.assign(new Error('Provider throttling'), { status: 429, code: 'rate_limit_exceeded' })
+    responsesCreate.mockRejectedValueOnce(throttle).mockRejectedValueOnce(throttle).mockRejectedValueOnce(throttle)
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    await expect(getAgentReplyV2OpenAI('conv-throttle', '+256700000004', 'Hello', 'WHATSAPP'))
+      .resolves.toContain('reception team')
+    expect(responsesCreate).toHaveBeenCalledTimes(3)
   })
 
   it('OPENAI_500_TEST — a server error falls back gracefully without throwing', async () => {

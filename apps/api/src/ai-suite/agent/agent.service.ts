@@ -29,6 +29,13 @@ import { buildPatientContextSummary, getPendingHandoffNote } from './patient-con
 import { retrieveSharedClinicKnowledge } from '../knowledge/shared-retrieval'
 
 
+function agentProviderErrorCode(error: unknown): string {
+  const { code, status } = (error ?? {}) as { code?: unknown; status?: unknown }
+  if (code === 'insufficient_quota' || code === 'billing_hard_limit_reached') return 'insufficient_quota'
+  if (code === 'rate_limit_exceeded') return 'rate_limit_exceeded'
+  return typeof status === 'number' ? `openai_http_${status}` : 'agent_request_failed'
+}
+
 // Feature-gated billing integration for the five agent Responses call sites.
 // Keep off until October charges, database migrations, verified model pricing,
 // and all other billable application entry points have been reconciled.
@@ -37,7 +44,16 @@ export async function executeAgentOpenAiResponse(
   request: Parameters<OpenAI['responses']['create']>[0],
 ) {
   if (process.env.AI_METERED_OPENAI_ENABLED !== 'true') {
-    return client.responses.create({ ...request, stream: false })
+    // Only retry explicit throttling rejections. Timeouts and server errors
+    // can have an ambiguous billing outcome, and credit errors need staff action.
+    for (let retries = 0; ; retries++) {
+      try {
+        return await client.responses.create({ ...request, stream: false }, { maxRetries: 0 })
+      } catch (error) {
+        if (agentProviderErrorCode(error) !== 'rate_limit_exceeded' || retries >= 2) throw error
+        await new Promise(resolve => setTimeout(resolve, 250 * 2 ** retries))
+      }
+    }
   }
   // Multiple models are used by Sarah. Never apply one model's rates to another.
   // Pricing and per-request reserves must be verified for each model separately.
@@ -3105,39 +3121,36 @@ export async function getAgentReplyV2OpenAI(
       channel:      channel ?? 'WHATSAPP',
       model:        OPENAI_WEBSITE_MODEL,
       succeeded:    false,
-      errorMessage: (err?.message ?? 'unknown error').slice(0, 500),
+      errorMessage: agentProviderErrorCode(err),
     })
     // A provider failure is not a patient question. Route it to reception
     // immediately rather than repeatedly telling the patient to try again.
-    if (!channel || channel === 'WHATSAPP') {
-      try {
-        const paused = await prisma.aiConversation.updateMany({
-          where: { id: conversationId, agentEnabled: true },
-          data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
-        })
-        // If staff already took over, do not emit a second failure event or
-        // interrupt the staff-managed conversation with an AI acknowledgment.
-        if (paused.count === 0) return ''
-        await prisma.aiMessage.create({
-          data: {
-            conversationId,
-            role: 'SYSTEM',
-            content: 'AI_PROVIDER_FAILURE: Sarah paused; reception follow-up required.',
-            metadata: JSON.stringify({ reason: 'AI_PROVIDER_FAILURE', at: new Date().toISOString() }),
-          },
-        })
-        await alertStaffOfConcern({
+    try {
+      const paused = await prisma.aiConversation.updateMany({
+        where: { id: conversationId, agentEnabled: true },
+        data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+      })
+      // If staff already took over, do not emit a second failure event or
+      // interrupt the staff-managed conversation with an AI acknowledgment.
+      if (paused.count === 0) return ''
+      await prisma.aiMessage.create({
+        data: {
           conversationId,
-          patientPhone: from,
-          message: 'Sarah could not complete an AI response. Reception must review the latest patient message and reply manually.',
-          channel,
-        })
-      } catch (handoffError: any) {
-        console.error('[AgentV2-OpenAI] Provider-failure human handoff failed:', handoffError?.message)
-      }
-      return `Thank you for your message. Our reception team will assist you shortly.`
+          role: 'SYSTEM',
+          content: 'AI_PROVIDER_FAILURE: Sarah paused; reception follow-up required.',
+          metadata: JSON.stringify({ reason: 'AI_PROVIDER_FAILURE', providerCode: agentProviderErrorCode(err), at: new Date().toISOString() }),
+        },
+      })
+      await alertStaffOfConcern({
+        conversationId,
+        patientPhone: from,
+        message: 'Sarah could not complete an AI response. Reception must review the latest patient message and reply manually.',
+        channel,
+      })
+    } catch (handoffError: any) {
+      console.error('[AgentV2-OpenAI] Provider-failure human handoff failed:', handoffError?.message)
     }
-    return `Thank you for your message. Our team will assist you shortly.`
+    return `Thank you for your message. Our reception team will assist you shortly.`
   }
 }
 
@@ -3378,7 +3391,7 @@ RULES (mandatory):
       channel,
       model:        OPENAI_COMMENT_MODEL,
       succeeded:    false,
-      errorMessage: (err?.message ?? 'unknown error').slice(0, 500),
+      errorMessage: agentProviderErrorCode(err),
     })
   }
   return FALLBACK

@@ -100,15 +100,15 @@ function makeFakePrisma(seed: Row[]) {
       count: vi.fn(async ({ where }: any) => seed.filter(r => inRange(r, where)).length),
       groupBy: vi.fn(async ({ by, where }: any) => {
         const rows = seed.filter(r => inRange(r, where))
-        const key = by[0] as 'channel' | 'model'
+        const keys = by as ('channel' | 'model')[]
         const groups = new Map<string, Row[]>()
         for (const r of rows) {
-          const k = r[key] as string
+          const k = JSON.stringify(keys.map(key => r[key]))
           if (!groups.has(k)) groups.set(k, [])
           groups.get(k)!.push(r)
         }
-        return [...groups.entries()].map(([k, grouped]) => ({
-          [key]: k,
+        return [...groups.entries()].map(([, grouped]) => ({
+          ...Object.fromEntries(keys.map(key => [key, grouped[0][key]])),
           _count: { _all: grouped.length },
           _sum: {
             totalTokens:       sum(grouped, 'totalTokens'),
@@ -125,11 +125,12 @@ function makeFakePrisma(seed: Row[]) {
     $queryRaw: vi.fn(async (_strings: TemplateStringsArray, ...values: any[]) => {
       const [start, end] = values as [Date, Date]
       const rows = seed.filter(r => r.createdAt >= start && r.createdAt < end)
-      const byDay = new Map<string, { requests: number; total_tokens: number }>()
+      const byDay = new Map<string, { requests: number; failures: number; total_tokens: number }>()
       for (const r of rows) {
-        const day = r.createdAt.toISOString().slice(0, 10)
-        const entry = byDay.get(day) ?? { requests: 0, total_tokens: 0 }
+        const day = new Date(r.createdAt.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        const entry = byDay.get(day) ?? { requests: 0, failures: 0, total_tokens: 0 }
         entry.requests += 1
+        if (!r.succeeded) entry.failures += 1
         entry.total_tokens += r.totalTokens
         byDay.set(day, entry)
       }
@@ -202,6 +203,19 @@ describe('GET /ai-suite/ai-usage', () => {
     expect(body.models.sort()).toEqual(['gpt-5.6-luna', 'gpt-5.6-sol'])
   })
 
+  it('reports model and channel/model estimates and daily failures', async () => {
+    const { default: router } = await import('../ai-suite/meta/meta-usage.routes')
+    const res = fakeRes()
+    await findHandler(router, 'get', '/ai-usage')(fakeReq({ range: '30d' }), res)
+    const body = res.json.mock.calls[0][0]
+    expect(body.byChannelModel).toEqual(expect.arrayContaining([
+      { channel: 'WHATSAPP', model: 'gpt-5.6-sol', requests: 1, totalTokens: 1500, estimatedCostUsd: 0.0073 },
+      { channel: 'WEBSITE', model: 'gpt-5.6-luna', requests: 1, totalTokens: 2800, estimatedCostUsd: 0.0008 },
+    ]))
+    expect(body.byModel).toHaveLength(2)
+    expect(body.byDay).toEqual([{ day: '2026-09-14', requests: 2, failedRequests: 1, totalTokens: 4300 }])
+  })
+
   it('labels the cost figure CALCULATED_FROM_TOKEN_USAGE, never as actual billing', async () => {
     const { default: router } = await import('../ai-suite/meta/meta-usage.routes')
     const handler = findHandler(router, 'get', '/ai-usage')
@@ -230,6 +244,9 @@ describe('GET /ai-suite/ai-usage', () => {
     expect(base).toBeGreaterThan(0)
     expect(doubled).toBeCloseTo(base * 2, 2)
     expect(zero).toBe(0)
+    expect(calculateAiUsageCostUsd([
+      { model: 'unpriced-model', inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 0 },
+    ])).toBe(0)
 
     // Cached tokens must be billed at a DISCOUNT relative to full-price input
     // (they're a subset of inputTokens, not an addition on top of it).

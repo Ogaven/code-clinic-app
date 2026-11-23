@@ -39,31 +39,19 @@ function markWamidSeenMemory(wamid: string): void {
 // ── Layer 2: DB persistence (restart-safe) ────────────────────────────────────
 let _cleanupCounter = 0
 
-async function isWamidSeenDb(wamid: string): Promise<boolean> {
-  if (!wamid) return false
+async function claimWamid(wamid: string): Promise<boolean> {
+  if (!wamid) return true
   try {
-    const row = await prisma.processedWamid.findFirst({
-      where: { wamid, processedAt: { gte: new Date(Date.now() - WAMID_TTL_MS) } },
-    })
-    return row !== null
-  } catch (err) {
-    console.error('[MessageBuffer] isWamidSeenDb error:', err instanceof Error ? err.message : String(err))
-    return false  // DB failure must never block message processing
-  }
-}
-
-async function markWamidSeenDb(wamid: string): Promise<void> {
-  if (!wamid) return
-  try {
-    await prisma.processedWamid.upsert({ where: { wamid }, create: { wamid }, update: {} })
-    // Periodic cleanup so the table stays tiny
+    const { count } = await prisma.processedWamid.createMany({ data: { wamid }, skipDuplicates: true })
     if (++_cleanupCounter % 50 === 0) {
-      prisma.processedWamid
+      void prisma.processedWamid
         .deleteMany({ where: { processedAt: { lt: new Date(Date.now() - WAMID_TTL_MS) } } })
         .catch(() => {})
     }
+    return count === 1
   } catch {
-    // Non-fatal — in-memory layer still protects within this process lifetime
+    console.error('[MessageBuffer] Persistent message dedup unavailable; using in-memory dedup')
+    return true
   }
 }
 
@@ -126,11 +114,10 @@ function _doBuffer(from: string, text: string, wamid: string, phoneNumberId?: st
 }
 
 async function _checkDbThenBuffer(from: string, text: string, wamid: string, phoneNumberId?: string, metadata?: string): Promise<void> {
-  if (await isWamidSeenDb(wamid)) {
+  if (!(await claimWamid(wamid))) {
     console.log(`[MessageBuffer] Duplicate wamid ...${wamid.slice(-16)} from ${from} — skipping (dedup:db, post-restart)`)
     return
   }
-  void markWamidSeenDb(wamid)
   _doBuffer(from, text, wamid, phoneNumberId, metadata)
 }
 

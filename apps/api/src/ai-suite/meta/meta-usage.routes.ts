@@ -299,8 +299,6 @@ const OPENAI_PRICING: Record<string, { inputPerMillion: number; cachedInputPerMi
   'gpt-5.6-sol':  { inputPerMillion: 2.50, cachedInputPerMillion: 1.25,  outputPerMillion: 10.00 }, // flagship tier (website/WhatsApp)
   'gpt-5.6-luna': { inputPerMillion: 0.15, cachedInputPerMillion: 0.075, outputPerMillion: 0.60  }, // cost-optimized tier (comment replies)
 }
-// Fallback for any model that shows up in the log without a pricing entry above.
-const DEFAULT_PRICING = OPENAI_PRICING['gpt-5.6-sol']
 
 // Pure and exported (server-side only — never sent to the client) so it can
 // be unit-tested directly: proves the cost figure is actually DERIVED from
@@ -312,7 +310,8 @@ export function calculateAiUsageCostUsd(
   byModel: { model: string; inputTokens: number; cachedInputTokens: number; outputTokens: number }[],
 ): number {
   const raw = byModel.reduce((acc, row) => {
-    const pricing      = OPENAI_PRICING[row.model] ?? DEFAULT_PRICING
+    const pricing = Object.prototype.hasOwnProperty.call(OPENAI_PRICING, row.model) ? OPENAI_PRICING[row.model] : undefined
+    if (!pricing) return acc
     const billableInput = Math.max(row.inputTokens - row.cachedInputTokens, 0)
     const modelCost =
       (billableInput          / 1_000_000) * pricing.inputPerMillion +
@@ -422,14 +421,15 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         _count: { _all: true },
         _sum: { inputTokens: true, cachedInputTokens: true, outputTokens: true, totalTokens: true },
       }),
-      prisma.$queryRaw<{ day: string; requests: number; total_tokens: number }[]>`
+      prisma.$queryRaw<{ day: string; requests: number; failures: number; total_tokens: number }[]>`
         SELECT
-          DATE_TRUNC('day', "createdAt")::text AS day,
+          ("createdAt" + INTERVAL '3 hours')::date::text AS day,
           COUNT(*)::int                        AS requests,
-          COALESCE(SUM("totalTokens"), 0)::int  AS total_tokens
+          COUNT(*) FILTER (WHERE NOT "succeeded")::int AS failures,
+          COALESCE(SUM("totalTokens"), 0)::double precision AS total_tokens
         FROM ai_usage_logs
         WHERE "createdAt" >= ${start} AND "createdAt" < ${end}
-        GROUP BY DATE_TRUNC('day', "createdAt")
+        GROUP BY 1
         ORDER BY day
       `,
     ])
@@ -439,12 +439,15 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
 
     // Cost is computed per model (each model has its own price) and summed —
     // never a single blended rate — so mixing tiers doesn't skew the total.
-    const costValue = calculateAiUsageCostUsd(byModelRaw.map(row => ({
+    const modelUsage = byModelRaw.map(row => ({
       model:             row.model,
+      requests:          row._count._all,
+      totalTokens:       row._sum.totalTokens ?? 0,
       inputTokens:       row._sum.inputTokens ?? 0,
       cachedInputTokens: row._sum.cachedInputTokens ?? 0,
       outputTokens:      row._sum.outputTokens ?? 0,
-    })))
+    }))
+    const costValue = calculateAiUsageCostUsd(modelUsage)
 
     res.json({
       range,
@@ -461,6 +464,13 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         toolCalls:            sum.toolCallCount ?? 0,
         avgTokensPerResponse: requests > 0 ? Math.round(((sum.totalTokens ?? 0) / requests) * 10) / 10 : 0,
       },
+      unpricedModels: modelUsage.filter(row => !Object.prototype.hasOwnProperty.call(OPENAI_PRICING, row.model)).map(row => row.model),
+      byModel: modelUsage.map(row => ({
+        model: row.model,
+        requests: row.requests,
+        totalTokens: row.totalTokens,
+        estimatedCostUsd: Object.prototype.hasOwnProperty.call(OPENAI_PRICING, row.model) ? calculateAiUsageCostUsd([row]) : null,
+      })),
       byChannel: byChannelRaw.map(r => ({
         channel:     r.channel,
         requests:    r._count._all,
@@ -479,16 +489,17 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         model: r.model,
         requests: r._count._all,
         totalTokens: r._sum.totalTokens ?? 0,
-        estimatedCostUsd: calculateAiUsageCostUsd([{
+        estimatedCostUsd: Object.prototype.hasOwnProperty.call(OPENAI_PRICING, r.model) ? calculateAiUsageCostUsd([{
           model: r.model,
           inputTokens: r._sum.inputTokens ?? 0,
           cachedInputTokens: r._sum.cachedInputTokens ?? 0,
           outputTokens: r._sum.outputTokens ?? 0,
-        }]),
+        }]) : null,
       })),
       byDay: byDayRaw.map(r => ({
         day:         r.day.slice(0, 10),
         requests:    r.requests,
+        failedRequests: r.failures,
         totalTokens: r.total_tokens,
       })),
       models: byModelRaw.map(r => r.model),
