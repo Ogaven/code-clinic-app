@@ -2881,6 +2881,20 @@ export async function getAgentReplyV2OpenAI(
     ].join('\n')
 
     const history = dbMessages.filter(m => m.role !== 'SYSTEM')
+    // Opt-in pilot. Retain complete recent messages and the current message.
+    // Leave the full history available during an active booking workflow.
+    const historyBudget = Number(process.env.SARAH_OPENAI_HISTORY_MAX_CHARS)
+    if (Number.isSafeInteger(historyBudget) && historyBudget >= 6000 && getBookingState(from).state === 'IDLE') {
+      let remaining = historyBudget
+      let index = history.length - 1
+      while (index >= 0) {
+        const length = sanitizeIncomingMessage(history[index].content).length
+        if (remaining < length && index < history.length - 1) break
+        remaining -= length
+        index--
+      }
+      history.splice(0, index + 1)
+    }
     const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
     for (const m of history) {
       const role    = m.role === 'USER' ? 'user' : 'assistant'

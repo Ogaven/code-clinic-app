@@ -16,6 +16,7 @@ vi.mock('openai', () => {
 })
 
 const prismaMock = {
+  aiConversation: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   aiUsageLog: { create: vi.fn().mockResolvedValue({}) },
   aiMessage: {
     findFirst: vi.fn().mockResolvedValue(null), // no post-booking short-circuit, no prior failed fallback
@@ -90,6 +91,25 @@ describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel
     expect(inputText.toLowerCase()).not.toContain('claude')
   })
 
+  it('drops oversized older history in the opt-in pilot and keeps recent messages', async () => {
+    vi.stubEnv('SARAH_OPENAI_HISTORY_MAX_CHARS', '6000')
+    try {
+      prismaMock.aiMessage.findMany.mockResolvedValueOnce([
+        { role: 'USER', content: 'Could I come this week?' },
+        { role: 'AGENT', content: 'Which day works for you?' },
+        { role: 'USER', content: 'Older message ' + 'x'.repeat(7000) },
+      ])
+      responsesCreate.mockResolvedValueOnce({ output: [], output_text: 'Which day works?', usage: {} })
+      const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+      await getAgentReplyV2OpenAI('conv-trim', '+256700000044', 'Could I come this week?', 'WHATSAPP')
+      const input = JSON.stringify(responsesCreate.mock.calls[0][0].input)
+      expect(input).toContain('Could I come this week?')
+      expect(input).not.toContain('Older message')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('grounds Sarah on the same ranked AiKnowledgeBase retrieval used by the Knowledge Trainer', async () => {
     responsesCreate.mockResolvedValueOnce({ output: [], output_text: 'Our cancellation policy is 24 hours.', usage: {} })
     prismaMock.aiKnowledgeBase.findMany.mockResolvedValueOnce([
@@ -147,6 +167,13 @@ describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel
     expect(responsesCreate).toHaveBeenCalledWith(expect.anything(), { maxRetries: 0 })
     expect(prisma.aiUsageLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ succeeded: false, errorMessage: 'insufficient_quota' }),
+    })
+    expect(prisma.aiConversation.updateMany).toHaveBeenCalledWith({
+      where: { id: 'conv-quota', agentEnabled: true },
+      data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+    })
+    expect(prisma.aiMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ conversationId: 'conv-quota', role: 'SYSTEM' }),
     })
   })
 
