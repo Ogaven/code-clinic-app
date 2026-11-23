@@ -14,7 +14,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   processInbound.mockResolvedValue(undefined)
 })
-afterEach(() => vi.useRealTimers())
+afterEach(() => { vi.useRealTimers() })
 
 it('processes one message when PostgreSQL is down and Redis grants ownership', async () => {
   claimSharedWhatsAppMessage.mockResolvedValue(true)
