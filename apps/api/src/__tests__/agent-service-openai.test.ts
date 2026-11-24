@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 // All DB/Redis/WhatsApp/OpenAI dependencies of agent.service.ts are mocked —
@@ -6,16 +6,20 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 // (enforced further by the global no-real-sends fetch guard).
 
 const responsesCreate = vi.fn()
+const chatCreate = vi.fn()
 
 vi.mock('openai', () => {
   return {
     default: vi.fn().mockImplementation(() => ({
       responses: { create: responsesCreate },
+      chat: { completions: { create: chatCreate } },
     })),
   }
 })
 
 const prismaMock = {
+  aiUsageLog: { create: vi.fn().mockResolvedValue({}) },
+  aiConversation: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   aiMessage: {
     findFirst: vi.fn().mockResolvedValue(null), // no post-booking short-circuit, no prior failed fallback
     findMany:  vi.fn().mockResolvedValue([]),   // empty conversation history by default
@@ -51,6 +55,8 @@ vi.mock('../../services/agent/guards/anti-hallucination', () => ({
   antiHallucinationGuard: vi.fn().mockResolvedValue({ safe: true }),
 }))
 
+afterEach(() => vi.unstubAllEnvs())
+
 describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -62,6 +68,56 @@ describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel
     prismaMock.doctor.findMany.mockResolvedValue([])
     prismaMock.workingHours.findMany.mockResolvedValue([])
     prismaMock.aiKnowledgeBase.findMany.mockResolvedValue([])
+  })
+
+  it.each(['WHATSAPP', 'WEBSITE', 'FACEBOOK', 'INSTAGRAM'])('sends only public text for a %s FAQ', async channel => {
+    vi.stubEnv('HYBRID_AI_ENABLED', 'true')
+    vi.stubEnv('DEEPSEEK_API_KEY', 'synthetic-key')
+    vi.stubEnv('DEEPSEEK_MODEL', 'deepseek-flash')
+    const approved = 'You can find us on Kiira Road, opposite Police Playground, Kamwokya, Kampala. 😊'
+    chatCreate.mockResolvedValueOnce({
+      model: 'deepseek-flash', choices: [{ message: { content: approved } }],
+      usage: { prompt_tokens: 90, completion_tokens: 20 },
+    })
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    expect(await getAgentReplyV2OpenAI('synthetic-conversation', 'synthetic-sender', 'What is your address?!', channel))
+      .toBe(approved)
+    expect(responsesCreate).not.toHaveBeenCalled()
+    expect(chatCreate).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'deepseek-flash', thinking: { type: 'disabled' },
+      messages: [
+        { role: 'system', content: expect.stringContaining(approved) },
+        { role: 'user', content: 'Where is Code Clinic located?' },
+      ],
+    }))
+    expect(prismaMock.aiUsageLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      model: 'deepseek-flash', channel, totalTokens: 110,
+    }) })
+  })
+
+  it('does not fall back to OpenAI after a DeepSeek failure and pauses the conversation', async () => {
+    vi.stubEnv('HYBRID_AI_ENABLED', 'true')
+    vi.stubEnv('DEEPSEEK_API_KEY', 'synthetic-key')
+    vi.stubEnv('DEEPSEEK_MODEL', 'deepseek-flash')
+    chatCreate.mockRejectedValueOnce(new Error('synthetic-provider-failure'))
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    expect(await getAgentReplyV2OpenAI('failed-faq', 'synthetic-sender', 'What is your address?', 'WEBSITE'))
+      .toContain('reception team')
+    expect(responsesCreate).not.toHaveBeenCalled()
+    expect(prismaMock.aiConversation.updateMany).toHaveBeenCalledWith({
+      where: { id: 'failed-faq', agentEnabled: true },
+      data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
+    })
+  })
+
+  it('keeps private booking requests on the existing runtime when public FAQ routing is enabled', async () => {
+    vi.stubEnv('HYBRID_AI_ENABLED', 'true')
+    vi.stubEnv('DEEPSEEK_API_KEY', 'synthetic-key')
+    responsesCreate.mockResolvedValueOnce({ output: [], output_text: 'How can I help with your booking?', usage: {} })
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    await getAgentReplyV2OpenAI('booking-conversation', 'synthetic-sender', 'Can I change my existing appointment?', 'WHATSAPP')
+    expect(responsesCreate).toHaveBeenCalledTimes(1)
+    expect(chatCreate).not.toHaveBeenCalled()
   })
 
   it('calls OpenAI (never Anthropic) and returns the model reply, with prior conversation history included in the request', async () => {

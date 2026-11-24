@@ -34,3 +34,16 @@ export function selectSafeAiRoute(request: RoutingRequest): SafeRoutingDecision 
   }
   return { provider: 'deepseek', approvedPrompt: PUBLIC_ROUTINE_FAQS[request.publicFaq] }
 }
+
+// Exact, standalone questions only. Extra text can change the intent or carry
+// personal information, so it stays on the existing conversation path.
+export function matchPublicRoutineFaq(message: string): 'clinic_location' | 'clinic_hours' | null {
+  const question = message.trim().toLowerCase().replace(/[?.!]+$/, '').trim()
+  if (['where is code clinic located', 'where are you located', 'what is your address'].includes(question)) {
+    return 'clinic_location'
+  }
+  if (['what are code clinic opening hours', 'what are your opening hours', 'what are your clinic hours'].includes(question)) {
+    return 'clinic_hours'
+  }
+  return null
+}

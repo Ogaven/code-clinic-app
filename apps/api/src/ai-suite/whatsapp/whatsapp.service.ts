@@ -256,7 +256,7 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
       where: {
         phoneNumber: from,
         channel:     'WHATSAPP',
-        status:      'ACTIVE',
+        status:      { in: ['ACTIVE', 'HUMAN_TAKEOVER'] },
       },
       orderBy: { createdAt: 'desc' },
     })

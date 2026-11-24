@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { selectSafeAiRoute } from './safe-routing'
+import { matchPublicRoutineFaq, selectSafeAiRoute } from './safe-routing'
 
 afterEach(() => {
   delete process.env.HYBRID_AI_ENABLED
@@ -35,4 +35,13 @@ describe('public-only DeepSeek routing', () => {
     vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
     expect(selectSafeAiRoute({ workload: 'routine', publicFaq: 'clinic_hours', patientContextPresent: true } as never).provider).toBe('openai')
   })
+})
+
+it.each([
+  'What is your address? My name is Example',
+  'What are your opening hours tomorrow for my appointment?',
+  'Book an appointment',
+  'I have tooth pain',
+])('keeps this request out of the public FAQ route: %s', message => {
+  expect(matchPublicRoutineFaq(message)).toBeNull()
 })

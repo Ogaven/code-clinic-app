@@ -297,6 +297,7 @@ export type AiUsageRangeKey = 'today' | '7d' | '30d' | '90d' | 'month' | 'prev_m
 // changes or the configured model changes.
 const OPENAI_PRICING: Record<string, { inputPerMillion: number; cachedInputPerMillion: number; outputPerMillion: number }> = {
   'gpt-5.6-sol':  { inputPerMillion: 2.50, cachedInputPerMillion: 1.25,  outputPerMillion: 10.00 }, // flagship tier (website/WhatsApp)
+  'deepseek-flash': { inputPerMillion: 0.30, cachedInputPerMillion: 0.006, outputPerMillion: 1.20 }, // peak-rate estimate
   'gpt-5.6-luna': { inputPerMillion: 0.15, cachedInputPerMillion: 0.075, outputPerMillion: 0.60  }, // cost-optimized tier (comment replies)
 }
 // Fallback for any model that shows up in the log without a pricing entry above.
