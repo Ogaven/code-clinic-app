@@ -55,7 +55,7 @@ vi.mock('../../services/agent/guards/anti-hallucination', () => ({
   antiHallucinationGuard: vi.fn().mockResolvedValue({ safe: true }),
 }))
 
-afterEach(() => vi.unstubAllEnvs())
+afterEach(() => { vi.unstubAllEnvs() })
 
 describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel', () => {
   beforeEach(() => {
