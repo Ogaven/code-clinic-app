@@ -1,3 +1,4 @@
+import { acceptedWhatsAppMessage } from '../whatsapp/delivery-status'
 import { prisma } from '../../lib/prisma'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 import { resolveOutboundRecipient, alertStaffMinorNoGuardian, hasOutboundConsent } from './guardian-routing.service'
@@ -118,8 +119,9 @@ export async function checkAndSendCancelledFollowups(): Promise<void> {
       ? NO_SHOW_MSG(routing.recipient.isGuardian ? routing.recipient.name : name)
       : CANCEL_MSG(routing.recipient.isGuardian ? routing.recipient.name : name)
 
+    let wamid: string
     try {
-      await sendWhatsAppMessage(recipientPhone, msg)
+      wamid = await sendWhatsAppMessage(recipientPhone, msg, undefined, false)
     } catch (err: any) {
       console.error(`[CancelledFollowup] WhatsApp send failed for ${recipientPhone}:`, err.message)
       continue
@@ -154,7 +156,7 @@ export async function checkAndSendCancelledFollowups(): Promise<void> {
           data: { patientId: patient.id, channel: 'WHATSAPP', phoneNumber: patient.phone, status: 'ACTIVE', agentEnabled: true },
         })
       }
-      await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'AGENT', content: msg } })
+      await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'AGENT', content: msg, ...acceptedWhatsAppMessage(wamid) } })
     } catch (err: any) {
       console.error('[CancelledFollowup] Conversation log failed:', err.message)
     }

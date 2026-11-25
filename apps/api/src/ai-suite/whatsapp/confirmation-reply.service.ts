@@ -89,7 +89,7 @@ export async function applyConfirmationReply(params: {
   appointmentId: string | null
   patientName: string
   phone: string
-}): Promise<{ replyText: string }> {
+}): Promise<{ replyText: string; messageId: string }> {
   const { classification, conversationId, appointmentId, patientName, phone } = params
 
   if (classification === 'CONFIRM') {
@@ -97,7 +97,7 @@ export async function applyConfirmationReply(params: {
       await prisma.appointment.update({ where: { id: appointmentId }, data: { status: 'CONFIRMED' } })
     }
     const replyText = `Perfect, thank you for confirming! See you then 😊`
-    await prisma.aiMessage.create({
+    const reply = await prisma.aiMessage.create({
       data: {
         conversationId,
         role:     'AGENT',
@@ -105,7 +105,7 @@ export async function applyConfirmationReply(params: {
         metadata: JSON.stringify({ type: 'confirmation_reply', classification, appointmentId }),
       },
     })
-    return { replyText }
+    return { replyText, messageId: reply.id }
   }
 
   // CANCEL_REQUESTED / RESCHEDULE_REQUESTED — staff-review only. Deliberately
@@ -116,7 +116,7 @@ export async function applyConfirmationReply(params: {
     ? `Thanks for letting us know 😊 We won't cancel this automatically — our team will reach out shortly to confirm and help with rebooking if needed.`
     : `No problem! Our team will reach out shortly to help you find a new time 😊`
 
-  await prisma.aiMessage.create({
+  const reply = await prisma.aiMessage.create({
     data: {
       conversationId,
       role:     'AGENT',
@@ -127,7 +127,7 @@ export async function applyConfirmationReply(params: {
 
   await notifyStaffOfConfirmationReply(classification, patientName, phone, appointmentId)
 
-  return { replyText }
+  return { replyText, messageId: reply.id }
 }
 
 // Generic, lock-screen-safe push copy — no patient name/phone, matching the

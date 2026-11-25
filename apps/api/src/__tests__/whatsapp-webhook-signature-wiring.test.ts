@@ -21,6 +21,8 @@ vi.setConfig({ testTimeout: 20000 })
 
 const { prismaMock, sendPushToUserMock, sendStaffSMSMock } = vi.hoisted(() => ({
   prismaMock: {
+    $transaction: vi.fn(),
+    whatsAppDeliveryReceipt: { createMany: vi.fn() },
     aiMessage: { updateMany: vi.fn().mockResolvedValue({}), create: vi.fn().mockResolvedValue({}), findFirst: vi.fn().mockResolvedValue(null) },
     metaDeliveryFailure: { create: vi.fn().mockResolvedValue({}) },
     notification: { create: vi.fn().mockResolvedValue({}), findFirst: vi.fn().mockResolvedValue(null) },
@@ -45,6 +47,8 @@ beforeAll(async () => {
 const ORIGINAL_ENV = { ...process.env }
 beforeEach(() => {
   vi.clearAllMocks()
+  prismaMock.$transaction.mockReset().mockImplementation(async callback => callback(prismaMock))
+  prismaMock.whatsAppDeliveryReceipt.createMany.mockReset().mockResolvedValue({ count: 1 })
   process.env = { ...ORIGINAL_ENV }
   delete process.env.WHATSAPP_APP_SECRET
   delete process.env.FACEBOOK_APP_SECRET
@@ -165,5 +169,53 @@ describe('POST /ai-suite/webhook — signature verification wiring', () => {
 
     expect(res.sendStatus).toHaveBeenCalledWith(403)
     expect(prismaMock.patient.findFirst).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /ai-suite/webhook — delivery receipts', () => {
+  async function sendReceipt(status: string, errorCode?: number) {
+    const body = {
+      object: 'whatsapp_business_account',
+      entry: [{ changes: [{ value: { statuses: [{
+        id: 'wamid.outbound',
+        status,
+        timestamp: '1795597200',
+        ...(errorCode ? { errors: [{ code: errorCode, title: 'Provider rejected the message' }] } : {}),
+      }] } }] }],
+    }
+    const secret = 'test-meta-app-secret'
+    process.env.WHATSAPP_APP_SECRET = secret
+    const { req, res } = fakeReqRes(body, sign(secret, JSON.stringify(body)))
+    await findHandler(router, 'post', '/webhook')(req, res)
+    return res
+  }
+
+  it.each(['sent', 'delivered', 'read', 'failed'])('stores %s before acknowledging Meta', async status => {
+    const res = await sendReceipt(status, status === 'failed' ? 131047 : undefined)
+    expect(prismaMock.whatsAppDeliveryReceipt.createMany).toHaveBeenCalledWith({
+      data: [{ wamid: 'wamid.outbound', status, errorCode: status === 'failed' ? 131047 : null }],
+      skipDuplicates: true,
+    })
+    expect(prismaMock.aiMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ wamid: 'wamid.outbound', role: 'AGENT', conversation: { channel: 'WHATSAPP' } }),
+      data: { status },
+    }))
+    expect(prismaMock.whatsAppDeliveryReceipt.createMany.mock.invocationCallOrder[0])
+      .toBeLessThan(res.sendStatus.mock.invocationCallOrder[0])
+    expect(res.sendStatus).toHaveBeenCalledWith(200)
+  })
+
+  it('does not count a duplicate failed receipt in failure analytics', async () => {
+    prismaMock.whatsAppDeliveryReceipt.createMany.mockResolvedValue({ count: 0 })
+    const res = await sendReceipt('failed', 131047)
+    expect(prismaMock.metaDeliveryFailure.create).not.toHaveBeenCalled()
+    expect(res.sendStatus).toHaveBeenCalledWith(200)
+  })
+
+  it('asks Meta to retry when persistence fails', async () => {
+    prismaMock.$transaction.mockRejectedValueOnce(new Error('db unavailable'))
+    const res = await sendReceipt('read')
+    expect(res.sendStatus).toHaveBeenCalledWith(503)
+    expect(res.sendStatus).not.toHaveBeenCalledWith(200)
   })
 })

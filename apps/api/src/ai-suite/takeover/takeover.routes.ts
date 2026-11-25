@@ -6,6 +6,7 @@ import { normalizePhone, phoneVariants } from '../../utils/phone'
 import { requireAuth } from '../../middleware/auth'
 import { adminAndReceptionist } from '../../middleware/rbac'
 import { authenticatedDoctorId } from '../../lib/doctor-access'
+import { sendTrackedWhatsAppReply, whatsappStatusRank } from '../whatsapp/delivery-status'
 import { getSignedDownloadUrl } from '../../services/storage/r2'
 
 const router = Router()
@@ -526,19 +527,17 @@ router.get('/conversations/:conversationId/messages', adminAndReceptionist, asyn
       },
       orderBy: { createdAt: 'asc' },
     })
-    // Match Meta's asynchronous failures to the exact outbound WhatsApp wamid.
-    // Never match by phone number: multiple messages may share one recipient.
-    const failedWamids = messages.filter(m => m.role === 'AGENT' && m.status?.toLowerCase() === 'failed' && m.wamid).map(m => m.wamid!)
-    const deliveryFailures = failedWamids.length
-      ? await prisma.metaDeliveryFailure.findMany({
-          where: { wamid: { in: failedWamids } },
-          orderBy: { occurredAt: 'desc' },
-          select: { wamid: true, code: true },
-        })
-      : []
-    const failureCodes = new Map<string, number>()
-    for (const failure of deliveryFailures) {
-      if (failure.wamid && !failureCodes.has(failure.wamid)) failureCodes.set(failure.wamid, failure.code)
+    const wamids = messages.flatMap(m => m.role === 'AGENT' && m.wamid?.startsWith('wamid.') ? [m.wamid] : [])
+    const receipts = wamids.length ? await prisma.whatsAppDeliveryReceipt.findMany({
+      where: { wamid: { in: wamids } },
+      select: { wamid: true, status: true, errorCode: true },
+    }) : []
+    const strongestReceipt = new Map<string, typeof receipts[number]>()
+    for (const receipt of receipts) {
+      const previous = strongestReceipt.get(receipt.wamid)
+      if (!previous || whatsappStatusRank(receipt.status) > whatsappStatusRank(previous.status)) {
+        strongestReceipt.set(receipt.wamid, receipt)
+      }
     }
     // Do not send private object-storage keys or raw Meta error details to the browser.
     res.json(messages.map(m => {
@@ -546,7 +545,9 @@ router.get('/conversations/:conversationId/messages', adminAndReceptionist, asyn
       if (m.metadata) {
         try { voiceNoteAvailable = !!(JSON.parse(m.metadata) as { voiceNote?: { storageKey?: string } }).voiceNote?.storageKey } catch {}
       }
-      return { ...m, metadata: voiceNoteAvailable ? JSON.stringify({ voiceNoteAvailable: true }) : m.metadata, deliveryErrorCode: m.wamid ? failureCodes.get(m.wamid) ?? null : null }
+      const receipt = m.role === 'AGENT' && m.wamid ? strongestReceipt.get(m.wamid) : undefined
+      const status = receipt && whatsappStatusRank(receipt.status) >= whatsappStatusRank(m.status) ? receipt.status : m.status
+      return { ...m, status, metadata: voiceNoteAvailable ? JSON.stringify({ voiceNoteAvailable: true }) : m.metadata, deliveryErrorCode: status?.toLowerCase() === 'failed' ? receipt?.errorCode ?? m.deliveryErrorCode : null }
     }))
   } catch (err: any) {
     console.error('[Takeover] messages fetch error:', err.message)
@@ -708,18 +709,12 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
     if (conversation.channel === 'WHATSAPP') {
       const { sendWhatsAppMessage } = await import('../whatsapp/whatsapp.service')
       // logToConversation:false — message already created above; we just need the wamid back
-      const wamid = await sendWhatsAppMessage(conversation.phoneNumber, text.trim(), undefined, false)
-      if (wamid && wamid !== 'unknown') {
+      await sendTrackedWhatsAppReply(msgRecord.id, async () => {
+        const wamid = await sendWhatsAppMessage(conversation.phoneNumber, text.trim(), undefined, false)
+        if (!wamid || wamid === 'unknown') throw new Error('WhatsApp did not confirm acceptance')
         providerAccepted = true
-        await prisma.aiMessage.update({ where: { id: msgRecord.id }, data: { wamid, status: 'sent' } })
-      } else {
-        // No provider message ID means acceptance is unconfirmed, not success.
-        // Keep the persisted attempt for reconciliation and do not encourage
-        // an automatic retry that could create a duplicate WhatsApp message.
-        return res.status(502).json({
-          error: 'WhatsApp did not confirm acceptance of this message. Check the conversation before retrying to avoid duplicates.',
-        })
-      }
+        return wamid
+      })
     } else if (conversation.channel === 'SMS') {
       // Never silently redirect an SMS reply to WhatsApp.
       const { sendSMS } = await import('../sms/sms.service')
@@ -758,13 +753,15 @@ router.post('/conversations/:conversationId/send', adminAndReceptionist, async (
     } catch (deliveryError) {
       // Preserve the attempted message for reconciliation rather than showing
       // an undelivered reply as sent or blindly retrying a potentially accepted send.
-      await prisma.aiMessage.update({
-        where: { id: msgRecord.id },
-        data: { status: providerAccepted ? 'sent' : 'failed' },
-      }).catch((updateError) => console.error('[Takeover] Failed to mark delivery attempt:', updateError))
+      if (conversation.channel !== 'WHATSAPP') {
+        await prisma.aiMessage.update({
+          where: { id: msgRecord.id },
+          data: { status: providerAccepted ? 'sent' : 'failed' },
+        }).catch((updateError) => console.error('[Takeover] Failed to mark delivery attempt:', updateError))
+      }
       console.error('[Takeover] Provider delivery error:', deliveryError)
       const deliveryDetail = deliveryError instanceof Error ? deliveryError.message : ''
-      const whatsappWindowExpired = conversation.channel === 'WHATSAPP' && /(?:#|code\\s*[:=]?\\s*)131047\\b/i.test(deliveryDetail)
+      const whatsappWindowExpired = conversation.channel === 'WHATSAPP' && /(?:#|code\s*[:=]?\s*)131047\b/i.test(deliveryDetail)
       return res.status(502).json({ error: providerAccepted
         ? 'Provider accepted the message, but recording its status failed. Check the conversation; do not resend.'
         : whatsappWindowExpired

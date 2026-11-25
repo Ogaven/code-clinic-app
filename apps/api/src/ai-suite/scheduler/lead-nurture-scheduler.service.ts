@@ -1,3 +1,4 @@
+import { acceptedWhatsAppMessage } from '../whatsapp/delivery-status'
 import { sendWhatsAppMessage } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 
@@ -43,7 +44,7 @@ export async function checkAndSendLeadNurtureMessages(): Promise<void> {
         await prisma.aiScheduledMessage.update({ where: { id: msg.id }, data: { sent: true } })
         continue
       }
-      await sendWhatsAppMessage(msg.patient.phone, msg.content)
+      const wamid = await sendWhatsAppMessage(msg.patient.phone, msg.content, undefined, false)
 
       await prisma.aiScheduledMessage.update({
         where: { id: msg.id },
@@ -68,7 +69,7 @@ export async function checkAndSendLeadNurtureMessages(): Promise<void> {
       }
 
       await prisma.aiMessage.create({
-        data: { conversationId: conv.id, role: 'AGENT', content: msg.content },
+        data: { conversationId: conv.id, role: 'AGENT', content: msg.content, ...acceptedWhatsAppMessage(wamid) },
       })
 
       console.log(`[LeadNurture] Sent to ${msg.patient.firstName} (${msg.patient.phone})`)

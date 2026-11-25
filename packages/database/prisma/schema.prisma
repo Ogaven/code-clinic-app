@@ -1250,12 +1250,24 @@ model AiMessage {
   metadata       String?        // JSON
   wamid          String?        // WhatsApp message ID (USER: dedup; AGENT: delivery status correlation)
   status         String?        // sent | delivered | read | failed — AGENT messages only
+  deliveryErrorCode Int?         // Explicit synchronous provider rejection
   createdAt      DateTime       @default(now())
 
   @@index([conversationId])
   @@index([conversationId, createdAt])
   @@index([wamid])              // fast lookup when Meta posts a statuses[] update
   @@map("ai_messages")
+}
+
+// Durable provider evidence, including receipts that precede the inbox row.
+model WhatsAppDeliveryReceipt {
+  wamid     String
+  status    String
+  errorCode Int?
+  createdAt DateTime @default(now())
+
+  @@id([wamid, status])
+  @@map("whatsapp_delivery_receipts")
 }
 
 // Persists what the WhatsApp delivery-status webhook (whatsapp.routes.ts)

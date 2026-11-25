@@ -1,3 +1,4 @@
+import { sendTrackedWhatsAppReply } from './delivery-status'
 import { classifyNonPatientEnquiry, JOB_ENQUIRY_REPLY, SUPPLIER_ENQUIRY_REPLY } from '../../crm-automation/non-patient-enquiry'
 import { getAgentReplyV2OpenAI } from '../agent/agent.service'
 import { isAgentEnabled, takeoverConversation } from '../takeover/takeover.service'
@@ -385,10 +386,10 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
         return
       }
       const greeting = `Hello 😊 Thanks for reaching out to Code Clinic, this is Sarah. How may I brighten your smile today?`
-      await prisma.aiMessage.create({
+      const outgoing = await prisma.aiMessage.create({
         data: { conversationId: conversation.id, role: 'AGENT', content: greeting },
       })
-      await sendWhatsAppMessage(from, greeting, wamid, false)
+      await sendTrackedWhatsAppReply(outgoing.id, () => sendWhatsAppMessage(from, greeting, wamid, false))
       return
     }
 
@@ -416,14 +417,14 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
       if (confirmationClassification) {
         const pending = await findPendingConfirmation(patient.id)
         if (pending) {
-          const { replyText } = await applyConfirmationReply({
+          const { replyText, messageId } = await applyConfirmationReply({
             classification: confirmationClassification,
             conversationId: conversation.id,
             appointmentId:  pending.appointmentId,
             patientName:    `${patient.firstName} ${patient.lastName}`,
             phone:          from,
           })
-          await sendWhatsAppMessage(from, replyText, wamid, false)
+          await sendTrackedWhatsAppReply(messageId, () => sendWhatsAppMessage(from, replyText, wamid, false))
           console.log(`[ApptConfirmation] Reply fast-path: ${patient.firstName} ${patient.lastName} -> ${confirmationClassification}`)
           return
         }
@@ -481,10 +482,10 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
           }
 
           const reply = `Great! We'll see you tomorrow 😊 If anything changes, just let me know!`
-          await prisma.aiMessage.create({
+          const outgoing = await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false)
+          await sendTrackedWhatsAppReply(outgoing.id, () => sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false))
           return
         }
 
@@ -512,10 +513,10 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
           }
 
           const reply = `No problem! Let me help you find another time. What day works best for you? 😊`
-          await prisma.aiMessage.create({
+          const outgoing = await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false)
+          await sendTrackedWhatsAppReply(outgoing.id, () => sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false))
           notifyJulian(from, `📅 ${patient.firstName} ${patient.lastName} wants to reschedule — replied to reminder: "${text.slice(0, 200)}". Sarah is handling rebooking.`).catch(() => {})
           return
         }
@@ -539,10 +540,10 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
           }
 
           const reply = `Understood! I've cancelled your appointment. If you'd like to book again in the future, just let us know 😊`
-          await prisma.aiMessage.create({
+          const outgoing = await prisma.aiMessage.create({
             data: { conversationId: conversation.id, role: 'AGENT', content: reply },
           })
-          await sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false)
+          await sendTrackedWhatsAppReply(outgoing.id, () => sendWhatsAppMessage(from, stripMarkdown(reply), wamid, false))
 
           // Mandatory safeguard (2026-08-27): a real appointment was auto-cancelled
           // via a misread reminder reply and went unnoticed until the patient
@@ -599,10 +600,10 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
       const buttonHandler = buttonReplies[btLower]
       if (buttonHandler) {
         const buttonResponse = await buttonHandler()
-        await prisma.aiMessage.create({
+        const outgoing = await prisma.aiMessage.create({
           data: { conversationId: conversation.id, role: 'AGENT', content: buttonResponse },
         })
-        await sendWhatsAppMessage(from, stripMarkdown(buttonResponse), undefined, false)
+        await sendTrackedWhatsAppReply(outgoing.id, () => sendWhatsAppMessage(from, stripMarkdown(buttonResponse), undefined, false))
         return
       }
     }
@@ -695,7 +696,7 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
     if (!currentConversation?.agentEnabled) return
 
     // ── 9. Persist Sarah's reply ──────────────────────────────────────────────
-    await prisma.aiMessage.create({
+    const outgoing = await prisma.aiMessage.create({
       data: {
         conversationId: conversation.id,
         role:           'AGENT',
@@ -706,11 +707,9 @@ async function processInboundLocked(from: string, text: string, wamid: string, p
     // ── 10. Deliver Sarah's reply ─────────────────────────────────────────────
     // Kenya number gets its own phone_number_id; Uganda (and all others) go through
     // sendWhatsAppMessage which now routes via Meta Cloud API directly.
-    if (phoneNumberId === '1163288503545718') {
-      await sendWhatsAppMessageDirect(from, stripMarkdown(agentReply), phoneNumberId, false)
-    } else {
-      await sendWhatsAppMessage(from, stripMarkdown(agentReply), wamid, false)
-    }
+    await sendTrackedWhatsAppReply(outgoing.id, () => phoneNumberId === '1163288503545718'
+      ? sendWhatsAppMessageDirect(from, stripMarkdown(agentReply), phoneNumberId, false)
+      : sendWhatsAppMessage(from, stripMarkdown(agentReply), wamid, false))
 
   } catch (err) {
     console.error('[WhatsApp] processInbound error:', err)
@@ -875,8 +874,8 @@ export async function sendWhatsAppTemplate(
     error?:    { message: string; code: number }
   }
 
-  if (json.error) {
-    const detail = `#${json.error.code} ${json.error.message}`
+  if (!res.ok || json.error) {
+    const detail = json.error ? `#${json.error.code} ${json.error.message}` : `HTTP ${res.status} (no Meta template acceptance confirmed)`
     console.error(`[WhatsApp] Template '${templateName}' failed:`, detail)
     throw new Error(detail)
   }
