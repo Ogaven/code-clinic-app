@@ -23,7 +23,7 @@ export function getAiProviderConfiguration() {
     enabled: process.env.HYBRID_AI_ENABLED === 'true',
     openaiConfigured: Boolean(process.env.OPENAI_API_KEY?.trim()),
     deepseekConfigured: Boolean(process.env.DEEPSEEK_API_KEY?.trim()),
-    deepseekModel: process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-chat',
+    deepseekModel: process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-flash',
     budgets: AI_BUDGET_USD,
   }
 }

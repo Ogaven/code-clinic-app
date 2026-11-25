@@ -295,12 +295,11 @@ export type AiUsageRangeKey = 'today' | '7d' | '30d' | '90d' | 'month' | 'prev_m
 // agent.service.ts). This is a server-side estimate only — never persisted
 // or exposed as "actual" billing. Update these figures if OpenAI's pricing
 // changes or the configured model changes.
-const OPENAI_PRICING: Record<string, { inputPerMillion: number; cachedInputPerMillion: number; outputPerMillion: number }> = {
-  'gpt-5.6-sol':  { inputPerMillion: 2.50, cachedInputPerMillion: 1.25,  outputPerMillion: 10.00 }, // flagship tier (website/WhatsApp)
-  'gpt-5.6-luna': { inputPerMillion: 0.15, cachedInputPerMillion: 0.075, outputPerMillion: 0.60  }, // cost-optimized tier (comment replies)
+const MODEL_PRICING: Record<string, { inputPerMillion: number; cachedInputPerMillion: number; outputPerMillion: number }> = {
+  'gpt-5.6-sol':  { inputPerMillion: 4.00, cachedInputPerMillion: 0.40, outputPerMillion: 20.00 }, // flagship tier (website/WhatsApp)
+  'deepseek-flash': { inputPerMillion: 0.30, cachedInputPerMillion: 0.006, outputPerMillion: 1.20 }, // peak-rate estimate
+  'gpt-5.6-luna': { inputPerMillion: 0.20, cachedInputPerMillion: 0.02, outputPerMillion: 1.20  }, // cost-optimized tier (comment replies)
 }
-// Fallback for any model that shows up in the log without a pricing entry above.
-const DEFAULT_PRICING = OPENAI_PRICING['gpt-5.6-sol']
 
 // Pure and exported (server-side only — never sent to the client) so it can
 // be unit-tested directly: proves the cost figure is actually DERIVED from
@@ -312,11 +311,13 @@ export function calculateAiUsageCostUsd(
   byModel: { model: string; inputTokens: number; cachedInputTokens: number; outputTokens: number }[],
 ): number {
   const raw = byModel.reduce((acc, row) => {
-    const pricing      = OPENAI_PRICING[row.model] ?? DEFAULT_PRICING
-    const billableInput = Math.max(row.inputTokens - row.cachedInputTokens, 0)
+    if (!Object.prototype.hasOwnProperty.call(MODEL_PRICING, row.model)) return acc
+    const pricing = MODEL_PRICING[row.model]
+    const cachedInput = Math.max(0, Math.min(row.cachedInputTokens, row.inputTokens))
+    const billableInput = Math.max(row.inputTokens - cachedInput, 0)
     const modelCost =
       (billableInput          / 1_000_000) * pricing.inputPerMillion +
-      (row.cachedInputTokens  / 1_000_000) * pricing.cachedInputPerMillion +
+      (cachedInput            / 1_000_000) * pricing.cachedInputPerMillion +
       (row.outputTokens       / 1_000_000) * pricing.outputPerMillion
     return acc + modelCost
   }, 0)
@@ -492,6 +493,7 @@ router.get('/ai-usage', requireAuth, adminOnly, async (req, res) => {
         totalTokens: r.total_tokens,
       })),
       models: byModelRaw.map(r => r.model),
+      unpricedModels: byModelRaw.filter(r => !Object.prototype.hasOwnProperty.call(MODEL_PRICING, r.model)).map(r => r.model),
       cost: {
         value:    costValue,
         currency: 'USD',

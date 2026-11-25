@@ -1,3 +1,4 @@
+import { matchPublicRoutineFaq } from './safe-routing'
 import OpenAI from 'openai'
 import { executeMeteredOpenAiResponses } from './openai-responses-metered'
 import {
@@ -2678,7 +2679,11 @@ export async function getAgentReplyV2OpenAI(
   channel?:       string
 ): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return `Hi! I've received your message and a team member will be with you shortly.`
+  const supportsPublicFaq = !channel || ['WHATSAPP', 'WEBSITE', 'FACEBOOK', 'INSTAGRAM'].includes(channel)
+  const publicFaq = supportsPublicFaq && getBookingState(from).state === 'IDLE'
+    ? matchPublicRoutineFaq(latestMessage)
+    : null
+  if (!apiKey && !publicFaq) return `Hi! I've received your message and a team member will be with you shortly.`
 
   const todayKey  = `ratelimit:${from}:${new Date().toISOString().slice(0, 10)}`
   const current   = await redis.get(todayKey)
@@ -2759,6 +2764,25 @@ export async function getAgentReplyV2OpenAI(
         console.log(`[AgentV2-OpenAI] Post-booking close from ${from}: "${msg.slice(0, 50)}" → short-circuit`)
         return reply
       }
+    }
+
+    if (publicFaq) {
+      let approvedReply = 'You can find us on Kiira Road, opposite Police Playground, Kamwokya, Kampala. 😊'
+      if (publicFaq === 'clinic_hours') {
+        const hours = await prisma.workingHours.findMany({
+          orderBy: { dayOfWeek: 'asc' },
+          select: { dayOfWeek: true, isOpen: true, openTime: true, closeTime: true },
+        }).catch(() => [])
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        if (hours.length !== 7 || hours.some((hour, index) => hour.dayOfWeek !== index ||
+          (hour.isOpen && ![hour.openTime, hour.closeTime].every(time => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time))))) {
+          return 'Please check with our reception team to confirm our opening hours.'
+        }
+        approvedReply = 'Here are our opening hours (Kampala time):\n' + hours.map(hour =>
+          `${days[hour.dayOfWeek]}: ${hour.isOpen ? `${hour.openTime}–${hour.closeTime}` : 'Closed'}`
+        ).join('\n')
+      }
+      return approvedReply
     }
 
     const [patient, dbMessages, menu, allHours, kbEntries] = await Promise.all([
@@ -3102,13 +3126,12 @@ export async function getAgentReplyV2OpenAI(
     console.error('[AgentV2-OpenAI] Error:', err?.message)
     logAiUsage({
       conversationId,
-      channel:      channel ?? 'WHATSAPP',
-      model:        OPENAI_WEBSITE_MODEL,
-      succeeded:    false,
+      channel: channel ?? 'WHATSAPP',
+      model: OPENAI_WEBSITE_MODEL,
+      succeeded: false,
       errorMessage: (err?.message ?? 'unknown error').slice(0, 500),
     })
-    // A provider failure is not a patient question. Route it to reception
-    // immediately rather than repeatedly telling the patient to try again.
+    // Leave failed private conversations visible to staff and stop AI replies.
     if (!channel || channel === 'WHATSAPP') {
       try {
         const paused = await prisma.aiConversation.updateMany({

@@ -46,7 +46,7 @@ router.post('/message', async (req, res) => {
     }
 
     let conversation = await prisma.aiConversation.findFirst({
-      where:   { phoneNumber: sessionId, channel: 'WEBSITE', status: 'ACTIVE' },
+      where:   { phoneNumber: sessionId, channel: 'WEBSITE', status: { in: ['ACTIVE', 'HUMAN_TAKEOVER'] } },
       orderBy: { createdAt: 'desc' },
     })
     if (!conversation) {
@@ -130,7 +130,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     // Log to conversation if sessionId provided
     if (sessionId?.trim()) {
       let conversation = await prisma.aiConversation.findFirst({
-        where:   { phoneNumber: sessionId, channel: 'WEBSITE', status: 'ACTIVE' },
+        where:   { phoneNumber: sessionId, channel: 'WEBSITE', status: { in: ['ACTIVE', 'HUMAN_TAKEOVER'] } },
         orderBy: { createdAt: 'desc' },
       })
       if (!conversation) {

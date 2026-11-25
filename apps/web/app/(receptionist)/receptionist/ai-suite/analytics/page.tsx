@@ -104,6 +104,7 @@ interface AiUsage {
   byChannel: AiUsageChannelPoint[]
   byDay: AiUsageDayPoint[]
   models: string[]
+  unpricedModels?: string[]
   cost: { value: number; currency: string; source: string }
 }
 
@@ -483,7 +484,8 @@ function OpenAiUsageCard({
             )}
 
             <p className="text-[9px] text-gray-300 dark:text-white/20 leading-relaxed">
-              Cost is {data.cost.source === 'CALCULATED_FROM_TOKEN_USAGE' ? 'calculated from logged token usage' : data.cost.source} using OpenAI&apos;s published per-token pricing for {data.models.join(', ') || 'the configured model'} — an estimate, not an actual invoiced figure.
+              Cost is {data.cost.source === 'CALCULATED_FROM_TOKEN_USAGE' ? 'calculated from logged token usage' : data.cost.source} using published text-token rates, including peak rates for DeepSeek. Provider invoices show actual charges.
+              {!!data.unpricedModels?.length && ` Estimates exclude unpriced models: ${data.unpricedModels.join(', ')}.`}
             </p>
           </>
         )}
@@ -1307,7 +1309,7 @@ export default function AnalyticsPage() {
                     </div>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between rounded-xl bg-violet-50 dark:bg-violet-900/10 px-3 py-2">
-                        <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">OpenAI (estimate)</p><p className="text-[9px] text-gray-400">{costRangeLabel}</p></div>
+                        <div><p className="text-[10px] font-bold text-gray-600 dark:text-white/60">AI token costs (estimate)</p><p className="text-[9px] text-gray-400">{costRangeLabel}</p></div>
                         <p className="text-lg font-black text-violet-600">{openAiCost === null ? 'Unavailable' : `$${openAiCost.toFixed(2)}`}</p>
                       </div>
                       <div className="flex items-center justify-between rounded-xl bg-emerald-50 dark:bg-emerald-900/10 px-3 py-2">

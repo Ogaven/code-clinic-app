@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 // All DB/Redis/WhatsApp/OpenAI dependencies of agent.service.ts are mocked —
@@ -6,16 +6,20 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 // (enforced further by the global no-real-sends fetch guard).
 
 const responsesCreate = vi.fn()
+const chatCreate = vi.fn()
 
 vi.mock('openai', () => {
   return {
     default: vi.fn().mockImplementation(() => ({
       responses: { create: responsesCreate },
+      chat: { completions: { create: chatCreate } },
     })),
   }
 })
 
 const prismaMock = {
+  aiUsageLog: { create: vi.fn().mockResolvedValue({}) },
+  aiConversation: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   aiMessage: {
     findFirst: vi.fn().mockResolvedValue(null), // no post-booking short-circuit, no prior failed fallback
     findMany:  vi.fn().mockResolvedValue([]),   // empty conversation history by default
@@ -51,6 +55,8 @@ vi.mock('../../services/agent/guards/anti-hallucination', () => ({
   antiHallucinationGuard: vi.fn().mockResolvedValue({ safe: true }),
 }))
 
+afterEach(() => { vi.unstubAllEnvs() })
+
 describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -62,6 +68,47 @@ describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel
     prismaMock.doctor.findMany.mockResolvedValue([])
     prismaMock.workingHours.findMany.mockResolvedValue([])
     prismaMock.aiKnowledgeBase.findMany.mockResolvedValue([])
+  })
+
+  it.each(['WHATSAPP', 'WEBSITE', 'FACEBOOK', 'INSTAGRAM'])('serves the approved %s address locally without an AI credential', async channel => {
+    vi.stubEnv('OPENAI_API_KEY', '')
+    vi.stubEnv('DEEPSEEK_API_KEY', '')
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    expect(await getAgentReplyV2OpenAI('synthetic-conversation', 'synthetic-sender', 'What is your address?!', channel))
+      .toContain('Kiira Road')
+    expect(responsesCreate).not.toHaveBeenCalled()
+    expect(chatCreate).not.toHaveBeenCalled()
+    expect(prismaMock.aiUsageLog.create).not.toHaveBeenCalled()
+  })
+
+  it('reads current public hours from the schedule and makes no AI call', async () => {
+    prismaMock.workingHours.findMany.mockResolvedValueOnce(Array.from({ length: 7 }, (_, dayOfWeek) => ({
+      dayOfWeek, isOpen: dayOfWeek > 0, openTime: '08:00', closeTime: '17:00',
+    })))
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    const reply = await getAgentReplyV2OpenAI('synthetic-hours', 'synthetic-sender', 'What are your opening hours?', 'WEBSITE')
+    expect(reply).toContain('Sunday: Closed')
+    expect(reply).toContain('Monday: 08:00–17:00')
+    expect(responsesCreate).not.toHaveBeenCalled()
+    expect(chatCreate).not.toHaveBeenCalled()
+  })
+
+  it('asks reception to confirm incomplete hours without calling a provider', async () => {
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    const reply = await getAgentReplyV2OpenAI('missing-hours', 'synthetic-sender', 'What are your opening hours?', 'WEBSITE')
+    expect(reply).toContain('confirm our opening hours')
+    expect(responsesCreate).not.toHaveBeenCalled()
+    expect(chatCreate).not.toHaveBeenCalled()
+  })
+
+  it('keeps private booking requests on the existing runtime even with a configured DeepSeek key', async () => {
+    vi.stubEnv('HYBRID_AI_ENABLED', 'true')
+    vi.stubEnv('DEEPSEEK_API_KEY', 'synthetic-key')
+    responsesCreate.mockResolvedValueOnce({ output: [], output_text: 'How can I help with your booking?', usage: {} })
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    await getAgentReplyV2OpenAI('booking-conversation', 'synthetic-sender', 'Can I change my existing appointment?', 'WHATSAPP')
+    expect(responsesCreate).toHaveBeenCalledTimes(1)
+    expect(chatCreate).not.toHaveBeenCalled()
   })
 
   it('calls OpenAI (never Anthropic) and returns the model reply, with prior conversation history included in the request', async () => {
