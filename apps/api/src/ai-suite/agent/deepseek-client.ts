@@ -21,26 +21,23 @@ export function createDeepSeekClient(): OpenAI {
 
 export type RoutineMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
-export async function completeRoutineWithDeepSeek(messages: RoutineMessage[]): Promise<{
-  text: string
-  model: string
-  inputTokens: number
-  outputTokens: number
-  cachedInputTokens: number
-}> {
-  const config = getAiProviderConfiguration()
-  if (!config.enabled) throw new Error('Hybrid AI routing is disabled')
-  if (messages.length === 0 || messages.some(m => !m.content.trim())) {
-    throw new Error('Valid routine messages are required')
-  }
-  const client = createDeepSeekClient()
-  const response = await client.chat.completions.create({
-    model: config.deepseekModel,
-    messages,
-    temperature: 0.3,
+type ChatRequest = OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming
+
+// A single turn has no access to clinic tools or records. Callers must validate
+// tool arguments and structured responses before taking any local action.
+export async function completeDeepSeekTurn(
+  client: OpenAI,
+  model: string,
+  request: Pick<ChatRequest, 'messages' | 'tools' | 'tool_choice' | 'response_format'>,
+) {
+  const params = {
+    ...request,
+    model,
     max_tokens: 256,
-    ...{ thinking: { type: 'disabled' } },
-  })
+    temperature: 0.3,
+    thinking: { type: 'disabled' },
+  }
+  const response = await client.chat.completions.create(params)
   const usage = response.usage
   if (!usage || !Number.isSafeInteger(usage.prompt_tokens) || usage.prompt_tokens <= 0 ||
       !Number.isSafeInteger(usage.completion_tokens) || usage.completion_tokens < 0) {
@@ -48,11 +45,23 @@ export async function completeRoutineWithDeepSeek(messages: RoutineMessage[]): P
   }
   const cached = (usage as typeof usage & { prompt_cache_hit_tokens?: number }).prompt_cache_hit_tokens
     ?? usage.prompt_tokens_details?.cached_tokens
+  const message = response.choices[0]?.message
+  if (!message || !response.model) throw new Error('DeepSeek response missing a message or model')
   return {
     cachedInputTokens: typeof cached === 'number' && Number.isSafeInteger(cached) && cached >= 0 && cached <= usage.prompt_tokens ? cached : 0,
-    text: response.choices[0]?.message?.content ?? '',
+    message,
     model: response.model,
     inputTokens: usage.prompt_tokens,
     outputTokens: usage.completion_tokens,
   }
+}
+
+export async function completeRoutineWithDeepSeek(messages: RoutineMessage[]) {
+  const config = getAiProviderConfiguration()
+  if (!config.enabled) throw new Error('Hybrid AI routing is disabled')
+  if (messages.length === 0 || messages.some(m => !m.content.trim())) {
+    throw new Error('Valid routine messages are required')
+  }
+  const { message, ...usage } = await completeDeepSeekTurn(createDeepSeekClient(), config.deepseekModel, { messages })
+  return { ...usage, text: message.content ?? '' }
 }

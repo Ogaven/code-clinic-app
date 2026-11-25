@@ -70,47 +70,38 @@ describe('getAgentReplyV2OpenAI — shared runtime used by every patient channel
     prismaMock.aiKnowledgeBase.findMany.mockResolvedValue([])
   })
 
-  it.each(['WHATSAPP', 'WEBSITE', 'FACEBOOK', 'INSTAGRAM'])('sends only public text for a %s FAQ', async channel => {
-    vi.stubEnv('HYBRID_AI_ENABLED', 'true')
-    vi.stubEnv('DEEPSEEK_API_KEY', 'synthetic-key')
-    vi.stubEnv('DEEPSEEK_MODEL', 'deepseek-flash')
-    const approved = 'You can find us on Kiira Road, opposite Police Playground, Kamwokya, Kampala. 😊'
-    chatCreate.mockResolvedValueOnce({
-      model: 'deepseek-flash', choices: [{ message: { content: approved } }],
-      usage: { prompt_tokens: 90, completion_tokens: 20 },
-    })
+  it.each(['WHATSAPP', 'WEBSITE', 'FACEBOOK', 'INSTAGRAM'])('serves the approved %s address locally without an AI credential', async channel => {
+    vi.stubEnv('OPENAI_API_KEY', '')
+    vi.stubEnv('DEEPSEEK_API_KEY', '')
     const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
     expect(await getAgentReplyV2OpenAI('synthetic-conversation', 'synthetic-sender', 'What is your address?!', channel))
-      .toBe(approved)
+      .toContain('Kiira Road')
     expect(responsesCreate).not.toHaveBeenCalled()
-    expect(chatCreate).toHaveBeenCalledWith(expect.objectContaining({
-      model: 'deepseek-flash', thinking: { type: 'disabled' },
-      messages: [
-        { role: 'system', content: expect.stringContaining(approved) },
-        { role: 'user', content: 'Where is Code Clinic located?' },
-      ],
-    }))
-    expect(prismaMock.aiUsageLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
-      model: 'deepseek-flash', channel, totalTokens: 110,
-    }) })
+    expect(chatCreate).not.toHaveBeenCalled()
+    expect(prismaMock.aiUsageLog.create).not.toHaveBeenCalled()
   })
 
-  it('does not fall back to OpenAI after a DeepSeek failure and pauses the conversation', async () => {
-    vi.stubEnv('HYBRID_AI_ENABLED', 'true')
-    vi.stubEnv('DEEPSEEK_API_KEY', 'synthetic-key')
-    vi.stubEnv('DEEPSEEK_MODEL', 'deepseek-flash')
-    chatCreate.mockRejectedValueOnce(new Error('synthetic-provider-failure'))
+  it('reads current public hours from the schedule and makes no AI call', async () => {
+    prismaMock.workingHours.findMany.mockResolvedValueOnce(Array.from({ length: 7 }, (_, dayOfWeek) => ({
+      dayOfWeek, isOpen: dayOfWeek > 0, openTime: '08:00', closeTime: '17:00',
+    })))
     const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
-    expect(await getAgentReplyV2OpenAI('failed-faq', 'synthetic-sender', 'What is your address?', 'WEBSITE'))
-      .toContain('reception team')
+    const reply = await getAgentReplyV2OpenAI('synthetic-hours', 'synthetic-sender', 'What are your opening hours?', 'WEBSITE')
+    expect(reply).toContain('Sunday: Closed')
+    expect(reply).toContain('Monday: 08:00–17:00')
     expect(responsesCreate).not.toHaveBeenCalled()
-    expect(prismaMock.aiConversation.updateMany).toHaveBeenCalledWith({
-      where: { id: 'failed-faq', agentEnabled: true },
-      data: { agentEnabled: false, status: 'HUMAN_TAKEOVER' },
-    })
+    expect(chatCreate).not.toHaveBeenCalled()
   })
 
-  it('keeps private booking requests on the existing runtime when public FAQ routing is enabled', async () => {
+  it('asks reception to confirm incomplete hours without calling a provider', async () => {
+    const { getAgentReplyV2OpenAI } = await import('../ai-suite/agent/agent.service')
+    const reply = await getAgentReplyV2OpenAI('missing-hours', 'synthetic-sender', 'What are your opening hours?', 'WEBSITE')
+    expect(reply).toContain('confirm our opening hours')
+    expect(responsesCreate).not.toHaveBeenCalled()
+    expect(chatCreate).not.toHaveBeenCalled()
+  })
+
+  it('keeps private booking requests on the existing runtime even with a configured DeepSeek key', async () => {
     vi.stubEnv('HYBRID_AI_ENABLED', 'true')
     vi.stubEnv('DEEPSEEK_API_KEY', 'synthetic-key')
     responsesCreate.mockResolvedValueOnce({ output: [], output_text: 'How can I help with your booking?', usage: {} })

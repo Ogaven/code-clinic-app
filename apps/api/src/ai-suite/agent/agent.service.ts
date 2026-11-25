@@ -1,6 +1,4 @@
-import { completeRoutineWithDeepSeek } from './deepseek-client'
-import { matchPublicRoutineFaq, selectSafeAiRoute } from './safe-routing'
-import { getAiProviderConfiguration } from './provider-config'
+import { matchPublicRoutineFaq } from './safe-routing'
 import OpenAI from 'openai'
 import { executeMeteredOpenAiResponses } from './openai-responses-metered'
 import {
@@ -2681,13 +2679,10 @@ export async function getAgentReplyV2OpenAI(
   channel?:       string
 ): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY
-  const provider = getAiProviderConfiguration()
   const supportsPublicFaq = !channel || ['WHATSAPP', 'WEBSITE', 'FACEBOOK', 'INSTAGRAM'].includes(channel)
-  const publicFaq = provider.enabled && supportsPublicFaq && getBookingState(from).state === 'IDLE'
+  const publicFaq = supportsPublicFaq && getBookingState(from).state === 'IDLE'
     ? matchPublicRoutineFaq(latestMessage)
     : null
-  let deepSeekAttempted = false
-  let deepSeekUsageRecorded = false
   if (!apiKey && !publicFaq) return `Hi! I've received your message and a team member will be with you shortly.`
 
   const todayKey  = `ratelimit:${from}:${new Date().toISOString().slice(0, 10)}`
@@ -2772,44 +2767,21 @@ export async function getAgentReplyV2OpenAI(
     }
 
     if (publicFaq) {
-      const route = selectSafeAiRoute({ workload: 'routine', publicFaq, patientContextPresent: false })
-      deepSeekAttempted = true
-      if (route.provider !== 'deepseek' || provider.deepseekModel !== 'deepseek-flash') {
-        throw new Error('DeepSeek public FAQ is unavailable')
-      }
       let approvedReply = 'You can find us on Kiira Road, opposite Police Playground, Kamwokya, Kampala. 😊'
       if (publicFaq === 'clinic_hours') {
         const hours = await prisma.workingHours.findMany({
           orderBy: { dayOfWeek: 'asc' },
           select: { dayOfWeek: true, isOpen: true, openTime: true, closeTime: true },
-        })
+        }).catch(() => [])
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
         if (hours.length !== 7 || hours.some((hour, index) => hour.dayOfWeek !== index ||
           (hour.isOpen && ![hour.openTime, hour.closeTime].every(time => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time))))) {
-          throw new Error('Public clinic hours are incomplete')
+          return 'Please check with our reception team to confirm our opening hours.'
         }
         approvedReply = 'Here are our opening hours (Kampala time):\n' + hours.map(hour =>
           `${days[hour.dayOfWeek]}: ${hour.isOpen ? `${hour.openTime}–${hour.closeTime}` : 'Closed'}`
         ).join('\n')
       }
-      const reply = await completeRoutineWithDeepSeek([
-        { role: 'system', content: `Reply with this approved public clinic answer exactly, preserving all facts and formatting:\n${approvedReply}` },
-        { role: 'user', content: route.approvedPrompt },
-      ])
-      const approved = reply.text.trim() === approvedReply
-      logAiUsage({
-        conversationId, channel: channel ?? 'WHATSAPP', model: provider.deepseekModel,
-        usage: {
-          input_tokens: reply.inputTokens,
-          input_tokens_details: { cached_tokens: reply.cachedInputTokens },
-          output_tokens: reply.outputTokens,
-          total_tokens: reply.inputTokens + reply.outputTokens,
-        },
-        succeeded: approved,
-        errorMessage: approved ? null : 'DeepSeek public answer did not match the approved facts',
-      })
-      deepSeekUsageRecorded = true
-      if (!approved) throw new Error('DeepSeek public answer did not match the approved facts')
       return approvedReply
     }
 
@@ -3151,20 +3123,16 @@ export async function getAgentReplyV2OpenAI(
 
     return `I ran into a small issue — please try again in a moment and I'll get that sorted for you 😊`
   } catch (err: any) {
-    if (deepSeekAttempted) {
-      console.error('[Sarah] DeepSeek public FAQ failed')
-    } else {
-      console.error('[AgentV2-OpenAI] Error:', err?.message)
-    }
-    if (!deepSeekUsageRecorded) logAiUsage({
+    console.error('[AgentV2-OpenAI] Error:', err?.message)
+    logAiUsage({
       conversationId,
       channel: channel ?? 'WHATSAPP',
-      model: deepSeekAttempted ? provider.deepseekModel : OPENAI_WEBSITE_MODEL,
+      model: OPENAI_WEBSITE_MODEL,
       succeeded: false,
-      errorMessage: deepSeekAttempted ? 'DeepSeek public FAQ unavailable' : (err?.message ?? 'unknown error').slice(0, 500),
+      errorMessage: (err?.message ?? 'unknown error').slice(0, 500),
     })
     // Leave failed private conversations visible to staff and stop AI replies.
-    if (deepSeekAttempted || !channel || channel === 'WHATSAPP') {
+    if (!channel || channel === 'WHATSAPP') {
       try {
         const paused = await prisma.aiConversation.updateMany({
           where: { id: conversationId, agentEnabled: true },

@@ -216,6 +216,15 @@ describe('GET /ai-suite/ai-usage', () => {
     expect(body.cost.value).toBeGreaterThan(0)
   })
 
+  it('uses current Sol, Luna and DeepSeek Flash rates without pricing unknown models as Sol', async () => {
+    const { calculateAiUsageCostUsd } = await import('../ai-suite/meta/meta-usage.routes')
+    const usage = { inputTokens: 1_000_000, cachedInputTokens: 200_000, outputTokens: 100_000 }
+    expect(calculateAiUsageCostUsd([{ ...usage, model: 'gpt-5.6-sol' }])).toBe(5.28)
+    expect(calculateAiUsageCostUsd([{ ...usage, model: 'gpt-5.6-luna' }])).toBe(0.284)
+    expect(calculateAiUsageCostUsd([{ ...usage, model: 'deepseek-flash' }])).toBe(0.3612)
+    expect(calculateAiUsageCostUsd([{ ...usage, model: 'unlisted-model' }])).toBe(0)
+  })
+
   it('the cost figure is DERIVED from token usage, not a hardcoded constant — doubling tokens roughly doubles cost', async () => {
     const { calculateAiUsageCostUsd } = await import('../ai-suite/meta/meta-usage.routes')
 
