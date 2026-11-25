@@ -5,6 +5,7 @@ import * as fs from 'fs'
 import { randomUUID } from 'crypto'
 import { isR2Configured, uploadFile } from '../../services/storage/r2'
 import { processInbound, sendWhatsAppMessage } from './whatsapp.service'
+import { isDeliveryStatus, recordWhatsAppStatus, sendTrackedWhatsAppReply } from './delivery-status'
 import { enqueueMessage } from './message-buffer'
 import { handleStaffReply, STAFF_NUMBER, type AlertMeta } from './staff-relay.service'
 import { isAgentEnabled } from '../takeover/takeover.service'
@@ -111,8 +112,10 @@ export interface DeliveryFailureParams {
   timestamp: string | undefined
 }
 
-export async function persistDeliveryFailure(params: DeliveryFailureParams): Promise<void> {
-  await prisma.metaDeliveryFailure.create({
+export async function persistDeliveryFailure(params: DeliveryFailureParams, db: Pick<typeof prisma, 'metaDeliveryFailure'> = prisma): Promise<void> {
+  const timestamp = Number(params.timestamp)
+  const occurredAt = params.timestamp && Number.isFinite(timestamp) ? new Date(timestamp * 1000) : new Date()
+  await db.metaDeliveryFailure.create({
     data: {
       wamid:         params.wamid,
       wabaId:        params.wabaId,
@@ -122,7 +125,7 @@ export async function persistDeliveryFailure(params: DeliveryFailureParams): Pro
       title:         params.title,
       message:       params.message,
       details:       params.details,
-      occurredAt:    params.timestamp ? new Date(Number(params.timestamp) * 1000) : new Date(),
+      occurredAt:    occurredAt,
     },
   })
 }
@@ -145,10 +148,10 @@ async function sendDirectReply(from: string, inboundText: string, reply: string,
     const agentOn = await isAgentEnabled(conv.id)
     if (!agentOn) return
     await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'USER', content: inboundText } })
-    await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'AGENT', content: reply } })
+    const outgoing = await prisma.aiMessage.create({ data: { conversationId: conv.id, role: 'AGENT', content: reply } })
     // logToConversation=false: already logged explicitly above — sendWhatsAppMessage's
     // default logging would otherwise double-write this same reply to ai_messages.
-    await sendWhatsAppMessage(from, reply, wamid, false)
+    await sendTrackedWhatsAppReply(outgoing.id, () => sendWhatsAppMessage(from, reply, wamid, false))
   } catch (err: any) {
     console.error('[WhatsApp] sendDirectReply error:', err.message)
   }
@@ -196,7 +199,8 @@ router.post('/webhook', async (req: Request, res: Response) => {
   // as the already-configured FACEBOOK_APP_SECRET (used successfully by the
   // Facebook/Instagram webhooks below), so it's reused here rather than
   // requiring a second, redundant copy of the same value under a new name.
-  if (checkMetaWebhookSignature(req, ['WHATSAPP_APP_SECRET', 'FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'WhatsApp') === 'REJECTED') {
+  const signature = checkMetaWebhookSignature(req, ['WHATSAPP_APP_SECRET', 'FACEBOOK_APP_SECRET', 'META_APP_SECRET'], 'WhatsApp')
+  if (signature === 'REJECTED') {
     res.sendStatus(403)
     return
   }
@@ -256,7 +260,47 @@ router.post('/webhook', async (req: Request, res: Response) => {
   const statusCount = (bodyForLog?.entry ?? []).reduce((n, e) => n + (e.changes ?? []).reduce((m, c) => m + (c.value?.statuses?.length ?? 0), 0), 0)
   console.log(`[WEBHOOK RECEIVED] object=${bodyForLog?.object} entries=${entryCount} messages=${messageCount} statuses=${statusCount}`)
 
-  // Always acknowledge immediately so Meta doesn't retry
+  if (statusCount && signature !== 'OK') {
+    res.sendStatus(503)
+    return
+  }
+
+  // Persist status evidence before acknowledging so Meta can retry a failed DB write.
+  try {
+    if (bodyForLog?.object === 'whatsapp_business_account') {
+      for (const entry of bodyForLog.entry ?? []) {
+        for (const change of entry.changes ?? []) {
+          for (const receipt of change.value?.statuses ?? []) {
+            if (!receipt.id || !isDeliveryStatus(receipt.status)) continue
+            const error = receipt.status === 'failed' ? receipt.errors?.[0] : undefined
+            const failure = error?.code ? {
+              wamid: receipt.id,
+              wabaId: entry.id ?? null,
+              phoneNumberId: change.value?.metadata?.phone_number_id ?? null,
+              recipientId: receipt.recipient_id ?? null,
+              code: error.code,
+              title: error.title ?? error.message ?? 'Unknown error',
+              message: error.message ?? null,
+              details: error.error_data?.details ?? null,
+              timestamp: receipt.timestamp,
+            } : null
+            const inserted = await recordWhatsAppStatus(receipt.id, receipt.status, error?.code ?? null,
+              failure ? tx => persistDeliveryFailure(failure, tx) : undefined)
+            if (inserted && receipt.status === 'failed') {
+              const recipientDigits = receipt.recipient_id?.replace(/\D/g, '')
+              if (recipientDigits && recipientDigits === STAFF_NUMBER.replace(/\D/g, '')) {
+                void notifyStaffOfDeliveryFailure(error?.code, error?.message ?? error?.title, error?.error_data?.details)
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    console.error('[WhatsApp] Could not persist delivery receipts')
+    res.sendStatus(503)
+    return
+  }
   res.sendStatus(200)
 
   try {
@@ -269,57 +313,6 @@ router.post('/webhook', async (req: Request, res: Response) => {
         const messages      = change.value?.messages
         const waDisplayName = change.value?.contacts?.[0]?.profile?.name ?? null
         const phoneNumberId = change.value?.metadata?.phone_number_id as string | undefined
-
-        // ── Delivery status updates (sent / delivered / read / failed) ──────────
-        const statuses = change.value?.statuses
-        if (statuses?.length) {
-          for (const s of statuses) {
-            if (!s.id || !s.status) continue
-            if (!['sent', 'delivered', 'read', 'failed'].includes(s.status)) continue
-            prisma.aiMessage
-              .updateMany({ where: { wamid: s.id }, data: { status: s.status } })
-              .catch(() => {})
-
-            // A synchronous "accepted"/"sent" response from Meta's send API does NOT
-            // mean the message was delivered — real failures (wrong number, 24h window,
-            // billing/eligibility issues) only surface here, asynchronously. A staff
-            // alert whose send call "succeeded" but whose real delivery failed here
-            // went unnoticed for weeks in 2026-09 (Meta billing issue, error 131042)
-            // because nothing ever looked at this webhook's failures. Any failed send
-            // to the staff number is always worth surfacing loudly, regardless of
-            // which flow sent it.
-            if (s.status === 'failed') {
-              const err = s.errors?.[0]
-              console.error(
-                `[WhatsApp] DELIVERY FAILED to ${s.recipient_id}: #${err?.code ?? '?'} ${err?.message ?? err?.title ?? 'unknown error'}` +
-                (err?.error_data?.details ? ` — ${err.error_data.details}` : '')
-              )
-
-              // Persist what used to be console-only — turns 131042/billing tracking
-              // into a real, queryable, ongoing metric (Analytics & Costs) instead of
-              // a one-time log grep that doesn't survive log rotation.
-              if (err?.code) {
-                persistDeliveryFailure({
-                  wamid:         s.id ?? null,
-                  wabaId:        entry.id ?? null,
-                  phoneNumberId: phoneNumberId ?? null,
-                  recipientId:   s.recipient_id ?? null,
-                  code:          err.code,
-                  title:         err.title ?? err.message ?? 'Unknown error',
-                  message:       err.message ?? null,
-                  details:       err.error_data?.details ?? null,
-                  timestamp:     s.timestamp,
-                }).catch((e: any) => console.error('[WhatsApp] Failed to persist MetaDeliveryFailure:', e.message))
-              }
-
-              const recipientDigits = s.recipient_id?.replace(/\D/g, '') ?? ''
-              const staffDigits     = STAFF_NUMBER.replace(/\D/g, '')
-              if (recipientDigits && staffDigits && recipientDigits === staffDigits) {
-                notifyStaffOfDeliveryFailure(err?.code, err?.message ?? err?.title, err?.error_data?.details).catch(() => {})
-              }
-            }
-          }
-        }
 
         if (!messages?.length) continue
 

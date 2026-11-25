@@ -1,3 +1,4 @@
+import { acceptedWhatsAppMessage } from '../whatsapp/delivery-status'
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { getGreetingName, guardianTitle, normalizeRelation } from '../../utils/nameHelper'
@@ -97,12 +98,13 @@ export async function checkAndSendReminders(): Promise<void> {
         `Reply YES to confirm or NO if you'd like to reschedule.`
     }
 
+    let wamid: string
     // ── Send ──────────────────────────────────────────────────────────────────
     try {
       const templateName = process.env.WA_TEMPLATE_REMINDER_NAME
       if (templateName) {
         try {
-          await sendWhatsAppTemplate(recipientPhone, templateName, [
+          wamid = await sendWhatsAppTemplate(recipientPhone, templateName, [
             templateAddr,
             dayDate,
             time,
@@ -110,10 +112,10 @@ export async function checkAndSendReminders(): Promise<void> {
             doctor,
           ], false)
         } catch {
-          await sendWhatsAppMessage(recipientPhone, message)
+          wamid = await sendWhatsAppMessage(recipientPhone, message, undefined, routing.recipient.isGuardian)
         }
       } else {
-        await sendWhatsAppMessage(recipientPhone, message)
+        wamid = await sendWhatsAppMessage(recipientPhone, message, undefined, routing.recipient.isGuardian)
       }
     } catch (err: any) {
       console.error(`[Reminder] Send failed for ${recipientPhone}:`, err.message ?? err)
@@ -151,6 +153,7 @@ export async function checkAndSendReminders(): Promise<void> {
     await prisma.aiMessage.create({
       data: {
         conversationId: conv.id,
+        ...acceptedWhatsAppMessage(wamid),
         role:           'AGENT',
         content:        message,
       },
@@ -210,8 +213,9 @@ export async function checkAndSendReminders(): Promise<void> {
     const msg1h    = isGuardian1h
       ? `Hi ${title1h}! Just a friendly reminder that ${name1h}'s appointment with ${doc1h} is in 1 hour 😊 See you soon!`
       : `Hi ${name1h}! Just a friendly reminder that your appointment with ${doc1h} is in 1 hour 😊 See you soon!`
+    let wamid: string
     try {
-      await sendWhatsAppMessage(recipientPhone1h, msg1h)
+      wamid = await sendWhatsAppMessage(recipientPhone1h, msg1h, undefined, isGuardian1h)
     } catch (err: any) {
       console.error(`[Reminder 1h] Send failed for ${recipientPhone1h}:`, err.message ?? err)
       continue
@@ -238,7 +242,7 @@ export async function checkAndSendReminders(): Promise<void> {
       })
     }
     await prisma.aiMessage.create({
-      data: { conversationId: conv1h.id, role: 'AGENT', content: msg1h },
+      data: { conversationId: conv1h.id, role: 'AGENT', content: msg1h, ...acceptedWhatsAppMessage(wamid) },
     })
 
     console.log(`[Reminder 1h] Sent to ${pat1h.firstName} ${pat1h.lastName} (${pat1h.phone})`)
@@ -527,6 +531,7 @@ export async function checkAndSendSameDayReminders(): Promise<void> {
       },
     })
 
+    let wamid: string
     try {
       // Template-only — no freeform fallback. A proactive 7 AM reminder must
       // never rely on the WhatsApp 24h customer-service window, which
@@ -535,7 +540,7 @@ export async function checkAndSendSameDayReminders(): Promise<void> {
       // design — see its own comment in whatsapp.service.ts); this call
       // simply does not catch-and-degrade to freeform the way the 24h/1h
       // reminders and notification.service.ts do for other message types.
-      await sendWhatsAppTemplate(recipientPhone, activeTemplateName, templateParams, false)
+      wamid = await sendWhatsAppTemplate(recipientPhone, activeTemplateName, templateParams, false)
     } catch (err: any) {
       console.error(`[SameDayReminder] Template send failed for ${recipientPhone}:`, err.message ?? err)
       continue // leave sent:false — dedup check above prevents a same-day retry

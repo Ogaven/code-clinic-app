@@ -1,3 +1,4 @@
+import { acceptedWhatsAppMessage } from '../whatsapp/delivery-status'
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../whatsapp/whatsapp.service'
 import { prisma } from '../../lib/prisma'
 import { phoneVariants } from '../../utils/phone'
@@ -98,6 +99,7 @@ export async function sendAppointmentNotification(
       console.warn(`[Notification] Skipping '${type}' — patient ${p.firstName} ${p.lastName} has no phone number`)
       return
     }
+    let templateWamid: string | undefined
     if (type === 'booked') {
       // Dedup: skip if a booking confirmation was already sent to this phone in the last 5 minutes.
       // Prevents double-sends from create+confirm happening in rapid succession.
@@ -115,18 +117,16 @@ export async function sendAppointmentNotification(
       }
       const templateName = process.env.WA_TEMPLATE_BOOKING_CONFIRM_NAME
       const templateAddr = recipientName ? recipientName.split(' ')[0] : toProperCase(p.firstName)
-      let templateSent = false
       if (templateName) {
         try {
-          await sendWhatsAppTemplate(recipientPhone, templateName, [
+          templateWamid = await sendWhatsAppTemplate(recipientPhone, templateName, [
             templateAddr, dayDate, time, svc, doc,
           ], false)
-          templateSent = true
         } catch (tmplErr: any) {
           console.warn(`[Notification] Template '${templateName}' failed, falling back to freeform:`, tmplErr?.message)
         }
       }
-      if (!templateSent) await sendWhatsAppMessage(recipientPhone, message)
+      if (!templateWamid) await sendWhatsAppMessage(recipientPhone, message)
     } else {
       // Dedup for rescheduled/cancelled: these go out freeform (not via a
       // distinctly-typed template), so classifyMessage() buckets them as generic
@@ -165,9 +165,11 @@ export async function sendAppointmentNotification(
       orderBy: { updatedAt: 'desc' },
     })
     if (conv) {
-      await prisma.aiMessage.create({
-        data: { conversationId: conv.id, role: 'AGENT', content: message },
-      })
+      if (templateWamid) {
+        await prisma.aiMessage.create({
+          data: { conversationId: conv.id, role: 'AGENT', content: message, ...acceptedWhatsAppMessage(templateWamid) },
+        })
+      }
       await prisma.aiConversation.update({
         where: { id: conv.id },
         data: { updatedAt: new Date() },

@@ -1,5 +1,6 @@
 'use client'
 
+import { sameInboxMessages, type InboxMessage as Message } from '@/lib/inbox-messages'
 import { useEffect, useRef, useState, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import NextImage from 'next/image'
@@ -31,7 +32,7 @@ type Conversation = {
   lastMessage: { id: string; role: string; content: string; createdAt: string; metadata?: string | null; deliveryErrorCode?: number | null } | null
   createdAt: string; updatedAt: string
 }
-type Message = { id: string; role: 'USER' | 'AGENT'; content: string; createdAt: string; status?: string | null; wamid?: string | null; metadata?: string | null; deliveryErrorCode?: number | null }
+
 
 // ── Channel config ─────────────────────────────────────────────────────────────
 type ChannelKey = 'WHATSAPP' | 'INSTAGRAM' | 'FACEBOOK' | 'WEBSITE' | 'FB_COMMENTS' | 'IG_COMMENTS'
@@ -174,8 +175,6 @@ function convLabel(conv: Conversation, channel: ChannelKey): string {
   if (channel === 'INSTAGRAM' || channel === 'FACEBOOK') return 'Unidentified contact'
   const id = conv.phoneNumber || ''
   if (channel === 'WHATSAPP') return formatPhoneDisplay(id)
-  if (channel === 'INSTAGRAM') return `@${id.slice(0, 10)}`
-  if (channel === 'FACEBOOK')  return `FB User ${id.slice(0, 8)}`
   if (channel === 'WEBSITE')   return `Visitor ${id.slice(0, 8)}`
   return id || 'Unknown'
 }
@@ -1213,18 +1212,13 @@ function InboxPage() {
     // Only show the loading state when switching threads, not on every poll.
     if (prevConvId.current !== id) setLoadingM(true)
     try {
-      const res = await fetch(`${API}/ai-suite/conversations/${id}/messages`, { headers: authH() })
+      const res = await fetch(`${API}/ai-suite/conversations/${id}/messages`, { headers: authH(), cache: 'no-store' })
       if (requestId !== lastMessageRequest.current) return
       if (!res.ok) throw new Error('Message history request failed')
       const incoming: Message[] = await res.json()
       if (requestId !== lastMessageRequest.current) return
       setMessagesError(false)
-      setMsgs(previous => {
-        if (previous.length === incoming.length && previous.every((m, i) =>
-          m.id === incoming[i].id && m.content === incoming[i].content && m.createdAt === incoming[i].createdAt && m.metadata === incoming[i].metadata
-        )) return previous
-        return incoming
-      })
+      setMsgs(previous => sameInboxMessages(previous, incoming) ? previous : incoming)
     } catch {
       if (requestId === lastMessageRequest.current) setMessagesError(true)
     } finally {
