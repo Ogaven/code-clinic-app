@@ -112,10 +112,10 @@ export async function checkAndSendReminders(): Promise<void> {
             doctor,
           ], false)
         } catch {
-          wamid = await sendWhatsAppMessage(recipientPhone, message, undefined, false)
+          wamid = await sendWhatsAppMessage(recipientPhone, message, undefined, routing.recipient.isGuardian)
         }
       } else {
-        wamid = await sendWhatsAppMessage(recipientPhone, message, undefined, false)
+        wamid = await sendWhatsAppMessage(recipientPhone, message, undefined, routing.recipient.isGuardian)
       }
     } catch (err: any) {
       console.error(`[Reminder] Send failed for ${recipientPhone}:`, err.message ?? err)
@@ -215,7 +215,7 @@ export async function checkAndSendReminders(): Promise<void> {
       : `Hi ${name1h}! Just a friendly reminder that your appointment with ${doc1h} is in 1 hour 😊 See you soon!`
     let wamid: string
     try {
-      wamid = await sendWhatsAppMessage(recipientPhone1h, msg1h, undefined, false)
+      wamid = await sendWhatsAppMessage(recipientPhone1h, msg1h, undefined, isGuardian1h)
     } catch (err: any) {
       console.error(`[Reminder 1h] Send failed for ${recipientPhone1h}:`, err.message ?? err)
       continue

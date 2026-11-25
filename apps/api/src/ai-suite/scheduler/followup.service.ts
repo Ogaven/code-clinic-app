@@ -225,7 +225,7 @@ export async function checkAndSendFollowups(): Promise<void> {
     if (await shouldPauseAutomatedFollowup(recipientPhone)) continue
     let wamid: string
     try {
-      wamid = await sendWhatsAppMessage(recipientPhone, message, undefined, false)
+      wamid = await sendWhatsAppMessage(recipientPhone, message, undefined, routing.recipient.isGuardian)
     } catch (err: any) {
       console.error(`[Followup] Send failed for ${recipientPhone}:`, err.message ?? err)
       continue
@@ -376,7 +376,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     if (await shouldPauseAutomatedFollowup(recipientPhone)) { counts.skipped++; continue }
     let wamid: string
     try {
-      wamid = await sendWhatsAppMessage(recipientPhone, msg, undefined, false)
+      wamid = await sendWhatsAppMessage(recipientPhone, msg, undefined, missedRouting.recipient.isGuardian)
     } catch (err: any) {
       console.error(`[PostApptFollowup] Missed appt send failed for ${recipientPhone}:`, err.message)
       await notifyReceptionistUnreachable(`${patient.firstName} ${patient.lastName}`, patient.phone)
@@ -468,7 +468,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
       if (await shouldPauseAutomatedFollowup(recipientPhoneNudge)) { counts.skipped++; continue }
       try {
         const c = await prisma.aiConversation.findFirst({ where: { phoneNumber: patient.phone, channel: 'WHATSAPP', status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } })
-        const wamid = await sendWhatsAppMessage(recipientPhoneNudge, nudge, undefined, !c)
+        const wamid = await sendWhatsAppMessage(recipientPhoneNudge, nudge, undefined, nudgeRouting.recipient.isGuardian || !c)
         if (c) await prisma.aiMessage.create({ data: { conversationId: c.id, role: 'AGENT', ...acceptedWhatsAppMessage(wamid), content: nudge } })
         counts.sent++
         console.log(`[PostApptFollowup] Nudge sent to ${patient.firstName} ${patient.lastName}`)
@@ -521,7 +521,7 @@ export async function checkAndSendPostAppointmentFollowups(forceRun = false): Pr
     if (await shouldPauseAutomatedFollowup(recipientPhone)) { counts.skipped++; continue }
     const stage1SentAt = new Date()
     try {
-      const wamid = await sendWhatsAppMessage(recipientPhone, stage1, undefined, false)
+      const wamid = await sendWhatsAppMessage(recipientPhone, stage1, undefined, stage1Routing.recipient.isGuardian)
       await prisma.aiMessage.create({ data: { conversationId: convId, role: 'AGENT', ...acceptedWhatsAppMessage(wamid), content: stage1 } })
       await prisma.appointment.update({ where: { id: appt.id }, data: { followUpSent: true } })
       await prisma.aiScheduledMessage.create({

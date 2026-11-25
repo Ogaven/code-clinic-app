@@ -121,7 +121,7 @@ export async function checkAndSendCancelledFollowups(): Promise<void> {
 
     let wamid: string
     try {
-      wamid = await sendWhatsAppMessage(recipientPhone, msg, undefined, false)
+      wamid = await sendWhatsAppMessage(recipientPhone, msg, undefined, routing.recipient.isGuardian)
     } catch (err: any) {
       console.error(`[CancelledFollowup] WhatsApp send failed for ${recipientPhone}:`, err.message)
       continue
