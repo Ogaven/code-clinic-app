@@ -175,8 +175,6 @@ function convLabel(conv: Conversation, channel: ChannelKey): string {
   if (channel === 'INSTAGRAM' || channel === 'FACEBOOK') return 'Unidentified contact'
   const id = conv.phoneNumber || ''
   if (channel === 'WHATSAPP') return formatPhoneDisplay(id)
-  if (channel === 'INSTAGRAM') return `@${id.slice(0, 10)}`
-  if (channel === 'FACEBOOK')  return `FB User ${id.slice(0, 8)}`
   if (channel === 'WEBSITE')   return `Visitor ${id.slice(0, 8)}`
   return id || 'Unknown'
 }
